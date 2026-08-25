@@ -30,17 +30,19 @@ That flips the default. Instead of being assigned things by whoever's in charge,
 
 This is the part that actually has to work day to day, so it's worth walking through concretely.
 
-**Your view is a few things that fit, not a wall of everything undone.** You tell the system a bit about your strengths and how you like to work, and it surfaces tasks that actually match — not the entire unclaimed pile.
+**Your view is a few things that fit, not a wall of everything undone.** You tell the system a bit about your strengths and how you like to work, and it surfaces tasks that actually match — not the entire unclaimed pile. Tasks that need something rarer — a specific skill, a language, someone who's done this before — get pushed a little harder toward the people who could actually take them, since those are exactly the ones easiest for the few eligible people to miss in a big list.
 
-**High-stakes or specialized tasks get a short browse window instead of a first-click grab.** If you're the only one interested when the window closes, it's yours — no extra step. If two people want the same single-person task, you're both told plainly: you're both interested, go have a conversation. You can see each other's contact info for exactly that reason. Nobody's forced to fight over a button, and the platform never picks a winner for you.
+**High-stakes or specialized tasks get a short browse window instead of a first-click grab.** If you're the only one interested when the window closes, it's yours — no extra step. If two people want the same single-person task, you're both told plainly: you're both interested, go have a conversation. You can see each other's contact info for exactly that reason. From there you can split the difference a few ways — one of you steps back, you open a second slot together, or one of you joins as a learner instead of a co-equal claim (more on that below). Nobody's forced to fight over a button, and the platform never picks a winner for you.
 
 **Bigger tasks can take more than one person, and asking for help is a real, visible act.** If a task turns out bigger than expected, the person holding it can open another slot rather than pretending they've got it handled. Or they can break off a specific piece as its own card — an honest, concrete "I need help with this part," which is a lot more useful than silently struggling or handing the whole thing back.
 
-**Coordinators match, they don't command.** Their job is making sure every task has someone real behind it — actively suggesting a good fit, checking in if something looks like it's getting heavy. And if you want to talk to your coordinator about a task, there's one button for that — you don't have to know in advance whether you want help, a co-worker, or just to think out loud. They reach out and the conversation goes from there. If you try to grab something that looks like it needed a specific skill, you get a gentle check first — *are you sure there isn't someone better suited?* — a nudge, not a block, but enough to stop things sliding to whoever grabbed fastest rather than whoever fits best.
+**Some tasks are worth learning before you're the one holding them.** Anyone can join a task specifically to shadow it — no pressure to already be able to do the thing, just to watch and pick it up alongside whoever's currently doing it. It's a good place to start if you're new or unsure, and when the person who's been holding a task is ready to step back, whoever's been shadowing it is a natural, obvious next owner — though never an automatic one; the task still opens up for anyone to claim.
+
+**Coordinators match, they don't command.** Their job is making sure every task has someone real behind it — actively suggesting a good fit, checking in if something looks like it's getting heavy. And if you want to talk to your coordinator about a task, there's one button for that — you don't have to know in advance whether you want help, a co-worker, or just to think out loud. They reach out and the conversation goes from there. If you try to grab something that looks like it needed a specific skill, you get a gentle check first — *are you sure there isn't someone better suited?* — a nudge, not a block, but enough to stop things sliding to whoever grabbed fastest rather than whoever fits best. And on the rare occasion a task genuinely needs doing but nobody who's technically qualified is willing right now, a coordinator can step in and let someone else take it anyway — visibly, with a reason attached, not a quiet workaround.
 
 **If a task is truly nobody's favorite, that gets an honest conversation instead of just lingering.** Rotate it as a shared duty, find someone willing to trade for it, or the people running things consciously decide to absorb it or let it go. What doesn't happen is silence.
 
-**Nothing silently falls through.** A task that's been sitting too long flags quietly at first, then more visibly, so the group notices before it becomes an emergency — not after.
+**Nothing silently falls through.** A task that's been sitting too long flags quietly at first, then more visibly, so the group notices before it becomes an emergency — not after. There's also a quiet, no-names-attached way to flag that something feels off about a task — looks stalled, might need a hand — for the smaller moments that don't call for a full conversation.
 
 ---
 
@@ -48,13 +50,17 @@ This is the part that actually has to work day to day, so it's worth walking thr
 
 This is one of the bigger conceptual shifts, so it's worth telling as a full journey rather than a feature list.
 
-You apply. Someone reads it and wants to talk with you, and scheduling that call doesn't mean picking from one narrow slot — you give your real availability, the recruiters give theirs, and the system finds where enough of you overlap. Two people from camp actually sit down with you, not one person rubber-stamping a form.
+Most people apply the ordinary way: you apply, someone reads it and wants to talk with you, and scheduling that call doesn't mean picking from one narrow slot — you give your real availability, the recruiters give theirs, and the system finds where enough of you overlap. Two people from camp actually sit down with you, not one person rubber-stamping a form.
 
-If it's a yes, you get paired with an experienced member from day one — not a formality, a real relationship that carries through onboarding and the event itself. They're the one who notices if something about how you're settling in is worth a check-in, and follows up as a person, not as an automated flag. None of this is a new invention — it's how Peach Please already does it informally in small groups. Orchard just makes it a real, ongoing relationship instead of something that depends on someone remembering to keep it up.
+There's also a lighter path in, for the common case where someone already in camp knows you. An existing member can send you a private, one-time invite link — tagged with your name so they can keep track if they're inviting a few people at once — and let the system know they think you're a good fit and that they actually know you personally. That's a real, private vouching signal, worth more than just checking a box on a public form, and depending on how much it's worth to your particular community, it can lighten or skip parts of the usual evaluation.
+
+If it's a yes, you get paired with an experienced member from day one — not a formality, a real relationship that carries through onboarding and the event itself. They're the one who notices if something about how you're settling in is worth a check-in, and follows up as a person, not as an automated flag. None of this is a new invention — it's how Peach Please already does it informally in small groups. Orchard just makes it a real, ongoing relationship instead of something that depends on someone remembering to keep it up. If you came in through someone's invite, that person is the natural first suggestion for who accompanies you — you already have some kind of relationship to build on.
 
 Your first time actually opening the platform isn't a blank board. You tell it a little about your strengths and how you like to work, and a small handful of tasks that genuinely fit you show up right away. The goal, plainly: your first session should end with you having actually claimed something, not just having toured a system. From there, finishing one task nudges you toward the next — a small, real way to grow into more over time if you want to, at your own pace.
 
-If a Community chooses to — this is a real setting, not assumed — joining a branch is part of this too: Fruit, Wood, whatever the branches are called. That comes with an expectation, not just an invitation: branch calls are a thing you're expected to show up to. If you can't make a particular one, someone follows up — not to guilt anyone, just to make sure nobody quietly drifts out of contact without a person actually noticing.
+Some information about you doesn't belong to any one form or moment — an emergency contact, your pronouns, how you're planning to get to the event. Rather than asking on the application, asking again at onboarding, and asking a third time in a last-minute logistics form, Orchard asks it once and remembers. It lives right on your own profile where you can go back and update it any time things change, and if you genuinely don't know yet — how you're getting there, say, months out — you can say so and it'll come back around closer to the date instead of forcing a guess now.
+
+If a Community chooses to — this is a real setting, not assumed — joining a branch is part of this too: Fruit, Wood, whatever the branches are called. That comes with an expectation, not just an invitation: branch calls are a thing you're expected to show up to. If you can't make a particular one, someone follows up — not to guilt anyone, just to make sure nobody quietly drifts out of contact without a person actually noticing. Calls like these can also carry a shared agenda anyone can add to beforehand and a written summary afterward for anyone who couldn't make it — genuinely useful for keeping a working call on track, not just a courtesy for absentees.
 
 ---
 
@@ -64,17 +70,21 @@ Someone has to start the engine, and Orchard makes that honest instead of invisi
 
 From there, coordination roles fill in, a kickoff call catches anything that's still open, and then everything else opens up to the whole camp. Nothing coordination-critical gets left empty going into the season.
 
+A season can also have a real cap on how many people it holds, if that matters for your event — a venue's actual limit, say. Returning members get a window to claim their spot before the doors open more broadly to new applicants, so someone who's been coming for years doesn't lose out to timing alone, but that window doesn't hold room open forever — once it closes, everyone's competing for whatever's left on equal footing.
+
 And it's not just for the one big annual production. A reunion weekend, a fundraiser, going to a different burn — all of these can get the same lightweight treatment: start from last year's board as a head start, or build a smaller one just for the occasion, with the same people and the same tools.
 
 Once you're actually there, the platform steps back on purpose. Everything locks into a read-only reference rather than an active thing to manage, because being present at camp shouldn't mean staring at a screen — there are still tasks and shifts happening on-site, but most people never need to open the app to do them. Instead, whoever's holding the specific task of running that bridge acts as the conduit: checking the app so it doesn't have to be everyone, writing status up on a whiteboard, flagging gaps in person. The information still flows both ways, it just moves through a person and a marker instead of a phone. Everything reconciles back once the event winds down.
 
 ---
 
-## What doesn't get lost: notes on a task
+## What doesn't get lost: notes on a task, and knowledge for everyone
 
 Tasks describe the goal, not the steps — that's deliberate, and it stays true. The person who claims a task should be free to bring their own approach, not follow someone else's checklist. But how people actually did something before is genuinely useful information, and hiding it away in a separate system just means it never gets used.
 
 So there's a place for it, right on the task, clearly separate from what the task actually asks for: a running note anyone can improve over time, plus individual comments and links — the form that worked last year, a photo of the sign that got printed, where the good deal on ordering was. Optional. Visible without hunting for it. Never mistaken for "the instructions."
+
+Not everything worth knowing belongs to one task, though — how the platform works, camp policy, the answer to a question three different people have asked over the years. That lives in a general, browsable space anyone can contribute to, on by default because losing this kind of knowledge is the exact problem Orchard exists to solve. A question with no answer yet is a perfectly normal way for a page to start — someone asks, it sits until someone who knows answers it, and it becomes a real page from there. If the honest answer is "this already exists," pointing at the existing page is just as good as writing a new one.
 
 ---
 
@@ -100,9 +110,9 @@ Orchard also handles the things you'd expect a camp platform to handle, just bui
 
 - **Budget** — proposals, ranked voting on priorities, real visibility into where money's going.
 - **Events & workshops** — proposing, scheduling, avoiding conflicts, publishing.
-- **Spatial planning** — laying out camp, sleeping arrangements, drag-and-drop with real dimensions, not just a text list.
+- **Spatial planning** — laying out camp, sleeping arrangements, drag-and-drop with real dimensions, not just a text list. Move your own tent and it's provisional until whoever's running the layout signs off — never blocked, but never silently final either.
 - **Shifts** — the recurring stuff that's never really "done," kept separate from one-off tasks.
-- **Finding a time to meet** — the same tool that schedules an intro call also handles branch calls and any other "when can enough of us actually make it" problem, with honest availability collected blind so nobody's just picking around what's already shown.
+- **Finding a time to meet** — the same tool that schedules an intro call also handles branch calls and any other "when can enough of us actually make it" problem. You paint the times you're free on a simple grid rather than typing them in, with everyone's real availability collected blind so nobody's just picking around what's already shown.
 
 One thing runs through all of these rather than sitting inside any one of them: access follows the task, not the role. Claim the task that needs it, and whatever it takes to actually do the job — someone's dietary info to plan the menu, say — opens up along with it. Step away from the task, and so does that access. Nobody needs to be handed a permanent title just to get what one piece of work actually requires.
 
