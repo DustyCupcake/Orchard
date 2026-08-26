@@ -45,6 +45,7 @@ The atomic unit of work. Same shape as before, generalized, now including mechan
 | **Phase**               | Optional. Only meaningful if the task's cycle has a phase spine.                                                                                                                                     |
 | **Tags**                | Free-form, community-defined (replaces the old fixed strength-tag list).                                                                                                                             |
 | **Effort**              | One-off · ongoing · owns-a-thing.                                                                                                                                                                    |
+| **Effort magnitude**    | Duration bucket (One-off) or hours/week (Ongoing, Owns-a-thing) — how much, not just what shape. See **Effort magnitude**, below.                                                                    |
 | **Status**              | Unclaimed · Claimed · Waiting · Done.                                                                                                                                                                |
 | **Capacity**            | Number of people the task needs. Default 1. Owner can raise it later if the task turns out bigger than expected — a way to ask for help without releasing or splitting the task.                     |
 | **Openness**            | Open (anyone eligible joins without asking) · Request (default — join requests go to the owner) · Coordination-approved (new joiners need branch-coordination approval, for sensitive-access tasks). |
@@ -61,6 +62,18 @@ Tasks are written as outcomes, not procedures — this stays true regardless of 
 ### Proposing tasks
 
 Anyone can propose a task with just a title and rough description — no need to know its branch, tags, or criticality up front. Two optional fields keep it moving: a **"I'd like to claim this"** checkbox (activates and assigns in one step), and an **"I'd suggest this person"** field with an optional note (surfaces a task that fits someone without assigning it unilaterally). Whoever does branch coordination fills in the missing metadata and activates it. A proposal that sits unreviewed too long flags in the coordination queue the same way an unclaimed task does.
+
+### Effort magnitude
+
+Effort (One-off · Ongoing · Owns-a-thing) describes a task's *shape*, not its *size* — "write a rejection template" and "plan build week in detail" are both One-off, but one's an afternoon and the other's a multi-week effort. Task count alone can't tell someone's real load apart from someone else's, and neither can Effort on its own. Effort magnitude adds the missing size, in whichever unit actually fits the shape:
+
+- **One-off tasks** get a duration bucket, set by whoever's creating or claiming the task: **under an hour · a few hours · half a day · multi-day.** A bucket rather than free-form hours or an abstract 1–10 scale, for the same reason Effort itself is a small fixed enum — it stays comparable across the whole board without needing a shared mental rubric for what a "6" means.
+- **Ongoing and Owns-a-thing tasks** get an hours/week estimate instead, because they don't have a natural total — they run for as long as the role does. This is the number that composes into a load view: you can sum weekly hours across everything someone currently holds, you can't sum a pile of duration buckets.
+- If a task's load genuinely isn't flat across the cycle (an Owns-a-thing role that's light in Recruiting and heavy in Build), the owner can set a different hours/week per phase instead of one flat number. Optional — a flat number is the default and is fine for most tasks.
+
+Same precedent as Capacity (people needed): owner-estimated, revisable at any time, never a platform-computed guess.
+
+**How this feeds weekly load.** A currently Claimed (not yet Done) task counts its Effort magnitude fully toward the current week's load: Ongoing/Owns-a-thing at their hours/week rate for as long as they're held, One-off as a flat one-time addition of its duration bucket for each week it's Claimed, rather than spread across a longer window. The moment a task is marked Done, it drops out of current load and becomes historical instead — counted in **Contribution tracking** (below) against the week it was actually marked Done, not the week it was claimed or started.
 
 ### Multi-slot & collaborative tasks
 
@@ -190,12 +203,31 @@ The same typed-predicate mechanism gates cycle initiation, not just task claims 
 
 ### Task Pack
 
-A portable, importable bundle of tasks — the answer to "most tasks are specific to the community, but some starting point helps." A pack is content, not structure: it doesn't define branches or tiers, it targets branch *names* that get matched (or manually remapped) into whatever branches the importing Community has. A pack has:
+A portable, importable bundle of tasks — the answer to "most tasks are specific to the community, but some starting point helps." A pack is content, not structure, with one deliberate exception: it doesn't define Branches or Tiers — those are Community-level, standing structure that outlives any one cycle, so a pack only ever targets branch *names*, matched (or manually remapped) into whatever branches the importing Community has. Phase is different in kind. Phase is Cycle-scoped, recreated fresh per cycle rather than persisting like Branch does, so when a pack creates a brand-new cycle there's usually nothing pre-existing to match a phase hint against at all — the pack has to actually define the spine, not just reference it. A pack has:
 
 - Manifest: name, description, source, version, tags (domain: event-production, renovation, coop-governance, etc.)
-- A list of tasks, each with the fields above minus Community-specific IDs (owner, actual dates).
+- An ordered list of phase definitions (`PackPhase`: name, order, an optional suggested relative duration) — the spine the pack's own tasks are rooted in, timeless like the rest of the pack's content (no absolute dates; those are set per-cycle, see Phase in the data model).
+- A list of tasks, each with the fields above minus Community-specific IDs (owner, actual dates), each referencing its phase directly by a pack-local key (`phase_ref` → the matching `PackPhase.order`) rather than by name — since the pack owns and defines its own phase list, there's no ambiguity to resolve the way there is for Branch.
 
 Packs are symmetric — a Community can export its own board (or a subset of it, or a whole past Cycle) as a pack at any time. This is the same mechanism for "give next year's coordinator a head start," "share this with a sister community," "clone last cycle into a new one," and "seed a brand-new install with a sensible starting board." No separate feature needed for each.
+
+**Import, two paths.** Creating a *new* cycle from a pack (the common case, including clone-previous-cycle) applies the pack's `PackPhase` list directly as that cycle's Phase rows, in order, dates left blank — each task's `phase_ref` then resolves with certainty to the Phase it points at, no matching involved. Importing a pack's tasks into a cycle that *already has* its own phase spine (built by hand, then a starter task set imported into it after) is the one case where a real boundary exists between the pack's phase content and something it didn't create — there, `PackPhase.name` is matched-or-remapped against the destination's existing Phase names, the same way branch names already are. See **Pack import review**, below, for how a human confirms both kinds of matching before anything commits.
+
+### Pack import review
+
+Not previously specified in any concrete form — "matched or remapped against real branches on import" described the *what*, not the screen behind it. One generic review screen covers both name-matching cases (branch, always; phase, only in the secondary merge-into-existing-cycle case above), reconciling the pack's names against what the destination already has:
+
+- **Grouped by distinct hint value, not by task.** A pack import with 45 tasks across 4 branches shows 4 rows, not 45 — each row resolved once, applied to every item carrying that hint.
+- **Each row starts pre-filled with a suggestion:** an exact (case-insensitive) name match against the destination's existing branches/phases if one exists; "create new," pre-populated with the pack's own name, if it doesn't. Fuzzy/near-match suggestion (catching "Wood" vs "Woods") is a reasonable stretch, not a first-cut requirement — exact-match is simple and covers the common case.
+- **Every row is editable**, regardless of the suggestion: remap to any other existing branch/phase via dropdown, or override to "create new" even where a match was found (a community might want two branches named similarly, not a merge). For phase specifically, "leave unassigned" is also a valid resolution, since `Task.phase_id` is nullable.
+- **Branch rows get a third option: decline.** Not every "no match" should become a new branch — sometimes nobody wants one, whether or not the importer could create one. Since `Task.branch_id` is required, declining can't just drop the row — it hands off to a second screen.
+- **Screen two: reassign the now-branchless tasks — only appears if anything was declined.** A flat, per-task list (not grouped by hint, unlike screen one) of every task whose branch hint was declined, shown with its original hint for context, each needing a real existing branch picked before the import can commit. Deliberately task-level rather than hint-level: without a substitute branch to auto-apply, there's no single sensible default for a whole group — some declined "Wood" tasks might genuinely belong in Fruit, others in Blossom, a real per-task call. Bulk-select-and-assign is still available for the common case where a whole batch really does belong together (reusing the board's existing bulk task selection), with per-task override for the rest.
+- **Nothing is created until the whole flow is confirmed** — a staging/preview step across both screens, not an apply-then-revert one: unlike Spatial planning's Placement review, nothing here is live before the import, so there's no urgency forcing an apply-immediately shape.
+- **No new access surface needed** for the screen itself — it's just a step inside cycle creation (or pack import), gated by whoever's already allowed to start a cycle.
+
+**"Create new branch" needs its own check.** Cycle-initiation eligibility and Admins are two separate gates — starting a cycle only requires clearing cycle-initiation eligibility (an ordinary Tier check), while Branch is an "ordinary setting" edited by whoever holds Admins this cycle, a Community-endorsed task with its own threshold on top of any Tier. Nothing says the two overlap, so the review screen can't assume whoever's importing is allowed to create standing Community structure. Only "create new branch" is affected — remapping to an existing branch, or leaving a phase unassigned, references what's already there and needs no check. Phase doesn't have this problem: a phase spine belongs entirely to the Cycle being created, which the initiator is already authorized to create.
+
+Rather than a new gate-check flow, this reuses the pattern Spatial planning already committed to for the same underlying shape — act immediately, stay provisional until someone with actual standing reviews it: if the importer holds Admins, "create new branch" resolves immediately on confirm, same as today. If they don't, the branch is still created on confirm — tasks attach to it right away, the import doesn't block waiting on anyone — but with a new `status` field on Branch (`confirmed | pending`, mirroring Placement's own `confirmed`/`pending`), created `pending`. It surfaces in the Admins review queue the same way a pending Placement does; confirming locks it in, rejecting means re-pointing whatever tasks landed on it to a real branch instead — the one place this doesn't perfectly mirror Placement, since a rejected new branch has no prior confirmed state to revert to the way a moved Placement does.
 
 ---
 
@@ -204,7 +236,7 @@ Packs are symmetric — a Community can export its own board (or a subset of it,
 This is the layer that used to be implicit (baked into "we are a camp at a burn") and now has to be explicit, set once at Community creation:
 
 | Setting                   | Options                                                                                                                                                                                               |
-|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|---------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Membership model**      | Cohort/wave-based · rolling/continuous · fixed roster                                                                                                                                                 |
 | **Tiers**                 | Zero or more, each with a criterion (manual / tenure / completion / cohort)                                                                                                                           |
 | **Branches**              | Community-named, at least one                                                                                                                                                                         |
@@ -298,6 +330,7 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | community_id                 | uuid → Community    |                                                                        |
 | name                         | string              |                                                                        |
 | description                  | string              |                                                                        |
+| status                       | enum(confirmed, pending) | default `confirmed`; `pending` when created via pack import by someone who doesn't hold Admins — see Pack import review |
 | default_call_has_agenda      | boolean, nullable   | null = inherit the Community default — see Call agenda & summary       |
 | default_call_needs_summary   | boolean, nullable   | null = inherit the Community default                                   |
 | default_call_require_read    | boolean, nullable   | null = inherit the Community default                                   |
@@ -361,12 +394,14 @@ This is the concrete shape to build against. Field names are suggestions, not go
 
 **Phase**
 
-| Field    | Type         | Notes                                                                                        |
-|----------|--------------|-------------------------------------------------------------------------------------------------|
-| id       | uuid         |                                                                                              |
-| cycle_id | uuid → Cycle | belongs to a cycle, not the Community directly, since cycles can have different phase spines |
-| name     | string       |                                                                                              |
-| order    | int          | sequence position                                                                            |
+| Field      | Type          | Notes                                                                                        |
+|------------|---------------|-------------------------------------------------------------------------------------------------|
+| id         | uuid          |                                                                                              |
+| cycle_id   | uuid → Cycle  | belongs to a cycle, not the Community directly, since cycles can have different phase spines |
+| name       | string        |                                                                                              |
+| order      | int           | sequence position                                                                            |
+| start_date | date, nullable | set at cycle-scheduling time, never carried in a Pack — a Phase instance is always cycle-specific; both dates optional, same "optional, not enforced" pattern as the rest of this spec |
+| end_date   | date, nullable | optional; a gap between phases is real (e.g. a lull between Procurement and Build) rather than always contiguous |
 
 **Tier**
 
@@ -394,7 +429,7 @@ This is the concrete shape to build against. Field names are suggestions, not go
 **MemberIdentity** (see Authentication)
 
 | Field            | Type                     | Notes                                                                                    |
-|------------------|--------------------------|---------------------------------------------------------------------------------------------|
+|------------------|--------------------------|-----------------------------------------------------------------------------------------------|
 | id               | uuid                     |                                                                                           |
 | member_id        | uuid → Member            |                                                                                           |
 | provider         | enum(magic_link, oidc)   |                                                                                           |
@@ -417,6 +452,7 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | description         | text                                       |                                                                                                                           |
 | tags                | string\[\]                                 |                                                                                                                           |
 | effort              | enum(one_off, ongoing, owns_a_thing)       |                                                                                                                           |
+| effort_magnitude    | json                                        | duration bucket for `one_off` (`under_hour · few_hours · half_day · multi_day`), hours/week for `ongoing`/`owns_a_thing` — either a flat number or a per-phase map (`{phase_id: hours}`) — see Effort magnitude |
 | status              | enum(unclaimed, claimed, waiting, done)    |                                                                                                                           |
 | capacity            | int, nullable                              | default 1; null = uncapped, the default for `community_endorsed` openness (see Endorsement-gated tasks)                   |
 | openness            | enum(open, request, coordination_approved, community_endorsed) | default request                                                                                      |
@@ -573,7 +609,7 @@ This is the concrete shape to build against. Field names are suggestions, not go
 **BrowseInterest** (join table, used during a task's browse period)
 
 | Field        | Type          | Notes                                                     |
-|--------------|---------------|---------------------------------------------------------------|
+|--------------|---------------|-----------------------------------------------------------|
 | id           | uuid          | referenced by Endorsement when this task is `community_endorsed` |
 | task_id      | uuid → Task   |                                                           |
 | member_id    | uuid → Member |                                                           |
@@ -610,7 +646,7 @@ This is the concrete shape to build against. Field names are suggestions, not go
 **Form / FormResponse** (shared primitive, not module-gated — see Forms)
 
 | Field                  | Type                    | Notes                                                                                                                                                                                                                                               |
-|------------------------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|------------------------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | form.id                | uuid                    |                                                                                                                                                                                                                                                     |
 | form.community_id      | uuid → Community        |                                                                                                                                                                                                                                                     |
 | form.purpose           | string                  | e.g. `recruitment_application`, `feedback`, `custom`                                                                                                                                                                                                |
@@ -632,7 +668,8 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | question.label            | string                           |                                                                                                           |
 | question.response_type    | enum(text, single_choice, multi_choice) | same vocabulary as Form fields / Questions elsewhere                                              |
 | question.options          | json array, nullable             | for choice types                                                                                          |
-| question.scope            | enum(once_ever, per_cycle)       | once_ever answers aren't tied to a cycle; per_cycle answers are asked again each cycle                    |
+| question.scope            | enum(once_ever, per_cycle, phase) | once_ever answers aren't tied to a cycle; per_cycle answers are asked again each cycle; `phase` behaves like `per_cycle` but is additionally scoped to one phase within it — see Profile questions |
+| question.phase_name_hint  | string, nullable                 | set only when `scope = phase`. Matched against the current cycle's Phase names — same "matched or remapped on import" pattern TaskPack already uses for `branch_name_hint`; a cycle with no phase by that name just doesn't surface the question, not a special case |
 | question.audience         | json                              | which member population this applies to (e.g. all, prospective, returning)                                |
 | question.surfaces         | json array                       | which flows can trigger it — e.g. `["application", "onboarding"]`                                        |
 | question.required         | boolean                          |                                                                                                           |
@@ -642,17 +679,22 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | answer.member_id          | uuid → Member                    |                                                                                                           |
 | answer.status             | enum(answered, deferred)         | `deferred` = "I don't know yet," satisfies a required question without a fabricated value                |
 | answer.value              | json, nullable                   | present when status = answered                                                                            |
-| answer.cycle_id           | uuid → Cycle, nullable            | set only for per_cycle questions — a once_ever answer is just *the* current answer, not tied to a cycle   |
+| answer.cycle_id           | uuid → Cycle, nullable            | set for both `per_cycle` and `phase` questions — a once_ever answer is just *the* current answer, not tied to a cycle. Which phase a `phase`-scoped answer belongs to is resolved through the question's `phase_name_hint`, not stored redundantly here |
 
-**TaskPack / TaskPackItem**
+**TaskPack / TaskPackItem / PackPhase**
 
 | Field                                                                             | Type                 | Notes                                                                                             |
 |-------------------------------------------------------------------------------------|-------------------------|-----------------------------------------------------------------------------------------------------|
 | pack.id                                                                           | uuid                 |                                                                                                   |
 | pack.name, description, source, version, domain_tags                              |                      | manifest fields                                                                                   |
+| phase.pack_id                                                                     | uuid → TaskPack      |                                                                                                   |
+| phase.name                                                                        | string               |                                                                                                   |
+| phase.order                                                                       | int                  | sequence position; also doubles as this phase's local reference key within the pack, so no separate id scheme is needed |
+| phase.suggested_duration_days                                                     | int, nullable         | rough relative timeline only — no absolute dates in a pack (see Task Pack, above)                  |
 | item.pack_id                                                                      | uuid → TaskPack      |                                                                                                   |
 | item.branch_name_hint                                                             | string               | matched or remapped against real branches on import                                               |
-| item.title, description, tags, effort, critical, capacity, openness, requirements |                      | same shape as Task, minus Community/Cycle-specific fields                                         |
+| item.phase_ref                                                                    | int, nullable         | direct reference to a `PackPhase.order` within the *same* pack — resolved with certainty, not matched (see Task Pack, above) |
+| item.title, description, tags, effort, effort_magnitude, critical, capacity, openness, requirements |          | same shape as Task, minus Community/Cycle-specific fields                                         |
 | item.wiki_summary_seed                                                            | text, nullable       | carried from the source task's current wiki revision; pre-populates the new task's wiki on import |
 | item.resources                                                                    | json array, nullable | `[{label, url, tag}]` carried wholesale from the source task's resource list on import            |
 
@@ -739,6 +781,8 @@ These aren't optional — they're how branch coordination actually functions day
 
 - **Talk to my coordinator** — any task owner can trigger a conversation with their branch coordinator via one button, no categorization required up front. It notifies the coordinator ("[Member] would like to talk about [task]") and the actual conversation happens through whatever channel the community already uses — this is a routing mechanic, not a chat system.
 - **Coordinator-initiated check-in** — the same low-friction channel works the other way: a coordinator can propose a co-owner they see as a fit, or just check in if a task looks like it's getting heavy, without waiting to be asked.
+- **Capacity-aware fitted asks** — the Coordination view's fitted-ask tools (see Transparency & access) surface a member's current load when a coordinator's looking for someone for a task, computed as declared availability (the phase-scoped Availability Profile questions — see Profile questions) minus current Effort magnitude across everything they hold. Exact hours only show for members who've set their `capacity_visibility` to `open` (see Profile questions — the setting lives with the Availability question itself, not in a general settings page); everyone else shows as a coarse flag — *has room · about right · over* — same "signal without exposing a number nobody agreed to publish" pattern as the anonymous task signal, below. Surfacing capacity as a manual sort/filter dimension in the Coordination view is simple, live infrastructure that doesn't wait on anything else. Using it to automatically weight or default-rank who gets suggested is different — that's real matching automation, and it merges into (and inherits the deferred status of) the already-deferred automated matching/suggestion (tag → task fitting) below, rather than becoming a second, parallel deferred item.
+- **Availability non-response** — the Coordination view also surfaces *who hasn't declared at all* for the current phase, not just what people who did declare said (see Profile questions — Availability and its own visibility setting). This is visible regardless of `capacity_visibility`, since whether an answer exists is a different piece of information than what it says — the same distinction Scheduling polls already draw for a branch member who hasn't submitted availability for a call (see Branch, above). Nudged automatically first, the same as anywhere else here; if that goes nowhere, "follow up with members who haven't declared availability for [phase]" becomes its own task — the exact pattern already used for Scheduling-poll non-response, applied to the same underlying problem: a real gap should turn into a real conversation, not sit silently as a blank field nobody's looking at.
 - **Bulk task selection** — tasks can be grouped into clusters (e.g. "all pre-launch Ops tasks"). A member can select a whole cluster and deselect individual items before confirming, which reduces friction for highly committed members while keeping granular control available.
 - **Self-assign confirmation check** — when anyone with placement authority tries to self-assign a flagged or unclaimed task: *"Are you sure there isn't someone with just the skills for this?"* with three options — really want it myself, suggest a person (tag-matches surfaced), or flag for the group. Nothing gets quietly self-assigned past a real gap.
 - **Escalation** — unplaceable tasks surface in a shared "needs an owner" view visible to all coordinators, with cross-branch placement encouraged. Taking a task is always a visible, deliberate act, never a silent default.
@@ -910,10 +954,16 @@ Post-cycle feedback doesn't need its own module — it's just a Form (see **Form
 
 A shared mechanism, not a module — the answer to standing facts about a person that shouldn't be pinned to whichever flow happened to ask first. A regular Form (see **Forms**, below) is right for a genuinely one-off, all-at-once bundle like a post-cycle feedback survey. It's the wrong shape for things like an emergency contact, pronouns, or "how are you arriving" — facts that get asked at one moment (an application, an onboarding step) but conceptually belong to the person, not to that moment, and that a rigid form bundle makes awkward in three specific ways: no notion of *when* a question should even be asked (an application form and a closer-to-the-event logistics form differ only by when they're sent, which today means maintaining two separate forms by hand); no way for some fields to stop being asked once they're known while others in the same bundle keep needing a fresh answer every cycle; and no way for the same question to show up in more than one context without duplicating its definition.
 
-- **ProfileQuestion** — the definition: label, response type (same shape as everywhere else — free text, single/multi-choice), a `scope` of `once_ever` or `per_cycle`, which audiences it applies to, which surfaces can trigger it (application, onboarding, wherever), whether it's required, and an `archived_at` so a retired question's past answers survive.
-- **ProfileAnswer** — member, question, a `status` of `answered` or `deferred` ("I don't know yet" — satisfies a required question without forcing a guessed or fabricated value), a value (present when answered), and a `cycle_id` that's only set for `per_cycle` questions — a once-ever answer isn't tied to any cycle, it's just *the* current answer.
+- **ProfileQuestion** — the definition: label, response type (same shape as everywhere else — free text, single/multi-choice), a `scope` of `once_ever`, `per_cycle`, or `phase`, which audiences it applies to, which surfaces can trigger it (application, onboarding, wherever), whether it's required, and an `archived_at` so a retired question's past answers survive.
+- **ProfileAnswer** — member, question, a `status` of `answered` or `deferred` ("I don't know yet" — satisfies a required question without forcing a guessed or fabricated value), a value (present when answered), and a `cycle_id` that's set for both `per_cycle` and `phase` questions — a once-ever answer isn't tied to any cycle, it's just *the* current answer.
 - **Where it lives.** A once-ever answer sits on the member's own profile the same way their tags or contact methods do — visible and editable by them at any time, not something they have to hunt down a form to correct. "Once-ever" only means the platform doesn't proactively re-ask it by default; it was never meant to mean locked, since the facts these questions capture — an emergency contact, pronouns — do sometimes change.
 - **Surfacing.** Whenever a flow like the application or onboarding would normally present its questions, it also pulls in any ProfileQuestion tagged for that surface that this member doesn't yet have a real answer to — no answer at all, or a `deferred` one. This is what makes skipping the application (an invite-vouched applicant, say) a non-event rather than a gap someone has to remember to backfill: the same still-unanswered questions just surface the next time a relevant surface — onboarding — checks what's outstanding, with no flow needing to know it was skipped anywhere else. A `deferred` per-cycle question also shows directly on the Dashboard as its own outstanding item, since the real trigger for asking it again is usually just time passing (closer to the event) rather than a second formal flow starting.
+
+**A third scope: `phase`.** Some per-cycle facts aren't knowable all at once — a member might know their Recruiting-phase bandwidth right away and have no idea about Build until something else (PTO, a schedule) resolves. `scope = phase` behaves exactly like `per_cycle` (still one ProfileQuestion, still answered/deferred with the same mechanism, unchanged) but is additionally scoped to one phase — a community defines one standing question per phase name it actually needs a check-in for (e.g. "Availability — Recruiting," "Availability — Build"), each a real, separate ProfileQuestion row, resolved via `phase_name_hint` matched against the current cycle's Phase names — the same "matched or remapped on import" pattern TaskPack already uses for `branch_name_hint`, rather than a new mechanism. A cycle with no phase by that name just doesn't surface the question, not a special case. Resurfacing for a deferred `phase` question works the same way a `per_cycle` one already resurfaces "closer to the event," just measured against the matched phase's own `start_date` (see Phase, in the data model) instead of the whole cycle.
+
+**Availability and its own visibility setting.** The canonical use of `phase` scope is a standing "Availability" question per phase, feeding the Coordination view's capacity-aware fitted asks (see Coordination mechanics, above) — declared bandwidth compared against a member's current Effort magnitude load. Consistent with how each contact method already carries its own visibility setting rather than a single privacy page gathering them all, the `capacity_visibility` setting (enum `flag_only` default, or `open`) lives right where a member answers an Availability question, governing whether the Coordination view shows their exact numbers to coordinators or just the coarse flag.
+
+**Who hasn't answered is a separate, always-visible signal.** `capacity_visibility` governs the *value* of an Availability answer — it was never meant to hide the plainer fact of whether one exists yet. A member with no real answer for the current phase (no ProfileAnswer row at all, or a `deferred` one — both mean "no usable number from them yet," and neither needs a new field to distinguish for this purpose) shows up on the Coordination view's non-response list regardless of their `capacity_visibility` setting, the same way a poll's non-respondents are already visible before anyone sees a submitted slot (see Scheduling polls). This is what lets coordination have an actual conversation about a real gap instead of it sitting unnoticed as a blank field — see Coordination mechanics: Availability non-response, below.
 
 ### Forms
 
@@ -992,6 +1042,10 @@ A member's home view, generalized from the season-aware onboarding idea explored
 
 This isn't a new subsystem — it's a view that reads from the state other mechanics already produce (TaskAssignment, the Recruitment pipeline's computed status, onboarding progress, pending Spatial-planning approvals) and surfaces whatever's currently relevant to the specific person looking at it. What's relevant differs by what someone holds, consistent with **Access follows the task**: a recruiter's action items aren't a member's, and a Spatial-planning holder's pending-approvals queue isn't visible to someone who doesn't hold that task.
 
+### Community snapshot
+
+Separate from the personalized feed above, the Dashboard also carries a small, always-visible panel about the cycle as a whole — aggregate, anonymized, never broken out by individual: active member count (Participation `coming`), composition by whatever the Community tracks (Tier/experience distribution, pronouns, Branch spread), and the community-average contribution figures from **Contribution tracking**, below. This is the concrete content behind what **Transparency & access** already calls "aggregate community progress," visible to all members by default the same as the rest of that view. Individual numbers stay out of this panel entirely, including for members who've opted their own contribution picture visible — that's a Contribution-tracking-page thing, not a leaderboard on the Dashboard.
+
 ---
 
 ## 📱 Interface: mobile & web
@@ -1035,11 +1089,11 @@ Delivery respects each member's stated contact preference. Any bridge to an exte
 
 **Tiered views**, generalized from three levels that hold up across domains:
 
-| View              | Who         | What                                                                   |
-|-------------------|-------------|----------------------------------------------------------------------------|
+| View              | Who         | What                                                                                    |
+|--------------------|-------------|--------------------------------------------------------------------------------------------|
 | Default           | Everyone    | Their tasks, suggested tasks, their group, pending nudges              |
 | Explore           | Everyone    | Full unclaimed task list, schedule, community-wide progress            |
-| Coordination view | Task-earned | Branch coverage, engagement records, escalation pool, fitted-ask tools |
+| Coordination view | Task-earned | Branch coverage, engagement records, escalation pool, fitted-ask tools, capacity signal   |
 
 **Private by default, explicit opt-in to share:** another member's engagement/contribution record, financial contributions, sensitive-data-module fields, conflict reports (reporter + non-recused conflict team only).
 
@@ -1053,7 +1107,9 @@ Troubleshooting "why can't this member see X" or "what does the board actually l
 
 ## 📈 Contribution tracking
 
-Participation happens in different forms across the life of a cycle — planning, build, live operation, wind-down, or whatever categories fit the Community's own work — and these aren't equivalent, so they shouldn't collapse into one number. Each member sees their own picture broken down by Community-defined contribution category (computed from completed task assignments and shift completions tagged with that category, not a separately-entered number), alongside the **community average per category** — never other individuals' numbers, just the aggregate. This lets someone calibrate where they stand without anyone telling them what to do about it.
+Participation happens in different forms across the life of a cycle — planning, build, live operation, wind-down, or whatever categories fit the Community's own work — and these aren't equivalent, so they shouldn't collapse into one number. Each member sees their own picture broken down by Community-defined contribution category, computed from three things rather than one: **completed** task assignments and shift completions (what they've actually done, attributed to the week/period a task was actually marked Done, not when it was claimed or started), **active** task assignments (what they're currently carrying, using each task's Effort magnitude), and **future signed-up** tasks (Browse-period claims and later-phase tasks already assigned to them but not yet started). Nothing here is separately entered — it's read off Task/TaskAssignment state that already exists, the same "don't keep a second number in sync by hand" principle as everywhere else in this spec.
+
+Alongside their own picture, a member sees the **average per category across the cycle's currently active members** (Participation status `coming`, not the whole all-time community roster — someone who left two cycles ago shouldn't quietly drag the baseline down) — never other individuals' numbers by default. A member can optionally **toggle their own contribution picture visible to the rest of the community** — off by default, consistent with the rest of this spec's private-by-default, explicit-opt-in pattern (see **Transparency & access**). Turning it on shares the same breakdown they see themselves, nothing more granular.
 
 The framing stays personal and non-punitive throughout: someone who contributed heavily in planning and lightly during the live phase can see that reflected honestly rather than flattened into a single score, and arrival/departure or engagement dates (see Participation & capacity under Cycle) are shown as context so someone's contribution is judged relative to their actual time in the cycle, not against a flat baseline. This is the foundation for a fairness conversation if one ever needs to happen — data-informed rather than a vague, hard-to-challenge impression that someone isn't pulling their weight.
 
@@ -1080,13 +1136,13 @@ The smallest version worth building — usable by Peach Please *and* at least on
 **Explicitly deferred:**
 
 - Automated cycle kickoff sequencing (Round 0/1/2 as an enforced flow rather than a manual process) and Browse mode's contested-slot resolution UI.
-- Task packs as a portable, shareable mechanism (import/export beyond the one clone-previous-cycle path already in scope) — general pack library, cross-community sharing, wiki/resource carry-forward on clone.
+- Task packs as a portable, shareable mechanism (import/export beyond the one clone-previous-cycle path already in scope) — general pack library, cross-community sharing, wiki/resource carry-forward on clone. The pack's phase-spine content (PackPhase, `item.phase_ref`) and the Pack import review screen touch the MVP-listed clone-previous-cycle path itself, not just this deferred general-library work — **left genuinely open whether that piece lands in the same MVP slice or ships as a fast-follow immediately after**, rather than assumed either way.
 - All optional modules (recruitment, sensitive data, shifts, budget, events, spatial planning, conflict management, assemblies) — now specified in full, but none required to prove the core loop.
-- Automated matching/suggestion (strength-tag → task fitting) — coordinators do this by reading the board, as in the original Phase 1 plan.
+- Automated matching/suggestion (strength-tag → task fitting) — coordinators do this by reading the board, as in the original Phase 1 plan. Capacity-weighted automatic ranking (see Coordination mechanics: Capacity-aware fitted asks) merges into this same deferral; capacity as a manual sort/filter dimension does not and ships independently.
 - Coordination mechanics beyond the bare lifecycle — one-click action emails, bulk task selection, request-to-join, anonymous task signal, talk-to-my-coordinator, self-assign confirmation check, escalation views, subtasks, task openness settings, requirement waiving, shadow slots & succession. Real, fully-designed, second slice.
 - Requirement modes beyond the default `individual_gate` (`group_coverage`, `soft_priority`) and the surfacing/ranking logic they drive. MVP's Requirement filtering stays single-mode — block or don't, matching today's behavior — but the `mode` field is cheap to add to the schema now so it doesn't need revisiting later.
 - Input rounds, Assemblies, and Scheduling polls — the shared Question/QuestionResponse schema is cheap, but the scheduling/phase/overlap logic around all three containers is real infrastructure, not a UI nicety, so all three are deferred as a unit rather than half-built.
-- Community-endorsed openness (candidacy + Endorsement), and the Admins task / Community settings & Admins section built on it — falls out of the same "task openness settings" and Assembly deferrals just above, so there's no separate MVP path for it: v1's settings screen (see below) is just directly editable, with no gate beyond whoever's running the install.
+- Community-endorsed openness (candidacy + Endorsement), and the Admins task / Community settings & Admins section built on it — falls out of the same "task openness settings" and Assembly deferrals just above, so there's no separate MVP path for it: v1's settings screen (see below) is just directly editable, with no gate beyond whoever's running the install. (This also means the Admin-gating check on Pack import review's "create new branch" has nothing to gate against yet in MVP — every importer can create a branch outright until Admins actually exists.)
 - Notifications & communications module, transparency/tiered-views (v1 can be single-view, everything visible to all members, until access-follows-task actually needs enforcing), contribution tracking, Participation & capacity (including the returning-priority window) — real and specified, but tied mainly to Recruitment and Contribution tracking, both already deferred.
 - Cycle type and the `cycle_type_count` Tier criterion — cheap on their own (a label, an optional suggested pack, one more criterion enum value), but `cycle_type_count` reads off Participation, which is itself deferred just above, so there's nothing to compute against yet either way.
 - Forms as a built mechanism — not needed until the first module that uses it (Recruitment, most likely) gets built; the schema is ready whenever that happens.
@@ -1173,6 +1229,7 @@ Worth noting: at least a couple of other barrio leads are independently building
 11. **Is weekly the right default cadence, or does it need to be chosen more deliberately per Community from the start** — a fast-moving build week might genuinely want a shorter cycle than a quiet planning month. The setting exists either way; the question is just whether "weekly" is a safe enough default to ship with or whether the settings screen should force a conscious choice.
 12. ~~**Is the optional partner-declaration idea (for recusal nudges) worth building at all?**~~ **Resolved: no** — see Conflict management above. It would only ever cover a fraction of the relationships that could bias someone, and a false sense of "the system would catch it" is worse than no automation at all; recusal stays entirely on people recusing themselves and each other.
 13. **Does waiving an `individual_gate` Requirement need any extra safeguard for the highest-stakes cases** (sensitive-data access, money) — a second coordinator's sign-off, say — or is one coordinator's visible, logged, per-claim waiver enough given it's already deliberate and non-silent? Leaning toward: the same single-coordinator process for everything, since a two-person requirement just for the waiver adds friction exactly where the point was to unblock a stuck task — but worth a deliberate call given what's potentially being waived.
+14. **Does the Task Pack phase-spine work (PackPhase, `item.phase_ref`, the Pack import review screen) land in the same MVP slice as clone-previous-cycle, or ship as a fast-follow right after?** It touches an already-in-scope build-order item (see Build order and MVP scope, above), not just the deferred general-pack-library work, so it's worth a deliberate call rather than assuming either answer.
 
 ---
 
