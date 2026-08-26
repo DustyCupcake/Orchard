@@ -1,4 +1,4 @@
-# 🌳 Orchard — Platform Spec (v0.2)
+# 🌳 Orchard — Platform Spec (v0.4)
 
 *A general-purpose engine for task-based, distributed-effort coordination. Not tied to any one project. Peach Please is the reference implementation this was extracted from — see [Relationship to Peach Please](#-relationship-to-peach-please) at the end.*
 
@@ -97,7 +97,16 @@ High-stakes or skill-specific tasks can get a browse period on creation — a wi
 
 ### Task openness
 
-Set on creation, adjustable by the owner: **Open** (anyone eligible joins freely), **Request** (default — join requests go to the owner to accept or decline), or **Coordination-approved** (new joiners need branch-coordination sign-off, for tasks with sensitive-access implications).
+Set on creation, adjustable by the owner: **Open** (anyone eligible joins freely), **Request** (default — join requests go to the owner to accept or decline), **Coordination-approved** (new joiners need branch-coordination sign-off, for tasks with sensitive-access implications), or **Community-endorsed** (claiming requires gathering a threshold number of endorsements from other members before the claim confirms — see Endorsement-gated tasks, below).
+
+### Endorsement-gated tasks
+
+Some tasks carry enough trust or consequence that a personal eligibility check (Requirement) isn't really the question — the community itself should have a say in who takes them on, not just whether they're qualified on paper. **Community-endorsed** openness is built for exactly this, and it's meant to generalize beyond the one case that motivated it (see Community settings & Admins, below) to any task a Community decides deserves the same treatment.
+
+- **How it works.** During a task's browse period, expressing interest doesn't create an ordinary claim — it creates a **candidacy**. Other members can add their endorsement to a candidacy at any point while the window's open. A candidacy that clears the task's endorsement threshold before the window closes converts into a real claim; one that doesn't, doesn't — the same honest "real gap, not a silent failure" treatment any other unfilled critical task already gets.
+- **Uncapped by default.** Unlike an ordinary task, capacity for a Community-endorsed task defaults to unlimited — everyone whose candidacy clears the threshold gets a slot. This isn't a workaround, it's the point: the size of the resulting group is *computed* from how many people the community is actually willing to back, the same "computed from real state, not a fixed target" principle the Dashboard already uses, rather than an arbitrary seat count the platform would otherwise have to defend or backfill. A Community that genuinely wants a hard cap can still set one — but that reopens the ordinary multi-candidate contest problem Browse mode's single-slot resolution already exists for, so it's a deliberate, explicit choice, not the default.
+- **Threshold is per-task**, set the same way a browse period already is — a fixed number, or (for a task tied to a cycle-relative population, like Admins below) a share of some reference group. Communities will want to tune this by feel; it's not something worth hardcoding here.
+- **Not the same lever as a Requirement.** A `tier` Requirement checks whether someone's personally eligible to even try; Community-endorsement checks whether enough of the community actually wants them holding it once they have. The two compose normally — a task can require Tier "Experienced" *and* be Community-endorsed, same as any Requirement stacks with any openness setting.
 
 ### Branch
 
@@ -133,6 +142,8 @@ This scales down cleanly for a light cycle — a reunion weekend might have one 
 
 Where this meets Recruitment (only relevant if that module is on): a Cycle can define a **returning-priority window** — a period at the start of a cycle, before general recruitment opens, where existing members declare their Participation against the cycle's capacity first. Once that window closes, recruitment opens against whatever capacity remains (see Recruitment) — but a returning member who hasn't declared yet doesn't lose the ability to, they're just now competing for the same shrinking pool of room as new applicants, first-come rather than reserved. If capacity fills before the window even closes, that's visible the same way any other gap or limit here is — not a special case, just room hitting zero early.
 
+**Cycle type (optional).** A Community can optionally group its Cycles into named types — Season, Reunion, Workday, whatever distinction actually matters to them. This exists mainly so a Tier criterion can count occurrences of one *kind* of cycle without a completely different kind of gathering padding the number (see Member + Tier, below) — and it's a deliberately separate question from whether a given cycle resets Admins, which turns out not to need a type at all (see Community settings & Admins). A Cycle's type is just a label plus, optionally, a suggested Task Pack to start from — a nudge, never an enforced structure, consistent with how Task Pack already works everywhere else. A Community that never bothers with it just leaves every Cycle untyped, and nothing about it changes.
+
 ### Member + Tier
 
 A Member belongs to exactly one Community. **Tier** replaces the old hardcoded "experienced Peach" boolean. A Tier is a named eligibility level with a *criterion* the Community chooses at setup:
@@ -141,6 +152,7 @@ A Member belongs to exactly one Community. **Tier** replaces the old hardcoded "
 - **Tenure-based** — member for ≥ N days/months.
 - **Completion-based** — has completed task(s) tagged X, or completed ≥ N tasks total.
 - **Cohort-based** — was active during a past cycle (this is what "experienced Peach" actually was — a special case of completion-based, not a universal default).
+- **Cycle-type-count-based** — had Participation `coming` in at least N Cycles of a given Cycle type (see Cycle type, above). Distinct from Cohort-based, which ties to one specific named Cycle ("were you here for the founding season") — this counts occurrences of a *kind* of cycle over time ("has this member done at least two Seasons") without a lighter Reunion or Workday cycle counting toward that number.
 
 A Community can define as many tiers as it wants, or none — a group with fully flat membership just skips this.
 
@@ -217,6 +229,32 @@ Turning on a new optional module doesn't have to mean flipping it live to the wh
 A Community that genuinely wants a smaller group to shake a module out before wider exposure can still do that — but it's an explicit choice, not the default, and it's built on the same Tier mechanism everything else here already uses rather than a hardcoded "officers" concept: testing can optionally be scoped to any Tier the Community defines (an existing one, or a new one created just for this, e.g. "Playtesters"). The gate is whatever the Community decided "trusted with new things" means for itself, not a rank the platform assumes exists.
 
 *Data model note:* a small `ModuleState` row per Community per module key (`state: off|testing|on`, `testing_tier_id: uuid → Tier, nullable`) covers this without needing a change to the `modules_enabled` list itself.
+
+---
+
+## 🔑 Community settings & Admins
+
+Distinct from a member's own profile settings (contact preferences, tags, notification prefs — always self-service, no gate at all), **community settings** are the Configuration model above: branches, tiers, cycle/phase structure, module states, cadence defaults, and anything else that shapes how the whole Community runs. Access to that screen can't default to a hardcoded admin concept any more than anything else here does — that would quietly reintroduce the permanent-officer-class pattern the CampTool comparison flagged as specifically the thing to avoid. It has to be built from the same primitives as everywhere else.
+
+### Admins
+
+**Admins** is the task that gates the community settings screen — a real task on the board, held and released the same way any other task is, not a rank or a title. It's the flagship use of **Community-endorsed** openness (see Endorsement-gated tasks, above): during a cycle's early kickoff rounds, alongside Round 0/1's other critical coordination tasks, anyone eligible can express interest in becoming an Admin, and their candidacy needs to clear an endorsement threshold from the wider membership before it confirms.
+
+A few things make this specific instance of the mechanic work the way it needs to:
+
+- **Uncapped, by default.** However many candidates clear the bar, that's how many Admins the Community has this cycle — no fixed council size to defend, no artificial scarcity forcing a contest between two people the community would happily trust equally. A light, five-person reunion cycle naturally ends up with fewer Admins than a full season, sized to who's actually active and trusted that cycle rather than to a number set once and left alone.
+- **Resets whenever a cycle's task set actually includes it — nothing more special than that.** There's no separate flag deciding whether a given cycle "counts" for Admins; it's just whichever cycles happen to include an Admins task in their pack, the same as any other critical task. A cycle built by cloning the previous one, or from a pack that carries Admins forward, gets a fresh instance and opens fresh candidacy in Round 0/1 — endorsements don't carry over, so someone who held it last cycle starts from zero and has to clear the threshold again, the same live vote of confidence anyone else faces. A lighter cycle assembled from a pack that never included Admins in the first place simply doesn't touch it — there's no new instance to contest, so whoever holds the most recent existing one keeps holding it, undisturbed. This composes cleanly with Cycle type (see Cycle, above) without needing to reference it directly: a Community can keep Admins in its Season pack and out of its Reunion pack, so a reunion weekend never forces a pointless re-election, without a rule anywhere that has to say so explicitly.
+- **Runs on the same Requirement mechanism as everything else.** A Community can (and probably should) stack a `tier` Requirement on top of the endorsement gate — e.g. Tier "Experienced" — so the pool of people who can even attempt a candidacy is bounded by ordinary Requirement logic; the endorsement gate then decides who the community actually wants from within that pool.
+
+### Two tiers of setting, not one
+
+Not every setting an Admin can touch carries the same weight, and treating them identically is exactly where the risk shows up: a cycle's worth of Admins is a legitimate stand-in for "who runs this cycle," but it's not automatically a legitimate stand-in for "what the whole standing Community wants" — especially in a thin cycle where Admins might be two or three people out of a much larger year-round membership.
+
+- **Ordinary settings** — branches, tiers, cadence, module rollout states, most of the Configuration model — are edited directly by whoever holds Admins this cycle. These are already expected to change casually (see Configuration model, above: "branches and tiers should stay editable after launch"), and scaling that access to the cycle's actual size is the right behavior here, not a risk to guard against.
+- **Foundational settings** — membership model, phase-spine on/off, and anything else the Community treats as a real migration rather than a toggle (see Configuration model) — carry an additional expectation: **an Assembly about the change should reach quorum measured against the whole registered membership roster, not just this cycle's active population, before Admins act on it.** This is a norm, not a platform-enforced gate — consistent with Assemblies always being advisory, never auto-applied (see Assemblies, above), the same rule that keeps a vote anywhere else in this document from being mistaken for an authority overriding the Community's own judgment. Admins can technically still run the process (propose the Assembly, host the discussion, tally it, execute the result) the same as they'd administer anything else on the board — the quorum expectation is about who has to weigh in for the result to actually mean what it claims, not about who's allowed to do the administrative work.
+- **What "quorum" means here, concretely:** the Assembly's tally is measured against the total Member roster (everyone the Community has ever accepted, active this cycle or not), not against Participation for the current cycle. A foundational Assembly is exactly the "slow, deliberate structural question" case Assemblies were already built to accommodate at a different speed than an urgent one-off (see Assemblies, above) — expect these to run longer and need real, deliberate outreach beyond a passive link, since reaching roster-wide participation from a quiet season takes actual effort, not just time.
+
+**Left genuinely open:** where the exact quorum bar sits (a fixed count, a share of the roster, something else), what a Community does if an Admin group ever did act despite an Assembly visibly failing to reach it, and which Admins instance is operative during the stretch between a new cycle opening and its own Admins candidacy actually resolving. Nothing here forces a resolution — the same honest limit Assemblies already admit to everywhere else in this document.
 
 ---
 
@@ -297,6 +335,16 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | source_pack_id | uuid → TaskPack, nullable                                |                                                                                                                        |
 | capacity                   | int, nullable                             | cap on confirmed Participation for this cycle — null = unlimited                                                      |
 | returning_window_closes_at | timestamp, nullable                       | only relevant if Recruitment is on — see Participation & capacity                                                      |
+| cycle_type_id               | uuid → CycleType, nullable                | optional — see Cycle type, above                                                                                      |
+
+**CycleType** (optional — see Cycle type, above)
+
+| Field           | Type                       | Notes                                                                    |
+|-----------------|----------------------------|---------------------------------------------------------------------------|
+| id              | uuid                       |                                                                           |
+| community_id    | uuid → Community           |                                                                           |
+| name            | string                     | e.g. "Season," "Reunion," "Workday"                                       |
+| default_pack_id | uuid → TaskPack, nullable  | suggested starting pack for a Cycle of this type — a nudge, not enforced  |
 
 **Participation**
 
@@ -327,8 +375,8 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | id               | uuid                                     |                                                   |
 | community_id     | uuid → Community                         |                                                   |
 | name             | string                                   |                                                   |
-| criterion_type   | enum(manual, tenure, completion, cohort) | cohort = was active during a specific past Cycle  |
-| criterion_config | json                                     | e.g. `{"min_days": 180}` or `{"cycle_id": "..."}` |
+| criterion_type   | enum(manual, tenure, completion, cohort, cycle_type_count) | cohort = was active during a specific past Cycle; cycle_type_count = was active in ≥ N Cycles of a given CycleType |
+| criterion_config | json                                     | e.g. `{"min_days": 180}`, `{"cycle_id": "..."}`, or `{"cycle_type_id": "...", "min_count": 2}` |
 
 **Member**
 
@@ -370,8 +418,9 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | tags                | string\[\]                                 |                                                                                                                           |
 | effort              | enum(one_off, ongoing, owns_a_thing)       |                                                                                                                           |
 | status              | enum(unclaimed, claimed, waiting, done)    |                                                                                                                           |
-| capacity            | int                                        | default 1                                                                                                                 |
-| openness            | enum(open, request, coordination_approved) | default request                                                                                                           |
+| capacity            | int, nullable                              | default 1; null = uncapped, the default for `community_endorsed` openness (see Endorsement-gated tasks)                   |
+| openness            | enum(open, request, coordination_approved, community_endorsed) | default request                                                                                      |
+| endorsement_threshold | int, nullable                            | only set when `openness = community_endorsed` — number of endorsements a candidacy needs to confirm (see Endorsement-gated tasks) |
 | browse_period_end   | timestamp, nullable                        | null = no browse period on this task                                                                                      |
 | critical            | boolean                                    |                                                                                                                           |
 | next_checkin_at     | timestamp, nullable                        |                                                                                                                           |
@@ -437,6 +486,8 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | voting_opens_at  | timestamp                                 | end of the notice period                                   |
 | voting_closes_at | timestamp                                 |                                                            |
 | status           | enum(agenda_open, notice, voting, closed) |                                                            |
+| quorum_basis     | enum(none, total_membership)              | default `none` — see Community settings & Admins: a foundational-settings Assembly is expected to set this to `total_membership` |
+| quorum_threshold | int, nullable                             | count or share of `quorum_basis` expected to respond before the result carries the weight the norm assumes; only meaningful when `quorum_basis ≠ none`. Informational only — displayed alongside the tally, never enforced (see Assemblies: results are always advisory) |
 | created_at       | timestamp                                 |                                                            |
 
 **SchedulingPoll / AvailabilityEntry** (see Scheduling polls)
@@ -523,10 +574,21 @@ This is the concrete shape to build against. Field names are suggestions, not go
 
 | Field        | Type          | Notes                                                     |
 |--------------|---------------|---------------------------------------------------------------|
+| id           | uuid          | referenced by Endorsement when this task is `community_endorsed` |
 | task_id      | uuid → Task   |                                                           |
 | member_id    | uuid → Member |                                                           |
 | expressed_at | timestamp     |                                                           |
 | reached_out  | boolean       | the "I've reached out" signal, single-slot contested case |
+| status       | enum(open, confirmed, failed), nullable | only meaningful for `community_endorsed` tasks — a row here is that member's candidacy; confirmed once Endorsement count clears the task's `endorsement_threshold` before the browse window closes |
+
+**Endorsement** (join table, only created against a `BrowseInterest` row on a `community_endorsed` task)
+
+| Field              | Type                  | Notes |
+|--------------------|-----------------------|-------|
+| id                 | uuid                  |       |
+| browse_interest_id | uuid → BrowseInterest | the candidacy being endorsed |
+| endorsed_by        | uuid → Member         |       |
+| created_at         | timestamp             |       |
 
 **TaskDependency** (join table)
 
@@ -932,6 +994,17 @@ This isn't a new subsystem — it's a view that reads from the state other mecha
 
 ---
 
+## 📱 Interface: mobile & web
+
+None of this is settled UI — no screens are actually designed yet — but it's the frame the mechanics above should hang on, and the two surfaces genuinely need different things rather than one layout awkwardly serving both.
+
+- **Mobile is the default, day-to-day surface.** The Dashboard above, claiming or releasing a task, checking a notification, answering an Input round — all of this is exactly the kind of low-effort, frequent-touch interaction a phone already handles well, and it's where most members will actually live.
+- **Web carries the heavier tools.** Spatial planning's collaborative floorplan/CAD-style drawing surface, a Budget ledger, the Coordination view (branch coverage, engagement records, escalation pool) — these need screen real estate and precision a phone can't give them without a real fight. There's no priority in cramming these onto a small screen; a member who needs them reaches for a laptop, the same way they already would for any comparably heavy tool.
+- **A module switcher is the top-level navigation.** Whatever's enabled for the Community (Task board, Dashboard, and whichever optional modules are on or in testing) lives behind one consistent menu, not scattered nav — consistent with modules already being an explicit, Community-configured list (`modules_enabled`) rather than something hardcoded per deployment.
+- **A profile icon opens a member's own space** — their profile (tags, contact methods and their per-method visibility, availability) and personal settings (notification preferences, display options). This is always self-service, never gated by anything, the same way a once-ever Profile answer already lives "right on the member's own profile... visible and editable by them at any time" (see Profile questions, above). It's deliberately separate from community settings, which sits behind Admins (see Community settings & Admins, below) — a member's own profile icon should never double as a door into Community-wide configuration.
+
+---
+
 ## 🔔 Notifications & communications
 
 ### Task assignment notification
@@ -1013,7 +1086,9 @@ The smallest version worth building — usable by Peach Please *and* at least on
 - Coordination mechanics beyond the bare lifecycle — one-click action emails, bulk task selection, request-to-join, anonymous task signal, talk-to-my-coordinator, self-assign confirmation check, escalation views, subtasks, task openness settings, requirement waiving, shadow slots & succession. Real, fully-designed, second slice.
 - Requirement modes beyond the default `individual_gate` (`group_coverage`, `soft_priority`) and the surfacing/ranking logic they drive. MVP's Requirement filtering stays single-mode — block or don't, matching today's behavior — but the `mode` field is cheap to add to the schema now so it doesn't need revisiting later.
 - Input rounds, Assemblies, and Scheduling polls — the shared Question/QuestionResponse schema is cheap, but the scheduling/phase/overlap logic around all three containers is real infrastructure, not a UI nicety, so all three are deferred as a unit rather than half-built.
+- Community-endorsed openness (candidacy + Endorsement), and the Admins task / Community settings & Admins section built on it — falls out of the same "task openness settings" and Assembly deferrals just above, so there's no separate MVP path for it: v1's settings screen (see below) is just directly editable, with no gate beyond whoever's running the install.
 - Notifications & communications module, transparency/tiered-views (v1 can be single-view, everything visible to all members, until access-follows-task actually needs enforcing), contribution tracking, Participation & capacity (including the returning-priority window) — real and specified, but tied mainly to Recruitment and Contribution tracking, both already deferred.
+- Cycle type and the `cycle_type_count` Tier criterion — cheap on their own (a label, an optional suggested pack, one more criterion enum value), but `cycle_type_count` reads off Participation, which is itself deferred just above, so there's nothing to compute against yet either way.
 - Forms as a built mechanism — not needed until the first module that uses it (Recruitment, most likely) gets built; the schema is ready whenever that happens.
 - Profile questions (ProfileQuestion/ProfileAnswer) — real and specified, but the surfaces that would actually populate it (Recruitment's application, an onboarding flow) are themselves deferred; the schema is ready whenever those exist.
 - On-site/on-playa mode.

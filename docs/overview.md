@@ -48,8 +48,6 @@ This is the part that actually has to work day to day, so it's worth walking thr
 
 ## Joining — from application to your first task
 
-This is one of the bigger conceptual shifts, so it's worth telling as a full journey rather than a feature list.
-
 Most people apply the ordinary way: you apply, someone reads it and wants to talk with you, and scheduling that call doesn't mean picking from one narrow slot — you give your real availability, the recruiters give theirs, and the system finds where enough of you overlap. Two people from camp actually sit down with you, not one person rubber-stamping a form.
 
 There's also a lighter path in, for the common case where someone already in camp knows you. An existing member can send you a private, one-time invite link — tagged with your name so they can keep track if they're inviting a few people at once — and let the system know they think you're a good fit and that they actually know you personally. That's a real, private vouching signal, worth more than just checking a box on a public form, and depending on how much it's worth to your particular community, it can lighten or skip parts of the usual evaluation.
@@ -72,7 +70,7 @@ From there, coordination roles fill in, a kickoff call catches anything that's s
 
 A season can also have a real cap on how many people it holds, if that matters for your event — a venue's actual limit, say. Returning members get a window to claim their spot before the doors open more broadly to new applicants, so someone who's been coming for years doesn't lose out to timing alone, but that window doesn't hold room open forever — once it closes, everyone's competing for whatever's left on equal footing.
 
-And it's not just for the one big annual production. A reunion weekend, a fundraiser, going to a different burn — all of these can get the same lightweight treatment: start from last year's board as a head start, or build a smaller one just for the occasion, with the same people and the same tools.
+And it's not just for the one big annual production. A reunion weekend, a fundraiser, going to a different burn — all of these can get the same lightweight treatment: start from last year's board as a head start, or build a smaller one just for the occasion, with the same people and the same tools. A Community that wants to can even name these different kinds of gatherings — a Season versus a Reunion, say — mainly so "how many of these has this member actually done" can count the real productions without a lighter get-together quietly inflating the number.
 
 Once you're actually there, the platform steps back on purpose. Everything locks into a read-only reference rather than an active thing to manage, because being present at camp shouldn't mean staring at a screen — there are still tasks and shifts happening on-site, but most people never need to open the app to do them. Instead, whoever's holding the specific task of running that bridge acts as the conduit: checking the app so it doesn't have to be everyone, writing status up on a whiteboard, flagging gaps in person. The information still flows both ways, it just moves through a person and a marker instead of a phone. Everything reconciles back once the event winds down.
 
@@ -101,6 +99,20 @@ For bigger or more time-sensitive things — where the barrio ends up on the map
 There's a safe, low-friction way to say "I need to talk to someone" — you don't have to write a full account of what happened just to start a conversation. And if your concern involves someone who happens to be on the team that handles this, you can rule them out completely — genuinely, invisibly, not just "denied access." The same goes the other way: if someone on that team realizes they're too close to a situation to be neutral — even if they're not directly involved, a close relationship can be enough — they can step themselves back, or someone else on the team can step them back, before they ever see it.
 
 Feedback after the event can also surface things that never came up in the moment. Someone has the job of actually reading those responses and following up — a human decision every time, never an automatic escalation.
+
+---
+
+## Where this actually lives: phone and laptop
+
+Most of what's above is meant to work from your phone, because that's genuinely where most people will actually open this — checking your dashboard, claiming or releasing a task, answering the week's batch of questions. The heavier tools — laying out camp on a real floorplan, working the budget, the fuller coordination view a branch coordinator needs — are built for a laptop instead, the same way you'd already reach for a bigger screen to do that kind of work regardless of what app it's in. Whatever's turned on for your Community — task board, dashboard, any of the optional pieces below — lives behind one simple menu, not scattered across the app. And your own profile — who you are, your tags, how people can reach you — sits behind its own icon, always yours to open and edit, kept separate from anything to do with how the Community itself is configured.
+
+## Settings — yours and the Community's
+
+Two very different things both end up called "settings," and it's worth keeping them apart. Yours — notifications, how you like to be contacted, your availability — is always just yours, no gate at all. The Community's — branches, tiers, which optional pieces are switched on, the deeper structural choices — is different, and who gets to touch it shouldn't just be whoever happened to install the thing, or a fixed group that never turns over.
+
+So that access is itself a task, the same as everything else here — call it **Admin**. Early in a season's kickoff, alongside the other roles that genuinely need someone behind them before things get moving, anyone can put themselves forward for it — but taking it on isn't a simple first-click claim. Enough of the community actually has to back you first. However many people clear that bar is how many Admins there are that season — no fixed number to hit or defend, so a small, quiet gathering naturally ends up with a couple of Admins instead of a dozen, sized to who's really there and trusted, not to a seat count decided once and forgotten. Whether a given gathering re-opens the role at all is nothing special either — it's simply whether Admin was one of the things that gathering's task set included in the first place, the same as any other role. A full season including it means a fresh vote of confidence, nobody just coasting on last time's trust; a quiet reunion weekend that never included it in the first place just leaves whoever already holds it holding it, undisturbed.
+
+That's the right level of trust for the ordinary, day-to-day settings — the ones already expected to shift casually as a Community grows and changes. The bigger, harder-to-reverse choices — the kind that are really a migration dressed up as a toggle — deserve something wider than whoever happens to be active in one particular season, especially a small one. For those, the expectation is that the *wider* community weighs in, not just this season's slice of it, before anyone acts on it — using the same open-to-everyone discussion-and-vote tool described above. Nothing forces that to happen; it's a strong norm, the same trust the rest of this document runs on, not a lock the software snaps shut. But it means the biggest decisions about how a Community works are never something a handful of people who happened to be around one quiet weekend get to make alone.
 
 ---
 
