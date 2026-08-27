@@ -27,15 +27,23 @@ Not yet built: an Admins/coordinator role (everything above is open to any membe
 
 ## Deploying
 
-On a fresh or existing Debian/Ubuntu VPS, as root:
+**On a fresh VPS**, harden it first — as root:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DustyCupcake/Orchard/main/scripts/harden.sh | bash
+```
+
+Creates a non-root admin user, locks SSH down to key-only (with a safety gate — it won't disable root/password login until you've confirmed the new user works from a separate terminal), sets up `ufw`/`fail2ban`/`unattended-upgrades`, and adds a swapfile. Safe to re-run if it stops partway. Once it finishes, **log back in as the new admin user** (root SSH login is now disabled) and continue below with `sudo`.
+
+**Then, on that VPS (fresh or existing):**
 
 ```bash
 git clone https://github.com/DustyCupcake/Orchard.git /opt/orchard
 cd /opt/orchard
-./scripts/deploy.sh
+sudo ./scripts/deploy.sh
 ```
 
-The script installs Docker if needed, prompts for your domain and TLS email on first run (generating random DB/session secrets into `.env`), builds the image, and brings the stack up under Caddy with automatic HTTPS. It's safe to re-run — after a `git pull`, running it again rebuilds and restarts without touching your data or an existing `.env`.
+Installs Docker if needed, prompts for your domain and TLS email on first run (generating random DB/session secrets into `.env`), builds the image, and brings the stack up under Caddy with automatic HTTPS. Safe to re-run — after a `git pull`, running it again rebuilds and restarts without touching your data or an existing `.env`. Skipping `harden.sh` is fine too (e.g. on an already-hardened box) — `deploy.sh` doesn't depend on it, it just picks up a couple of its settings (docker-group membership, IPv6 networking) if it finds them.
 
 To run it locally instead: copy `.env.example` to `.env`, fill in `DOMAIN=localhost` and the rest, then `docker compose up -d`.
 

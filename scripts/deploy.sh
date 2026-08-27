@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 # Orchard deploy script — Debian/Ubuntu VPS, fresh or existing.
 #
+# On a genuinely fresh VPS, run scripts/harden.sh first (as root) — it
+# creates a non-root admin user and locks down SSH/firewall/fail2ban/swap.
+# This script deliberately doesn't do any of that itself; see harden.sh's
+# own header for why they're kept separate.
+#
 # What it does:
-#   1. Installs Docker Engine + Compose plugin, if not already present.
+#   1. Installs Docker Engine + Compose plugin, if not already present
+#      (plus the docker-group membership and IPv6 networking follow-up
+#      steps below, if harden.sh ran first).
 #   2. Clones this repo (if not already run from inside a checkout).
 #   3. Creates .env from .env.example on first run, generating random
 #      secrets, and prompts for the values it can't guess (domain, email).
@@ -48,6 +55,45 @@ else
   log "Installing Docker Engine and the Compose plugin..."
   curl -fsSL https://get.docker.com | sh
   systemctl enable --now docker
+fi
+
+# If scripts/harden.sh ran on this box first and its admin user opted in,
+# add them to the docker group now that Docker actually exists (harden.sh
+# runs before Docker is installed, so it can only record the choice).
+HARDEN_CONF="/var/lib/orchard-bootstrap/harden.resolved.conf"
+if [ -f "$HARDEN_CONF" ]; then
+  # shellcheck disable=SC1090
+  . "$HARDEN_CONF"
+  if [ "${ADD_USER_TO_DOCKER_GROUP:-false}" = "true" ] && [ -n "${NEW_USER:-}" ]; then
+    if id "$NEW_USER" >/dev/null 2>&1 && ! id -nG "$NEW_USER" | grep -qw docker; then
+      usermod -aG docker "$NEW_USER"
+      log "Added ${NEW_USER} to the docker group (as requested during hardening) — log out and back in for it to take effect."
+    fi
+  fi
+fi
+
+# Outbound IPv6 for containers' own connections (Caddy reaching Let's
+# Encrypt, the app reaching an SMTP relay) — not the same thing as inbound
+# traffic to published ports, which already works over IPv6 by default.
+# Without this, a container on a v6-only VPS can't reach anything that
+# only resolves to an IPv4 address. Only affects Docker networks created
+# from now on — harmless and idempotent to run every time.
+DAEMON_JSON="/etc/docker/daemon.json"
+if ! grep -q '"ipv6"[[:space:]]*:[[:space:]]*true' "$DAEMON_JSON" 2>/dev/null; then
+  if [ -s "$DAEMON_JSON" ]; then
+    warn "Existing ${DAEMON_JSON} found and left alone — add IPv6 support to it by hand if this VPS is IPv6-only (see docker docs: ipv6, fixed-cidr-v6, ip6tables)."
+  else
+    log "Enabling Docker IPv6 networking (harmless on a dual-stack box, needed on an IPv6-only one)..."
+    cat > "$DAEMON_JSON" <<'EOF'
+{
+  "ipv6": true,
+  "fixed-cidr-v6": "fd00:dead:beef::/48",
+  "ip6tables": true
+}
+EOF
+    systemctl restart docker
+    sleep 2
+  fi
 fi
 
 # ---------------------------------------------------------------------------
