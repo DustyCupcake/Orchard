@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Early. Phase 0 of the [development plan](docs/development-plan.md) is in place: a deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) with a health check, but no real features yet.
+Early. Phases 0-3 of the [development plan](docs/development-plan.md) are in place: a deployable skeleton, the core schema, magic-link auth with a minimal profile, and a server-enforced Task lifecycle API (claim/release/park/resume/finish, multi-slot capacity, dependency gating). No UI beyond the profile page yet — that's Phase 4.
 
 ## Documentation
 
@@ -26,6 +26,14 @@ cd /opt/orchard
 The script installs Docker if needed, prompts for your domain and TLS email on first run (generating random DB/session secrets into `.env`), builds the image, and brings the stack up under Caddy with automatic HTTPS. It's safe to re-run — after a `git pull`, running it again rebuilds and restarts without touching your data or an existing `.env`.
 
 To run it locally instead: copy `.env.example` to `.env`, fill in `DOMAIN=localhost` and the rest, then `docker compose up -d`.
+
+## Testing
+
+The lifecycle/CRUD test suite runs against a real Postgres (no mocks — see `tests/`). Point it at any disposable database:
+
+```bash
+DATABASE_URL=postgres://orchard:test@localhost:5432/orchard SESSION_SECRET=test npm test
+```
 
 ## Who this is for
 

@@ -9,6 +9,8 @@ import * as schema from "./schema";
 const connectionString =
   process.env.DATABASE_URL ?? "postgres://placeholder:placeholder@localhost:5432/placeholder";
 
-const client = postgres(connectionString);
+// onnotice: silence Postgres NOTICE messages (e.g. from TRUNCATE ...
+// CASCADE in tests) — noise, not something the app needs to act on.
+const client = postgres(connectionString, { onnotice: () => {} });
 
 export const db = drizzle(client, { schema });

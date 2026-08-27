@@ -5,3 +5,5 @@ node_modules
 .env.local
 docs
 *.md
+tests
+vitest.config.ts
