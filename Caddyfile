@@ -1,0 +1,8 @@
+{
+	email {$DOMAIN_EMAIL}
+}
+
+{$DOMAIN} {
+	reverse_proxy app:3000
+	encode gzip
+}

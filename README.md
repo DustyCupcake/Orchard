@@ -6,12 +6,26 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Early. This repo currently holds design and specification work, not a running application. Nothing here is built yet.
+Early. Phase 0 of the [development plan](docs/development-plan.md) is in place: a deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) with a health check, but no real features yet.
 
 ## Documentation
 
 - **[`docs/overview.md`](docs/overview.md)** — plain-language introduction: what Orchard is, how it feels to use, no technical detail. Start here if you're deciding whether this is useful to you or your community.
 - **[`docs/spec.md`](docs/spec.md)** — the full technical specification: data model, mechanisms, module design, open engineering questions. Start here if you're building it or evaluating it as an engineer.
+
+## Deploying
+
+On a fresh or existing Debian/Ubuntu VPS, as root:
+
+```bash
+git clone https://github.com/DustyCupcake/Orchard.git /opt/orchard
+cd /opt/orchard
+./scripts/deploy.sh
+```
+
+The script installs Docker if needed, prompts for your domain and TLS email on first run (generating random DB/session secrets into `.env`), builds the image, and brings the stack up under Caddy with automatic HTTPS. It's safe to re-run — after a `git pull`, running it again rebuilds and restarts without touching your data or an existing `.env`.
+
+To run it locally instead: copy `.env.example` to `.env`, fill in `DOMAIN=localhost` and the rest, then `docker compose up -d`.
 
 ## Who this is for
 
