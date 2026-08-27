@@ -10,3 +10,11 @@ export function effortSummary(effort: string, magnitude: unknown): string {
   }
   return effort.replace(/_/g, " ");
 }
+
+// Task.attention_level display — shared between the board and the task
+// detail view. "ok" renders nothing (no entry here).
+export const ATTENTION_STYLES: Record<string, { label: string; color: string; borderColor: string }> = {
+  soft: { label: "needs attention", color: "#a15c00", borderColor: "#e0a840" },
+  hard: { label: "stale", color: "#b3001b", borderColor: "#b3001b" },
+  escalated: { label: "escalated", color: "#b3001b", borderColor: "#b3001b" },
+};

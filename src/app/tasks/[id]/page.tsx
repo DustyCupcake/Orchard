@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { branch, member } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { getTask, getTaskNotes, getUnmetRequirements, listRequirements, tierNameLookup, describeRequirement } from "@/lib/tasks";
-import { effortSummary } from "@/lib/format";
+import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import Nav from "@/components/Nav";
 import { addCommentAction, addResourceAction, editWikiAction } from "./actions";
 
@@ -64,6 +64,14 @@ export default async function TaskDetailPage({
       <h1>
         {taskRow.title}
         {taskRow.critical && <span style={{ color: "crimson" }}> · critical</span>}
+        {ATTENTION_STYLES[taskRow.attentionLevel] && (
+          <span
+            style={{ color: ATTENTION_STYLES[taskRow.attentionLevel].color, fontWeight: 600 }}
+          >
+            {" "}
+            · ⚠ {ATTENTION_STYLES[taskRow.attentionLevel].label}
+          </span>
+        )}
       </h1>
       <div style={{ fontSize: "0.9rem", color: "#666" }}>
         {branchRow?.name ?? "—"} · {effortSummary(taskRow.effort, taskRow.effortMagnitude)} ·{" "}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { requirement as requirementTable } from "@/db/schema";
 import { describeRequirement } from "@/lib/tasks";
-import { effortSummary } from "@/lib/format";
+import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import { claimAction, finishAction, parkAction, releaseAction, resumeAction } from "./actions";
 
 type Assignment = { taskId: string; memberId: string; memberName: string };
@@ -17,6 +17,7 @@ type Task = {
   nextCheckinAt: Date | null;
   waitingNote: string | null;
   critical: boolean;
+  attentionLevel: string;
 };
 
 export default function TaskCard({
@@ -47,11 +48,13 @@ export default function TaskCard({
   const blockedByRequirements =
     (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
     !eligible;
+  const attention = ATTENTION_STYLES[task.attentionLevel];
 
   return (
     <div
       style={{
         border: "1px solid #ccc",
+        borderLeft: attention ? `4px solid ${attention.borderColor}` : "1px solid #ccc",
         borderRadius: 6,
         padding: "0.75rem",
         marginBottom: "0.75rem",
@@ -64,6 +67,9 @@ export default function TaskCard({
         </Link>
       </strong>
       {task.critical && <span style={{ color: "crimson" }}> · critical</span>}
+      {attention && (
+        <span style={{ color: attention.color, fontWeight: 600 }}> · ⚠ {attention.label}</span>
+      )}
       <div style={{ fontSize: "0.85rem", color: "#666" }}>
         {branchName} · {effortSummary(task.effort, task.effortMagnitude)} · {assignments.length}
         {task.capacity !== null ? `/${task.capacity}` : ""} held

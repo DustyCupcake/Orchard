@@ -30,4 +30,11 @@ export const community = pgTable("community", {
   // spec for the richer off/testing/on state; that table isn't built yet,
   // this is just the flat list of what's turned on at all.
   modulesEnabled: text("modules_enabled").array().notNull().default([]),
+  // Staleness thresholds for the attention-level job (see docs/spec.md's
+  // "Attention level is computed from three simultaneous triggers" —
+  // "thresholds configurable per Community"). Also doubles as the grace
+  // period for an overdue Waiting check-in, rather than adding a third
+  // near-identical column for that.
+  stalenessSoftDays: integer("staleness_soft_days").notNull().default(7),
+  stalenessHardDays: integer("staleness_hard_days").notNull().default(14),
 });

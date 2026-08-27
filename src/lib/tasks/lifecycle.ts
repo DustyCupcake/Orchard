@@ -73,7 +73,7 @@ export async function claimTask(actor: Member, taskId: string) {
 
     const [updated] = await tx
       .update(task)
-      .set({ status: "claimed" })
+      .set({ status: "claimed", statusChangedAt: new Date(), attentionLevel: "ok" })
       .where(eq(task.id, taskId))
       .returning();
     return updated;
@@ -100,7 +100,13 @@ export async function releaseTask(actor: Member, taskId: string) {
     if (remaining === 0) {
       const [updated] = await tx
         .update(task)
-        .set({ status: "unclaimed", nextCheckinAt: null, waitingNote: null })
+        .set({
+          status: "unclaimed",
+          nextCheckinAt: null,
+          waitingNote: null,
+          statusChangedAt: new Date(),
+          attentionLevel: "ok",
+        })
         .where(eq(task.id, taskId))
         .returning();
       return updated;
@@ -128,6 +134,8 @@ export async function parkTask(
         status: "waiting",
         nextCheckinAt: input.nextCheckinAt,
         waitingNote: input.waitingNote ?? null,
+        statusChangedAt: new Date(),
+        attentionLevel: "ok",
       })
       .where(eq(task.id, taskId))
       .returning();
@@ -146,7 +154,13 @@ export async function resumeTask(actor: Member, taskId: string) {
 
     const [updated] = await tx
       .update(task)
-      .set({ status: "claimed", nextCheckinAt: null, waitingNote: null })
+      .set({
+        status: "claimed",
+        nextCheckinAt: null,
+        waitingNote: null,
+        statusChangedAt: new Date(),
+        attentionLevel: "ok",
+      })
       .where(eq(task.id, taskId))
       .returning();
     return updated;
@@ -176,7 +190,7 @@ export async function finishTask(actor: Member, taskId: string) {
 
     const [updated] = await tx
       .update(task)
-      .set({ status: "done" })
+      .set({ status: "done", statusChangedAt: new Date(), attentionLevel: "ok" })
       .where(eq(task.id, taskId))
       .returning();
     return updated;

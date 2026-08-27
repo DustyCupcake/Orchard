@@ -68,4 +68,10 @@ export const task = pgTable("task", {
     .references(() => member.id),
   suggestedMemberId: uuid("suggested_member_id").references(() => member.id),
   attentionLevel: taskAttentionLevelEnum("attention_level").notNull().default("ok"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // Set on every lifecycle transition (claim/release/park/resume/finish)
+  // — the "days inactive" clock for a claimed task's staleness. Added in
+  // Phase 10 specifically so the attention-level job has something to
+  // measure; Phase 1 didn't anticipate needing it.
+  statusChangedAt: timestamp("status_changed_at", { withTimezone: true }).notNull().defaultNow(),
 });
