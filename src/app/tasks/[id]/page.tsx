@@ -21,6 +21,7 @@ import {
   describeRequirement,
 } from "@/lib/tasks";
 import { listBranches } from "@/lib/settings";
+import { listTaskQuestions } from "@/lib/input-rounds";
 import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import Nav from "@/components/Nav";
@@ -30,6 +31,7 @@ import {
   addResourceAction,
   claimAsShadowAction,
   confirmClaimAction,
+  createQuestionAction,
   createSignalAction,
   declineJoinRequestAction,
   editWikiAction,
@@ -89,6 +91,7 @@ export default async function TaskDetailPage({
     authorizedToWaive,
     myPings,
     communityMembers,
+    questions,
   ] = await Promise.all([
     db.select().from(branch).where(eq(branch.id, taskRow.branchId)).then((r) => r[0]),
     getTaskNotes(currentMember, id),
@@ -104,6 +107,7 @@ export default async function TaskDetailPage({
     isAuthorizedToWaive(currentMember, taskRow.branchId, id),
     listMyPings(currentMember, id),
     db.select().from(member).where(eq(member.communityId, currentMember.communityId)),
+    listTaskQuestions(currentMember, id),
   ]);
   const myEndorsements = isCommunityEndorsed
     ? await listMyEndorsements(
@@ -824,6 +828,95 @@ export default async function TaskDetailPage({
             style={{ padding: "0.4rem" }}
           />
           <button type="submit">Add</button>
+        </form>
+      </section>
+
+      <section style={{ marginTop: "2rem" }}>
+        <h2>Questions</h2>
+        <p style={{ fontSize: "0.85rem", color: "#666" }}>
+          Anyone can ask something tied to this task — it queues silently and bundles into the
+          next Input round, no ping sent now. Answers stay visible here once the round&rsquo;s open.
+        </p>
+
+        {questions.length === 0 && <p style={{ color: "#666" }}>No questions yet.</p>}
+        {questions.map((q) => {
+          const tally =
+            q.responseType !== "free_text"
+              ? q.options.map((o) => ({
+                  option: o,
+                  count: q.responses.filter((r) => {
+                    const v = r.value as string | string[];
+                    return Array.isArray(v) ? v.includes(o) : v === o;
+                  }).length,
+                }))
+              : null;
+          return (
+            <div
+              key={q.id}
+              style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
+            >
+              <strong>{q.text}</strong>{" "}
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+                {q.status === "queued" && "· queued for the next round"}
+                {q.status === "open" && (
+                  <>
+                    ·{" "}
+                    <Link href="/input-rounds" style={{ color: "inherit" }}>
+                      open in the current round — answer it there
+                    </Link>
+                  </>
+                )}
+                {q.status === "closed" && `· closed, ${q.responses.length} response(s)`}
+                {q.priority ? " · can't move forward without this" : ""}
+                {q.deadline ? ` · needed by ${new Date(q.deadline).toLocaleDateString()}` : ""}
+              </span>
+              {tally && q.responses.length > 0 && (
+                <ul style={{ fontSize: "0.85rem", margin: "0.3rem 0 0" }}>
+                  {tally.map((t) => (
+                    <li key={t.option}>
+                      {t.option}: {t.count}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!tally && q.responses.length > 0 && (
+                <ul style={{ fontSize: "0.85rem", margin: "0.3rem 0 0" }}>
+                  {q.responses.map((r) => (
+                    <li key={r.id}>{String(r.value)}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+
+        <form
+          action={createQuestionAction}
+          style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem", maxWidth: 500 }}
+        >
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <input type="text" name="text" required placeholder="Ask something" style={{ padding: "0.4rem" }} />
+          <select name="responseType" defaultValue="free_text" style={{ padding: "0.4rem" }}>
+            <option value="free_text">Free text</option>
+            <option value="single_choice">Single choice</option>
+            <option value="multi_choice">Multi choice</option>
+          </select>
+          <input
+            type="text"
+            name="options"
+            placeholder="options for choice types, comma-separated"
+            style={{ padding: "0.4rem" }}
+          />
+          <label style={{ fontSize: "0.85rem" }}>
+            Deadline (optional)
+            <input type="date" name="deadline" style={{ padding: "0.4rem", marginLeft: "0.5rem" }} />
+          </label>
+          <label style={{ fontSize: "0.85rem" }}>
+            <input type="checkbox" name="priority" /> Can&rsquo;t move forward without this
+          </label>
+          <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+            Ask
+          </button>
         </form>
       </section>
     </main>

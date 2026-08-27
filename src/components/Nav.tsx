@@ -17,6 +17,7 @@ export default function Nav({ memberName }: { memberName: string }) {
       <Link href="/proposals">Proposals</Link>
       <Link href="/escalation">Escalation</Link>
       <Link href="/coordination">Coordination</Link>
+      <Link href="/input-rounds">Input round</Link>
       <Link href="/profile">Profile</Link>
       <Link href="/settings">Settings</Link>
       <span style={{ marginLeft: "auto", color: "#666" }}>{memberName}</span>

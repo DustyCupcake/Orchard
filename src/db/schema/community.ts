@@ -1,4 +1,13 @@
-import { boolean, integer, pgEnum, pgTable, text, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  integer,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  type AnyPgColumn,
+} from "drizzle-orm/pg-core";
 import { tier } from "./tier";
 
 export const membershipModelEnum = pgEnum("membership_model", ["cohort", "rolling", "fixed"]);
@@ -42,6 +51,14 @@ export const community = pgTable("community", {
   // no-dedicated-relationship reasoning as adminsTag just above.
   coordinationTag: text("coordination_tag").notNull().default("coordination"),
   inputRoundIntervalDays: integer("input_round_interval_days").notNull().default(7),
+  // The next scheduled Input-round cutoff — an explicit, scheduler-
+  // managed clock rather than derived from Community/round history, so
+  // the cadence stays fixed (always N days apart) regardless of
+  // whether any given cutoff actually had questions queued to bundle.
+  // Null until the input-rounds job first runs for this Community, at
+  // which point it lazily anchors to "now + interval" — see
+  // src/lib/input-rounds/scheduler.ts.
+  nextInputRoundCutoffAt: timestamp("next_input_round_cutoff_at", { withTimezone: true }),
   defaultCallHasAgenda: boolean("default_call_has_agenda").notNull().default(false),
   defaultCallNeedsSummary: boolean("default_call_needs_summary").notNull().default(false),
   defaultCallRequireRead: boolean("default_call_require_read").notNull().default(false),

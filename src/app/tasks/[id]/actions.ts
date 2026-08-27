@@ -32,6 +32,7 @@ import {
   withdrawCandidacy,
   withdrawJoinRequest,
 } from "@/lib/tasks";
+import { createQuestion, createQuestionInput } from "@/lib/input-rounds";
 import { AppError } from "@/lib/errors";
 
 function redirectWithError(taskId: string, err: unknown): never {
@@ -370,6 +371,32 @@ export async function resolvePingAction(formData: FormData) {
 
   try {
     await resolvePing(actor, taskId, pingId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function createQuestionAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    const responseType = String(formData.get("responseType") ?? "free_text");
+    const options = String(formData.get("options") ?? "")
+      .split(",")
+      .map((o) => o.trim())
+      .filter(Boolean);
+    const deadline = String(formData.get("deadline") ?? "").trim();
+    const input = createQuestionInput.parse({
+      text: String(formData.get("text") ?? ""),
+      responseType,
+      options: options.length > 0 ? options : undefined,
+      deadline: deadline ? new Date(deadline).toISOString() : undefined,
+      priority: formData.get("priority") === "on",
+    });
+    await createQuestion(actor, taskId, input);
   } catch (err) {
     redirectWithError(taskId, err);
   }
