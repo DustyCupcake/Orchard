@@ -1,0 +1,138 @@
+"use server";
+
+import { ZodError } from "zod";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { requireMember } from "@/lib/api";
+import {
+  createBranch,
+  createBranchInput,
+  createTier,
+  createTierInput,
+  deleteBranch,
+  deleteTier,
+  updateBranch,
+  updateBranchInput,
+  updateCommunity,
+  updateCommunityInput,
+  updateTier,
+  updateTierInput,
+} from "@/lib/settings";
+import { AppError } from "@/lib/errors";
+
+function redirectWithError(err: unknown): never {
+  if (err instanceof ZodError) {
+    redirect(`/settings?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
+  }
+  if (err instanceof AppError) {
+    redirect(`/settings?error=${encodeURIComponent(err.message)}`);
+  }
+  throw err;
+}
+
+export async function updateCommunityAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    const input = updateCommunityInput.parse({
+      name: String(formData.get("name") ?? "").trim() || undefined,
+      cyclesEnabled: formData.get("cyclesEnabled") === "on",
+      phasesEnabled: formData.get("phasesEnabled") === "on",
+      cycleInitiationTierId: String(formData.get("cycleInitiationTierId") ?? "") || null,
+    });
+    await updateCommunity(actor, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function createBranchAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    const input = createBranchInput.parse({
+      name: String(formData.get("name") ?? ""),
+      description: String(formData.get("description") ?? "") || undefined,
+    });
+    await createBranch(actor, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function updateBranchAction(formData: FormData) {
+  const actor = await requireMember();
+  const branchId = String(formData.get("branchId"));
+
+  try {
+    const input = updateBranchInput.parse({
+      name: String(formData.get("name") ?? ""),
+      description: String(formData.get("description") ?? "") || undefined,
+    });
+    await updateBranch(actor, branchId, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function deleteBranchAction(formData: FormData) {
+  const actor = await requireMember();
+  const branchId = String(formData.get("branchId"));
+
+  try {
+    await deleteBranch(actor, branchId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function createTierAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    const input = createTierInput.parse({
+      name: String(formData.get("name") ?? ""),
+      criterionType: String(formData.get("criterionType") ?? "manual"),
+    });
+    await createTier(actor, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function updateTierAction(formData: FormData) {
+  const actor = await requireMember();
+  const tierId = String(formData.get("tierId"));
+
+  try {
+    const input = updateTierInput.parse({ name: String(formData.get("name") ?? "") });
+    await updateTier(actor, tierId, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function deleteTierAction(formData: FormData) {
+  const actor = await requireMember();
+  const tierId = String(formData.get("tierId"));
+
+  try {
+    await deleteTier(actor, tierId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}

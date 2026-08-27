@@ -16,6 +16,7 @@ export default function Nav({ memberName }: { memberName: string }) {
       <Link href="/propose">Propose a task</Link>
       <Link href="/proposals">Proposals</Link>
       <Link href="/profile">Profile</Link>
+      <Link href="/settings">Settings</Link>
       <span style={{ marginLeft: "auto", color: "#666" }}>{memberName}</span>
       <form action="/api/auth/logout" method="post">
         <button type="submit">Log out</button>
