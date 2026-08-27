@@ -160,6 +160,34 @@ export default async function SettingsPage({
             </span>
           </label>
 
+          <fieldset>
+            <legend>Call defaults (a Branch&rsquo;s own default overrides these — see below)</legend>
+            <label style={{ display: "block" }}>
+              <input
+                type="checkbox"
+                name="defaultCallHasAgenda"
+                defaultChecked={communityRow.defaultCallHasAgenda}
+              />{" "}
+              Open agenda
+            </label>
+            <label style={{ display: "block" }}>
+              <input
+                type="checkbox"
+                name="defaultCallNeedsSummary"
+                defaultChecked={communityRow.defaultCallNeedsSummary}
+              />{" "}
+              Expected summary
+            </label>
+            <label style={{ display: "block" }}>
+              <input
+                type="checkbox"
+                name="defaultCallRequireRead"
+                defaultChecked={communityRow.defaultCallRequireRead}
+              />{" "}
+              Require read-confirmation
+            </label>
+          </fieldset>
+
           <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
             Save
           </button>
@@ -183,7 +211,10 @@ export default async function SettingsPage({
               flexWrap: "wrap",
             }}
           >
-            <form action={updateBranchAction} style={{ display: "flex", gap: "0.5rem", flex: 1 }}>
+            <form
+              action={updateBranchAction}
+              style={{ display: "flex", gap: "0.5rem", flex: 1, flexWrap: "wrap", alignItems: "center" }}
+            >
               <input type="hidden" name="branchId" value={b.id} />
               <input
                 type="text"
@@ -198,6 +229,26 @@ export default async function SettingsPage({
                 placeholder="description"
                 style={{ padding: "0.3rem", flex: 1 }}
               />
+              {(
+                [
+                  ["defaultCallHasAgenda", "Agenda", b.defaultCallHasAgenda],
+                  ["defaultCallNeedsSummary", "Summary", b.defaultCallNeedsSummary],
+                  ["defaultCallRequireRead", "Read-confirm", b.defaultCallRequireRead],
+                ] as const
+              ).map(([name, label, value]) => (
+                <label key={name} style={{ fontSize: "0.8rem" }}>
+                  {label}
+                  <select
+                    name={name}
+                    defaultValue={value === null ? "inherit" : value ? "on" : "off"}
+                    style={{ marginLeft: "0.3rem", padding: "0.2rem" }}
+                  >
+                    <option value="inherit">Inherit</option>
+                    <option value="on">On</option>
+                    <option value="off">Off</option>
+                  </select>
+                </label>
+              ))}
               <button type="submit">Save</button>
             </form>
             <form action={deleteBranchAction}>

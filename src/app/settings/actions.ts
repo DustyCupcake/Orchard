@@ -29,6 +29,13 @@ import {
 } from "@/lib/profile-questions";
 import { AppError } from "@/lib/errors";
 
+function triState(value: FormDataEntryValue | null): boolean | null | undefined {
+  if (value === "on") return true;
+  if (value === "off") return false;
+  if (value === "inherit") return null;
+  return undefined;
+}
+
 function redirectWithError(err: unknown): never {
   if (err instanceof ZodError) {
     redirect(`/settings?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
@@ -51,6 +58,9 @@ export async function updateCommunityAction(formData: FormData) {
       cycleInitiationTierId: String(formData.get("cycleInitiationTierId") ?? "") || null,
       adminsTag: String(formData.get("adminsTag") ?? "").trim() || undefined,
       coordinationTag: String(formData.get("coordinationTag") ?? "").trim() || undefined,
+      defaultCallHasAgenda: formData.get("defaultCallHasAgenda") === "on",
+      defaultCallNeedsSummary: formData.get("defaultCallNeedsSummary") === "on",
+      defaultCallRequireRead: formData.get("defaultCallRequireRead") === "on",
     });
     await updateCommunity(actor, input);
   } catch (err) {
@@ -86,6 +96,9 @@ export async function updateBranchAction(formData: FormData) {
     const input = updateBranchInput.parse({
       name: String(formData.get("name") ?? ""),
       description: String(formData.get("description") ?? "") || undefined,
+      defaultCallHasAgenda: triState(formData.get("defaultCallHasAgenda")),
+      defaultCallNeedsSummary: triState(formData.get("defaultCallNeedsSummary")),
+      defaultCallRequireRead: triState(formData.get("defaultCallRequireRead")),
     });
     await updateBranch(actor, branchId, input);
   } catch (err) {

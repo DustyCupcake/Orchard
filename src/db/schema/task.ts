@@ -14,6 +14,7 @@ import { branch } from "./branch";
 import { cycle } from "./cycle";
 import { phase } from "./phase";
 import { member } from "./member";
+import { schedulingPoll } from "./scheduling-poll";
 
 export const taskEffortEnum = pgEnum("task_effort", ["one_off", "ongoing", "owns_a_thing"]);
 export const taskStatusEnum = pgEnum("task_status", ["unclaimed", "claimed", "waiting", "done"]);
@@ -29,12 +30,10 @@ export const taskAttentionLevelEnum = pgEnum("task_attention_level", [
   "hard",
   "escalated",
 ]);
+export const taskSourcePollRoleEnum = pgEnum("task_source_poll_role", ["facilitate", "summary"]);
 
 // The atomic unit of work. See docs/spec.md's "Task" section for the full
 // field-by-field rationale.
-//
-// Not yet included: source_poll_id / source_poll_role (→ SchedulingPoll) —
-// Scheduling polls aren't built yet.
 export const task = pgTable("task", {
   id: uuid("id").primaryKey().defaultRandom(),
   communityId: uuid("community_id")
@@ -67,6 +66,11 @@ export const task = pgTable("task", {
     .notNull()
     .references(() => member.id),
   suggestedMemberId: uuid("suggested_member_id").references(() => member.id),
+  // Set only on the two tasks a SchedulingPoll auto-creates — see
+  // docs/spec.md's "Facilitation and summary are auto-created tasks,
+  // not a manual step."
+  sourcePollId: uuid("source_poll_id").references(() => schedulingPoll.id),
+  sourcePollRole: taskSourcePollRoleEnum("source_poll_role"),
   attentionLevel: taskAttentionLevelEnum("attention_level").notNull().default("ok"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   // Set on every lifecycle transition (claim/release/park/resume/finish)

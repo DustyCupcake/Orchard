@@ -17,8 +17,10 @@ export async function getCommunity(actor: Member) {
 
 // Deliberately narrow — per docs/development-plan.md's Phase 9 scope
 // ("branches, tiers, and cycle/phase structure"), not the full
-// Configuration model. membership_model, branch_membership_model,
-// modules_enabled, and the call defaults stay DB-only for now.
+// Configuration model. membership_model, branch_membership_model, and
+// modules_enabled stay DB-only for now. The call defaults are wired
+// up here in Phase 19 — see src/lib/settings/branches.ts for the
+// per-Branch overrides that fall back to these.
 export const updateCommunityInput = z.object({
   name: z.string().min(1).optional(),
   cyclesEnabled: z.boolean().optional(),
@@ -26,6 +28,9 @@ export const updateCommunityInput = z.object({
   cycleInitiationTierId: z.string().uuid().nullable().optional(),
   adminsTag: z.string().min(1).optional(),
   coordinationTag: z.string().min(1).optional(),
+  defaultCallHasAgenda: z.boolean().optional(),
+  defaultCallNeedsSummary: z.boolean().optional(),
+  defaultCallRequireRead: z.boolean().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -51,6 +56,13 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       }),
       ...(input.adminsTag !== undefined && { adminsTag: input.adminsTag }),
       ...(input.coordinationTag !== undefined && { coordinationTag: input.coordinationTag }),
+      ...(input.defaultCallHasAgenda !== undefined && { defaultCallHasAgenda: input.defaultCallHasAgenda }),
+      ...(input.defaultCallNeedsSummary !== undefined && {
+        defaultCallNeedsSummary: input.defaultCallNeedsSummary,
+      }),
+      ...(input.defaultCallRequireRead !== undefined && {
+        defaultCallRequireRead: input.defaultCallRequireRead,
+      }),
     })
     .where(eq(community.id, actor.communityId))
     .returning();

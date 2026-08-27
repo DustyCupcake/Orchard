@@ -7,9 +7,19 @@ import { ConflictError, NotFoundError } from "../errors";
 
 type Member = typeof memberTable.$inferSelect;
 
+// The three call-default fields are nullable — null means "inherit
+// the Community's own default" (see docs/spec.md's "Defaults live per
+// Branch, with a Community-level fallback"), so they need to
+// distinguish "leave unset" from "explicitly false", unlike a plain
+// optional boolean would.
+const nullableTriState = z.union([z.boolean(), z.null()]).optional();
+
 export const createBranchInput = z.object({
   name: z.string().min(1),
   description: z.string().nullable().optional(),
+  defaultCallHasAgenda: nullableTriState,
+  defaultCallNeedsSummary: nullableTriState,
+  defaultCallRequireRead: nullableTriState,
 });
 export type CreateBranchInput = z.infer<typeof createBranchInput>;
 
@@ -29,6 +39,9 @@ export async function createBranch(actor: Member, input: CreateBranchInput) {
       communityId: actor.communityId,
       name: input.name,
       description: input.description ?? null,
+      defaultCallHasAgenda: input.defaultCallHasAgenda ?? null,
+      defaultCallNeedsSummary: input.defaultCallNeedsSummary ?? null,
+      defaultCallRequireRead: input.defaultCallRequireRead ?? null,
     })
     .returning();
   return created;
@@ -40,6 +53,13 @@ export async function updateBranch(actor: Member, branchId: string, input: Updat
     .set({
       ...(input.name !== undefined && { name: input.name }),
       ...(input.description !== undefined && { description: input.description }),
+      ...(input.defaultCallHasAgenda !== undefined && { defaultCallHasAgenda: input.defaultCallHasAgenda }),
+      ...(input.defaultCallNeedsSummary !== undefined && {
+        defaultCallNeedsSummary: input.defaultCallNeedsSummary,
+      }),
+      ...(input.defaultCallRequireRead !== undefined && {
+        defaultCallRequireRead: input.defaultCallRequireRead,
+      }),
     })
     .where(and(eq(branch.id, branchId), eq(branch.communityId, actor.communityId)))
     .returning();
