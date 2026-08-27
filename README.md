@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Early. Phases 0-3 of the [development plan](docs/development-plan.md) are in place: a deployable skeleton, the core schema, magic-link auth with a minimal profile, and a server-enforced Task lifecycle API (claim/release/park/resume/finish, multi-slot capacity, dependency gating). No UI beyond the profile page yet — that's Phase 4.
+Early. Phases 0-4 of the [development plan](docs/development-plan.md) are in place: a deployable skeleton, the core schema, magic-link auth with a minimal profile, a server-enforced Task lifecycle API (claim/release/park/resume/finish, multi-slot capacity, dependency gating), and a kanban board UI to work that lifecycle by hand. No task-creation UI yet, and no eligibility filtering on who can claim what — those are Phases 5 and 7.
 
 ## Documentation
 
