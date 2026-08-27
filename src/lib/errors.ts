@@ -26,3 +26,15 @@ export class ConflictError extends AppError {
     super(message, 409);
   }
 }
+
+// A distinct status from ConflictError so the UI can tell "you need to
+// go confirm this on the task page first" apart from an ordinary
+// failure — see docs/spec.md's self-assign confirmation check
+// (Coordination mechanics). 428 Precondition Required is the closest
+// real HTTP status for "this would work, but you have to confirm
+// first."
+export class ConfirmationRequiredError extends AppError {
+  constructor(message: string) {
+    super(message, 428);
+  }
+}

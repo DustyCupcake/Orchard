@@ -34,6 +34,13 @@ export const community = pgTable("community", {
   // whenever Admins happens to be between holders.
   adminsTag: text("admins_tag").notNull().default("admin"),
   adminsEverClaimed: boolean("admins_ever_claimed").notNull().default(false),
+  // "Whoever does branch coordination for branch X" = the current
+  // TaskAssignment holders, unioned across every task where
+  // branch_id = X and tags contains this tag — see
+  // docs/development-plan.md's Phase 15 ("Who 'does branch
+  // coordination' (resolved)") and src/lib/coordination.ts. Same
+  // no-dedicated-relationship reasoning as adminsTag just above.
+  coordinationTag: text("coordination_tag").notNull().default("coordination"),
   inputRoundIntervalDays: integer("input_round_interval_days").notNull().default(7),
   defaultCallHasAgenda: boolean("default_call_has_agenda").notNull().default(false),
   defaultCallNeedsSummary: boolean("default_call_needs_summary").notNull().default(false),

@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -12,12 +12,16 @@ import {
   listCandidacies,
   listJoinRequests,
   listMyEndorsements,
+  listMyPings,
+  listPings,
   listRequirements,
+  listSignals,
   listSubtasks,
   tierNameLookup,
   describeRequirement,
 } from "@/lib/tasks";
 import { listBranches } from "@/lib/settings";
+import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import Nav from "@/components/Nav";
 import {
@@ -25,16 +29,31 @@ import {
   addCommentAction,
   addResourceAction,
   claimAsShadowAction,
+  confirmClaimAction,
+  createSignalAction,
   declineJoinRequestAction,
   editWikiAction,
   endorseCandidacyAction,
   expressCandidacyAction,
+  flagForGroupAction,
+  pingCoordinatorAction,
+  resolvePingAction,
+  resolveSignalAction,
   setOutgoingAction,
   splitSubtaskAction,
   stopShadowingAction,
+  suggestSomeoneAction,
+  waiveAndClaimAction,
   withdrawCandidacyAction,
   withdrawJoinRequestAction,
 } from "./actions";
+
+const SIGNAL_LABELS: Record<string, string> = {
+  stalled: "looks stalled",
+  might_need_help: "owner might need help",
+  something_feels_off: "something feels off",
+  worth_a_look: "worth a coordinator look",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +85,10 @@ export default async function TaskDetailPage({
     branches,
     joinRequests,
     candidacies,
+    isCoordHolderForBranch,
+    authorizedToWaive,
+    myPings,
+    communityMembers,
   ] = await Promise.all([
     db.select().from(branch).where(eq(branch.id, taskRow.branchId)).then((r) => r[0]),
     getTaskNotes(currentMember, id),
@@ -77,6 +100,10 @@ export default async function TaskDetailPage({
     listBranches(currentMember),
     listJoinRequests(currentMember, id),
     isCommunityEndorsed ? listCandidacies(currentMember, id) : [],
+    isCoordinationHolder(currentMember, taskRow.branchId),
+    isAuthorizedToWaive(currentMember, taskRow.branchId, id),
+    listMyPings(currentMember, id),
+    db.select().from(member).where(eq(member.communityId, currentMember.communityId)),
   ]);
   const myEndorsements = isCommunityEndorsed
     ? await listMyEndorsements(
@@ -84,6 +111,14 @@ export default async function TaskDetailPage({
         candidacies.map((c) => c.id),
       )
     : new Set<string>();
+  // Signals and pings are only visible to that branch's coordination
+  // holders — see docs/spec.md's "Anonymous task signal" and "Talk to
+  // my coordinator" (Coordination mechanics) — checked up front instead
+  // of relying on listSignals()/listPings() throwing, matching how
+  // canApproveRequests is checked elsewhere on this page.
+  const [signals, pings] = isCoordHolderForBranch
+    ? await Promise.all([listSignals(currentMember, id), listPings(currentMember, id)])
+    : [[], []];
 
   // A shadow isn't a real holder — see lifecycle.ts's assignmentCount(),
   // which excludes shadow rows for the same reason (docs/spec.md's
@@ -116,20 +151,39 @@ export default async function TaskDetailPage({
   const canExpressCandidacy =
     isCommunityEndorsed && browseWindowOpen && !holdsTask && !myCandidacy;
 
-  const memberIds = [
-    ...new Set([
-      ...taskRow.assignments.map((a) => a.memberId),
-      ...notes.comments.map((c) => c.memberId),
-      ...notes.wikiRevisions.map((w) => w.editedBy),
-      ...notes.resources.map((r) => r.addedBy),
-      ...joinRequests.map((r) => r.memberId),
-      ...candidacies.map((c) => c.memberId),
-    ]),
-  ];
-  const members = memberIds.length
-    ? await db.select().from(member).where(inArray(member.id, memberIds))
-    : [];
-  const memberNameById = new Map(members.map((m) => [m.id, m.name]));
+  // Self-assign confirmation check — see docs/spec.md's Coordination
+  // mechanics. Mirrors TaskCard.tsx's board-side gating exactly; the
+  // server (join-requests.ts's claimOrRequestToJoin) is what actually
+  // enforces it either way.
+  const hasRoom = taskRow.capacity === null || realAssignments.length < taskRow.capacity;
+  const flagged = taskRow.attentionLevel !== "ok";
+  const canActBase =
+    !isCommunityEndorsed &&
+    !isShadowing &&
+    !holdsTask &&
+    (taskRow.status === "unclaimed" || (taskRow.status === "claimed" && hasRoom)) &&
+    unmetRequirements.length === 0 &&
+    !(myRequest && myRequest.status === "pending");
+  const needsSelfAssignConfirmation =
+    canActBase && isCoordHolderForBranch && (taskRow.status === "unclaimed" || flagged);
+
+  const openSignals = signals.filter((s) => !s.resolvedAt);
+  const resolvedSignals = signals.filter((s) => s.resolvedAt);
+  const openPings = pings.filter((p) => !p.resolvedAt);
+  const resolvedPings = pings.filter((p) => p.resolvedAt);
+  const myOpenPing = myPings.find((p) => !p.resolvedAt);
+  // "Only a current holder can ping their coordinator" — see
+  // coordinator-ping.ts's pingCoordinator().
+  const canPingCoordinator = holdsTask && !myOpenPing;
+  const canWaive =
+    authorizedToWaive &&
+    requirements.length > 0 &&
+    (taskRow.status === "unclaimed" || (taskRow.status === "claimed" && hasRoom));
+
+  // communityMembers (fetched above for the waive/suggest selects)
+  // already covers every member who could plausibly show up by name
+  // anywhere on this page — no need for a second, narrower lookup.
+  const memberNameById = new Map(communityMembers.map((m) => [m.id, m.name]));
 
   const unmetIds = new Set(unmetRequirements.map((r) => r.id));
 
@@ -181,6 +235,14 @@ export default async function TaskDetailPage({
           {shadowAssignments.map((a) => memberNameById.get(a.memberId) ?? "—").join(", ")}
         </p>
       )}
+      {realAssignments
+        .filter((a) => a.gateWaivedBy)
+        .map((a) => (
+          <p key={a.memberId} style={{ fontSize: "0.85rem", color: "#a15c00" }}>
+            {memberNameById.get(a.memberId) ?? "—"}&rsquo;s requirement was waived by{" "}
+            {memberNameById.get(a.gateWaivedBy!) ?? "—"}: {a.gateWaivedReason}
+          </p>
+        ))}
       {taskRow.description && <p>{taskRow.description}</p>}
 
       {canShadow && (
@@ -217,6 +279,18 @@ export default async function TaskDetailPage({
         </p>
       )}
 
+      {canPingCoordinator && (
+        <form action={pingCoordinatorAction} style={{ marginBottom: "0.5rem" }}>
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <button type="submit">Talk to my coordinator</button>
+        </form>
+      )}
+      {myOpenPing && (
+        <p style={{ fontSize: "0.85rem", color: "#666" }}>
+          You&rsquo;ve asked to talk to your coordinator about this task — pending.
+        </p>
+      )}
+
       {requirements.length > 0 && (
         <ul style={{ fontSize: "0.85rem" }}>
           {requirements.map((r) => (
@@ -226,6 +300,86 @@ export default async function TaskDetailPage({
             </li>
           ))}
         </ul>
+      )}
+
+      {needsSelfAssignConfirmation && (
+        <section
+          style={{
+            marginTop: "1rem",
+            border: "1px solid #e0a840",
+            borderRadius: 6,
+            padding: "0.75rem",
+          }}
+        >
+          <p style={{ margin: 0, fontWeight: 600 }}>
+            You coordinate this branch — are you sure there isn&rsquo;t someone with just the
+            skills for this?
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+            <form action={confirmClaimAction}>
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <button type="submit">Yes, I&rsquo;ll take it</button>
+            </form>
+            <form action={suggestSomeoneAction} style={{ display: "flex", gap: "0.4rem" }}>
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <select name="memberId" defaultValue="" style={{ padding: "0.3rem" }}>
+                <option value="" disabled>
+                  Suggest someone…
+                </option>
+                {communityMembers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <button type="submit">Suggest</button>
+            </form>
+            <form action={flagForGroupAction}>
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <button type="submit">Flag for the group</button>
+            </form>
+          </div>
+        </section>
+      )}
+
+      {canWaive && (
+        <details style={{ marginTop: "1rem" }}>
+          <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>
+            Waive a requirement and claim for someone
+          </summary>
+          <form
+            action={waiveAndClaimAction}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.5rem",
+              marginTop: "0.5rem",
+              maxWidth: 400,
+            }}
+          >
+            <input type="hidden" name="taskId" value={taskRow.id} />
+            <select name="memberId" required defaultValue="" style={{ padding: "0.4rem" }}>
+              <option value="" disabled>
+                Who are you waiving this for?
+              </option>
+              {communityMembers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              name="reason"
+              required
+              placeholder="Reason (required — stays visible on the task afterward)"
+              style={{ padding: "0.4rem" }}
+            />
+            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+              Waive and claim
+            </button>
+          </form>
+        </details>
       )}
 
       {isCommunityEndorsed && (
@@ -363,6 +517,88 @@ export default async function TaskDetailPage({
                     {memberNameById.get(r.memberId) ?? "—"} — {r.status}
                     {r.status === "declined" && r.declineReason && `: ${r.declineReason}`}
                   </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </section>
+      )}
+
+      <section style={{ marginTop: "1.5rem" }}>
+        <h2>Signal something</h2>
+        <p style={{ fontSize: "0.85rem", color: "#666" }}>
+          A quiet, anonymous nudge to that branch&rsquo;s coordination — no detail required, and
+          nothing here says it was you.
+        </p>
+        <form action={createSignalAction} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <select name="kind" defaultValue="worth_a_look" style={{ padding: "0.4rem" }}>
+            {Object.entries(SIGNAL_LABELS).map(([kind, label]) => (
+              <option key={kind} value={kind}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <button type="submit">Send signal</button>
+        </form>
+
+        {isCoordHolderForBranch && (
+          <div style={{ marginTop: "0.75rem" }}>
+            {openSignals.length === 0 && <p style={{ color: "#666" }}>No open signals.</p>}
+            {openSignals.map((s) => (
+              <div key={s.id} style={{ marginBottom: "0.4rem" }}>
+                <span style={{ fontSize: "0.9rem" }}>
+                  {SIGNAL_LABELS[s.kind] ?? s.kind} —{" "}
+                  {new Date(s.createdAt).toLocaleDateString()}
+                </span>{" "}
+                <form action={resolveSignalAction} style={{ display: "inline" }}>
+                  <input type="hidden" name="taskId" value={taskRow.id} />
+                  <input type="hidden" name="signalId" value={s.id} />
+                  <button type="submit">Dismiss</button>
+                </form>
+              </div>
+            ))}
+            {resolvedSignals.length > 0 && (
+              <details style={{ marginTop: "0.5rem" }}>
+                <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>
+                  Dismissed signals ({resolvedSignals.length})
+                </summary>
+                <ul style={{ fontSize: "0.8rem" }}>
+                  {resolvedSignals.map((s) => (
+                    <li key={s.id}>{SIGNAL_LABELS[s.kind] ?? s.kind}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
+      </section>
+
+      {isCoordHolderForBranch && (openPings.length > 0 || resolvedPings.length > 0) && (
+        <section style={{ marginTop: "1.5rem" }}>
+          <h2>Talk-to-coordinator pings</h2>
+          {openPings.length === 0 && <p style={{ color: "#666" }}>None open.</p>}
+          {openPings.map((p) => (
+            <div key={p.id} style={{ marginBottom: "0.4rem" }}>
+              <span style={{ fontSize: "0.9rem" }}>
+                {memberNameById.get(p.requestedBy) ?? "—"} would like to talk about this task —{" "}
+                {new Date(p.createdAt).toLocaleString()}
+              </span>{" "}
+              <form action={resolvePingAction} style={{ display: "inline" }}>
+                <input type="hidden" name="taskId" value={taskRow.id} />
+                <input type="hidden" name="pingId" value={p.id} />
+                <button type="submit">Mark resolved</button>
+              </form>
+            </div>
+          ))}
+          {resolvedPings.length > 0 && (
+            <details style={{ marginTop: "0.5rem" }}>
+              <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>
+                Resolved pings ({resolvedPings.length})
+              </summary>
+              <ul style={{ fontSize: "0.8rem" }}>
+                {resolvedPings.map((p) => (
+                  <li key={p.id}>{memberNameById.get(p.requestedBy) ?? "—"}</li>
                 ))}
               </ul>
             </details>

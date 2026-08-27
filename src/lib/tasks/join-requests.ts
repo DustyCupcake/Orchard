@@ -3,7 +3,8 @@ import { z } from "zod";
 import { db, type Tx } from "@/db";
 import { member, task, taskAssignment, taskJoinRequest } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { ConfirmationRequiredError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { isCoordinationHolder } from "../coordination";
 import { getUnmetRequirements, describeRequirement } from "./requirements";
 import { assignmentCount, loadTaskForUpdate, performClaimInTx } from "./lifecycle";
 import { requireTaskInCommunity } from "./shared";
@@ -19,7 +20,11 @@ type Member = typeof memberTable.$inferSelect;
 // `community_endorsed` never claims through here at all, regardless of
 // holder count — see src/lib/tasks/endorsements.ts's expressCandidacy(),
 // the dedicated entry point Phase 13 built for it.
-export async function claimOrRequestToJoin(actor: Member, taskId: string) {
+export async function claimOrRequestToJoin(
+  actor: Member,
+  taskId: string,
+  options: { confirmed?: boolean } = {},
+) {
   return db.transaction(async (tx) => {
     const current = await loadTaskForUpdate(tx, taskId, actor.communityId);
 
@@ -31,6 +36,25 @@ export async function claimOrRequestToJoin(actor: Member, taskId: string) {
 
     if (current.status !== "unclaimed" && current.status !== "claimed") {
       throw new ConflictError(`Cannot claim a task that is ${current.status}`);
+    }
+
+    // Self-assign confirmation check — see docs/spec.md's Coordination
+    // mechanics: "when anyone with placement authority tries to self-
+    // assign a flagged or unclaimed task... are you sure there isn't
+    // someone with just the skills for this?" Only fires for someone who
+    // currently does this task's branch's coordination — an ordinary
+    // member claiming a flagged or unclaimed task is just claiming one.
+    // Scoped to the ordinary claim/request path, not community_endorsed
+    // (already its own, more deliberate process) or shadowing (not a
+    // placement act).
+    if (
+      !options.confirmed &&
+      (current.status === "unclaimed" || current.attentionLevel !== "ok") &&
+      (await isCoordinationHolder(actor, current.branchId))
+    ) {
+      throw new ConfirmationRequiredError(
+        "You coordinate this branch — confirm on the task's page before self-assigning a flagged or unclaimed task",
+      );
     }
 
     const holderCount = await assignmentCount(tx, taskId);

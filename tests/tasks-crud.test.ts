@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { branch, community, task, taskDependency } from "@/db/schema";
-import { claimTask, createTask, deleteTask, updateTask } from "@/lib/tasks";
+import { claimTask, createTask, deleteTask, listDistinctTags, listTasks, updateTask } from "@/lib/tasks";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
@@ -190,5 +190,51 @@ describe("task CRUD", () => {
     await expect(
       updateTask(alice, created.id, { openness: "community_endorsed" }),
     ).rejects.toThrow(AppError);
+  });
+});
+
+describe("tag filtering (bulk task selection's clustering mechanism)", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("filters listTasks by a tag in Task.tags", async () => {
+    const { branch: testBranch, alice } = await createFixtures();
+    const tagged = await createTask(alice, {
+      branchId: testBranch.id,
+      title: "Pre-launch A",
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+      tags: ["pre-launch"],
+    });
+    await createTask(alice, {
+      branchId: testBranch.id,
+      title: "Untagged",
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+    });
+
+    const filtered = await listTasks(alice, { tag: "pre-launch" });
+    expect(filtered.map((t) => t.id)).toEqual([tagged.id]);
+  });
+
+  it("listDistinctTags returns every distinct tag in the community, deduplicated", async () => {
+    const { branch: testBranch, alice } = await createFixtures();
+    await createTask(alice, {
+      branchId: testBranch.id,
+      title: "A",
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+      tags: ["pre-launch", "fruit"],
+    });
+    await createTask(alice, {
+      branchId: testBranch.id,
+      title: "B",
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+      tags: ["pre-launch"],
+    });
+
+    expect(await listDistinctTags(alice)).toEqual(["fruit", "pre-launch"]);
   });
 });

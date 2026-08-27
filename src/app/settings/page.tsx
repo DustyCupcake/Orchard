@@ -136,6 +136,24 @@ export default async function SettingsPage({
             </span>
           </label>
 
+          <label>
+            Coordination tag
+            <br />
+            <input
+              type="text"
+              name="coordinationTag"
+              defaultValue={communityRow.coordinationTag}
+              required
+              style={{ padding: "0.4rem", width: "100%" }}
+            />
+            <br />
+            <span style={{ fontSize: "0.8rem", color: "#666" }}>
+              Whoever currently holds a task carrying this tag does that task&rsquo;s branch&rsquo;s
+              coordination — waiving requirements, seeing escalations and talk-to-coordinator pings
+              for that branch.
+            </span>
+          </label>
+
           <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
             Save
           </button>

@@ -42,6 +42,7 @@ export async function updateCommunityAction(formData: FormData) {
       phasesEnabled: formData.get("phasesEnabled") === "on",
       cycleInitiationTierId: String(formData.get("cycleInitiationTierId") ?? "") || null,
       adminsTag: String(formData.get("adminsTag") ?? "").trim() || undefined,
+      coordinationTag: String(formData.get("coordinationTag") ?? "").trim() || undefined,
     });
     await updateCommunity(actor, input);
   } catch (err) {

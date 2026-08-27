@@ -37,6 +37,7 @@ export default function TaskCard({
   branchName,
   currentMemberId,
   myPendingRequestId,
+  isCoordinationHolderForBranch,
 }: {
   task: Task;
   assignments: Assignment[];
@@ -46,6 +47,7 @@ export default function TaskCard({
   branchName: string;
   currentMemberId: string;
   myPendingRequestId: string | null;
+  isCoordinationHolderForBranch: boolean;
 }) {
   // A shadow isn't a real holder — doesn't count toward capacity, isn't
   // who "Held by" means — see docs/spec.md's "Shadow slots & succession"
@@ -73,14 +75,32 @@ export default function TaskCard({
   // button the way the other three openness values do.
   const isCommunityEndorsed = task.openness === "community_endorsed";
 
+  // "When anyone with placement authority tries to self-assign a
+  // flagged or unclaimed task" — see docs/spec.md's Coordination
+  // mechanics: self-assign confirmation check. Only for someone who
+  // currently does this task's branch's coordination; server-enforced
+  // in join-requests.ts's claimOrRequestToJoin(), this just routes the
+  // button to the task page's confirmation block instead of an instant
+  // submit, so the check can't be silently skipped by clicking Claim.
+  const needsSelfAssignConfirmation =
+    isCoordinationHolderForBranch && (task.status === "unclaimed" || task.attentionLevel !== "ok");
+
   const canAct =
     !isCommunityEndorsed &&
     !shadowing &&
+    !needsSelfAssignConfirmation &&
     (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
     eligible &&
     !myPendingRequestId;
   const canClaim = canAct && !joiningRequiresRequest;
   const canRequest = canAct && joiningRequiresRequest;
+  const needsConfirmationLink =
+    !isCommunityEndorsed &&
+    !shadowing &&
+    needsSelfAssignConfirmation &&
+    (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
+    eligible &&
+    !myPendingRequestId;
   const blockedByRequirements =
     !isCommunityEndorsed &&
     !shadowing &&
@@ -169,6 +189,11 @@ export default function TaskCard({
           <span style={{ fontSize: "0.85rem", color: "crimson" }}>
             Not eligible — see requirements above
           </span>
+        )}
+        {needsConfirmationLink && (
+          <Link href={`/tasks/${task.id}`} style={{ fontSize: "0.85rem" }}>
+            {joiningRequiresRequest ? "Request to join" : "Claim"} (confirm on task page) →
+          </Link>
         )}
         {isCommunityEndorsed && !holds && (
           <Link href={`/tasks/${task.id}`} style={{ fontSize: "0.85rem" }}>

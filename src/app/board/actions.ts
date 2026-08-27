@@ -31,6 +31,38 @@ export async function claimAction(formData: FormData) {
   await runAction(() => claimOrRequestToJoin(actor, taskId));
 }
 
+// "Select and claim with exceptions" — see docs/spec.md's Coordination
+// mechanics: bulk task selection. Reuses the ordinary claim path per
+// task rather than a separate bulk-insert, so capacity/Requirement/
+// self-assign-confirmation checks all still apply individually — a
+// task that needs confirmation just fails in the summary, same as any
+// other per-task failure, rather than silently bypassing that check.
+export async function bulkClaimAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskIds = formData.getAll("taskIds").map(String);
+
+  let claimed = 0;
+  const failures: string[] = [];
+  for (const taskId of taskIds) {
+    try {
+      await claimOrRequestToJoin(actor, taskId);
+      claimed++;
+    } catch (err) {
+      if (err instanceof AppError) {
+        failures.push(err.message);
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  const summary =
+    failures.length === 0
+      ? `Claimed ${claimed} task(s).`
+      : `Claimed ${claimed} task(s); ${failures.length} failed: ${failures.join("; ")}`;
+  redirect(`/board?notice=${encodeURIComponent(summary)}`);
+}
+
 export async function withdrawRequestAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));

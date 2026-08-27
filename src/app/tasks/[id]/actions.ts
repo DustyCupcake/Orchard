@@ -13,13 +13,22 @@ import {
   addWikiRevision,
   addWikiRevisionInput,
   claimAsShadow,
+  claimOrRequestToJoin,
+  createSignal,
+  createSignalInput,
   declineJoinRequest,
   endorseCandidacy,
   expressCandidacy,
+  pingCoordinator,
   releaseTask,
+  resolvePing,
+  resolveSignal,
   setOutgoing,
   splitSubtask,
   splitSubtaskInput,
+  suggestMemberForTask,
+  waiveAndClaim,
+  waiveAndClaimInput,
   withdrawCandidacy,
   withdrawJoinRequest,
 } from "@/lib/tasks";
@@ -240,6 +249,127 @@ export async function setOutgoingAction(formData: FormData) {
 
   try {
     await setOutgoing(actor, taskId, outgoing);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+// Self-assign confirmation check — see docs/spec.md's Coordination
+// mechanics. The three options spec lists: really want it myself
+// (confirmClaimAction, below), suggest a person instead
+// (suggestSomeoneAction), or flag for the group (flagForGroupAction,
+// which reuses the anonymous task signal mechanism rather than
+// inventing a fourth one).
+export async function confirmClaimAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await claimOrRequestToJoin(actor, taskId, { confirmed: true });
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+}
+
+export async function suggestSomeoneAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const memberId = String(formData.get("memberId") ?? "");
+
+  try {
+    if (!memberId) throw new AppError("Choose someone to suggest");
+    await suggestMemberForTask(actor, taskId, memberId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function flagForGroupAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await createSignal(actor, taskId, { kind: "might_need_help" });
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function waiveAndClaimAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    const input = waiveAndClaimInput.parse({
+      memberId: String(formData.get("memberId") ?? ""),
+      reason: String(formData.get("reason") ?? ""),
+    });
+    await waiveAndClaim(actor, taskId, input);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+}
+
+export async function createSignalAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    const input = createSignalInput.parse({ kind: String(formData.get("kind") ?? "") });
+    await createSignal(actor, taskId, input);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function resolveSignalAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const signalId = String(formData.get("signalId"));
+
+  try {
+    await resolveSignal(actor, taskId, signalId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function pingCoordinatorAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await pingCoordinator(actor, taskId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function resolvePingAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const pingId = String(formData.get("pingId"));
+
+  try {
+    await resolvePing(actor, taskId, pingId);
   } catch (err) {
     redirectWithError(taskId, err);
   }

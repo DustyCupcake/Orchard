@@ -1,4 +1,4 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, arrayContains, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { branch, member, requirement, task, taskAssignment, taskDependency } from "@/db/schema";
@@ -107,7 +107,7 @@ export async function createTask(
 
 export async function listTasks(
   actor: Member,
-  filters: { branchId?: string; status?: string; cycleId?: string } = {},
+  filters: { branchId?: string; status?: string; cycleId?: string; tag?: string } = {},
 ) {
   const conditions = [eq(task.communityId, actor.communityId)];
   if (filters.branchId) conditions.push(eq(task.branchId, filters.branchId));
@@ -115,6 +115,11 @@ export async function listTasks(
   if (filters.status) {
     conditions.push(eq(task.status, filters.status as (typeof task.status.enumValues)[number]));
   }
+  // "cluster tasks (e.g. 'all pre-launch Fruit tasks')" — see
+  // docs/spec.md's Coordination mechanics: bulk task selection. Reuses
+  // Task.tags as the clustering mechanism rather than inventing a new
+  // TaskCluster entity — a "cluster" is just "every task carrying this tag."
+  if (filters.tag) conditions.push(arrayContains(task.tags, [filters.tag]));
 
   return db
     .select()
@@ -123,11 +128,21 @@ export async function listTasks(
     .orderBy(task.title);
 }
 
+// The distinct tags in use across the community's tasks, for the
+// board's tag-filter dropdown — see listTasks()'s tag filter.
+export async function listDistinctTags(actor: Member) {
+  const rows = await db
+    .select({ tags: task.tags })
+    .from(task)
+    .where(eq(task.communityId, actor.communityId));
+  return [...new Set(rows.flatMap((r) => r.tags))].sort();
+}
+
 // Board-shaped: each task comes back with who currently holds it, for
 // rendering "Claimed by ..." and deciding which action buttons to show.
 export async function listTasksWithAssignments(
   actor: Member,
-  filters: { branchId?: string; status?: string; cycleId?: string } = {},
+  filters: { branchId?: string; status?: string; cycleId?: string; tag?: string } = {},
 ) {
   const tasks = await listTasks(actor, filters);
   if (tasks.length === 0) {
@@ -300,4 +315,33 @@ export async function deleteTask(actor: Member, taskId: string) {
   }
 
   await db.delete(task).where(eq(task.id, taskId));
+}
+
+// A narrow, standalone mutation for suggested_member_id — reused by
+// the self-assign confirmation check's "suggest a person instead" option
+// (see docs/spec.md's Coordination mechanics), the same field the
+// proposal flow and shadow carry-forward already populate.
+export async function suggestMemberForTask(actor: Member, taskId: string, memberId: string) {
+  const [existing] = await db
+    .select({ id: task.id })
+    .from(task)
+    .where(and(eq(task.id, taskId), eq(task.communityId, actor.communityId)));
+  if (!existing) {
+    throw new NotFoundError("Task not found");
+  }
+
+  const [targetMember] = await db
+    .select({ id: member.id })
+    .from(member)
+    .where(and(eq(member.id, memberId), eq(member.communityId, actor.communityId)));
+  if (!targetMember) {
+    throw new NotFoundError("Member not found in your community");
+  }
+
+  const [updated] = await db
+    .update(task)
+    .set({ suggestedMemberId: memberId })
+    .where(eq(task.id, taskId))
+    .returning();
+  return updated;
 }

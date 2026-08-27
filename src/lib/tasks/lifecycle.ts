@@ -55,12 +55,29 @@ export async function assignmentCount(tx: Tx, taskId: string) {
   return row.value;
 }
 
+// Set when branch coordination is waiving this specific claim's
+// individual_gate Requirements — see docs/spec.md's "Waiving a
+// requirement, deliberately" (Coordination mechanics). Scoped to this
+// one claim, not a permanent change to the task: the Requirement stays
+// real for everyone else, this just skips the check for this insert
+// and leaves a standing, visible flag on the resulting assignment.
+export type WaiverInfo = { waivedBy: string; reason: string };
+
 // The actual act of claiming — insert the assignment, flip the task to
-// claimed. Shared by claimTask() (a member claiming for themselves) and
+// claimed. Shared by claimTask() (a member claiming for themselves),
 // join-requests.ts's acceptJoinRequest() (a holder accepting on behalf
-// of the requester) so the capacity/Requirement checks live in exactly
-// one place regardless of which door someone came in through.
-export async function performClaimInTx(tx: Tx, member: Member, taskId: string) {
+// of the requester), and coordination.ts's waiveAndClaim() (a
+// coordinator claiming on behalf of someone who doesn't meet a
+// Requirement) so the capacity/Requirement checks live in exactly one
+// place regardless of which door someone came in through. Capacity
+// still applies even under a waiver — waiving is about the
+// Requirement gate specifically, not a capacity override.
+export async function performClaimInTx(
+  tx: Tx,
+  member: Member,
+  taskId: string,
+  waiver?: WaiverInfo,
+) {
   const current = await loadTaskForUpdate(tx, taskId, member.communityId);
 
   if (current.status !== "unclaimed" && current.status !== "claimed") {
@@ -86,13 +103,19 @@ export async function performClaimInTx(tx: Tx, member: Member, taskId: string) {
     }
   }
 
-  const unmet = await getUnmetRequirements(tx, member, taskId);
-  if (unmet.length > 0) {
-    const summary = unmet.map((r) => describeRequirement(r)).join("; ");
-    throw new ForbiddenError(`You don't meet this task's requirements: ${summary}`);
+  if (!waiver) {
+    const unmet = await getUnmetRequirements(tx, member, taskId);
+    if (unmet.length > 0) {
+      const summary = unmet.map((r) => describeRequirement(r)).join("; ");
+      throw new ForbiddenError(`You don't meet this task's requirements: ${summary}`);
+    }
   }
 
-  await tx.insert(taskAssignment).values({ taskId, memberId: member.id });
+  await tx.insert(taskAssignment).values({
+    taskId,
+    memberId: member.id,
+    ...(waiver && { gateWaivedBy: waiver.waivedBy, gateWaivedReason: waiver.reason }),
+  });
 
   const [updated] = await tx
     .update(task)

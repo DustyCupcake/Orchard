@@ -50,6 +50,13 @@
       "when": 1787844156391,
       "tag": "0006_fair_namorita",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787851039219,
+      "tag": "0007_productive_oracle",
+      "breakpoints": true
     }
   ]
 }
