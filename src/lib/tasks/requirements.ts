@@ -5,6 +5,7 @@ import { requirement, task, taskAssignment, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { NotFoundError } from "../errors";
 import { memberHasTier } from "../eligibility";
+import { requireTaskInCommunity } from "./shared";
 
 type Member = typeof memberTable.$inferSelect;
 type Requirement = typeof requirement.$inferSelect;
@@ -45,16 +46,6 @@ export type CreateRequirementInput = z.infer<typeof createRequirementInput>;
 
 export const updateRequirementInput = z.object({ value: requirementValue });
 export type UpdateRequirementInput = z.infer<typeof updateRequirementInput>;
-
-async function requireTaskInCommunity(actor: Member, taskId: string) {
-  const [row] = await db
-    .select({ id: task.id })
-    .from(task)
-    .where(and(eq(task.id, taskId), eq(task.communityId, actor.communityId)));
-  if (!row) {
-    throw new NotFoundError("Task not found");
-  }
-}
 
 export async function listRequirements(actor: Member, taskId: string) {
   await requireTaskInCommunity(actor, taskId);

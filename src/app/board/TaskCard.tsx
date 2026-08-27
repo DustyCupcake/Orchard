@@ -1,5 +1,7 @@
+import Link from "next/link";
 import type { requirement as requirementTable } from "@/db/schema";
 import { describeRequirement } from "@/lib/tasks";
+import { effortSummary } from "@/lib/format";
 import { claimAction, finishAction, parkAction, releaseAction, resumeAction } from "./actions";
 
 type Assignment = { taskId: string; memberId: string; memberName: string };
@@ -16,15 +18,6 @@ type Task = {
   waitingNote: string | null;
   critical: boolean;
 };
-
-function effortSummary(effort: string, magnitude: unknown) {
-  if (magnitude && typeof magnitude === "object") {
-    const m = magnitude as Record<string, unknown>;
-    if (typeof m.hours_per_week === "number") return `${m.hours_per_week}h/week`;
-    if (typeof m.duration === "string") return m.duration.replace(/_/g, " ");
-  }
-  return effort.replace(/_/g, " ");
-}
 
 export default function TaskCard({
   task,
@@ -65,7 +58,11 @@ export default function TaskCard({
         background: task.critical ? "#fff6f6" : "white",
       }}
     >
-      <strong>{task.title}</strong>
+      <strong>
+        <Link href={`/tasks/${task.id}`} style={{ color: "inherit" }}>
+          {task.title}
+        </Link>
+      </strong>
       {task.critical && <span style={{ color: "crimson" }}> · critical</span>}
       <div style={{ fontSize: "0.85rem", color: "#666" }}>
         {branchName} · {effortSummary(task.effort, task.effortMagnitude)} · {assignments.length}
