@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-17 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-17 are part of a further slice closing out the rest of what the tech spec treats as "core, not optional." Phases 0-10 cover the tech spec's full MVP scope:
+Phases 0-18 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-18 are part of a further slice closing out the rest of what the tech spec treats as "core, not optional." Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -30,7 +30,9 @@ Phase 16 adds Profile questions — a shared "standing fact about a member" mech
 
 Phase 17 adds Input rounds — small, task-specific questions (free text or closed-choice) that anyone can pose on any task at any time. Posing one queues it silently; on a fixed community-wide cadence, everything queued bundles into one round, answerable in a single sitting from a new `/input-rounds` page, and results stay visible on the task itself afterward. A round with nothing queued just doesn't fire.
 
-Not yet built: Phases 18-19 (Assemblies, Scheduling polls — the rest of spec's "core, not optional" list) and everything beyond MVP scope in the [tech spec](docs/spec.md) (Recruitment, Budget, Spatial planning, and the rest) — real, designed work that just isn't broken into phases yet. See [`docs/development-plan.md`](docs/development-plan.md) for what's next.
+Phase 18 adds Assemblies — community-wide decisions, from a genuinely urgent one-off to a slower structural question. Any member can propose one, picking their own agenda-building, notice, and voting window durations; the phase (agenda → notice → voting → closed) is always computed from those, never a separate status to keep in sync. Results are live-tallied and always visible, but never applied automatically — turning one into an actual change stays a deliberate human step through the ordinary settings screen.
+
+Not yet built: Phase 19 (Scheduling polls — the last of spec's "core, not optional" list) and everything beyond MVP scope in the [tech spec](docs/spec.md) (Recruitment, Budget, Spatial planning, and the rest) — real, designed work that just isn't broken into phases yet. See [`docs/development-plan.md`](docs/development-plan.md) for what's next.
 
 ## Documentation
 
