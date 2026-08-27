@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { branch } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
-import { listTasksWithAssignments } from "@/lib/tasks";
+import { listTasksWithAssignments, tierNameLookup } from "@/lib/tasks";
 import Nav from "@/components/Nav";
 import BranchFilter from "./BranchFilter";
 import TaskCard from "./TaskCard";
@@ -29,9 +29,10 @@ export default async function BoardPage({
 
   const { branchId, error } = await searchParams;
 
-  const [branches, tasks] = await Promise.all([
+  const [branches, tasks, tierNames] = await Promise.all([
     db.select().from(branch).where(eq(branch.communityId, currentMember.communityId)),
     listTasksWithAssignments(currentMember, { branchId }),
+    tierNameLookup(currentMember.communityId),
   ]);
 
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
@@ -73,6 +74,9 @@ export default async function BoardPage({
                   key={t.id}
                   task={t}
                   assignments={t.assignments}
+                  requirements={t.requirements}
+                  unmetRequirements={t.unmetRequirements}
+                  tierNames={tierNames}
                   branchName={branchNameById.get(t.branchId) ?? "—"}
                   currentMemberId={currentMember.id}
                 />

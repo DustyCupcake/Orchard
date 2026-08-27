@@ -1,9 +1,10 @@
 import { and, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { branch, member, task, taskAssignment, taskDependency } from "@/db/schema";
+import { branch, member, requirement, task, taskAssignment, taskDependency } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { getUnmetRequirements } from "./requirements";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -108,14 +109,39 @@ export async function listTasksWithAssignments(
       ),
     );
 
-  const byTask = new Map<string, typeof assignments>();
+  const assignmentsByTask = new Map<string, typeof assignments>();
   for (const a of assignments) {
-    const list = byTask.get(a.taskId) ?? [];
+    const list = assignmentsByTask.get(a.taskId) ?? [];
     list.push(a);
-    byTask.set(a.taskId, list);
+    assignmentsByTask.set(a.taskId, list);
   }
 
-  return tasks.map((t) => ({ ...t, assignments: byTask.get(t.id) ?? [] }));
+  const allRequirements = await db
+    .select()
+    .from(requirement)
+    .where(
+      inArray(
+        requirement.taskId,
+        tasks.map((t) => t.id),
+      ),
+    );
+  const requirementsByTask = new Map<string, typeof allRequirements>();
+  for (const r of allRequirements) {
+    const list = requirementsByTask.get(r.taskId) ?? [];
+    list.push(r);
+    requirementsByTask.set(r.taskId, list);
+  }
+
+  return Promise.all(
+    tasks.map(async (t) => ({
+      ...t,
+      assignments: assignmentsByTask.get(t.id) ?? [],
+      requirements: requirementsByTask.get(t.id) ?? [],
+      unmetRequirements: requirementsByTask.has(t.id)
+        ? await getUnmetRequirements(db, actor, t.id)
+        : [],
+    })),
+  );
 }
 
 export async function getTask(actor: Member, taskId: string) {

@@ -14,3 +14,10 @@ const connectionString =
 const client = postgres(connectionString, { onnotice: () => {} });
 
 export const db = drizzle(client, { schema });
+
+// A transaction handle — same shape as `db` for query-building purposes.
+// Shared so functions can accept either and compose inside one
+// transaction (e.g. a lifecycle transition checking Requirements without
+// opening a second connection).
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type DbOrTx = typeof db | Tx;

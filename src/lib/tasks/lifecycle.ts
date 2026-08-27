@@ -1,11 +1,11 @@
 import { and, count, eq } from "drizzle-orm";
-import { db } from "@/db";
+import { db, type Tx } from "@/db";
 import { task, taskAssignment, taskDependency } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { getUnmetRequirements, describeRequirement } from "./requirements";
 
 type Member = typeof memberTable.$inferSelect;
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // Locks the task row for the duration of the transaction — the lifecycle
 // endpoints can run concurrently (two people claiming the last slot at
@@ -61,6 +61,12 @@ export async function claimTask(actor: Member, taskId: string) {
       if (held >= current.capacity) {
         throw new ConflictError("Task is at capacity");
       }
+    }
+
+    const unmet = await getUnmetRequirements(tx, actor, taskId);
+    if (unmet.length > 0) {
+      const summary = unmet.map((r) => describeRequirement(r)).join("; ");
+      throw new ForbiddenError(`You don't meet this task's requirements: ${summary}`);
     }
 
     await tx.insert(taskAssignment).values({ taskId, memberId: actor.id });

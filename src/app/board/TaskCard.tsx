@@ -1,6 +1,9 @@
+import type { requirement as requirementTable } from "@/db/schema";
+import { describeRequirement } from "@/lib/tasks";
 import { claimAction, finishAction, parkAction, releaseAction, resumeAction } from "./actions";
 
 type Assignment = { taskId: string; memberId: string; memberName: string };
+type Requirement = typeof requirementTable.$inferSelect;
 type Task = {
   id: string;
   title: string;
@@ -26,16 +29,31 @@ function effortSummary(effort: string, magnitude: unknown) {
 export default function TaskCard({
   task,
   assignments,
+  requirements,
+  unmetRequirements,
+  tierNames,
   branchName,
   currentMemberId,
 }: {
   task: Task;
   assignments: Assignment[];
+  requirements: Requirement[];
+  unmetRequirements: Requirement[];
+  tierNames: Map<string, string>;
   branchName: string;
   currentMemberId: string;
 }) {
   const holds = assignments.some((a) => a.memberId === currentMemberId);
   const hasRoom = task.capacity === null || assignments.length < task.capacity;
+  const unmetIds = new Set(unmetRequirements.map((r) => r.id));
+  const eligible = unmetRequirements.length === 0;
+
+  const canClaim =
+    (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
+    eligible;
+  const blockedByRequirements =
+    (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
+    !eligible;
 
   return (
     <div
@@ -66,12 +84,28 @@ export default function TaskCard({
         </p>
       )}
 
+      {requirements.length > 0 && (
+        <ul style={{ fontSize: "0.8rem", margin: "0.4rem 0", paddingLeft: "1.1rem" }}>
+          {requirements.map((r) => (
+            <li key={r.id} style={{ color: unmetIds.has(r.id) ? "crimson" : "#2a7a2a" }}>
+              {describeRequirement(r, tierNames)}
+              {unmetIds.has(r.id) ? " (not met)" : " (met)"}
+            </li>
+          ))}
+        </ul>
+      )}
+
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
-        {(task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) && (
+        {canClaim && (
           <form action={claimAction}>
             <input type="hidden" name="taskId" value={task.id} />
             <button type="submit">Claim</button>
           </form>
+        )}
+        {blockedByRequirements && (
+          <span style={{ fontSize: "0.85rem", color: "crimson" }}>
+            Not eligible — see requirements above
+          </span>
         )}
 
         {task.status === "claimed" && holds && (
