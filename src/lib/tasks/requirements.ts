@@ -4,6 +4,7 @@ import { db, type DbOrTx } from "@/db";
 import { requirement, task, taskAssignment, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { NotFoundError } from "../errors";
+import { memberHasTier } from "../eligibility";
 
 type Member = typeof memberTable.$inferSelect;
 type Requirement = typeof requirement.$inferSelect;
@@ -115,7 +116,7 @@ async function isSatisfied(dbOrTx: DbOrTx, member: Member, req: Requirement): Pr
 
   switch (req.type) {
     case "tier":
-      return typeof value.tierId === "string" && member.tierIds.includes(value.tierId);
+      return typeof value.tierId === "string" && memberHasTier(member, value.tierId);
 
     case "language":
       return typeof value.language === "string" && member.tags.includes(value.language);

@@ -1,0 +1,236 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { community, cycle, member, requirement, task, taskDependency, tier } from "@/db/schema";
+import { createCycle, getCycle, listCycles } from "@/lib/cycles";
+import { createRequirement } from "@/lib/tasks";
+import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
+import { createFixtures, resetDatabase } from "./helpers";
+
+async function enableCycles(communityId: string, cycleInitiationTierId?: string) {
+  await db
+    .update(community)
+    .set({ cyclesEnabled: true, cycleInitiationTierId: cycleInitiationTierId ?? null })
+    .where(eq(community.id, communityId));
+}
+
+async function insertTask(
+  communityId: string,
+  branchId: string,
+  createdBy: string,
+  overrides: Partial<typeof task.$inferInsert> = {},
+) {
+  const [row] = await db
+    .insert(task)
+    .values({
+      communityId,
+      branchId,
+      title: "Order the seedlings",
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+      createdBy,
+      ...overrides,
+    })
+    .returning();
+  return row;
+}
+
+describe("cycle creation", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("rejects creating a cycle when the Community hasn't turned cycles on", async () => {
+    const { alice } = await createFixtures();
+    await expect(createCycle(alice, { source: "blank", name: "2027 Season" })).rejects.toThrow(
+      ConflictError,
+    );
+  });
+
+  it("creates a blank cycle, active immediately, with no automated round gating", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+
+    const created = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    expect(created.status).toBe("active");
+    expect(created.sourceType).toBe("blank");
+    expect(created.startedBy).toBe(alice.id);
+  });
+
+  it("attaches phases defined at creation time", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+
+    const created = await createCycle(alice, {
+      source: "blank",
+      name: "2027 Season",
+      phases: [
+        { name: "Procurement", order: 1 },
+        { name: "Build", order: 2 },
+      ],
+    });
+
+    const withPhases = await getCycle(alice, created.id);
+    expect(withPhases.phases.map((p) => p.name)).toEqual(["Procurement", "Build"]);
+    expect(withPhases.phases.every((p) => p.startDate === null)).toBe(true);
+  });
+
+  it("gates initiation on the configured Tier, when one is set", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    const [experienced] = await db
+      .insert(tier)
+      .values({ communityId: testCommunity.id, name: "Experienced" })
+      .returning();
+    await enableCycles(testCommunity.id, experienced.id);
+
+    await expect(
+      createCycle(alice, { source: "blank", name: "2027 Season" }),
+    ).rejects.toThrow(ForbiddenError);
+
+    await db.update(member).set({ tierIds: [experienced.id] }).where(eq(member.id, alice.id));
+    const [eligibleAlice] = await db.select().from(member).where(eq(member.id, alice.id));
+
+    const created = await createCycle(eligibleAlice, { source: "blank", name: "2027 Season" });
+    expect(created.name).toBe("2027 Season");
+  });
+
+  it("with no Tier configured, any member may initiate", async () => {
+    const { community: testCommunity, bob } = await createFixtures();
+    await enableCycles(testCommunity.id);
+
+    const created = await createCycle(bob, { source: "blank", name: "2027 Season" });
+    expect(created.startedBy).toBe(bob.id);
+  });
+});
+
+describe("cloning the previous cycle", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("fails with no previous cycle to clone", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+
+    await expect(
+      createCycle(alice, { source: "clone_previous", name: "2027 Season" }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("clones phases, tasks (reset to unclaimed), requirements, and in-set dependencies", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+
+    const previous = await createCycle(alice, {
+      source: "blank",
+      name: "2026 Season",
+      phases: [
+        { name: "Procurement", order: 1 },
+        { name: "Build", order: 2 },
+      ],
+    });
+    const previousWithPhases = await getCycle(alice, previous.id);
+    const buildPhase = previousWithPhases.phases.find((p) => p.name === "Build")!;
+
+    const prerequisite = await insertTask(testCommunity.id, branch.id, alice.id, {
+      cycleId: previous.id,
+      title: "Set up the tool shed",
+    });
+    const gated = await insertTask(testCommunity.id, branch.id, alice.id, {
+      cycleId: previous.id,
+      phaseId: buildPhase.id,
+      title: "Build the arbor",
+      capacity: 3,
+    });
+    await createRequirement(alice, gated.id, {
+      type: "custom",
+      value: { flag: "power_tool_cert" },
+    });
+    await db.insert(taskDependency).values({
+      taskId: gated.id,
+      dependsOnTaskId: prerequisite.id,
+    });
+
+    // Standing task, not part of the cycle — its dependency shouldn't
+    // be dragged along, and the task itself shouldn't be cloned.
+    const standing = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Ongoing: check the mail",
+    });
+    await db.insert(taskDependency).values({
+      taskId: gated.id,
+      dependsOnTaskId: standing.id,
+    });
+
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    expect(cloned.sourceType).toBe("pack");
+
+    const clonedWithPhases = await getCycle(alice, cloned.id);
+    expect(clonedWithPhases.phases.map((p) => p.name)).toEqual(["Procurement", "Build"]);
+    const clonedBuildPhase = clonedWithPhases.phases.find((p) => p.name === "Build")!;
+
+    const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
+    expect(clonedTasks).toHaveLength(2);
+
+    const clonedGated = clonedTasks.find((t) => t.title === "Build the arbor")!;
+    expect(clonedGated.status).toBe("unclaimed");
+    expect(clonedGated.clonedFromTaskId).toBe(gated.id);
+    expect(clonedGated.capacity).toBe(3);
+    expect(clonedGated.phaseId).toBe(clonedBuildPhase.id);
+
+    const clonedPrerequisite = clonedTasks.find((t) => t.title === "Set up the tool shed")!;
+
+    const clonedRequirements = await db
+      .select()
+      .from(requirement)
+      .where(eq(requirement.taskId, clonedGated.id));
+    expect(clonedRequirements).toHaveLength(1);
+    expect((clonedRequirements[0].value as { flag: string }).flag).toBe("power_tool_cert");
+
+    const clonedDeps = await db
+      .select()
+      .from(taskDependency)
+      .where(eq(taskDependency.taskId, clonedGated.id));
+    expect(clonedDeps).toHaveLength(1);
+    expect(clonedDeps[0].dependsOnTaskId).toBe(clonedPrerequisite.id);
+
+    // The original cycle's tasks are untouched.
+    const originalGated = await db.select().from(task).where(eq(task.id, gated.id));
+    expect(originalGated[0].cycleId).toBe(previous.id);
+  });
+
+  it("clones the most recently started cycle when several exist", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+
+    const older = await createCycle(alice, { source: "blank", name: "2025 Season" });
+    const newer = await createCycle(alice, { source: "blank", name: "2026 Season" });
+    // startedAt is set to `new Date()` on creation, close enough in time
+    // that relying on clock granularity alone would be flaky — pin the
+    // order explicitly instead.
+    await db
+      .update(cycle)
+      .set({ startedAt: new Date("2025-01-01T00:00:00Z") })
+      .where(eq(cycle.id, older.id));
+    await db
+      .update(cycle)
+      .set({ startedAt: new Date("2026-01-01T00:00:00Z") })
+      .where(eq(cycle.id, newer.id));
+
+    await insertTask(testCommunity.id, branch.id, alice.id, {
+      cycleId: older.id,
+      title: "Only in the older cycle",
+    });
+    await insertTask(testCommunity.id, branch.id, alice.id, {
+      cycleId: newer.id,
+      title: "Only in the newer cycle",
+    });
+
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
+    expect(clonedTasks.map((t) => t.title)).toEqual(["Only in the newer cycle"]);
+
+    // listCycles should reflect the same most-recent-first ordering.
+    const all = await listCycles(alice);
+    expect(all.map((c) => c.name)).toEqual(["2027 Season", "2026 Season", "2025 Season"]);
+  });
+});
