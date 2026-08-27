@@ -24,6 +24,7 @@ export const updateCommunityInput = z.object({
   cyclesEnabled: z.boolean().optional(),
   phasesEnabled: z.boolean().optional(),
   cycleInitiationTierId: z.string().uuid().nullable().optional(),
+  adminsTag: z.string().min(1).optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -47,6 +48,7 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.cycleInitiationTierId !== undefined && {
         cycleInitiationTierId: input.cycleInitiationTierId,
       }),
+      ...(input.adminsTag !== undefined && { adminsTag: input.adminsTag }),
     })
     .where(eq(community.id, actor.communityId))
     .returning();

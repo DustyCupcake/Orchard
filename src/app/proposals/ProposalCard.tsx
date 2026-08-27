@@ -109,13 +109,20 @@ export default function ProposalCard({
               <span style={{ fontSize: "0.8rem", color: "#666" }}>(if ongoing/owns-a-thing)</span>
             </div>
 
+            <input
+              type="text"
+              name="tags"
+              placeholder="tags (comma-separated)"
+              style={{ padding: "0.4rem" }}
+            />
+
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
               <label>
                 Capacity:{" "}
                 <input
                   type="number"
                   name="capacity"
-                  defaultValue={1}
+                  placeholder="1"
                   min={1}
                   style={{ padding: "0.4rem", width: "5rem" }}
                 />
@@ -123,6 +130,29 @@ export default function ProposalCard({
               <label>
                 <input type="checkbox" name="critical" /> Critical
               </label>
+            </div>
+
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+              <select name="openness" defaultValue="request" style={{ padding: "0.4rem" }}>
+                <option value="open">Open</option>
+                <option value="request">Request</option>
+                <option value="coordination_approved">Coordination-approved</option>
+                <option value="community_endorsed">Community-endorsed</option>
+              </select>
+
+              <input
+                type="number"
+                name="endorsementThreshold"
+                placeholder="endorsement threshold"
+                min={1}
+                style={{ padding: "0.4rem", width: "10rem" }}
+              />
+              <input
+                type="datetime-local"
+                name="browsePeriodEnd"
+                style={{ padding: "0.4rem" }}
+              />
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>(if community-endorsed)</span>
             </div>
 
             <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>

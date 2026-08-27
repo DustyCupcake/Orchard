@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { branch, member, requirement, task, taskAssignment, taskDependency } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { getUnmetRequirements } from "./requirements";
 
 type Member = typeof memberTable.$inferSelect;
@@ -22,6 +22,7 @@ export const createTaskInput = z.object({
   openness: z
     .enum(["open", "request", "coordination_approved", "community_endorsed"])
     .optional(),
+  endorsementThreshold: z.number().int().positive().nullable().optional(),
   critical: z.boolean().optional(),
   browsePeriodEnd: z.string().datetime().nullable().optional(),
 });
@@ -31,6 +32,24 @@ export const updateTaskInput = createTaskInput
   .omit({ parentTaskId: true })
   .partial();
 export type UpdateTaskInput = z.infer<typeof updateTaskInput>;
+
+// `community_endorsed` only means anything with both a threshold to
+// clear and a window to clear it in — see docs/spec.md's "Endorsement-
+// gated tasks" ("during a task's browse period... before the window
+// closes"). Checked against the *resulting* state (existing values
+// merged with the update), not just what's in this one request, so
+// switching an existing task's openness to community_endorsed without
+// also setting these in the same call fails loudly instead of creating
+// a candidacy mechanism with nothing to gate.
+function requireEndorsementFields(openness: string, browsePeriodEnd: Date | null, endorsementThreshold: number | null) {
+  if (openness !== "community_endorsed") return;
+  if (!browsePeriodEnd) {
+    throw new AppError("community_endorsed tasks need a browsePeriodEnd");
+  }
+  if (!endorsementThreshold || endorsementThreshold < 1) {
+    throw new AppError("community_endorsed tasks need a positive endorsementThreshold");
+  }
+}
 
 // createdByMemberId defaults to the actor — the one exception is
 // activating a proposal, where the task should credit whoever originally
@@ -49,6 +68,18 @@ export async function createTask(
     throw new NotFoundError("Branch not found in your community");
   }
 
+  const openness = input.openness ?? "request";
+  const browsePeriodEnd = input.browsePeriodEnd ? new Date(input.browsePeriodEnd) : null;
+  const endorsementThreshold = input.endorsementThreshold ?? null;
+  requireEndorsementFields(openness, browsePeriodEnd, endorsementThreshold);
+
+  // Uncapped by default for community_endorsed — "however many
+  // candidates clear the bar, that's how many Admins the Community has
+  // this cycle" (see docs/spec.md's "Endorsement-gated tasks"). A
+  // Community that wants a hard cap can still set one explicitly.
+  const capacity =
+    input.capacity !== undefined ? input.capacity : openness === "community_endorsed" ? null : 1;
+
   const [created] = await db
     .insert(task)
     .values({
@@ -62,10 +93,11 @@ export async function createTask(
       tags: input.tags ?? [],
       effort: input.effort,
       effortMagnitude: input.effortMagnitude,
-      capacity: input.capacity === undefined ? 1 : input.capacity,
-      openness: input.openness ?? "request",
+      capacity,
+      openness,
+      endorsementThreshold,
       critical: input.critical ?? false,
-      browsePeriodEnd: input.browsePeriodEnd ? new Date(input.browsePeriodEnd) : null,
+      browsePeriodEnd,
       createdBy: createdByMemberId ?? actor.id,
     })
     .returning();
@@ -188,6 +220,19 @@ export async function updateTask(actor: Member, taskId: string, input: UpdateTas
     }
   }
 
+  const resultingOpenness = input.openness ?? existing.openness;
+  const resultingBrowsePeriodEnd =
+    input.browsePeriodEnd !== undefined
+      ? input.browsePeriodEnd
+        ? new Date(input.browsePeriodEnd)
+        : null
+      : existing.browsePeriodEnd;
+  const resultingThreshold =
+    input.endorsementThreshold !== undefined
+      ? input.endorsementThreshold
+      : existing.endorsementThreshold;
+  requireEndorsementFields(resultingOpenness, resultingBrowsePeriodEnd, resultingThreshold);
+
   const [updated] = await db
     .update(task)
     .set({
@@ -201,6 +246,9 @@ export async function updateTask(actor: Member, taskId: string, input: UpdateTas
       ...(input.effortMagnitude !== undefined && { effortMagnitude: input.effortMagnitude }),
       ...(input.capacity !== undefined && { capacity: input.capacity }),
       ...(input.openness !== undefined && { openness: input.openness }),
+      ...(input.endorsementThreshold !== undefined && {
+        endorsementThreshold: input.endorsementThreshold,
+      }),
       ...(input.critical !== undefined && { critical: input.critical }),
       ...(input.browsePeriodEnd !== undefined && {
         browsePeriodEnd: input.browsePeriodEnd ? new Date(input.browsePeriodEnd) : null,

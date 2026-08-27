@@ -43,6 +43,13 @@
       "when": 1787842751345,
       "tag": "0005_flippant_nuke",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787844156391,
+      "tag": "0006_fair_namorita",
+      "breakpoints": true
     }
   ]
 }

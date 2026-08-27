@@ -13,8 +13,11 @@ import {
   addWikiRevision,
   addWikiRevisionInput,
   declineJoinRequest,
+  endorseCandidacy,
+  expressCandidacy,
   splitSubtask,
   splitSubtaskInput,
+  withdrawCandidacy,
   withdrawJoinRequest,
 } from "@/lib/tasks";
 import { AppError } from "@/lib/errors";
@@ -155,4 +158,46 @@ export async function withdrawJoinRequestAction(formData: FormData) {
 
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/board");
+}
+
+export async function expressCandidacyAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await expressCandidacy(actor, taskId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function endorseCandidacyAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const candidacyId = String(formData.get("candidacyId"));
+
+  try {
+    await endorseCandidacy(actor, taskId, candidacyId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+}
+
+export async function withdrawCandidacyAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const candidacyId = String(formData.get("candidacyId"));
+
+  try {
+    await withdrawCandidacy(actor, taskId, candidacyId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
 }

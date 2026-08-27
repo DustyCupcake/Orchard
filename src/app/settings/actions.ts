@@ -11,6 +11,7 @@ import {
   createTierInput,
   deleteBranch,
   deleteTier,
+  requireAdmins,
   updateBranch,
   updateBranchInput,
   updateCommunity,
@@ -34,11 +35,13 @@ export async function updateCommunityAction(formData: FormData) {
   const actor = await requireMember();
 
   try {
+    await requireAdmins(actor);
     const input = updateCommunityInput.parse({
       name: String(formData.get("name") ?? "").trim() || undefined,
       cyclesEnabled: formData.get("cyclesEnabled") === "on",
       phasesEnabled: formData.get("phasesEnabled") === "on",
       cycleInitiationTierId: String(formData.get("cycleInitiationTierId") ?? "") || null,
+      adminsTag: String(formData.get("adminsTag") ?? "").trim() || undefined,
     });
     await updateCommunity(actor, input);
   } catch (err) {
@@ -52,6 +55,7 @@ export async function createBranchAction(formData: FormData) {
   const actor = await requireMember();
 
   try {
+    await requireAdmins(actor);
     const input = createBranchInput.parse({
       name: String(formData.get("name") ?? ""),
       description: String(formData.get("description") ?? "") || undefined,
@@ -69,6 +73,7 @@ export async function updateBranchAction(formData: FormData) {
   const branchId = String(formData.get("branchId"));
 
   try {
+    await requireAdmins(actor);
     const input = updateBranchInput.parse({
       name: String(formData.get("name") ?? ""),
       description: String(formData.get("description") ?? "") || undefined,
@@ -86,6 +91,7 @@ export async function deleteBranchAction(formData: FormData) {
   const branchId = String(formData.get("branchId"));
 
   try {
+    await requireAdmins(actor);
     await deleteBranch(actor, branchId);
   } catch (err) {
     redirectWithError(err);
@@ -98,6 +104,7 @@ export async function createTierAction(formData: FormData) {
   const actor = await requireMember();
 
   try {
+    await requireAdmins(actor);
     const input = createTierInput.parse({
       name: String(formData.get("name") ?? ""),
       criterionType: String(formData.get("criterionType") ?? "manual"),
@@ -115,6 +122,7 @@ export async function updateTierAction(formData: FormData) {
   const tierId = String(formData.get("tierId"));
 
   try {
+    await requireAdmins(actor);
     const input = updateTierInput.parse({ name: String(formData.get("name") ?? "") });
     await updateTier(actor, tierId, input);
   } catch (err) {
@@ -129,6 +137,7 @@ export async function deleteTierAction(formData: FormData) {
   const tierId = String(formData.get("tierId"));
 
   try {
+    await requireAdmins(actor);
     await deleteTier(actor, tierId);
   } catch (err) {
     redirectWithError(err);

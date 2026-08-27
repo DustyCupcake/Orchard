@@ -22,6 +22,18 @@ export const community = pgTable("community", {
   // conflict_team_task_id (→ Task) is deliberately left out for now — it
   // would create a Community ↔ Task circular import for a field that's
   // only meaningful once the conflict-management module is built.
+  //
+  // The Admins task isn't a dedicated Community → Task column for the
+  // same circular-import reason — it's identified the same way Phase 15
+  // plans to identify a branch's coordination task(s): whichever task(s)
+  // carry this tag and are `community_endorsed` (see
+  // src/lib/settings/admins.ts). adminsEverClaimed latches true the
+  // first time any such task is actually claimed and never resets, even
+  // across a later gap with no current holder — that's what keeps
+  // /settings gated shut rather than quietly reopening to everyone
+  // whenever Admins happens to be between holders.
+  adminsTag: text("admins_tag").notNull().default("admin"),
+  adminsEverClaimed: boolean("admins_ever_claimed").notNull().default(false),
   inputRoundIntervalDays: integer("input_round_interval_days").notNull().default(7),
   defaultCallHasAgenda: boolean("default_call_has_agenda").notNull().default(false),
   defaultCallNeedsSummary: boolean("default_call_needs_summary").notNull().default(false),

@@ -9,7 +9,9 @@ import {
   getTask,
   getTaskNotes,
   getUnmetRequirements,
+  listCandidacies,
   listJoinRequests,
+  listMyEndorsements,
   listRequirements,
   listSubtasks,
   tierNameLookup,
@@ -24,7 +26,10 @@ import {
   addResourceAction,
   declineJoinRequestAction,
   editWikiAction,
+  endorseCandidacyAction,
+  expressCandidacyAction,
   splitSubtaskAction,
+  withdrawCandidacyAction,
   withdrawJoinRequestAction,
 } from "./actions";
 
@@ -46,6 +51,7 @@ export default async function TaskDetailPage({
   const { error } = await searchParams;
 
   const taskRow = await getTask(currentMember, id);
+  const isCommunityEndorsed = taskRow.openness === "community_endorsed";
   const [
     branchRow,
     notes,
@@ -56,6 +62,7 @@ export default async function TaskDetailPage({
     parentTask,
     branches,
     joinRequests,
+    candidacies,
   ] = await Promise.all([
     db.select().from(branch).where(eq(branch.id, taskRow.branchId)).then((r) => r[0]),
     getTaskNotes(currentMember, id),
@@ -66,7 +73,14 @@ export default async function TaskDetailPage({
     taskRow.parentTaskId ? getParentTaskSummary(currentMember, taskRow.parentTaskId) : null,
     listBranches(currentMember),
     listJoinRequests(currentMember, id),
+    isCommunityEndorsed ? listCandidacies(currentMember, id) : [],
   ]);
+  const myEndorsements = isCommunityEndorsed
+    ? await listMyEndorsements(
+        currentMember,
+        candidacies.map((c) => c.id),
+      )
+    : new Set<string>();
 
   const holdsTask = taskRow.assignments.some((a) => a.memberId === currentMember.id);
   const requestGated = taskRow.openness === "request" || taskRow.openness === "coordination_approved";
@@ -80,6 +94,15 @@ export default async function TaskDetailPage({
   const resolvedRequests = joinRequests.filter((r) => r.status !== "pending");
   const myRequest = joinRequests.find((r) => r.memberId === currentMember.id);
 
+  const browseWindowOpen = Boolean(
+    taskRow.browsePeriodEnd && taskRow.browsePeriodEnd.getTime() > Date.now(),
+  );
+  const myCandidacy = candidacies.find((c) => c.memberId === currentMember.id);
+  const openCandidacies = candidacies.filter((c) => c.status === "open");
+  const resolvedCandidacies = candidacies.filter((c) => c.status !== "open");
+  const canExpressCandidacy =
+    isCommunityEndorsed && browseWindowOpen && !holdsTask && !myCandidacy;
+
   const memberIds = [
     ...new Set([
       ...taskRow.assignments.map((a) => a.memberId),
@@ -87,6 +110,7 @@ export default async function TaskDetailPage({
       ...notes.wikiRevisions.map((w) => w.editedBy),
       ...notes.resources.map((r) => r.addedBy),
       ...joinRequests.map((r) => r.memberId),
+      ...candidacies.map((c) => c.memberId),
     ]),
   ];
   const members = memberIds.length
@@ -149,6 +173,74 @@ export default async function TaskDetailPage({
             </li>
           ))}
         </ul>
+      )}
+
+      {isCommunityEndorsed && (
+        <section style={{ marginTop: "1.5rem" }}>
+          <h2>Candidacy</h2>
+          <p style={{ fontSize: "0.85rem", color: "#666" }}>
+            Needs {taskRow.endorsementThreshold} endorsement
+            {taskRow.endorsementThreshold === 1 ? "" : "s"} to confirm · browse window{" "}
+            {taskRow.browsePeriodEnd
+              ? browseWindowOpen
+                ? `closes ${taskRow.browsePeriodEnd.toLocaleString()}`
+                : `closed ${taskRow.browsePeriodEnd.toLocaleString()}`
+              : "not set"}
+          </p>
+
+          {openCandidacies.length === 0 && resolvedCandidacies.length === 0 && (
+            <p style={{ color: "#666" }}>Nobody has put themselves forward yet.</p>
+          )}
+
+          {openCandidacies.map((c) => (
+            <div key={c.id} style={{ marginBottom: "0.5rem" }}>
+              <p style={{ margin: 0 }}>
+                {memberNameById.get(c.memberId) ?? "—"} — {c.endorsementCount}/
+                {taskRow.endorsementThreshold} endorsements
+              </p>
+              {c.memberId === currentMember.id && (
+                <form action={withdrawCandidacyAction} style={{ marginTop: "0.25rem" }}>
+                  <input type="hidden" name="taskId" value={taskRow.id} />
+                  <input type="hidden" name="candidacyId" value={c.id} />
+                  <button type="submit">Withdraw</button>
+                </form>
+              )}
+              {c.memberId !== currentMember.id && myEndorsements.has(c.id) && (
+                <span style={{ fontSize: "0.85rem", color: "#666" }}>You&rsquo;ve endorsed this</span>
+              )}
+              {c.memberId !== currentMember.id && !myEndorsements.has(c.id) && browseWindowOpen && (
+                <form action={endorseCandidacyAction} style={{ marginTop: "0.25rem" }}>
+                  <input type="hidden" name="taskId" value={taskRow.id} />
+                  <input type="hidden" name="candidacyId" value={c.id} />
+                  <button type="submit">Endorse</button>
+                </form>
+              )}
+            </div>
+          ))}
+
+          {resolvedCandidacies.length > 0 && (
+            <details style={{ marginTop: "0.5rem" }}>
+              <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>
+                Resolved candidacies ({resolvedCandidacies.length})
+              </summary>
+              <ul style={{ fontSize: "0.8rem" }}>
+                {resolvedCandidacies.map((c) => (
+                  <li key={c.id}>
+                    {memberNameById.get(c.memberId) ?? "—"} — {c.status} ({c.endorsementCount}/
+                    {taskRow.endorsementThreshold})
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          {canExpressCandidacy && (
+            <form action={expressCandidacyAction} style={{ marginTop: "0.75rem" }}>
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <button type="submit">Put yourself forward</button>
+            </form>
+          )}
+        </section>
       )}
 
       {myRequest && myRequest.status === "pending" && (

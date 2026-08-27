@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { branch, community, task, taskDependency } from "@/db/schema";
 import { claimTask, createTask, deleteTask, updateTask } from "@/lib/tasks";
-import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
+import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
 describe("task CRUD", () => {
@@ -119,5 +119,76 @@ describe("task CRUD", () => {
     });
 
     await expect(deleteTask(alice, prerequisite.id)).rejects.toThrow(ConflictError);
+  });
+
+  it("defaults capacity to uncapped for a community_endorsed task, unless overridden", async () => {
+    const { branch: testBranch, alice } = await createFixtures();
+    const future = new Date(Date.now() + 86400000).toISOString();
+
+    const uncapped = await createTask(alice, {
+      branchId: testBranch.id,
+      title: "Admins",
+      effort: "owns_a_thing",
+      effortMagnitude: { hours_per_week: 2 },
+      openness: "community_endorsed",
+      endorsementThreshold: 3,
+      browsePeriodEnd: future,
+    });
+    expect(uncapped.capacity).toBeNull();
+
+    const capped = await createTask(alice, {
+      branchId: testBranch.id,
+      title: "Admins (capped)",
+      effort: "owns_a_thing",
+      effortMagnitude: { hours_per_week: 2 },
+      openness: "community_endorsed",
+      endorsementThreshold: 3,
+      browsePeriodEnd: future,
+      capacity: 5,
+    });
+    expect(capped.capacity).toBe(5);
+  });
+
+  it("rejects creating a community_endorsed task without a browsePeriodEnd or endorsementThreshold", async () => {
+    const { branch: testBranch, alice } = await createFixtures();
+    const future = new Date(Date.now() + 86400000).toISOString();
+
+    await expect(
+      createTask(alice, {
+        branchId: testBranch.id,
+        title: "Admins",
+        effort: "owns_a_thing",
+        effortMagnitude: { hours_per_week: 2 },
+        openness: "community_endorsed",
+        endorsementThreshold: 3,
+        // no browsePeriodEnd
+      }),
+    ).rejects.toThrow(AppError);
+
+    await expect(
+      createTask(alice, {
+        branchId: testBranch.id,
+        title: "Admins",
+        effort: "owns_a_thing",
+        effortMagnitude: { hours_per_week: 2 },
+        openness: "community_endorsed",
+        browsePeriodEnd: future,
+        // no endorsementThreshold
+      }),
+    ).rejects.toThrow(AppError);
+  });
+
+  it("rejects switching an existing task to community_endorsed without also setting the endorsement fields", async () => {
+    const { branch: testBranch, alice } = await createFixtures();
+    const created = await createTask(alice, {
+      branchId: testBranch.id,
+      title: "Ordinary task",
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+    });
+
+    await expect(
+      updateTask(alice, created.id, { openness: "community_endorsed" }),
+    ).rejects.toThrow(AppError);
   });
 });

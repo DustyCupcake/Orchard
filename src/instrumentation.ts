@@ -12,7 +12,11 @@ export async function register() {
 
   const { registerJob } = await import("@/lib/scheduler");
   const { recomputeAttentionLevels } = await import("@/lib/attention");
+  const { resolveBrowsePeriods } = await import("@/lib/tasks");
 
   // "polled every few minutes" per docs/architecture.md.
   registerJob("attention-level", "*/5 * * * *", recomputeAttentionLevels);
+  // Fails any candidacy that never cleared its endorsement threshold
+  // before its task's browse window closed — see endorsements.ts.
+  registerJob("browse-period-resolution", "*/5 * * * *", resolveBrowsePeriods);
 }

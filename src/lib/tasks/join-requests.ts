@@ -15,14 +15,19 @@ type Member = typeof memberTable.$inferSelect;
 // holding it yet — "request routes to the owner" has no owner to route
 // to) claims instantly, same as every task did before this existed.
 // Once a `request` or `coordination_approved` task has at least one
-// holder, a further claim creates a pending request instead. Deliberately
-// leaves `community_endorsed` claiming instantly for now, same as
-// before this module existed — that openness needs the full
-// candidacy/endorsement mechanism (see docs/development-plan.md's
-// Phase 13), not a claim-time branch invented ahead of it here.
+// holder, a further claim creates a pending request instead.
+// `community_endorsed` never claims through here at all, regardless of
+// holder count — see src/lib/tasks/endorsements.ts's expressCandidacy(),
+// the dedicated entry point Phase 13 built for it.
 export async function claimOrRequestToJoin(actor: Member, taskId: string) {
   return db.transaction(async (tx) => {
     const current = await loadTaskForUpdate(tx, taskId, actor.communityId);
+
+    if (current.openness === "community_endorsed") {
+      throw new ConflictError(
+        "This task requires community endorsement — express interest instead of claiming directly",
+      );
+    }
 
     if (current.status !== "unclaimed" && current.status !== "claimed") {
       throw new ConflictError(`Cannot claim a task that is ${current.status}`);

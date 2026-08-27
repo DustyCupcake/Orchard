@@ -32,6 +32,13 @@ export async function activateProposalAction(formData: FormData) {
   const capacityRaw = String(formData.get("capacity") ?? "");
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "");
+  const tagsRaw = String(formData.get("tags") ?? "");
+  const tags = tagsRaw
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const endorsementThresholdRaw = String(formData.get("endorsementThreshold") ?? "");
+  const browsePeriodEndRaw = String(formData.get("browsePeriodEnd") ?? "");
 
   try {
     const input = activateProposalInput.parse({
@@ -42,6 +49,10 @@ export async function activateProposalAction(formData: FormData) {
       critical: formData.get("critical") === "on",
       title: title || undefined,
       description: description || undefined,
+      tags: tags.length > 0 ? tags : undefined,
+      openness: String(formData.get("openness") ?? "request"),
+      endorsementThreshold: endorsementThresholdRaw ? Number(endorsementThresholdRaw) : undefined,
+      browsePeriodEnd: browsePeriodEndRaw ? new Date(browsePeriodEndRaw).toISOString() : undefined,
     });
     await activateProposal(actor, proposalId, input);
   } catch (err) {

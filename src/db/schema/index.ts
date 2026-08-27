@@ -12,4 +12,6 @@ export * from "./task-notes";
 export * from "./task-assignment";
 export * from "./task-dependency";
 export * from "./task-join-request";
+export * from "./browse-interest";
+export * from "./endorsement";
 export * from "./requirement";

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
-import { getCommunity, listBranches, listTiers } from "@/lib/settings";
+import { getCommunity, listBranches, listTiers, requireAdmins } from "@/lib/settings";
+import { ForbiddenError } from "@/lib/errors";
 import Nav from "@/components/Nav";
 import {
   createBranchAction,
@@ -26,19 +27,45 @@ export default async function SettingsPage({
 
   const { error } = await searchParams;
 
+  let authorized = true;
+  try {
+    await requireAdmins(currentMember);
+  } catch (err) {
+    if (err instanceof ForbiddenError) {
+      authorized = false;
+    } else {
+      throw err;
+    }
+  }
+
   const [communityRow, branches, tiers] = await Promise.all([
     getCommunity(currentMember),
     listBranches(currentMember),
     listTiers(currentMember),
   ]);
 
+  if (!authorized) {
+    return (
+      <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
+        <Nav memberName={currentMember.name} />
+        <h1>Community settings</h1>
+        <p style={{ color: "crimson" }}>
+          Only a current holder of the &ldquo;{communityRow.adminsTag}&rdquo;-tagged Admins task
+          can view or change these — see its detail page to put yourself forward or endorse a
+          candidate.
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
       <Nav memberName={currentMember.name} />
       <h1>Community settings</h1>
       <p style={{ color: "#666" }}>
-        No Admins gating yet — any member can change these (per MVP scope; that&rsquo;s a later
-        phase).
+        {communityRow.adminsEverClaimed
+          ? "Editable by whoever currently holds the Admins task."
+          : "No Admins task has ever been claimed in this Community yet, so any member can change these — including tagging a community_endorsed task with the Admins tag below to start gating this screen for real."}
       </p>
 
       {error && <p style={{ color: "crimson" }}>{error}</p>}
@@ -90,6 +117,23 @@ export default async function SettingsPage({
                 </option>
               ))}
             </select>
+          </label>
+
+          <label>
+            Admins tag
+            <br />
+            <input
+              type="text"
+              name="adminsTag"
+              defaultValue={communityRow.adminsTag}
+              required
+              style={{ padding: "0.4rem", width: "100%" }}
+            />
+            <br />
+            <span style={{ fontSize: "0.8rem", color: "#666" }}>
+              A community_endorsed task carrying this tag is &ldquo;the&rdquo; Admins task — whoever
+              currently holds one gates this screen.
+            </span>
           </label>
 
           <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>

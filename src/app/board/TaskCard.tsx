@@ -59,14 +59,22 @@ export default function TaskCard({
   // label; the server is what actually enforces it.
   const requestGated = task.openness === "request" || task.openness === "coordination_approved";
   const joiningRequiresRequest = task.status === "claimed" && assignments.length > 0 && requestGated;
+  // community_endorsed never claims through the ordinary Claim/Request
+  // button at all — see the task detail page's "Candidacy" section
+  // (expressCandidacy/endorseCandidacy), a genuinely different flow
+  // (put yourself forward, others endorse) that doesn't fit a single
+  // button the way the other three openness values do.
+  const isCommunityEndorsed = task.openness === "community_endorsed";
 
   const canAct =
+    !isCommunityEndorsed &&
     (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
     eligible &&
     !myPendingRequestId;
   const canClaim = canAct && !joiningRequiresRequest;
   const canRequest = canAct && joiningRequiresRequest;
   const blockedByRequirements =
+    !isCommunityEndorsed &&
     (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
     !eligible &&
     !myPendingRequestId;
@@ -141,6 +149,11 @@ export default function TaskCard({
           <span style={{ fontSize: "0.85rem", color: "crimson" }}>
             Not eligible — see requirements above
           </span>
+        )}
+        {isCommunityEndorsed && !holds && (
+          <Link href={`/tasks/${task.id}`} style={{ fontSize: "0.85rem" }}>
+            Put yourself forward or endorse a candidate →
+          </Link>
         )}
 
         {task.status === "claimed" && holds && (

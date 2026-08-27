@@ -117,6 +117,7 @@ export async function activateProposal(
       effortMagnitude: input.effortMagnitude,
       capacity: input.capacity,
       openness: input.openness,
+      endorsementThreshold: input.endorsementThreshold,
       critical: input.critical,
       browsePeriodEnd: input.browsePeriodEnd,
     },
