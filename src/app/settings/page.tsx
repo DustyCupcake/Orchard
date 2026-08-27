@@ -1,15 +1,20 @@
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { getCommunity, listBranches, listTiers, requireAdmins } from "@/lib/settings";
+import { listProfileQuestions } from "@/lib/profile-questions";
 import { ForbiddenError } from "@/lib/errors";
 import Nav from "@/components/Nav";
 import {
+  archiveProfileQuestionAction,
   createBranchAction,
+  createProfileQuestionAction,
   createTierAction,
   deleteBranchAction,
   deleteTierAction,
+  unarchiveProfileQuestionAction,
   updateBranchAction,
   updateCommunityAction,
+  updateProfileQuestionAction,
   updateTierAction,
 } from "./actions";
 
@@ -38,10 +43,11 @@ export default async function SettingsPage({
     }
   }
 
-  const [communityRow, branches, tiers] = await Promise.all([
+  const [communityRow, branches, tiers, profileQuestions] = await Promise.all([
     getCommunity(currentMember),
     listBranches(currentMember),
     listTiers(currentMember),
+    authorized ? listProfileQuestions(currentMember, { includeArchived: true }) : Promise.resolve([]),
   ]);
 
   if (!authorized) {
@@ -264,6 +270,103 @@ export default async function SettingsPage({
             <option value="cycle_type_count">Cycle-type count (not yet computed)</option>
           </select>
           <button type="submit">Add tier</button>
+        </form>
+      </section>
+
+      <section style={{ marginTop: "2rem" }}>
+        <h2>Profile questions</h2>
+        <p style={{ color: "#666", fontSize: "0.85rem" }}>
+          Standing facts about a member — once-ever (e.g. emergency contact), per-cycle, or tied
+          to one phase name (e.g. &ldquo;Availability &mdash; Build&rdquo;). A phase-scoped
+          question with &ldquo;feeds capacity signal&rdquo; on powers the Coordination view&rsquo;s
+          fitted-ask flags and non-response list for whichever cycle phase matches its name.
+        </p>
+        {profileQuestions.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
+        {profileQuestions.map((q) => (
+          <div
+            key={q.id}
+            style={{
+              border: "1px solid #ccc",
+              borderRadius: 6,
+              padding: "0.6rem",
+              marginBottom: "0.5rem",
+              opacity: q.archivedAt ? 0.6 : 1,
+            }}
+          >
+            <form
+              action={updateProfileQuestionAction}
+              style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}
+            >
+              <input type="hidden" name="questionId" value={q.id} />
+              <input
+                type="text"
+                name="label"
+                defaultValue={q.label}
+                style={{ padding: "0.3rem", flex: 1, minWidth: "10rem" }}
+              />
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+                {q.scope}
+                {q.scope === "phase" ? ` (${q.phaseNameHint})` : ""} · {q.responseType}
+              </span>
+              <label style={{ fontSize: "0.8rem" }}>
+                <input type="checkbox" name="required" defaultChecked={q.required} /> required
+              </label>
+              {q.scope === "phase" && (
+                <label style={{ fontSize: "0.8rem" }}>
+                  <input
+                    type="checkbox"
+                    name="feedsCapacitySignal"
+                    defaultChecked={q.feedsCapacitySignal}
+                  />{" "}
+                  feeds capacity signal
+                </label>
+              )}
+              <button type="submit">Save</button>
+            </form>
+            <form action={q.archivedAt ? unarchiveProfileQuestionAction : archiveProfileQuestionAction} style={{ marginTop: "0.3rem" }}>
+              <input type="hidden" name="questionId" value={q.id} />
+              <button type="submit">{q.archivedAt ? "Unarchive" : "Archive"}</button>
+            </form>
+          </div>
+        ))}
+
+        <form
+          action={createProfileQuestionAction}
+          style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem", maxWidth: 400 }}
+        >
+          <input type="text" name="label" required placeholder="Question label" style={{ padding: "0.4rem" }} />
+          <select name="responseType" defaultValue="free_text" style={{ padding: "0.4rem" }}>
+            <option value="free_text">Free text</option>
+            <option value="single_choice">Single choice</option>
+            <option value="multi_choice">Multi choice</option>
+          </select>
+          <input
+            type="text"
+            name="options"
+            placeholder="options for choice types, comma-separated"
+            style={{ padding: "0.4rem" }}
+          />
+          <select name="scope" defaultValue="once_ever" style={{ padding: "0.4rem" }}>
+            <option value="once_ever">Once ever</option>
+            <option value="per_cycle">Per cycle</option>
+            <option value="phase">Tied to one phase name</option>
+          </select>
+          <input
+            type="text"
+            name="phaseNameHint"
+            placeholder="phase name (only if scope is 'phase'), e.g. Build"
+            style={{ padding: "0.4rem" }}
+          />
+          <label>
+            <input type="checkbox" name="required" /> required
+          </label>
+          <label>
+            <input type="checkbox" name="feedsCapacitySignal" /> feeds capacity signal (phase-scoped
+            only)
+          </label>
+          <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+            Add profile question
+          </button>
         </form>
       </section>
     </main>

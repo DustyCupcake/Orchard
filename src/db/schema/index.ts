@@ -17,3 +17,4 @@ export * from "./endorsement";
 export * from "./task-signal";
 export * from "./coordinator-ping";
 export * from "./requirement";
+export * from "./profile-question";

@@ -10,6 +10,10 @@
 .env
 .env.local
 
+# Local-only Compose override (e.g. exposing app:3000 directly for
+# manual testing/preview, bypassing Caddy's self-signed local TLS)
+docker-compose.override.yml
+
 # Node / Next.js
 node_modules/
 .next/

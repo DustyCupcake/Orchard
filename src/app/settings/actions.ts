@@ -19,6 +19,14 @@ import {
   updateTier,
   updateTierInput,
 } from "@/lib/settings";
+import {
+  archiveProfileQuestion,
+  createProfileQuestion,
+  createProfileQuestionInput,
+  unarchiveProfileQuestion,
+  updateProfileQuestion,
+  updateProfileQuestionInput,
+} from "@/lib/profile-questions";
 import { AppError } from "@/lib/errors";
 
 function redirectWithError(err: unknown): never {
@@ -140,6 +148,81 @@ export async function deleteTierAction(formData: FormData) {
   try {
     await requireAdmins(actor);
     await deleteTier(actor, tierId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function createProfileQuestionAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    await requireAdmins(actor);
+    const scope = String(formData.get("scope") ?? "once_ever");
+    const options = String(formData.get("options") ?? "")
+      .split(",")
+      .map((o) => o.trim())
+      .filter(Boolean);
+    const input = createProfileQuestionInput.parse({
+      label: String(formData.get("label") ?? ""),
+      responseType: String(formData.get("responseType") ?? "free_text"),
+      options: options.length > 0 ? options : undefined,
+      scope,
+      phaseNameHint:
+        scope === "phase" ? String(formData.get("phaseNameHint") ?? "").trim() || undefined : undefined,
+      required: formData.get("required") === "on",
+      feedsCapacitySignal: formData.get("feedsCapacitySignal") === "on",
+    });
+    await createProfileQuestion(actor, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function updateProfileQuestionAction(formData: FormData) {
+  const actor = await requireMember();
+  const questionId = String(formData.get("questionId"));
+
+  try {
+    await requireAdmins(actor);
+    const input = updateProfileQuestionInput.parse({
+      label: String(formData.get("label") ?? "") || undefined,
+      required: formData.get("required") === "on",
+      feedsCapacitySignal: formData.get("feedsCapacitySignal") === "on",
+    });
+    await updateProfileQuestion(actor, questionId, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function archiveProfileQuestionAction(formData: FormData) {
+  const actor = await requireMember();
+  const questionId = String(formData.get("questionId"));
+
+  try {
+    await requireAdmins(actor);
+    await archiveProfileQuestion(actor, questionId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function unarchiveProfileQuestionAction(formData: FormData) {
+  const actor = await requireMember();
+  const questionId = String(formData.get("questionId"));
+
+  try {
+    await requireAdmins(actor);
+    await unarchiveProfileQuestion(actor, questionId);
   } catch (err) {
     redirectWithError(err);
   }

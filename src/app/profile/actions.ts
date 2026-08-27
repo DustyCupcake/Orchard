@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { member } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
+import { answerProfileQuestion } from "@/lib/profile-questions";
 
 export async function updateProfile(formData: FormData) {
   const current = await getCurrentMember();
@@ -25,5 +26,26 @@ export async function updateProfile(formData: FormData) {
   }
 
   await db.update(member).set({ name, tags, tierIds }).where(eq(member.id, current.id));
+  revalidatePath("/profile");
+}
+
+export async function submitProfileAnswerAction(formData: FormData) {
+  const current = await getCurrentMember();
+  if (!current) {
+    redirect("/login");
+  }
+
+  const questionId = String(formData.get("questionId"));
+  const status = String(formData.get("status")) === "deferred" ? "deferred" : "answered";
+  const multi = formData.getAll("value_multi").map(String);
+  const single = formData.get("value");
+  const value = multi.length > 0 ? multi : (single ?? "");
+  const capacityVisibility = formData.get("capacityVisibility") === "open" ? "open" : "flag_only";
+
+  await answerProfileQuestion(current, questionId, {
+    status,
+    value: status === "answered" ? value : undefined,
+    capacityVisibility,
+  });
   revalidatePath("/profile");
 }

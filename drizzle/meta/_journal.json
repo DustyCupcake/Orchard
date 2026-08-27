@@ -57,6 +57,13 @@
       "when": 1787851039219,
       "tag": "0007_productive_oracle",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787866459124,
+      "tag": "0008_early_gabe_jones",
+      "breakpoints": true
     }
   ]
 }
