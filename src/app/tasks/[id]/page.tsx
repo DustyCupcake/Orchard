@@ -24,11 +24,14 @@ import {
   acceptJoinRequestAction,
   addCommentAction,
   addResourceAction,
+  claimAsShadowAction,
   declineJoinRequestAction,
   editWikiAction,
   endorseCandidacyAction,
   expressCandidacyAction,
+  setOutgoingAction,
   splitSubtaskAction,
+  stopShadowingAction,
   withdrawCandidacyAction,
   withdrawJoinRequestAction,
 } from "./actions";
@@ -82,7 +85,17 @@ export default async function TaskDetailPage({
       )
     : new Set<string>();
 
-  const holdsTask = taskRow.assignments.some((a) => a.memberId === currentMember.id);
+  // A shadow isn't a real holder — see lifecycle.ts's assignmentCount(),
+  // which excludes shadow rows for the same reason (docs/spec.md's
+  // "Shadow slots & succession": doesn't count toward capacity, isn't
+  // who "Held by" means).
+  const realAssignments = taskRow.assignments.filter((a) => !a.isShadow);
+  const shadowAssignments = taskRow.assignments.filter((a) => a.isShadow);
+  const myAssignment = taskRow.assignments.find((a) => a.memberId === currentMember.id);
+  const holdsTask = realAssignments.some((a) => a.memberId === currentMember.id);
+  const isShadowing = myAssignment?.isShadow === true;
+  const canShadow =
+    !holdsTask && !isShadowing && (taskRow.status === "claimed" || taskRow.status === "waiting");
   const requestGated = taskRow.openness === "request" || taskRow.openness === "coordination_approved";
   const coordinationHolders = taskRow.assignments.filter((a) => a.isCoordinationSlot);
   const canApproveRequests =
@@ -145,7 +158,7 @@ export default async function TaskDetailPage({
       </h1>
       <div style={{ fontSize: "0.9rem", color: "#666" }}>
         {branchRow?.name ?? "—"} · {effortSummary(taskRow.effort, taskRow.effortMagnitude)} ·{" "}
-        {taskRow.status} · {taskRow.assignments.length}
+        {taskRow.status} · {realAssignments.length}
         {taskRow.capacity !== null ? `/${taskRow.capacity}` : ""} held
       </div>
       {parentTask && (
@@ -156,13 +169,53 @@ export default async function TaskDetailPage({
           </Link>
         </p>
       )}
-      {taskRow.assignments.length > 0 && (
+      {realAssignments.length > 0 && (
         <p>
           Held by:{" "}
-          {taskRow.assignments.map((a) => memberNameById.get(a.memberId) ?? "—").join(", ")}
+          {realAssignments.map((a) => memberNameById.get(a.memberId) ?? "—").join(", ")}
+        </p>
+      )}
+      {shadowAssignments.length > 0 && (
+        <p style={{ color: "#666" }}>
+          Shadowed by:{" "}
+          {shadowAssignments.map((a) => memberNameById.get(a.memberId) ?? "—").join(", ")}
         </p>
       )}
       {taskRow.description && <p>{taskRow.description}</p>}
+
+      {canShadow && (
+        <form action={claimAsShadowAction} style={{ marginBottom: "0.5rem" }}>
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <button type="submit">Shadow this task</button>
+        </form>
+      )}
+      {isShadowing && (
+        <form action={stopShadowingAction} style={{ marginBottom: "0.5rem" }}>
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <span style={{ fontSize: "0.85rem", color: "#666", marginRight: "0.5rem" }}>
+            You&rsquo;re shadowing this task.
+          </span>
+          <button type="submit">Stop shadowing</button>
+        </form>
+      )}
+
+      {holdsTask && (
+        <form action={setOutgoingAction} style={{ marginBottom: "0.5rem" }}>
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <input type="hidden" name="outgoing" value={(!myAssignment?.isOutgoing).toString()} />
+          <button type="submit">
+            {myAssignment?.isOutgoing
+              ? "Unmark as outgoing"
+              : "Mark yourself as outgoing (not continuing next cycle)"}
+          </button>
+        </form>
+      )}
+      {myAssignment?.isOutgoing && notes.wikiRevisions.length === 0 && (
+        <p style={{ color: "crimson", fontSize: "0.9rem" }}>
+          You&rsquo;ve marked yourself as outgoing on this task — this is the best moment to write
+          up the wiki summary below before handing it off, while it&rsquo;s still fresh.
+        </p>
+      )}
 
       {requirements.length > 0 && (
         <ul style={{ fontSize: "0.85rem" }}>

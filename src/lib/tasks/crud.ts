@@ -139,6 +139,8 @@ export async function listTasksWithAssignments(
       taskId: taskAssignment.taskId,
       memberId: taskAssignment.memberId,
       memberName: member.name,
+      isShadow: taskAssignment.isShadow,
+      isOutgoing: taskAssignment.isOutgoing,
     })
     .from(taskAssignment)
     .innerJoin(member, eq(taskAssignment.memberId, member.id))

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community, cycle, member, requirement, task, taskDependency, tier } from "@/db/schema";
 import { createCycle, getCycle, listCycles } from "@/lib/cycles";
-import { createRequirement } from "@/lib/tasks";
+import { claimAsShadow, claimTask, createRequirement } from "@/lib/tasks";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
@@ -232,5 +232,54 @@ describe("cloning the previous cycle", () => {
     // listCycles should reflect the same most-recent-first ordering.
     const all = await listCycles(alice);
     expect(all.map((c) => c.name)).toEqual(["2027 Season", "2026 Season", "2025 Season"]);
+  });
+
+  it("pre-fills suggestedMemberId from a filled shadow slot on the source task", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    await enableCycles(testCommunity.id);
+
+    const previous = await createCycle(alice, { source: "blank", name: "2026 Season" });
+    const shadowed = await insertTask(testCommunity.id, branch.id, alice.id, {
+      cycleId: previous.id,
+      title: "Water the trees",
+    });
+    const unshadowed = await insertTask(testCommunity.id, branch.id, alice.id, {
+      cycleId: previous.id,
+      title: "Prune the hedges",
+    });
+    await claimTask(alice, shadowed.id);
+    await claimAsShadow(bob, shadowed.id);
+    await claimTask(alice, unshadowed.id);
+
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
+
+    const clonedShadowed = clonedTasks.find((t) => t.title === "Water the trees")!;
+    expect(clonedShadowed.suggestedMemberId).toBe(bob.id);
+
+    const clonedUnshadowed = clonedTasks.find((t) => t.title === "Prune the hedges")!;
+    expect(clonedUnshadowed.suggestedMemberId).toBeNull();
+  });
+
+  it("picks the earliest shadow when a task had more than one", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    const [carol] = await db
+      .insert(member)
+      .values({ communityId: testCommunity.id, name: "Carol" })
+      .returning();
+    await enableCycles(testCommunity.id);
+
+    const previous = await createCycle(alice, { source: "blank", name: "2026 Season" });
+    const t = await insertTask(testCommunity.id, branch.id, alice.id, {
+      cycleId: previous.id,
+      capacity: 1,
+    });
+    await claimTask(alice, t.id);
+    await claimAsShadow(bob, t.id);
+    await claimAsShadow(carol, t.id);
+
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
+    expect(clonedTask.suggestedMemberId).toBe(bob.id);
   });
 });

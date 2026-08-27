@@ -12,9 +12,12 @@ import {
   addResourceInput,
   addWikiRevision,
   addWikiRevisionInput,
+  claimAsShadow,
   declineJoinRequest,
   endorseCandidacy,
   expressCandidacy,
+  releaseTask,
+  setOutgoing,
   splitSubtask,
   splitSubtaskInput,
   withdrawCandidacy,
@@ -195,6 +198,48 @@ export async function withdrawCandidacyAction(formData: FormData) {
 
   try {
     await withdrawCandidacy(actor, taskId, candidacyId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function claimAsShadowAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await claimAsShadow(actor, taskId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+}
+
+export async function stopShadowingAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await releaseTask(actor, taskId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+}
+
+export async function setOutgoingAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const outgoing = formData.get("outgoing") === "true";
+
+  try {
+    await setOutgoing(actor, taskId, outgoing);
   } catch (err) {
     redirectWithError(taskId, err);
   }

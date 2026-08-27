@@ -22,21 +22,36 @@ export async function loadTaskForUpdate(tx: Tx, taskId: string, communityId: str
   return row;
 }
 
+// A shadow isn't driving the task, just learning alongside whoever is —
+// see docs/spec.md's "Shadow slots & succession". Excluded here so a
+// shadow can't park/resume/finish the task themselves.
 async function requireHolds(tx: Tx, taskId: string, memberId: string) {
   const [row] = await tx
     .select()
     .from(taskAssignment)
-    .where(and(eq(taskAssignment.taskId, taskId), eq(taskAssignment.memberId, memberId)));
+    .where(
+      and(
+        eq(taskAssignment.taskId, taskId),
+        eq(taskAssignment.memberId, memberId),
+        eq(taskAssignment.isShadow, false),
+      ),
+    );
   if (!row) {
     throw new ForbiddenError("You don't hold this task");
   }
 }
 
+// Real holders only — a shadow "doesn't count toward the task's
+// capacity" (docs/spec.md), so every caller that means "how many
+// people actually hold this task" (capacity checks, and releaseTask's
+// "does the task still have anyone" check) gets that for free by
+// excluding shadow rows here rather than needing to remember to at
+// each call site.
 export async function assignmentCount(tx: Tx, taskId: string) {
   const [row] = await tx
     .select({ value: count() })
     .from(taskAssignment)
-    .where(eq(taskAssignment.taskId, taskId));
+    .where(and(eq(taskAssignment.taskId, taskId), eq(taskAssignment.isShadow, false)));
   return row.value;
 }
 
@@ -57,7 +72,11 @@ export async function performClaimInTx(tx: Tx, member: Member, taskId: string) {
     .from(taskAssignment)
     .where(and(eq(taskAssignment.taskId, taskId), eq(taskAssignment.memberId, member.id)));
   if (existing) {
-    throw new ConflictError("You already hold this task");
+    throw new ConflictError(
+      existing.isShadow
+        ? "You're currently shadowing this task — release that first to claim it for real"
+        : "You already hold this task",
+    );
   }
 
   if (current.capacity !== null) {

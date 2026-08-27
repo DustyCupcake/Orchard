@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db, type Tx } from "@/db";
-import { community, cycle, phase, requirement, task, taskDependency } from "@/db/schema";
+import { community, cycle, phase, requirement, task, taskAssignment, taskDependency } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { memberHasTier } from "../eligibility";
@@ -145,6 +145,37 @@ async function clonePhases(tx: Tx, previousCycleId: string, newCycleId: string) 
   return idMap;
 }
 
+// A shadow doesn't have to be the one to remember to raise their hand
+// first next cycle — see docs/spec.md's "Carrying forward" (Shadow
+// slots & succession): a filled shadow slot on the source task
+// pre-fills the clone's suggested_member_id, reusing the exact field
+// the proposal flow already has for "I'd suggest this person," not a
+// new mechanism. A suggestion, not an assignment — the cloned task
+// still opens through the ordinary claim process. Only applies to this
+// clone-previous-cycle path, per spec, since a shadow's relevance
+// doesn't travel into a generic Task Pack.
+async function shadowSuggestionsByTask(tx: Tx, taskIds: string[]) {
+  if (taskIds.length === 0) return new Map<string, string>();
+
+  const shadows = await tx
+    .select({ taskId: taskAssignment.taskId, memberId: taskAssignment.memberId })
+    .from(taskAssignment)
+    .where(and(inArray(taskAssignment.taskId, taskIds), eq(taskAssignment.isShadow, true)))
+    .orderBy(taskAssignment.claimedAt);
+
+  const suggestionByTask = new Map<string, string>();
+  for (const s of shadows) {
+    // Multiple shadows on one task is possible (shadowing doesn't
+    // count toward capacity, so nothing caps it at one) — the earliest
+    // claimed wins, arbitrary but deterministic, since this is a single
+    // nullable field.
+    if (!suggestionByTask.has(s.taskId)) {
+      suggestionByTask.set(s.taskId, s.memberId);
+    }
+  }
+  return suggestionByTask;
+}
+
 async function cloneTasks(
   tx: Tx,
   actor: Member,
@@ -154,6 +185,10 @@ async function cloneTasks(
 ) {
   const oldTasks = await tx.select().from(task).where(eq(task.cycleId, previousCycleId));
   const idMap = new Map<string, string>();
+  const shadowSuggestions = await shadowSuggestionsByTask(
+    tx,
+    oldTasks.map((t) => t.id),
+  );
 
   for (const t of oldTasks) {
     const [newTask] = await tx
@@ -174,6 +209,7 @@ async function cloneTasks(
         endorsementThreshold: t.endorsementThreshold,
         critical: t.critical,
         createdBy: actor.id,
+        suggestedMemberId: shadowSuggestions.get(t.id) ?? null,
       })
       .returning();
     idMap.set(t.id, newTask.id);

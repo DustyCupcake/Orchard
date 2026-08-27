@@ -11,7 +11,7 @@ import {
   withdrawRequestAction,
 } from "./actions";
 
-type Assignment = { taskId: string; memberId: string; memberName: string };
+type Assignment = { taskId: string; memberId: string; memberName: string; isShadow: boolean };
 type Requirement = typeof requirementTable.$inferSelect;
 type Task = {
   id: string;
@@ -47,8 +47,14 @@ export default function TaskCard({
   currentMemberId: string;
   myPendingRequestId: string | null;
 }) {
-  const holds = assignments.some((a) => a.memberId === currentMemberId);
-  const hasRoom = task.capacity === null || assignments.length < task.capacity;
+  // A shadow isn't a real holder — doesn't count toward capacity, isn't
+  // who "Held by" means — see docs/spec.md's "Shadow slots & succession"
+  // and lifecycle.ts's assignmentCount(), which excludes them the same way.
+  const realAssignments = assignments.filter((a) => !a.isShadow);
+  const shadowAssignments = assignments.filter((a) => a.isShadow);
+  const holds = realAssignments.some((a) => a.memberId === currentMemberId);
+  const shadowing = shadowAssignments.some((a) => a.memberId === currentMemberId);
+  const hasRoom = task.capacity === null || realAssignments.length < task.capacity;
   const unmetIds = new Set(unmetRequirements.map((r) => r.id));
   const eligible = unmetRequirements.length === 0;
 
@@ -58,7 +64,8 @@ export default function TaskCard({
   // claimOrRequestToJoin() takes server-side, purely for the button
   // label; the server is what actually enforces it.
   const requestGated = task.openness === "request" || task.openness === "coordination_approved";
-  const joiningRequiresRequest = task.status === "claimed" && assignments.length > 0 && requestGated;
+  const joiningRequiresRequest =
+    task.status === "claimed" && realAssignments.length > 0 && requestGated;
   // community_endorsed never claims through the ordinary Claim/Request
   // button at all — see the task detail page's "Candidacy" section
   // (expressCandidacy/endorseCandidacy), a genuinely different flow
@@ -68,6 +75,7 @@ export default function TaskCard({
 
   const canAct =
     !isCommunityEndorsed &&
+    !shadowing &&
     (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
     eligible &&
     !myPendingRequestId;
@@ -75,9 +83,16 @@ export default function TaskCard({
   const canRequest = canAct && joiningRequiresRequest;
   const blockedByRequirements =
     !isCommunityEndorsed &&
+    !shadowing &&
     (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
     !eligible &&
     !myPendingRequestId;
+  // Shadowing only makes sense once someone's actually doing the task —
+  // see shadows.ts's claimAsShadow(), which enforces the same rule
+  // server-side. Not excluded for community_endorsed: shadowing is
+  // orthogonal to openness, nothing about learning alongside a current
+  // holder depends on how they got the task.
+  const canShadow = !holds && !shadowing && (task.status === "claimed" || task.status === "waiting");
   const attention = ATTENTION_STYLES[task.attentionLevel];
 
   return (
@@ -101,13 +116,18 @@ export default function TaskCard({
         <span style={{ color: attention.color, fontWeight: 600 }}> · ⚠ {attention.label}</span>
       )}
       <div style={{ fontSize: "0.85rem", color: "#666" }}>
-        {branchName} · {effortSummary(task.effort, task.effortMagnitude)} · {assignments.length}
+        {branchName} · {effortSummary(task.effort, task.effortMagnitude)} · {realAssignments.length}
         {task.capacity !== null ? `/${task.capacity}` : ""} held
       </div>
       {task.description && <p style={{ fontSize: "0.9rem" }}>{task.description}</p>}
-      {assignments.length > 0 && (
+      {realAssignments.length > 0 && (
         <p style={{ fontSize: "0.85rem" }}>
-          Held by: {assignments.map((a) => a.memberName).join(", ")}
+          Held by: {realAssignments.map((a) => a.memberName).join(", ")}
+        </p>
+      )}
+      {shadowAssignments.length > 0 && (
+        <p style={{ fontSize: "0.85rem", color: "#666" }}>
+          Shadowed by: {shadowAssignments.map((a) => a.memberName).join(", ")}
         </p>
       )}
       {task.status === "waiting" && (
@@ -154,6 +174,20 @@ export default function TaskCard({
           <Link href={`/tasks/${task.id}`} style={{ fontSize: "0.85rem" }}>
             Put yourself forward or endorse a candidate →
           </Link>
+        )}
+        {canShadow && (
+          <Link href={`/tasks/${task.id}`} style={{ fontSize: "0.85rem" }}>
+            Shadow this task →
+          </Link>
+        )}
+        {shadowing && (
+          <>
+            <span style={{ fontSize: "0.85rem", color: "#666" }}>Shadowing</span>
+            <form action={releaseAction}>
+              <input type="hidden" name="taskId" value={task.id} />
+              <button type="submit">Stop shadowing</button>
+            </form>
+          </>
         )}
 
         {task.status === "claimed" && holds && (
