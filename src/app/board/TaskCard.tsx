@@ -2,7 +2,14 @@ import Link from "next/link";
 import type { requirement as requirementTable } from "@/db/schema";
 import { describeRequirement } from "@/lib/tasks";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
-import { claimAction, finishAction, parkAction, releaseAction, resumeAction } from "./actions";
+import {
+  claimAction,
+  finishAction,
+  parkAction,
+  releaseAction,
+  resumeAction,
+  withdrawRequestAction,
+} from "./actions";
 
 type Assignment = { taskId: string; memberId: string; memberName: string };
 type Requirement = typeof requirementTable.$inferSelect;
@@ -12,6 +19,7 @@ type Task = {
   description: string;
   status: string;
   capacity: number | null;
+  openness: string;
   effort: string;
   effortMagnitude: unknown;
   nextCheckinAt: Date | null;
@@ -28,6 +36,7 @@ export default function TaskCard({
   tierNames,
   branchName,
   currentMemberId,
+  myPendingRequestId,
 }: {
   task: Task;
   assignments: Assignment[];
@@ -36,18 +45,31 @@ export default function TaskCard({
   tierNames: Map<string, string>;
   branchName: string;
   currentMemberId: string;
+  myPendingRequestId: string | null;
 }) {
   const holds = assignments.some((a) => a.memberId === currentMemberId);
   const hasRoom = task.capacity === null || assignments.length < task.capacity;
   const unmetIds = new Set(unmetRequirements.map((r) => r.id));
   const eligible = unmetRequirements.length === 0;
 
-  const canClaim =
+  // Joining an already-held task under `request`/`coordination_approved`
+  // openness creates a pending request instead of an instant claim —
+  // see docs/spec.md's "Request to join". Mirrors the same branch
+  // claimOrRequestToJoin() takes server-side, purely for the button
+  // label; the server is what actually enforces it.
+  const requestGated = task.openness === "request" || task.openness === "coordination_approved";
+  const joiningRequiresRequest = task.status === "claimed" && assignments.length > 0 && requestGated;
+
+  const canAct =
     (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
-    eligible;
+    eligible &&
+    !myPendingRequestId;
+  const canClaim = canAct && !joiningRequiresRequest;
+  const canRequest = canAct && joiningRequiresRequest;
   const blockedByRequirements =
     (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
-    !eligible;
+    !eligible &&
+    !myPendingRequestId;
   const attention = ATTENTION_STYLES[task.attentionLevel];
 
   return (
@@ -99,11 +121,21 @@ export default function TaskCard({
       )}
 
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
-        {canClaim && (
+        {(canClaim || canRequest) && (
           <form action={claimAction}>
             <input type="hidden" name="taskId" value={task.id} />
-            <button type="submit">Claim</button>
+            <button type="submit">{canRequest ? "Request to join" : "Claim"}</button>
           </form>
+        )}
+        {myPendingRequestId && (
+          <>
+            <span style={{ fontSize: "0.85rem", color: "#666" }}>Request pending</span>
+            <form action={withdrawRequestAction}>
+              <input type="hidden" name="taskId" value={task.id} />
+              <input type="hidden" name="requestId" value={myPendingRequestId} />
+              <button type="submit">Withdraw</button>
+            </form>
+          </>
         )}
         {blockedByRequirements && (
           <span style={{ fontSize: "0.85rem", color: "crimson" }}>

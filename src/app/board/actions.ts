@@ -3,7 +3,14 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/api";
-import { claimTask, finishTask, parkTask, releaseTask, resumeTask } from "@/lib/tasks";
+import {
+  claimOrRequestToJoin,
+  finishTask,
+  parkTask,
+  releaseTask,
+  resumeTask,
+  withdrawJoinRequest,
+} from "@/lib/tasks";
 import { AppError } from "@/lib/errors";
 
 async function runAction(fn: () => Promise<unknown>) {
@@ -21,7 +28,14 @@ async function runAction(fn: () => Promise<unknown>) {
 export async function claimAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
-  await runAction(() => claimTask(actor, taskId));
+  await runAction(() => claimOrRequestToJoin(actor, taskId));
+}
+
+export async function withdrawRequestAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const requestId = String(formData.get("requestId"));
+  await runAction(() => withdrawJoinRequest(actor, taskId, requestId));
 }
 
 export async function releaseAction(formData: FormData) {

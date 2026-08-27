@@ -9,6 +9,7 @@ import {
   getTask,
   getTaskNotes,
   getUnmetRequirements,
+  listJoinRequests,
   listRequirements,
   listSubtasks,
   tierNameLookup,
@@ -17,7 +18,15 @@ import {
 import { listBranches } from "@/lib/settings";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import Nav from "@/components/Nav";
-import { addCommentAction, addResourceAction, editWikiAction, splitSubtaskAction } from "./actions";
+import {
+  acceptJoinRequestAction,
+  addCommentAction,
+  addResourceAction,
+  declineJoinRequestAction,
+  editWikiAction,
+  splitSubtaskAction,
+  withdrawJoinRequestAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -37,19 +46,39 @@ export default async function TaskDetailPage({
   const { error } = await searchParams;
 
   const taskRow = await getTask(currentMember, id);
-  const [branchRow, notes, requirements, unmetRequirements, tierNames, subtasks, parentTask, branches] =
-    await Promise.all([
-      db.select().from(branch).where(eq(branch.id, taskRow.branchId)).then((r) => r[0]),
-      getTaskNotes(currentMember, id),
-      listRequirements(currentMember, id),
-      getUnmetRequirements(db, currentMember, id),
-      tierNameLookup(currentMember.communityId),
-      listSubtasks(currentMember, id),
-      taskRow.parentTaskId ? getParentTaskSummary(currentMember, taskRow.parentTaskId) : null,
-      listBranches(currentMember),
-    ]);
+  const [
+    branchRow,
+    notes,
+    requirements,
+    unmetRequirements,
+    tierNames,
+    subtasks,
+    parentTask,
+    branches,
+    joinRequests,
+  ] = await Promise.all([
+    db.select().from(branch).where(eq(branch.id, taskRow.branchId)).then((r) => r[0]),
+    getTaskNotes(currentMember, id),
+    listRequirements(currentMember, id),
+    getUnmetRequirements(db, currentMember, id),
+    tierNameLookup(currentMember.communityId),
+    listSubtasks(currentMember, id),
+    taskRow.parentTaskId ? getParentTaskSummary(currentMember, taskRow.parentTaskId) : null,
+    listBranches(currentMember),
+    listJoinRequests(currentMember, id),
+  ]);
 
   const holdsTask = taskRow.assignments.some((a) => a.memberId === currentMember.id);
+  const requestGated = taskRow.openness === "request" || taskRow.openness === "coordination_approved";
+  const coordinationHolders = taskRow.assignments.filter((a) => a.isCoordinationSlot);
+  const canApproveRequests =
+    holdsTask &&
+    (taskRow.openness !== "coordination_approved" ||
+      coordinationHolders.length === 0 ||
+      coordinationHolders.some((a) => a.memberId === currentMember.id));
+  const pendingRequests = joinRequests.filter((r) => r.status === "pending");
+  const resolvedRequests = joinRequests.filter((r) => r.status !== "pending");
+  const myRequest = joinRequests.find((r) => r.memberId === currentMember.id);
 
   const memberIds = [
     ...new Set([
@@ -57,6 +86,7 @@ export default async function TaskDetailPage({
       ...notes.comments.map((c) => c.memberId),
       ...notes.wikiRevisions.map((w) => w.editedBy),
       ...notes.resources.map((r) => r.addedBy),
+      ...joinRequests.map((r) => r.memberId),
     ]),
   ];
   const members = memberIds.length
@@ -119,6 +149,80 @@ export default async function TaskDetailPage({
             </li>
           ))}
         </ul>
+      )}
+
+      {myRequest && myRequest.status === "pending" && (
+        <p style={{ fontSize: "0.85rem" }}>
+          You&rsquo;ve asked to join this task — pending.
+          <form
+            action={withdrawJoinRequestAction}
+            style={{ display: "inline", marginLeft: "0.5rem" }}
+          >
+            <input type="hidden" name="taskId" value={taskRow.id} />
+            <input type="hidden" name="requestId" value={myRequest.id} />
+            <button type="submit">Withdraw</button>
+          </form>
+        </p>
+      )}
+      {myRequest && myRequest.status === "declined" && (
+        <p style={{ fontSize: "0.85rem" }}>
+          Your request to join was declined
+          {myRequest.declineReason ? `: ${myRequest.declineReason}` : "."}
+        </p>
+      )}
+
+      {(pendingRequests.length > 0 || resolvedRequests.length > 0) && requestGated && (
+        <section style={{ marginTop: "1.5rem" }}>
+          <h2>Join requests</h2>
+          {pendingRequests.length === 0 && <p style={{ color: "#666" }}>None pending.</p>}
+          {pendingRequests.map((r) => (
+            <div key={r.id} style={{ marginBottom: "0.5rem" }}>
+              <p style={{ margin: 0 }}>
+                {memberNameById.get(r.memberId) ?? "—"} asked to join —{" "}
+                {new Date(r.requestedAt).toLocaleString()}
+              </p>
+              {canApproveRequests && (
+                <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
+                  <form action={acceptJoinRequestAction}>
+                    <input type="hidden" name="taskId" value={taskRow.id} />
+                    <input type="hidden" name="requestId" value={r.id} />
+                    <button type="submit">Accept</button>
+                  </form>
+                  <form
+                    action={declineJoinRequestAction}
+                    style={{ display: "flex", gap: "0.5rem" }}
+                  >
+                    <input type="hidden" name="taskId" value={taskRow.id} />
+                    <input type="hidden" name="requestId" value={r.id} />
+                    <input
+                      type="text"
+                      name="reason"
+                      placeholder="reason (optional)"
+                      style={{ padding: "0.3rem" }}
+                    />
+                    <button type="submit">Decline</button>
+                  </form>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {resolvedRequests.length > 0 && (
+            <details style={{ marginTop: "0.5rem" }}>
+              <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>
+                Resolved requests ({resolvedRequests.length})
+              </summary>
+              <ul style={{ fontSize: "0.8rem" }}>
+                {resolvedRequests.map((r) => (
+                  <li key={r.id}>
+                    {memberNameById.get(r.memberId) ?? "—"} — {r.status}
+                    {r.status === "declined" && r.declineReason && `: ${r.declineReason}`}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </section>
       )}
 
       {(subtasks.length > 0 || holdsTask) && (

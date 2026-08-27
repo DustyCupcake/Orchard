@@ -4,7 +4,19 @@ import { ZodError } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/api";
-import { addComment, addCommentInput, addResource, addResourceInput, addWikiRevision, addWikiRevisionInput, splitSubtask, splitSubtaskInput } from "@/lib/tasks";
+import {
+  acceptJoinRequest,
+  addComment,
+  addCommentInput,
+  addResource,
+  addResourceInput,
+  addWikiRevision,
+  addWikiRevisionInput,
+  declineJoinRequest,
+  splitSubtask,
+  splitSubtaskInput,
+  withdrawJoinRequest,
+} from "@/lib/tasks";
 import { AppError } from "@/lib/errors";
 
 function redirectWithError(taskId: string, err: unknown): never {
@@ -98,4 +110,49 @@ export async function splitSubtaskAction(formData: FormData) {
 
   revalidatePath(`/tasks/${taskId}`);
   redirect(`/tasks/${created.id}`);
+}
+
+export async function acceptJoinRequestAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const requestId = String(formData.get("requestId"));
+
+  try {
+    await acceptJoinRequest(actor, taskId, requestId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+}
+
+export async function declineJoinRequestAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const requestId = String(formData.get("requestId"));
+  const reason = String(formData.get("reason") ?? "") || null;
+
+  try {
+    await declineJoinRequest(actor, taskId, requestId, { reason });
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function withdrawJoinRequestAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const requestId = String(formData.get("requestId"));
+
+  try {
+    await withdrawJoinRequest(actor, taskId, requestId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
 }
