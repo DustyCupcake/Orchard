@@ -4,10 +4,20 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { branch, member } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
-import { getTask, getTaskNotes, getUnmetRequirements, listRequirements, tierNameLookup, describeRequirement } from "@/lib/tasks";
+import {
+  getParentTaskSummary,
+  getTask,
+  getTaskNotes,
+  getUnmetRequirements,
+  listRequirements,
+  listSubtasks,
+  tierNameLookup,
+  describeRequirement,
+} from "@/lib/tasks";
+import { listBranches } from "@/lib/settings";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import Nav from "@/components/Nav";
-import { addCommentAction, addResourceAction, editWikiAction } from "./actions";
+import { addCommentAction, addResourceAction, editWikiAction, splitSubtaskAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -27,13 +37,19 @@ export default async function TaskDetailPage({
   const { error } = await searchParams;
 
   const taskRow = await getTask(currentMember, id);
-  const [branchRow, notes, requirements, unmetRequirements, tierNames] = await Promise.all([
-    db.select().from(branch).where(eq(branch.id, taskRow.branchId)).then((r) => r[0]),
-    getTaskNotes(currentMember, id),
-    listRequirements(currentMember, id),
-    getUnmetRequirements(db, currentMember, id),
-    tierNameLookup(currentMember.communityId),
-  ]);
+  const [branchRow, notes, requirements, unmetRequirements, tierNames, subtasks, parentTask, branches] =
+    await Promise.all([
+      db.select().from(branch).where(eq(branch.id, taskRow.branchId)).then((r) => r[0]),
+      getTaskNotes(currentMember, id),
+      listRequirements(currentMember, id),
+      getUnmetRequirements(db, currentMember, id),
+      tierNameLookup(currentMember.communityId),
+      listSubtasks(currentMember, id),
+      taskRow.parentTaskId ? getParentTaskSummary(currentMember, taskRow.parentTaskId) : null,
+      listBranches(currentMember),
+    ]);
+
+  const holdsTask = taskRow.assignments.some((a) => a.memberId === currentMember.id);
 
   const memberIds = [
     ...new Set([
@@ -78,6 +94,14 @@ export default async function TaskDetailPage({
         {taskRow.status} · {taskRow.assignments.length}
         {taskRow.capacity !== null ? `/${taskRow.capacity}` : ""} held
       </div>
+      {parentTask && (
+        <p style={{ fontSize: "0.85rem" }}>
+          Part of{" "}
+          <Link href={`/tasks/${parentTask.id}`} style={{ color: "inherit" }}>
+            {parentTask.title}
+          </Link>
+        </p>
+      )}
       {taskRow.assignments.length > 0 && (
         <p>
           Held by:{" "}
@@ -95,6 +119,110 @@ export default async function TaskDetailPage({
             </li>
           ))}
         </ul>
+      )}
+
+      {(subtasks.length > 0 || holdsTask) && (
+        <section style={{ marginTop: "1.5rem" }}>
+          <h2>Subtasks</h2>
+          {subtasks.length === 0 && <p style={{ color: "#666" }}>None broken off yet.</p>}
+          {subtasks.length > 0 && (
+            <ul>
+              {subtasks.map((s) => (
+                <li key={s.id}>
+                  <Link href={`/tasks/${s.id}`} style={{ color: "inherit" }}>
+                    {s.title}
+                  </Link>{" "}
+                  <span style={{ color: "#666", fontSize: "0.85rem" }}>({s.status})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {holdsTask && (
+            <details style={{ marginTop: "0.5rem" }}>
+              <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>
+                Split off a subtask
+              </summary>
+              <form
+                action={splitSubtaskAction}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.5rem",
+                  marginTop: "0.75rem",
+                }}
+              >
+                <input type="hidden" name="taskId" value={taskRow.id} />
+                <input
+                  type="text"
+                  name="title"
+                  required
+                  placeholder="Title"
+                  style={{ padding: "0.4rem" }}
+                />
+                <textarea
+                  name="description"
+                  rows={2}
+                  placeholder="Description"
+                  style={{ padding: "0.4rem" }}
+                />
+
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                  <select name="branchId" defaultValue={taskRow.branchId} style={{ padding: "0.4rem" }}>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select name="effort" required defaultValue={taskRow.effort} style={{ padding: "0.4rem" }}>
+                    <option value="one_off">One-off</option>
+                    <option value="ongoing">Ongoing</option>
+                    <option value="owns_a_thing">Owns-a-thing</option>
+                  </select>
+
+                  <select name="duration" defaultValue="few_hours" style={{ padding: "0.4rem" }}>
+                    <option value="under_hour">Under an hour</option>
+                    <option value="few_hours">A few hours</option>
+                    <option value="half_day">Half a day</option>
+                    <option value="multi_day">Multi-day</option>
+                  </select>
+                  <span style={{ fontSize: "0.8rem", color: "#666" }}>(if one-off)</span>
+
+                  <input
+                    type="number"
+                    name="hoursPerWeek"
+                    placeholder="hours/week"
+                    min={0}
+                    style={{ padding: "0.4rem", width: "8rem" }}
+                  />
+                  <span style={{ fontSize: "0.8rem", color: "#666" }}>(if ongoing/owns-a-thing)</span>
+                </div>
+
+                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                  <label>
+                    Capacity:{" "}
+                    <input
+                      type="number"
+                      name="capacity"
+                      defaultValue={1}
+                      min={1}
+                      style={{ padding: "0.4rem", width: "5rem" }}
+                    />
+                  </label>
+                  <label>
+                    <input type="checkbox" name="critical" /> Critical
+                  </label>
+                </div>
+
+                <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+                  Split off
+                </button>
+              </form>
+            </details>
+          )}
+        </section>
       )}
 
       <hr style={{ margin: "2rem 0" }} />

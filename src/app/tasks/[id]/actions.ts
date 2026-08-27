@@ -4,7 +4,7 @@ import { ZodError } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/api";
-import { addComment, addCommentInput, addResource, addResourceInput, addWikiRevision, addWikiRevisionInput } from "@/lib/tasks";
+import { addComment, addCommentInput, addResource, addResourceInput, addWikiRevision, addWikiRevisionInput, splitSubtask, splitSubtaskInput } from "@/lib/tasks";
 import { AppError } from "@/lib/errors";
 
 function redirectWithError(taskId: string, err: unknown): never {
@@ -63,4 +63,39 @@ export async function addResourceAction(formData: FormData) {
   }
 
   revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function splitSubtaskAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  const effort = String(formData.get("effort"));
+  const duration = String(formData.get("duration") ?? "");
+  const hoursPerWeekRaw = String(formData.get("hoursPerWeek") ?? "");
+  const effortMagnitude =
+    effort === "one_off"
+      ? { duration: duration || "few_hours" }
+      : { hours_per_week: Number(hoursPerWeekRaw) || 1 };
+
+  const capacityRaw = String(formData.get("capacity") ?? "");
+  const branchId = String(formData.get("branchId") ?? "") || undefined;
+
+  let created;
+  try {
+    const input = splitSubtaskInput.parse({
+      branchId,
+      title: String(formData.get("title") ?? ""),
+      description: String(formData.get("description") ?? ""),
+      effort,
+      effortMagnitude,
+      capacity: capacityRaw ? Number(capacityRaw) : undefined,
+      critical: formData.get("critical") === "on",
+    });
+    created = await splitSubtask(actor, taskId, input);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  redirect(`/tasks/${created.id}`);
 }
