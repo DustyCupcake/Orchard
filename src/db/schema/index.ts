@@ -7,6 +7,7 @@ export * from "./phase";
 export * from "./member";
 export * from "./auth";
 export * from "./task";
+export * from "./task-proposal";
 export * from "./task-notes";
 export * from "./task-assignment";
 export * from "./task-dependency";

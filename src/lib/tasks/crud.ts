@@ -32,7 +32,15 @@ export const updateTaskInput = createTaskInput
   .partial();
 export type UpdateTaskInput = z.infer<typeof updateTaskInput>;
 
-export async function createTask(actor: Member, input: CreateTaskInput) {
+// createdByMemberId defaults to the actor — the one exception is
+// activating a proposal, where the task should credit whoever originally
+// proposed it, not whoever happened to activate it (see
+// src/lib/proposals/crud.ts).
+export async function createTask(
+  actor: Member,
+  input: CreateTaskInput,
+  createdByMemberId?: string,
+) {
   const [branchRow] = await db
     .select()
     .from(branch)
@@ -58,7 +66,7 @@ export async function createTask(actor: Member, input: CreateTaskInput) {
       openness: input.openness ?? "request",
       critical: input.critical ?? false,
       browsePeriodEnd: input.browsePeriodEnd ? new Date(input.browsePeriodEnd) : null,
-      createdBy: actor.id,
+      createdBy: createdByMemberId ?? actor.id,
     })
     .returning();
 
