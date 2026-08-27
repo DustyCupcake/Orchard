@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-10 of the [development plan](docs/development-plan.md) are in place — every phase that plan breaks into session-sized work:
+Phases 0-11 of the [development plan](docs/development-plan.md) are in place. Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -17,6 +17,10 @@ Phases 0-10 of the [development plan](docs/development-plan.md) are in place —
 - A task detail view carrying wiki notes (with revision history), comments, and resource links
 - A settings screen for branches, tiers, and whether cycles/phases are on — no direct DB access needed
 - A scheduled attention-level job flagging stale, overdue, or newly-unblocked tasks on the board automatically
+
+Phase 11 adds the first slice of coordination mechanics beyond MVP scope:
+
+- Subtasks — a current holder can split off a piece of a task as its own claimable card, without releasing the whole thing
 
 Not yet built: an Admins/coordinator role (everything above is open to any member — see the plan for why), and most of what's beyond MVP scope in the [tech spec](docs/spec.md) (Recruitment, Budget, Spatial planning, and the rest) — real, designed work that just isn't broken into phases yet.
 
