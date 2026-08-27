@@ -15,6 +15,13 @@
       "when": 1787817481757,
       "tag": "0001_ambiguous_dexter_bennett",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787818421537,
+      "tag": "0002_windy_amphibian",
+      "breakpoints": true
     }
   ]
 }
