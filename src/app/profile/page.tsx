@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { tier } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
+import Nav from "@/components/Nav";
 import { updateProfile } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export default async function ProfilePage() {
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 480 }}>
+      <Nav memberName={currentMember.name} />
       <h1>Your profile</h1>
       <form action={updateProfile} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
         <label>
@@ -66,10 +68,6 @@ export default async function ProfilePage() {
         <button type="submit" style={{ padding: "0.5rem 1rem", width: "fit-content" }}>
           Save
         </button>
-      </form>
-
-      <form action="/api/auth/logout" method="post" style={{ marginTop: "2rem" }}>
-        <button type="submit">Log out</button>
       </form>
     </main>
   );

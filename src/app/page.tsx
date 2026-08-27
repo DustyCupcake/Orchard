@@ -29,7 +29,8 @@ export default async function Home() {
       <h1>🌳 Orchard</h1>
       {currentMember ? (
         <p>
-          Logged in as <strong>{currentMember.name}</strong> — <Link href="/profile">profile</Link>
+          Logged in as <strong>{currentMember.name}</strong> — <Link href="/board">board</Link> —{" "}
+          <Link href="/profile">profile</Link>
         </p>
       ) : (
         <p>

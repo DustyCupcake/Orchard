@@ -1,7 +1,7 @@
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { branch, task, taskAssignment, taskDependency } from "@/db/schema";
+import { branch, member, task, taskAssignment, taskDependency } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 
@@ -80,6 +80,42 @@ export async function listTasks(
     .from(task)
     .where(and(...conditions))
     .orderBy(task.title);
+}
+
+// Board-shaped: each task comes back with who currently holds it, for
+// rendering "Claimed by ..." and deciding which action buttons to show.
+export async function listTasksWithAssignments(
+  actor: Member,
+  filters: { branchId?: string; status?: string; cycleId?: string } = {},
+) {
+  const tasks = await listTasks(actor, filters);
+  if (tasks.length === 0) {
+    return [];
+  }
+
+  const assignments = await db
+    .select({
+      taskId: taskAssignment.taskId,
+      memberId: taskAssignment.memberId,
+      memberName: member.name,
+    })
+    .from(taskAssignment)
+    .innerJoin(member, eq(taskAssignment.memberId, member.id))
+    .where(
+      inArray(
+        taskAssignment.taskId,
+        tasks.map((t) => t.id),
+      ),
+    );
+
+  const byTask = new Map<string, typeof assignments>();
+  for (const a of assignments) {
+    const list = byTask.get(a.taskId) ?? [];
+    list.push(a);
+    byTask.set(a.taskId, list);
+  }
+
+  return tasks.map((t) => ({ ...t, assignments: byTask.get(t.id) ?? [] }));
 }
 
 export async function getTask(actor: Member, taskId: string) {
