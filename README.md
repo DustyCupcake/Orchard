@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-15 of the [development plan](docs/development-plan.md) are in place — the full original phase list. Phases 0-10 cover the tech spec's full MVP scope:
+Phases 0-16 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phase 16 is the first of a further slice closing out the rest of what the tech spec treats as "core, not optional." Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -26,7 +26,9 @@ Phases 11-15 add coordination mechanics beyond MVP scope:
 - Shadow slots & succession — join a task specifically to learn it (exempt from Requirements, doesn't count toward capacity), mark yourself outgoing to nudge the wiki summary before handing off, and a filled shadow slot pre-fills who a cloned cycle's task suggests next
 - Remaining coordination mechanics — Requirement waiving with a required, standing-visible reason; a self-assign confirmation check for branch coordination holders (server-enforced, not just UI); an anonymous task signal and a talk-to-my-coordinator ping, both visible to that branch's coordination holders; a community-wide Escalation view; and bulk task selection (tag-based clustering, select-and-claim-with-exceptions)
 
-Not yet built: most of what's beyond MVP scope in the [tech spec](docs/spec.md) (Recruitment, Budget, Spatial planning, and the rest) — real, designed work that just isn't broken into phases yet. See [`docs/development-plan.md`](docs/development-plan.md)'s "Beyond Phase 15" section for what's next.
+Phase 16 adds Profile questions — a shared "standing fact about a member" mechanism (once-ever, per-cycle, or tied to one phase name), landing its first real use: a phase-scoped Availability question feeds a new Coordination view showing capacity-aware fitted-ask flags (has room / about right / over, or the exact declared number for members who've opted into sharing it) and who hasn't declared availability for the current phase at all.
+
+Not yet built: Phases 17-19 (Input rounds, Assemblies, Scheduling polls — the rest of spec's "core, not optional" list) and everything beyond MVP scope in the [tech spec](docs/spec.md) (Recruitment, Budget, Spatial planning, and the rest) — real, designed work that just isn't broken into phases yet. See [`docs/development-plan.md`](docs/development-plan.md) for what's next.
 
 ## Documentation
 
