@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-23 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-23 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
+Phases 0-24 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-24 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -44,7 +44,9 @@ Phase 22 adds Sensitive data — purpose-bound, not role-bound, access to a smal
 
 Phase 23 adds Contribution tracking — a member's own completed/active/future picture, computed live off Task/TaskAssignment, nothing entered by hand. Categories are Phases (spec's own example categories — "planning, build, live operation, wind-down" — read exactly like Phase names, so this reuses the Cycle/Phase schema rather than a second concept), merged across cycles by phase name; a phase-less task falls into a single "Overall" category. A task assigned in a phase that hasn't started yet counts as future signed-up regardless of its claim status — the same signal spec describes for Browse-period claims and later-phase assignments. A member always sees their own picture; a new opt-in toggle (off by default) lets them share it with the rest of the Community on `/contribution`.
 
-Phase 24 (Dashboard) and Spatial planning (Phases 25-27, currently paused) are scoped in `docs/development-plan.md` but not yet built. See that doc for what's next.
+Phase 24 adds the Dashboard — a member's home view, and the new post-login landing page (magic-link verification now lands here instead of `/profile`). A personalized feed reads live off existing state: pending join requests on tasks a member holds, upcoming check-ins on their Waiting tasks, and any currently-held task that's picked up an attention flag. An always-visible community snapshot panel shows Tier composition, Branch spread (distinct members currently holding a task per branch), and Branch health — a per-branch coarse status (*on track · attention needed · struggling*) computed entirely from existing task attention-level state, visible to everyone, with coordination-view holders additionally seeing the real flag counts behind it. Recruitment-facing items, onboarding progress, and anything Spatial-planning-dependent stay out of scope — those subsystems don't exist yet (Spatial planning is currently paused).
+
+Spatial planning (Phases 25-27, currently paused) is scoped in `docs/development-plan.md` but not yet built. See that doc for what's next.
 
 ## Documentation
 
