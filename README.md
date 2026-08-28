@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-19 of the [development plan](docs/development-plan.md) are in place — every individually-scoped phase in the plan. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional." Phases 0-10 cover the tech spec's full MVP scope:
+Phases 0-20 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phase 20 begins the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -34,7 +34,11 @@ Phase 18 adds Assemblies — community-wide decisions, from a genuinely urgent o
 
 Phase 19 adds Scheduling polls — "when can enough of the right people actually meet." An organizer opens a poll against a branch and a date range; members paint the windows they're free on a real click-and-drag day-by-time grid, blind — nobody, not even the organizer, sees who submitted what until a slot is confirmed, only the aggregate overlap. Two resolution modes (must overlap a fixed required list, or clear an attendance threshold) decide which slots qualify to confirm. Scheduling a poll also spins up two real tasks right away ("Facilitate…" and "Take notes & publish the summary…"), and a poll can optionally carry an open agenda and a read-tracked summary, each defaulting from its Branch's own setting, falling back to the Community's.
 
-This closes out every individually-scoped phase in [`docs/development-plan.md`](docs/development-plan.md). What's next is real, designed work that just isn't broken into session-sized phases yet — Recruitment, Budget, Spatial planning, and the rest of the [tech spec](docs/spec.md) beyond MVP scope. See that doc's "Beyond Phase 19" section.
+This closes out every phase from the plan's original list plus the "core, not optional" slice added after it.
+
+Phase 20 adds Documentation — the one module that defaults on, same footing as Task notes rather than something a Community has to remember to enable. Freestanding `WikiPage`s carry the same revision-history shape as a task's wiki summary (any member edits, every edit is a new timestamped revision), optionally filed under a branch or left general. A page can also start as a bare question with no answer — it sits flagged unanswered until someone writes a real one, or until it's resolved as a duplicate of an existing page (dropping out of the main index, showing up on the canonical page as "also asked as…"). A new `/documentation` index browses these grouped by branch, alongside a read-only view of every task's own current wiki content — no new storage, just a different lens on data that already exists.
+
+Phases 21-25 (Conflict management, Sensitive data, and Spatial planning's three phases) are scoped in `docs/development-plan.md` but not yet built. See that doc for what's next.
 
 ## Documentation
 
