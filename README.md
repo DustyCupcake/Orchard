@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-24 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-24 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
+Phases 0-25 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-25 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -46,7 +46,9 @@ Phase 23 adds Contribution tracking — a member's own completed/active/future p
 
 Phase 24 adds the Dashboard — a member's home view, and the new post-login landing page (magic-link verification now lands here instead of `/profile`). A personalized feed reads live off existing state: pending join requests on tasks a member holds, upcoming check-ins on their Waiting tasks, and any currently-held task that's picked up an attention flag. An always-visible community snapshot panel shows Tier composition, Branch spread (distinct members currently holding a task per branch), and Branch health — a per-branch coarse status (*on track · attention needed · struggling*) computed entirely from existing task attention-level state, visible to everyone, with coordination-view holders additionally seeing the real flag counts behind it. Recruitment-facing items, onboarding progress, and anything Spatial-planning-dependent stay out of scope — those subsystems don't exist yet (Spatial planning is currently paused).
 
-Spatial planning (Phases 25-27, currently paused) is scoped in `docs/development-plan.md` but not yet built. See that doc for what's next.
+Phase 25 adds Forms — the last core shared primitive without a scoped consumer, landing its first real, non-Recruitment use in the same phase: post-cycle feedback. A Form's fields use the exact same free-text/single-choice/multi-choice shape Question and ProfileQuestion already use, but unlike a Question, a Form's fields are submitted together, once, as a single validated event — required fields block the whole submission. `Community.postCycleFeedbackFormId`/`feedbackReviewTaskId` name the community's standing survey and which task's holder reviews responses — the same "the task is the authority" pointer pattern Conflict management already established, not a dedicated role. A new `/feedback` page lets any member submit a response (anonymously, if the form allows it) and lets the review-task holder read every response.
+
+Budget, Event scheduling, and Shifts/rota (Phases 26-30) are scoped in `docs/development-plan.md` but not yet built, alongside Spatial planning (Phases S1-S3, deliberately non-numeric while paused rather than reserving real phase numbers for it). See that doc for what's next.
 
 ## Documentation
 
