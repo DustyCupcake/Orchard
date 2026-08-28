@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-21 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-21 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
+Phases 0-22 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-22 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -40,7 +40,9 @@ Phase 20 adds Documentation — the one module that defaults on, same footing as
 
 Phase 21 adds Conflict management — a reporting/recusal flow given real design weight, not a thin deferred afterthought. The conflict team isn't a dedicated relationship; it's just whoever currently holds a Community-designated task, same pattern as Admins and branch coordination. Filing a report takes nothing but wanting to talk to someone (no categorization or detail required up front), and recusal works from three directions — the reporter can exclude specific team members up front, and any team member can recuse themselves or a peer once a conflict of interest surfaces. The invisibility guarantee is enforced by the database query itself, not application-level filtering: an excluded team member's view of the report queue is genuinely indistinguishable from the report not existing. Acknowledging a report narrows visibility down to just the reporter and the point of contact; only the reporter can escalate it back open to the whole non-excluded team.
 
-Phases 22-25 (Sensitive data, and Spatial planning's three phases) are scoped in `docs/development-plan.md` but not yet built. See that doc for what's next.
+Phase 22 adds Sensitive data — purpose-bound, not role-bound, access to a small fixed set of member fields (health conditions, allergies, emergency contact, orientation). Off by default, and the first real use of `Community.modulesEnabled`'s on/off gating (unused since Phase 1) — later optional modules can register into the same small gate rather than each inventing their own. A Community defines which task or tier unlocks which field; a member always sees and edits their own values regardless. A new `/sensitive-data` page shows, for each field the current viewer is unlocked for, every member's value — the same "surface exactly what's relevant to what you hold" pattern `/coordination` and `/escalation` already use.
+
+Phases 23-25 (Spatial planning's three phases) are scoped in `docs/development-plan.md` but not yet built. See that doc for what's next.
 
 ## Documentation
 
