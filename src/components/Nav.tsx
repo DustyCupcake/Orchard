@@ -12,6 +12,7 @@ export default function Nav({ memberName }: { memberName: string }) {
         borderBottom: "1px solid #ccc",
       }}
     >
+      <Link href="/dashboard">Dashboard</Link>
       <Link href="/board">Board</Link>
       <Link href="/propose">Propose a task</Link>
       <Link href="/proposals">Proposals</Link>

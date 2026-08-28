@@ -23,5 +23,5 @@ export async function GET(request: NextRequest) {
   const memberRow = await findOrCreateMemberByEmail(community.id, email);
   await createSession(memberRow.id);
 
-  return NextResponse.redirect(new URL("/profile", appUrl));
+  return NextResponse.redirect(new URL("/dashboard", appUrl));
 }
