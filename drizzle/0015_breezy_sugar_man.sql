@@ -1,0 +1,1 @@
+ALTER TABLE "member" ADD COLUMN "contribution_visible" boolean DEFAULT false NOT NULL;

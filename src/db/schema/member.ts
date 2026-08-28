@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { boolean, pgTable, text, timestamp, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { community } from "./community";
 
 // A Member belongs to exactly one Community. tierIds is a denormalized
@@ -28,4 +28,9 @@ export const member = pgTable("member", {
   allergies: text("allergies"),
   emergencyContact: text("emergency_contact"),
   orientation: text("orientation"),
+  // Contribution tracking (docs/spec.md) — off by default, the same
+  // private-by-default/explicit-opt-in pattern as the sensitive fields
+  // above and contact-method visibility. Only gates *others'* view of
+  // this member's breakdown; their own is always visible to themselves.
+  contributionVisible: boolean("contribution_visible").notNull().default(false),
 });

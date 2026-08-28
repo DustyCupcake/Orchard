@@ -82,6 +82,8 @@ It's natural to wonder, partway through a season, how you're doing — is this j
 
 Zoom out past any one person and there's a whole-camp picture as well, on the same dashboard that already shows who's coming this season and the shape of who they are. Nothing about any one person's numbers — just the aggregate: how work is spread across the group right now, at a glance. It's not there to rank anyone. It's the same instinct behind everything else here — a season should be legible to itself, not something only the person coordinating it can see the shape of.
 
+That same dashboard shows how each branch is doing, too — at a glance, nothing more than on track, needs attention, or struggling. If a branch's tasks are quietly piling up unaddressed, that stops being invisible to everyone but its own coordinator; it's the kind of thing someone looking for where to pitch in might notice, not just something a coordinator has to catch by themselves. Anyone doing coordination work sees the fuller picture behind that — which flags, how many — the same way the rest of camp sees the simple version.
+
 ---
 
 ## What doesn't get lost: notes on a task, and knowledge for everyone

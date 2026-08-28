@@ -1058,6 +1058,13 @@ This isn't a new subsystem — it's a view that reads from the state other mecha
 
 Separate from the personalized feed above, the Dashboard also carries a small, always-visible panel about the cycle as a whole — aggregate, anonymized, never broken out by individual: active member count (Participation `coming`), composition by whatever the Community tracks (Tier/experience distribution, pronouns, Branch spread), and the community-average contribution figures from **Contribution tracking**, below. This is the concrete content behind what **Transparency & access** already calls "aggregate community progress," visible to all members by default the same as the rest of that view. Individual numbers stay out of this panel entirely, including for members who've opted their own contribution picture visible — that's a Contribution-tracking-page thing, not a leaderboard on the Dashboard.
 
+**Branch health.** The same panel carries a per-branch rollup of task attention levels — the concrete answer to "is coordination actually happening here," computed entirely from state the lifecycle mechanics already produce (see **Lifecycle & attention**), nothing separately tracked. Two tiers of the same underlying data, the same "signal without exposing a number nobody agreed to publish" split already used for capacity visibility:
+
+- **Everyone** sees a coarse status per branch — *on track · attention needed · struggling* — derived from the branch's mix of OK/soft-flag/hard-flag/escalated tasks. This is what makes the panel useful as a "where's help needed" signal for anyone looking for a fit, not just a coordination-monitoring tool.
+- **Coordination-view holders** (see **Transparency & access**) see the actual flag counts behind that status, for every branch, not just their own — soft-flagged, hard-flagged, escalated, broken out. A coordinator whose own branch is struggling sees exactly what's stuck; a coordinator elsewhere sees the same thing about every other branch, which is what surfaces a branch where flags are piling up without anyone visibly acting on them, without needing a mechanism that watches coordinators directly.
+
+This stays a read of existing Task attention-level state, same as the rest of this panel — no new tracked field, no coordinator-specific scoring. It doesn't replace the Coordination view's own branch-coverage tooling (that's the place to actually work a branch's flags); this is the ambient, always-visible version that makes a quietly struggling branch legible to the rest of the community before someone has to go looking.
+
 ---
 
 ## 📱 Interface: mobile & web
