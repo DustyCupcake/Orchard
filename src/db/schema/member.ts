@@ -18,4 +18,14 @@ export const member = pgTable("member", {
   tierIds: uuid("tier_ids").array().notNull().default([]),
   joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
   referredByMemberId: uuid("referred_by_member_id").references((): AnyPgColumn => member.id),
+  // The fixed sensitive-field set from docs/spec.md's "Sensitive data"
+  // — GDPR Art. 9-flavored fields, off by default (see
+  // src/lib/modules.ts). Always visible/editable by the member
+  // themselves regardless of any SensitiveFieldAccessRule; access to
+  // *another* member's value is purpose-bound, gated at the query
+  // layer in src/lib/sensitive-data.ts, not by hiding these columns.
+  healthConditions: text("health_conditions"),
+  allergies: text("allergies"),
+  emergencyContact: text("emergency_contact"),
+  orientation: text("orientation"),
 });

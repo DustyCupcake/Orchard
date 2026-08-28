@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { member } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { answerProfileQuestion } from "@/lib/profile-questions";
+import { updateOwnSensitiveData, updateOwnSensitiveDataInput } from "@/lib/sensitive-data";
 
 export async function updateProfile(formData: FormData) {
   const current = await getCurrentMember();
@@ -47,5 +48,21 @@ export async function submitProfileAnswerAction(formData: FormData) {
     value: status === "answered" ? value : undefined,
     capacityVisibility,
   });
+  revalidatePath("/profile");
+}
+
+export async function updateSensitiveDataAction(formData: FormData) {
+  const current = await getCurrentMember();
+  if (!current) {
+    redirect("/login");
+  }
+
+  const input = updateOwnSensitiveDataInput.parse({
+    healthConditions: String(formData.get("healthConditions") ?? "").trim() || null,
+    allergies: String(formData.get("allergies") ?? "").trim() || null,
+    emergencyContact: String(formData.get("emergencyContact") ?? "").trim() || null,
+    orientation: String(formData.get("orientation") ?? "").trim() || null,
+  });
+  await updateOwnSensitiveData(current, input);
   revalidatePath("/profile");
 }

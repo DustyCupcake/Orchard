@@ -4,8 +4,11 @@ import { db } from "@/db";
 import { tier } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { listOnceEverAnswers, listOutstandingQuestions } from "@/lib/profile-questions";
+import { getCommunity } from "@/lib/settings";
+import { isModuleEnabled } from "@/lib/modules";
+import { SENSITIVE_FIELD_LABELS } from "@/lib/sensitive-data";
 import Nav from "@/components/Nav";
-import { submitProfileAnswerAction, updateProfile } from "./actions";
+import { submitProfileAnswerAction, updateProfile, updateSensitiveDataAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -93,11 +96,13 @@ export default async function ProfilePage() {
     redirect("/login");
   }
 
-  const [communityTiers, outstanding, onceEverAnswers] = await Promise.all([
+  const [communityTiers, outstanding, onceEverAnswers, communityRow] = await Promise.all([
     db.select().from(tier).where(eq(tier.communityId, currentMember.communityId)),
     listOutstandingQuestions(currentMember),
     listOnceEverAnswers(currentMember),
+    getCommunity(currentMember),
   ]);
+  const sensitiveDataOn = isModuleEnabled(communityRow, "sensitive_data");
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 480 }}>
@@ -197,6 +202,64 @@ export default async function ProfilePage() {
               />
             </div>
           ))}
+        </section>
+      )}
+
+      {sensitiveDataOn && (
+        <section style={{ marginTop: "2rem" }}>
+          <h2>Sensitive data</h2>
+          <p style={{ color: "#666", fontSize: "0.85rem" }}>
+            Always yours to see and edit. Only visible to others via a task or tier your Community
+            has explicitly set to unlock a given field — see <code>/sensitive-data</code>.
+          </p>
+          <form
+            action={updateSensitiveDataAction}
+            style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
+          >
+            <label>
+              {SENSITIVE_FIELD_LABELS.health_conditions}
+              <br />
+              <textarea
+                name="healthConditions"
+                rows={2}
+                defaultValue={currentMember.healthConditions ?? ""}
+                style={{ padding: "0.5rem", width: "100%" }}
+              />
+            </label>
+            <label>
+              {SENSITIVE_FIELD_LABELS.allergies}
+              <br />
+              <textarea
+                name="allergies"
+                rows={2}
+                defaultValue={currentMember.allergies ?? ""}
+                style={{ padding: "0.5rem", width: "100%" }}
+              />
+            </label>
+            <label>
+              {SENSITIVE_FIELD_LABELS.emergency_contact}
+              <br />
+              <input
+                type="text"
+                name="emergencyContact"
+                defaultValue={currentMember.emergencyContact ?? ""}
+                style={{ padding: "0.5rem", width: "100%" }}
+              />
+            </label>
+            <label>
+              {SENSITIVE_FIELD_LABELS.orientation}
+              <br />
+              <input
+                type="text"
+                name="orientation"
+                defaultValue={currentMember.orientation ?? ""}
+                style={{ padding: "0.5rem", width: "100%" }}
+              />
+            </label>
+            <button type="submit" style={{ padding: "0.5rem 1rem", width: "fit-content" }}>
+              Save
+            </button>
+          </form>
         </section>
       )}
     </main>

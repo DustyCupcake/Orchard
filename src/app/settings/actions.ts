@@ -27,6 +27,11 @@ import {
   updateProfileQuestion,
   updateProfileQuestionInput,
 } from "@/lib/profile-questions";
+import {
+  createSensitiveFieldAccessRule,
+  createSensitiveFieldAccessRuleInput,
+  deleteSensitiveFieldAccessRule,
+} from "@/lib/sensitive-data";
 import { AppError } from "@/lib/errors";
 
 function triState(value: FormDataEntryValue | null): boolean | null | undefined {
@@ -63,6 +68,7 @@ export async function updateCommunityAction(formData: FormData) {
       defaultCallRequireRead: formData.get("defaultCallRequireRead") === "on",
       conflictTeamTaskId: String(formData.get("conflictTeamTaskId") ?? "").trim() || null,
       conflictAckWindowHours: Number(formData.get("conflictAckWindowHours") ?? NaN) || undefined,
+      modulesEnabled: formData.getAll("modulesEnabled").map(String),
     });
     await updateCommunity(actor, input);
   } catch (err) {
@@ -238,6 +244,38 @@ export async function unarchiveProfileQuestionAction(formData: FormData) {
   try {
     await requireAdmins(actor);
     await unarchiveProfileQuestion(actor, questionId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function createSensitiveFieldAccessRuleAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    await requireAdmins(actor);
+    const input = createSensitiveFieldAccessRuleInput.parse({
+      fieldKey: String(formData.get("fieldKey") ?? ""),
+      unlockedByTaskId: String(formData.get("unlockedByTaskId") ?? "").trim() || null,
+      unlockedByTierId: String(formData.get("unlockedByTierId") ?? "").trim() || null,
+    });
+    await createSensitiveFieldAccessRule(actor, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function deleteSensitiveFieldAccessRuleAction(formData: FormData) {
+  const actor = await requireMember();
+  const ruleId = String(formData.get("ruleId"));
+
+  try {
+    await requireAdmins(actor);
+    await deleteSensitiveFieldAccessRule(actor, ruleId);
   } catch (err) {
     redirectWithError(err);
   }

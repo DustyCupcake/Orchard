@@ -17,10 +17,11 @@ export async function getCommunity(actor: Member) {
 
 // Deliberately narrow — per docs/development-plan.md's Phase 9 scope
 // ("branches, tiers, and cycle/phase structure"), not the full
-// Configuration model. membership_model, branch_membership_model, and
-// modules_enabled stay DB-only for now. The call defaults are wired
-// up here in Phase 19 — see src/lib/settings/branches.ts for the
-// per-Branch overrides that fall back to these.
+// Configuration model. membership_model and branch_membership_model
+// stay DB-only for now. The call defaults are wired up here in
+// Phase 19 — see src/lib/settings/branches.ts for the per-Branch
+// overrides that fall back to these. modulesEnabled is wired up in
+// Phase 22 — see src/lib/modules.ts.
 export const updateCommunityInput = z.object({
   name: z.string().min(1).optional(),
   cyclesEnabled: z.boolean().optional(),
@@ -35,6 +36,7 @@ export const updateCommunityInput = z.object({
   // src/db/schema/community.ts's schema comment and src/lib/conflict.ts.
   conflictTeamTaskId: z.string().uuid().nullable().optional(),
   conflictAckWindowHours: z.number().int().positive().optional(),
+  modulesEnabled: z.array(z.string()).optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -81,6 +83,7 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.conflictAckWindowHours !== undefined && {
         conflictAckWindowHours: input.conflictAckWindowHours,
       }),
+      ...(input.modulesEnabled !== undefined && { modulesEnabled: input.modulesEnabled }),
     })
     .where(eq(community.id, actor.communityId))
     .returning();

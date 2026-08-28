@@ -1,18 +1,22 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { task } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { getCommunity, listBranches, listTiers, requireAdmins } from "@/lib/settings";
 import { listProfileQuestions } from "@/lib/profile-questions";
+import { MODULE_DEFINITIONS } from "@/lib/modules";
+import { SENSITIVE_FIELD_KEYS, SENSITIVE_FIELD_LABELS, listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
 import { ForbiddenError } from "@/lib/errors";
 import Nav from "@/components/Nav";
 import {
   archiveProfileQuestionAction,
   createBranchAction,
   createProfileQuestionAction,
+  createSensitiveFieldAccessRuleAction,
   createTierAction,
   deleteBranchAction,
+  deleteSensitiveFieldAccessRuleAction,
   deleteTierAction,
   unarchiveProfileQuestionAction,
   updateBranchAction,
@@ -46,11 +50,12 @@ export default async function SettingsPage({
     }
   }
 
-  const [communityRow, branches, tiers, profileQuestions] = await Promise.all([
+  const [communityRow, branches, tiers, profileQuestions, sensitiveFieldRules] = await Promise.all([
     getCommunity(currentMember),
     listBranches(currentMember),
     listTiers(currentMember),
     authorized ? listProfileQuestions(currentMember, { includeArchived: true }) : Promise.resolve([]),
+    authorized ? listSensitiveFieldAccessRules(currentMember) : Promise.resolve([]),
   ]);
 
   const conflictTeamTask = communityRow.conflictTeamTaskId
@@ -60,6 +65,16 @@ export default async function SettingsPage({
         .where(eq(task.id, communityRow.conflictTeamTaskId))
         .then((r) => r[0])
     : null;
+
+  const ruleTaskIds = [
+    ...new Set(sensitiveFieldRules.map((r) => r.unlockedByTaskId).filter((id): id is string => Boolean(id))),
+  ];
+  const ruleTasks =
+    ruleTaskIds.length > 0
+      ? await db.select({ id: task.id, title: task.title }).from(task).where(inArray(task.id, ruleTaskIds))
+      : [];
+  const ruleTaskNameById = new Map(ruleTasks.map((t) => [t.id, t.title]));
+  const tierNameById = new Map(tiers.map((t) => [t.id, t.name]));
 
   if (!authorized) {
     return (
@@ -228,6 +243,21 @@ export default async function SettingsPage({
               style={{ padding: "0.4rem", width: "8rem" }}
             />
           </label>
+
+          <fieldset>
+            <legend>Modules</legend>
+            {MODULE_DEFINITIONS.map((m) => (
+              <label key={m.key} style={{ display: "block" }}>
+                <input
+                  type="checkbox"
+                  name="modulesEnabled"
+                  value={m.key}
+                  defaultChecked={communityRow.modulesEnabled.includes(m.key)}
+                />{" "}
+                {m.label}
+              </label>
+            ))}
+          </fieldset>
 
           <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
             Save
@@ -458,6 +488,78 @@ export default async function SettingsPage({
           </label>
           <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
             Add profile question
+          </button>
+        </form>
+      </section>
+
+      <section style={{ marginTop: "2rem" }}>
+        <h2>Sensitive data access</h2>
+        <p style={{ color: "#666", fontSize: "0.85rem" }}>
+          Purpose-bound, not role-bound: pick which task or tier unlocks each field for{" "}
+          <em>other</em> members&rsquo; values on <code>/sensitive-data</code>. A member can always
+          see and edit their own values regardless of these rules. Only takes effect once
+          &ldquo;Sensitive data&rdquo; is checked under Modules above.
+        </p>
+        {sensitiveFieldRules.length === 0 && <p style={{ color: "#666" }}>No rules yet.</p>}
+        {sensitiveFieldRules.map((r) => (
+          <div
+            key={r.id}
+            style={{
+              border: "1px solid #ccc",
+              borderRadius: 6,
+              padding: "0.6rem",
+              marginBottom: "0.5rem",
+              display: "flex",
+              gap: "0.5rem",
+              alignItems: "center",
+            }}
+          >
+            <span style={{ flex: 1 }}>
+              {SENSITIVE_FIELD_LABELS[r.fieldKey]} — unlocked by{" "}
+              {r.unlockedByTaskId
+                ? `holding "${ruleTaskNameById.get(r.unlockedByTaskId) ?? "—"}"`
+                : `Tier "${tierNameById.get(r.unlockedByTierId!) ?? "—"}"`}
+            </span>
+            <form action={deleteSensitiveFieldAccessRuleAction}>
+              <input type="hidden" name="ruleId" value={r.id} />
+              <button type="submit">Delete</button>
+            </form>
+          </div>
+        ))}
+
+        <form
+          action={createSensitiveFieldAccessRuleAction}
+          style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem", maxWidth: 420 }}
+        >
+          <select name="fieldKey" defaultValue={SENSITIVE_FIELD_KEYS[0]} style={{ padding: "0.4rem" }}>
+            {SENSITIVE_FIELD_KEYS.map((k) => (
+              <option key={k} value={k}>
+                {SENSITIVE_FIELD_LABELS[k]}
+              </option>
+            ))}
+          </select>
+          <label style={{ fontSize: "0.85rem" }}>
+            Unlock via a Tier
+            <select name="unlockedByTierId" defaultValue="" style={{ padding: "0.4rem", width: "100%" }}>
+              <option value="">— none —</option>
+              {tiers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ fontSize: "0.85rem" }}>
+            Or unlock via a Task ID (pick exactly one of Tier/Task)
+            <input
+              type="text"
+              name="unlockedByTaskId"
+              placeholder="paste the task's ID from its /tasks/… URL"
+              style={{ padding: "0.4rem", width: "100%" }}
+            />
+          </label>
+          <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+            Add rule
           </button>
         </form>
       </section>
