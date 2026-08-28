@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-20 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phase 20 begins the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
+Phases 0-21 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-21 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -38,7 +38,9 @@ This closes out every phase from the plan's original list plus the "core, not op
 
 Phase 20 adds Documentation — the one module that defaults on, same footing as Task notes rather than something a Community has to remember to enable. Freestanding `WikiPage`s carry the same revision-history shape as a task's wiki summary (any member edits, every edit is a new timestamped revision), optionally filed under a branch or left general. A page can also start as a bare question with no answer — it sits flagged unanswered until someone writes a real one, or until it's resolved as a duplicate of an existing page (dropping out of the main index, showing up on the canonical page as "also asked as…"). A new `/documentation` index browses these grouped by branch, alongside a read-only view of every task's own current wiki content — no new storage, just a different lens on data that already exists.
 
-Phases 21-25 (Conflict management, Sensitive data, and Spatial planning's three phases) are scoped in `docs/development-plan.md` but not yet built. See that doc for what's next.
+Phase 21 adds Conflict management — a reporting/recusal flow given real design weight, not a thin deferred afterthought. The conflict team isn't a dedicated relationship; it's just whoever currently holds a Community-designated task, same pattern as Admins and branch coordination. Filing a report takes nothing but wanting to talk to someone (no categorization or detail required up front), and recusal works from three directions — the reporter can exclude specific team members up front, and any team member can recuse themselves or a peer once a conflict of interest surfaces. The invisibility guarantee is enforced by the database query itself, not application-level filtering: an excluded team member's view of the report queue is genuinely indistinguishable from the report not existing. Acknowledging a report narrows visibility down to just the reporter and the point of contact; only the reporter can escalate it back open to the whole non-excluded team.
+
+Phases 22-25 (Sensitive data, and Spatial planning's three phases) are scoped in `docs/development-plan.md` but not yet built. See that doc for what's next.
 
 ## Documentation
 
