@@ -28,9 +28,18 @@ export const community = pgTable("community", {
   ),
   phasesEnabled: boolean("phases_enabled").notNull().default(false),
   onsiteModeEnabled: boolean("onsite_mode_enabled").notNull().default(false),
-  // conflict_team_task_id (→ Task) is deliberately left out for now — it
-  // would create a Community ↔ Task circular import for a field that's
-  // only meaningful once the conflict-management module is built.
+  // Plain uuid, no `.references()` call — pointing this at Task would
+  // create a Community ↔ Task circular import (task.ts already imports
+  // community.ts). Validated at the application layer instead (task
+  // exists, same community) — see src/lib/conflict.ts, and the same
+  // non-FK approach Requirement.value's completed_task reference
+  // already uses for the identical problem. Null = the conflict-
+  // management module is off for this Community; no separate flag.
+  conflictTeamTaskId: uuid("conflict_team_task_id"),
+  // How long the conflict team has to acknowledge a new report before
+  // it's shown as overdue — see docs/spec.md's Conflict management
+  // Flow ("24h in the reference case, community-configurable").
+  conflictAckWindowHours: integer("conflict_ack_window_hours").notNull().default(24),
   //
   // The Admins task isn't a dedicated Community → Task column for the
   // same circular-import reason — it's identified the same way Phase 15

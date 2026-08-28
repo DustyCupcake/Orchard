@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { community, tier } from "@/db/schema";
+import { community, task, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { NotFoundError } from "../errors";
 
@@ -31,6 +31,10 @@ export const updateCommunityInput = z.object({
   defaultCallHasAgenda: z.boolean().optional(),
   defaultCallNeedsSummary: z.boolean().optional(),
   defaultCallRequireRead: z.boolean().optional(),
+  // Null turns the Conflict management module off — see
+  // src/db/schema/community.ts's schema comment and src/lib/conflict.ts.
+  conflictTeamTaskId: z.string().uuid().nullable().optional(),
+  conflictAckWindowHours: z.number().int().positive().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -42,6 +46,16 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       .where(eq(tier.id, input.cycleInitiationTierId));
     if (!tierRow || tierRow.communityId !== actor.communityId) {
       throw new NotFoundError("Tier not found in your community");
+    }
+  }
+
+  if (input.conflictTeamTaskId) {
+    const [taskRow] = await db
+      .select({ id: task.id })
+      .from(task)
+      .where(and(eq(task.id, input.conflictTeamTaskId), eq(task.communityId, actor.communityId)));
+    if (!taskRow) {
+      throw new NotFoundError("Task not found in your community");
     }
   }
 
@@ -62,6 +76,10 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       }),
       ...(input.defaultCallRequireRead !== undefined && {
         defaultCallRequireRead: input.defaultCallRequireRead,
+      }),
+      ...(input.conflictTeamTaskId !== undefined && { conflictTeamTaskId: input.conflictTeamTaskId }),
+      ...(input.conflictAckWindowHours !== undefined && {
+        conflictAckWindowHours: input.conflictAckWindowHours,
       }),
     })
     .where(eq(community.id, actor.communityId))

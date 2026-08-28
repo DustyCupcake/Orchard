@@ -1,4 +1,7 @@
+import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { db } from "@/db";
+import { task } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { getCommunity, listBranches, listTiers, requireAdmins } from "@/lib/settings";
 import { listProfileQuestions } from "@/lib/profile-questions";
@@ -49,6 +52,14 @@ export default async function SettingsPage({
     listTiers(currentMember),
     authorized ? listProfileQuestions(currentMember, { includeArchived: true }) : Promise.resolve([]),
   ]);
+
+  const conflictTeamTask = communityRow.conflictTeamTaskId
+    ? await db
+        .select({ id: task.id, title: task.title })
+        .from(task)
+        .where(eq(task.id, communityRow.conflictTeamTaskId))
+        .then((r) => r[0])
+    : null;
 
   if (!authorized) {
     return (
@@ -187,6 +198,36 @@ export default async function SettingsPage({
               Require read-confirmation
             </label>
           </fieldset>
+
+          <label>
+            Conflict team task ID (leave blank to keep Conflict management off)
+            <br />
+            <input
+              type="text"
+              name="conflictTeamTaskId"
+              defaultValue={communityRow.conflictTeamTaskId ?? ""}
+              placeholder="paste the task's ID from its /tasks/… URL"
+              style={{ padding: "0.4rem", width: "100%" }}
+            />
+            <br />
+            <span style={{ fontSize: "0.8rem", color: "#666" }}>
+              {conflictTeamTask
+                ? `Currently: "${conflictTeamTask.title}" — whoever holds it is the conflict team.`
+                : "A critical, multi-slot coordination task like any other — whoever holds it becomes the conflict team."}
+            </span>
+          </label>
+
+          <label>
+            Acknowledgment window (hours)
+            <br />
+            <input
+              type="number"
+              name="conflictAckWindowHours"
+              min={1}
+              defaultValue={communityRow.conflictAckWindowHours}
+              style={{ padding: "0.4rem", width: "8rem" }}
+            />
+          </label>
 
           <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
             Save

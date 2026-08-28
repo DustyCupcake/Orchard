@@ -92,6 +92,13 @@
       "when": 1787871946053,
       "tag": "0012_lethal_chronomancer",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1787873242153,
+      "tag": "0013_hot_nextwave",
+      "breakpoints": true
     }
   ]
 }

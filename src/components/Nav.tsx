@@ -21,6 +21,7 @@ export default function Nav({ memberName }: { memberName: string }) {
       <Link href="/assemblies">Assemblies</Link>
       <Link href="/scheduling-polls">Scheduling</Link>
       <Link href="/documentation">Documentation</Link>
+      <Link href="/conflict-reports">Conflict</Link>
       <Link href="/profile">Profile</Link>
       <Link href="/settings">Settings</Link>
       <span style={{ marginLeft: "auto", color: "#666" }}>{memberName}</span>

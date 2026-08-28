@@ -61,6 +61,8 @@ export async function updateCommunityAction(formData: FormData) {
       defaultCallHasAgenda: formData.get("defaultCallHasAgenda") === "on",
       defaultCallNeedsSummary: formData.get("defaultCallNeedsSummary") === "on",
       defaultCallRequireRead: formData.get("defaultCallRequireRead") === "on",
+      conflictTeamTaskId: String(formData.get("conflictTeamTaskId") ?? "").trim() || null,
+      conflictAckWindowHours: Number(formData.get("conflictAckWindowHours") ?? NaN) || undefined,
     });
     await updateCommunity(actor, input);
   } catch (err) {

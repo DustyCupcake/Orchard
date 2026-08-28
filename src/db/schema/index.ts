@@ -24,3 +24,4 @@ export * from "./assembly";
 export * from "./scheduling-poll";
 export * from "./call";
 export * from "./wiki-page";
+export * from "./conflict-report";
