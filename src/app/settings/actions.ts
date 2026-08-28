@@ -32,7 +32,31 @@ import {
   createSensitiveFieldAccessRuleInput,
   deleteSensitiveFieldAccessRule,
 } from "@/lib/sensitive-data";
+import { archiveForm, createForm, createFormInput, unarchiveForm } from "@/lib/forms";
 import { AppError } from "@/lib/errors";
+
+// Fields are entered one per line in a plain textarea rather than a
+// dynamic add-row UI (this codebase has no client-side JS beyond
+// Scheduling polls' one deliberate exception) — matches spec's own
+// "MVP forms are hardcoded per use" framing; a no-code field builder
+// is explicitly out of scope. Format: key|label|response_type|options
+// (comma-separated, choice types only)|required (yes/no).
+function parseFormFields(raw: string) {
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [key, label, responseType, options, required] = line.split("|").map((p) => p?.trim() ?? "");
+      return {
+        key,
+        label,
+        responseType: (responseType || "free_text") as "free_text" | "single_choice" | "multi_choice",
+        options: options ? options.split(",").map((o) => o.trim()).filter(Boolean) : undefined,
+        required: required?.toLowerCase() === "yes",
+      };
+    });
+}
 
 function triState(value: FormDataEntryValue | null): boolean | null | undefined {
   if (value === "on") return true;
@@ -69,6 +93,8 @@ export async function updateCommunityAction(formData: FormData) {
       conflictTeamTaskId: String(formData.get("conflictTeamTaskId") ?? "").trim() || null,
       conflictAckWindowHours: Number(formData.get("conflictAckWindowHours") ?? NaN) || undefined,
       modulesEnabled: formData.getAll("modulesEnabled").map(String),
+      postCycleFeedbackFormId: String(formData.get("postCycleFeedbackFormId") ?? "").trim() || null,
+      feedbackReviewTaskId: String(formData.get("feedbackReviewTaskId") ?? "").trim() || null,
     });
     await updateCommunity(actor, input);
   } catch (err) {
@@ -276,6 +302,53 @@ export async function deleteSensitiveFieldAccessRuleAction(formData: FormData) {
   try {
     await requireAdmins(actor);
     await deleteSensitiveFieldAccessRule(actor, ruleId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function createFormAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    await requireAdmins(actor);
+    const input = createFormInput.parse({
+      title: String(formData.get("title") ?? ""),
+      description: String(formData.get("description") ?? "").trim() || undefined,
+      fields: parseFormFields(String(formData.get("fieldsRaw") ?? "")),
+      allowAnonymous: formData.get("allowAnonymous") === "on",
+    });
+    await createForm(actor, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function archiveFormAction(formData: FormData) {
+  const actor = await requireMember();
+  const formId = String(formData.get("formId"));
+
+  try {
+    await requireAdmins(actor);
+    await archiveForm(actor, formId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function unarchiveFormAction(formData: FormData) {
+  const actor = await requireMember();
+  const formId = String(formData.get("formId"));
+
+  try {
+    await requireAdmins(actor);
+    await unarchiveForm(actor, formId);
   } catch (err) {
     redirectWithError(err);
   }

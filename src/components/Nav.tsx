@@ -25,6 +25,7 @@ export default function Nav({ memberName }: { memberName: string }) {
       <Link href="/conflict-reports">Conflict</Link>
       <Link href="/sensitive-data">Sensitive data</Link>
       <Link href="/contribution">Contribution</Link>
+      <Link href="/feedback">Feedback</Link>
       <Link href="/profile">Profile</Link>
       <Link href="/settings">Settings</Link>
       <span style={{ marginLeft: "auto", color: "#666" }}>{memberName}</span>

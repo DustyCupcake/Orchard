@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { community, task, tier } from "@/db/schema";
+import { community, form, task, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { NotFoundError } from "../errors";
 
@@ -37,6 +37,11 @@ export const updateCommunityInput = z.object({
   conflictTeamTaskId: z.string().uuid().nullable().optional(),
   conflictAckWindowHours: z.number().int().positive().optional(),
   modulesEnabled: z.array(z.string()).optional(),
+  // Null turns off the standing post-cycle feedback ask / clears its
+  // review-task authority — see src/db/schema/community.ts's schema
+  // comment and src/lib/forms.ts.
+  postCycleFeedbackFormId: z.string().uuid().nullable().optional(),
+  feedbackReviewTaskId: z.string().uuid().nullable().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -58,6 +63,26 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       .where(and(eq(task.id, input.conflictTeamTaskId), eq(task.communityId, actor.communityId)));
     if (!taskRow) {
       throw new NotFoundError("Task not found in your community");
+    }
+  }
+
+  if (input.feedbackReviewTaskId) {
+    const [taskRow] = await db
+      .select({ id: task.id })
+      .from(task)
+      .where(and(eq(task.id, input.feedbackReviewTaskId), eq(task.communityId, actor.communityId)));
+    if (!taskRow) {
+      throw new NotFoundError("Task not found in your community");
+    }
+  }
+
+  if (input.postCycleFeedbackFormId) {
+    const [formRow] = await db
+      .select({ id: form.id })
+      .from(form)
+      .where(and(eq(form.id, input.postCycleFeedbackFormId), eq(form.communityId, actor.communityId)));
+    if (!formRow) {
+      throw new NotFoundError("Form not found in your community");
     }
   }
 
@@ -84,6 +109,10 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         conflictAckWindowHours: input.conflictAckWindowHours,
       }),
       ...(input.modulesEnabled !== undefined && { modulesEnabled: input.modulesEnabled }),
+      ...(input.postCycleFeedbackFormId !== undefined && {
+        postCycleFeedbackFormId: input.postCycleFeedbackFormId,
+      }),
+      ...(input.feedbackReviewTaskId !== undefined && { feedbackReviewTaskId: input.feedbackReviewTaskId }),
     })
     .where(eq(community.id, actor.communityId))
     .returning();

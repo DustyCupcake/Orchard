@@ -82,4 +82,16 @@ export const community = pgTable("community", {
   // near-identical column for that.
   stalenessSoftDays: integer("staleness_soft_days").notNull().default(7),
   stalenessHardDays: integer("staleness_hard_days").notNull().default(14),
+  // Plain uuid, no `.references()` — same non-FK pattern
+  // conflictTeamTaskId already uses above, for the identical circular-
+  // import reason (form.ts needs to import community.ts for its own
+  // communityId column, so community.ts importing form.ts back would
+  // cycle). Validated at the application layer instead — see
+  // src/lib/forms.ts. Null = no standing post-cycle feedback form
+  // configured yet.
+  postCycleFeedbackFormId: uuid("post_cycle_feedback_form_id"),
+  // Whichever task reviews feedback responses — same "the task is the
+  // authority" pattern conflictTeamTaskId established, same non-FK
+  // reasoning (task.ts already imports community.ts).
+  feedbackReviewTaskId: uuid("feedback_review_task_id"),
 });

@@ -7,17 +7,21 @@ import { getCommunity, listBranches, listTiers, requireAdmins } from "@/lib/sett
 import { listProfileQuestions } from "@/lib/profile-questions";
 import { MODULE_DEFINITIONS } from "@/lib/modules";
 import { SENSITIVE_FIELD_KEYS, SENSITIVE_FIELD_LABELS, listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
+import { listForms } from "@/lib/forms";
 import { ForbiddenError } from "@/lib/errors";
 import Nav from "@/components/Nav";
 import {
+  archiveFormAction,
   archiveProfileQuestionAction,
   createBranchAction,
+  createFormAction,
   createProfileQuestionAction,
   createSensitiveFieldAccessRuleAction,
   createTierAction,
   deleteBranchAction,
   deleteSensitiveFieldAccessRuleAction,
   deleteTierAction,
+  unarchiveFormAction,
   unarchiveProfileQuestionAction,
   updateBranchAction,
   updateCommunityAction,
@@ -50,12 +54,13 @@ export default async function SettingsPage({
     }
   }
 
-  const [communityRow, branches, tiers, profileQuestions, sensitiveFieldRules] = await Promise.all([
+  const [communityRow, branches, tiers, profileQuestions, sensitiveFieldRules, forms] = await Promise.all([
     getCommunity(currentMember),
     listBranches(currentMember),
     listTiers(currentMember),
     authorized ? listProfileQuestions(currentMember, { includeArchived: true }) : Promise.resolve([]),
     authorized ? listSensitiveFieldAccessRules(currentMember) : Promise.resolve([]),
+    authorized ? listForms(currentMember, { includeArchived: true }) : Promise.resolve([]),
   ]);
 
   const conflictTeamTask = communityRow.conflictTeamTaskId
@@ -63,6 +68,13 @@ export default async function SettingsPage({
         .select({ id: task.id, title: task.title })
         .from(task)
         .where(eq(task.id, communityRow.conflictTeamTaskId))
+        .then((r) => r[0])
+    : null;
+  const feedbackReviewTask = communityRow.feedbackReviewTaskId
+    ? await db
+        .select({ id: task.id, title: task.title })
+        .from(task)
+        .where(eq(task.id, communityRow.feedbackReviewTaskId))
         .then((r) => r[0])
     : null;
 
@@ -257,6 +269,50 @@ export default async function SettingsPage({
                 {m.label}
               </label>
             ))}
+          </fieldset>
+
+          <fieldset>
+            <legend>Post-cycle feedback</legend>
+            <label>
+              Feedback form
+              <br />
+              <select
+                name="postCycleFeedbackFormId"
+                defaultValue={communityRow.postCycleFeedbackFormId ?? ""}
+                style={{ padding: "0.4rem", width: "100%" }}
+              >
+                <option value="">— none configured —</option>
+                {forms
+                  .filter((f) => !f.archivedAt)
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.title}
+                    </option>
+                  ))}
+              </select>
+              <br />
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+                Define the form itself under Forms, below, then pick it here.
+              </span>
+            </label>
+
+            <label>
+              Review task ID
+              <br />
+              <input
+                type="text"
+                name="feedbackReviewTaskId"
+                defaultValue={communityRow.feedbackReviewTaskId ?? ""}
+                placeholder="paste the task's ID from its /tasks/… URL"
+                style={{ padding: "0.4rem", width: "100%" }}
+              />
+              <br />
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+                {feedbackReviewTask
+                  ? `Currently: "${feedbackReviewTask.title}" — whoever holds it sees responses.`
+                  : "Whoever holds this task sees feedback responses on /feedback."}
+              </span>
+            </label>
           </fieldset>
 
           <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
@@ -560,6 +616,78 @@ export default async function SettingsPage({
           </label>
           <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
             Add rule
+          </button>
+        </form>
+      </section>
+
+      <section style={{ marginTop: "2rem" }}>
+        <h2>Forms</h2>
+        <p style={{ color: "#666", fontSize: "0.85rem" }}>
+          A community-defined set of fields collected together as one submission — infrastructure
+          other things lean on, starting with post-cycle feedback above. Fields can&rsquo;t be
+          edited after creation (archive and recreate instead) so existing responses never end up
+          validated against a shape that&rsquo;s since changed.
+        </p>
+        {forms.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
+        {forms.map((f) => (
+          <div
+            key={f.id}
+            style={{
+              border: "1px solid #ccc",
+              borderRadius: 6,
+              padding: "0.6rem",
+              marginBottom: "0.5rem",
+              opacity: f.archivedAt ? 0.6 : 1,
+            }}
+          >
+            <p style={{ margin: 0, fontWeight: 600 }}>
+              {f.title}
+              {f.allowAnonymous && (
+                <span style={{ fontWeight: 400, color: "#666", fontSize: "0.8rem" }}> · anonymous allowed</span>
+              )}
+            </p>
+            {f.description && <p style={{ margin: "0.2rem 0", color: "#666" }}>{f.description}</p>}
+            <p style={{ fontSize: "0.8rem", color: "#666" }}>
+              {(f.fields as { label: string }[]).map((field) => field.label).join(", ")}
+            </p>
+            <form action={f.archivedAt ? unarchiveFormAction : archiveFormAction}>
+              <input type="hidden" name="formId" value={f.id} />
+              <button type="submit">{f.archivedAt ? "Unarchive" : "Archive"}</button>
+            </form>
+          </div>
+        ))}
+
+        <form
+          action={createFormAction}
+          style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem", maxWidth: 480 }}
+        >
+          <input type="text" name="title" required placeholder="Form title" style={{ padding: "0.4rem" }} />
+          <textarea
+            name="description"
+            rows={2}
+            placeholder="description (optional)"
+            style={{ padding: "0.4rem" }}
+          />
+          <label style={{ fontSize: "0.85rem" }}>
+            Fields, one per line: <code>key|label|response_type|options|required</code>
+            <br />
+            <span style={{ color: "#666" }}>
+              response_type is free_text/single_choice/multi_choice; options is comma-separated
+              (choice types only); required is yes/no.
+            </span>
+            <textarea
+              name="fieldsRaw"
+              required
+              rows={4}
+              placeholder={"overall|How did this cycle go overall?|free_text||yes\nkeep|What should we keep doing?|free_text||no"}
+              style={{ padding: "0.4rem", width: "100%", fontFamily: "monospace", fontSize: "0.85rem" }}
+            />
+          </label>
+          <label>
+            <input type="checkbox" name="allowAnonymous" /> allow anonymous submissions
+          </label>
+          <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+            Create form
           </button>
         </form>
       </section>
