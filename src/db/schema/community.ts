@@ -100,4 +100,11 @@ export const community = pgTable("community", {
   // designated yet (proposals can still be submitted, but nobody can
   // review/confirm/publish until this is set).
   eventSchedulingOwnerTaskId: uuid("event_scheduling_owner_task_id"),
+  // "Whoever currently holds it is 'a recruitment-facing task' holder
+  // throughout this whole batch (Phases 32-35), not a dedicated role" —
+  // same "the task is the authority" pattern and same non-FK reasoning
+  // as feedbackReviewTaskId/eventSchedulingOwnerTaskId above. Null = no
+  // holder designated yet — invite links and inquiries still work, but
+  // nobody sees the inquiry inbox until this is set.
+  recruitmentTaskId: uuid("recruitment_task_id"),
 });

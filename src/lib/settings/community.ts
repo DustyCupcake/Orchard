@@ -46,6 +46,10 @@ export const updateCommunityInput = z.object({
   // src/db/schema/community.ts's schema comment and
   // src/lib/event-scheduling.
   eventSchedulingOwnerTaskId: z.string().uuid().nullable().optional(),
+  // Whichever task is "a recruitment-facing task" for Phases 32-35 —
+  // see src/db/schema/community.ts's schema comment and
+  // src/lib/recruitment.
+  recruitmentTaskId: z.string().uuid().nullable().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -100,6 +104,16 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
     }
   }
 
+  if (input.recruitmentTaskId) {
+    const [taskRow] = await db
+      .select({ id: task.id })
+      .from(task)
+      .where(and(eq(task.id, input.recruitmentTaskId), eq(task.communityId, actor.communityId)));
+    if (!taskRow) {
+      throw new NotFoundError("Task not found in your community");
+    }
+  }
+
   const [updated] = await db
     .update(community)
     .set({
@@ -130,6 +144,7 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.eventSchedulingOwnerTaskId !== undefined && {
         eventSchedulingOwnerTaskId: input.eventSchedulingOwnerTaskId,
       }),
+      ...(input.recruitmentTaskId !== undefined && { recruitmentTaskId: input.recruitmentTaskId }),
     })
     .where(eq(community.id, actor.communityId))
     .returning();

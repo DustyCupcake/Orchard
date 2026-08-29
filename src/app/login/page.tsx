@@ -1,3 +1,4 @@
+import Link from "next/link";
 import LoginForm from "./LoginForm";
 
 export const dynamic = "force-dynamic";
@@ -5,6 +6,7 @@ export const dynamic = "force-dynamic";
 const ERROR_MESSAGES: Record<string, string> = {
   missing_token: "That login link is missing its token.",
   invalid_or_expired: "That login link is invalid or has expired — request a new one.",
+  no_account: "No account found for that email. If you have an invite link, use it — otherwise, get in touch below.",
 };
 
 export default async function LoginPage({
@@ -21,6 +23,11 @@ export default async function LoginPage({
         <p style={{ color: "crimson" }}>{ERROR_MESSAGES[error]}</p>
       )}
       <LoginForm />
+      {error === "no_account" && (
+        <p style={{ marginTop: "1rem", fontSize: "0.9rem" }}>
+          <Link href="/inquiry">Send us a message</Link> and someone will get back to you.
+        </p>
+      )}
     </main>
   );
 }

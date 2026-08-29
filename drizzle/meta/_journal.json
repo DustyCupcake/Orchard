@@ -155,6 +155,13 @@
       "when": 1788001199732,
       "tag": "0021_melted_argent",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788002847035,
+      "tag": "0022_overjoyed_amazoness",
+      "breakpoints": true
     }
   ]
 }

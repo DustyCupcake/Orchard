@@ -20,7 +20,10 @@ export async function GET(request: NextRequest) {
   }
 
   const community = await getOrCreateCommunity();
-  const memberRow = await findOrCreateMemberByEmail(community.id, email);
+  const memberRow = await findOrCreateMemberByEmail(community, email);
+  if (!memberRow) {
+    return NextResponse.redirect(new URL("/login?error=no_account", appUrl));
+  }
   await createSession(memberRow.id);
 
   return NextResponse.redirect(new URL("/dashboard", appUrl));

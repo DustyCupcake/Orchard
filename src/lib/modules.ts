@@ -12,6 +12,7 @@ export const MODULE_DEFINITIONS = [
   { key: "budget", label: "Budget" },
   { key: "event_scheduling", label: "Event scheduling" },
   { key: "shifts", label: "Shifts / rota" },
+  { key: "recruitment", label: "Recruitment" },
 ] as const;
 export type ModuleKey = (typeof MODULE_DEFINITIONS)[number]["key"];
 

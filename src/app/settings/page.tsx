@@ -84,6 +84,13 @@ export default async function SettingsPage({
         .where(eq(task.id, communityRow.eventSchedulingOwnerTaskId))
         .then((r) => r[0])
     : null;
+  const recruitmentTask = communityRow.recruitmentTaskId
+    ? await db
+        .select({ id: task.id, title: task.title })
+        .from(task)
+        .where(eq(task.id, communityRow.recruitmentTaskId))
+        .then((r) => r[0])
+    : null;
 
   const ruleTaskIds = [
     ...new Set(sensitiveFieldRules.map((r) => r.unlockedByTaskId).filter((id): id is string => Boolean(id))),
@@ -339,6 +346,27 @@ export default async function SettingsPage({
                 {eventSchedulingOwnerTask
                   ? `Currently: "${eventSchedulingOwnerTask.title}" — whoever holds it reviews proposals and publishes the schedule.`
                   : "Members can still submit proposals without this set, but nobody can review, confirm, or publish until it is."}
+              </span>
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Recruitment</legend>
+            <label>
+              Recruitment task ID
+              <br />
+              <input
+                type="text"
+                name="recruitmentTaskId"
+                defaultValue={communityRow.recruitmentTaskId ?? ""}
+                placeholder="paste the task's ID from its /tasks/… URL"
+                style={{ padding: "0.4rem", width: "100%" }}
+              />
+              <br />
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+                {recruitmentTask
+                  ? `Currently: "${recruitmentTask.title}" — whoever holds it sees the inquiry inbox and, once the module is on, the rest of Recruitment's holder-facing surface.`
+                  : "Invite links and inquiries still work without this set, but nobody sees the inquiry inbox until it is."}
               </span>
             </label>
           </fieldset>

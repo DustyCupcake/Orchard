@@ -96,6 +96,7 @@ export async function updateCommunityAction(formData: FormData) {
       postCycleFeedbackFormId: String(formData.get("postCycleFeedbackFormId") ?? "").trim() || null,
       feedbackReviewTaskId: String(formData.get("feedbackReviewTaskId") ?? "").trim() || null,
       eventSchedulingOwnerTaskId: String(formData.get("eventSchedulingOwnerTaskId") ?? "").trim() || null,
+      recruitmentTaskId: String(formData.get("recruitmentTaskId") ?? "").trim() || null,
     });
     await updateCommunity(actor, input);
   } catch (err) {

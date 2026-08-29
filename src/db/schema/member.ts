@@ -5,9 +5,6 @@ import { community } from "./community";
 // cache (computed for automatic criteria, hand-edited for manual ones) —
 // not a real FK array, Postgres doesn't support those against another
 // table's primary key.
-//
-// Not yet included: joined_via_invite_id (→ CommunityInvite) — Recruitment
-// isn't built yet.
 export const member = pgTable("member", {
   id: uuid("id").primaryKey().defaultRandom(),
   communityId: uuid("community_id")
@@ -18,6 +15,16 @@ export const member = pgTable("member", {
   tierIds: uuid("tier_ids").array().notNull().default([]),
   joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
   referredByMemberId: uuid("referred_by_member_id").references((): AnyPgColumn => member.id),
+  // Plain uuid, no `.references()` — community-invite.ts needs to
+  // import member.ts for its own createdBy/redeemedByMemberId FKs, so
+  // member.ts importing community-invite.ts back would cycle. Same
+  // non-FK pattern (and same "the earlier, more-core file holds the
+  // non-FK side") Community's own conflictTeamTaskId/etc. already
+  // establish, applied the other direction since here Member is the
+  // earlier file. Validated at the application layer — see
+  // src/lib/recruitment/invites.ts's redeemCommunityInvite, the only
+  // place this is ever set.
+  joinedViaInviteId: uuid("joined_via_invite_id"),
   // The fixed sensitive-field set from docs/spec.md's "Sensitive data"
   // — GDPR Art. 9-flavored fields, off by default (see
   // src/lib/modules.ts). Always visible/editable by the member
