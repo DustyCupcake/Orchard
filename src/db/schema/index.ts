@@ -27,3 +27,4 @@ export * from "./wiki-page";
 export * from "./conflict-report";
 export * from "./sensitive-field-access-rule";
 export * from "./form";
+export * from "./budget";

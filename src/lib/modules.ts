@@ -7,7 +7,10 @@ import { AppError } from "./errors";
 // the first real consumer; later optional modules (Budget, Shifts,
 // Spatial planning, ...) register here too rather than each inventing
 // their own gate.
-export const MODULE_DEFINITIONS = [{ key: "sensitive_data", label: "Sensitive data" }] as const;
+export const MODULE_DEFINITIONS = [
+  { key: "sensitive_data", label: "Sensitive data" },
+  { key: "budget", label: "Budget" },
+] as const;
 export type ModuleKey = (typeof MODULE_DEFINITIONS)[number]["key"];
 
 export function isModuleEnabled(community: { modulesEnabled: string[] }, key: string) {
