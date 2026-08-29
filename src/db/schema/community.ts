@@ -141,4 +141,19 @@ export const community = pgTable("community", {
   recruitmentSubscriptionLapseThreshold: integer("recruitment_subscription_lapse_threshold")
     .notNull()
     .default(3),
+  // How long a wider-discussion window stays open before auto-
+  // resolving with no objection — see docs/spec.md's Recruitment
+  // ("Wider discussion window") and docs/development-plan.md's Phase
+  // 34. Purely time-computed against RecruitmentDecision.
+  // widerDiscussionDeadline, the same no-scheduler-job-for-the-status-
+  // itself pattern Phase 31's returning-priority window and Assemblies'
+  // computeAssemblyPhase already establish; a real scheduled job still
+  // performs the actual auto-resolution once due (creating an
+  // Accompaniment task is a real side effect, not just a status read)
+  // — see src/lib/recruitment/decisions.ts's resolveWiderDiscussionWindows.
+  recruitmentWiderDiscussionHours: integer("recruitment_wider_discussion_hours").notNull().default(48),
+  // "A written starting point for the hardest message in the flow" —
+  // surfaced to whoever's about to send an actual decline, never sent
+  // automatically. A single field for v1, per spec's own framing.
+  recruitmentRejectionTemplate: text("recruitment_rejection_template"),
 });

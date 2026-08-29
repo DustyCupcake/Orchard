@@ -14,6 +14,8 @@ import { requireModuleEnabled } from "../modules";
 import { getForm, submitPublicFormResponse } from "../forms";
 import { computeRecruitmentOutcome } from "./evaluations";
 import { getCommunityRow, isRecruitmentTaskHolder, requireRecruitmentTaskHolder } from "./access";
+import { computeWiderDiscussionStatus, getRecruitmentDecision } from "./decisions";
+import { listObjections } from "./objections";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -125,13 +127,23 @@ export async function listApplicationAlerts(actor: Member) {
   return Promise.all(
     responses.map(async (r) => {
       const { outcome, evaluationsFiled, evaluatorsNeeded } = await computeRecruitmentOutcome(communityRow, r.id);
-      return { id: r.id, submittedAt: r.submittedAt, evaluationsFiled, evaluatorsNeeded, outcome };
+      const decision = await getRecruitmentDecision(r.id);
+      return {
+        id: r.id,
+        submittedAt: r.submittedAt,
+        evaluationsFiled,
+        evaluatorsNeeded,
+        outcome,
+        resolution: decision?.resolution ?? null,
+        widerDiscussionStatus: decision ? computeWiderDiscussionStatus(decision) : null,
+      };
     }),
   );
 }
 
-// Holder-only — full applicant answers, filed evaluations, and the
-// live-computed outcome, one row per pending application.
+// Holder-only — full applicant answers, filed evaluations, the
+// live-computed outcome, and (once reached) the persisted decision
+// plus any objections, one row per pending application.
 export async function listApplicationsForEvaluation(actor: Member) {
   await requireRecruitmentTaskHolder(actor);
   const communityRow = await getCommunityRow(actor.communityId);
@@ -151,7 +163,18 @@ export async function listApplicationsForEvaluation(actor: Member) {
         communityRow,
         response.id,
       );
-      return { response, evaluations, outcome, evaluationsFiled, evaluatorsNeeded };
+      const decision = await getRecruitmentDecision(response.id);
+      const objections = decision ? await listObjections(actor, response.id) : [];
+      return {
+        response,
+        evaluations,
+        outcome,
+        evaluationsFiled,
+        evaluatorsNeeded,
+        decision,
+        widerDiscussionStatus: decision ? computeWiderDiscussionStatus(decision) : null,
+        objections,
+      };
     }),
   );
 }

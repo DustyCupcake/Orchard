@@ -288,7 +288,7 @@ describe("computeRecruitmentOutcome", () => {
     const rules: RecruitmentDecisionRule[] = [
       { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
       { conditions: { minCounts: { decline: 2 } }, outcome: "decline" },
-      { conditions: {}, outcome: "wider_discussion" },
+      { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
     ];
     const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 2, decisionRules: rules });
     const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
@@ -310,7 +310,7 @@ describe("computeRecruitmentOutcome", () => {
     const fixtures = await createFixtures();
     const rules: RecruitmentDecisionRule[] = [
       { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-      { conditions: {}, outcome: "wider_discussion" },
+      { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
     ];
     const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 1, decisionRules: rules });
     const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
@@ -325,7 +325,7 @@ describe("computeRecruitmentOutcome", () => {
     const fixtures = await createFixtures();
     const rules: RecruitmentDecisionRule[] = [
       { conditions: { inviterThinksGoodFit: true, inviterKnowsPersonally: true }, outcome: "proceed" },
-      { conditions: {}, outcome: "wider_discussion" },
+      { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
     ];
     const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 1, decisionRules: rules });
 
@@ -354,7 +354,7 @@ describe("requireValidDecisionRules", () => {
     expect(() =>
       requireValidDecisionRules([
         { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-        { conditions: {}, outcome: "wider_discussion" },
+        { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
       ]),
     ).not.toThrow();
   });

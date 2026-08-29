@@ -14,6 +14,7 @@ export async function register() {
   const { recomputeAttentionLevels } = await import("@/lib/attention");
   const { resolveBrowsePeriods } = await import("@/lib/tasks");
   const { resolveInputRounds } = await import("@/lib/input-rounds");
+  const { resolveWiderDiscussionWindows } = await import("@/lib/recruitment");
 
   // "polled every few minutes" per docs/architecture.md.
   registerJob("attention-level", "*/5 * * * *", recomputeAttentionLevels);
@@ -23,4 +24,8 @@ export async function register() {
   // Cuts a new Input round whenever a Community's cadence clock comes
   // due — see src/lib/input-rounds/scheduler.ts.
   registerJob("input-round-cutoff", "*/5 * * * *", resolveInputRounds);
+  // Auto-resolves a wider_discussion RecruitmentDecision once its
+  // deadline passes with no Objection raised — see
+  // src/lib/recruitment/decisions.ts.
+  registerJob("recruitment-wider-discussion", "*/5 * * * *", resolveWiderDiscussionWindows);
 }

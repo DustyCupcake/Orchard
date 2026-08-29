@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { getCommunity } from "@/lib/settings";
@@ -11,8 +12,14 @@ import {
 } from "@/lib/recruitment";
 import type { FormField } from "@/lib/forms";
 import { ForbiddenError } from "@/lib/errors";
+import { resolveAppUrlFromHeaders } from "@/lib/app-url";
 import Nav from "@/components/Nav";
-import { setRecruitmentSubscriptionAction, submitEvaluationAction } from "./actions";
+import {
+  raiseObjectionAction,
+  resolveWiderDiscussionAction,
+  setRecruitmentSubscriptionAction,
+  submitEvaluationAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -22,28 +29,42 @@ const OUTCOME_LABEL: Record<string, string> = {
   decline: "Decline",
 };
 
+const RESOLUTION_LABEL: Record<string, string> = {
+  accepted: "Accepted",
+  declined: "Declined",
+};
+
 // See docs/spec.md's Recruitment ("Evaluation + decision logic",
-// "Recruitment-mode subscription") and docs/development-plan.md's
-// Phase 33.
+// "Recruitment-mode subscription", "Wider discussion window",
+// "Accompaniment", "Rejection templates") and docs/development-plan.md's
+// Phases 33-34.
 export default async function ApplicationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; subscribed?: string; unsubscribed?: string; evaluated?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    subscribed?: string;
+    unsubscribed?: string;
+    evaluated?: string;
+    objectionRaised?: string;
+    decisionResolved?: string;
+  }>;
 }) {
   const currentMember = await getCurrentMember();
   if (!currentMember) {
     redirect("/login");
   }
 
-  const { error, subscribed, unsubscribed, evaluated } = await searchParams;
+  const { error, subscribed, unsubscribed, evaluated, objectionRaised, decisionResolved } = await searchParams;
 
   const communityRow = await getCommunity(currentMember);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");
 
-  const [subscription, isHolder, form] = await Promise.all([
+  const [subscription, isHolder, form, appUrl] = await Promise.all([
     moduleOn ? getMyRecruitmentSubscription(currentMember) : Promise.resolve(null),
     moduleOn ? isRecruitmentTaskHolder(currentMember) : Promise.resolve(false),
     moduleOn ? getRecruitmentApplicationForm(currentMember) : Promise.resolve(null),
+    resolveAppUrlFromHeaders(),
   ]);
   const fields = (form?.fields as FormField[] | undefined) ?? [];
 
@@ -77,6 +98,8 @@ export default async function ApplicationsPage({
           {subscribed && <p style={{ color: "#2a7a2a" }}>You&rsquo;re subscribed to application alerts.</p>}
           {unsubscribed && <p style={{ color: "#2a7a2a" }}>Unsubscribed.</p>}
           {evaluated && <p style={{ color: "#2a7a2a" }}>Your recommendation was saved.</p>}
+          {objectionRaised && <p style={{ color: "#2a7a2a" }}>Your objection was recorded.</p>}
+          {decisionResolved && <p style={{ color: "#2a7a2a" }}>Decision resolved.</p>}
 
           <section style={{ marginTop: "1rem" }}>
             <form action={setRecruitmentSubscriptionAction}>
@@ -124,7 +147,29 @@ export default async function ApplicationsPage({
                         · <strong>{OUTCOME_LABEL[a.outcome] ?? a.outcome}</strong>
                       </>
                     )}
+                    {a.resolution && (
+                      <>
+                        {" "}
+                        · <strong>{RESOLUTION_LABEL[a.resolution] ?? a.resolution}</strong>
+                      </>
+                    )}
+                    {a.widerDiscussionStatus && <> · window {a.widerDiscussionStatus}</>}
                   </p>
+                  {a.widerDiscussionStatus === "open" && subscription?.active && (
+                    <form action={raiseObjectionAction} style={{ marginTop: "0.4rem", display: "flex", gap: "0.4rem" }}>
+                      <input type="hidden" name="formResponseId" value={a.id} />
+                      <input
+                        type="text"
+                        name="note"
+                        required
+                        placeholder="Raise an objection…"
+                        style={{ padding: "0.3rem", flex: 1 }}
+                      />
+                      <button type="submit" style={{ padding: "0.3rem 0.6rem" }}>
+                        Raise objection
+                      </button>
+                    </form>
+                  )}
                 </div>
               ))}
             </section>
@@ -134,7 +179,7 @@ export default async function ApplicationsPage({
             <section style={{ marginTop: "1.5rem" }}>
               <h2>Applications ({full.length})</h2>
               {full.length === 0 && <p style={{ color: "#666" }}>Nothing pending.</p>}
-              {full.map(({ response, evaluations, outcome, evaluationsFiled, evaluatorsNeeded }) => {
+              {full.map(({ response, evaluations, outcome, evaluationsFiled, evaluatorsNeeded, decision, widerDiscussionStatus, objections }) => {
                 const myEvaluation = evaluations.find((e) => e.evaluatorId === currentMember.id);
                 return (
                   <div
@@ -209,6 +254,81 @@ export default async function ApplicationsPage({
                         {myEvaluation ? "Update recommendation" : "File recommendation"}
                       </button>
                     </form>
+
+                    {decision && (
+                      <div style={{ marginTop: "0.6rem", paddingTop: "0.6rem", borderTop: "1px solid #eee" }}>
+                        <p style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
+                          Decision: <strong>{OUTCOME_LABEL[decision.ruleOutcome] ?? decision.ruleOutcome}</strong>
+                          {decision.resolution && (
+                            <>
+                              {" "}
+                              → <strong>{RESOLUTION_LABEL[decision.resolution] ?? decision.resolution}</strong>
+                            </>
+                          )}
+                        </p>
+
+                        {decision.introCallPollId && (
+                          <p style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
+                            Intro call scheduled —{" "}
+                            <Link href={`/scheduling-polls/${decision.introCallPollId}`}>manage as a member</Link>.
+                            {decision.introCallToken && (
+                              <>
+                                {" "}
+                                Send the applicant this link to submit their own availability:{" "}
+                                <span style={{ wordBreak: "break-all" }}>
+                                  {appUrl}/intro-call/{decision.introCallToken}
+                                </span>
+                              </>
+                            )}
+                          </p>
+                        )}
+
+                        {widerDiscussionStatus && (
+                          <>
+                            <p style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
+                              Wider-discussion window: <strong>{widerDiscussionStatus}</strong>
+                              {decision.widerDiscussionDeadline &&
+                                ` (closes ${new Date(decision.widerDiscussionDeadline).toLocaleString()})`}
+                            </p>
+                            {objections.length > 0 && (
+                              <ul style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
+                                {objections.map((o) => (
+                                  <li key={o.id}>
+                                    {o.note} <span style={{ color: "#666" }}>({new Date(o.raisedAt).toLocaleDateString()})</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            {!decision.resolution && (
+                              <form action={resolveWiderDiscussionAction} style={{ display: "flex", gap: "0.4rem" }}>
+                                <input type="hidden" name="formResponseId" value={response.id} />
+                                <button type="submit" name="resolution" value="accepted" style={{ padding: "0.3rem 0.6rem" }}>
+                                  Resolve: accepted
+                                </button>
+                                <button type="submit" name="resolution" value="declined" style={{ padding: "0.3rem 0.6rem" }}>
+                                  Resolve: declined
+                                </button>
+                              </form>
+                            )}
+                          </>
+                        )}
+
+                        {decision.resolution === "declined" && communityRow.recruitmentRejectionTemplate && (
+                          <details style={{ marginTop: "0.3rem" }}>
+                            <summary style={{ cursor: "pointer", fontSize: "0.8rem" }}>Rejection template</summary>
+                            <p style={{ fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>
+                              {communityRow.recruitmentRejectionTemplate}
+                            </p>
+                          </details>
+                        )}
+
+                        {decision.accompanimentTaskId && (
+                          <p style={{ margin: "0.3rem 0 0", fontSize: "0.85rem" }}>
+                            <Link href={`/tasks/${decision.accompanimentTaskId}`}>Accompaniment task</Link> created.
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

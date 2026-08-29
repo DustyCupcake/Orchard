@@ -66,6 +66,11 @@ export async function confirmSlot(actor: Member, pollId: string, input: ConfirmS
 // submission covered it. This is the one place raw per-member data
 // becomes visible, and only for the confirmed slot specifically
 // (needed for invites and as the attendance-recording checklist).
+// Member-only by design — a Recruitment intro call's applicant
+// participant (schedulingEntry.formResponseId, Phase 34) has no Member
+// row to return here; the recruitment module reads its own
+// FormResponse-keyed entry directly when it needs to know whether the
+// applicant covered the confirmed slot.
 export async function getConfirmedAttendees(actor: Member, pollId: string) {
   const poll = await requirePollInCommunity(actor, pollId);
   if (!poll.confirmedSlotStart) {
@@ -75,8 +80,8 @@ export async function getConfirmedAttendees(actor: Member, pollId: string) {
 
   const entries = await db.select().from(schedulingEntry).where(eq(schedulingEntry.pollId, pollId));
   const attendeeIds = entries
-    .filter((e) => (e.availableSlots as string[]).includes(slotIso))
-    .map((e) => e.memberId);
+    .filter((e) => e.memberId && (e.availableSlots as string[]).includes(slotIso))
+    .map((e) => e.memberId!);
   if (attendeeIds.length === 0) return [];
 
   const members = await db.select().from(member).where(eq(member.communityId, actor.communityId));

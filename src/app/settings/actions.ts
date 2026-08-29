@@ -116,6 +116,8 @@ export async function updateCommunityAction(formData: FormData) {
       recruitmentDecisionRules: parseDecisionRules(String(formData.get("recruitmentDecisionRulesRaw") ?? "")),
       recruitmentSubscriptionLapseThreshold:
         Number(formData.get("recruitmentSubscriptionLapseThreshold") ?? NaN) || undefined,
+      recruitmentWiderDiscussionHours: Number(formData.get("recruitmentWiderDiscussionHours") ?? NaN) || undefined,
+      recruitmentRejectionTemplate: String(formData.get("recruitmentRejectionTemplate") ?? "").trim() || null,
     });
     await updateCommunity(actor, input);
   } catch (err) {

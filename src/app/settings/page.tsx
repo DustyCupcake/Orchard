@@ -437,7 +437,42 @@ export default async function SettingsPage({
               <br />
               <span style={{ fontSize: "0.8rem", color: "#666" }}>
                 Consecutive applications with no availability given before a subscription
-                auto-lapses (Phase 34&rsquo;s scheduling flow maintains the actual count).
+                auto-lapses. Not yet wired up to anything that increments it — a real gap, not a
+                bug, until a later phase defines what &ldquo;a subscriber&rsquo;s own availability&rdquo;
+                concretely means here.
+              </span>
+            </label>
+
+            <label>
+              Wider-discussion window (hours)
+              <br />
+              <input
+                type="number"
+                name="recruitmentWiderDiscussionHours"
+                min={1}
+                defaultValue={communityRow.recruitmentWiderDiscussionHours}
+                style={{ padding: "0.4rem", width: "8rem" }}
+              />
+              <br />
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+                How long a wider_discussion outcome stays open for a subscribed member to raise an
+                objection before auto-resolving.
+              </span>
+            </label>
+
+            <label>
+              Rejection template
+              <br />
+              <textarea
+                name="recruitmentRejectionTemplate"
+                rows={4}
+                defaultValue={communityRow.recruitmentRejectionTemplate ?? ""}
+                style={{ padding: "0.4rem", width: "100%" }}
+              />
+              <br />
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+                A starting point shown on /applications wherever a decline is about to be sent —
+                never sent automatically.
               </span>
             </label>
           </fieldset>

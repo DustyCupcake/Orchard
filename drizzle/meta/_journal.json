@@ -169,6 +169,13 @@
       "when": 1788011965599,
       "tag": "0023_right_unus",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788027252341,
+      "tag": "0024_motionless_sumo",
+      "breakpoints": true
     }
   ]
 }

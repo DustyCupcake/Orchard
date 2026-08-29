@@ -57,6 +57,10 @@ export const updateCommunityInput = z.object({
   recruitmentEvaluatorCount: z.number().int().positive().optional(),
   recruitmentDecisionRules: recruitmentDecisionRulesSchema.optional(),
   recruitmentSubscriptionLapseThreshold: z.number().int().positive().optional(),
+  recruitmentWiderDiscussionHours: z.number().int().positive().optional(),
+  // Null clears it — "surfaced to whoever's about to send an actual
+  // decline, never sent automatically."
+  recruitmentRejectionTemplate: z.string().nullable().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -177,6 +181,12 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       }),
       ...(input.recruitmentSubscriptionLapseThreshold !== undefined && {
         recruitmentSubscriptionLapseThreshold: input.recruitmentSubscriptionLapseThreshold,
+      }),
+      ...(input.recruitmentWiderDiscussionHours !== undefined && {
+        recruitmentWiderDiscussionHours: input.recruitmentWiderDiscussionHours,
+      }),
+      ...(input.recruitmentRejectionTemplate !== undefined && {
+        recruitmentRejectionTemplate: input.recruitmentRejectionTemplate,
       }),
     })
     .where(eq(community.id, actor.communityId))

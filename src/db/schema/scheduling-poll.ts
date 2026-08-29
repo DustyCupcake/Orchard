@@ -1,6 +1,7 @@
 import { boolean, date, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { branch } from "./branch";
 import { community } from "./community";
+import { formResponse } from "./form";
 import { member } from "./member";
 
 export const pollResolutionModeEnum = pgEnum("poll_resolution_mode", [
@@ -61,14 +62,23 @@ export const schedulingPoll = pgTable("scheduling_poll", {
 // codebase's established preference for jsonb over native arrays for
 // anything shaped like "a flexible bag of values" (Requirement.value,
 // Task.effort_magnitude, ProfileAnswer.value, ...).
+// Nullable as of Phase 34 — a poll's participant can now also be a
+// not-yet-a-Member Recruitment applicant, tracked by their own
+// FormResponse instead ("required participant for the applicant's
+// side means their own token-linked availability submission, not a
+// memberId," docs/development-plan.md's Phase 34). Exactly one of
+// memberId/formResponseId is set per row, enforced at the application
+// layer, not a DB constraint — same posture FormResponse.submittedBy's
+// own "null only when..." invariant already takes. Existing
+// member-only polls are unaffected: formResponseId is simply always
+// null there.
 export const schedulingEntry = pgTable("scheduling_entry", {
   id: uuid("id").primaryKey().defaultRandom(),
   pollId: uuid("poll_id")
     .notNull()
     .references(() => schedulingPoll.id),
-  memberId: uuid("member_id")
-    .notNull()
-    .references(() => member.id),
+  memberId: uuid("member_id").references(() => member.id),
+  formResponseId: uuid("form_response_id").references(() => formResponse.id),
   availableSlots: jsonb("available_slots").notNull().default([]),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

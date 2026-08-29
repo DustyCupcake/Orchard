@@ -47,12 +47,18 @@ export default function AvailabilityGrid({
   rangeEnd,
   initialSelected,
   readOnly,
+  submitUrl,
 }: {
   pollId: string;
   rangeStart: string;
   rangeEnd: string;
   initialSelected: string[];
   readOnly: boolean;
+  // Defaults to the ordinary authenticated-member endpoint — pass a
+  // different URL for a non-member submitter (Phase 34's Recruitment
+  // intro call, see /intro-call/[token]) to post to instead. The grid
+  // interaction itself doesn't care who's submitting.
+  submitUrl?: string;
 }) {
   const days = useMemo(() => buildDays(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
   const [selected, setSelected] = useState<Set<string>>(new Set(initialSelected));
@@ -87,7 +93,7 @@ export default function AvailabilityGrid({
   async function save() {
     setSaving(true);
     try {
-      const res = await fetch(`/api/scheduling-polls/${pollId}/availability`, {
+      const res = await fetch(submitUrl ?? `/api/scheduling-polls/${pollId}/availability`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slots: [...selected] }),

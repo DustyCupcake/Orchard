@@ -40,6 +40,16 @@ export type RecruitmentDecisionCondition = z.infer<typeof recruitmentDecisionCon
 export const recruitmentDecisionRuleSchema = z.object({
   conditions: recruitmentDecisionConditionSchema,
   outcome: z.enum(["proceed", "wider_discussion", "decline"]),
+  // Required when outcome is "wider_discussion", meaningless otherwise
+  // — see docs/development-plan.md's Phase 34: "no objection by the
+  // deadline → the recommendation auto-follows into the outcome...
+  // already computed." A rule matching wider_discussion is genuinely
+  // ambiguous between proceed/decline (that's *why* it opens a window
+  // rather than resolving immediately), so the rule itself has to say
+  // which way "no objection" resolves — the platform can't derive that
+  // from the recommendation counts alone once they've already failed
+  // to cleanly pick proceed or decline.
+  defaultResolution: z.enum(["proceed", "decline"]).optional(),
 });
 export type RecruitmentDecisionRule = z.infer<typeof recruitmentDecisionRuleSchema>;
 
@@ -55,11 +65,19 @@ function isUnconditional(c: RecruitmentDecisionCondition): boolean {
 // Phase 26's requireLineItems already set. "A required fallback rule
 // so every combination resolves to something" (docs/development-
 // plan.md's Phase 33) — only enforced when rules is non-empty; an
-// empty array just means "not configured yet," not an error.
+// empty array just means "not configured yet," not an error. Phase 34
+// adds the defaultResolution invariant alongside it.
 export function requireValidDecisionRules(rules: RecruitmentDecisionRule[]) {
   if (rules.length === 0) return;
   if (!isUnconditional(rules[rules.length - 1].conditions)) {
     throw new AppError("The last decision rule must be an unconditional fallback (no conditions)");
+  }
+  for (const rule of rules) {
+    if (rule.outcome === "wider_discussion" && !rule.defaultResolution) {
+      throw new AppError(
+        "A wider_discussion rule must set defaultResolution (proceed or decline) for when its window closes unobjected",
+      );
+    }
   }
 }
 
@@ -116,9 +134,16 @@ export async function computeRecruitmentOutcome(
 ) {
   const evaluations = await db.select().from(evaluation).where(eq(evaluation.formResponseId, formResponseId));
   const evaluatorsNeeded = communityRow.recruitmentEvaluatorCount;
+  const notYetDecided = {
+    outcome: null as RecruitmentOutcome | null,
+    defaultResolution: null as "proceed" | "decline" | null,
+    evaluationsFiled: evaluations.length,
+    evaluatorsNeeded,
+    evaluations,
+  };
 
   if (evaluations.length < evaluatorsNeeded) {
-    return { outcome: null as RecruitmentOutcome | null, evaluationsFiled: evaluations.length, evaluatorsNeeded, evaluations };
+    return notYetDecided;
   }
 
   const linkedInvite = await getLinkedInviteCheckboxes(formResponseId);
@@ -129,14 +154,17 @@ export async function computeRecruitmentOutcome(
     inviterKnowsPersonally: linkedInvite?.inviterKnowsPersonally,
   };
 
-  let outcome: RecruitmentOutcome | null = null;
-  for (const rule of rules) {
-    if (conditionMatches(rule.conditions, ctx)) {
-      outcome = rule.outcome;
-      break;
-    }
+  const matchedRule = rules.find((rule) => conditionMatches(rule.conditions, ctx));
+  if (!matchedRule) {
+    return notYetDecided;
   }
-  return { outcome, evaluationsFiled: evaluations.length, evaluatorsNeeded, evaluations };
+  return {
+    outcome: matchedRule.outcome,
+    defaultResolution: matchedRule.defaultResolution ?? null,
+    evaluationsFiled: evaluations.length,
+    evaluatorsNeeded,
+    evaluations,
+  };
 }
 
 export const submitEvaluationInput = z.object({
