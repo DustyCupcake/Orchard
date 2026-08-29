@@ -1,18 +1,21 @@
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { branch, member, participation, task, taskAssignment, taskJoinRequest, tier } from "@/db/schema";
+import { branch, member, participation, task, taskAssignment, taskJoinRequest } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { getCurrentCycle } from "./profile-questions";
 import { isCoordinationHolder } from "./coordination";
+import { getCompositionBreakdown } from "./composition";
+import { isModuleEnabled } from "./modules";
+import { getCommunityRow, isRecruitmentTaskHolder, listRecruitmentActionItems } from "./recruitment";
 
 type Member = typeof memberTable.$inferSelect;
 
 // The personalized feed — "what's next on them," reading off state
-// Phases 3/10/12 already produce. See docs/spec.md's Dashboard section.
-// Recruitment-facing items, onboarding progress, and Spatial-planning
-// approvals/invites stay out of scope per docs/development-plan.md's
-// Phase 24 — none of those subsystems exist yet (Spatial planning is
-// paused).
+// Phases 3/10/12 already produce, plus (as of Phase 35) Recruitment's
+// own needs-action signal for whoever holds that task. See
+// docs/spec.md's Dashboard section. Onboarding progress and
+// Spatial-planning approvals/invites stay out of scope — neither
+// subsystem exists yet (Spatial planning is paused).
 export async function getPersonalFeed(actor: Member) {
   const heldTaskRows = await db
     .select({
@@ -73,7 +76,20 @@ export async function getPersonalFeed(actor: Member) {
           )
           .orderBy(desc(taskJoinRequest.requestedAt));
 
-  return { pendingJoinRequests, upcomingCheckins, flaggedHeldTasks };
+  // "The needs-action signal... surfaced on the dashboard for anyone
+  // holding a recruitment task" — closes Phase 24's own explicitly-
+  // deferred "recruitment-facing feed items" line. Gated on both the
+  // module being on and the actor currently holding the recruitment
+  // task, checked here (not just left to listRecruitmentActionItems'
+  // own throwing guard) so a non-holder's feed just omits the section
+  // rather than needing a try/catch around it.
+  const communityRow = await getCommunityRow(actor.communityId);
+  const recruitmentNeedsAction =
+    isModuleEnabled(communityRow, "recruitment") && (await isRecruitmentTaskHolder(actor))
+      ? await listRecruitmentActionItems(actor)
+      : [];
+
+  return { pendingJoinRequests, upcomingCheckins, flaggedHeldTasks, recruitmentNeedsAction };
 }
 
 export type BranchHealthStatus = "on_track" | "attention_needed" | "struggling";
@@ -96,25 +112,12 @@ function deriveBranchHealthStatus(counts: { soft: number; hard: number; escalate
 // line is Phase 23/`/contribution`'s own TODO to close, not this
 // panel's — see src/lib/contribution.ts's getContributionCommunityAverage.
 export async function getCommunitySnapshot(actor: Member) {
-  const [branches, tiers, members, activeTasks, holdings, isCoordHolder, currentCycle] = await Promise.all([
-    db.select().from(branch).where(eq(branch.communityId, actor.communityId)),
-    db.select().from(tier).where(eq(tier.communityId, actor.communityId)),
-    db.select({ id: member.id, tierIds: member.tierIds }).from(member).where(eq(member.communityId, actor.communityId)),
+  const [composition, activeTasks, isCoordHolder, currentCycle] = await Promise.all([
+    getCompositionBreakdown(actor),
     db
       .select({ branchId: task.branchId, attentionLevel: task.attentionLevel })
       .from(task)
       .where(and(eq(task.communityId, actor.communityId), ne(task.status, "done"))),
-    db
-      .select({ branchId: task.branchId, memberId: taskAssignment.memberId })
-      .from(taskAssignment)
-      .innerJoin(task, eq(taskAssignment.taskId, task.id))
-      .where(
-        and(
-          eq(task.communityId, actor.communityId),
-          eq(taskAssignment.isShadow, false),
-          ne(task.status, "done"),
-        ),
-      ),
     isCoordinationHolder(actor, null),
     getCurrentCycle(actor.communityId),
   ]);
@@ -131,26 +134,12 @@ export async function getCommunitySnapshot(actor: Member) {
       ).length
     : null;
 
-  const tierCounts = tiers.map((t) => ({
-    id: t.id,
-    name: t.name,
-    count: members.filter((m) => m.tierIds.includes(t.id)).length,
-  }));
-
-  // Branch spread — a resolved interpretation: spec pairs this with
-  // Tier/experience distribution as member *composition*, not task
-  // volume (which Branch health, right below it, already covers) — so
-  // this counts distinct members currently holding a real task in each
-  // branch, not a task count. Branch membership itself is emergent
-  // (no roster) per docs/spec.md's Branch section, so "who's in this
-  // branch right now" only exists as a read of current holdings.
-  const branchSpread = branches.map((b) => ({
-    id: b.id,
-    name: b.name,
-    memberCount: new Set(holdings.filter((h) => h.branchId === b.id).map((h) => h.memberId)).size,
-  }));
-
-  const branchHealth = branches.map((b) => {
+  // Tier/Branch composition itself now lives in getCompositionBreakdown
+  // (src/lib/composition.ts) — extracted so Recruitment's pipeline view
+  // (Phase 35) can reuse it without importing this module back.
+  // branchSpread's own {id, name} rows double as the branch list for
+  // Branch health below, rather than a second branch query.
+  const branchHealth = composition.branchSpread.map((b) => {
     const inBranch = activeTasks.filter((t) => t.branchId === b.id);
     const counts = {
       soft: inBranch.filter((t) => t.attentionLevel === "soft").length,
@@ -169,5 +158,5 @@ export async function getCommunitySnapshot(actor: Member) {
     };
   });
 
-  return { tierCounts, branchSpread, branchHealth, activeMemberCount };
+  return { tierCounts: composition.tierCounts, branchSpread: composition.branchSpread, branchHealth, activeMemberCount };
 }

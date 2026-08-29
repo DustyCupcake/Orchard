@@ -27,8 +27,14 @@ export default async function DashboardPage() {
   const hasFeedItems =
     feed.pendingJoinRequests.length > 0 ||
     feed.upcomingCheckins.length > 0 ||
-    feed.flaggedHeldTasks.length > 0;
+    feed.flaggedHeldTasks.length > 0 ||
+    feed.recruitmentNeedsAction.length > 0;
   const now = Date.now();
+
+  const NEEDS_ACTION_LABEL: Record<string, string> = {
+    call_pending: "evaluated, call not scheduled yet",
+    decision_pending: "call happened, decision still pending",
+  };
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 720 }}>
@@ -100,6 +106,23 @@ export default async function DashboardPage() {
                       ⚠ {ATTENTION_STYLES[t.attentionLevel].label}
                     </span>
                   )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {feed.recruitmentNeedsAction.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Recruitment candidates stuck waiting on you</h3>
+            <ul>
+              {feed.recruitmentNeedsAction.map((c) => (
+                <li key={c.id}>
+                  <Link href="/recruitment" style={{ color: "inherit" }}>
+                    Application from {new Date(c.submittedAt).toLocaleDateString()}
+                  </Link>{" "}
+                  <span style={{ color: "#a15c00", fontWeight: 600 }}>
+                    — {NEEDS_ACTION_LABEL[c.stage] ?? c.stage}
+                  </span>
                 </li>
               ))}
             </ul>

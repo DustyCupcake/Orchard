@@ -42,7 +42,12 @@ describe("getPersonalFeed", () => {
   it("is empty for a member holding nothing", async () => {
     const { alice } = await createFixtures();
     const feed = await getPersonalFeed(alice);
-    expect(feed).toEqual({ pendingJoinRequests: [], upcomingCheckins: [], flaggedHeldTasks: [] });
+    expect(feed).toEqual({
+      pendingJoinRequests: [],
+      upcomingCheckins: [],
+      flaggedHeldTasks: [],
+      recruitmentNeedsAction: [],
+    });
   });
 
   it("excludes shadow assignments and done tasks", async () => {
