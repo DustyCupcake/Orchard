@@ -162,6 +162,13 @@
       "when": 1788002847035,
       "tag": "0022_overjoyed_amazoness",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788011965599,
+      "tag": "0023_right_unus",
+      "breakpoints": true
     }
   ]
 }

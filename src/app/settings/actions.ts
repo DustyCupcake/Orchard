@@ -58,6 +58,20 @@ function parseFormFields(raw: string) {
     });
 }
 
+// Raw JSON, not a dynamic rule-builder UI — same "plain text config,
+// no client-side JS" posture parseFormFields already takes, but the
+// nested {conditions, outcome}[] shape doesn't fit a flat pipe-
+// delimited line the way Form fields do.
+function parseDecisionRules(raw: string): unknown {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    throw new AppError("Decision rules must be valid JSON");
+  }
+}
+
 function triState(value: FormDataEntryValue | null): boolean | null | undefined {
   if (value === "on") return true;
   if (value === "off") return false;
@@ -97,6 +111,11 @@ export async function updateCommunityAction(formData: FormData) {
       feedbackReviewTaskId: String(formData.get("feedbackReviewTaskId") ?? "").trim() || null,
       eventSchedulingOwnerTaskId: String(formData.get("eventSchedulingOwnerTaskId") ?? "").trim() || null,
       recruitmentTaskId: String(formData.get("recruitmentTaskId") ?? "").trim() || null,
+      recruitmentApplicationFormId: String(formData.get("recruitmentApplicationFormId") ?? "").trim() || null,
+      recruitmentEvaluatorCount: Number(formData.get("recruitmentEvaluatorCount") ?? NaN) || undefined,
+      recruitmentDecisionRules: parseDecisionRules(String(formData.get("recruitmentDecisionRulesRaw") ?? "")),
+      recruitmentSubscriptionLapseThreshold:
+        Number(formData.get("recruitmentSubscriptionLapseThreshold") ?? NaN) || undefined,
     });
     await updateCommunity(actor, input);
   } catch (err) {

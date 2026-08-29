@@ -369,6 +369,77 @@ export default async function SettingsPage({
                   : "Invite links and inquiries still work without this set, but nobody sees the inquiry inbox until it is."}
               </span>
             </label>
+
+            <label>
+              Application form
+              <br />
+              <select
+                name="recruitmentApplicationFormId"
+                defaultValue={communityRow.recruitmentApplicationFormId ?? ""}
+                style={{ padding: "0.4rem", width: "100%" }}
+              >
+                <option value="">— none configured —</option>
+                {forms
+                  .filter((f) => !f.archivedAt)
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.title}
+                    </option>
+                  ))}
+              </select>
+              <br />
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+                Define the form itself under Forms, below, then pick it here — this is what
+                renders at the public /apply page.
+              </span>
+            </label>
+
+            <label>
+              Evaluators needed per application
+              <br />
+              <input
+                type="number"
+                name="recruitmentEvaluatorCount"
+                min={1}
+                defaultValue={communityRow.recruitmentEvaluatorCount}
+                style={{ padding: "0.4rem", width: "8rem" }}
+              />
+            </label>
+
+            <label>
+              Decision rules (JSON)
+              <br />
+              <textarea
+                name="recruitmentDecisionRulesRaw"
+                rows={6}
+                defaultValue={JSON.stringify(communityRow.recruitmentDecisionRules, null, 2)}
+                style={{ padding: "0.4rem", width: "100%", fontFamily: "monospace", fontSize: "0.85rem" }}
+              />
+              <br />
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+                An ordered list of <code>{"{conditions, outcome}"}</code> — first match wins. Example:{" "}
+                <code>{'[{"conditions":{"minCounts":{"proceed":2}},"outcome":"proceed"},{"conditions":{},"outcome":"wider_discussion"}]'}</code>{" "}
+                — the last rule must have empty conditions (the required fallback). <code>outcome</code> is{" "}
+                one of <code>proceed</code>/<code>wider_discussion</code>/<code>decline</code>.
+              </span>
+            </label>
+
+            <label>
+              Subscription auto-lapse threshold
+              <br />
+              <input
+                type="number"
+                name="recruitmentSubscriptionLapseThreshold"
+                min={1}
+                defaultValue={communityRow.recruitmentSubscriptionLapseThreshold}
+                style={{ padding: "0.4rem", width: "8rem" }}
+              />
+              <br />
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+                Consecutive applications with no availability given before a subscription
+                auto-lapses (Phase 34&rsquo;s scheduling flow maintains the actual count).
+              </span>
+            </label>
           </fieldset>
 
           <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>

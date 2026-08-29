@@ -192,6 +192,42 @@ export async function submitFormResponse(actor: Member, formId: string, input: S
   return created;
 }
 
+// Public — no actor, since "applying is the one Form use case that
+// has to work before someone's a Member at all" (docs/development-
+// plan.md's Phase 33). Deliberately not just submitFormResponse with a
+// looser gate: there's no actor to attribute the response to at all,
+// not even optionally (submittedBy is always null here, regardless of
+// the form's allowAnonymous setting — that flag governs an
+// *authenticated* member's choice to hide their identity, a different
+// question from "there was never a Member session to begin with").
+// Callers are responsible for restricting which formId this can ever
+// be invoked against — see src/lib/recruitment/applications.ts's
+// submitRecruitmentApplication, the only intended caller, which always
+// resolves the id itself from Community.recruitmentApplicationFormId
+// rather than accepting one from request input.
+export async function submitPublicFormResponse(formId: string, input: SubmitFormResponseInput) {
+  const [formRow] = await db.select().from(form).where(eq(form.id, formId));
+  if (!formRow) {
+    throw new NotFoundError("Form not found");
+  }
+  if (formRow.archivedAt) {
+    throw new ConflictError("This form is no longer accepting responses");
+  }
+
+  const fields = formRow.fields as FormField[];
+  for (const f of fields) {
+    if (f.required && isBlank(input.values[f.key])) {
+      throw new AppError(`"${f.label}" is required`);
+    }
+  }
+
+  const [created] = await db
+    .insert(formResponse)
+    .values({ formId, submittedBy: null, values: input.values })
+    .returning();
+  return created;
+}
+
 // Community-scoped only — Forms itself stays unopinionated about who
 // may read responses; that's a policy each consumer defines for
 // itself (see the post-cycle feedback functions below, which layer

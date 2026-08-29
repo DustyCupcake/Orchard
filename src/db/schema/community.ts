@@ -1,6 +1,7 @@
 import {
   boolean,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -107,4 +108,37 @@ export const community = pgTable("community", {
   // holder designated yet — invite links and inquiries still work, but
   // nobody sees the inquiry inbox until this is set.
   recruitmentTaskId: uuid("recruitment_task_id"),
+  // Same non-FK pointer pattern as postCycleFeedbackFormId — form.ts
+  // needs to import community.ts, so community.ts importing form.ts
+  // back would cycle. Deliberately *not* spec's own `form.purpose`
+  // field: this codebase already has a working "which Form does X"
+  // pointer convention, reused here rather than growing a second one.
+  // Null = no application form configured yet — /apply says so.
+  recruitmentApplicationFormId: uuid("recruitment_application_form_id"),
+  // "However many evaluators the Community assigns (two, in the
+  // reference case)" — see docs/spec.md's Recruitment. "The
+  // evaluators" are resolved as whoever currently holds
+  // recruitmentTaskId (src/lib/recruitment/access.ts), not a separate
+  // assignment mechanism — this is just how many distinct evaluators
+  // have to file before a decision is considered reached.
+  recruitmentEvaluatorCount: integer("recruitment_evaluator_count").notNull().default(2),
+  // The recommendation→outcome mapping, community-configured per spec
+  // ("Peach Please's specific matrix becomes one configuration of
+  // this, not the only shape it can take"). Resolved shape (spec names
+  // none): RecruitmentDecisionRule[] — {conditions, outcome}, evaluated
+  // top-to-bottom, first match wins. See
+  // src/lib/recruitment/evaluations.ts for the concrete type and
+  // src/lib/settings/community.ts's requireValidDecisionRules for the
+  // "must end in an unconditional fallback rule, if non-empty"
+  // invariant. Empty array = not configured yet — no decision can be
+  // computed until a Community sets at least a fallback rule.
+  recruitmentDecisionRules: jsonb("recruitment_decision_rules").notNull().default([]),
+  // Phase 34's own counter to maintain (its scheduling flow is what
+  // actually knows whether a subscriber gave availability) — this
+  // phase only defines the threshold field and the subscription
+  // structure it lapses against, per spec's "auto-lapses after N
+  // consecutive applications with no availability given."
+  recruitmentSubscriptionLapseThreshold: integer("recruitment_subscription_lapse_threshold")
+    .notNull()
+    .default(3),
 });

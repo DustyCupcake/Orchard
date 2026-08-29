@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { community, form, task, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { NotFoundError } from "../errors";
+import { recruitmentDecisionRulesSchema, requireValidDecisionRules } from "../recruitment/evaluations";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -50,6 +51,12 @@ export const updateCommunityInput = z.object({
   // see src/db/schema/community.ts's schema comment and
   // src/lib/recruitment.
   recruitmentTaskId: z.string().uuid().nullable().optional(),
+  // Null turns off application intake — /apply says so. Same non-FK
+  // pointer reasoning as postCycleFeedbackFormId.
+  recruitmentApplicationFormId: z.string().uuid().nullable().optional(),
+  recruitmentEvaluatorCount: z.number().int().positive().optional(),
+  recruitmentDecisionRules: recruitmentDecisionRulesSchema.optional(),
+  recruitmentSubscriptionLapseThreshold: z.number().int().positive().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -114,6 +121,20 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
     }
   }
 
+  if (input.recruitmentApplicationFormId) {
+    const [formRow] = await db
+      .select({ id: form.id })
+      .from(form)
+      .where(and(eq(form.id, input.recruitmentApplicationFormId), eq(form.communityId, actor.communityId)));
+    if (!formRow) {
+      throw new NotFoundError("Form not found in your community");
+    }
+  }
+
+  if (input.recruitmentDecisionRules !== undefined) {
+    requireValidDecisionRules(input.recruitmentDecisionRules);
+  }
+
   const [updated] = await db
     .update(community)
     .set({
@@ -145,6 +166,18 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         eventSchedulingOwnerTaskId: input.eventSchedulingOwnerTaskId,
       }),
       ...(input.recruitmentTaskId !== undefined && { recruitmentTaskId: input.recruitmentTaskId }),
+      ...(input.recruitmentApplicationFormId !== undefined && {
+        recruitmentApplicationFormId: input.recruitmentApplicationFormId,
+      }),
+      ...(input.recruitmentEvaluatorCount !== undefined && {
+        recruitmentEvaluatorCount: input.recruitmentEvaluatorCount,
+      }),
+      ...(input.recruitmentDecisionRules !== undefined && {
+        recruitmentDecisionRules: input.recruitmentDecisionRules,
+      }),
+      ...(input.recruitmentSubscriptionLapseThreshold !== undefined && {
+        recruitmentSubscriptionLapseThreshold: input.recruitmentSubscriptionLapseThreshold,
+      }),
     })
     .where(eq(community.id, actor.communityId))
     .returning();
