@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-29 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-29 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
+Phases 0-30 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-30 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -56,7 +56,9 @@ Phase 28 adds Event scheduling — a community's own internal programme, reusing
 
 Phase 29 adds the standing-structure half of Shifts/rota — recurring, never-"done" work distinct from a Task's one-shot claim/finish lifecycle. A `ShiftSeries` (optionally rotated off an existing Task, per Coordination mechanics' "genuinely unloved tasks ... rotate it") is created by any member, who becomes its coordinator automatically — or, if it names a source task, whoever currently holds that task is a coordinator too, the same access-follows-the-task model as everywhere else in this codebase. Occurrences are always explicitly batch-generated, never live-computed — a coordinator picks either a weekly day-of-week-and-time pattern or a plain explicit datetime list, and the system inserts the resulting rows once. Any member can sign up for an occurrence up to its capacity (first-come, no waitlist) and withdraw before it starts. A new `/shifts` page shows every upcoming occurrence grouped by series for browsing and sign-up, plus a coordinator-only management view listing each occurrence's current roster. Completion/no-show marking and the Contribution tracking integration are Phase 30's job, not this one's.
 
-Phase 30 (Shifts/rota: completions & contribution tracking) is scoped in `docs/development-plan.md` but not yet built, alongside Spatial planning (Phases S1-S3, deliberately non-numeric while paused rather than reserving real phase numbers for it). See that doc for what's next.
+Phase 30 closes the loop on Shifts/rota — a shift occurrence's own completion signal, and Contribution tracking actually reading it. Once an occurrence's end time has passed, the signed-up member self-reports it completed (the same trust posture as everywhere else in this codebase), or the series' coordinator can mark a no-show instead — a real, logged call, never automatic. `/contribution` now shows a member's shift completions as their own entry, read together with but never folded into their task-based completed count, landing under "Overall" since a shift carries no Phase association the way a Task does — and no hours figure either, since a shift doesn't inherit a Task's Effort magnitude; completions are counted, not hour-weighted. The task detail page also gains "Rotate this task into a shift," a true one-click action available to any current holder that creates a new series pre-filled from the task (title, description, branch, capacity) while leaving the original task completely untouched — a third option alongside "mark yourself as outgoing" for a genuinely unloved task, per Coordination mechanics.
+
+This closes out the Budget/Event scheduling/Shifts batch (Phases 25-30) in full. Spatial planning (Phases S1-S3) stays paused. See `docs/development-plan.md`'s "Beyond Phase 30" for what's next.
 
 ## Documentation
 
