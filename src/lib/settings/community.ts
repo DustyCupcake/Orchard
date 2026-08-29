@@ -42,6 +42,10 @@ export const updateCommunityInput = z.object({
   // comment and src/lib/forms.ts.
   postCycleFeedbackFormId: z.string().uuid().nullable().optional(),
   feedbackReviewTaskId: z.string().uuid().nullable().optional(),
+  // Whichever task reviews Event scheduling proposals — see
+  // src/db/schema/community.ts's schema comment and
+  // src/lib/event-scheduling.
+  eventSchedulingOwnerTaskId: z.string().uuid().nullable().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -86,6 +90,16 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
     }
   }
 
+  if (input.eventSchedulingOwnerTaskId) {
+    const [taskRow] = await db
+      .select({ id: task.id })
+      .from(task)
+      .where(and(eq(task.id, input.eventSchedulingOwnerTaskId), eq(task.communityId, actor.communityId)));
+    if (!taskRow) {
+      throw new NotFoundError("Task not found in your community");
+    }
+  }
+
   const [updated] = await db
     .update(community)
     .set({
@@ -113,6 +127,9 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         postCycleFeedbackFormId: input.postCycleFeedbackFormId,
       }),
       ...(input.feedbackReviewTaskId !== undefined && { feedbackReviewTaskId: input.feedbackReviewTaskId }),
+      ...(input.eventSchedulingOwnerTaskId !== undefined && {
+        eventSchedulingOwnerTaskId: input.eventSchedulingOwnerTaskId,
+      }),
     })
     .where(eq(community.id, actor.communityId))
     .returning();

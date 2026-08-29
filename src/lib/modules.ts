@@ -10,6 +10,7 @@ import { AppError } from "./errors";
 export const MODULE_DEFINITIONS = [
   { key: "sensitive_data", label: "Sensitive data" },
   { key: "budget", label: "Budget" },
+  { key: "event_scheduling", label: "Event scheduling" },
 ] as const;
 export type ModuleKey = (typeof MODULE_DEFINITIONS)[number]["key"];
 

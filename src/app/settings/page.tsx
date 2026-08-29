@@ -77,6 +77,13 @@ export default async function SettingsPage({
         .where(eq(task.id, communityRow.feedbackReviewTaskId))
         .then((r) => r[0])
     : null;
+  const eventSchedulingOwnerTask = communityRow.eventSchedulingOwnerTaskId
+    ? await db
+        .select({ id: task.id, title: task.title })
+        .from(task)
+        .where(eq(task.id, communityRow.eventSchedulingOwnerTaskId))
+        .then((r) => r[0])
+    : null;
 
   const ruleTaskIds = [
     ...new Set(sensitiveFieldRules.map((r) => r.unlockedByTaskId).filter((id): id is string => Boolean(id))),
@@ -311,6 +318,27 @@ export default async function SettingsPage({
                 {feedbackReviewTask
                   ? `Currently: "${feedbackReviewTask.title}" — whoever holds it sees responses.`
                   : "Whoever holds this task sees feedback responses on /feedback."}
+              </span>
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Event scheduling</legend>
+            <label>
+              Scheduling owner task ID (leave blank to keep Event scheduling review/publish off)
+              <br />
+              <input
+                type="text"
+                name="eventSchedulingOwnerTaskId"
+                defaultValue={communityRow.eventSchedulingOwnerTaskId ?? ""}
+                placeholder="paste the task's ID from its /tasks/… URL"
+                style={{ padding: "0.4rem", width: "100%" }}
+              />
+              <br />
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+                {eventSchedulingOwnerTask
+                  ? `Currently: "${eventSchedulingOwnerTask.title}" — whoever holds it reviews proposals and publishes the schedule.`
+                  : "Members can still submit proposals without this set, but nobody can review, confirm, or publish until it is."}
               </span>
             </label>
           </fieldset>

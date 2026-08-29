@@ -94,4 +94,10 @@ export const community = pgTable("community", {
   // authority" pattern conflictTeamTaskId established, same non-FK
   // reasoning (task.ts already imports community.ts).
   feedbackReviewTaskId: uuid("feedback_review_task_id"),
+  // Whichever task reviews Event scheduling proposals — same "the task
+  // is the authority" pattern and same non-FK reasoning as
+  // feedbackReviewTaskId/conflictTeamTaskId above. Null = no owner
+  // designated yet (proposals can still be submitted, but nobody can
+  // review/confirm/publish until this is set).
+  eventSchedulingOwnerTaskId: uuid("event_scheduling_owner_task_id"),
 });
