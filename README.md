@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-34 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-34 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
+Phases 0-35 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-35 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -68,7 +68,11 @@ Phase 33 adds the actual evaluated-admission funnel — a public application, ho
 
 Phase 34 adds what happens between "we have a recommendation" and "this person is fully in" — the intro call, the one real objection window, and the handoff to someone who'll accompany them. A new `RecruitmentDecision` is the real, persisted trigger point Phase 33 deliberately left uncomputed-and-unstored: the moment enough evaluators have filed, it freezes the matched rule's outcome and, for `proceed`/`decline`, resolves immediately to accepted/declined; a `wider_discussion` outcome instead opens a real time-boxed window (`Community.recruitmentWiderDiscussionHours`) that a new scheduled job auto-resolves per the rule's own `defaultResolution` — unless a subscribed member raised a real `Objection` first, in which case it waits on a recruitment-task holder's own manual call rather than the timer. Conversation scheduling reuses Scheduling polls (Phase 19) directly rather than forking it: `schedulingEntry.memberId` is now nullable with a `formResponseId` alternate, so a not-yet-a-Member applicant can be a required must-overlap participant tracked by their own application instead — a new public `/intro-call/[token]` page reuses the exact same drag-select grid the authenticated poll page already uses, so the applicant submits blind availability with no account needed, and a real slot only confirms once all three (both evaluators and the applicant) actually overlap. An acceptance auto-creates a claimable "Accompany new member" task, pre-filling a suggested accompanier from the referring invite's creator when the application named one. A configured rejection template surfaces on `/applications` next to a decline — never sent automatically.
 
-Spatial planning (Phases S1-S3) stays paused. See `docs/development-plan.md`'s "Beyond Phase 34" for what's next.
+Phase 35 adds the pipeline view that ties the whole Recruitment module together — a single, computed, never-separately-maintained view of everyone currently in flight, the same "list of people and where they are" instinct the task board already gives for tasks. Each candidate's stage (applied → evaluation in progress → call pending → call scheduled → decision pending → accepted/declined → accompaniment assigned) is read live off FormResponse/Evaluation/RecruitmentDecision/SchedulingPoll/Task state — no new stored field, and no scoring formula: alongside the candidate list, a new holder-only `/recruitment` page shows the current Cycle's remaining capacity (Phase 31) and a Tier/Branch composition breakdown as purely informational context, the same "what balanced means here is a human call" posture as everywhere else Orchard stops short of deciding for people. Candidates stuck evaluated-but-uncalled or called-but-undecided now surface as a real "needs action" section on `/dashboard` for whoever holds the recruitment task — closing Phase 24's own explicitly-deferred "recruitment-facing feed items" line.
+
+This closes out the entire Recruitment batch (Phases 31-35) in full.
+
+Spatial planning (Phases 36-38) stays paused. See `docs/development-plan.md`'s "Beyond Phase 35" for what's next.
 
 ## Documentation
 
