@@ -28,7 +28,11 @@ export const createCycleInput = z.discriminatedUnion("source", [
 ]);
 export type CreateCycleInput = z.infer<typeof createCycleInput>;
 
-async function requireCycleInitiationEligibility(actor: Member) {
+// Exported — Phase 31's Participation & capacity reuses this exact gate
+// for who may set a Cycle's capacity/returningWindowClosesAt, on the
+// reasoning that whoever can start a cycle is the same authority who'd
+// configure it (no separate "cycle admin" concept exists).
+export async function requireCycleInitiationEligibility(actor: Member) {
   const [communityRow] = await db.select().from(community).where(eq(community.id, actor.communityId));
   if (!communityRow) {
     throw new NotFoundError("Community not found");
@@ -41,6 +45,17 @@ async function requireCycleInitiationEligibility(actor: Member) {
     !memberHasTier(actor, communityRow.cycleInitiationTierId)
   ) {
     throw new ForbiddenError("You don't have the tier required to start a cycle");
+  }
+}
+
+// Non-throwing form for UI gating — e.g. whether to render the Cycle
+// settings section on /participation at all.
+export async function canInitiateCycle(actor: Member): Promise<boolean> {
+  try {
+    await requireCycleInitiationEligibility(actor);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -281,4 +296,40 @@ export async function getCycle(actor: Member, cycleId: string) {
 
   const phases = await db.select().from(phase).where(eq(phase.cycleId, cycleId)).orderBy(phase.order);
   return { ...row, phases };
+}
+
+// Wires up the two fields that have sat unused on Cycle since Phase 6
+// — see docs/development-plan.md's Phase 31. Gated the same way
+// starting a cycle is: no separate "cycle admin" concept exists, and
+// whoever's trusted to open a cycle is trusted to size it. Editable any
+// time, not just at creation — capacity commonly firms up after a
+// cycle's already started, and there's no lock-once-set rule in spec.
+export const updateCycleSettingsInput = z.object({
+  capacity: z.number().int().positive().nullable().optional(),
+  returningWindowClosesAt: z.string().min(1).nullable().optional(),
+});
+export type UpdateCycleSettingsInput = z.infer<typeof updateCycleSettingsInput>;
+
+export async function updateCycleSettings(actor: Member, cycleId: string, input: UpdateCycleSettingsInput) {
+  await requireCycleInitiationEligibility(actor);
+
+  const [row] = await db
+    .select()
+    .from(cycle)
+    .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, actor.communityId)));
+  if (!row) {
+    throw new NotFoundError("Cycle not found");
+  }
+
+  const [updated] = await db
+    .update(cycle)
+    .set({
+      ...(input.capacity !== undefined && { capacity: input.capacity }),
+      ...(input.returningWindowClosesAt !== undefined && {
+        returningWindowClosesAt: input.returningWindowClosesAt ? new Date(input.returningWindowClosesAt) : null,
+      }),
+    })
+    .where(eq(cycle.id, cycleId))
+    .returning();
+  return updated;
 }

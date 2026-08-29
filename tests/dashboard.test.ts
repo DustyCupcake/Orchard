@@ -1,11 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { branch as branchTable, member, task, taskAssignment } from "@/db/schema";
+import { branch as branchTable, community, member, task, taskAssignment } from "@/db/schema";
 import { claimTask, claimOrRequestToJoin, parkTask } from "@/lib/tasks";
 import { createTier } from "@/lib/settings";
+import { createCycle } from "@/lib/cycles";
+import { declareParticipation } from "@/lib/participation";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
 import { createFixtures, resetDatabase } from "./helpers";
+
+async function enableCycles(communityId: string) {
+  await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
+}
 
 async function insertTask(
   communityId: string,
@@ -198,5 +204,22 @@ describe("getCommunitySnapshot", () => {
     snapshot = await getCommunitySnapshot(bob);
     const health = snapshot.branchHealth.find((b) => b.id === branch.id)!;
     expect(health.counts).toEqual({ soft: 0, hard: 1, escalated: 0 });
+  });
+
+  it("active member count is null when there's no current cycle at all", async () => {
+    const { alice } = await createFixtures();
+    const snapshot = await getCommunitySnapshot(alice);
+    expect(snapshot.activeMemberCount).toBeNull();
+  });
+
+  it("active member count reads Participation 'coming' for the most recent cycle only", async () => {
+    const { community: testCommunity, alice, bob } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    await declareParticipation(alice, cyc.id, { status: "coming" });
+    await declareParticipation(bob, cyc.id, { status: "maybe" });
+
+    const snapshot = await getCommunitySnapshot(alice);
+    expect(snapshot.activeMemberCount).toBe(1);
   });
 });

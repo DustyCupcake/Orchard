@@ -117,6 +117,13 @@ export default async function DashboardPage() {
           done, or opt in to share it.
         </p>
 
+        {snapshot.activeMemberCount !== null && (
+          <p>
+            <strong>{snapshot.activeMemberCount}</strong> member{snapshot.activeMemberCount === 1 ? "" : "s"}{" "}
+            coming this cycle
+          </p>
+        )}
+
         {snapshot.tierCounts.length > 0 && (
           <div style={{ marginBottom: "1rem" }}>
             <h3>Tiers</h3>

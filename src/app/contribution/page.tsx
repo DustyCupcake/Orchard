@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
-import { getOwnContribution, listVisibleContributors } from "@/lib/contribution";
+import { getContributionCommunityAverage, getOwnContribution, listVisibleContributors } from "@/lib/contribution";
 import Nav from "@/components/Nav";
 import ContributionCategories from "@/components/ContributionCategories";
 import { setContributionVisibleAction } from "./actions";
@@ -18,9 +18,10 @@ export default async function ContributionPage() {
     redirect("/login");
   }
 
-  const [categories, visibleContributors] = await Promise.all([
+  const [categories, visibleContributors, communityAverage] = await Promise.all([
     getOwnContribution(currentMember),
     listVisibleContributors(currentMember),
+    getContributionCommunityAverage(currentMember),
   ]);
   const others = visibleContributors.filter((m) => m.id !== currentMember.id);
 
@@ -47,7 +48,19 @@ export default async function ContributionPage() {
         )}
       </form>
 
-      <ContributionCategories categories={categories} />
+      {communityAverage ? (
+        <p style={{ color: "#666", fontSize: "0.85rem" }}>
+          Each category also shows the average across this cycle&rsquo;s currently active members
+          (Participation &ldquo;coming&rdquo;) in parentheses.
+        </p>
+      ) : (
+        <p style={{ color: "#666", fontSize: "0.85rem" }}>
+          No community average yet — nobody&rsquo;s declared <Link href="/participation">Participation</Link>{" "}
+          &ldquo;coming&rdquo; for the current cycle.
+        </p>
+      )}
+
+      <ContributionCategories categories={categories} averages={communityAverage} />
 
       {others.length > 0 && (
         <section style={{ marginTop: "2rem" }}>

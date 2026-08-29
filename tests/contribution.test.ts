@@ -6,11 +6,13 @@ import { createCycle } from "@/lib/cycles";
 import { createShiftSeries, generateShiftOccurrences, markShiftSignupCompleted, signUpForShift } from "@/lib/shifts";
 import { updateCommunity } from "@/lib/settings";
 import {
+  getContributionCommunityAverage,
   getOwnContribution,
   getVisibleContribution,
   listVisibleContributors,
   updateContributionVisibility,
 } from "@/lib/contribution";
+import { declareParticipation } from "@/lib/participation";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
@@ -337,5 +339,56 @@ describe("shift completions (Phase 30)", () => {
 
     const categories = await getOwnContribution(alice);
     expect(categories).toHaveLength(0);
+  });
+});
+
+describe("getContributionCommunityAverage (Phase 31)", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("is null with no current cycle at all", async () => {
+    const { alice } = await createFixtures();
+    expect(await getContributionCommunityAverage(alice)).toBeNull();
+  });
+
+  it("is null when nobody's declared 'coming' for the current cycle", async () => {
+    const { alice } = await createFixtures();
+    await enableCycles(alice.communityId);
+    await createCycle(alice, { source: "blank", name: "2027 Season" });
+
+    expect(await getContributionCommunityAverage(alice)).toBeNull();
+  });
+
+  it("averages across every 'coming' member, including one with nothing in a given category", async () => {
+    const { community: testCommunity, alice, bob, branch } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    await declareParticipation(alice, cyc.id, { status: "coming" });
+    await declareParticipation(bob, cyc.id, { status: "coming" });
+
+    // Only alice has an active task — bob contributes a real zero, not
+    // an excluded denominator.
+    const t = await insertTask(alice.communityId, branch.id, alice.id, { status: "claimed" });
+    await assign(t.id, alice.id);
+
+    const averages = await getContributionCommunityAverage(alice);
+    expect(averages).toHaveLength(1);
+    expect(averages![0].name).toBe("Overall");
+    expect(averages![0].active.count).toBe(0.5);
+  });
+
+  it("excludes a 'maybe'/'not_coming' member from the average denominator", async () => {
+    const { community: testCommunity, alice, bob, branch } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    await declareParticipation(alice, cyc.id, { status: "coming" });
+    await declareParticipation(bob, cyc.id, { status: "not_coming" });
+
+    const t = await insertTask(alice.communityId, branch.id, alice.id, { status: "claimed" });
+    await assign(t.id, alice.id);
+
+    const averages = await getContributionCommunityAverage(alice);
+    expect(averages![0].active.count).toBe(1);
   });
 });

@@ -1,7 +1,8 @@
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { branch, member, task, taskAssignment, taskJoinRequest, tier } from "@/db/schema";
+import { branch, member, participation, task, taskAssignment, taskJoinRequest, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
+import { getCurrentCycle } from "./profile-questions";
 import { isCoordinationHolder } from "./coordination";
 
 type Member = typeof memberTable.$inferSelect;
@@ -91,11 +92,11 @@ function deriveBranchHealthStatus(counts: { soft: number; hard: number; escalate
 }
 
 // The always-visible Community snapshot panel — aggregate, anonymized,
-// never broken out by individual. Active-member-count (Participation
-// `coming`) and the community-average-contribution line stay out of
-// scope per Phase 24 — both need Recruitment's Participation, unbuilt.
+// never broken out by individual. The community-average-contribution
+// line is Phase 23/`/contribution`'s own TODO to close, not this
+// panel's — see src/lib/contribution.ts's getContributionCommunityAverage.
 export async function getCommunitySnapshot(actor: Member) {
-  const [branches, tiers, members, activeTasks, holdings, isCoordHolder] = await Promise.all([
+  const [branches, tiers, members, activeTasks, holdings, isCoordHolder, currentCycle] = await Promise.all([
     db.select().from(branch).where(eq(branch.communityId, actor.communityId)),
     db.select().from(tier).where(eq(tier.communityId, actor.communityId)),
     db.select({ id: member.id, tierIds: member.tierIds }).from(member).where(eq(member.communityId, actor.communityId)),
@@ -115,7 +116,20 @@ export async function getCommunitySnapshot(actor: Member) {
         ),
       ),
     isCoordinationHolder(actor, null),
+    getCurrentCycle(actor.communityId),
   ]);
+
+  // Null (not zero) when there's no current cycle at all — a community
+  // with cycles off, or none created yet, has no Participation concept
+  // to count, which is a real, honest state, not zero people coming.
+  const activeMemberCount = currentCycle
+    ? (
+        await db
+          .select({ memberId: participation.memberId })
+          .from(participation)
+          .where(and(eq(participation.cycleId, currentCycle.id), eq(participation.status, "coming")))
+      ).length
+    : null;
 
   const tierCounts = tiers.map((t) => ({
     id: t.id,
@@ -155,5 +169,5 @@ export async function getCommunitySnapshot(actor: Member) {
     };
   });
 
-  return { tierCounts, branchSpread, branchHealth };
+  return { tierCounts, branchSpread, branchHealth, activeMemberCount };
 }

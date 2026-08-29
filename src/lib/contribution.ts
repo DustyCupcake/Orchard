@@ -1,8 +1,19 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { branch, member, phase, shiftOccurrence, shiftSeries, shiftSignup, task, taskAssignment } from "@/db/schema";
+import {
+  branch,
+  member,
+  participation,
+  phase,
+  shiftOccurrence,
+  shiftSeries,
+  shiftSignup,
+  task,
+  taskAssignment,
+} from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
+import { getCurrentCycle } from "./profile-questions";
 import { ForbiddenError, NotFoundError } from "./errors";
 
 type Member = typeof memberTable.$inferSelect;
@@ -239,4 +250,70 @@ export async function getVisibleContribution(actor: Member, targetMemberId: stri
   }
 
   return { memberName: target.name, categories: await getContributionBreakdown(target.id, target.communityId) };
+}
+
+type ContributionBucketAverage = { count: number; hours: number };
+export type ContributionCategoryAverage = {
+  name: string;
+  completed: ContributionBucketAverage;
+  active: ContributionBucketAverage;
+  future: ContributionBucketAverage;
+  shiftCompletions: { count: number };
+};
+
+// "The average per category across the cycle's currently active
+// members (Participation status `coming`, not the whole all-time
+// community roster)" — see docs/spec.md's Contribution tracking, and
+// docs/development-plan.md's Phase 31 (closes the TODO Phase 23 left
+// here waiting on Participation to exist). Divided by every `coming`
+// member, not just those with an entry in a given category — a
+// category no one in the cycle has touched should pull the average
+// toward zero, not disappear from the denominator. Null when there's
+// no current cycle, or no one's declared `coming` yet for it — nothing
+// honest to average against.
+export async function getContributionCommunityAverage(actor: Member): Promise<ContributionCategoryAverage[] | null> {
+  const currentCycle = await getCurrentCycle(actor.communityId);
+  if (!currentCycle) return null;
+
+  const comingRows = await db
+    .select({ memberId: participation.memberId })
+    .from(participation)
+    .where(and(eq(participation.cycleId, currentCycle.id), eq(participation.status, "coming")));
+  if (comingRows.length === 0) return null;
+
+  const breakdowns = await Promise.all(
+    comingRows.map((r) => getContributionBreakdown(r.memberId, actor.communityId)),
+  );
+
+  const totals = new Map<
+    string,
+    { completed: ContributionBucketAverage; active: ContributionBucketAverage; future: ContributionBucketAverage; shiftCompletions: { count: number } }
+  >();
+  for (const categories of breakdowns) {
+    for (const cat of categories) {
+      if (!totals.has(cat.name)) {
+        totals.set(cat.name, {
+          completed: { count: 0, hours: 0 },
+          active: { count: 0, hours: 0 },
+          future: { count: 0, hours: 0 },
+          shiftCompletions: { count: 0 },
+        });
+      }
+      const t = totals.get(cat.name)!;
+      for (const key of ["completed", "active", "future"] as const) {
+        t[key].count += cat[key].count;
+        t[key].hours += cat[key].hours;
+      }
+      t.shiftCompletions.count += cat.shiftCompletions.count;
+    }
+  }
+
+  const n = comingRows.length;
+  return Array.from(totals.entries()).map(([name, t]) => ({
+    name,
+    completed: { count: t.completed.count / n, hours: t.completed.hours / n },
+    active: { count: t.active.count / n, hours: t.active.hours / n },
+    future: { count: t.future.count / n, hours: t.future.hours / n },
+    shiftCompletions: { count: t.shiftCompletions.count / n },
+  }));
 }

@@ -148,6 +148,13 @@
       "when": 1787997447726,
       "tag": "0020_lucky_tana_nile",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788001199732,
+      "tag": "0021_melted_argent",
+      "breakpoints": true
     }
   ]
 }
