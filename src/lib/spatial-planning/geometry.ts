@@ -98,6 +98,68 @@ export function edgeLengthsMeters(points: Point[], calibration: ScaleCalibration
   return lengths;
 }
 
+// --- Placement geometry (rectangle/circle/polygon/line) ---
+//
+// A Placement's `geometry` shape depends on its `shapeType` — see
+// src/db/schema/spatial-planning.ts's schema comment. These helpers
+// are the one place that knows how to turn any of the four shapes into
+// real-world area or a renderable point list, so neither the API layer
+// nor the client editor has to duplicate per-shape-type logic.
+
+export type RectangleGeometry = { x: number; y: number; width: number; height: number; rotation: number };
+export type CircleGeometry = { x: number; y: number; radius: number };
+export type PathGeometry = { points: Point[] };
+export type PlacementShapeType = "rectangle" | "circle" | "polygon" | "line";
+export type PlacementGeometry = RectangleGeometry | CircleGeometry | PathGeometry;
+
+// The 4 corners of a rectangle centered at (x,y), rotated by `rotation`
+// degrees around that center — rotation is only meaningful for
+// rectangle (see the schema comment on why circle/polygon/line don't
+// use it the same way).
+export function rectangleCorners(geo: RectangleGeometry): Point[] {
+  const hw = geo.width / 2;
+  const hh = geo.height / 2;
+  const rad = toRadians(geo.rotation);
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const local: Point[] = [
+    { x: -hw, y: -hh },
+    { x: hw, y: -hh },
+    { x: hw, y: hh },
+    { x: -hw, y: hh },
+  ];
+  return local.map((p) => ({
+    x: geo.x + p.x * cos - p.y * sin,
+    y: geo.y + p.x * sin + p.y * cos,
+  }));
+}
+
+// A renderable point list for shapes that have one — rectangle's
+// corners, or polygon/line's own points directly. Circle has no
+// polygon representation here (rendered as a literal SVG circle,
+// exported as a GeoJSON Point + radius — see export.ts), so this
+// returns null for it rather than a fake approximation.
+export function placementFootprint(shapeType: PlacementShapeType, geometry: PlacementGeometry): Point[] | null {
+  if (shapeType === "rectangle") return rectangleCorners(geometry as RectangleGeometry);
+  if (shapeType === "circle") return null;
+  return (geometry as PathGeometry).points;
+}
+
+export function placementAreaSqm(
+  shapeType: PlacementShapeType,
+  geometry: PlacementGeometry,
+  calibration: ScaleCalibration,
+): number {
+  const mPerUnit = metersPerUnit(calibration);
+  if (shapeType === "circle") {
+    const { radius } = geometry as CircleGeometry;
+    return Math.PI * radius * radius * mPerUnit * mPerUnit;
+  }
+  if (shapeType === "line") return 0; // an open path has no area
+  const points = placementFootprint(shapeType, geometry);
+  return points ? polygonAreaLocalUnits(points) * mPerUnit * mPerUnit : 0;
+}
+
 // --- Geo-anchor transform (local units <-> real WGS84) ---
 //
 // A flat-earth local tangent plane centered on pointA — GPS itself is

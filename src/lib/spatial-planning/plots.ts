@@ -1,7 +1,7 @@
 import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { cycle, plot, zone } from "@/db/schema";
+import { cycle, placement, plot, zone } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, NotFoundError } from "../errors";
 import { requireSpatialPlanningEnabled, requireSpatialPlanningHolder } from "./access";
@@ -165,11 +165,18 @@ export async function listCyclesWithPlot(actor: Member, excludeCycleId: string) 
 
 // Standalone spatial-plan cloning, independent of Cycle creation
 // itself — see docs/spec.md's "Cloning across cycles." Copies the
-// source Plot's base/calibration plus every one of its Zones as fresh
-// rows onto a brand-new Plot for targetCycleId. Zones carry no Member/
-// Task links to begin with, so there's nothing to drop here — that
-// carve-out is Placement's, in Phase 37, which extends this same
-// function.
+// source Plot's base/calibration plus every one of its Zones and
+// Placements as fresh rows onto a brand-new Plot for targetCycleId.
+// Zones carry no Member/Task links to begin with, so there's nothing
+// to drop for them. A cloned Placement's zoneId is remapped onto its
+// corresponding new Zone (an organizational link, safe to carry
+// forward since both were cloned together); its linkedTaskId is always
+// dropped and it gets no PlacementMember rows at all — per docs/
+// development-plan.md's Phase 37 scope, neither who's attending nor
+// which Task instance carries a guaranteed match on this standalone
+// path (contrast Phase 38's full-Cycle-clone integration, the one path
+// where a Task link *does* carry over, because the Tasks are cloned in
+// the same operation there).
 export async function clonePlotFromCycle(actor: Member, targetCycleId: string, sourceCycleId: string) {
   const communityRow = await requireSpatialPlanningEnabled(actor);
   await requireSpatialPlanningHolder(actor, communityRow);
@@ -186,6 +193,7 @@ export async function clonePlotFromCycle(actor: Member, targetCycleId: string, s
   }
 
   const sourceZones = await db.select().from(zone).where(eq(zone.plotId, sourcePlot.id));
+  const sourcePlacements = await db.select().from(placement).where(eq(placement.plotId, sourcePlot.id));
 
   return db.transaction(async (tx) => {
     const [newPlot] = await tx
@@ -201,14 +209,35 @@ export async function clonePlotFromCycle(actor: Member, targetCycleId: string, s
       })
       .returning();
 
+    // oldZoneId -> newZoneId, so a cloned Placement's zoneId can be
+    // remapped rather than dropped or left dangling.
+    const zoneIdMap = new Map<string, string>();
     if (sourceZones.length > 0) {
-      await tx.insert(zone).values(
-        sourceZones.map((z) => ({
+      const newZones = await tx
+        .insert(zone)
+        .values(
+          sourceZones.map((z) => ({
+            plotId: newPlot.id,
+            name: z.name,
+            category: z.category,
+            polygon: z.polygon,
+            color: z.color,
+          })),
+        )
+        .returning();
+      sourceZones.forEach((z, i) => zoneIdMap.set(z.id, newZones[i].id));
+    }
+
+    if (sourcePlacements.length > 0) {
+      await tx.insert(placement).values(
+        sourcePlacements.map((p) => ({
           plotId: newPlot.id,
-          name: z.name,
-          category: z.category,
-          polygon: z.polygon,
-          color: z.color,
+          zoneId: p.zoneId ? (zoneIdMap.get(p.zoneId) ?? null) : null,
+          shapeType: p.shapeType,
+          geometry: p.geometry,
+          label: p.label,
+          category: p.category,
+          linkedTaskId: null,
         })),
       );
     }

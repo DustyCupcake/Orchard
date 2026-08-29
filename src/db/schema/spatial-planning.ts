@@ -1,6 +1,8 @@
-import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
 import { cycle } from "./cycle";
+import { member } from "./member";
+import { task } from "./task";
 
 // Spatial planning — see docs/spec.md's "Spatial planning" (including
 // its "Cloning across cycles" subsection) and docs/development-plan.md's
@@ -81,4 +83,147 @@ export const zone = pgTable("zone", {
   color: text("color").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const placementShapeTypeEnum = pgEnum("placement_shape_type", [
+  "rectangle",
+  "circle",
+  "polygon",
+  "line",
+]);
+// A closed set, unlike Zone's free-text category — spec.md's Placement
+// bullet names exactly these five and ties rendered color to category
+// (no separate stored color field), which only works with a fixed
+// small palette. Zone stays free-text because it's organizational
+// overlay, not an individual object with a category-driven look.
+export const placementCategoryEnum = pgEnum("placement_category", [
+  "tent",
+  "vehicle",
+  "structure",
+  "furniture",
+  "generic",
+]);
+export const placementStatusEnum = pgEnum("placement_status", ["confirmed", "pending"]);
+
+// An individual shape drawn within a Plot — a tent, vehicle, structure,
+// or piece of furniture, sized and positioned to real-world scale (see
+// docs/spec.md's Spatial planning). `geometry`'s shape depends on
+// `shapeType`: rectangle => {x,y,width,height,rotation} (x,y is the
+// center, width/height/position in the Plot's local units, rotation in
+// degrees — the one shape type this phase's drag-handle rotation
+// actually applies to, since a circle is rotation-invariant and an
+// arbitrary polygon/line is reshaped by moving its own points instead,
+// the same vertex-editing model Zone already uses); circle =>
+// {x,y,radius}; polygon => {points:[{x,y}...]}; line =>
+// {points:[{x,y}...]} (an open path, not a closed ring like polygon).
+// See src/lib/spatial-planning/geometry.ts for the shared area/length/
+// GeoJSON conversions per shape type.
+export const placement = pgTable("placement", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  plotId: uuid("plot_id")
+    .notNull()
+    .references(() => plot.id),
+  // Purely organizational filing, same as Zone's own category — not a
+  // rights-granting link. Nullable: plenty of Placements (a communal
+  // structure spanning the whole site) don't belong to any one Zone.
+  zoneId: uuid("zone_id").references(() => zone.id),
+  shapeType: placementShapeTypeEnum("shape_type").notNull(),
+  geometry: jsonb("geometry").notNull(),
+  label: text("label").notNull(),
+  category: placementCategoryEnum("category").notNull(),
+  // A fresh schema file — task.ts has no reason to ever import
+  // spatial-planning.ts back, so this gets a real FK, the same
+  // reasoning Budget's ownerTaskId and Event scheduling's cycleId
+  // already relied on, unlike Community's own non-FK task pointers
+  // (community.ts genuinely does get imported back by task.ts's
+  // siblings). Null = no linked Task — an individual member's own tent,
+  // or a communal structure nobody's specifically building.
+  linkedTaskId: uuid("linked_task_id").references(() => task.id),
+  // `status`/`pending_*` power the propose→approve/revert workflow —
+  // Phase 38's, not this one. Every Placement Phase 37 creates or edits
+  // stays `confirmed`, the same single-editor-by-the-task-holder model
+  // Zone already uses; nothing in this phase ever produces `pending`.
+  status: placementStatusEnum("status").notNull().default("confirmed"),
+  pendingByMemberId: uuid("pending_by_member_id").references(() => member.id),
+  pendingPrevGeometry: jsonb("pending_prev_geometry"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// A small Community-scoped reusable-shape library — see docs/spec.md's
+// "Shape inventory." Saved from an existing Placement (decoupled, no
+// live link back) or seeded as a common default (a 2-person tent, a
+// van); starting a new Placement from one just copies these fields
+// once as a starting point, still freely resized/rotated/repositioned
+// afterward.
+export const placementTemplate = pgTable("placement_template", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  communityId: uuid("community_id")
+    .notNull()
+    .references(() => community.id),
+  name: text("name").notNull(),
+  shapeType: placementShapeTypeEnum("shape_type").notNull(),
+  geometry: jsonb("geometry").notNull(),
+  category: placementCategoryEnum("category").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const placementMemberStatusEnum = pgEnum("placement_member_status", ["invited", "confirmed"]);
+
+// Join table linking zero or more Members to a Placement — a shared
+// tent/vehicle is one Placement with several linked Members, not
+// several overlapping Placements (see docs/spec.md's Spatial
+// planning). Phase 37 only ever creates `confirmed` rows (the task
+// holder places people directly); the `invited` state and the actual
+// accept/decline flow that uses it are Phase 38's — see "Shared
+// placements: invite → accept."
+export const placementMember = pgTable("placement_member", {
+  placementId: uuid("placement_id")
+    .notNull()
+    .references(() => placement.id),
+  memberId: uuid("member_id")
+    .notNull()
+    .references(() => member.id),
+  status: placementMemberStatusEnum("status").notNull().default("confirmed"),
+  invitedBy: uuid("invited_by")
+    .notNull()
+    .references(() => member.id),
+  invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+});
+
+export const sleepArrangementEnum = pgEnum("sleep_arrangement", [
+  "solo_tent",
+  "shared_tent",
+  "solo_vehicle",
+  "shared_vehicle",
+  "other",
+]);
+
+// A member-profile extension, only present when the module is on — see
+// docs/spec.md's "Space preferences." One row per member (memberId is
+// the primary key, not a separate id — this is a standing profile
+// fact like a contact method, always self-editable, not a submission
+// history). Purely informational in Phase 37 and beyond: it feeds the
+// layout conversation, never grants anything and never auto-places
+// anyone on its own — a stated `sharingWith` intent only becomes a
+// structural fact through the actual invite/accept flow (Phase 38's
+// "Shared placements").
+export const spacePreference = pgTable("space_preference", {
+  memberId: uuid("member_id")
+    .primaryKey()
+    .references(() => member.id),
+  sleepArrangement: sleepArrangementEnum("sleep_arrangement").notNull(),
+  // {length, width, height} in meters, only meaningful for a vehicle
+  // arrangement — nullable since a tent-only member has none to give.
+  vehicleDimensions: jsonb("vehicle_dimensions"),
+  // "Prefer to be placed near" — proximity only, distinct from
+  // sharingWith below (see the spec's own "a different question from
+  // just wanting to be nearby").
+  groupWith: uuid("group_with").array(),
+  // Who this member expects to actually occupy the same tent/vehicle
+  // with — pre-fills invite suggestions on a shared Placement (Phase
+  // 38), but is never by itself confirmation from the other side.
+  sharingWith: uuid("sharing_with").array(),
+  accessibilityNotes: text("accessibility_notes"),
 });

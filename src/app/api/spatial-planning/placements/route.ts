@@ -1,0 +1,32 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireMember, errorResponse } from "@/lib/api";
+import { createPlacement, listPlacements } from "@/lib/spatial-planning";
+import { AppError } from "@/lib/errors";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(request: NextRequest) {
+  try {
+    const actor = await requireMember();
+    const plotId = request.nextUrl.searchParams.get("plotId");
+    if (!plotId) throw new AppError("plotId is required");
+    const placements = await listPlacements(actor, plotId);
+    return NextResponse.json({ placements });
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+// Holder-gated inside createPlacement.
+export async function POST(request: NextRequest) {
+  try {
+    const actor = await requireMember();
+    const body = await request.json();
+    const { plotId, ...input } = body;
+    if (!plotId) throw new AppError("plotId is required");
+    const created = await createPlacement(actor, plotId, input);
+    return NextResponse.json({ placement: created }, { status: 201 });
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
