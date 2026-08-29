@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-25 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-25 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
+Phases 0-26 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-26 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -48,7 +48,9 @@ Phase 24 adds the Dashboard — a member's home view, and the new post-login lan
 
 Phase 25 adds Forms — the last core shared primitive without a scoped consumer, landing its first real, non-Recruitment use in the same phase: post-cycle feedback. A Form's fields use the exact same free-text/single-choice/multi-choice shape Question and ProfileQuestion already use, but unlike a Question, a Form's fields are submitted together, once, as a single validated event — required fields block the whole submission. `Community.postCycleFeedbackFormId`/`feedbackReviewTaskId` name the community's standing survey and which task's holder reviews responses — the same "the task is the authority" pointer pattern Conflict management already established, not a dedicated role. A new `/feedback` page lets any member submit a response (anonymously, if the form allows it) and lets the review-task holder read every response.
 
-Budget, Event scheduling, and Shifts/rota (Phases 26-30) are scoped in `docs/development-plan.md` but not yet built, alongside Spatial planning (Phases S1-S3, deliberately non-numeric while paused rather than reserving real phase numbers for it). See that doc for what's next.
+Phase 26 adds the intake half of Budget — fixed costs and itemized proposals, before Phase 27 adds ranked-choice voting and confirmation on top. A `BudgetCycle` carries the non-negotiable fixed costs an admin enters up front, a proposal deadline, and an `ownerTaskId` (whoever holds that task is the budget owner, the same "the task is the authority" pattern Conflict management and post-cycle feedback already established) — only one active cycle per Community at a time for v1. Any member can submit an itemized `BudgetProposal` before the deadline, tag it to a branch, and edit it themselves until the cycle closes; a stored `totalAmount` gets recomputed on every write rather than summed on read. A new `/budget` page shows the current cycle's fixed costs and every proposal, with a submission form while proposals are open and an inline pre-filled edit form for a member's own proposals.
+
+Budget's ranked-choice voting and confirmation (Phase 27), Event scheduling (Phase 28), and Shifts/rota (Phases 29-30) are scoped in `docs/development-plan.md` but not yet built, alongside Spatial planning (Phases S1-S3, deliberately non-numeric while paused rather than reserving real phase numbers for it). See that doc for what's next.
 
 ## Documentation
 
