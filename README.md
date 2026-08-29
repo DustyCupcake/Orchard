@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-35 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-35 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
+Phases 0-36 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-36 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -72,7 +72,9 @@ Phase 35 adds the pipeline view that ties the whole Recruitment module together 
 
 This closes out the entire Recruitment batch (Phases 31-35) in full.
 
-Spatial planning (Phases 36-38) stays paused. See `docs/development-plan.md`'s "Beyond Phase 35" for what's next.
+Phase 36 adds Spatial planning's foundation — the site itself (`Plot`) and its named organizational regions (`Zone`), plus the SVG-based collaborative drawing surface the rest of this module will render onto. A Plot belongs to a Cycle, not to the whole Community — `cycleId` is nullable for a Community that's never turned Cycles on at all (the same "optional association" pattern `BudgetCycle`/`EventProposal` already use for the identical reason), so nothing here silently persists across every Cycle a Community ever runs. Scale calibration (mark two points, enter the real-world distance) gets an optional extension: either point can also carry a real GPS coordinate, enough to compute a similarity transform for GeoJSON import/export without adopting a map-rendering library — entirely opt-in metadata layered on the same SVG-only editor, never a reason to draw anything differently. A new `/spatial-planning` page lets whoever holds the community's designated Spatial-planning task import a base image or vector boundary, hand-draw one from scratch, or clone a previous Cycle's Plot and its Zones wholesale as a starting point; editing goes down to the vertex level — drag to move a point, click an edge's midpoint to insert one, select-and-delete to remove one — with a live area label and a live per-edge length label, both recomputed continuously while dragging, not just after a save. Export offers a scope (one Zone or the whole Plot) and a format (an SVG image, or GeoJSON using real coordinates when the Plot is geo-anchored). Any member can view; only the Spatial-planning task holder can create or edit — the same "task is the authority" pattern this codebase already uses for Budget/Event scheduling/Recruitment.
+
+Placements (Phase 37) and the propose→pending→approve editing-rights layer (Phase 38) aren't built yet. See `docs/development-plan.md`'s Spatial planning section for what's next.
 
 ## Documentation
 
