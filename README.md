@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-26 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-26 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
+Phases 0-27 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-27 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -50,7 +50,9 @@ Phase 25 adds Forms — the last core shared primitive without a scoped consumer
 
 Phase 26 adds the intake half of Budget — fixed costs and itemized proposals, before Phase 27 adds ranked-choice voting and confirmation on top. A `BudgetCycle` carries the non-negotiable fixed costs an admin enters up front, a proposal deadline, and an `ownerTaskId` (whoever holds that task is the budget owner, the same "the task is the authority" pattern Conflict management and post-cycle feedback already established) — only one active cycle per Community at a time for v1. Any member can submit an itemized `BudgetProposal` before the deadline, tag it to a branch, and edit it themselves until the cycle closes; a stored `totalAmount` gets recomputed on every write rather than summed on read. A new `/budget` page shows the current cycle's fixed costs and every proposal, with a submission form while proposals are open and an inline pre-filled edit form for a member's own proposals.
 
-Budget's ranked-choice voting and confirmation (Phase 27), Event scheduling (Phase 28), and Shifts/rota (Phases 29-30) are scoped in `docs/development-plan.md` but not yet built, alongside Spatial planning (Phases S1-S3, deliberately non-numeric while paused rather than reserving real phase numbers for it). See that doc for what's next.
+Phase 27 adds ranked-choice voting and confirmation — turning Phase 26's closed proposal list into an actual funded budget. Once the deadline's passed (or the owner judges the list complete), the `BudgetCycle`'s owner-task holder closes proposals to voting; any member can then submit a `BudgetVote` — a full ranking of every proposal plus an optional "how much would you contribute this year?" signal — replaceable until the owner confirms. The live voting view tallies a positional (Borda-style) score across submitted votes for the aggregate order, alongside each proposal's cost-per-member and a running total. Confirming locks in a funded set the owner chooses — informed by, not bound to, the ranking — with a rationale required only when that set actually deviates from what the ranked order alone would have funded. Once confirmed, `/budget` shows the final funded/not-funded breakdown and, for each member, the real ask against the number they signaled.
+
+Event scheduling (Phase 28) and Shifts/rota (Phases 29-30) are scoped in `docs/development-plan.md` but not yet built, alongside Spatial planning (Phases S1-S3, deliberately non-numeric while paused rather than reserving real phase numbers for it). See that doc for what's next.
 
 ## Documentation
 
