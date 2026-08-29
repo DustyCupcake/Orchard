@@ -29,3 +29,4 @@ export * from "./sensitive-field-access-rule";
 export * from "./form";
 export * from "./budget";
 export * from "./event-scheduling";
+export * from "./shift";
