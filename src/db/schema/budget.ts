@@ -48,6 +48,17 @@ export const budgetCycle = pgTable("budget_cycle", {
   ownerTaskId: uuid("owner_task_id")
     .notNull()
     .references(() => task.id),
+  // Set only on confirming (status -> `confirmed`) — see
+  // src/lib/budget/voting.ts's confirmBudgetCycle. "A human selection
+  // informed by, not bound to, the ranked order" (docs/spec.md's
+  // Budget: Confirmation) — a plain jsonb array of proposal ids rather
+  // than a join table, matching lineItems/fixedCosts' own "opaque list,
+  // read only by whoever's looking" posture elsewhere in this schema.
+  confirmedProposalIds: jsonb("confirmed_proposal_ids"),
+  // Required whenever confirmedProposalIds deviates from the aggregate
+  // ranked order for the same funded count — see
+  // src/lib/budget/voting.ts's requiresConfirmationRationale.
+  confirmationRationale: text("confirmation_rationale"),
   createdBy: uuid("created_by")
     .notNull()
     .references(() => member.id),
@@ -74,5 +85,33 @@ export const budgetProposal = pgTable("budget_proposal", {
   totalAmount: integer("total_amount").notNull(),
   branchId: uuid("branch_id").references(() => branch.id),
   phaseId: uuid("phase_id").references(() => phase.id),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// A member's full ranking of the cycle's proposals, plus an optional
+// "how much would you contribute this year?" signal — one row per
+// member per cycle, replaceable until voting closes (no DB-level
+// unique constraint; enforced the same select-then-update-or-insert
+// way Assemblies' own submitAssemblyResponse already does). No FK on
+// the ids inside rankedProposalIds — validated at the application
+// layer against the cycle's actual proposal set instead, the same
+// posture jsonb id-lists already take elsewhere in this schema
+// (Requirement.value's completed_task, budgetCycle.confirmedProposalIds
+// above).
+export const budgetVote = pgTable("budget_vote", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  budgetCycleId: uuid("budget_cycle_id")
+    .notNull()
+    .references(() => budgetCycle.id),
+  memberId: uuid("member_id")
+    .notNull()
+    .references(() => member.id),
+  // Ordered array of proposal ids, most-preferred first — must be a
+  // permutation of exactly the cycle's current proposal set (see
+  // src/lib/budget/voting.ts's requireValidRanking).
+  rankedProposalIds: jsonb("ranked_proposal_ids").notNull(),
+  // Whole-currency-unit integer, same posture as fixedCosts/lineItems'
+  // amounts — null means "no signal given," not zero.
+  contributionSignal: integer("contribution_signal"),
   submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
 });

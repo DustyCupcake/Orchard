@@ -5,10 +5,15 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/api";
 import {
+  closeProposalsToVoting,
+  confirmBudgetCycle,
+  confirmBudgetCycleInput,
   createBudgetCycle,
   createBudgetCycleInput,
   submitBudgetProposal,
   submitBudgetProposalInput,
+  submitBudgetVote,
+  submitBudgetVoteInput,
   updateBudgetProposal,
   updateBudgetProposalInput,
 } from "@/lib/budget";
@@ -106,4 +111,74 @@ export async function updateBudgetProposalAction(formData: FormData) {
 
   revalidatePath("/budget");
   redirect("/budget?updated=1");
+}
+
+// Owner-only, enforced inside closeProposalsToVoting.
+export async function closeProposalsToVotingAction(formData: FormData) {
+  const actor = await requireMember();
+  const budgetCycleId = String(formData.get("budgetCycleId"));
+
+  try {
+    await closeProposalsToVoting(actor, budgetCycleId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/budget");
+  redirect("/budget?votingOpened=1");
+}
+
+// A rank per proposal (via a <select> 1..N, no client JS drag-and-drop
+// available in this codebase) rather than a single ordered list input
+// — sorted server-side into rankedProposalIds. Every proposal on the
+// page carries a hidden `proposalId` input in DOM order so
+// formData.getAll recovers the full candidate set.
+export async function submitBudgetVoteAction(formData: FormData) {
+  const actor = await requireMember();
+  const budgetCycleId = String(formData.get("budgetCycleId"));
+
+  try {
+    const proposalIds = formData.getAll("proposalId").map(String);
+    const ranks = proposalIds.map((id) => ({ id, rank: Number(formData.get(`rank_${id}`)) }));
+    if (ranks.some((r) => !Number.isInteger(r.rank) || r.rank < 1 || r.rank > proposalIds.length)) {
+      throw new AppError(`Give every proposal a unique rank from 1 to ${proposalIds.length}`);
+    }
+    if (new Set(ranks.map((r) => r.rank)).size !== ranks.length) {
+      throw new AppError("Each proposal needs a unique rank — no ties");
+    }
+    ranks.sort((a, b) => a.rank - b.rank);
+
+    const contributionRaw = String(formData.get("contributionSignal") ?? "").trim();
+    const input = submitBudgetVoteInput.parse({
+      rankedProposalIds: ranks.map((r) => r.id),
+      contributionSignal: contributionRaw ? Number(contributionRaw) : null,
+    });
+    await submitBudgetVote(actor, budgetCycleId, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/budget");
+  redirect("/budget?voted=1");
+}
+
+// Owner-only, enforced inside confirmBudgetCycle — including the
+// required-rationale check when the checked set deviates from the
+// aggregate ranked order.
+export async function confirmBudgetCycleAction(formData: FormData) {
+  const actor = await requireMember();
+  const budgetCycleId = String(formData.get("budgetCycleId"));
+
+  try {
+    const input = confirmBudgetCycleInput.parse({
+      confirmedProposalIds: formData.getAll("confirmedProposalIds").map(String),
+      confirmationRationale: String(formData.get("confirmationRationale") ?? "").trim() || undefined,
+    });
+    await confirmBudgetCycle(actor, budgetCycleId, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/budget");
+  redirect("/budget?confirmed=1");
 }

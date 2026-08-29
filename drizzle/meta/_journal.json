@@ -127,6 +127,13 @@
       "when": 1787951773897,
       "tag": "0017_cynical_menace",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787988572680,
+      "tag": "0018_pink_jackpot",
+      "breakpoints": true
     }
   ]
 }

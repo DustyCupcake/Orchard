@@ -5,15 +5,17 @@ import { member, task } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { getCommunity, listBranches, requireAdmins } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
-import { getCurrentBudgetCycle, listBudgetProposals } from "@/lib/budget";
+import { getBudgetVotingView, getCurrentBudgetCycle, isBudgetOwner, listBudgetProposals } from "@/lib/budget";
 import type { BudgetLineItem } from "@/lib/budget";
 import { ForbiddenError } from "@/lib/errors";
 import Nav from "@/components/Nav";
 import {
+  closeProposalsToVotingAction,
   createBudgetCycleAction,
   submitBudgetProposalAction,
   updateBudgetProposalAction,
 } from "./actions";
+import BudgetVotingSection from "./BudgetVotingSection";
 
 export const dynamic = "force-dynamic";
 
@@ -31,21 +33,27 @@ const STATUS_LABEL: Record<string, string> = {
   confirmed: "Confirmed",
 };
 
-// "The intake half" — see docs/spec.md's Budget and
-// docs/development-plan.md's Phase 26. Voting/confirmation (Phase 27)
-// aren't built yet, so a cycle past `proposals_open` just shows as
-// read-only here for now.
+// See docs/spec.md's Budget and docs/development-plan.md's Phases
+// 26-27: fixed costs & proposals while `proposals_open`, ranked-choice
+// voting and owner confirmation once the owner closes proposals.
 export default async function BudgetPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; submitted?: string; updated?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    submitted?: string;
+    updated?: string;
+    votingOpened?: string;
+    voted?: string;
+    confirmed?: string;
+  }>;
 }) {
   const currentMember = await getCurrentMember();
   if (!currentMember) {
     redirect("/login");
   }
 
-  const { error, submitted, updated } = await searchParams;
+  const { error, submitted, updated, votingOpened, voted, confirmed } = await searchParams;
 
   const communityRow = await getCommunity(currentMember);
   const moduleOn = isModuleEnabled(communityRow, "budget");
@@ -60,10 +68,16 @@ export default async function BudgetPage({
 
   const currentCycle = moduleOn ? await getCurrentBudgetCycle(currentMember) : null;
   const canStartNewCycle = moduleOn && (!currentCycle || currentCycle.status === "confirmed");
+  const isOwner = currentCycle ? await isBudgetOwner(currentMember, currentCycle) : false;
 
-  const [branches, proposals] = await Promise.all([
+  const [branches, proposals, votingView] = await Promise.all([
     moduleOn ? listBranches(currentMember) : Promise.resolve([]),
-    currentCycle ? listBudgetProposals(currentMember, currentCycle.id) : Promise.resolve([]),
+    currentCycle && currentCycle.status === "proposals_open"
+      ? listBudgetProposals(currentMember, currentCycle.id)
+      : Promise.resolve([]),
+    currentCycle && currentCycle.status !== "proposals_open"
+      ? getBudgetVotingView(currentMember, currentCycle.id)
+      : Promise.resolve(null),
   ]);
   const branchNameById = new Map(branches.map((b) => [b.id, b.name] as const));
 
@@ -75,19 +89,20 @@ export default async function BudgetPage({
         .then((r) => r[0])
     : null;
 
-  const submitterIds = [...new Set(proposals.map((p) => p.submittedBy))];
-  const memberNameById =
-    submitterIds.length > 0
-      ? new Map(
-          (await db.select().from(member).where(eq(member.communityId, currentMember.communityId))).map(
-            (m) => [m.id, m.name] as const,
-          ),
-        )
-      : new Map<string, string>();
+  const memberNameById = currentCycle
+    ? new Map(
+        (await db.select().from(member).where(eq(member.communityId, currentMember.communityId))).map(
+          (m) => [m.id, m.name] as const,
+        ),
+      )
+    : new Map<string, string>();
 
   const fixedCosts = (currentCycle?.fixedCosts as BudgetLineItem[] | undefined) ?? [];
   const fixedTotal = fixedCosts.reduce((sum, i) => sum + i.amount, 0);
   const proposalsTotal = proposals.reduce((sum, p) => sum + p.totalAmount, 0);
+  const confirmedIds = new Set((currentCycle?.confirmedProposalIds as string[] | null) ?? []);
+  const myContributionSignal =
+    votingView?.myVote?.contributionSignal !== undefined ? votingView?.myVote?.contributionSignal : null;
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 720 }}>
@@ -106,6 +121,9 @@ export default async function BudgetPage({
           {error && <p style={{ color: "crimson" }}>{error}</p>}
           {submitted && <p style={{ color: "#2a7a2a" }}>Proposal submitted.</p>}
           {updated && <p style={{ color: "#2a7a2a" }}>Proposal updated.</p>}
+          {votingOpened && <p style={{ color: "#2a7a2a" }}>Proposals closed — voting is open.</p>}
+          {voted && <p style={{ color: "#2a7a2a" }}>Your vote was recorded.</p>}
+          {confirmed && <p style={{ color: "#2a7a2a" }}>Budget confirmed.</p>}
 
           {currentCycle && (
             <section style={{ marginTop: "1rem" }}>
@@ -130,6 +148,8 @@ export default async function BudgetPage({
                 </ul>
               )}
 
+              {currentCycle.status === "proposals_open" && (
+              <>
               <h3>
                 Proposals ({proposals.length}
                 {proposals.length > 0 && <>, {formatAmount(proposalsTotal)} total</>})
@@ -213,52 +233,71 @@ export default async function BudgetPage({
                 );
               })}
 
-              {currentCycle.status === "proposals_open" && (
-                <>
-                  <h3>Submit a proposal</h3>
-                  <form
-                    action={submitBudgetProposalAction}
-                    style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 500 }}
-                  >
-                    <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
-                    <label>
-                      Title
-                      <br />
-                      <input type="text" name="title" required style={{ padding: "0.4rem", width: "100%" }} />
-                    </label>
-                    <label>
-                      Description
-                      <br />
-                      <textarea name="description" rows={2} style={{ padding: "0.4rem", width: "100%" }} />
-                    </label>
-                    <label>
-                      Branch (optional)
-                      <br />
-                      <select name="branchId" defaultValue="" style={{ padding: "0.4rem", width: "100%" }}>
-                        <option value="">No branch</option>
-                        {branches.map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Line items — one per line, <code>label|amount</code>
-                      <br />
-                      <textarea
-                        name="lineItemsRaw"
-                        rows={4}
-                        required
-                        placeholder={"Portable toilets|450\nSignage|120"}
-                        style={{ padding: "0.4rem", width: "100%", fontFamily: "monospace" }}
-                      />
-                    </label>
-                    <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
-                      Submit proposal
-                    </button>
-                  </form>
-                </>
+              <h3>Submit a proposal</h3>
+              <form
+                action={submitBudgetProposalAction}
+                style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 500 }}
+              >
+                <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
+                <label>
+                  Title
+                  <br />
+                  <input type="text" name="title" required style={{ padding: "0.4rem", width: "100%" }} />
+                </label>
+                <label>
+                  Description
+                  <br />
+                  <textarea name="description" rows={2} style={{ padding: "0.4rem", width: "100%" }} />
+                </label>
+                <label>
+                  Branch (optional)
+                  <br />
+                  <select name="branchId" defaultValue="" style={{ padding: "0.4rem", width: "100%" }}>
+                    <option value="">No branch</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Line items — one per line, <code>label|amount</code>
+                  <br />
+                  <textarea
+                    name="lineItemsRaw"
+                    rows={4}
+                    required
+                    placeholder={"Portable toilets|450\nSignage|120"}
+                    style={{ padding: "0.4rem", width: "100%", fontFamily: "monospace" }}
+                  />
+                </label>
+                <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+                  Submit proposal
+                </button>
+              </form>
+
+              {isOwner && (
+                <form action={closeProposalsToVotingAction} style={{ marginTop: "1.5rem" }}>
+                  <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
+                  <button type="submit" style={{ padding: "0.4rem 1rem" }}>
+                    Close proposals — open voting
+                  </button>
+                </form>
+              )}
+              </>
+              )}
+
+              {currentCycle.status !== "proposals_open" && votingView && (
+                <BudgetVotingSection
+                  currentCycle={currentCycle}
+                  votingView={votingView}
+                  isOwner={isOwner}
+                  memberNameById={memberNameById}
+                  branchNameById={branchNameById}
+                  confirmedIds={confirmedIds}
+                  myContributionSignal={myContributionSignal}
+                />
               )}
             </section>
           )}
