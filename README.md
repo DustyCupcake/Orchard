@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Status
 
-Phases 0-30 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-30 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
+Phases 0-31 of the [development plan](docs/development-plan.md) are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-31 begin the next slice — real, designed modules from [`docs/spec.md`](docs/spec.md) scoped after the codebase already existed. Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema
 - Magic-link auth with a minimal profile
@@ -58,7 +58,11 @@ Phase 29 adds the standing-structure half of Shifts/rota — recurring, never-"d
 
 Phase 30 closes the loop on Shifts/rota — a shift occurrence's own completion signal, and Contribution tracking actually reading it. Once an occurrence's end time has passed, the signed-up member self-reports it completed (the same trust posture as everywhere else in this codebase), or the series' coordinator can mark a no-show instead — a real, logged call, never automatic. `/contribution` now shows a member's shift completions as their own entry, read together with but never folded into their task-based completed count, landing under "Overall" since a shift carries no Phase association the way a Task does — and no hours figure either, since a shift doesn't inherit a Task's Effort magnitude; completions are counted, not hour-weighted. The task detail page also gains "Rotate this task into a shift," a true one-click action available to any current holder that creates a new series pre-filled from the task (title, description, branch, capacity) while leaving the original task completely untouched — a third option alongside "mark yourself as outgoing" for a genuinely unloved task, per Coordination mechanics.
 
-This closes out the Budget/Event scheduling/Shifts batch (Phases 25-30) in full. Spatial planning (Phases S1-S3) stays paused. See `docs/development-plan.md`'s "Beyond Phase 30" for what's next.
+This closes out the Budget/Event scheduling/Shifts batch (Phases 25-30) in full.
+
+Phase 31 adds Participation & capacity — core Cycle machinery, not gated behind Recruitment, since spec is explicit that even a community that never recruits new members wants to know who's actually coming. A new `Participation` table (per cycle, per member: unknown/coming/maybe/not-coming, arrival and departure dates, a note) is resubmittable as plans change, upserted in place the same way Assemblies' and Budget's own vote/response tables already are. This finally wires up `Cycle.capacity` and `Cycle.returningWindowClosesAt`, both unused since Phase 6 — a new `/participation` page shows the current cycle's remaining capacity (the plain, unclamped difference — going negative rather than blocking or queuing once it's full, since spec treats hitting zero early as an ordinary visible limit, not a special case) and whether the returning-priority window is open, purely computed from `now()` the same way Assemblies' own phase state already is. Whoever can start a cycle can also configure its capacity and window — no separate "cycle admin" concept. This also closes two real, previously-deferred lines: `/contribution` now shows the average per category across the cycle's currently `coming` members alongside a member's own picture, and `/dashboard`'s Community snapshot panel now shows a real active-member count.
+
+Spatial planning (Phases S1-S3) stays paused. See `docs/development-plan.md`'s "Beyond Phase 31" for what's next.
 
 ## Documentation
 
