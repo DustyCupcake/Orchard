@@ -156,4 +156,17 @@ export const community = pgTable("community", {
   // surfaced to whoever's about to send an actual decline, never sent
   // automatically. A single field for v1, per spec's own framing.
   recruitmentRejectionTemplate: text("recruitment_rejection_template"),
+  // Whichever task reviews pending Placement changes and directly edits
+  // Zones/unowned Placements — same "the task is the authority" pattern
+  // and same non-FK reasoning as eventSchedulingOwnerTaskId/
+  // recruitmentTaskId above (task.ts already imports community.ts).
+  // Resolved as a single pointer, not a tag like adminsTag/
+  // coordinationTag: spec.md's "or any task tagged for it, if there are
+  // several co-holders" describes a multi-slot task's holders sharing
+  // the load (the same framing the Conflict team gets), not a request
+  // for a second tag mechanism — this follows the dominant "one task
+  // pointer" pattern already established four times over rather than
+  // inventing a new one. Null = nobody can edit Zones or review pending
+  // Placement changes yet — see src/lib/spatial-planning.
+  spatialPlanningTaskId: uuid("spatial_planning_task_id"),
 });

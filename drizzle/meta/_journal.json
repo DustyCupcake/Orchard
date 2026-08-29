@@ -176,6 +176,13 @@
       "when": 1788027252341,
       "tag": "0024_motionless_sumo",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788035497654,
+      "tag": "0025_clumsy_zemo",
+      "breakpoints": true
     }
   ]
 }

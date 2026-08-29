@@ -91,6 +91,13 @@ export default async function SettingsPage({
         .where(eq(task.id, communityRow.recruitmentTaskId))
         .then((r) => r[0])
     : null;
+  const spatialPlanningTask = communityRow.spatialPlanningTaskId
+    ? await db
+        .select({ id: task.id, title: task.title })
+        .from(task)
+        .where(eq(task.id, communityRow.spatialPlanningTaskId))
+        .then((r) => r[0])
+    : null;
 
   const ruleTaskIds = [
     ...new Set(sensitiveFieldRules.map((r) => r.unlockedByTaskId).filter((id): id is string => Boolean(id))),
@@ -346,6 +353,27 @@ export default async function SettingsPage({
                 {eventSchedulingOwnerTask
                   ? `Currently: "${eventSchedulingOwnerTask.title}" — whoever holds it reviews proposals and publishes the schedule.`
                   : "Members can still submit proposals without this set, but nobody can review, confirm, or publish until it is."}
+              </span>
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Spatial planning</legend>
+            <label>
+              Spatial-planning task ID
+              <br />
+              <input
+                type="text"
+                name="spatialPlanningTaskId"
+                defaultValue={communityRow.spatialPlanningTaskId ?? ""}
+                placeholder="paste the task's ID from its /tasks/… URL"
+                style={{ padding: "0.4rem", width: "100%" }}
+              />
+              <br />
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+                {spatialPlanningTask
+                  ? `Currently: "${spatialPlanningTask.title}" — whoever holds it can draw/edit Zones and review pending Placement changes.`
+                  : "Nobody can draw or edit Zones until this is set — see /spatial-planning."}
               </span>
             </label>
           </fieldset>

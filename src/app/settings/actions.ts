@@ -118,6 +118,7 @@ export async function updateCommunityAction(formData: FormData) {
         Number(formData.get("recruitmentSubscriptionLapseThreshold") ?? NaN) || undefined,
       recruitmentWiderDiscussionHours: Number(formData.get("recruitmentWiderDiscussionHours") ?? NaN) || undefined,
       recruitmentRejectionTemplate: String(formData.get("recruitmentRejectionTemplate") ?? "").trim() || null,
+      spatialPlanningTaskId: String(formData.get("spatialPlanningTaskId") ?? "").trim() || null,
     });
     await updateCommunity(actor, input);
   } catch (err) {

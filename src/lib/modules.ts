@@ -13,6 +13,7 @@ export const MODULE_DEFINITIONS = [
   { key: "event_scheduling", label: "Event scheduling" },
   { key: "shifts", label: "Shifts / rota" },
   { key: "recruitment", label: "Recruitment" },
+  { key: "spatial_planning", label: "Spatial planning" },
 ] as const;
 export type ModuleKey = (typeof MODULE_DEFINITIONS)[number]["key"];
 

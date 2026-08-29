@@ -61,6 +61,10 @@ export const updateCommunityInput = z.object({
   // Null clears it — "surfaced to whoever's about to send an actual
   // decline, never sent automatically."
   recruitmentRejectionTemplate: z.string().nullable().optional(),
+  // Whichever task reviews pending Placements and edits Zones — see
+  // src/db/schema/community.ts's schema comment and
+  // src/lib/spatial-planning.
+  spatialPlanningTaskId: z.string().uuid().nullable().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -139,6 +143,16 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
     requireValidDecisionRules(input.recruitmentDecisionRules);
   }
 
+  if (input.spatialPlanningTaskId) {
+    const [taskRow] = await db
+      .select({ id: task.id })
+      .from(task)
+      .where(and(eq(task.id, input.spatialPlanningTaskId), eq(task.communityId, actor.communityId)));
+    if (!taskRow) {
+      throw new NotFoundError("Task not found in your community");
+    }
+  }
+
   const [updated] = await db
     .update(community)
     .set({
@@ -187,6 +201,9 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       }),
       ...(input.recruitmentRejectionTemplate !== undefined && {
         recruitmentRejectionTemplate: input.recruitmentRejectionTemplate,
+      }),
+      ...(input.spatialPlanningTaskId !== undefined && {
+        spatialPlanningTaskId: input.spatialPlanningTaskId,
       }),
     })
     .where(eq(community.id, actor.communityId))
