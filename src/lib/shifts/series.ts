@@ -71,6 +71,46 @@ export async function createShiftSeries(actor: Member, input: CreateShiftSeriesI
   return created;
 }
 
+// "A one-click action on a Task's detail view, available to any
+// current holder — creates a ShiftSeries with sourceTaskId set and
+// branch/description pre-filled from the task." Deliberately takes no
+// input of its own beyond which task — everything else is derived, the
+// same unilateral, no-intermediate-form posture Subtasks already
+// established. The original Task is left untouched; converting is a
+// starting point for coordination to actually retire it, never
+// automatic (out of scope per the dev plan).
+export async function rotateTaskIntoShift(actor: Member, taskId: string) {
+  const [taskRow] = await db
+    .select()
+    .from(task)
+    .where(and(eq(task.id, taskId), eq(task.communityId, actor.communityId)));
+  if (!taskRow) {
+    throw new NotFoundError("Task not found");
+  }
+
+  const [holds] = await db
+    .select({ taskId: taskAssignment.taskId })
+    .from(taskAssignment)
+    .where(
+      and(
+        eq(taskAssignment.taskId, taskId),
+        eq(taskAssignment.memberId, actor.id),
+        eq(taskAssignment.isShadow, false),
+      ),
+    );
+  if (!holds) {
+    throw new ForbiddenError("Only a current holder can rotate this task into a shift");
+  }
+
+  return createShiftSeries(actor, {
+    branchId: taskRow.branchId,
+    title: taskRow.title,
+    description: taskRow.description || null,
+    defaultCapacity: taskRow.capacity ?? 1,
+    sourceTaskId: taskRow.id,
+  });
+}
+
 export async function getShiftSeries(actor: Member, seriesId: string) {
   const [row] = await db
     .select()

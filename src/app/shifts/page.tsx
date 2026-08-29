@@ -8,13 +8,18 @@ import { isModuleEnabled } from "@/lib/modules";
 import {
   effectiveCapacity,
   isShiftCoordinator,
-  listMySignups,
+  listMySignupsWithOccurrence,
   listOccurrencesForSeries,
   listShiftSeries,
   listUpcomingShiftOccurrences,
 } from "@/lib/shifts";
 import Nav from "@/components/Nav";
-import { createShiftSeriesAction, signUpForShiftAction, withdrawFromShiftAction } from "./actions";
+import {
+  createShiftSeriesAction,
+  markShiftSignupCompletedAction,
+  signUpForShiftAction,
+  withdrawFromShiftAction,
+} from "./actions";
 import MySeriesSection from "./MySeriesSection";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +42,8 @@ export default async function ShiftsPage({
     occurrencesGenerated?: string;
     archived?: string;
     unarchived?: string;
+    markedCompleted?: string;
+    markedNoShow?: string;
   }>;
 }) {
   const currentMember = await getCurrentMember();
@@ -44,20 +51,33 @@ export default async function ShiftsPage({
     redirect("/login");
   }
 
-  const { error, seriesCreated, signedUp, withdrawn, occurrencesGenerated, archived, unarchived } =
-    await searchParams;
+  const {
+    error,
+    seriesCreated,
+    signedUp,
+    withdrawn,
+    occurrencesGenerated,
+    archived,
+    unarchived,
+    markedCompleted,
+    markedNoShow,
+  } = await searchParams;
 
   const communityRow = await getCommunity(currentMember);
   const moduleOn = isModuleEnabled(communityRow, "shifts");
 
   const [upcoming, mySignups, allSeries, branches] = await Promise.all([
     moduleOn ? listUpcomingShiftOccurrences(currentMember) : Promise.resolve([]),
-    moduleOn ? listMySignups(currentMember) : Promise.resolve([]),
+    moduleOn ? listMySignupsWithOccurrence(currentMember) : Promise.resolve([]),
     moduleOn ? listShiftSeries(currentMember, { includeArchived: true }) : Promise.resolve([]),
     moduleOn ? listBranches(currentMember) : Promise.resolve([]),
   ]);
 
-  const mySignedUpOccurrenceIds = new Set(mySignups.map((s) => s.occurrenceId));
+  const mySignedUpOccurrenceIds = new Set(mySignups.map((s) => s.signup.occurrenceId));
+  const now = new Date();
+  const myPastPendingSignups = mySignups.filter(
+    (s) => s.signup.status === "signed_up" && new Date(s.occurrence.endsAt) <= now,
+  );
   const branchNameById = new Map(branches.map((b) => [b.id, b.name] as const));
 
   const upcomingIds = upcoming.map((u) => u.occurrence.id);
@@ -119,6 +139,8 @@ export default async function ShiftsPage({
           {occurrencesGenerated && <p style={{ color: "#2a7a2a" }}>Occurrences generated.</p>}
           {archived && <p style={{ color: "#2a7a2a" }}>Series archived.</p>}
           {unarchived && <p style={{ color: "#2a7a2a" }}>Series unarchived.</p>}
+          {markedCompleted && <p style={{ color: "#2a7a2a" }}>Marked completed.</p>}
+          {markedNoShow && <p style={{ color: "#2a7a2a" }}>Marked no-show.</p>}
 
           <section style={{ marginTop: "1rem" }}>
             <h2>Upcoming shifts</h2>
@@ -161,6 +183,32 @@ export default async function ShiftsPage({
               );
             })}
           </section>
+
+          {myPastPendingSignups.length > 0 && (
+            <section style={{ marginTop: "2rem" }}>
+              <h2>My past shifts</h2>
+              <p style={{ color: "#666", fontSize: "0.85rem" }}>
+                Self-reported — mark a shift completed once it&rsquo;s actually happened.
+              </p>
+              {myPastPendingSignups.map(({ signup, occurrence, series }) => (
+                <div
+                  key={signup.id}
+                  style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
+                >
+                  <strong>{series.title}</strong>
+                  <p style={{ margin: "0.2rem 0", fontSize: "0.85rem", color: "#666" }}>
+                    {formatRange(occurrence.startsAt, occurrence.endsAt)}
+                  </p>
+                  <form action={markShiftSignupCompletedAction}>
+                    <input type="hidden" name="signupId" value={signup.id} />
+                    <button type="submit" style={{ padding: "0.3rem 0.6rem" }}>
+                      Mark completed
+                    </button>
+                  </form>
+                </div>
+              ))}
+            </section>
+          )}
 
           <section style={{ marginTop: "2rem" }}>
             <h2>Create a shift series</h2>

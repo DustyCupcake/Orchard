@@ -33,6 +33,7 @@ import {
   withdrawJoinRequest,
 } from "@/lib/tasks";
 import { createQuestion, createQuestionInput } from "@/lib/input-rounds";
+import { rotateTaskIntoShift } from "@/lib/shifts";
 import { AppError } from "@/lib/errors";
 
 function redirectWithError(taskId: string, err: unknown): never {
@@ -126,6 +127,22 @@ export async function splitSubtaskAction(formData: FormData) {
 
   revalidatePath(`/tasks/${taskId}`);
   redirect(`/tasks/${created.id}`);
+}
+
+// Any current holder, enforced inside rotateTaskIntoShift — a
+// one-click action, no form fields of its own. The original Task is
+// left untouched; this just starts a new ShiftSeries.
+export async function rotateIntoShiftAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await rotateTaskIntoShift(actor, taskId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  redirect("/shifts?seriesCreated=1");
 }
 
 export async function acceptJoinRequestAction(formData: FormData) {

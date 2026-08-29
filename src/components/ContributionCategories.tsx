@@ -43,6 +43,27 @@ export default function ContributionCategories({ categories }: { categories: Con
                 </div>
               );
             })}
+            {cat.shiftCompletions.count > 0 && (
+              <div>
+                <strong>Shift completions</strong>
+                <div style={{ fontSize: "0.85rem", color: "#666" }}>
+                  {cat.shiftCompletions.count} shift{cat.shiftCompletions.count === 1 ? "" : "s"}
+                </div>
+                <details style={{ marginTop: "0.25rem" }}>
+                  <summary style={{ cursor: "pointer", fontSize: "0.8rem" }}>shifts</summary>
+                  <ul style={{ fontSize: "0.8rem", margin: "0.25rem 0 0", paddingLeft: "1.2rem" }}>
+                    {cat.shiftCompletions.completions.map((c) => (
+                      <li key={c.id}>
+                        {c.seriesTitle}{" "}
+                        <span style={{ color: "#666" }}>
+                          ({new Date(c.occurrenceStartsAt).toLocaleDateString()})
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
+            )}
           </div>
         </div>
       ))}

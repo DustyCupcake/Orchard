@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { branch, member, phase, task, taskAssignment } from "@/db/schema";
+import { branch, member, phase, shiftOccurrence, shiftSeries, shiftSignup, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ForbiddenError, NotFoundError } from "./errors";
 
@@ -35,15 +35,26 @@ type ContributionTaskEntry = {
   effortMagnitude: unknown;
 };
 type ContributionBucket = { count: number; hours: number; tasks: ContributionTaskEntry[] };
+type ContributionShiftCompletionEntry = {
+  id: string;
+  seriesTitle: string;
+  occurrenceStartsAt: Date;
+};
+type ContributionShiftBucket = { count: number; completions: ContributionShiftCompletionEntry[] };
 export type ContributionCategory = {
   name: string;
   completed: ContributionBucket;
   active: ContributionBucket;
   future: ContributionBucket;
+  shiftCompletions: ContributionShiftBucket;
 };
 
 function emptyBucket(): ContributionBucket {
   return { count: 0, hours: 0, tasks: [] };
+}
+
+function emptyShiftBucket(): ContributionShiftBucket {
+  return { count: 0, completions: [] };
 }
 
 // Same resolved interpretation src/lib/profile-questions/capacity.ts
@@ -125,6 +136,7 @@ export async function getContributionBreakdown(memberId: string, communityId: st
         completed: emptyBucket(),
         active: emptyBucket(),
         future: emptyBucket(),
+        shiftCompletions: emptyShiftBucket(),
         order,
       });
     }
@@ -145,6 +157,53 @@ export async function getContributionBreakdown(memberId: string, communityId: st
     });
   }
 
+  // "Completed task assignments and shift completions" — read
+  // together, not folded into the same count (docs/spec.md's
+  // Contribution tracking). A shift isn't a Task, so it doesn't
+  // inherit a Task's Effort magnitude for an hours figure —
+  // completions are counted, not hour-weighted, for v1
+  // (docs/development-plan.md's Phase 30). ShiftSeries/ShiftOccurrence
+  // carry no Phase association at all, so — same as a phase-less task
+  // — every completion lands in "Overall" rather than being silently
+  // dropped or guessed into some other category.
+  const shiftRows = await db
+    .select({
+      signupId: shiftSignup.id,
+      seriesTitle: shiftSeries.title,
+      occurrenceStartsAt: shiftOccurrence.startsAt,
+    })
+    .from(shiftSignup)
+    .innerJoin(shiftOccurrence, eq(shiftSignup.occurrenceId, shiftOccurrence.id))
+    .innerJoin(shiftSeries, eq(shiftOccurrence.seriesId, shiftSeries.id))
+    .where(
+      and(
+        eq(shiftSignup.memberId, memberId),
+        eq(shiftSignup.status, "completed"),
+        eq(shiftSeries.communityId, communityId),
+      ),
+    );
+  if (shiftRows.length > 0) {
+    if (!categories.has("Overall")) {
+      categories.set("Overall", {
+        name: "Overall",
+        completed: emptyBucket(),
+        active: emptyBucket(),
+        future: emptyBucket(),
+        shiftCompletions: emptyShiftBucket(),
+        order: Number.MAX_SAFE_INTEGER,
+      });
+    }
+    const overall = categories.get("Overall")!;
+    for (const r of shiftRows) {
+      overall.shiftCompletions.count += 1;
+      overall.shiftCompletions.completions.push({
+        id: r.signupId,
+        seriesTitle: r.seriesTitle,
+        occurrenceStartsAt: r.occurrenceStartsAt,
+      });
+    }
+  }
+
   return Array.from(categories.values())
     .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name))
     .map((cat): ContributionCategory => ({
@@ -152,6 +211,7 @@ export async function getContributionBreakdown(memberId: string, communityId: st
       completed: cat.completed,
       active: cat.active,
       future: cat.future,
+      shiftCompletions: cat.shiftCompletions,
     }));
 }
 

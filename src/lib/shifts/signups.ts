@@ -1,8 +1,8 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { shiftSignup } from "@/db/schema";
+import { shiftOccurrence, shiftSeries, shiftSignup } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { ConflictError, NotFoundError } from "../errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { requireShiftCoordinator } from "./series";
 import { effectiveCapacity, getShiftOccurrence } from "./occurrences";
 
@@ -78,4 +78,78 @@ export async function listSignupsForOccurrence(actor: Member, occurrenceId: stri
     .from(shiftSignup)
     .where(eq(shiftSignup.occurrenceId, occurrenceId))
     .orderBy(asc(shiftSignup.signedUpAt));
+}
+
+// Joined with occurrence/series info — the shape the /shifts page needs
+// to show "your past shifts" alongside a mark-completed prompt, without
+// a second round of per-occurrence lookups. Same community-scoping
+// argument as listMySignups above (a member's own signups can only
+// ever point at their own community's occurrences).
+export async function listMySignupsWithOccurrence(actor: Member) {
+  return db
+    .select({ signup: shiftSignup, occurrence: shiftOccurrence, series: shiftSeries })
+    .from(shiftSignup)
+    .innerJoin(shiftOccurrence, eq(shiftSignup.occurrenceId, shiftOccurrence.id))
+    .innerJoin(shiftSeries, eq(shiftOccurrence.seriesId, shiftSeries.id))
+    .where(eq(shiftSignup.memberId, actor.id))
+    .orderBy(desc(shiftOccurrence.startsAt));
+}
+
+async function getSignupWithContext(actor: Member, signupId: string) {
+  const [row] = await db
+    .select({ signup: shiftSignup, occurrence: shiftOccurrence, series: shiftSeries })
+    .from(shiftSignup)
+    .innerJoin(shiftOccurrence, eq(shiftSignup.occurrenceId, shiftOccurrence.id))
+    .innerJoin(shiftSeries, eq(shiftOccurrence.seriesId, shiftSeries.id))
+    .where(and(eq(shiftSignup.id, signupId), eq(shiftSeries.communityId, actor.communityId)));
+  if (!row) {
+    throw new NotFoundError("Signup not found");
+  }
+  return row;
+}
+
+function requireOccurrenceEnded(occurrence: { endsAt: Date | string }) {
+  if (new Date() < new Date(occurrence.endsAt)) {
+    throw new ConflictError("This occurrence hasn't ended yet");
+  }
+}
+
+// "Self-reported by the signed-up member once the occurrence's endsAt
+// has passed" — the same trust posture (access follows the task, not a
+// verification chain) everything else in this codebase already uses.
+export async function markShiftSignupCompleted(actor: Member, signupId: string) {
+  const { signup, occurrence } = await getSignupWithContext(actor, signupId);
+  if (signup.memberId !== actor.id) {
+    throw new ForbiddenError("Only the signed-up member can mark their own completion");
+  }
+  requireOccurrenceEnded(occurrence);
+  if (signup.status !== "signed_up") {
+    throw new ConflictError(`This signup is already ${signup.status}`);
+  }
+
+  const [updated] = await db
+    .update(shiftSignup)
+    .set({ status: "completed" })
+    .where(eq(shiftSignup.id, signupId))
+    .returning();
+  return updated;
+}
+
+// "A series coordinator can also mark a signup no_show — a real,
+// visible, logged call, not automatic, the same posture Requirement
+// waiving already established."
+export async function markShiftSignupNoShow(actor: Member, signupId: string) {
+  const { signup, occurrence, series } = await getSignupWithContext(actor, signupId);
+  await requireShiftCoordinator(actor, series);
+  requireOccurrenceEnded(occurrence);
+  if (signup.status !== "signed_up") {
+    throw new ConflictError(`This signup is already ${signup.status}`);
+  }
+
+  const [updated] = await db
+    .update(shiftSignup)
+    .set({ status: "no_show" })
+    .where(eq(shiftSignup.id, signupId))
+    .returning();
+  return updated;
 }

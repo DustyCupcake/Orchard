@@ -20,7 +20,8 @@ import {
   tierNameLookup,
   describeRequirement,
 } from "@/lib/tasks";
-import { listBranches } from "@/lib/settings";
+import { getCommunity, listBranches } from "@/lib/settings";
+import { isModuleEnabled } from "@/lib/modules";
 import { listTaskQuestions } from "@/lib/input-rounds";
 import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
@@ -41,6 +42,7 @@ import {
   pingCoordinatorAction,
   resolvePingAction,
   resolveSignalAction,
+  rotateIntoShiftAction,
   setOutgoingAction,
   splitSubtaskAction,
   stopShadowingAction,
@@ -92,6 +94,7 @@ export default async function TaskDetailPage({
     myPings,
     communityMembers,
     questions,
+    communityRow,
   ] = await Promise.all([
     db.select().from(branch).where(eq(branch.id, taskRow.branchId)).then((r) => r[0]),
     getTaskNotes(currentMember, id),
@@ -108,7 +111,9 @@ export default async function TaskDetailPage({
     listMyPings(currentMember, id),
     db.select().from(member).where(eq(member.communityId, currentMember.communityId)),
     listTaskQuestions(currentMember, id),
+    getCommunity(currentMember),
   ]);
+  const shiftsModuleOn = isModuleEnabled(communityRow, "shifts");
   const myEndorsements = isCommunityEndorsed
     ? await listMyEndorsements(
         currentMember,
@@ -281,6 +286,17 @@ export default async function TaskDetailPage({
           You&rsquo;ve marked yourself as outgoing on this task — this is the best moment to write
           up the wiki summary below before handing it off, while it&rsquo;s still fresh.
         </p>
+      )}
+
+      {holdsTask && shiftsModuleOn && (
+        <form action={rotateIntoShiftAction} style={{ marginBottom: "0.5rem" }}>
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <button type="submit">Rotate this task into a shift</button>
+          <span style={{ marginLeft: "0.5rem", fontSize: "0.8rem", color: "#666" }}>
+            Genuinely unloved? Turn it into a recurring shift others can sign up for — this task
+            stays exactly as it is, untouched.
+          </span>
+        </form>
       )}
 
       {canPingCoordinator && (

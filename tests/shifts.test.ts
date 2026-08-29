@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { task } from "@/db/schema";
+import { shiftOccurrence, task } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { updateCommunity } from "@/lib/settings";
 import {
@@ -15,6 +16,9 @@ import {
   listShiftSeries,
   listSignupsForOccurrence,
   listUpcomingShiftOccurrences,
+  markShiftSignupCompleted,
+  markShiftSignupNoShow,
+  rotateTaskIntoShift,
   signUpForShift,
   unarchiveShiftSeries,
   withdrawFromShift,
@@ -310,5 +314,130 @@ describe("Sign up / withdraw", () => {
     const { occurrence } = await setUpOccurrence();
     const { bob: strangerBob } = await createFixtures();
     await expect(getShiftOccurrence(strangerBob, occurrence.id)).rejects.toThrow(NotFoundError);
+  });
+});
+
+// Signing up (and so occurrence.startsAt) always has to be in the
+// future, so every completion/no-show test signs up normally first,
+// then ages the occurrence into the past directly — the same technique
+// Budget's own tests use for a deadline that's aged past ("a cycle can
+// age past its own deadline in the ordinary course of things").
+describe("Completion / no-show marking", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  async function setUpEndedSignup() {
+    const fixtures = await setUpModule();
+    const { alice, bob } = fixtures;
+    const series = await createSeries(alice);
+    const [occurrence] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: iso(24), endsAt: iso(25) }],
+    });
+    const signup = await signUpForShift(bob, occurrence.id);
+    await db
+      .update(shiftOccurrence)
+      .set({ startsAt: new Date(iso(-2)), endsAt: new Date(iso(-1)) })
+      .where(eq(shiftOccurrence.id, occurrence.id));
+    return { ...fixtures, series, occurrence, signup };
+  }
+
+  it("rejects marking completed before the occurrence has ended", async () => {
+    const { alice, bob } = await setUpModule();
+    const series = await createSeries(alice);
+    const [occurrence] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: iso(24), endsAt: iso(25) }],
+    });
+    const signup = await signUpForShift(bob, occurrence.id);
+    await expect(markShiftSignupCompleted(bob, signup.id)).rejects.toThrow(ConflictError);
+  });
+
+  it("only the signed-up member can mark their own completion", async () => {
+    const { alice, signup } = await setUpEndedSignup();
+    await expect(markShiftSignupCompleted(alice, signup.id)).rejects.toThrow(ForbiddenError);
+  });
+
+  it("marks completed once the occurrence has ended", async () => {
+    const { bob, signup } = await setUpEndedSignup();
+    const updated = await markShiftSignupCompleted(bob, signup.id);
+    expect(updated.status).toBe("completed");
+  });
+
+  it("rejects marking an already-resolved signup again", async () => {
+    const { bob, signup } = await setUpEndedSignup();
+    await markShiftSignupCompleted(bob, signup.id);
+    await expect(markShiftSignupCompleted(bob, signup.id)).rejects.toThrow(ConflictError);
+  });
+
+  it("no-show marking is coordinator-only", async () => {
+    const { bob, signup } = await setUpEndedSignup();
+    await expect(markShiftSignupNoShow(bob, signup.id)).rejects.toThrow(ForbiddenError);
+  });
+
+  it("rejects marking no-show before the occurrence has ended", async () => {
+    const { alice, bob } = await setUpModule();
+    const series = await createSeries(alice);
+    const [occurrence] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: iso(24), endsAt: iso(25) }],
+    });
+    const signup = await signUpForShift(bob, occurrence.id);
+    await expect(markShiftSignupNoShow(alice, signup.id)).rejects.toThrow(ConflictError);
+  });
+
+  it("coordinator marks no-show once the occurrence has ended", async () => {
+    const { alice, signup } = await setUpEndedSignup();
+    const updated = await markShiftSignupNoShow(alice, signup.id);
+    expect(updated.status).toBe("no_show");
+  });
+});
+
+describe("Rotate a task into a shift", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("is only available to a current holder", async () => {
+    const { alice, bob, branch: testBranch } = await setUpModule();
+    const sourceTask = await insertTask(alice.communityId, testBranch.id, alice.id);
+    await expect(rotateTaskIntoShift(bob, sourceTask.id)).rejects.toThrow(ForbiddenError);
+  });
+
+  it("creates a series pre-filled from the task, leaving the task untouched", async () => {
+    const { alice, branch: testBranch } = await setUpModule();
+    const sourceTask = await insertTask(alice.communityId, testBranch.id, alice.id);
+    await claimTask(alice, sourceTask.id);
+
+    const series = await rotateTaskIntoShift(alice, sourceTask.id);
+    expect(series.title).toBe(sourceTask.title);
+    expect(series.branchId).toBe(sourceTask.branchId);
+    expect(series.sourceTaskId).toBe(sourceTask.id);
+    expect(series.createdBy).toBe(alice.id);
+
+    const stillThere = await db.select().from(task).where(eq(task.id, sourceTask.id));
+    expect(stillThere[0].status).toBe("claimed");
+  });
+
+  it("defaults capacity to 1 when the task has none", async () => {
+    const { alice, branch: testBranch } = await setUpModule();
+    const [openTask] = await db
+      .insert(task)
+      .values({
+        communityId: alice.communityId,
+        branchId: testBranch.id,
+        title: "Uncapped community task",
+        effort: "owns_a_thing",
+        effortMagnitude: { hours_per_week: 1 },
+        createdBy: alice.id,
+        openness: "community_endorsed",
+        capacity: null,
+      })
+      .returning();
+    await claimTask(alice, openTask.id);
+
+    const series = await rotateTaskIntoShift(alice, openTask.id);
+    expect(series.defaultCapacity).toBe(1);
   });
 });

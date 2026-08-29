@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, phase, task, taskAssignment } from "@/db/schema";
+import { community, phase, shiftOccurrence, task, taskAssignment } from "@/db/schema";
 import { createCycle } from "@/lib/cycles";
+import { createShiftSeries, generateShiftOccurrences, markShiftSignupCompleted, signUpForShift } from "@/lib/shifts";
+import { updateCommunity } from "@/lib/settings";
 import {
   getOwnContribution,
   getVisibleContribution,
@@ -43,6 +45,30 @@ async function assign(taskId: string, memberId: string, isShadow = false) {
 
 const yesterday = () => new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 const nextWeek = () => new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+const iso = (hoursFromNow: number) => new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
+
+// Signing up requires a future occurrence; ages it into the past
+// afterward, then self-reports completion — the same technique
+// tests/shifts.test.ts uses for its own completion tests.
+async function completeAShift(actor: Awaited<ReturnType<typeof createFixtures>>["alice"], branchId: string) {
+  await updateCommunity(actor, { modulesEnabled: ["shifts"] });
+  const series = await createShiftSeries(actor, {
+    title: "Dish duty",
+    defaultCapacity: 2,
+    branchId,
+  });
+  const [occurrence] = await generateShiftOccurrences(actor, series.id, {
+    mode: "explicit",
+    slots: [{ startsAt: iso(24), endsAt: iso(25) }],
+  });
+  const signup = await signUpForShift(actor, occurrence.id);
+  await db
+    .update(shiftOccurrence)
+    .set({ startsAt: new Date(iso(-2)), endsAt: new Date(iso(-1)) })
+    .where(eq(shiftOccurrence.id, occurrence.id));
+  await markShiftSignupCompleted(actor, signup.id);
+  return { series, occurrence, signup };
+}
 
 describe("getOwnContribution: categorization", () => {
   beforeEach(async () => {
@@ -253,5 +279,63 @@ describe("contribution visibility", () => {
     await updateContributionVisibility(strangerAlice, { visible: true });
 
     await expect(getVisibleContribution(alice, strangerAlice.id)).rejects.toThrow(NotFoundError);
+  });
+});
+
+describe("shift completions (Phase 30)", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("surfaces a completed shift under 'Overall', separate from the task counts", async () => {
+    const { alice, branch } = await createFixtures();
+    const t = await insertTask(alice.communityId, branch.id, alice.id, { status: "claimed" });
+    await assign(t.id, alice.id);
+    const { series } = await completeAShift(alice, branch.id);
+
+    const categories = await getOwnContribution(alice);
+    expect(categories).toHaveLength(1);
+    const overall = categories[0];
+    expect(overall.name).toBe("Overall");
+    // The task assignment still counts as its own thing, untouched.
+    expect(overall.active.count).toBe(1);
+    // The shift completion is a separate entry, not folded into it.
+    expect(overall.shiftCompletions.count).toBe(1);
+    expect(overall.shiftCompletions.completions[0].seriesTitle).toBe(series.title);
+  });
+
+  it("creates an 'Overall' category purely for shift completions when there's no task assignment at all", async () => {
+    const { alice, branch } = await createFixtures();
+    await completeAShift(alice, branch.id);
+
+    const categories = await getOwnContribution(alice);
+    expect(categories).toHaveLength(1);
+    expect(categories[0].name).toBe("Overall");
+    expect(categories[0].active.count).toBe(0);
+    expect(categories[0].shiftCompletions.count).toBe(1);
+  });
+
+  it("a signed-up-but-not-yet-completed shift doesn't count", async () => {
+    const { alice, branch } = await createFixtures();
+    await updateContributionVisibility(alice, { visible: false });
+    await updateCommunity(alice, { modulesEnabled: ["shifts"] });
+    const series = await createShiftSeries(alice, { title: "Dish duty", defaultCapacity: 2, branchId: branch.id });
+    const [occurrence] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: iso(24), endsAt: iso(25) }],
+    });
+    await signUpForShift(alice, occurrence.id);
+
+    const categories = await getOwnContribution(alice);
+    expect(categories).toHaveLength(0);
+  });
+
+  it("is community-scoped — a stranger's completed shift never leaks in", async () => {
+    const { alice } = await createFixtures();
+    const { alice: strangerAlice, branch: strangerBranch } = await createFixtures();
+    await completeAShift(strangerAlice, strangerBranch.id);
+
+    const categories = await getOwnContribution(alice);
+    expect(categories).toHaveLength(0);
   });
 });

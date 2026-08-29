@@ -2,6 +2,7 @@ import type { shiftOccurrence as shiftOccurrenceTable, shiftSeries as shiftSerie
 import {
   archiveShiftSeriesAction,
   generateOccurrencesAction,
+  markShiftSignupNoShowAction,
   unarchiveShiftSeriesAction,
 } from "./actions";
 
@@ -60,6 +61,7 @@ export default function MySeriesSection({
             {occurrences.length === 0 && <p style={{ color: "#666", fontSize: "0.85rem" }}>None yet.</p>}
             {occurrences.map((o) => {
               const roster = signupsByOccurrence.get(o.id) ?? [];
+              const ended = new Date(o.endsAt) <= new Date();
               return (
                 <div key={o.id} style={{ fontSize: "0.85rem", marginBottom: "0.4rem" }}>
                   <strong>{formatRange(o.startsAt, o.endsAt)}</strong> — capacity{" "}
@@ -69,6 +71,14 @@ export default function MySeriesSection({
                       {roster.map((sg) => (
                         <li key={sg.id}>
                           {memberNameById.get(sg.memberId) ?? "—"} ({sg.status})
+                          {ended && sg.status === "signed_up" && (
+                            <form action={markShiftSignupNoShowAction} style={{ display: "inline", marginLeft: "0.5rem" }}>
+                              <input type="hidden" name="signupId" value={sg.id} />
+                              <button type="submit" style={{ padding: "0.1rem 0.4rem", fontSize: "0.8rem" }}>
+                                Mark no-show
+                              </button>
+                            </form>
+                          )}
                         </li>
                       ))}
                     </ul>

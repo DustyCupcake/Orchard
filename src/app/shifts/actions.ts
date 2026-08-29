@@ -10,6 +10,8 @@ import {
   createShiftSeriesInput,
   generateShiftOccurrences,
   generateShiftOccurrencesInput,
+  markShiftSignupCompleted,
+  markShiftSignupNoShow,
   signUpForShift,
   unarchiveShiftSeries,
   withdrawFromShift,
@@ -144,4 +146,34 @@ export async function unarchiveShiftSeriesAction(formData: FormData) {
 
   revalidatePath("/shifts");
   redirect("/shifts?unarchived=1");
+}
+
+// Self-reported, enforced inside markShiftSignupCompleted.
+export async function markShiftSignupCompletedAction(formData: FormData) {
+  const actor = await requireMember();
+  const signupId = String(formData.get("signupId"));
+
+  try {
+    await markShiftSignupCompleted(actor, signupId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/shifts");
+  redirect("/shifts?markedCompleted=1");
+}
+
+// Coordinator-only, enforced inside markShiftSignupNoShow.
+export async function markShiftSignupNoShowAction(formData: FormData) {
+  const actor = await requireMember();
+  const signupId = String(formData.get("signupId"));
+
+  try {
+    await markShiftSignupNoShow(actor, signupId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/shifts");
+  redirect("/shifts?markedNoShow=1");
 }
