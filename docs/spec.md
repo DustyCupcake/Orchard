@@ -863,7 +863,9 @@ This is deliberately close to a straight relational schema — it maps onto Post
 | Entity             | Key fields                                                                                                                  | Notes                                 |
 |--------------------|------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------|
 | ContactMethod      | id, member_id, type (email, phone, telegram, etc.), value, visibility (enum: everyone, task_or_group_mates, emergency_only) | member controls visibility per method |
-| EmergencyAccessLog | id, activated_by (→ Member), target_member_id (→ Member), explanation (nullable, can be added after the fact), activated_at | both parties notified on activation   |
+| EmergencyAccessLog | id, activated_by (→ Member), target_member_id (→ Member), explanation (nullable, can be added after the fact), activated_at | both parties notified on activation — see Emergency access below the table for why this runs on a different legal basis than ConsentRecord |
+| ConsentPurpose     | id, community_id, key (e.g. sensitive_health, sensitive_dietary, sensitive_orientation, photo_publication, marketing_comms), label, notice_version, notice_text (or a pointer to it), requires_explicit (boolean) | one row per distinct purpose needing its own consent; requires_explicit = true for anything gating an Art. 9 field. Ordinary/operational processing (task history, availability) gets no row here at all — it runs on "necessary to participate," not consent |
+| ConsentRecord      | id, member_id, purpose_id (→ ConsentPurpose), notice_version (denormalized copy of the version in force *at the time*, so a later edit to the purpose's wording doesn't retroactively rewrite history), granted_at, withdrawn_at (nullable), method (enum: explicit_action, form_submission, …) | withdrawn_at = null → currently active. One member can have several rows over time for the same purpose (grant → withdraw → re-grant), each a distinct row; withdrawal must actually revoke the gated access, not just flag it |
 
 *Documentation*
 
@@ -1138,7 +1140,13 @@ Handles the gap Input rounds deliberately doesn't cover: community-wide decision
 
 ### Sensitive data
 
-Health, allergies, orientation, emergency contacts. GDPR Art. 9 handling if enabled. Off by default. Field-level access is purpose-bound rather than role-bound — a Community defines which task or tier unlocks which field (e.g. only whoever holds the catering coordination task sees allergy data; only the designated safety contact sees health conditions), consistent with the "access follows the task" principle below.
+Health, allergies, orientation, emergency contacts. GDPR Art. 9 handling if enabled. Off by default. Field-level access is purpose-bound rather than role-bound — a Community defines which task or tier unlocks which field (e.g. only whoever holds the catering coordination task sees allergy data; only the designated safety contact sees health conditions), consistent with the "access follows the task" principle below. Turning a given field on for a member requires an active, non-withdrawn `ConsentRecord` against the matching `ConsentPurpose` (see *Member contact & privacy*, below, in the data model) before the field is populated or made visible to anyone — access stays purpose-bound on top of that, not instead of it, and withdrawing consent has to actually revoke access, not just flag it.
+
+### Data governance
+
+Decisions that change *what* data gets collected, *why*, who it's shared with, or how long it's kept are purpose/means decisions in the GDPR sense — they belong to the Community's collective decision-making (the board, or an Assembly for anything bigger), not to whoever currently holds the sysadmin task. Routine operation of infrastructure already decided — patching, backups, restores, credential rotation — stays ordinary task implementation and isn't gated behind governance process. The line is whether a change alters what the Community does with data, or just how reliably it keeps doing what's already been decided.
+
+A board-seat handoff (the association's own governance, outside this platform) has a real-world act behind it beyond anything Orchard tracks — a legal officer declaration has to be filed externally. A board-seat task's in-app claim should be understood as tracking and facilitating that, with the Assembly mechanism (results advisory, never auto-applied — see Assemblies, above) as the natural way to run the actual vote, not as something that completes the legal change by itself.
 
 ### Shifts / rota
 
@@ -1170,6 +1178,8 @@ The goal, regardless of domain: a new member's first session should end with at 
 Each contact method a member adds (email, phone, chat handle, whatever the Community uses) carries its own visibility setting, member-controlled: **everyone in the community**, **people I share a task or group with**, or **emergency only**.
 
 **Emergency mode** lets any member surface another member's emergency-only contact info when needed. Both the person activating it and the person whose info is accessed get notified. The activator provides an explanation — can be added after the fact rather than blocking the moment — and every activation is logged.
+
+**This runs on a different legal basis than the rest of this document's consent machinery, deliberately.** GDPR Art. 6(1)(d) — "necessary to protect the vital interests of the data subject or of another natural person" — exists specifically for this, and it's the right fit precisely because it isn't revocable the way consent is: an emergency-access feature that could silently stop working because a consent flag lapsed defeats the point of it existing. No `ConsentRecord`/`ConsentPurpose` row gates Emergency mode. What already exists here does the real work instead — choosing the **emergency only** visibility tier is itself the deliberate, informed act, and the logged activation plus required explanation is the accountability trail, the same role a `ConsentRecord` plays elsewhere, just riding a different basis. What that does require is transparency at the point of choice: the screen where a member sets a contact method to emergency-only should say plainly what it means (any member can invoke it, both parties are notified, it's logged), so the choice is genuinely informed even without being consent in the GDPR sense. Worth a line in the Community's privacy notice, too: an emergency contact is often someone with no account on the platform at all — their data is still being processed, just belonging to a data subject the platform never talks to directly.
 
 ---
 

@@ -15,6 +15,11 @@ export default function LoginForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
+        // The API route always responds fast now (mail sending failures are
+        // caught server-side), but this keeps the button from hanging
+        // forever if the request itself never completes for some other
+        // reason.
+        signal: AbortSignal.timeout(20_000),
       });
       setStatus(res.ok ? "sent" : "error");
     } catch {

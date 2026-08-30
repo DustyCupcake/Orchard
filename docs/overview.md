@@ -116,6 +116,16 @@ Feedback after the event can also surface things that never came up in the momen
 
 ---
 
+## Privacy, consent, and who's accountable
+
+Some of what a Community asks people to share is genuinely sensitive — a health condition, an allergy, who you love, an emergency contact. None of it gets collected without asking you first, specifically, for that one purpose — sharing an allergy with whoever's planning food isn't the same yes as appearing in an event photo, and they're tracked separately. You can take any of them back whenever you want, and when you do, whoever could see it actually loses access, not just a note saying you'd rather they hadn't.
+
+Emergency access is the one deliberate exception, and it works differently on purpose. If something's genuinely wrong, any member can surface someone's emergency-only contact info without asking permission first — a safety net that could quietly stop working because of an unchecked box wouldn't be much of one. Both people find out it happened either way, and there's always a reason attached, even if it's added after the fact rather than before.
+
+None of this floats free of someone accountable, either. A Community running this platform stands behind its handling of people's data as a real, responsible body — not an informal understanding that happens to rest on whoever's running the server this year.
+
+---
+
 ## Where this actually lives: phone and laptop
 
 Most of what's above is meant to work from your phone, because that's where most people will actually open this — checking your dashboard, claiming or releasing a task, answering the week's batch of questions. The heavier tools — laying out camp on a real floorplan, working the budget, the fuller coordination view a branch coordinator needs — will work on the phone but they're built for a larger screen, the same way you'd already reach for a bigger screen to do that kind of work regardless of what app it's in.

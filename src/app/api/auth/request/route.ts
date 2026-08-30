@@ -14,7 +14,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
   }
 
-  await requestMagicLink(email, resolveAppUrl(request));
+  try {
+    await requestMagicLink(email, resolveAppUrl(request));
+  } catch (err) {
+    // Swallowed on purpose: an SMTP failure is an ops problem, not
+    // something the caller should see or be able to distinguish from a
+    // successful send (see the generic response below).
+    console.error("[auth/request] failed to send magic link:", err);
+  }
 
   // Always a generic success message — don't reveal whether this email
   // already belongs to a member.
