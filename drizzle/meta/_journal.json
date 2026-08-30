@@ -190,6 +190,13 @@
       "when": 1788037916123,
       "tag": "0026_safe_luke_cage",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1788073463069,
+      "tag": "0027_rich_master_mold",
+      "breakpoints": true
     }
   ]
 }

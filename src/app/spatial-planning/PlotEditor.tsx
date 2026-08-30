@@ -56,6 +56,8 @@ type PlacementRow = {
   label: string;
   category: string;
   linkedTaskId: string | null;
+  status: "confirmed" | "pending";
+  pendingByMemberId: string | null;
 };
 
 type PlacementTemplateRow = {
@@ -157,6 +159,7 @@ export default function PlotEditor({
   initialTemplates,
   communityMembers,
   canEdit,
+  myEditablePlacementIds,
   cloneCandidates,
 }: {
   cycleId: string | null;
@@ -167,6 +170,12 @@ export default function PlotEditor({
   initialTemplates: PlacementTemplateRow[];
   communityMembers: MemberOption[];
   canEdit: boolean;
+  // Placements this member can self-service move (a confirmed Member
+  // link, or holding the linked Task) despite not holding the overall
+  // Spatial-planning task — see docs/spec.md's Multi-user placement.
+  // Irrelevant when canEdit is true, since the holder can already edit
+  // everything directly.
+  myEditablePlacementIds: string[];
   cloneCandidates: { cycleId: string; cycleName: string }[];
 }) {
   const [plotRow, setPlotRow] = useState(plot);
@@ -202,6 +211,10 @@ export default function PlotEditor({
 
   // --- Drawing/editing a Placement (rectangle/circle/polygon/line) ---
   const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
+  // Whether the current edit-placement session is a self-service move
+  // (geometry only, lands `pending`) rather than the holder's full edit.
+  const [selfServiceMode, setSelfServiceMode] = useState(false);
+  const [inviteMemberId, setInviteMemberId] = useState("");
   const [draftShapeType, setDraftShapeType] = useState<PlacementShapeType>("rectangle");
   // Rectangle/circle: a positioned, draggable (and for rectangle,
   // rotatable) draft — set once dimensions are confirmed, then moved by
@@ -592,8 +605,14 @@ export default function PlotEditor({
     }
   }
 
-  async function startEditingPlacement(p: PlacementRow) {
+  // `selfService` — a confirmed Member link or Task-holder editing a
+  // Placement they don't have full (holder) rights over: only geometry
+  // is editable, saved via proposePlacementMove (lands `pending`), not
+  // the full updatePlacement PATCH — see docs/spec.md's Multi-user
+  // placement.
+  async function startEditingPlacement(p: PlacementRow, selfService = false) {
     setSelectedPlacementId(p.id);
+    setSelfServiceMode(selfService);
     setDraftShapeType(p.shapeType);
     if (p.shapeType === "polygon" || p.shapeType === "line") {
       setDraftPoints((p.geometry as { points: Point[] }).points);
@@ -610,10 +629,12 @@ export default function PlotEditor({
     });
     setMode("edit-placement");
 
-    const res = await fetch(`/api/spatial-planning/placements/${p.id}`);
-    const data = await res.json();
-    if (res.ok) {
-      setPlacementFields((f) => ({ ...f, memberIds: data.members.map((m: { memberId: string }) => m.memberId) }));
+    if (!selfService) {
+      const res = await fetch(`/api/spatial-planning/placements/${p.id}`);
+      const data = await res.json();
+      if (res.ok) {
+        setPlacementFields((f) => ({ ...f, memberIds: data.members.map((m: { memberId: string }) => m.memberId) }));
+      }
     }
   }
 
@@ -621,25 +642,67 @@ export default function PlotEditor({
     if (!selectedPlacementId) return;
     const geometry = currentDraftGeometry();
     try {
-      const res = await fetch(`/api/spatial-planning/placements/${selectedPlacementId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...(geometry && { geometry }),
-          label: placementFields.label,
-          category: placementFields.category,
-          linkedTaskId: placementFields.linkedTaskId || null,
-          memberIds: placementFields.memberIds,
-        }),
-      });
+      const res = await fetch(
+        selfServiceMode
+          ? `/api/spatial-planning/placements/${selectedPlacementId}/propose-move`
+          : `/api/spatial-planning/placements/${selectedPlacementId}`,
+        {
+          method: selfServiceMode ? "POST" : "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            selfServiceMode
+              ? { geometry }
+              : {
+                  ...(geometry && { geometry }),
+                  label: placementFields.label,
+                  category: placementFields.category,
+                  linkedTaskId: placementFields.linkedTaskId || null,
+                  memberIds: placementFields.memberIds,
+                },
+          ),
+        },
+      );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to save Placement");
       setPlacements(placements.map((p) => (p.id === data.placement.id ? data.placement : p)));
       setMode("view");
       setSelectedPlacementId(null);
+      setSelfServiceMode(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
+  }
+
+  // --- Phase 38: approve/revert, invite ---
+
+  async function approvePlacementHandler(id: string) {
+    const res = await fetch(`/api/spatial-planning/placements/${id}/approve`, { method: "POST" });
+    const data = await res.json();
+    if (res.ok) setPlacements(placements.map((p) => (p.id === id ? data.placement : p)));
+    else setError(data.error ?? "Failed to approve");
+  }
+
+  async function revertPlacementHandler(id: string) {
+    const note = prompt("Why is this being reverted? (optional, shown to whoever made the change)") ?? undefined;
+    const res = await fetch(`/api/spatial-planning/placements/${id}/revert`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: note || null }),
+    });
+    const data = await res.json();
+    if (res.ok) setPlacements(placements.map((p) => (p.id === id ? data.placement : p)));
+    else setError(data.error ?? "Failed to revert");
+  }
+
+  async function invitePlacementMemberHandler(placementId: string, memberId: string) {
+    if (!memberId) return;
+    const res = await fetch(`/api/spatial-planning/placements/${placementId}/invite`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberId }),
+    });
+    const data = await res.json();
+    if (!res.ok) setError(data.error ?? "Failed to invite");
   }
 
   async function deletePlacementHandler(id: string) {
@@ -865,6 +928,10 @@ export default function PlotEditor({
               fillOpacity: selected ? 0.7 : 0.45,
               stroke: color,
               strokeWidth: selected ? 3 : 1.5,
+              // Dashed outline for anything awaiting review — the only
+              // on-canvas cue that a save didn't just silently apply as
+              // final (docs/spec.md's Multi-user placement).
+              strokeDasharray: p.status === "pending" ? "6 4" : undefined,
               onClick: (e: React.MouseEvent) => {
                 e.stopPropagation();
                 if (mode === "view") setSelectedPlacementId(p.id === selectedPlacementId ? null : p.id);
@@ -1303,56 +1370,66 @@ export default function PlotEditor({
                     Drag the shape to reposition it{draftShapeType === "rectangle" && "; drag the small handle to rotate it"}.
                   </p>
                 )}
-                <input
-                  type="text"
-                  placeholder="Label"
-                  value={placementFields.label}
-                  onChange={(e) => setPlacementFields({ ...placementFields, label: e.target.value })}
-                  style={{ padding: "0.4rem" }}
-                />
-                <select
-                  value={placementFields.category}
-                  onChange={(e) => setPlacementFields({ ...placementFields, category: e.target.value })}
-                  style={{ padding: "0.4rem" }}
-                >
-                  {PLACEMENT_CATEGORIES.map((c) => (
-                    <option key={c.value} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-                <label>
-                  Linked Task ID (optional)
-                  <br />
-                  <input
-                    type="text"
-                    placeholder="paste the task's ID from its /tasks/… URL"
-                    value={placementFields.linkedTaskId}
-                    onChange={(e) => setPlacementFields({ ...placementFields, linkedTaskId: e.target.value })}
-                    style={{ padding: "0.4rem", width: "100%" }}
-                  />
-                </label>
-                {communityMembers.length > 0 && (
-                  <fieldset>
-                    <legend>Linked Members</legend>
-                    {communityMembers.map((m) => (
-                      <label key={m.id} style={{ display: "block", fontSize: "0.85rem" }}>
-                        <input
-                          type="checkbox"
-                          checked={placementFields.memberIds.includes(m.id)}
-                          onChange={() =>
-                            setPlacementFields((f) => ({
-                              ...f,
-                              memberIds: f.memberIds.includes(m.id)
-                                ? f.memberIds.filter((id) => id !== m.id)
-                                : [...f.memberIds, m.id],
-                            }))
-                          }
-                        />{" "}
-                        {m.name}
-                      </label>
-                    ))}
-                  </fieldset>
+                {selfServiceMode && (
+                  <p style={{ fontSize: "0.85rem", color: "#666" }}>
+                    Moving &ldquo;{placementFields.label}&rdquo; — this will apply immediately but flag it
+                    pending until the Spatial-planning holder reviews it.
+                  </p>
+                )}
+                {!selfServiceMode && (
+                  <>
+                    <input
+                      type="text"
+                      placeholder="Label"
+                      value={placementFields.label}
+                      onChange={(e) => setPlacementFields({ ...placementFields, label: e.target.value })}
+                      style={{ padding: "0.4rem" }}
+                    />
+                    <select
+                      value={placementFields.category}
+                      onChange={(e) => setPlacementFields({ ...placementFields, category: e.target.value })}
+                      style={{ padding: "0.4rem" }}
+                    >
+                      {PLACEMENT_CATEGORIES.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                    <label>
+                      Linked Task ID (optional)
+                      <br />
+                      <input
+                        type="text"
+                        placeholder="paste the task's ID from its /tasks/… URL"
+                        value={placementFields.linkedTaskId}
+                        onChange={(e) => setPlacementFields({ ...placementFields, linkedTaskId: e.target.value })}
+                        style={{ padding: "0.4rem", width: "100%" }}
+                      />
+                    </label>
+                    {communityMembers.length > 0 && (
+                      <fieldset>
+                        <legend>Linked Members</legend>
+                        {communityMembers.map((m) => (
+                          <label key={m.id} style={{ display: "block", fontSize: "0.85rem" }}>
+                            <input
+                              type="checkbox"
+                              checked={placementFields.memberIds.includes(m.id)}
+                              onChange={() =>
+                                setPlacementFields((f) => ({
+                                  ...f,
+                                  memberIds: f.memberIds.includes(m.id)
+                                    ? f.memberIds.filter((id) => id !== m.id)
+                                    : [...f.memberIds, m.id],
+                                }))
+                              }
+                            />{" "}
+                            {m.name}
+                          </label>
+                        ))}
+                      </fieldset>
+                    )}
+                  </>
                 )}
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button
@@ -1360,7 +1437,7 @@ export default function PlotEditor({
                     disabled={!placementFields.label}
                     onClick={mode === "draw-placement" ? saveNewPlacement : saveEditedPlacement}
                   >
-                    Save Placement
+                    {selfServiceMode ? "Save move" : "Save Placement"}
                   </button>
                   <button
                     type="button"
@@ -1369,6 +1446,7 @@ export default function PlotEditor({
                       setDraftGeometry(null);
                       setDraftPoints([]);
                       setSelectedPlacementId(null);
+                      setSelfServiceMode(false);
                     }}
                   >
                     Cancel
@@ -1510,20 +1588,70 @@ export default function PlotEditor({
               <span style={{ color: "#666" }}>
                 ({p.category} · {p.shapeType})
               </span>
+              {p.status === "pending" && <span style={{ color: "#cc6600" }}>⚠ pending review</span>}
             </div>
             {plotRow.scaleCalibration && (
               <div style={{ color: "#666" }}>
                 {Math.round(placementAreaSqm(p.shapeType, p.geometry, plotRow.scaleCalibration)).toLocaleString()} m²
               </div>
             )}
-            {canEdit && mode === "view" && (
-              <div style={{ marginTop: "0.2rem", display: "flex", gap: "0.4rem" }}>
-                <button type="button" onClick={() => startEditingPlacement(p)}>
-                  Edit
-                </button>
-                <button type="button" onClick={() => deletePlacementHandler(p.id)}>
-                  Delete
-                </button>
+            {mode === "view" && (
+              <div style={{ marginTop: "0.2rem", display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                {canEdit && (
+                  <>
+                    <button type="button" onClick={() => startEditingPlacement(p)}>
+                      Edit
+                    </button>
+                    <button type="button" onClick={() => deletePlacementHandler(p.id)}>
+                      Delete
+                    </button>
+                    {p.status === "pending" && (
+                      <>
+                        <button type="button" onClick={() => approvePlacementHandler(p.id)}>
+                          Approve
+                        </button>
+                        <button type="button" onClick={() => revertPlacementHandler(p.id)}>
+                          Revert
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+                {!canEdit && myEditablePlacementIds.includes(p.id) && (
+                  <button type="button" onClick={() => startEditingPlacement(p, true)}>
+                    Move
+                  </button>
+                )}
+                {(canEdit || myEditablePlacementIds.includes(p.id)) && communityMembers.length > 0 && (
+                  <span style={{ display: "inline-flex", gap: "0.3rem", alignItems: "center" }}>
+                    <select
+                      value={selectedPlacementId === p.id ? inviteMemberId : ""}
+                      onChange={(e) => {
+                        setSelectedPlacementId(p.id);
+                        setInviteMemberId(e.target.value);
+                      }}
+                      style={{ padding: "0.2rem" }}
+                    >
+                      <option value="">— invite someone —</option>
+                      {communityMembers.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={selectedPlacementId !== p.id || !inviteMemberId}
+                      onClick={async () => {
+                        await invitePlacementMemberHandler(p.id, inviteMemberId);
+                        setInviteMemberId("");
+                        setSelectedPlacementId(null);
+                      }}
+                    >
+                      Invite
+                    </button>
+                  </span>
+                )}
               </div>
             )}
           </div>

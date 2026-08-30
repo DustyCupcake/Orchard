@@ -47,6 +47,10 @@ describe("getPersonalFeed", () => {
       upcomingCheckins: [],
       flaggedHeldTasks: [],
       recruitmentNeedsAction: [],
+      placementInvites: [],
+      myLinkedPendingPlacements: [],
+      placementRevertNotices: [],
+      placementPendingReviews: [],
     });
   });
 

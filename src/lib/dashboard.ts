@@ -7,15 +7,24 @@ import { isCoordinationHolder } from "./coordination";
 import { getCompositionBreakdown } from "./composition";
 import { isModuleEnabled } from "./modules";
 import { getCommunityRow, isRecruitmentTaskHolder, listRecruitmentActionItems } from "./recruitment";
+import {
+  isSpatialPlanningHolder,
+  listMyLinkedPendingPlacements,
+  listMyPlacementInvites,
+  listMyRevertNotices,
+  listPendingPlacementReviews,
+} from "./spatial-planning";
 
 type Member = typeof memberTable.$inferSelect;
 
 // The personalized feed — "what's next on them," reading off state
-// Phases 3/10/12 already produce, plus (as of Phase 35) Recruitment's
-// own needs-action signal for whoever holds that task. See
-// docs/spec.md's Dashboard section. Onboarding progress and
-// Spatial-planning approvals/invites stay out of scope — neither
-// subsystem exists yet (Spatial planning is paused).
+// Phases 3/10/12 already produce, plus Recruitment's own needs-action
+// signal for whoever holds that task (Phase 35) and, as of Phase 38,
+// Spatial planning's own approvals/invites — closing this comment's
+// own previously-deferred line. Onboarding progress is still out of
+// scope; that subsystem doesn't exist yet. See docs/spec.md's
+// Dashboard section ("Anyone invited to share a Placement sees that
+// invite... anyone linked to a Placement that moves sees that too").
 export async function getPersonalFeed(actor: Member) {
   const heldTaskRows = await db
     .select({
@@ -89,7 +98,32 @@ export async function getPersonalFeed(actor: Member) {
       ? await listRecruitmentActionItems(actor)
       : [];
 
-  return { pendingJoinRequests, upcomingCheckins, flaggedHeldTasks, recruitmentNeedsAction };
+  // Same "check the gate here, not inside a try/catch" posture as
+  // recruitmentNeedsAction just above — a non-holder's feed simply
+  // omits placementPendingReviews rather than needing to catch
+  // listPendingPlacementReviews' own throwing guard.
+  const spatialPlanningOn = isModuleEnabled(communityRow, "spatial_planning");
+  const isSpatialHolder = spatialPlanningOn && (await isSpatialPlanningHolder(actor, communityRow));
+  const [placementInvites, myLinkedPendingPlacements, placementRevertNotices, placementPendingReviews] =
+    spatialPlanningOn
+      ? await Promise.all([
+          listMyPlacementInvites(actor),
+          listMyLinkedPendingPlacements(actor),
+          listMyRevertNotices(actor),
+          isSpatialHolder ? listPendingPlacementReviews(actor) : Promise.resolve([]),
+        ])
+      : [[], [], [], []];
+
+  return {
+    pendingJoinRequests,
+    upcomingCheckins,
+    flaggedHeldTasks,
+    recruitmentNeedsAction,
+    placementInvites,
+    myLinkedPendingPlacements,
+    placementRevertNotices,
+    placementPendingReviews,
+  };
 }
 
 export type BranchHealthStatus = "on_track" | "attention_needed" | "struggling";

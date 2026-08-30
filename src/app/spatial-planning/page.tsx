@@ -9,8 +9,11 @@ import { getCurrentCycle } from "@/lib/profile-questions";
 import {
   getMySpacePreference,
   getPlotForCycle,
+  isPlacementEditor,
   isSpatialPlanningHolder,
   listCyclesWithPlot,
+  listMyPlacementInvites,
+  listMyRevertNotices,
   listPlacementTemplates,
   listPlacements,
   listSpacePreferences,
@@ -18,7 +21,12 @@ import {
 } from "@/lib/spatial-planning";
 import Nav from "@/components/Nav";
 import PlotEditor from "./PlotEditor";
-import { upsertSpacePreferenceAction } from "./actions";
+import {
+  acceptPlacementInviteAction,
+  acknowledgeRevertNoticeAction,
+  declinePlacementInviteAction,
+  upsertSpacePreferenceAction,
+} from "./actions";
 import type { Point, PlacementGeometry, ScaleCalibration } from "@/lib/spatial-planning/geometry";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +85,22 @@ export default async function SpatialPlanningPage({
     moduleOn && canEdit ? await listSpacePreferences(currentMember) : [];
   const memberNameById = new Map(communityMembers.map((m) => [m.id, m.name]));
 
+  // Phase 38: which of the current Plot's Placements this member can
+  // self-service move (a confirmed Member link, or holding the linked
+  // Task) — irrelevant for the holder, who can already edit everything.
+  const myEditablePlacementIds =
+    !canEdit && placements.length > 0
+      ? (
+          await Promise.all(
+            placements.map(async (p) => ((await isPlacementEditor(currentMember, p)) ? p.id : null)),
+          )
+        ).filter((id): id is string => id !== null)
+      : [];
+
+  const [myPlacementInvites, myRevertNotices] = moduleOn
+    ? await Promise.all([listMyPlacementInvites(currentMember), listMyRevertNotices(currentMember)])
+    : [[], []];
+
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 1100 }}>
       <Nav memberName={currentMember.name} />
@@ -113,11 +137,51 @@ export default async function SpatialPlanningPage({
           initialTemplates={templates.map((t) => ({ ...t, geometry: t.geometry as PlacementGeometry }))}
           communityMembers={communityMembers}
           canEdit={canEdit}
+          myEditablePlacementIds={myEditablePlacementIds}
           cloneCandidates={cloneCandidates.map((c) => ({
             cycleId: c.cycleId!,
             cycleName: c.cycleName,
           }))}
         />
+      )}
+
+      {moduleOn && (myPlacementInvites.length > 0 || myRevertNotices.length > 0) && (
+        <section style={{ marginTop: "1.5rem", maxWidth: 500 }}>
+          {myPlacementInvites.length > 0 && (
+            <>
+              <h2>Placement invites</h2>
+              {myPlacementInvites.map((invite) => (
+                <div key={invite.placementId} style={{ marginBottom: "0.5rem", fontSize: "0.9rem" }}>
+                  <strong>{invite.invitedByName}</strong> named you on &ldquo;{invite.placementLabel}&rdquo;.
+                  <form action={acceptPlacementInviteAction} style={{ display: "inline", marginLeft: "0.5rem" }}>
+                    <input type="hidden" name="placementId" value={invite.placementId} />
+                    <button type="submit">Accept</button>
+                  </form>
+                  <form action={declinePlacementInviteAction} style={{ display: "inline", marginLeft: "0.3rem" }}>
+                    <input type="hidden" name="placementId" value={invite.placementId} />
+                    <button type="submit">Decline</button>
+                  </form>
+                </div>
+              ))}
+            </>
+          )}
+
+          {myRevertNotices.length > 0 && (
+            <>
+              <h2>Reverted edits</h2>
+              {myRevertNotices.map((n) => (
+                <div key={n.notice.id} style={{ marginBottom: "0.5rem", fontSize: "0.9rem" }}>
+                  <strong>{n.revertedByName}</strong> reverted your change to &ldquo;{n.placementLabel}&rdquo;
+                  {n.notice.note && <> — {n.notice.note}</>}.
+                  <form action={acknowledgeRevertNoticeAction} style={{ display: "inline", marginLeft: "0.5rem" }}>
+                    <input type="hidden" name="noticeId" value={n.notice.id} />
+                    <button type="submit">OK</button>
+                  </form>
+                </div>
+              ))}
+            </>
+          )}
+        </section>
       )}
 
       {moduleOn && (

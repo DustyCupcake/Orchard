@@ -227,3 +227,36 @@ export const spacePreference = pgTable("space_preference", {
   sharingWith: uuid("sharing_with").array(),
   accessibilityNotes: text("accessibility_notes"),
 });
+
+// The one Placement-review outcome that needs a real, persisted
+// notice rather than a computed feed read (docs/spec.md's Multi-user
+// placement: "revert... notifies whoever made the change why, if they
+// leave a note"). Every other notification this module needs — an
+// invite awaiting response, a Placement currently `pending` and
+// awaiting review — is just a live query over PlacementMember/
+// Placement state, the same "computed, never separately maintained"
+// posture the rest of this codebase uses (see src/lib/dashboard.ts).
+// A revert is different: once it happens, `placement.status` goes
+// straight back to `confirmed` and there's no lingering state left to
+// read, so the fact that it happened — and any note — has to be
+// captured somewhere or it's gone the instant the review completes.
+// Visible to its recipient until acknowledged, the same "a real row,
+// visible until resolved" shape `coordinatorPing` already established.
+export const placementRevertNotice = pgTable("placement_revert_notice", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  placementId: uuid("placement_id")
+    .notNull()
+    .references(() => placement.id),
+  // Whoever's edit got reverted — always a real Member, whether they
+  // held edit rights via a confirmed PlacementMember link or via
+  // holding the Placement's linkedTaskId.
+  recipientMemberId: uuid("recipient_member_id")
+    .notNull()
+    .references(() => member.id),
+  revertedBy: uuid("reverted_by")
+    .notNull()
+    .references(() => member.id),
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+});

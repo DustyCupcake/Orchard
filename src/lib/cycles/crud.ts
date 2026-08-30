@@ -5,6 +5,7 @@ import { community, cycle, phase, requirement, task, taskAssignment, taskDepende
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { memberHasTier } from "../eligibility";
+import { cloneSpatialPlanIntoNewCycle } from "../spatial-planning";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -24,6 +25,12 @@ export const createCycleInput = z.discriminatedUnion("source", [
   z.object({
     source: z.literal("clone_previous"),
     name: z.string().min(1),
+    // "Also clone its spatial plan?" — docs/spec.md's "Cloning across
+    // cycles." Only meaningful on this exact path (the immediately-
+    // previous-cycle clone), the same restriction Shadow slots'
+    // suggested_member_id carry-forward already established — see
+    // cloneMostRecentCycle below.
+    cloneSpatialPlan: z.boolean().optional(),
   }),
 ]);
 export type CreateCycleInput = z.infer<typeof createCycleInput>;
@@ -63,7 +70,7 @@ export async function createCycle(actor: Member, input: CreateCycleInput) {
   await requireCycleInitiationEligibility(actor);
 
   if (input.source === "clone_previous") {
-    return cloneMostRecentCycle(actor, input.name);
+    return cloneMostRecentCycle(actor, input.name, input.cloneSpatialPlan ?? false);
   }
   return createBlankCycle(actor, input.name, input.phases ?? []);
 }
@@ -108,7 +115,7 @@ async function createBlankCycle(
 // building the general TaskPack table or the branch/phase name-matching
 // review screen a real cross-community import would need. Everything
 // here matches by identity within one community's own cycle history.
-async function cloneMostRecentCycle(actor: Member, name: string) {
+async function cloneMostRecentCycle(actor: Member, name: string, cloneSpatialPlan: boolean) {
   const [previous] = await db
     .select()
     .from(cycle)
@@ -136,6 +143,21 @@ async function cloneMostRecentCycle(actor: Member, name: string) {
     const taskIdMap = await cloneTasks(tx, actor, previous.id, newCycle.id, phaseIdMap);
     await cloneRequirements(tx, taskIdMap);
     await cloneDependencies(tx, taskIdMap);
+
+    // Phase 38's own integration — see docs/spec.md's "Cloning across
+    // cycles." Tasks were just cloned above in this same transaction,
+    // so a Placement's linkedTaskId can be remapped onto the new Task
+    // instance rather than dropped, the one path where that link
+    // actually survives a clone. Requires the actor to be the Spatial-
+    // planning holder specifically — cycle-initiation eligibility and
+    // Spatial-planning authority are two separate gates, the same
+    // reasoning Pack import review's "create new branch" step already
+    // established for Admins vs. cycle-initiation eligibility — so this
+    // throws a real ForbiddenError rather than silently skipping if a
+    // non-holder asks for it.
+    if (cloneSpatialPlan) {
+      await cloneSpatialPlanIntoNewCycle(actor, tx, previous.id, newCycle.id, taskIdMap);
+    }
 
     return newCycle;
   });

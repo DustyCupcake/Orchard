@@ -157,7 +157,12 @@ describe("Placement", () => {
     ).rejects.toThrow(NotFoundError);
   });
 
-  it("links confirmed Members at creation, full-replacement on update", async () => {
+  // As of Phase 38 ("Shared placements: invite → accept/decline"),
+  // naming someone other than yourself links them as `invited`, not
+  // `confirmed` — see tests/spatial-planning-collaboration.test.ts for
+  // the full invite/accept/decline/diffing coverage this only touches
+  // in passing.
+  it("links named Members at creation, syncing (not wholesale replacing) on update", async () => {
     const { alice, bob, plot: plotRow, community: testCommunity } = await setUpModule();
     const [carol] = await db
       .insert(member)
@@ -173,7 +178,7 @@ describe("Placement", () => {
     });
     let links = await listPlacementMembers(alice, created.id);
     expect(links.map((l) => l.memberId)).toEqual([bob.id]);
-    expect(links[0].status).toBe("confirmed");
+    expect(links[0].status).toBe("invited");
 
     await updatePlacement(alice, created.id, { memberIds: [bob.id, carol.id] });
     links = await listPlacementMembers(alice, created.id);

@@ -4,7 +4,13 @@ import { ZodError } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/api";
-import { upsertMySpacePreference, upsertSpacePreferenceInput } from "@/lib/spatial-planning";
+import {
+  acceptPlacementInvite,
+  acknowledgeRevertNotice,
+  declinePlacementInvite,
+  upsertMySpacePreference,
+  upsertSpacePreferenceInput,
+} from "@/lib/spatial-planning";
 import { AppError } from "@/lib/errors";
 
 function redirectWithError(err: unknown): never {
@@ -47,5 +53,42 @@ export async function upsertSpacePreferenceAction(formData: FormData) {
     redirectWithError(err);
   }
 
+  revalidatePath("/spatial-planning");
+}
+
+// Plain Server Action forms for the three Phase 38 yes/no actions that
+// need no drag interaction — accept/decline an invite, acknowledge a
+// revert notice — same "stays out of the client canvas" reasoning as
+// Space preferences above. Approve/revert stay in PlotEditor.tsx
+// itself, since the holder genuinely benefits from seeing the moved
+// geometry on the canvas before deciding.
+
+export async function acceptPlacementInviteAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await acceptPlacementInvite(actor, String(formData.get("placementId")));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/spatial-planning");
+}
+
+export async function declinePlacementInviteAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await declinePlacementInvite(actor, String(formData.get("placementId")));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/spatial-planning");
+}
+
+export async function acknowledgeRevertNoticeAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await acknowledgeRevertNotice(actor, String(formData.get("noticeId")));
+  } catch (err) {
+    redirectWithError(err);
+  }
   revalidatePath("/spatial-planning");
 }
