@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db, type DbOrTx, type Tx } from "@/db";
-import { community, cycle, phase, requirement, task, taskAssignment, taskDependency } from "@/db/schema";
+import { community, cycle, cycleType, phase, requirement, task, taskAssignment, taskDependency } from "@/db/schema";
 import type { member as memberTable, phase as phaseTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { memberHasTier } from "../eligibility";
@@ -102,11 +102,16 @@ export const createCycleInput = z.discriminatedUnion("source", [
     // (Phase auto-placement, relative milestones/events) unresolved.
     startDate: z.string().min(1).nullable().optional(),
     endDate: z.string().min(1).nullable().optional(),
+    // Optional — see docs/spec.md's "Cycle type" and
+    // docs/development-plan.md's Phase 40. A Community that never
+    // defines any Cycle type just leaves this unset forever.
+    cycleTypeId: z.string().uuid().nullable().optional(),
     phases: z.array(phaseInput).optional(),
   }),
   z.object({
     source: z.literal("clone_previous"),
     name: z.string().min(1),
+    cycleTypeId: z.string().uuid().nullable().optional(),
     // "Also clone its spatial plan?" — docs/spec.md's "Cloning across
     // cycles." Only meaningful on this exact path (the immediately-
     // previous-cycle clone), the same restriction Shadow slots'
@@ -149,13 +154,33 @@ export async function canInitiateCycle(actor: Member): Promise<boolean> {
   }
 }
 
+async function requireCycleTypeInCommunity(communityId: string, cycleTypeId: string) {
+  const [row] = await db
+    .select({ id: cycleType.id })
+    .from(cycleType)
+    .where(and(eq(cycleType.id, cycleTypeId), eq(cycleType.communityId, communityId)));
+  if (!row) {
+    throw new NotFoundError("Cycle type not found in your community");
+  }
+}
+
 export async function createCycle(actor: Member, input: CreateCycleInput) {
   await requireCycleInitiationEligibility(actor);
+  if (input.cycleTypeId) {
+    await requireCycleTypeInCommunity(actor.communityId, input.cycleTypeId);
+  }
 
   if (input.source === "clone_previous") {
-    return cloneMostRecentCycle(actor, input.name, input.cloneSpatialPlan ?? false);
+    return cloneMostRecentCycle(actor, input.name, input.cycleTypeId ?? null, input.cloneSpatialPlan ?? false);
   }
-  return createBlankCycle(actor, input.name, input.startDate ?? null, input.endDate ?? null, input.phases ?? []);
+  return createBlankCycle(
+    actor,
+    input.name,
+    input.startDate ?? null,
+    input.endDate ?? null,
+    input.cycleTypeId ?? null,
+    input.phases ?? [],
+  );
 }
 
 // Resolves a phase's start/end immediately against the Cycle's own
@@ -187,6 +212,7 @@ async function createBlankCycle(
   name: string,
   startDate: string | null,
   endDate: string | null,
+  cycleTypeId: string | null,
   phases: PhaseInput[],
 ) {
   if (violatesBoundaryOrder(startDate, endDate)) {
@@ -205,6 +231,7 @@ async function createBlankCycle(
         sourceType: "blank",
         startDate,
         endDate,
+        cycleTypeId,
       })
       .returning();
 
@@ -224,7 +251,12 @@ async function createBlankCycle(
 // building the general TaskPack table or the branch/phase name-matching
 // review screen a real cross-community import would need. Everything
 // here matches by identity within one community's own cycle history.
-async function cloneMostRecentCycle(actor: Member, name: string, cloneSpatialPlan: boolean) {
+async function cloneMostRecentCycle(
+  actor: Member,
+  name: string,
+  cycleTypeId: string | null,
+  cloneSpatialPlan: boolean,
+) {
   const [previous] = await db
     .select()
     .from(cycle)
@@ -245,6 +277,7 @@ async function cloneMostRecentCycle(actor: Member, name: string, cloneSpatialPla
         startedBy: actor.id,
         startedAt: new Date(),
         sourceType: "pack",
+        cycleTypeId,
       })
       .returning();
 

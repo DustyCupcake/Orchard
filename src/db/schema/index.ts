@@ -2,6 +2,7 @@ export * from "./health";
 export * from "./community";
 export * from "./tier";
 export * from "./branch";
+export * from "./cycle-type";
 export * from "./cycle";
 export * from "./phase";
 export * from "./member";

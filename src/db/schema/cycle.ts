@@ -1,5 +1,6 @@
 import { date, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
+import { cycleType } from "./cycle-type";
 import { member } from "./member";
 
 export const cycleStatusEnum = pgEnum("cycle_status", [
@@ -16,9 +17,10 @@ export const cycleSourceTypeEnum = pgEnum("cycle_source_type", ["blank", "pack"]
 // event). Optional — a Community with `cycles_enabled = false` runs one
 // permanent default Cycle instead. See docs/spec.md's "Cycle" section.
 //
-// Not yet included: cycle_type_id (→ CycleType) and source_pack_id
-// (→ TaskPack) — both point at tables that don't exist until Task Pack /
-// Cycle type get built.
+// Not yet included: source_pack_id (→ TaskPack) — points at a table
+// that doesn't exist until Task Pack, as a portable cross-community
+// mechanism, gets built (see docs/development-plan.md's "Beyond
+// Phase 45"). cycle_type_id landed in Phase 40.
 export const cycle = pgTable("cycle", {
   id: uuid("id").primaryKey().defaultRandom(),
   communityId: uuid("community_id")
@@ -31,6 +33,7 @@ export const cycle = pgTable("cycle", {
   sourceType: cycleSourceTypeEnum("source_type").notNull().default("blank"),
   capacity: integer("capacity"),
   returningWindowClosesAt: timestamp("returning_window_closes_at", { withTimezone: true }),
+  cycleTypeId: uuid("cycle_type_id").references(() => cycleType.id),
   // The event's own working dates — distinct from `started_at` (an
   // admin log entry of when the Cycle row itself was created). Neither
   // is required to start a cycle; missing one just means Phase

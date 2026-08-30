@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { tier } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { listOnceEverAnswers, listOutstandingQuestions } from "@/lib/profile-questions";
-import { getCommunity } from "@/lib/settings";
+import { getCommunity, getCycleTypeCountProgress } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import { SENSITIVE_FIELD_LABELS } from "@/lib/sensitive-data";
 import Nav from "@/components/Nav";
@@ -96,13 +96,19 @@ export default async function ProfilePage() {
     redirect("/login");
   }
 
-  const [communityTiers, outstanding, onceEverAnswers, communityRow] = await Promise.all([
+  const [communityTiers, outstanding, onceEverAnswers, communityRow, cycleTypeProgress] = await Promise.all([
     db.select().from(tier).where(eq(tier.communityId, currentMember.communityId)),
     listOutstandingQuestions(currentMember),
     listOnceEverAnswers(currentMember),
     getCommunity(currentMember),
+    getCycleTypeCountProgress(currentMember),
   ]);
   const sensitiveDataOn = isModuleEnabled(communityRow, "sensitive_data");
+  // Only a manual-criterion tier is ever hand-toggled here — a computed
+  // one (cycle_type_count, Phase 40) is owned by syncComputedTiers and
+  // shown read-only below instead. See actions.ts's updateProfile for
+  // why the submitted checkbox set can't just overwrite tierIds wholesale.
+  const manualTiers = communityTiers.filter((t) => t.criterionType === "manual");
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 480 }}>
@@ -133,10 +139,10 @@ export default async function ProfilePage() {
           />
         </label>
 
-        {communityTiers.length > 0 && (
+        {manualTiers.length > 0 && (
           <fieldset>
-            <legend>Tiers (manual assignment for now)</legend>
-            {communityTiers.map((t) => (
+            <legend>Tiers (manual assignment)</legend>
+            {manualTiers.map((t) => (
               <label key={t.id} style={{ display: "block" }}>
                 <input
                   type="checkbox"
@@ -154,6 +160,20 @@ export default async function ProfilePage() {
           Save
         </button>
       </form>
+
+      {cycleTypeProgress.length > 0 && (
+        <section style={{ marginTop: "1.5rem" }}>
+          <h2>Cycle-type progress</h2>
+          <p style={{ color: "#666", fontSize: "0.85rem" }}>
+            Computed live off your declared Participation — see /participation.
+          </p>
+          {cycleTypeProgress.map((p) => (
+            <p key={p.tierId} style={{ color: p.held ? "#2a7a2a" : "#666" }}>
+              {p.tierName} ({p.cycleTypeName}): {p.count}/{p.minCount} {p.held ? "— earned" : ""}
+            </p>
+          ))}
+        </section>
+      )}
 
       {outstanding.length > 0 && (
         <section style={{ marginTop: "2rem" }}>

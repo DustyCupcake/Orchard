@@ -7,15 +7,20 @@ import { requireMember } from "@/lib/api";
 import {
   createBranch,
   createBranchInput,
+  createCycleType,
+  createCycleTypeInput,
   createTier,
   createTierInput,
   deleteBranch,
+  deleteCycleType,
   deleteTier,
   requireAdmins,
   updateBranch,
   updateBranchInput,
   updateCommunity,
   updateCommunityInput,
+  updateCycleType,
+  updateCycleTypeInput,
   updateTier,
   updateTierInput,
 } from "@/lib/settings";
@@ -180,6 +185,16 @@ export async function deleteBranchAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
+// Only meaningful when criterionType is (or already is) cycle_type_count
+// — see src/lib/settings/tiers.ts's requireValidCriterionConfig, which
+// re-validates this shape regardless of what's built here.
+function criterionConfigFromForm(formData: FormData): Record<string, unknown> | undefined {
+  const cycleTypeId = String(formData.get("cycleTypeId") ?? "").trim();
+  const minCountRaw = String(formData.get("minCount") ?? "").trim();
+  if (!cycleTypeId && !minCountRaw) return undefined;
+  return { cycleTypeId, minCount: minCountRaw ? Number(minCountRaw) : undefined };
+}
+
 export async function createTierAction(formData: FormData) {
   const actor = await requireMember();
 
@@ -188,6 +203,7 @@ export async function createTierAction(formData: FormData) {
     const input = createTierInput.parse({
       name: String(formData.get("name") ?? ""),
       criterionType: String(formData.get("criterionType") ?? "manual"),
+      criterionConfig: criterionConfigFromForm(formData),
     });
     await createTier(actor, input);
   } catch (err) {
@@ -203,7 +219,10 @@ export async function updateTierAction(formData: FormData) {
 
   try {
     await requireAdmins(actor);
-    const input = updateTierInput.parse({ name: String(formData.get("name") ?? "") });
+    const input = updateTierInput.parse({
+      name: String(formData.get("name") ?? ""),
+      criterionConfig: criterionConfigFromForm(formData),
+    });
     await updateTier(actor, tierId, input);
   } catch (err) {
     redirectWithError(err);
@@ -219,6 +238,57 @@ export async function deleteTierAction(formData: FormData) {
   try {
     await requireAdmins(actor);
     await deleteTier(actor, tierId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function createCycleTypeAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    await requireAdmins(actor);
+    const defaultSourceCycleId = String(formData.get("defaultSourceCycleId") ?? "").trim();
+    const input = createCycleTypeInput.parse({
+      name: String(formData.get("name") ?? ""),
+      defaultSourceCycleId: defaultSourceCycleId || null,
+    });
+    await createCycleType(actor, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function updateCycleTypeAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleTypeId = String(formData.get("cycleTypeId"));
+
+  try {
+    await requireAdmins(actor);
+    const defaultSourceCycleId = String(formData.get("defaultSourceCycleId") ?? "").trim();
+    const input = updateCycleTypeInput.parse({
+      name: String(formData.get("name") ?? ""),
+      defaultSourceCycleId: defaultSourceCycleId || null,
+    });
+    await updateCycleType(actor, cycleTypeId, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function deleteCycleTypeAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleTypeId = String(formData.get("cycleTypeId"));
+
+  try {
+    await requireAdmins(actor);
+    await deleteCycleType(actor, cycleTypeId);
   } catch (err) {
     redirectWithError(err);
   }

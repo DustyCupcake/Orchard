@@ -151,17 +151,32 @@ export async function updatePlot(actor: Member, plotId: string, rawInput: Update
 
 // The standalone clone picker's source list — every past Cycle (other
 // than the one being planned) that already has a Plot, most-recent-
-// first. Once Phase 39 (Cycle type) exists, the caller re-sorts this so
-// a same-type Cycle comes first — see docs/development-plan.md's Phase
-// 39 note; this stays a plain query either way, no schema change.
+// first, with same-type Cycles bubbled to the front once Cycle type
+// (Phase 40) is in use — see docs/development-plan.md's own note under
+// Phase 36. Falls back to plain most-recent-first when the target
+// Cycle has no type at all (nothing to match against) — this stays a
+// plain query either way, no schema change on either side.
 export async function listCyclesWithPlot(actor: Member, excludeCycleId: string) {
   const rows = await db
-    .select({ cycleId: plot.cycleId, cycleName: cycle.name, startedAt: cycle.startedAt })
+    .select({
+      cycleId: plot.cycleId,
+      cycleName: cycle.name,
+      startedAt: cycle.startedAt,
+      cycleTypeId: cycle.cycleTypeId,
+    })
     .from(plot)
     .innerJoin(cycle, eq(cycle.id, plot.cycleId))
     .where(and(eq(plot.communityId, actor.communityId), ne(plot.cycleId, excludeCycleId)))
     .orderBy(desc(cycle.startedAt));
-  return rows;
+
+  const [target] = await db.select({ cycleTypeId: cycle.cycleTypeId }).from(cycle).where(eq(cycle.id, excludeCycleId));
+  if (!target?.cycleTypeId) {
+    return rows;
+  }
+
+  const sameType = rows.filter((r) => r.cycleTypeId === target.cycleTypeId);
+  const otherType = rows.filter((r) => r.cycleTypeId !== target.cycleTypeId);
+  return [...sameType, ...otherType];
 }
 
 // Standalone spatial-plan cloning, independent of Cycle creation

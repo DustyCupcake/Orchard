@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { task } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
-import { getCommunity, listBranches, listTiers, requireAdmins } from "@/lib/settings";
+import { getCommunity, listBranches, listCycleTypes, listTiers, requireAdmins } from "@/lib/settings";
+import { listCycles } from "@/lib/cycles";
 import { listProfileQuestions } from "@/lib/profile-questions";
 import { MODULE_DEFINITIONS } from "@/lib/modules";
 import { SENSITIVE_FIELD_KEYS, SENSITIVE_FIELD_LABELS, listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
@@ -14,17 +15,20 @@ import {
   archiveFormAction,
   archiveProfileQuestionAction,
   createBranchAction,
+  createCycleTypeAction,
   createFormAction,
   createProfileQuestionAction,
   createSensitiveFieldAccessRuleAction,
   createTierAction,
   deleteBranchAction,
+  deleteCycleTypeAction,
   deleteSensitiveFieldAccessRuleAction,
   deleteTierAction,
   unarchiveFormAction,
   unarchiveProfileQuestionAction,
   updateBranchAction,
   updateCommunityAction,
+  updateCycleTypeAction,
   updateProfileQuestionAction,
   updateTierAction,
 } from "./actions";
@@ -54,14 +58,17 @@ export default async function SettingsPage({
     }
   }
 
-  const [communityRow, branches, tiers, profileQuestions, sensitiveFieldRules, forms] = await Promise.all([
-    getCommunity(currentMember),
-    listBranches(currentMember),
-    listTiers(currentMember),
-    authorized ? listProfileQuestions(currentMember, { includeArchived: true }) : Promise.resolve([]),
-    authorized ? listSensitiveFieldAccessRules(currentMember) : Promise.resolve([]),
-    authorized ? listForms(currentMember, { includeArchived: true }) : Promise.resolve([]),
-  ]);
+  const [communityRow, branches, tiers, cycleTypes, cyclesForPicker, profileQuestions, sensitiveFieldRules, forms] =
+    await Promise.all([
+      getCommunity(currentMember),
+      listBranches(currentMember),
+      listTiers(currentMember),
+      listCycleTypes(currentMember),
+      authorized ? listCycles(currentMember) : Promise.resolve([]),
+      authorized ? listProfileQuestions(currentMember, { includeArchived: true }) : Promise.resolve([]),
+      authorized ? listSensitiveFieldAccessRules(currentMember) : Promise.resolve([]),
+      authorized ? listForms(currentMember, { includeArchived: true }) : Promise.resolve([]),
+    ]);
 
   const conflictTeamTask = communityRow.conflictTeamTaskId
     ? await db
@@ -588,15 +595,16 @@ export default async function SettingsPage({
       </section>
 
       <section style={{ marginTop: "2rem" }}>
-        <h2>Tiers</h2>
+        <h2>Cycle types</h2>
         <p style={{ color: "#666", fontSize: "0.85rem" }}>
-          Only manual assignment is functional right now — a member&rsquo;s tiers are set from
-          their profile page, not computed automatically.
+          Optional labels for grouping Cycles (Season, Reunion, Workday) — mainly so a Tier&rsquo;s
+          cycle-type-count criterion can count occurrences of one kind of cycle. A Community that
+          never uses this just leaves every Cycle untyped.
         </p>
-        {tiers.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
-        {tiers.map((t) => (
+        {cycleTypes.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
+        {cycleTypes.map((ct) => (
           <div
-            key={t.id}
+            key={ct.id}
             style={{
               border: "1px solid #ccc",
               borderRadius: 6,
@@ -608,35 +616,120 @@ export default async function SettingsPage({
               flexWrap: "wrap",
             }}
           >
-            <form action={updateTierAction} style={{ display: "flex", gap: "0.5rem", flex: 1 }}>
-              <input type="hidden" name="tierId" value={t.id} />
-              <input
-                type="text"
-                name="name"
-                defaultValue={t.name}
-                style={{ padding: "0.3rem", flex: 1 }}
-              />
-              <span style={{ fontSize: "0.8rem", color: "#666", alignSelf: "center" }}>
-                {t.criterionType}
-              </span>
+            <form action={updateCycleTypeAction} style={{ display: "flex", gap: "0.5rem", flex: 1 }}>
+              <input type="hidden" name="cycleTypeId" value={ct.id} />
+              <input type="text" name="name" defaultValue={ct.name} style={{ padding: "0.3rem", flex: 1 }} />
+              <select name="defaultSourceCycleId" defaultValue={ct.defaultSourceCycleId ?? ""} style={{ padding: "0.3rem" }}>
+                <option value="">No suggested starting cycle</option>
+                {cyclesForPicker.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
               <button type="submit">Save</button>
             </form>
-            <form action={deleteTierAction}>
-              <input type="hidden" name="tierId" value={t.id} />
+            <form action={deleteCycleTypeAction}>
+              <input type="hidden" name="cycleTypeId" value={ct.id} />
               <button type="submit">Delete</button>
             </form>
           </div>
         ))}
 
-        <form action={createTierAction} style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+        <form action={createCycleTypeAction} style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+          <input type="text" name="name" required placeholder="New cycle type (e.g. Season)" style={{ padding: "0.4rem" }} />
+          <select name="defaultSourceCycleId" defaultValue="" style={{ padding: "0.4rem" }}>
+            <option value="">No suggested starting cycle</option>
+            {cyclesForPicker.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <button type="submit">Add cycle type</button>
+        </form>
+      </section>
+
+      <section style={{ marginTop: "2rem" }}>
+        <h2>Tiers</h2>
+        <p style={{ color: "#666", fontSize: "0.85rem" }}>
+          Manual assignment is set from a member&rsquo;s own profile page. Cycle-type count is
+          computed live off Participation — a member&rsquo;s tiers update automatically whenever
+          they declare their plans for a Cycle. Tenure/completion/cohort aren&rsquo;t computed yet.
+        </p>
+        {tiers.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
+        {tiers.map((t) => {
+          const config = t.criterionConfig as { cycleTypeId?: string; minCount?: number };
+          return (
+            <div
+              key={t.id}
+              style={{
+                border: "1px solid #ccc",
+                borderRadius: 6,
+                padding: "0.6rem",
+                marginBottom: "0.5rem",
+                display: "flex",
+                gap: "0.5rem",
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <form action={updateTierAction} style={{ display: "flex", gap: "0.5rem", flex: 1, flexWrap: "wrap" }}>
+                <input type="hidden" name="tierId" value={t.id} />
+                <input type="text" name="name" defaultValue={t.name} style={{ padding: "0.3rem", flex: 1 }} />
+                <span style={{ fontSize: "0.8rem", color: "#666", alignSelf: "center" }}>{t.criterionType}</span>
+                {t.criterionType === "cycle_type_count" && (
+                  <>
+                    <select
+                      name="cycleTypeId"
+                      defaultValue={config.cycleTypeId ?? ""}
+                      style={{ padding: "0.3rem" }}
+                    >
+                      <option value="">Pick a cycle type</option>
+                      {cycleTypes.map((ct) => (
+                        <option key={ct.id} value={ct.id}>
+                          {ct.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      name="minCount"
+                      min={1}
+                      defaultValue={config.minCount ?? ""}
+                      placeholder="min count"
+                      style={{ padding: "0.3rem", width: "6rem" }}
+                    />
+                  </>
+                )}
+                <button type="submit">Save</button>
+              </form>
+              <form action={deleteTierAction}>
+                <input type="hidden" name="tierId" value={t.id} />
+                <button type="submit">Delete</button>
+              </form>
+            </div>
+          );
+        })}
+
+        <form action={createTierAction} style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
           <input type="text" name="name" required placeholder="New tier name" style={{ padding: "0.4rem" }} />
           <select name="criterionType" defaultValue="manual" style={{ padding: "0.4rem" }}>
             <option value="manual">Manual</option>
             <option value="tenure">Tenure (not yet computed)</option>
             <option value="completion">Completion (not yet computed)</option>
             <option value="cohort">Cohort (not yet computed)</option>
-            <option value="cycle_type_count">Cycle-type count (not yet computed)</option>
+            <option value="cycle_type_count">Cycle-type count (computed)</option>
           </select>
+          <select name="cycleTypeId" defaultValue="" style={{ padding: "0.4rem" }}>
+            <option value="">Cycle type (if cycle-type count)</option>
+            {cycleTypes.map((ct) => (
+              <option key={ct.id} value={ct.id}>
+                {ct.name}
+              </option>
+            ))}
+          </select>
+          <input type="number" name="minCount" min={1} placeholder="min count" style={{ padding: "0.4rem", width: "8rem" }} />
           <button type="submit">Add tier</button>
         </form>
       </section>

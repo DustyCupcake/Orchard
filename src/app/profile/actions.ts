@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { member } from "@/db/schema";
+import { member, tier } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { answerProfileQuestion } from "@/lib/profile-questions";
 import { updateOwnSensitiveData, updateOwnSensitiveDataInput } from "@/lib/sensitive-data";
@@ -20,11 +20,27 @@ export async function updateProfile(formData: FormData) {
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean);
-  const tierIds = formData.getAll("tierIds").map(String);
+  const submittedTierIds = formData.getAll("tierIds").map(String);
 
   if (!name) {
     return;
   }
+
+  // Only "manual"-criterion tiers are ever offered as checkboxes on this
+  // form (see page.tsx) — a computed one (cycle_type_count, as of Phase
+  // 40) is owned entirely by its own sync logic
+  // (src/lib/settings/tiers.ts's syncComputedTiers). Since this form
+  // submits the full checkbox set each time, a plain overwrite would
+  // silently drop any already-earned computed tier the moment a member
+  // merely saved their name — so only the manual-criterion slice of
+  // tierIds is ever replaced from this submission; everything else on
+  // the member's existing tierIds (computed, or any other non-manual
+  // criterion) carries forward untouched.
+  const communityTiers = await db.select().from(tier).where(eq(tier.communityId, current.communityId));
+  const manualTierIds = new Set(communityTiers.filter((t) => t.criterionType === "manual").map((t) => t.id));
+  const preserved = current.tierIds.filter((id) => !manualTierIds.has(id));
+  const nextManual = submittedTierIds.filter((id) => manualTierIds.has(id));
+  const tierIds = [...new Set([...preserved, ...nextManual])];
 
   await db.update(member).set({ name, tags, tierIds }).where(eq(member.id, current.id));
   revalidatePath("/profile");

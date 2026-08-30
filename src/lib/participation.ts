@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { cycle, participation } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { NotFoundError } from "./errors";
+import { syncComputedTiers } from "./settings/tiers";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -45,20 +46,28 @@ export async function declareParticipation(actor: Member, cycleId: string, input
     .from(participation)
     .where(and(eq(participation.cycleId, cycleId), eq(participation.memberId, actor.id)));
 
+  let result;
   if (existing) {
     const [updated] = await db
       .update(participation)
       .set(values)
       .where(eq(participation.id, existing.id))
       .returning();
-    return updated;
+    result = updated;
+  } else {
+    const [created] = await db
+      .insert(participation)
+      .values({ cycleId, memberId: actor.id, ...values })
+      .returning();
+    result = created;
   }
 
-  const [created] = await db
-    .insert(participation)
-    .values({ cycleId, memberId: actor.id, ...values })
-    .returning();
-  return created;
+  // A status change is the only thing that could move a
+  // cycle_type_count Tier's count — see docs/development-plan.md's
+  // Phase 40 and src/lib/settings/tiers.ts's syncComputedTiers.
+  await syncComputedTiers(actor.id, actor.communityId);
+
+  return result;
 }
 
 // Default `unknown` shape for a member who hasn't declared anything

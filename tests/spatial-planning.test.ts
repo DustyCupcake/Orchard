@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { cycle, task } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
-import { updateCommunity } from "@/lib/settings";
+import { createCycleType, updateCommunity } from "@/lib/settings";
 import {
   clonePlotFromCycle,
   createPlot,
@@ -183,6 +184,42 @@ describe("Plot", () => {
     const cycleC = await insertCycle(testCommunity.id, "Cycle C", new Date("2027-01-01"));
 
     const list = await listCyclesWithPlot(alice, cycleC.id);
+    expect(list.map((r) => r.cycleId)).toEqual([cycleB.id, cycleA.id]);
+  });
+
+  // Phase 40's own note on Phase 36 — once Cycle type exists, a
+  // same-type Cycle bubbles ahead of a more-recent different-type one.
+  it("bubbles a same-type Cycle ahead of a more-recent different-type one", async () => {
+    const { alice, cycle: cycleA, community: testCommunity } = await setUpModule();
+    const season = await createCycleType(alice, { name: "Season" });
+    const reunion = await createCycleType(alice, { name: "Reunion" });
+    await db.update(cycle).set({ cycleTypeId: season.id }).where(eq(cycle.id, cycleA.id));
+
+    await createPlot(alice, cycleA.id, { name: "A (Season)" });
+    const cycleB = await insertCycle(testCommunity.id, "Cycle B (Reunion)", new Date("2026-06-01"));
+    await db.update(cycle).set({ cycleTypeId: reunion.id }).where(eq(cycle.id, cycleB.id));
+    await createPlot(alice, cycleB.id, { name: "B" });
+
+    const target = await insertCycle(testCommunity.id, "Cycle C (Season)", new Date("2027-01-01"));
+    await db.update(cycle).set({ cycleTypeId: season.id }).where(eq(cycle.id, target.id));
+
+    // Most-recent-first would put B ahead of A (B started later) — but
+    // A shares the target's own type, so it comes first instead.
+    const list = await listCyclesWithPlot(alice, target.id);
+    expect(list.map((r) => r.cycleId)).toEqual([cycleA.id, cycleB.id]);
+  });
+
+  it("falls back to plain most-recent-first when the target Cycle has no type", async () => {
+    const { alice, cycle: cycleA, community: testCommunity } = await setUpModule();
+    const season = await createCycleType(alice, { name: "Season" });
+    await db.update(cycle).set({ cycleTypeId: season.id }).where(eq(cycle.id, cycleA.id));
+    await createPlot(alice, cycleA.id, { name: "A (Season)" });
+
+    const cycleB = await insertCycle(testCommunity.id, "Cycle B (untyped)", new Date("2026-06-01"));
+    await createPlot(alice, cycleB.id, { name: "B" });
+
+    const target = await insertCycle(testCommunity.id, "Cycle C (untyped)", new Date("2027-01-01"));
+    const list = await listCyclesWithPlot(alice, target.id);
     expect(list.map((r) => r.cycleId)).toEqual([cycleB.id, cycleA.id]);
   });
 });
