@@ -19,6 +19,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        BUILD_MAX_OLD_SPACE_MB: ${BUILD_MAX_OLD_SPACE_MB:-1536}
     restart: unless-stopped
     env_file:
       - .env

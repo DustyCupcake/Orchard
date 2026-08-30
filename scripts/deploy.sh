@@ -159,6 +159,20 @@ set -a; source .env; set +a
 # 4. Build and start
 # ---------------------------------------------------------------------------
 
+# `next build` is memory-hungry and can exceed a small VPS's physical RAM
+# on its own — harden.sh provisions swap for exactly this, but this script
+# can also run standalone (see header), so check directly rather than
+# assuming harden.sh ran. Warn instead of letting `docker compose build`
+# OOM partway through with a cryptic V8 crash.
+if ! swapon --show 2>/dev/null | grep -q .; then
+  total_mem_mb="$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)"
+  if [ "$total_mem_mb" -gt 0 ] && [ "$total_mem_mb" -lt 2048 ]; then
+    warn "No swap active and only ${total_mem_mb}MB RAM detected — the build below may run out of memory."
+    warn "Consider Ctrl-C, then either run scripts/harden.sh first (it provisions swap) or add one manually:"
+    warn "  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile"
+  fi
+fi
+
 log "Building the app image..."
 docker compose build
 

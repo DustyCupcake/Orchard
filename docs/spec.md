@@ -75,6 +75,47 @@ Same precedent as Capacity (people needed): owner-estimated, revisable at any ti
 
 **How this feeds weekly load.** A currently Claimed (not yet Done) task counts its Effort magnitude fully toward the current week's load: Ongoing/Owns-a-thing at their hours/week rate for as long as they're held, One-off as a flat one-time addition of its duration bucket for each week it's Claimed, rather than spread across a longer window. The moment a task is marked Done, it drops out of current load and becomes historical instead — counted in **Contribution tracking** (below) against the week it was actually marked Done, not the week it was claimed or started.
 
+### Task milestones
+
+Effort magnitude answers "how big." Milestones answer "when" — and a task can have several of those, each meaning something different: a due date, a deadline for a related decision, the date something ordered is supposed to arrive, a deposit due date. Rather than a fixed `due_date` field, a task carries zero or more **TaskMilestone** rows, each with a community-member-chosen **label** — same "no fixed category list" precedent as Resource tags or Requirement's `custom` type.
+
+Every milestone (and, as it turns out, a Phase's own start/end — see Cycle, below) shares one date shape, worth defining once rather than three times:
+
+- **Absolute** — a specific calendar date, entered directly. It carries no relationship to anything else, doesn't move if a cycle's dates shift, and can't be exported through a Task Pack the way a relative one can (a pack is timeless — see Task Pack). This is the deliberate trade: pin a date to the real world, and it stops tracking the event that produced it.
+- **Relative** — an offset from an anchor, always resolved live (computed on every read, never snapshotted), in one of two modes:
+  - **Offset** — a signed day count from a single anchor point (a Phase's `start`/`end`, or a Cycle's `start`/`end`): negative = before, positive = after. The natural mode for anything meant to fall *outside* the parent's own span — "3 days before Build starts," "a week after the cycle closes."
+  - **Percent** — a position between 0% (the parent's start) and 100% (its end). The natural mode for anything meant to fall *between* two dates — "60% of the way through Build." Percent only means something for the between case; there's no natural reading of "70% before the start," so offset stays the only option outside the span. 0%/100% are equivalent to an `offset` of 0 days from the start/end anchor, so the two modes agree exactly at the edges.
+
+Editing a relative item works two ways that land on the same stored data: type a new offset/percent number directly, or drag the item to a new date on a calendar. Either way, what's actually persisted is a *recomputed* offset/percent against the anchor's current position — never a plain date. A relative item can never quietly end up holding a bare date that's stopped tracking its anchor, and an absolute item never carries anchor information at all.
+
+A phase-anchored milestone's Phase defaults to the task's own, but can point elsewhere (a Recruiting-phase task can carry a milestone tied to Build's start). A cycle-anchored milestone needs no Phase at all — it resolves off the task's own Cycle, which is what makes milestones useful even in a Community running with phases off. Two small constraints: a milestone's Phase, when set, should belong to the same Cycle as the task's own (a task with no Cycle at all is the one case where an explicit cross-cycle reference is fine); and a cycle-anchored milestone on a task with no Cycle simply doesn't resolve — same "optional, not enforced" treatment as any other missing-anchor case.
+
+**A soft check worth having, not yet a hard one.** Because a relative date's anchor is often picked by proximity (whichever of the parent's two boundaries is nearer, when someone places it by pointing rather than typing), the parent's own dates moving can leave an `offset`-mode item now closer to the *other* boundary than the one it's actually anchored to — not invalid, just worth flagging: *"this was set relative to Build's end, but recent changes put it closer to Build's start now."* `percent`-mode items are structurally immune to this, since they're always defined against both ends at once and scale automatically as the span changes — a real reason to prefer percent for anything genuinely "between," not just a UI preference.
+
+**Confirmation follows ownership.** This reuses a pattern this spec already flags as generic and waiting for a second use — Spatial planning's propose→pending→approve/revert shape, explicitly called out there as worth keeping in mind for other places a member might want to adjust something they own without needing to route through a request first.
+
+- **The task's own current holder** (any of them, on a multi-slot task — no rank between co-holders) adds, edits, or removes a milestone on their task directly, no confirmation needed.
+- **Anyone else** can also add one — it applies and shows immediately, but lands `pending`, and needs a current holder to confirm or reject it. Rejecting just removes the row.
+- **An unclaimed task has no owner to gate against**, so anyone's addition is `confirmed` immediately — same reasoning Placements/Zones with no linked Member skip the pending state entirely.
+
+**Carrying forward.** A Pack is timeless, so only relative milestones travel with a pack item; an absolute one doesn't, and a cloned task simply starts without it. Wiki summaries and resources already carry forward on clone — milestones follow the same instinct, generalized to something that has to actually recompute rather than just copy.
+
+*A light future hook, not designed here: `next_checkin_at` already drives the Waiting nudge (see Lifecycle & attention) — an upcoming milestone is an obvious second trigger for the same machinery, left for later.*
+
+### Freestanding events
+
+Task milestones cover "this specific task has a date." Not everything does — "applications close," "venue balance due," "the potluck" don't obviously belong to one task, and forcing a date onto the nearest task just to give it a calendar home is the wrong shape. A **CalendarEvent** covers this, reusing the exact date shape from Task milestones above rather than inventing a third mechanism.
+
+**A CalendarEvent has exactly one owner, its creator, always** — there's no "confirmed community-wide" state for it to be promoted into, and nothing about it is ever gated by anyone else's standing. Admins and branch coordination exist to gate coordination and community structure, not to decide whether someone's allowed to tell people about an event.
+
+Sharing it is a real invitation to each person, the same shape already used for Shared placements: invite → accept:
+
+- **Sharing sends an invite.** The creator can invite individual members by hand, or bulk-invite a whole Branch's current roster or the whole Community in one action — either way, it generates one `CalendarEventInvite` row per invited member, the same fan-out `PlacementMember` already does for a shared tent or vehicle.
+- **Each invitee accepts or declines for themselves.** Accepting is what actually puts the event on that member's own calendar; declining just drops it, no explanation required — same as declining a Placement invite. A still-pending invite surfaces on the invitee's Dashboard awaiting a response, the same way an invited-but-not-yet-confirmed Placement already does.
+- **The creator can invite more people at any time** — sharing isn't a one-time, locked-at-creation decision, consistent with everything else here being editable after the fact.
+
+Access: any member can create their own event and invite whoever they want to it — no approval step anywhere in this flow. What matters isn't friction, it's *who decides* — every invitee decides for themselves, rather than one person with standing deciding on behalf of a whole Branch or Community.
+
 ### Multi-slot & collaborative tasks
 
 Tasks with capacity > 1 stay open to additional claims until every slot fills. One slot can optionally be flagged as the **coordination slot** — keeping the group aligned, not a rank and not a blocker: if nobody claims it, the group self-organizes, and if the task stalls, coordination can see that on the dashboard. An existing owner can also **nominate a specific person** for an open slot — a peer-initiated fitted ask, the same mechanism coordination uses, just triggered by a collaborator instead. Coordination tasks themselves are multi-slot by default, with no rank between co-holders — a lightweight community "thumbs up" (not a vote) can help surface good fits during a browse period, but the bar to join stays low.
@@ -140,6 +181,8 @@ A discrete run of production, generalized from what the reference implementation
 
 A Community that has no use for discrete production runs — an ongoing coop, a standing project — simply runs one open-ended default Cycle that never closes, and never sees any of the cycle-management UI below. Turning cycles on is what unlocks it.
 
+**Event window.** A cycle can carry its own `start_date`/`end_date` — but, consistent with how little else in this spec is actually required, neither is mandatory to start a cycle. What changes is what's available once they're set: Phase auto-placement (below), relative task milestones, relative CalendarEvents (see Freestanding events), and the Pack import date preview (see Pack import review) all need `start_date` (and `end_date`, for anything anchored to `cycle_end`) to resolve anything at all. A cycle missing it isn't blocked from starting — it just gets a visible, ongoing flag that these features have nothing to compute against yet. Distinct from the existing `started_at` timestamp (an admin log entry, unchanged) — `start_date`/`end_date` are the substantive dates the cycle's own work actually spans.
+
 **Starting a cycle:**
 
 - **Who can start one** — Community-configured, typically gated by a Tier (e.g. only "Experienced" members can initiate) rather than open to anyone. This reuses the same Requirement mechanism tasks already use for claim eligibility, applied to a different action.
@@ -150,6 +193,12 @@ A Community that has no use for discrete production runs — an ongoing coop, a 
   3. **Round 2 — everything else.** After the kickoff call, the remaining tasks in the cycle open for general browse.
 
 This scales down cleanly for a light cycle — a reunion weekend might have one Round 0 task and skip straight to Round 2 — without needing a different mechanism, just a smaller task set.
+
+**Phase auto-placement.** Each Phase's `start`/`end` can independently be absolute (a hand-typed date) or relative (the same offset/percent shape Task milestones use, anchored to this Cycle's own `start_date`/`end_date` — a Phase's parent is always its own Cycle, so there's no separate anchor to choose). A relative boundary is always resolved live, never snapshotted: to move it, edit the offset or percent — or just let the Cycle's own dates move and everything anchored to them follows automatically. Switching a boundary back to absolute is a deliberate, explicit act, not a side effect of editing a field.
+
+**Cloning carries the recipe, not the date.** Exporting a cycle as an implicit pack (see Task Pack) carries each relative boundary's mode/anchor/offset-or-percent forward; an absolute boundary doesn't carry. A phase that was only ever hand-dated has its offset *derived* at export time against that cycle's own `start_date` (mode `offset`, anchor `cycle_start`), so even a cycle that was never relatively-dated still produces a usable recommendation on its next clone.
+
+**One basic sanity check is defined: an end can't resolve before its own start.** Applies to a Phase's own start/end pair, and to a Cycle's `start_date`/`end_date` when both are set. Editing a boundary directly is validated immediately — the edit is rejected if it would put that end before that start. A boundary drifting into violation because something *else* changed (the Cycle's own dates moving, say) can't be blocked the same way, since nothing was directly edited on the Phase itself — it surfaces as a live, standing flag instead. Left deliberately open beyond this one rule: whether sibling phases get checked against their own `order` sequence, and what the complete set of checks should be — a harder question for its own pass later.
 
 **Participation & capacity.** Each Cycle can optionally define a `capacity` — a cap on how many members it can hold — with **Participation** (per cycle, per member: coming / maybe / not-coming, arrival date, departure date, a note) as the record of who's actually planning to be there. This is core, not gated behind Recruitment — even a community that never recruits new members wants to know how many people are actually coming, for its own planning, and it's what Contribution tracking's arrival/departure context already assumes exists.
 
@@ -208,6 +257,7 @@ A portable, importable bundle of tasks — the answer to "most tasks are specifi
 - Manifest: name, description, source, version, tags (domain: event-production, renovation, coop-governance, etc.)
 - An ordered list of phase definitions (`PackPhase`: name, order, an optional suggested relative duration) — the spine the pack's own tasks are rooted in, timeless like the rest of the pack's content (no absolute dates; those are set per-cycle, see Phase in the data model).
 - A list of tasks, each with the fields above minus Community-specific IDs (owner, actual dates), each referencing its phase directly by a pack-local key (`phase_ref` → the matching `PackPhase.order`) rather than by name — since the pack owns and defines its own phase list, there's no ambiguity to resolve the way there is for Branch.
+- Each task's relative Task milestones (see Task milestones, above) carry too, the same way a relative Phase boundary does — an absolute milestone doesn't travel, for the same reason an absolute Phase date never carried into a pack.
 
 Packs are symmetric — a Community can export its own board (or a subset of it, or a whole past Cycle) as a pack at any time. This is the same mechanism for "give next year's coordinator a head start," "share this with a sister community," "clone last cycle into a new one," and "seed a brand-new install with a sensible starting board." No separate feature needed for each.
 
@@ -224,6 +274,8 @@ Not previously specified in any concrete form — "matched or remapped against r
 - **Screen two: reassign the now-branchless tasks — only appears if anything was declined.** A flat, per-task list (not grouped by hint, unlike screen one) of every task whose branch hint was declined, shown with its original hint for context, each needing a real existing branch picked before the import can commit. Deliberately task-level rather than hint-level: without a substitute branch to auto-apply, there's no single sensible default for a whole group — some declined "Wood" tasks might genuinely belong in Fruit, others in Blossom, a real per-task call. Bulk-select-and-assign is still available for the common case where a whole batch really does belong together (reusing the board's existing bulk task selection), with per-task override for the rest.
 - **Nothing is created until the whole flow is confirmed** — a staging/preview step across both screens, not an apply-then-revert one: unlike Spatial planning's Placement review, nothing here is live before the import, so there's no urgency forcing an apply-immediately shape.
 - **No new access surface needed** for the screen itself — it's just a step inside cycle creation (or pack import), gated by whoever's already allowed to start a cycle.
+
+**A date preview, alongside the name-matching screens.** Calendar or list view, toggled by the reviewer — every phase's resolved dates and every task's resolved milestone dates, computed against the *destination* cycle's own `start_date`/`end_date`, before anything commits. One more pane in the same staging step this screen already commits to ("nothing is created until the whole flow is confirmed"), not a new gate. List mode collapses by phase — tasks and their milestones grouped and foldable per phase, denser than the grid. Since cloning a previous cycle already routes through this identical export-as-pack/import code path, this preview falls out for both flows at once. It's also the closest thing to a mitigation for Phase auto-placement's still-open sanity-check question (see Cycle, above) — a human sees a broken-looking spine before committing, even without the platform catching it automatically.
 
 **"Create new branch" needs its own check.** Cycle-initiation eligibility and Admins are two separate gates — starting a cycle only requires clearing cycle-initiation eligibility (an ordinary Tier check), while Branch is an "ordinary setting" edited by whoever holds Admins this cycle, a Community-endorsed task with its own threshold on top of any Tier. Nothing says the two overlap, so the review screen can't assume whoever's importing is allowed to create standing Community structure. Only "create new branch" is affected — remapping to an existing branch, or leaving a phase unassigned, references what's already there and needs no check. Phase doesn't have this problem: a phase spine belongs entirely to the Cycle being created, which the initiator is already authorized to create.
 
@@ -366,6 +418,8 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | started_at     | timestamp                                                |                                                                                                                        |
 | source_type    | enum(blank, pack)                                        | "clone previous cycle" is a pack generated from that cycle at creation time — same code path as importing a saved pack |
 | source_pack_id | uuid → TaskPack, nullable                                |                                                                                                                        |
+| start_date     | date, nullable                                           | not required to create a cycle — only needed for Phase auto-placement, relative task milestones, relative calendar events, and the Pack import date preview to resolve. Missing dates are flagged wherever they'd matter, never block cycle creation or use. See Event window, above |
+| end_date       | date, nullable                                           | same optionality as start_date; together the two give every relative date in the cycle a single absolute anchor to resolve against |
 | capacity                   | int, nullable                             | cap on confirmed Participation for this cycle — null = unlimited                                                      |
 | returning_window_closes_at | timestamp, nullable                       | only relevant if Recruitment is on — see Participation & capacity                                                      |
 | cycle_type_id               | uuid → CycleType, nullable                | optional — see Cycle type, above                                                                                      |
@@ -394,14 +448,26 @@ This is the concrete shape to build against. Field names are suggestions, not go
 
 **Phase**
 
-| Field      | Type          | Notes                                                                                        |
-|------------|---------------|-------------------------------------------------------------------------------------------------|
-| id         | uuid          |                                                                                              |
-| cycle_id   | uuid → Cycle  | belongs to a cycle, not the Community directly, since cycles can have different phase spines |
-| name       | string        |                                                                                              |
-| order      | int           | sequence position                                                                            |
-| start_date | date, nullable | set at cycle-scheduling time, never carried in a Pack — a Phase instance is always cycle-specific; both dates optional, same "optional, not enforced" pattern as the rest of this spec |
-| end_date   | date, nullable | optional; a gap between phases is real (e.g. a lull between Procurement and Build) rather than always contiguous |
+Each boundary (start and end) is stored with the shared date shape — either an absolute date, or a relative one expressed as an offset from an anchor point or a percent of the way between two anchor points. A Phase instance is always cycle-specific, never carried in a Pack (see Task Pack, below, for the PackPhase equivalent).
+
+| Field               | Type                                  | Notes                                                                                        |
+|---------------------|----------------------------------------|-------------------------------------------------------------------------------------------------|
+| id                  | uuid                                  |                                                                                              |
+| cycle_id            | uuid → Cycle                          | belongs to a cycle, not the Community directly, since cycles can have different phase spines |
+| name                | string                                |                                                                                              |
+| order               | int                                   | sequence position                                                                            |
+| start_date_type     | enum(absolute, relative)              | both boundaries independently optional, same "optional, not enforced" pattern as the rest of this spec |
+| start_date          | date, nullable                        | set when start_date_type = absolute, or resolved and cached here when relative — always recomputed live from the relative fields below, never treated as authoritative while relative |
+| start_relative_mode | enum(offset, percent), nullable       | offset = signed day count from a single anchor; percent = 0–100% of the way between the cycle's start and end (only meaningful for a "between" placement) |
+| start_offset_anchor | enum(cycle_start, cycle_end), nullable | which cycle boundary an offset-mode start is measured from                                    |
+| start_offset_days   | int, nullable                         | signed; negative = before the anchor                                                          |
+| start_percent       | int, nullable                         | 0–100, only used in percent mode                                                              |
+| end_date_type       | enum(absolute, relative)              |                                                                                              |
+| end_date            | date, nullable                        | same resolution rule as start_date; optional — a gap between phases is real (e.g. a lull between Procurement and Build) rather than always contiguous |
+| end_relative_mode   | enum(offset, percent), nullable       |                                                                                              |
+| end_offset_anchor   | enum(cycle_start, cycle_end), nullable |                                                                                              |
+| end_offset_days     | int, nullable                         |                                                                                              |
+| end_percent         | int, nullable                         |                                                                                              |
 
 **Tier**
 
@@ -571,6 +637,34 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | read.member_id       | uuid → Member            |                                                                    |
 | read.read_at         | timestamp                |                                                                    |
 
+**CalendarEvent / CalendarEventInvite** (freestanding, non-task-scoped dates — see Freestanding events, above)
+
+An event always has exactly one owner, its creator — there is no authority-based confirmation gate here, unlike Branch creation by non-Admins. Sharing fans out one CalendarEventInvite row per invitee, mirroring PlacementMember's invited/confirmed shape exactly; each invitee accepts or declines for themselves.
+
+| Field               | Type                                     | Notes                                                                               |
+|----------------------|-------------------------------------------|-----------------------------------------------------------------------------------------|
+| event.id             | uuid                                      |                                                                                     |
+| event.community_id   | uuid → Community                          |                                                                                     |
+| event.member_id      | uuid → Member                             | creator and sole owner — only they can edit or delete the event                     |
+| event.cycle_id       | uuid → Cycle, nullable                    | null = cycle-independent, shown in the Calendar view's Community-wide bucket         |
+| event.share_target    | enum(personal, branch, community)         | personal = visible only to the creator, no invites generated                        |
+| event.shared_branch_id | uuid → Branch, nullable                 | set when share_target = branch                                                      |
+| event.title           | string                                    |                                                                                     |
+| event.description     | text, nullable                            |                                                                                     |
+| event.date_type       | enum(absolute, relative)                  | same shared date shape as Phase boundaries and TaskMilestone                        |
+| event.date            | date, nullable                            | resolved/cached when relative — never authoritative while relative                  |
+| event.relative_mode   | enum(offset, percent), nullable           |                                                                                     |
+| event.anchor_type     | enum(cycle_start, cycle_end), nullable    | events anchor to the cycle, not a Phase — a Phase-scoped date belongs on a TaskMilestone instead |
+| event.offset_days     | int, nullable                             |                                                                                     |
+| event.percent         | int, nullable                             |                                                                                     |
+| event.created_at      | timestamp                                 |                                                                                     |
+| invite.event_id       | uuid → CalendarEvent                      |                                                                                     |
+| invite.member_id      | uuid → Member                             |                                                                                     |
+| invite.status         | enum(invited, confirmed, declined)        |                                                                                     |
+| invite.invited_by     | uuid → Member                             | the event's owner — invites can only originate from the creator                     |
+| invite.invited_at     | timestamp                                 |                                                                                     |
+| invite.responded_at   | timestamp, nullable                       |                                                                                     |
+
 **TaskWikiRevision**
 
 | Field     | Type          | Notes                                                                               |
@@ -592,6 +686,28 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | url        | string           | points at wherever the file/page already lives — no native file storage in v1 |
 | tag        | string, nullable | free-form, e.g. "purchase link," "template," "design asset"                   |
 | created_at | timestamp        |                                                                               |
+
+**TaskMilestone** (task-scoped, user-labeled dates — see Task milestones, above)
+
+Reuses Spatial planning's propose→pending→approve/revert pattern: the task's current holder edits freely; a non-holder's addition to a claimed task lands `pending` until a holder confirms it; an unclaimed task has no gate and additions are `confirmed` immediately.
+
+| Field         | Type                                     | Notes                                                                                    |
+|---------------|--------------------------------------------|----------------------------------------------------------------------------------------------|
+| id            | uuid                                      |                                                                                          |
+| task_id       | uuid → Task                               |                                                                                          |
+| label         | string                                    | user-named, e.g. "Deposit due," "Order arrives," "Final headcount to caterer"           |
+| date_type     | enum(absolute, relative)                  | absolute milestones don't survive a Pack export — see Task Pack, above                   |
+| absolute_date | date, nullable                            |                                                                                          |
+| relative_mode | enum(offset, percent), nullable           |                                                                                          |
+| anchor_type   | enum(phase_start, phase_end, cycle_start, cycle_end), nullable | which boundary the offset/percent is measured from                 |
+| offset_days   | int, nullable                             | signed; negative = before the anchor                                                     |
+| span_type     | enum(single, between), nullable           | "between" pairs with percent mode across a phase's two boundaries                       |
+| percent       | int, nullable                             | 0–100, only used with span_type = between                                                |
+| phase_id      | uuid → Phase, nullable                    | set when anchor_type is phase_start/phase_end                                            |
+| status        | enum(confirmed, pending)                  |                                                                                          |
+| proposed_by   | uuid → Member                             | who added it — may differ from created_by if a holder later confirms someone else's pending add |
+| created_by    | uuid → Member                             |                                                                                          |
+| created_at    | timestamp                                  |                                                                                          |
 
 **TaskAssignment** (join table — replaces a single `owner_id` now that capacity can exceed 1)
 
@@ -690,13 +806,15 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | phase.pack_id                                                                     | uuid → TaskPack      |                                                                                                   |
 | phase.name                                                                        | string               |                                                                                                   |
 | phase.order                                                                       | int                  | sequence position; also doubles as this phase's local reference key within the pack, so no separate id scheme is needed |
-| phase.suggested_duration_days                                                     | int, nullable         | rough relative timeline only — no absolute dates in a pack (see Task Pack, above)                  |
+| phase.start_offset_anchor, phase.start_offset_days, phase.start_percent           | enum, int, int — all nullable | relative-only recipe for this phase's start (no start_date_type — a pack never holds an absolute date, see Task Pack, above); mirrors Phase's start_* fields minus the absolute option |
+| phase.end_offset_anchor, phase.end_offset_days, phase.end_percent                 | enum, int, int — all nullable | same, for this phase's end                                                                        |
 | item.pack_id                                                                      | uuid → TaskPack      |                                                                                                   |
 | item.branch_name_hint                                                             | string               | matched or remapped against real branches on import                                               |
 | item.phase_ref                                                                    | int, nullable         | direct reference to a `PackPhase.order` within the *same* pack — resolved with certainty, not matched (see Task Pack, above) |
 | item.title, description, tags, effort, effort_magnitude, critical, capacity, openness, requirements |          | same shape as Task, minus Community/Cycle-specific fields                                         |
 | item.wiki_summary_seed                                                            | text, nullable       | carried from the source task's current wiki revision; pre-populates the new task's wiki on import |
 | item.resources                                                                    | json array, nullable | `[{label, url, tag}]` carried wholesale from the source task's resource list on import            |
+| item.milestones                                                                   | json array, nullable | `[{label, anchor_type, offset_days or percent, phase_ref}]` — only relative milestones carry forward; absolute ones don't survive export (see Task Pack, above) |
 
 This is deliberately close to a straight relational schema — it maps onto Postgres tables with minimal translation, which matters for the [build order](#-build-order) below.
 
@@ -1180,6 +1298,7 @@ The smallest version worth building — usable by Peach Please *and* at least on
 - Forms as a built mechanism — not needed until the first module that uses it (Recruitment, most likely) gets built; the schema is ready whenever that happens.
 - Profile questions (ProfileQuestion/ProfileAnswer) — real and specified, but the surfaces that would actually populate it (Recruitment's application, an onboarding flow) are themselves deferred; the schema is ready whenever those exist.
 - On-site/on-playa mode.
+- Task milestones, Freestanding events, and the Calendar view — real and specified, but the confirm/invite mechanics they lean on (propose→pending→approve/revert, invite→accept) are exercised for the first time by Spatial planning's collaborative placement editing; sequencing the calendar work after that code exists avoids building the same pattern twice. Cycle start_date/end_date can land earlier and independently, since they're useful (as an optional field, never required) the moment Cycle itself exists.
 - The Dashboard, Module rollout states (testing), and View-as/Support — each reads off or gates modules/mechanics that are themselves deferred (Recruitment's pipeline status, the module system having more than one real optional module live, a Support task type), so there's nothing to build here until those exist. The design is set now so the underlying schema (ModuleState, Placement's pending fields) doesn't need revisiting later.
 
 This scope is deliberately close to what Phase 2 ("Orchard MVP") already described — the difference is that branches/tiers/phases are now Community-configured instead of hardcoded, and cycles exist as the real container Peach Please's own production timeline needs.
@@ -1262,6 +1381,7 @@ Worth noting: at least a couple of other barrio leads are independently building
 12. ~~**Is the optional partner-declaration idea (for recusal nudges) worth building at all?**~~ **Resolved: no** — see Conflict management above. It would only ever cover a fraction of the relationships that could bias someone, and a false sense of "the system would catch it" is worse than no automation at all; recusal stays entirely on people recusing themselves and each other.
 13. **Does waiving an `individual_gate` Requirement need any extra safeguard for the highest-stakes cases** (sensitive-data access, money) — a second coordinator's sign-off, say — or is one coordinator's visible, logged, per-claim waiver enough given it's already deliberate and non-silent? Leaning toward: the same single-coordinator process for everything, since a two-person requirement just for the waiver adds friction exactly where the point was to unblock a stuck task — but worth a deliberate call given what's potentially being waived.
 14. **Does the Task Pack phase-spine work (PackPhase, `item.phase_ref`, the Pack import review screen) land in the same MVP slice as clone-previous-cycle, or ship as a fast-follow right after?** It touches an already-in-scope build-order item (see Build order and MVP scope, above), not just the deferred general-pack-library work, so it's worth a deliberate call rather than assuming either answer.
+15. **What's the full sanity-check surface for Phase/Cycle/milestone/event dates, beyond the one basic rule already defined (a Phase's or Cycle's own end can't resolve before its own start)?** Candidates: sibling-Phase `order` validation (does Phase 2 starting before Phase 1 ends need flagging, or is overlap fine?), milestones or events resolving outside their own cycle's window, and whatever else falls out once people are actually using relative dates day to day. Deliberately left open rather than guessed at now — see Task milestones and Freestanding events, above.
 
 ---
 

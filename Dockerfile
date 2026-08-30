@@ -14,6 +14,15 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# Node sizes its default heap off physical RAM only, ignoring swap — on a
+# small VPS (under ~1-2GB RAM) that default lands well under what's actually
+# available once swap is counted, and `next build` dies with an "Ineffective
+# mark-compacts near heap limit" OOM despite swap sitting mostly unused.
+# Override explicitly so it can use the headroom harden.sh's swapfile
+# provides. Bump via --build-arg / BUILD_MAX_OLD_SPACE_MB in .env if a given
+# box still runs out.
+ARG BUILD_MAX_OLD_SPACE_MB=1536
+ENV NODE_OPTIONS=--max-old-space-size=${BUILD_MAX_OLD_SPACE_MB}
 RUN npm run build
 
 # ---- runtime ----
