@@ -1,5 +1,12 @@
 {
 	email {$DOMAIN_EMAIL}
+	# Caddy's default issuer is ZeroSSL, which requires an extra EAB
+	# credentials call to api.zerossl.com before it can even start the
+	# actual cert request — one more external dependency than plain ACME
+	# needs, and it fails outright (rather than falling back) if that
+	# host is unreachable from this box. Pin Let's Encrypt directly so
+	# issuance only ever depends on LE's own ACME endpoint.
+	acme_ca https://acme-v02.api.letsencrypt.org/directory
 }
 
 {$DOMAIN} {

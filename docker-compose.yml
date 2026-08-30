@@ -56,3 +56,22 @@ volumes:
   uploads:
   caddy_data:
   caddy_config:
+
+networks:
+  default:
+    # The daemon-level "ipv6": true in /etc/docker/daemon.json only governs
+    # the implicit default bridge — a Compose project gets its own network
+    # and does NOT inherit that automatically. Without this, caddy/app have
+    # no route out at all on an IPv6-only VPS (no IPv4 to fall back to),
+    # which is exactly what broke Let's Encrypt/ZeroSSL reachability here.
+    #
+    # A DIFFERENT /48 than the daemon's own fixed-cidr-v6 (fd00:dead:beef::/48)
+    # — not a /64 carved out of it. Docker's IPAM rejects a pool that overlaps
+    # another pool's already-declared range, even a subset, and the default
+    # bridge declares the WHOLE fd00:dead:beef::/48 as its own the moment
+    # that's set in daemon.json. fd00:c0ff:ee00::/64 shares no prefix with
+    # that /48, so there's nothing to overlap.
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd00:c0ff:ee00::/64

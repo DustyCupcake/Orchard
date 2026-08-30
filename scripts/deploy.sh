@@ -81,7 +81,11 @@ fi
 DAEMON_JSON="/etc/docker/daemon.json"
 if ! grep -q '"ipv6"[[:space:]]*:[[:space:]]*true' "$DAEMON_JSON" 2>/dev/null; then
   if [ -s "$DAEMON_JSON" ]; then
-    warn "Existing ${DAEMON_JSON} found and left alone — add IPv6 support to it by hand if this VPS is IPv6-only (see docker docs: ipv6, fixed-cidr-v6, ip6tables)."
+    log "Existing ${DAEMON_JSON} found — merging in IPv6 networking (needed for containers to reach anything at all on an IPv6-only VPS)..."
+    command -v jq >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq jq; }
+    tmp_daemon_json="$(mktemp)"
+    jq '.ipv6 = true | ."fixed-cidr-v6" = (."fixed-cidr-v6" // "fd00:dead:beef::/48") | .ip6tables = true' \
+      "$DAEMON_JSON" > "$tmp_daemon_json" && mv "$tmp_daemon_json" "$DAEMON_JSON"
   else
     log "Enabling Docker IPv6 networking (harmless on a dual-stack box, needed on an IPv6-only one)..."
     cat > "$DAEMON_JSON" <<'EOF'
@@ -91,9 +95,9 @@ if ! grep -q '"ipv6"[[:space:]]*:[[:space:]]*true' "$DAEMON_JSON" 2>/dev/null; t
   "ip6tables": true
 }
 EOF
-    systemctl restart docker
-    sleep 2
   fi
+  systemctl restart docker
+  sleep 2
 fi
 
 # ---------------------------------------------------------------------------
@@ -154,6 +158,22 @@ fi
 # shellcheck disable=SC1091
 set -a; source .env; set +a
 [ -n "${DOMAIN:-}" ] || die "DOMAIN is not set in .env."
+
+# A handful of VPS marketplace images ship with Apache (or nginx) pre-
+# installed and already listening on 80/443. Caddy needs both free — port 80
+# for the ACME HTTP-01 challenge, 443 to actually serve — and fails
+# certificate issuance with no error that obviously points back at Apache.
+# Only flag a real conflict: something other than Docker's own proxy already
+# bound to one of these ports.
+if command -v ss >/dev/null 2>&1; then
+  for port in 80 443; do
+    listener="$(ss -ltnp "sport = :${port}" 2>/dev/null | awk -F'"' '/LISTEN/{print $2; exit}')"
+    if [ -n "$listener" ] && [ "$listener" != "docker-proxy" ]; then
+      warn "Port ${port} is already in use by '${listener}', not Docker — Caddy won't be able to bind it, and HTTPS issuance will fail."
+      warn "If it's a preinstalled web server you don't need, disable it first, e.g.: systemctl disable --now apache2"
+    fi
+  done
+fi
 
 # ---------------------------------------------------------------------------
 # 4. Build and start
