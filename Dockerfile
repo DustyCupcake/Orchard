@@ -6,7 +6,11 @@ FROM node:22-bookworm-slim AS base
 FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+# Cache mount, not a layer: npm's own download/extract cache persists across
+# builds in BuildKit's cache store, keyed by the mount id below — independent
+# of Docker's normal layer cache, which this COPY would only satisfy when
+# package*.json are byte-identical to a previous build anyway.
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # ---- build ----
 FROM base AS builder
@@ -23,7 +27,14 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # box still runs out.
 ARG BUILD_MAX_OLD_SPACE_MB=1536
 ENV NODE_OPTIONS=--max-old-space-size=${BUILD_MAX_OLD_SPACE_MB}
-RUN npm run build
+# `COPY . .` above changes on basically every build (any file, even a doc),
+# which busts Docker's layer cache for this RUN every time regardless of
+# whether the change actually touched app code. The cache mount sidesteps
+# that entirely: Next.js's own incremental build cache lives in BuildKit's
+# cache store instead of an image layer, so it survives even when the layer
+# above it didn't — this is what actually makes rebuilds fast, not just
+# skippable.
+RUN --mount=type=cache,target=/app/.next/cache npm run build
 
 # ---- runtime ----
 FROM base AS runner

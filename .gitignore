@@ -14,6 +14,10 @@
 # manual testing/preview, bypassing Caddy's self-signed local TLS)
 docker-compose.override.yml
 
+# scripts/rebuild.sh's saved change-detection state — specific to whatever
+# happens to be deployed on a given box, not something to version.
+.rebuild-state
+
 # Node / Next.js
 node_modules/
 .next/

@@ -109,6 +109,8 @@ Installs Docker if needed, prompts for your domain and TLS email on first run (g
 
 To run it locally instead: copy `.env.example` to `.env`, fill in `DOMAIN=localhost` and the rest, then `docker compose up -d`.
 
+**After the first deploy**, redeploying a change doesn't need `deploy.sh` again — use `./scripts/rebuild.sh` instead. It hashes `.env`, `Caddyfile`, `docker-compose.yml`, and the app code separately and only does what each actually needs (a Caddy reload for a `Caddyfile` edit, `up -d` for an `.env` edit, a full image rebuild only when app code changed) — a no-op if nothing did. `./scripts/reset.sh` is the blunt version for when something's stale and you want to force a redo — `--app`/`--caddy`/`--db` to redo just one piece, or no args for everything; it never touches data volumes.
+
 ## Testing
 
 The lifecycle/CRUD test suite runs against a real Postgres (no mocks — see `tests/`). Point it at any disposable database:
