@@ -1,25 +1,107 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { db, type Tx } from "@/db";
+import { db, type DbOrTx, type Tx } from "@/db";
 import { community, cycle, phase, requirement, task, taskAssignment, taskDependency } from "@/db/schema";
-import type { member as memberTable } from "@/db/schema";
-import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import type { member as memberTable, phase as phaseTable } from "@/db/schema";
+import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { memberHasTier } from "../eligibility";
 import { cloneSpatialPlanIntoNewCycle } from "../spatial-planning";
+import {
+  dateBoundaryInput,
+  deriveClonedBoundaryRecipe,
+  isBoundaryDrifted,
+  recomputeBoundary,
+  toStoredBoundary,
+  violatesBoundaryOrder,
+  type DateBoundaryInput,
+  type StoredBoundary,
+} from "../dates";
 
 type Member = typeof memberTable.$inferSelect;
+type Phase = typeof phaseTable.$inferSelect;
 
+// --- Phase boundary <-> column mapping -------------------------------
+//
+// The shared absolute/relative date shape (src/lib/dates/resolve.ts),
+// mapped onto Phase's own start_*/end_* column pairs. See
+// docs/development-plan.md's Phase 39.
+
+function startBoundaryOf(p: Phase): StoredBoundary {
+  return {
+    dateType: p.startDateType,
+    date: p.startDate,
+    relativeMode: p.startRelativeMode,
+    offsetAnchor: p.startOffsetAnchor,
+    offsetDays: p.startOffsetDays,
+    percent: p.startPercent,
+  };
+}
+
+function endBoundaryOf(p: Phase): StoredBoundary {
+  return {
+    dateType: p.endDateType,
+    date: p.endDate,
+    relativeMode: p.endRelativeMode,
+    offsetAnchor: p.endOffsetAnchor,
+    offsetDays: p.endOffsetDays,
+    percent: p.endPercent,
+  };
+}
+
+function startColumns(b: StoredBoundary) {
+  return {
+    startDateType: b.dateType,
+    startDate: b.date,
+    startRelativeMode: b.relativeMode,
+    startOffsetAnchor: b.offsetAnchor,
+    startOffsetDays: b.offsetDays,
+    startPercent: b.percent,
+  };
+}
+
+function endColumns(b: StoredBoundary) {
+  return {
+    endDateType: b.dateType,
+    endDate: b.date,
+    endRelativeMode: b.relativeMode,
+    endOffsetAnchor: b.offsetAnchor,
+    endOffsetDays: b.offsetDays,
+    endPercent: b.percent,
+  };
+}
+
+// `start`/`end` carry the full absolute/relative shape (Phase 39); the
+// flat `startDate`/`endDate` fields are kept as shorthand for "absolute,
+// this exact date" — the common case, and what every caller before
+// Phase 39 already sends. `start`/`end` win if both are given.
 const phaseInput = z.object({
   name: z.string().min(1),
   order: z.number().int(),
   startDate: z.string().min(1).nullable().optional(),
   endDate: z.string().min(1).nullable().optional(),
+  start: dateBoundaryInput.optional(),
+  end: dateBoundaryInput.optional(),
 });
+type PhaseInput = z.infer<typeof phaseInput>;
+
+function resolvedBoundaryInput(
+  boundary: DateBoundaryInput | undefined,
+  flatDate: string | null | undefined,
+): DateBoundaryInput | undefined {
+  if (boundary) return boundary;
+  if (flatDate === undefined) return undefined;
+  return { type: "absolute", date: flatDate };
+}
 
 export const createCycleInput = z.discriminatedUnion("source", [
   z.object({
     source: z.literal("blank"),
     name: z.string().min(1),
+    // Not required to start a cycle — see docs/spec.md's "Event
+    // window." Missing dates just leave anything anchored to them
+    // (Phase auto-placement, relative milestones/events) unresolved.
+    startDate: z.string().min(1).nullable().optional(),
+    endDate: z.string().min(1).nullable().optional(),
     phases: z.array(phaseInput).optional(),
   }),
   z.object({
@@ -38,7 +120,8 @@ export type CreateCycleInput = z.infer<typeof createCycleInput>;
 // Exported — Phase 31's Participation & capacity reuses this exact gate
 // for who may set a Cycle's capacity/returningWindowClosesAt, on the
 // reasoning that whoever can start a cycle is the same authority who'd
-// configure it (no separate "cycle admin" concept exists).
+// configure it (no separate "cycle admin" concept exists). Phase 39's
+// Phase-boundary editing reuses it too, for the same reason.
 export async function requireCycleInitiationEligibility(actor: Member) {
   const [communityRow] = await db.select().from(community).where(eq(community.id, actor.communityId));
   if (!communityRow) {
@@ -72,14 +155,44 @@ export async function createCycle(actor: Member, input: CreateCycleInput) {
   if (input.source === "clone_previous") {
     return cloneMostRecentCycle(actor, input.name, input.cloneSpatialPlan ?? false);
   }
-  return createBlankCycle(actor, input.name, input.phases ?? []);
+  return createBlankCycle(actor, input.name, input.startDate ?? null, input.endDate ?? null, input.phases ?? []);
+}
+
+// Resolves a phase's start/end immediately against the Cycle's own
+// dates, known up front here since a blank cycle's dates are set (or
+// left unset) in this same call, unlike cloning (see
+// cloneMostRecentCycle) where the new cycle's own dates aren't known
+// yet.
+function phaseInsertValues(cycleId: string, cycleStartDate: string | null, cycleEndDate: string | null, p: PhaseInput) {
+  const startInput = resolvedBoundaryInput(p.start, p.startDate);
+  const endInput = resolvedBoundaryInput(p.end, p.endDate);
+  const start = startInput ? toStoredBoundary(startInput, cycleStartDate, cycleEndDate) : undefined;
+  const end = endInput ? toStoredBoundary(endInput, cycleStartDate, cycleEndDate) : undefined;
+
+  if (start && end && violatesBoundaryOrder(start.date, end.date)) {
+    throw new ConflictError(`"${p.name}"'s end can't resolve before its own start`);
+  }
+
+  return {
+    cycleId,
+    name: p.name,
+    order: p.order,
+    ...(start ? startColumns(start) : {}),
+    ...(end ? endColumns(end) : {}),
+  };
 }
 
 async function createBlankCycle(
   actor: Member,
   name: string,
-  phases: z.infer<typeof phaseInput>[],
+  startDate: string | null,
+  endDate: string | null,
+  phases: PhaseInput[],
 ) {
+  if (violatesBoundaryOrder(startDate, endDate)) {
+    throw new ConflictError("A cycle's end date can't be before its own start date");
+  }
+
   return db.transaction(async (tx) => {
     const [newCycle] = await tx
       .insert(cycle)
@@ -90,18 +203,14 @@ async function createBlankCycle(
         startedBy: actor.id,
         startedAt: new Date(),
         sourceType: "blank",
+        startDate,
+        endDate,
       })
       .returning();
 
     if (phases.length > 0) {
       await tx.insert(phase).values(
-        phases.map((p) => ({
-          cycleId: newCycle.id,
-          name: p.name,
-          order: p.order,
-          startDate: p.startDate ?? null,
-          endDate: p.endDate ?? null,
-        })),
+        phases.map((p) => phaseInsertValues(newCycle.id, startDate, endDate, p)),
       );
     }
 
@@ -139,7 +248,7 @@ async function cloneMostRecentCycle(actor: Member, name: string, cloneSpatialPla
       })
       .returning();
 
-    const phaseIdMap = await clonePhases(tx, previous.id, newCycle.id);
+    const phaseIdMap = await clonePhases(tx, previous, newCycle.id);
     const taskIdMap = await cloneTasks(tx, actor, previous.id, newCycle.id, phaseIdMap);
     await cloneRequirements(tx, taskIdMap);
     await cloneDependencies(tx, taskIdMap);
@@ -166,16 +275,31 @@ async function cloneMostRecentCycle(actor: Member, name: string, cloneSpatialPla
 // Inserted one row at a time rather than as a single batched insert:
 // Postgres doesn't guarantee a multi-row INSERT...RETURNING preserves
 // input order, and correctly mapping old ids to new ones depends on it.
-async function clonePhases(tx: Tx, previousCycleId: string, newCycleId: string) {
-  const oldPhases = await tx.select().from(phase).where(eq(phase.cycleId, previousCycleId));
+async function clonePhases(
+  tx: Tx,
+  previousCycle: Pick<typeof cycle.$inferSelect, "id" | "startDate">,
+  newCycleId: string,
+) {
+  const oldPhases = await tx.select().from(phase).where(eq(phase.cycleId, previousCycle.id));
   const idMap = new Map<string, string>();
 
   for (const p of oldPhases) {
-    // Dates are cycle-scheduling-time facts, never carried across a
-    // clone — same "timeless spine" rule Task Pack itself follows.
+    // "Cloning carries the recipe, not the date" — docs/spec.md. A
+    // relative boundary's mode/anchor/offset-or-percent carries
+    // forward as-is (its cached date stays null here — the new cycle
+    // has no start/end yet at clone time, see createCycleInput's
+    // clone_previous variant — and gets resolved once
+    // updateCycleSettings sets them, via recomputePhaseDatesForCycle).
+    // An absolute boundary is converted into a derived offset recipe
+    // against the *previous* cycle's own start_date, so even a cycle
+    // that was never relatively-dated produces a usable recommendation
+    // on its next clone; genuinely un-derivable (no previous start_date
+    // set) falls back to the original "dates don't carry" behavior.
+    const start = deriveClonedBoundaryRecipe(startBoundaryOf(p), previousCycle.startDate);
+    const end = deriveClonedBoundaryRecipe(endBoundaryOf(p), previousCycle.startDate);
     const [newPhase] = await tx
       .insert(phase)
-      .values({ cycleId: newCycleId, name: p.name, order: p.order })
+      .values({ cycleId: newCycleId, name: p.name, order: p.order, ...startColumns(start), ...endColumns(end) })
       .returning();
     idMap.set(p.id, newPhase.id);
   }
@@ -307,6 +431,25 @@ export async function listCycles(actor: Member) {
     .orderBy(desc(cycle.startedAt));
 }
 
+export interface PhaseFlags {
+  orderInvalid: boolean;
+  startDrifted: boolean;
+  endDrifted: boolean;
+}
+
+// Live, standing flags — never persisted, computed fresh whenever a
+// Phase is read alongside its Cycle. See docs/spec.md's "A soft check
+// worth having, not yet a hard one" and "One basic sanity check."
+function getPhaseFlags(cycleRow: { startDate: string | null; endDate: string | null }, phaseRow: Phase): PhaseFlags {
+  const start = startBoundaryOf(phaseRow);
+  const end = endBoundaryOf(phaseRow);
+  return {
+    orderInvalid: violatesBoundaryOrder(start.date, end.date),
+    startDrifted: isBoundaryDrifted(start, cycleRow.startDate, cycleRow.endDate),
+    endDrifted: isBoundaryDrifted(end, cycleRow.startDate, cycleRow.endDate),
+  };
+}
+
 export async function getCycle(actor: Member, cycleId: string) {
   const [row] = await db
     .select()
@@ -317,7 +460,8 @@ export async function getCycle(actor: Member, cycleId: string) {
   }
 
   const phases = await db.select().from(phase).where(eq(phase.cycleId, cycleId)).orderBy(phase.order);
-  return { ...row, phases };
+  // Live flags computed fresh on every read — see getPhaseFlags above.
+  return { ...row, phases: phases.map((p) => ({ ...p, flags: getPhaseFlags(row, p) })) };
 }
 
 // Wires up the two fields that have sat unused on Cycle since Phase 6
@@ -329,6 +473,14 @@ export async function getCycle(actor: Member, cycleId: string) {
 export const updateCycleSettingsInput = z.object({
   capacity: z.number().int().positive().nullable().optional(),
   returningWindowClosesAt: z.string().min(1).nullable().optional(),
+  // The cycle's own start_date/end_date (Phase 39) — see docs/spec.md's
+  // "Event window." Editing these is a direct edit of this boundary
+  // pair, so it's validated immediately (violatesBoundaryOrder below);
+  // every relative Phase boundary underneath is then recomputed to
+  // track the move, since a Phase's only possible anchor is its own
+  // Cycle.
+  startDate: z.string().min(1).nullable().optional(),
+  endDate: z.string().min(1).nullable().optional(),
 });
 export type UpdateCycleSettingsInput = z.infer<typeof updateCycleSettingsInput>;
 
@@ -343,6 +495,12 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
     throw new NotFoundError("Cycle not found");
   }
 
+  const nextStartDate = input.startDate !== undefined ? input.startDate : row.startDate;
+  const nextEndDate = input.endDate !== undefined ? input.endDate : row.endDate;
+  if (violatesBoundaryOrder(nextStartDate, nextEndDate)) {
+    throw new ConflictError("A cycle's end date can't be before its own start date");
+  }
+
   const [updated] = await db
     .update(cycle)
     .set({
@@ -350,8 +508,85 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
       ...(input.returningWindowClosesAt !== undefined && {
         returningWindowClosesAt: input.returningWindowClosesAt ? new Date(input.returningWindowClosesAt) : null,
       }),
+      ...(input.startDate !== undefined && { startDate: input.startDate }),
+      ...(input.endDate !== undefined && { endDate: input.endDate }),
     })
     .where(eq(cycle.id, cycleId))
     .returning();
+
+  if (input.startDate !== undefined || input.endDate !== undefined) {
+    await recomputePhaseDatesForCycle(db, cycleId, nextStartDate, nextEndDate);
+  }
+
   return updated;
+}
+
+// Called whenever the anchor Cycle's own start_date/end_date change —
+// every relative Phase boundary underneath needs its cached date
+// recomputed to track the move; absolute boundaries are untouched.
+async function recomputePhaseDatesForCycle(
+  tx: DbOrTx,
+  cycleId: string,
+  anchorStart: string | null,
+  anchorEnd: string | null,
+) {
+  const phases = await tx.select().from(phase).where(eq(phase.cycleId, cycleId));
+  for (const p of phases) {
+    const nextStart = recomputeBoundary(startBoundaryOf(p), anchorStart, anchorEnd);
+    const nextEnd = recomputeBoundary(endBoundaryOf(p), anchorStart, anchorEnd);
+    if (nextStart.date === p.startDate && nextEnd.date === p.endDate) continue;
+    await tx
+      .update(phase)
+      .set({ ...startColumns(nextStart), ...endColumns(nextEnd) })
+      .where(eq(phase.id, p.id));
+  }
+}
+
+export const updatePhaseBoundaryInput = z.object({
+  start: dateBoundaryInput.optional(),
+  end: dateBoundaryInput.optional(),
+});
+export type UpdatePhaseBoundaryInput = z.infer<typeof updatePhaseBoundaryInput>;
+
+// Editing a Phase's dates is a cycle-configuration decision — same
+// authority gate as starting a cycle or setting its capacity (Phase
+// 31). See docs/development-plan.md's Phase 39's "Editing UI for a
+// relative item" — start/end can each independently be re-typed
+// (offsetDays/percent) or re-dragged to a target date (targetDate),
+// see src/lib/dates/resolve.ts's dateBoundaryInput; either path
+// recomputes and persists the offset/percent, never a bare date.
+export async function updatePhaseBoundary(actor: Member, phaseId: string, input: UpdatePhaseBoundaryInput) {
+  await requireCycleInitiationEligibility(actor);
+
+  const [phaseRow] = await db.select().from(phase).where(eq(phase.id, phaseId));
+  if (!phaseRow) {
+    throw new NotFoundError("Phase not found");
+  }
+  const [cycleRow] = await db.select().from(cycle).where(eq(cycle.id, phaseRow.cycleId));
+  if (!cycleRow || cycleRow.communityId !== actor.communityId) {
+    throw new NotFoundError("Phase not found");
+  }
+
+  const nextStart = input.start
+    ? toStoredBoundary(input.start, cycleRow.startDate, cycleRow.endDate)
+    : startBoundaryOf(phaseRow);
+  const nextEnd = input.end
+    ? toStoredBoundary(input.end, cycleRow.startDate, cycleRow.endDate)
+    : endBoundaryOf(phaseRow);
+
+  // docs/spec.md's one defined sanity check — only applied to a
+  // boundary pair actually being directly edited right now; a pair
+  // drifting into violation because something else moved (the Cycle's
+  // own dates) surfaces as the live orderInvalid flag instead, never
+  // blocked (see getPhaseFlags).
+  if (violatesBoundaryOrder(nextStart.date, nextEnd.date)) {
+    throw new AppError("This phase's end can't resolve before its own start");
+  }
+
+  const [updated] = await db
+    .update(phase)
+    .set({ ...startColumns(nextStart), ...endColumns(nextEnd) })
+    .where(eq(phase.id, phaseId))
+    .returning();
+  return { ...updated, flags: getPhaseFlags(cycleRow, updated) };
 }

@@ -1,4 +1,4 @@
-import { integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { date, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
 import { member } from "./member";
 
@@ -31,4 +31,13 @@ export const cycle = pgTable("cycle", {
   sourceType: cycleSourceTypeEnum("source_type").notNull().default("blank"),
   capacity: integer("capacity"),
   returningWindowClosesAt: timestamp("returning_window_closes_at", { withTimezone: true }),
+  // The event's own working dates — distinct from `started_at` (an
+  // admin log entry of when the Cycle row itself was created). Neither
+  // is required to start a cycle; missing one just means Phase
+  // auto-placement, relative Task milestones/CalendarEvents, and the
+  // Pack import date preview have nothing to resolve against yet. See
+  // docs/spec.md's "Event window" and docs/development-plan.md's
+  // Phase 39.
+  startDate: date("start_date"),
+  endDate: date("end_date"),
 });
