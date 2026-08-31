@@ -28,7 +28,12 @@ export default async function DashboardPage() {
     feed.pendingJoinRequests.length > 0 ||
     feed.upcomingCheckins.length > 0 ||
     feed.flaggedHeldTasks.length > 0 ||
-    feed.recruitmentNeedsAction.length > 0;
+    feed.recruitmentNeedsAction.length > 0 ||
+    feed.placementInvites.length > 0 ||
+    feed.myLinkedPendingPlacements.length > 0 ||
+    feed.placementRevertNotices.length > 0 ||
+    feed.placementPendingReviews.length > 0 ||
+    feed.calendarEventInvites.length > 0;
   const now = Date.now();
 
   const NEEDS_ACTION_LABEL: Record<string, string> = {
@@ -122,6 +127,93 @@ export default async function DashboardPage() {
                   </Link>{" "}
                   <span style={{ color: "#a15c00", fontWeight: 600 }}>
                     — {NEEDS_ACTION_LABEL[c.stage] ?? c.stage}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {feed.placementInvites.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Spatial planning invites waiting on you</h3>
+            <ul>
+              {feed.placementInvites.map((i) => (
+                <li key={i.placementId}>
+                  <Link href="/spatial-planning" style={{ color: "inherit" }}>
+                    {i.placementLabel}
+                  </Link>{" "}
+                  <span style={{ color: "#666" }}>
+                    — invited by {i.invitedByName}, {new Date(i.invitedAt).toLocaleDateString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {feed.myLinkedPendingPlacements.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Placements you&rsquo;re linked to, pending review</h3>
+            <ul>
+              {feed.myLinkedPendingPlacements.map((p) => (
+                <li key={p.id}>
+                  <Link href="/spatial-planning" style={{ color: "inherit" }}>
+                    {p.label}
+                  </Link>{" "}
+                  <span style={{ color: "#a15c00" }}>— pending the holder&rsquo;s review</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {feed.placementRevertNotices.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Placement edits reverted</h3>
+            <ul>
+              {feed.placementRevertNotices.map((n) => (
+                <li key={n.notice.id}>
+                  <Link href="/spatial-planning" style={{ color: "inherit" }}>
+                    {n.placementLabel}
+                  </Link>{" "}
+                  <span style={{ color: "#666" }}>
+                    — reverted by {n.revertedByName}
+                    {n.notice.note ? `: “${n.notice.note}”` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {feed.placementPendingReviews.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Placement changes awaiting your review</h3>
+            <ul>
+              {feed.placementPendingReviews.map((r) => (
+                <li key={r.placement.id}>
+                  <Link href="/spatial-planning" style={{ color: "inherit" }}>
+                    {r.placement.label}
+                  </Link>{" "}
+                  <span style={{ color: "#666" }}>— moved by {r.movedByName}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {feed.calendarEventInvites.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Event invites waiting on you</h3>
+            <ul>
+              {feed.calendarEventInvites.map((i) => (
+                <li key={i.eventId}>
+                  <Link href="/calendar-events" style={{ color: "inherit" }}>
+                    {i.eventTitle}
+                  </Link>{" "}
+                  <span style={{ color: "#666" }}>
+                    — invited by {i.invitedByName}, {new Date(i.invitedAt).toLocaleDateString()}
                   </span>
                 </li>
               ))}

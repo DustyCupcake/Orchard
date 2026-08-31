@@ -5,6 +5,7 @@ import type { member as memberTable } from "@/db/schema";
 import { getCurrentCycle } from "./profile-questions";
 import { isCoordinationHolder } from "./coordination";
 import { getCompositionBreakdown } from "./composition";
+import { listMyCalendarEventInvites } from "./calendar-events";
 import { isModuleEnabled } from "./modules";
 import { getCommunityRow, isRecruitmentTaskHolder, listRecruitmentActionItems } from "./recruitment";
 import {
@@ -114,6 +115,9 @@ export async function getPersonalFeed(actor: Member) {
         ])
       : [[], [], [], []];
 
+  // Core, not module-gated — see docs/development-plan.md's Phase 42.
+  const calendarEventInvites = await listMyCalendarEventInvites(actor);
+
   return {
     pendingJoinRequests,
     upcomingCheckins,
@@ -123,6 +127,7 @@ export async function getPersonalFeed(actor: Member) {
     myLinkedPendingPlacements,
     placementRevertNotices,
     placementPendingReviews,
+    calendarEventInvites,
   };
 }
 

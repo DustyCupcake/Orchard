@@ -1,0 +1,195 @@
+"use server";
+
+import { ZodError } from "zod";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { requireMember } from "@/lib/api";
+import {
+  acceptCalendarEventInvite,
+  createCalendarEvent,
+  createCalendarEventInput,
+  declineCalendarEventInvite,
+  deleteCalendarEvent,
+  inviteBranchRosterToCalendarEvent,
+  inviteCommunityToCalendarEvent,
+  inviteMemberToCalendarEvent,
+  updateCalendarEvent,
+  updateCalendarEventInput,
+} from "@/lib/calendar-events";
+import type { DateBoundaryInput } from "@/lib/dates";
+import { AppError } from "@/lib/errors";
+
+function redirectWithError(err: unknown): never {
+  if (err instanceof ZodError) {
+    redirect(`/calendar-events?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
+  }
+  if (err instanceof AppError) {
+    redirect(`/calendar-events?error=${encodeURIComponent(err.message)}`);
+  }
+  throw err;
+}
+
+// Mirrors src/app/participation/actions.ts's own boundaryFromForm,
+// simplified to one field (an event has a single date, not a start/end
+// pair) — see src/app/calendar-events/page.tsx's EventDateFields.
+function dateFromForm(formData: FormData): DateBoundaryInput {
+  const mode = String(formData.get("dateMode") ?? "absolute");
+  const targetDate = String(formData.get("targetDate") ?? "").trim();
+
+  if (mode === "relative_offset") {
+    const anchor = String(formData.get("anchor") ?? "cycle_start") as "cycle_start" | "cycle_end";
+    if (targetDate) return { type: "relative_offset", anchor, targetDate };
+    const offsetDaysRaw = String(formData.get("offsetDays") ?? "").trim();
+    return { type: "relative_offset", anchor, offsetDays: offsetDaysRaw ? Number(offsetDaysRaw) : 0 };
+  }
+  if (mode === "relative_percent") {
+    if (targetDate) return { type: "relative_percent", targetDate };
+    const percentRaw = String(formData.get("percent") ?? "").trim();
+    return { type: "relative_percent", percent: percentRaw ? Number(percentRaw) : 0 };
+  }
+  const absoluteDate = String(formData.get("absoluteDate") ?? "").trim();
+  return { type: "absolute", date: absoluteDate || null };
+}
+
+function shareTargetFromForm(formData: FormData) {
+  const shareTarget = String(formData.get("shareTarget") ?? "personal") as "personal" | "branch" | "community";
+  const sharedBranchId = String(formData.get("sharedBranchId") ?? "").trim() || null;
+  return { shareTarget, sharedBranchId };
+}
+
+export async function createCalendarEventAction(formData: FormData) {
+  const actor = await requireMember();
+  const { shareTarget, sharedBranchId } = shareTargetFromForm(formData);
+  const cycleId = String(formData.get("cycleId") ?? "").trim() || null;
+
+  try {
+    const input = createCalendarEventInput.parse({
+      title: String(formData.get("title") ?? ""),
+      description: String(formData.get("description") ?? "").trim() || null,
+      cycleId,
+      date: dateFromForm(formData),
+      shareTarget,
+      sharedBranchId,
+    });
+    await createCalendarEvent(actor, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/calendar-events");
+  revalidatePath("/dashboard");
+  redirect("/calendar-events?created=1");
+}
+
+export async function updateCalendarEventAction(formData: FormData) {
+  const actor = await requireMember();
+  const eventId = String(formData.get("eventId"));
+  const { shareTarget, sharedBranchId } = shareTargetFromForm(formData);
+  const cycleId = String(formData.get("cycleId") ?? "").trim() || null;
+
+  try {
+    const input = updateCalendarEventInput.parse({
+      title: String(formData.get("title") ?? ""),
+      description: String(formData.get("description") ?? "").trim() || null,
+      cycleId,
+      date: dateFromForm(formData),
+      shareTarget,
+      sharedBranchId,
+    });
+    await updateCalendarEvent(actor, eventId, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/calendar-events");
+  redirect("/calendar-events?updated=1");
+}
+
+export async function deleteCalendarEventAction(formData: FormData) {
+  const actor = await requireMember();
+  const eventId = String(formData.get("eventId"));
+
+  try {
+    await deleteCalendarEvent(actor, eventId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/calendar-events");
+  revalidatePath("/dashboard");
+  redirect("/calendar-events?deleted=1");
+}
+
+export async function inviteMemberAction(formData: FormData) {
+  const actor = await requireMember();
+  const eventId = String(formData.get("eventId"));
+  const memberId = String(formData.get("memberId"));
+
+  try {
+    await inviteMemberToCalendarEvent(actor, eventId, memberId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/calendar-events");
+  redirect("/calendar-events?invited=1");
+}
+
+export async function inviteBranchAction(formData: FormData) {
+  const actor = await requireMember();
+  const eventId = String(formData.get("eventId"));
+  const branchId = String(formData.get("branchId"));
+
+  try {
+    await inviteBranchRosterToCalendarEvent(actor, eventId, branchId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/calendar-events");
+  redirect("/calendar-events?invited=1");
+}
+
+export async function inviteCommunityAction(formData: FormData) {
+  const actor = await requireMember();
+  const eventId = String(formData.get("eventId"));
+
+  try {
+    await inviteCommunityToCalendarEvent(actor, eventId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/calendar-events");
+  redirect("/calendar-events?invited=1");
+}
+
+export async function acceptInviteAction(formData: FormData) {
+  const actor = await requireMember();
+  const eventId = String(formData.get("eventId"));
+
+  try {
+    await acceptCalendarEventInvite(actor, eventId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/calendar-events");
+  revalidatePath("/dashboard");
+  redirect("/calendar-events?responded=1");
+}
+
+export async function declineInviteAction(formData: FormData) {
+  const actor = await requireMember();
+  const eventId = String(formData.get("eventId"));
+
+  try {
+    await declineCalendarEventInvite(actor, eventId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/calendar-events");
+  revalidatePath("/dashboard");
+  redirect("/calendar-events?responded=1");
+}

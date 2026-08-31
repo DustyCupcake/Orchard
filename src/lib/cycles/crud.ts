@@ -16,6 +16,7 @@ import type { member as memberTable, phase as phaseTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { memberHasTier } from "../eligibility";
 import { cloneSpatialPlanIntoNewCycle } from "../spatial-planning";
+import { recomputeCalendarEventDatesForCycle } from "../calendar-events";
 import {
   dateBoundaryInput,
   deriveClonedBoundaryRecipe,
@@ -610,6 +611,7 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
 
   if (input.startDate !== undefined || input.endDate !== undefined) {
     await recomputePhaseDatesForCycle(db, cycleId, nextStartDate, nextEndDate);
+    await recomputeCalendarEventDatesForCycle(cycleId, nextStartDate, nextEndDate);
   }
 
   return updated;

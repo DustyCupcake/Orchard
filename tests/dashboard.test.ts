@@ -51,6 +51,7 @@ describe("getPersonalFeed", () => {
       myLinkedPendingPlacements: [],
       placementRevertNotices: [],
       placementPendingReviews: [],
+      calendarEventInvites: [],
     });
   });
 

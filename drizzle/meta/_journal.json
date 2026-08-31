@@ -218,6 +218,13 @@
       "when": 1788188476684,
       "tag": "0030_illegal_adam_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1788193348822,
+      "tag": "0031_daily_warlock",
+      "breakpoints": true
     }
   ]
 }

@@ -29,6 +29,7 @@ export default function Nav({ memberName }: { memberName: string }) {
       <Link href="/shifts">Shifts</Link>
       <Link href="/spatial-planning">Spatial planning</Link>
       <Link href="/participation">Participation</Link>
+      <Link href="/calendar-events">Calendar events</Link>
       <Link href="/invites">Invites</Link>
       <Link href="/applications">Applications</Link>
       <Link href="/recruitment">Recruitment pipeline</Link>

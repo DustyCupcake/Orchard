@@ -11,6 +11,7 @@ export * from "./task";
 export * from "./task-proposal";
 export * from "./task-notes";
 export * from "./task-milestone";
+export * from "./calendar-event";
 export * from "./task-assignment";
 export * from "./task-dependency";
 export * from "./task-join-request";
