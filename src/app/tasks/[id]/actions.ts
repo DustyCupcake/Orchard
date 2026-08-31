@@ -14,9 +14,12 @@ import {
   addWikiRevisionInput,
   claimAsShadow,
   claimOrRequestToJoin,
+  confirmTaskMilestone,
   createSignal,
   createSignalInput,
+  createTaskMilestone,
   declineJoinRequest,
+  deleteTaskMilestone,
   endorseCandidacy,
   expressCandidacy,
   pingCoordinator,
@@ -27,10 +30,12 @@ import {
   splitSubtask,
   splitSubtaskInput,
   suggestMemberForTask,
+  updateTaskMilestone,
   waiveAndClaim,
   waiveAndClaimInput,
   withdrawCandidacy,
   withdrawJoinRequest,
+  type MilestoneDateInput,
 } from "@/lib/tasks";
 import { createQuestion, createQuestionInput } from "@/lib/input-rounds";
 import { rotateTaskIntoShift } from "@/lib/shifts";
@@ -87,6 +92,98 @@ export async function addResourceAction(formData: FormData) {
       tag: String(formData.get("tag") ?? "") || undefined,
     });
     await addResource(actor, taskId, input);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+// Reads one milestone's date fields off the submitted form — see
+// src/app/tasks/[id]/page.tsx's MilestoneDateFields, which renders
+// exactly this shape. Mirrors src/app/participation/actions.ts's own
+// boundaryFromForm, generalized to the 4-way phase-or-cycle anchor and
+// an optional phaseId override.
+function milestoneDateFromForm(formData: FormData): MilestoneDateInput {
+  const mode = String(formData.get("dateMode") ?? "absolute");
+  if (mode === "absolute") {
+    return { type: "absolute", date: String(formData.get("absoluteDate") ?? "").trim() };
+  }
+
+  const anchor = String(formData.get("anchor") ?? "cycle_start") as
+    | "phase_start"
+    | "phase_end"
+    | "cycle_start"
+    | "cycle_end";
+  const phaseId = String(formData.get("milestonePhaseId") ?? "").trim() || null;
+  const targetDate = String(formData.get("targetDate") ?? "").trim();
+
+  if (mode === "relative_offset") {
+    if (targetDate) return { type: "relative_offset", anchor, phaseId, targetDate };
+    const offsetDaysRaw = String(formData.get("offsetDays") ?? "").trim();
+    return { type: "relative_offset", anchor, phaseId, offsetDays: offsetDaysRaw ? Number(offsetDaysRaw) : 0 };
+  }
+  if (targetDate) return { type: "relative_percent", anchor, phaseId, targetDate };
+  const percentRaw = String(formData.get("percent") ?? "").trim();
+  return { type: "relative_percent", anchor, phaseId, percent: percentRaw ? Number(percentRaw) : 0 };
+}
+
+export async function addMilestoneAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await createTaskMilestone(actor, taskId, {
+      label: String(formData.get("label") ?? ""),
+      date: milestoneDateFromForm(formData),
+    });
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function updateMilestoneAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const milestoneId = String(formData.get("milestoneId"));
+
+  try {
+    await updateTaskMilestone(actor, milestoneId, {
+      label: String(formData.get("label") ?? ""),
+      date: milestoneDateFromForm(formData),
+    });
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+// Also how a holder rejects a still-pending proposal — see
+// deleteTaskMilestone's own comment.
+export async function deleteMilestoneAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const milestoneId = String(formData.get("milestoneId"));
+
+  try {
+    await deleteTaskMilestone(actor, milestoneId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function confirmMilestoneAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const milestoneId = String(formData.get("milestoneId"));
+
+  try {
+    await confirmTaskMilestone(actor, milestoneId);
   } catch (err) {
     redirectWithError(taskId, err);
   }

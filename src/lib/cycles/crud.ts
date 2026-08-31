@@ -1,7 +1,17 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db, type DbOrTx, type Tx } from "@/db";
-import { community, cycle, cycleType, phase, requirement, task, taskAssignment, taskDependency } from "@/db/schema";
+import {
+  community,
+  cycle,
+  cycleType,
+  phase,
+  requirement,
+  task,
+  taskAssignment,
+  taskDependency,
+  taskMilestone,
+} from "@/db/schema";
 import type { member as memberTable, phase as phaseTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { memberHasTier } from "../eligibility";
@@ -285,6 +295,7 @@ async function cloneMostRecentCycle(
     const taskIdMap = await cloneTasks(tx, actor, previous.id, newCycle.id, phaseIdMap);
     await cloneRequirements(tx, taskIdMap);
     await cloneDependencies(tx, taskIdMap);
+    await cloneTaskMilestones(tx, taskIdMap, phaseIdMap);
 
     // Phase 38's own integration — see docs/spec.md's "Cloning across
     // cycles." Tasks were just cloned above in this same transaction,
@@ -454,6 +465,56 @@ async function cloneDependencies(tx: Tx, taskIdMap: Map<string, string>) {
       dependsOnTaskId: taskIdMap.get(d.dependsOnTaskId)!,
     })),
   );
+}
+
+// "Cloning carries the recipe, not the date" — docs/spec.md's own
+// heading, applied to Task milestones (Phase 41) the same way Phase 39
+// applied it to Phase boundaries: only relative milestones travel
+// (an absolute one is pinned to the real world, per spec's own
+// "deliberate trade," and doesn't survive export); a cycle-anchored
+// one needs no remapping at all (the cloned task automatically has the
+// new Cycle); a phase-anchored one's phaseId is remapped through the
+// same phaseIdMap clonePhases already built, and dropped entirely if
+// it pointed outside the cloned set (the "task with no Cycle" cross-
+// cycle carve-out spec allows) — same "no exact match, don't guess"
+// posture cloneDependencies already takes. Also drops any still-
+// pending (unreviewed) milestone — carrying an unvetted proposal
+// forward into a brand-new task instance, under a likely-different
+// holder, isn't the same review context it was proposed against.
+async function cloneTaskMilestones(tx: Tx, taskIdMap: Map<string, string>, phaseIdMap: Map<string, string>) {
+  if (taskIdMap.size === 0) return;
+
+  const oldMilestones = await tx
+    .select()
+    .from(taskMilestone)
+    .where(inArray(taskMilestone.taskId, [...taskIdMap.keys()]));
+  const carried = oldMilestones.filter((m) => m.dateType === "relative" && m.status === "confirmed");
+  if (carried.length === 0) return;
+
+  const rowsToInsert = carried
+    .map((m) => {
+      const newPhaseId = m.phaseId ? phaseIdMap.get(m.phaseId) : undefined;
+      if (m.phaseId && !newPhaseId) return null; // unmappable — drop, same as cloneDependencies
+      return {
+        taskId: taskIdMap.get(m.taskId)!,
+        label: m.label,
+        dateType: "relative" as const,
+        absoluteDate: null,
+        relativeMode: m.relativeMode,
+        anchorType: m.anchorType,
+        offsetDays: m.offsetDays,
+        percent: m.percent,
+        phaseId: newPhaseId ?? null,
+        status: "confirmed" as const,
+        proposedBy: m.proposedBy,
+        createdBy: m.createdBy,
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+
+  if (rowsToInsert.length > 0) {
+    await tx.insert(taskMilestone).values(rowsToInsert);
+  }
 }
 
 export async function listCycles(actor: Member) {

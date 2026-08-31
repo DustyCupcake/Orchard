@@ -211,6 +211,13 @@
       "when": 1788127094945,
       "tag": "0029_unique_slapstick",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1788188476684,
+      "tag": "0030_illegal_adam_warlock",
+      "breakpoints": true
     }
   ]
 }

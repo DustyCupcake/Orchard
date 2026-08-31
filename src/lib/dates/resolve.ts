@@ -122,13 +122,17 @@ export function toStoredBoundary(
   };
 }
 
-function percentBetween(anchorStart: string, anchorEnd: string, target: string): number {
+// Exported — src/lib/tasks/milestones.ts reuses this exact pair of
+// primitives for its own percent-mode resolution (a 4-way phase-or-
+// cycle anchor, unlike this file's own 2-way cycle-only shape), rather
+// than re-deriving the same day math a second place.
+export function percentBetween(anchorStart: string, anchorEnd: string, target: string): number {
   const span = daysBetween(anchorStart, anchorEnd);
   if (span <= 0) return 0;
   return Math.min(100, Math.max(0, Math.round((daysBetween(anchorStart, target) / span) * 100)));
 }
 
-function resolvePercent(
+export function resolvePercent(
   anchorStart: string | null,
   anchorEnd: string | null,
   percent: number | null,
