@@ -22,7 +22,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 **Contribution tracking** — a member's own completed/active/future picture across tasks and shifts, categorized by Phase, with an opt-in community-visible share and cycle-wide averages.
 
-**Dashboard** — a personalized feed (pending join requests, upcoming check-ins, flagged tasks, pending invites) plus a community snapshot (tier composition, branch spread, per-branch health).
+**Dashboard** — a personalized feed (pending join requests, upcoming check-ins, flagged tasks, pending invites, and needs-action items for whoever owns Budget/Event scheduling/Shifts/Conflict management) plus a community snapshot (tier composition, branch spread, per-branch health).
 
 **Forms & feedback** — a shared form primitive (free text/single/multi-choice) reused across post-cycle feedback, recruitment applications, and more.
 
@@ -36,7 +36,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 **Spatial planning** — an SVG-based collaborative site editor (plots, zones, and to-scale placements — tents, vehicles, structures), vertex-level editing with live area/length labels, optional GPS geo-anchoring, GeoJSON/image export, and a propose→approve flow for shared or task-linked placements.
 
-**Calendar & scheduling** — click-and-drag blind-availability scheduling polls, task milestones, freestanding personal/shared calendar events with fan-out invites, and a unified Calendar view (a month grid plus an upcoming list) reading every dated thing in the app as its own layer — Phase/Cycle boundaries, milestones, events, Input round cutoffs, Assembly windows, resolved polls, the published programme, and an opt-in birthday — plus a real date preview (calendar or list) before cloning a Cycle commits to anything.
+**Calendar & scheduling** — click-and-drag blind-availability scheduling polls, task milestones, freestanding personal/shared calendar events with fan-out invites, and a unified Calendar view (a month grid plus an upcoming list) reading every dated thing in the app as its own layer — Phase/Cycle boundaries, milestones, events, Input round cutoffs, Assembly windows, resolved polls, the published programme, your own upcoming shifts, the current Budget cycle's deadline, and an opt-in birthday — plus a real date preview (calendar or list) before cloning a Cycle commits to anything.
 
 **Navigation & UI** — a collapsible icon-rail sidebar on desktop and a hamburger drawer on mobile, grouped by function, with modules automatically hidden when disabled and auto-pinned for whoever currently holds their gating task.
 

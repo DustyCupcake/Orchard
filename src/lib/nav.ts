@@ -196,7 +196,15 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     feed.calendarEventInvites.length +
     // Phase 46's own feed section — missed when it was first added
     // here, caught while touching this same return block for Phase 47.
-    feed.emergencyAccessActivity.length;
+    feed.emergencyAccessActivity.length +
+    // Phase 49's four new sections — added at the same time as the
+    // feed fields themselves this time, per Phase 47's own "caught
+    // while touching this same return block" lesson.
+    feed.budgetNeedsAction.length +
+    feed.eventSchedulingNeedsAction.length +
+    feed.shiftCoordinatorNeedsAction.length +
+    feed.myShiftsNeedingCompletion.length +
+    feed.conflictNeedsAction.length;
 
   return {
     memberName: actor.name,

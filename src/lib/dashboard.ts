@@ -17,6 +17,10 @@ import {
   listPendingPlacementReviews,
 } from "./spatial-planning";
 import { listEmergencyAccessActivity } from "./emergency-access";
+import { listBudgetNeedsAction } from "./budget";
+import { listEventSchedulingNeedsAction } from "./event-scheduling";
+import { listMySignupsWithOccurrence, listShiftCoordinatorNeedsAction } from "./shifts";
+import { listConflictNeedsAction } from "./conflict";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -129,6 +133,29 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
   // either side, most recent first.
   const emergencyAccessActivity = await listEmergencyAccessActivity(actor, 5);
 
+  // Budget/Event scheduling/Shifts/Conflict management never got the
+  // same treatment Recruitment/Spatial planning/Calendar events/
+  // Emergency access already got above as each landed — see
+  // docs/development-plan.md's Phase 49. Each of the four functions
+  // below already degrades gracefully to [] for a member with nothing
+  // relevant to see, the same "check the gate here, not inside a
+  // try/catch" posture recruitmentNeedsAction/placementPendingReviews
+  // already use above — Conflict management needs no module-enabled
+  // check at all, since it's gated purely by conflictTeamTaskId being
+  // set (see src/lib/conflict.ts), not a modulesEnabled entry.
+  const budgetNeedsAction = isModuleEnabled(communityRow, "budget") ? await listBudgetNeedsAction(actor) : [];
+  const eventSchedulingNeedsAction = isModuleEnabled(communityRow, "event_scheduling")
+    ? await listEventSchedulingNeedsAction(actor)
+    : [];
+  const shiftsOn = isModuleEnabled(communityRow, "shifts");
+  const [shiftCoordinatorNeedsAction, myPastShiftsWithOccurrence] = shiftsOn
+    ? await Promise.all([listShiftCoordinatorNeedsAction(actor), listMySignupsWithOccurrence(actor)])
+    : [[], []];
+  const myShiftsNeedingCompletion = myPastShiftsWithOccurrence
+    .filter((s) => s.signup.status === "signed_up" && new Date(s.occurrence.endsAt) < new Date())
+    .map((s) => ({ signupId: s.signup.id, seriesTitle: s.series.title, endsAt: s.occurrence.endsAt }));
+  const conflictNeedsAction = await listConflictNeedsAction(actor);
+
   return {
     pendingJoinRequests,
     upcomingCheckins,
@@ -140,6 +167,11 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
     placementPendingReviews,
     calendarEventInvites,
     emergencyAccessActivity,
+    budgetNeedsAction,
+    eventSchedulingNeedsAction,
+    shiftCoordinatorNeedsAction,
+    myShiftsNeedingCompletion,
+    conflictNeedsAction,
   };
 });
 

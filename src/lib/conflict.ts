@@ -157,6 +157,31 @@ export async function listConflictReports(actor: Member, opts: { reportId?: stri
   return rows.map((r) => r.report);
 }
 
+export interface ConflictNeedsAction {
+  reportId: string;
+  createdAt: Date;
+}
+
+// Dashboard's own needs-action surface — see docs/development-plan.md's
+// Phase 49. Reuses listConflictReports exactly as it already exists —
+// never a second, unfiltered path — so an excluded team member simply
+// never sees an item here for a report they can't see at all, the same
+// invisibility guarantee everything else in this module already holds.
+// "Past the acknowledgment window" per Community.conflictAckWindowHours
+// (already read elsewhere for the same purpose, just never surfaced as
+// a Dashboard nudge until now).
+export async function listConflictNeedsAction(actor: Member): Promise<ConflictNeedsAction[]> {
+  if (!(await isConflictTeamMember(actor))) return [];
+
+  const [communityRow] = await db.select().from(community).where(eq(community.id, actor.communityId));
+  const cutoff = new Date(Date.now() - (communityRow?.conflictAckWindowHours ?? 24) * 3600_000);
+
+  const reports = await listConflictReports(actor);
+  return reports
+    .filter((r) => !r.acknowledgedAt && r.createdAt < cutoff)
+    .map((r) => ({ reportId: r.id, createdAt: r.createdAt }));
+}
+
 export async function getConflictReport(actor: Member, reportId: string) {
   const [report] = await listConflictReports(actor, { reportId });
   if (!report) {

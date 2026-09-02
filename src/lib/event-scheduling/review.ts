@@ -1,11 +1,11 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { eventProposal, eventProposalConflictPing } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError } from "../errors";
 import { cycleScopeCondition, getEventProposal } from "./crud";
-import { recomputeEventConflicts, requireEventSchedulingOwner } from "./conflicts";
+import { isEventSchedulingOwner, recomputeEventConflicts, requireEventSchedulingOwner } from "./conflicts";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -93,6 +93,33 @@ export async function pingConflictHost(actor: Member, proposalId: string) {
     .values({ proposalId, createdBy: actor.id })
     .returning();
   return created;
+}
+
+export interface EventSchedulingNeedsAction {
+  proposalId: string;
+  title: string;
+  status: "conflict" | "proposed";
+}
+
+// Dashboard's own needs-action surface — see docs/development-plan.md's
+// Phase 49. Gracefully returns [] for a non-owner rather than throwing
+// (unlike listEventProposalsForReview's own requireEventSchedulingOwner
+// gate), since this is read as part of every member's Dashboard, not
+// just the owner's. Still recomputes conflicts fresh first — "flags
+// proposals ... on owner review" (spec), and a Dashboard load is
+// exactly that kind of look, same posture as the real review list.
+export async function listEventSchedulingNeedsAction(actor: Member): Promise<EventSchedulingNeedsAction[]> {
+  if (!(await isEventSchedulingOwner(actor))) return [];
+  await recomputeEventConflicts(actor);
+
+  const proposals = await db
+    .select()
+    .from(eventProposal)
+    .where(and(eq(eventProposal.communityId, actor.communityId), isNull(eventProposal.publishedAt)));
+
+  return proposals
+    .filter((p) => p.status === "conflict" || (p.status === "proposed" && !p.confirmedSlot))
+    .map((p) => ({ proposalId: p.id, title: p.title, status: p.status as "conflict" | "proposed" }));
 }
 
 // The submitter's own view — "you've been pinged about this" on their

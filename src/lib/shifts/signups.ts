@@ -1,9 +1,9 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { shiftOccurrence, shiftSeries, shiftSignup } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import { requireShiftCoordinator } from "./series";
+import { isShiftCoordinator, listShiftSeries, requireShiftCoordinator } from "./series";
 import { effectiveCapacity, getShiftOccurrence } from "./occurrences";
 
 type Member = typeof memberTable.$inferSelect;
@@ -152,4 +152,57 @@ export async function markShiftSignupNoShow(actor: Member, signupId: string) {
     .where(eq(shiftSignup.id, signupId))
     .returning();
   return updated;
+}
+
+export interface ShiftCoordinatorNeedsAction {
+  occurrenceId: string;
+  seriesTitle: string;
+  startsAt: Date;
+  unresolvedCount: number;
+}
+
+// Dashboard's own needs-action surface for a shift coordinator — see
+// docs/development-plan.md's Phase 49. "Coordinates" means either of
+// isShiftCoordinator's two routes (series creator, or the current
+// holder of its sourceTaskId) — checked per series, since no existing
+// query already knows "every series I coordinate" the way
+// isRecruitmentTaskHolder knows a single task pointer. Gracefully
+// returns [] for a member who coordinates nothing, same posture as
+// this phase's other three needs-action functions.
+export async function listShiftCoordinatorNeedsAction(actor: Member): Promise<ShiftCoordinatorNeedsAction[]> {
+  const allSeries = await listShiftSeries(actor);
+  const coordinated: string[] = [];
+  for (const s of allSeries) {
+    if (await isShiftCoordinator(actor, s)) coordinated.push(s.id);
+  }
+  if (coordinated.length === 0) return [];
+
+  const rows = await db
+    .select({ occurrence: shiftOccurrence, seriesTitle: shiftSeries.title })
+    .from(shiftOccurrence)
+    .innerJoin(shiftSeries, eq(shiftOccurrence.seriesId, shiftSeries.id))
+    .innerJoin(shiftSignup, eq(shiftSignup.occurrenceId, shiftOccurrence.id))
+    .where(
+      and(
+        inArray(shiftOccurrence.seriesId, coordinated),
+        lt(shiftOccurrence.endsAt, new Date()),
+        eq(shiftSignup.status, "signed_up"),
+      ),
+    );
+
+  const byOccurrence = new Map<string, ShiftCoordinatorNeedsAction>();
+  for (const r of rows) {
+    const existing = byOccurrence.get(r.occurrence.id);
+    if (existing) {
+      existing.unresolvedCount++;
+    } else {
+      byOccurrence.set(r.occurrence.id, {
+        occurrenceId: r.occurrence.id,
+        seriesTitle: r.seriesTitle,
+        startsAt: r.occurrence.startsAt,
+        unresolvedCount: 1,
+      });
+    }
+  }
+  return [...byOccurrence.values()].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
 }

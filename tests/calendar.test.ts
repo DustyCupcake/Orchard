@@ -9,6 +9,8 @@ import { createProfileQuestion, answerProfileQuestion } from "@/lib/profile-ques
 import { createAssembly } from "@/lib/assemblies";
 import { createPoll, submitAvailability, confirmSlot } from "@/lib/scheduling-polls";
 import { createEventProposal, confirmEventProposalSlot, declineEventProposal, publishEventSchedule } from "@/lib/event-scheduling";
+import { createBudgetCycle } from "@/lib/budget";
+import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
 import { updateCommunity } from "@/lib/settings";
 import { getCalendarView } from "@/lib/calendar";
 import { createFixtures, resetDatabase } from "./helpers";
@@ -232,6 +234,57 @@ describe("getCalendarView", () => {
     expect(birthday).toBeDefined();
     expect(birthday!.date.slice(5, 10)).toBe(pastMonthDay);
     expect(birthday!.date >= new Date().toISOString().slice(0, 10)).toBe(true);
+  });
+
+  it("includes the actor's own upcoming signed-up shift occurrence, not a past one or someone else's", async () => {
+    const { alice, bob } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["shifts"] });
+    const series = await createShiftSeries(alice, { title: "Dish duty", defaultCapacity: 2 });
+    const [occurrence] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: slot(24), endsAt: slot(25) }],
+    });
+    await signUpForShift(alice, occurrence.id);
+
+    const view = await getCalendarView(alice);
+    expect(view.entries).toContainEqual(
+      expect.objectContaining({ date: slot(24).slice(0, 10), kind: "shift_occurrence", label: "Dish duty shift" }),
+    );
+
+    // Bob never signed up — nothing shows for him.
+    const bobView = await getCalendarView(bob);
+    expect(bobView.entries.filter((e) => e.kind === "shift_occurrence")).toEqual([]);
+  });
+
+  it("includes the current Budget cycle's proposal deadline while proposals are open, not once voting starts", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const [ownerTask] = await db
+      .insert(task)
+      .values({
+        communityId: alice.communityId,
+        branchId: testBranch.id,
+        title: "Budget owner",
+        effort: "owns_a_thing",
+        effortMagnitude: { hours_per_week: 2 },
+        createdBy: alice.id,
+      })
+      .returning();
+    await claimTask(alice, ownerTask.id);
+    await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: slot(48),
+      ownerTaskId: ownerTask.id,
+    });
+
+    const view = await getCalendarView(alice);
+    expect(view.entries).toContainEqual(
+      expect.objectContaining({
+        date: slot(48).slice(0, 10),
+        kind: "budget_deadline",
+        label: "Season budget — proposal deadline",
+      }),
+    );
   });
 
   it("sorts every entry by date ascending regardless of source order", async () => {

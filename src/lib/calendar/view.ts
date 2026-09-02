@@ -7,6 +7,10 @@ import { getNextCutoffAt } from "../input-rounds";
 import { listAssemblies } from "../assemblies";
 import { listPolls } from "../scheduling-polls";
 import { listPublishedSchedule } from "../event-scheduling";
+import { isModuleEnabled } from "../modules";
+import { getCommunity } from "../settings";
+import { getCurrentBudgetCycle } from "../budget";
+import { listMySignupsWithOccurrence } from "../shifts";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -21,7 +25,9 @@ export type CalendarEntryKind =
   | "assembly_voting_ends"
   | "poll_confirmed"
   | "event_confirmed"
-  | "birthday";
+  | "birthday"
+  | "shift_occurrence"
+  | "budget_deadline";
 
 export interface CalendarEntry {
   date: string; // YYYY-MM-DD
@@ -120,6 +126,42 @@ export async function getCalendarView(actor: Member) {
     const slot = p.confirmedSlot as { startsAt: string; endsAt: string } | null;
     if (p.status === "confirmed" && slot?.startsAt) {
       entries.push({ date: toDay(slot.startsAt), kind: "event_confirmed", label: p.title, href: "/schedule" });
+    }
+  }
+
+  // Shifts and Budget both predate this view (Phases 29-30, 26-27) but
+  // never got picked up as a layer here — see docs/development-plan.md's
+  // Phase 49. A member's own upcoming signed-up occurrences (not every
+  // occurrence community-wide, matching every other layer here staying
+  // "the actor's own" wherever that reading applies).
+  const communityRow = await getCommunity(actor);
+  if (isModuleEnabled(communityRow, "shifts")) {
+    const mySignups = await listMySignupsWithOccurrence(actor);
+    const now = new Date();
+    for (const s of mySignups) {
+      if (s.signup.status === "signed_up" && new Date(s.occurrence.startsAt) >= now) {
+        entries.push({
+          date: toDay(s.occurrence.startsAt),
+          kind: "shift_occurrence",
+          label: `${s.series.title} shift`,
+          href: "/shifts",
+        });
+      }
+    }
+  }
+
+  // The current BudgetCycle's own proposal deadline, while it's still
+  // meaningful (proposals_open) — visible to every member the same way
+  // /budget itself already is, not a new restriction.
+  if (isModuleEnabled(communityRow, "budget")) {
+    const budgetCycle = await getCurrentBudgetCycle(actor);
+    if (budgetCycle && budgetCycle.status === "proposals_open") {
+      entries.push({
+        date: toDay(budgetCycle.proposalDeadline),
+        kind: "budget_deadline",
+        label: `${budgetCycle.title} — proposal deadline`,
+        href: "/budget",
+      });
     }
   }
 

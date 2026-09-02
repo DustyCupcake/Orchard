@@ -33,12 +33,28 @@ export default async function DashboardPage() {
     feed.myLinkedPendingPlacements.length > 0 ||
     feed.placementRevertNotices.length > 0 ||
     feed.placementPendingReviews.length > 0 ||
-    feed.calendarEventInvites.length > 0;
+    feed.calendarEventInvites.length > 0 ||
+    feed.budgetNeedsAction.length > 0 ||
+    feed.eventSchedulingNeedsAction.length > 0 ||
+    feed.shiftCoordinatorNeedsAction.length > 0 ||
+    feed.myShiftsNeedingCompletion.length > 0 ||
+    feed.conflictNeedsAction.length > 0;
   const now = Date.now();
 
   const NEEDS_ACTION_LABEL: Record<string, string> = {
     call_pending: "evaluated, call not scheduled yet",
     decision_pending: "call happened, decision still pending",
+  };
+
+  const BUDGET_LABEL: Record<string, string> = {
+    close_to_voting: "proposal deadline passed — close to voting",
+    confirm_funded_set: "voting is in, confirm the funded set",
+    cast_vote: "voting is open — cast your vote",
+  };
+
+  const EVENT_STATUS_LABEL: Record<string, string> = {
+    conflict: "flagged conflicting",
+    proposed: "awaiting your review",
   };
 
   return (
@@ -216,6 +232,95 @@ export default async function DashboardPage() {
                     {r.placement.label}
                   </Link>{" "}
                   <span style={{ color: "#666" }}>— moved by {r.movedByName}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {feed.budgetNeedsAction.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Budget needs your attention</h3>
+            <ul>
+              {feed.budgetNeedsAction.map((b, i) => (
+                <li key={`${b.cycleId}-${b.kind}-${i}`}>
+                  <Link href="/budget" style={{ color: "inherit" }}>
+                    {b.cycleTitle}
+                  </Link>{" "}
+                  <span style={{ color: "#a15c00", fontWeight: 600 }}>
+                    — {BUDGET_LABEL[b.kind] ?? b.kind}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {feed.eventSchedulingNeedsAction.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Event proposals awaiting review</h3>
+            <ul>
+              {feed.eventSchedulingNeedsAction.map((p) => (
+                <li key={p.proposalId}>
+                  <Link href="/schedule" style={{ color: "inherit" }}>
+                    {p.title}
+                  </Link>{" "}
+                  <span style={{ color: p.status === "conflict" ? "#b3001b" : "#a15c00", fontWeight: 600 }}>
+                    — {EVENT_STATUS_LABEL[p.status] ?? p.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {feed.shiftCoordinatorNeedsAction.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Shift occurrences needing completion marks</h3>
+            <ul>
+              {feed.shiftCoordinatorNeedsAction.map((o) => (
+                <li key={o.occurrenceId}>
+                  <Link href="/shifts" style={{ color: "inherit" }}>
+                    {o.seriesTitle}
+                  </Link>{" "}
+                  <span style={{ color: "#666" }}>
+                    — {new Date(o.startsAt).toLocaleDateString()},{" "}
+                    {o.unresolvedCount} signup{o.unresolvedCount === 1 ? "" : "s"} still unresolved
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {feed.myShiftsNeedingCompletion.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Your own past shifts</h3>
+            <ul>
+              {feed.myShiftsNeedingCompletion.map((s) => (
+                <li key={s.signupId}>
+                  <Link href="/shifts" style={{ color: "inherit" }}>
+                    {s.seriesTitle}
+                  </Link>{" "}
+                  <span style={{ color: "#666" }}>
+                    — ended {new Date(s.endsAt).toLocaleDateString()}, mark it complete
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {feed.conflictNeedsAction.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Conflict reports needing acknowledgment</h3>
+            <ul>
+              {feed.conflictNeedsAction.map((r) => (
+                <li key={r.reportId}>
+                  <Link href="/conflict-reports" style={{ color: "inherit" }}>
+                    Report from {new Date(r.createdAt).toLocaleDateString()}
+                  </Link>{" "}
+                  <span style={{ color: "#b3001b", fontWeight: 600 }}>— past the acknowledgment window</span>
                 </li>
               ))}
             </ul>

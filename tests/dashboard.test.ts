@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { branch as branchTable, community, member, task, taskAssignment } from "@/db/schema";
+import { branch as branchTable, community, conflictReport, member, shiftOccurrence, task, taskAssignment } from "@/db/schema";
 import { claimTask, claimOrRequestToJoin, parkTask } from "@/lib/tasks";
-import { createTier } from "@/lib/settings";
+import { createTier, updateCommunity } from "@/lib/settings";
 import { createCycle } from "@/lib/cycles";
 import { declareParticipation } from "@/lib/participation";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
+import { createBudgetCycle, submitBudgetVote } from "@/lib/budget";
+import { closeProposalsToVoting } from "@/lib/budget";
+import { confirmEventProposalSlot, createEventProposal } from "@/lib/event-scheduling";
+import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
+import { fileConflictReport } from "@/lib/conflict";
 import { createFixtures, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string) {
@@ -53,6 +58,11 @@ describe("getPersonalFeed", () => {
       placementPendingReviews: [],
       calendarEventInvites: [],
       emergencyAccessActivity: [],
+      budgetNeedsAction: [],
+      eventSchedulingNeedsAction: [],
+      shiftCoordinatorNeedsAction: [],
+      myShiftsNeedingCompletion: [],
+      conflictNeedsAction: [],
     });
   });
 
@@ -232,5 +242,221 @@ describe("getCommunitySnapshot", () => {
 
     const snapshot = await getCommunitySnapshot(alice);
     expect(snapshot.activeMemberCount).toBe(1);
+  });
+});
+
+// docs/development-plan.md's Phase 49: Budget/Event scheduling/Shifts/
+// Conflict management never got wired into getPersonalFeed the way
+// Recruitment/Spatial planning/Calendar events/Emergency access did as
+// each landed. Each test below calls getPersonalFeed exactly once —
+// getPersonalFeed is wrapped in React's cache(), so calling it twice
+// with the *same* actor object reference within one test (state
+// mutated in between) risks reading back a stale memoized result
+// rather than the fresh DB state; every existing test above already
+// avoids this by construction, followed here too.
+describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management needs-action (Phase 49)", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  async function insertOwnerTask(communityId: string, branchId: string, createdBy: string, title: string) {
+    const [row] = await db
+      .insert(task)
+      .values({
+        communityId,
+        branchId,
+        title,
+        effort: "owns_a_thing",
+        effortMagnitude: { hours_per_week: 2 },
+        createdBy,
+      })
+      .returning();
+    return row;
+  }
+
+  it("Budget: owner sees close_to_voting once the deadline has passed", async () => {
+    const { alice, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner");
+    await claimTask(alice, ownerTask.id);
+    const cycleRow = await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: new Date(Date.now() - 1000).toISOString(),
+      ownerTaskId: ownerTask.id,
+    });
+
+    const feed = await getPersonalFeed(alice);
+    expect(feed.budgetNeedsAction).toEqual([
+      { cycleId: cycleRow.id, cycleTitle: "Season budget", kind: "close_to_voting" },
+    ]);
+  });
+
+  it("Budget: a non-owner member sees nothing while proposals are still open", async () => {
+    const { alice, bob, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner");
+    await claimTask(alice, ownerTask.id);
+    await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: new Date(Date.now() + 7 * 86400000).toISOString(),
+      ownerTaskId: ownerTask.id,
+    });
+
+    const feed = await getPersonalFeed(bob);
+    expect(feed.budgetNeedsAction).toEqual([]);
+  });
+
+  it("Budget: owner sees confirm_funded_set during voting", async () => {
+    const { alice, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner");
+    await claimTask(alice, ownerTask.id);
+    const cycleRow = await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: new Date(Date.now() + 86400000).toISOString(),
+      ownerTaskId: ownerTask.id,
+    });
+    await closeProposalsToVoting(alice, cycleRow.id);
+
+    const feed = await getPersonalFeed(alice);
+    expect(feed.budgetNeedsAction).toContainEqual({
+      cycleId: cycleRow.id,
+      cycleTitle: "Season budget",
+      kind: "confirm_funded_set",
+    });
+  });
+
+  it("Budget: any member sees cast_vote during voting before they vote", async () => {
+    const { alice, bob, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner");
+    await claimTask(alice, ownerTask.id);
+    const cycleRow = await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: new Date(Date.now() + 86400000).toISOString(),
+      ownerTaskId: ownerTask.id,
+    });
+    await closeProposalsToVoting(alice, cycleRow.id);
+
+    const feed = await getPersonalFeed(bob);
+    expect(feed.budgetNeedsAction).toContainEqual({
+      cycleId: cycleRow.id,
+      cycleTitle: "Season budget",
+      kind: "cast_vote",
+    });
+  });
+
+  it("Budget: cast_vote disappears once a member actually votes", async () => {
+    const { alice, bob, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner");
+    await claimTask(alice, ownerTask.id);
+    const cycleRow = await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: new Date(Date.now() + 86400000).toISOString(),
+      ownerTaskId: ownerTask.id,
+    });
+    await closeProposalsToVoting(alice, cycleRow.id);
+    await submitBudgetVote(bob, cycleRow.id, { rankedProposalIds: [] });
+
+    const feed = await getPersonalFeed(bob);
+    expect(feed.budgetNeedsAction).toEqual([]);
+  });
+
+  it("Event scheduling: owner sees an unresolved proposal, a non-owner sees nothing", async () => {
+    const { alice, bob, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["event_scheduling"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Scheduling owner");
+    await claimTask(alice, ownerTask.id);
+    await updateCommunity(alice, { eventSchedulingOwnerTaskId: ownerTask.id });
+
+    const iso = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
+    await createEventProposal(bob, {
+      host: "Bob",
+      title: "Fire circle",
+      durationMinutes: 60,
+      preferredSlots: [{ startsAt: iso(24), endsAt: iso(25) }],
+    });
+
+    const ownerFeed = await getPersonalFeed(alice);
+    expect(ownerFeed.eventSchedulingNeedsAction).toEqual([
+      { proposalId: expect.any(String), title: "Fire circle", status: "proposed" },
+    ]);
+
+    const nonOwnerFeed = await getPersonalFeed(bob);
+    expect(nonOwnerFeed.eventSchedulingNeedsAction).toEqual([]);
+  });
+
+  it("Shifts: a coordinator sees an ended occurrence with an unresolved signup", async () => {
+    const { alice, bob } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["shifts"] });
+    const series = await createShiftSeries(alice, { title: "Dish duty", defaultCapacity: 2 });
+    const [occurrence] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: new Date(Date.now() + 3600_000).toISOString(), endsAt: new Date(Date.now() + 7200_000).toISOString() }],
+    });
+    await signUpForShift(bob, occurrence.id);
+    await db
+      .update(shiftOccurrence)
+      .set({ startsAt: new Date(Date.now() - 7200_000), endsAt: new Date(Date.now() - 3600_000) })
+      .where(eq(shiftOccurrence.id, occurrence.id));
+
+    const coordinatorFeed = await getPersonalFeed(alice);
+    expect(coordinatorFeed.shiftCoordinatorNeedsAction).toEqual([
+      { occurrenceId: occurrence.id, seriesTitle: "Dish duty", startsAt: expect.any(Date), unresolvedCount: 1 },
+    ]);
+  });
+
+  it("Shifts: the signed-up member (not the coordinator) sees their own past shift needing completion", async () => {
+    const { alice, bob } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["shifts"] });
+    const series = await createShiftSeries(alice, { title: "Dish duty", defaultCapacity: 2 });
+    const [occurrence] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: new Date(Date.now() + 3600_000).toISOString(), endsAt: new Date(Date.now() + 7200_000).toISOString() }],
+    });
+    await signUpForShift(bob, occurrence.id);
+    await db
+      .update(shiftOccurrence)
+      .set({ startsAt: new Date(Date.now() - 7200_000), endsAt: new Date(Date.now() - 3600_000) })
+      .where(eq(shiftOccurrence.id, occurrence.id));
+
+    const bobFeed = await getPersonalFeed(bob);
+    expect(bobFeed.shiftCoordinatorNeedsAction).toEqual([]);
+    expect(bobFeed.myShiftsNeedingCompletion).toEqual([
+      { signupId: expect.any(String), seriesTitle: "Dish duty", endsAt: expect.any(Date) },
+    ]);
+  });
+
+  it("Conflict management: a team member sees nothing for a report still inside the acknowledgment window", async () => {
+    const { community: testCommunity, alice, bob, branch } = await createFixtures();
+    const teamTask = await insertOwnerTask(testCommunity.id, branch.id, alice.id, "Conflict team");
+    await claimTask(alice, teamTask.id);
+    await db
+      .update(community)
+      .set({ conflictTeamTaskId: teamTask.id, conflictAckWindowHours: 1 })
+      .where(eq(community.id, testCommunity.id));
+    await fileConflictReport(bob, {});
+
+    const feed = await getPersonalFeed(alice);
+    expect(feed.conflictNeedsAction).toEqual([]);
+  });
+
+  it("Conflict management: a team member sees a report once it's past the acknowledgment window", async () => {
+    const { community: testCommunity, alice, bob, branch } = await createFixtures();
+    const teamTask = await insertOwnerTask(testCommunity.id, branch.id, alice.id, "Conflict team");
+    await claimTask(alice, teamTask.id);
+    await db
+      .update(community)
+      .set({ conflictTeamTaskId: teamTask.id, conflictAckWindowHours: 1 })
+      .where(eq(community.id, testCommunity.id));
+    const stale = await fileConflictReport(bob, {});
+    await db
+      .update(conflictReport)
+      .set({ createdAt: new Date(Date.now() - 2 * 3600_000) })
+      .where(eq(conflictReport.id, stale.id));
+
+    const feed = await getPersonalFeed(alice);
+    expect(feed.conflictNeedsAction).toEqual([{ reportId: stale.id, createdAt: expect.any(Date) }]);
   });
 });

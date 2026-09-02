@@ -43,6 +43,8 @@ const KIND_LABEL: Record<CalendarEntry["kind"], string> = {
   poll_confirmed: "Scheduling poll",
   event_confirmed: "Programme",
   birthday: "Birthday",
+  shift_occurrence: "Shift",
+  budget_deadline: "Budget",
 };
 
 const KIND_CLASS: Record<CalendarEntry["kind"], string> = {
@@ -57,6 +59,8 @@ const KIND_CLASS: Record<CalendarEntry["kind"], string> = {
   poll_confirmed: "bg-teal-100 text-teal-800",
   event_confirmed: "bg-indigo-100 text-indigo-800",
   birthday: "bg-pink-100 text-pink-800",
+  shift_occurrence: "bg-orange-100 text-orange-800",
+  budget_deadline: "bg-rose-100 text-rose-800",
 };
 
 const WEEKDAY_LABEL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

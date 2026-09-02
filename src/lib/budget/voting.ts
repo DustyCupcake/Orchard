@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { budgetCycle, budgetVote, member, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import { getBudgetCycle } from "./cycles";
+import { getBudgetCycle, getCurrentBudgetCycle } from "./cycles";
 import type { BudgetLineItem } from "./cycles";
 import { listBudgetProposals } from "./proposals";
 
@@ -256,4 +256,46 @@ export async function confirmBudgetCycle(
     .where(eq(budgetCycle.id, budgetCycleId))
     .returning();
   return updated;
+}
+
+export interface BudgetNeedsAction {
+  cycleId: string;
+  cycleTitle: string;
+  kind: "close_to_voting" | "confirm_funded_set" | "cast_vote";
+}
+
+// Dashboard's own needs-action surface — see docs/development-plan.md's
+// Phase 49 ("Budget/Event-scheduling/Shifts/Conflict-management never
+// got wired into Dashboard the way Recruitment/Spatial-planning did").
+// Only the current cycle (v1's own "one active cycle at a time"
+// posture, same as getCurrentBudgetCycle everywhere else) — a past
+// confirmed cycle never needs action from anyone again. Gracefully
+// returns [] rather than throwing for a non-owner, unlike
+// requireBudgetOwner's own gate — this is read for every member's
+// Dashboard, not just the owner's, since cast_vote applies to anyone.
+export async function listBudgetNeedsAction(actor: Member): Promise<BudgetNeedsAction[]> {
+  const cycleRow = await getCurrentBudgetCycle(actor);
+  if (!cycleRow || cycleRow.status === "confirmed") return [];
+
+  const items: BudgetNeedsAction[] = [];
+  if (await isBudgetOwner(actor, cycleRow)) {
+    if (cycleRow.status === "proposals_open" && cycleRow.proposalDeadline < new Date()) {
+      items.push({ cycleId: cycleRow.id, cycleTitle: cycleRow.title, kind: "close_to_voting" });
+    }
+    if (cycleRow.status === "voting" && !cycleRow.confirmedProposalIds) {
+      items.push({ cycleId: cycleRow.id, cycleTitle: cycleRow.title, kind: "confirm_funded_set" });
+    }
+  }
+
+  if (cycleRow.status === "voting") {
+    const [myVote] = await db
+      .select({ id: budgetVote.id })
+      .from(budgetVote)
+      .where(and(eq(budgetVote.budgetCycleId, cycleRow.id), eq(budgetVote.memberId, actor.id)));
+    if (!myVote) {
+      items.push({ cycleId: cycleRow.id, cycleTitle: cycleRow.title, kind: "cast_vote" });
+    }
+  }
+
+  return items;
 }
