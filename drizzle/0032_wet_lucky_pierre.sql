@@ -1,0 +1,1 @@
+ALTER TYPE "public"."profile_question_response_type" ADD VALUE 'date';

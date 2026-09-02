@@ -20,7 +20,7 @@ function QuestionForm({
   defaultCapacityVisibility,
 }: {
   questionId: string;
-  responseType: "free_text" | "single_choice" | "multi_choice";
+  responseType: "free_text" | "single_choice" | "multi_choice" | "date";
   options: string[];
   feedsCapacitySignal: boolean;
   defaultValue?: unknown;
@@ -35,6 +35,14 @@ function QuestionForm({
       {responseType === "free_text" && (
         <input
           type="text"
+          name="value"
+          defaultValue={typeof defaultValue === "string" ? defaultValue : ""}
+          style={{ padding: "0.4rem" }}
+        />
+      )}
+      {responseType === "date" && (
+        <input
+          type="date"
           name="value"
           defaultValue={typeof defaultValue === "string" ? defaultValue : ""}
           style={{ padding: "0.4rem" }}

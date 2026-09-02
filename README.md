@@ -34,7 +34,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 **Spatial planning** — an SVG-based collaborative site editor (plots, zones, and to-scale placements — tents, vehicles, structures), vertex-level editing with live area/length labels, optional GPS geo-anchoring, GeoJSON/image export, and a propose→approve flow for shared or task-linked placements.
 
-**Calendar & scheduling** — click-and-drag blind-availability scheduling polls, task milestones, and freestanding personal/shared calendar events with fan-out invites.
+**Calendar & scheduling** — click-and-drag blind-availability scheduling polls, task milestones, freestanding personal/shared calendar events with fan-out invites, and a unified Calendar view (a month grid plus an upcoming list) reading every dated thing in the app as its own layer — Phase/Cycle boundaries, milestones, events, Input round cutoffs, Assembly windows, resolved polls, the published programme, and an opt-in birthday — plus a real date preview (calendar or list) before cloning a Cycle commits to anything.
 
 **Navigation & UI** — a collapsible icon-rail sidebar on desktop and a hamburger drawer on mobile, grouped by function, with modules automatically hidden when disabled and auto-pinned for whoever currently holds their gating task.
 

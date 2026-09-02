@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, cycle, member, requirement, task, taskDependency, tier } from "@/db/schema";
-import { createCycle, getCycle, listCycles } from "@/lib/cycles";
-import { claimAsShadow, claimTask, createRequirement } from "@/lib/tasks";
+import { community, cycle, member, requirement, task, taskDependency, taskMilestone, tier } from "@/db/schema";
+import { createCycle, getCycle, listCycles, previewClonePreviousCycle, updateCycleSettings } from "@/lib/cycles";
+import { claimAsShadow, claimTask, createRequirement, createTaskMilestone } from "@/lib/tasks";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
@@ -281,5 +281,93 @@ describe("cloning the previous cycle", () => {
     const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
     const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
     expect(clonedTask.suggestedMemberId).toBe(bob.id);
+  });
+});
+
+// docs/development-plan.md's Phase 44 — the Pack import date preview,
+// a pure non-mutating computation the Calendar view's "start a new
+// cycle" flow calls before anything actually clones.
+describe("previewClonePreviousCycle", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("returns null with no previous cycle to clone", async () => {
+    const { alice, community: testCommunity } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    expect(await previewClonePreviousCycle(alice, "2027-01-01", "2027-12-31")).toBeNull();
+  });
+
+  it("resolves phase and milestone dates against the hypothetical destination, matching what a real clone produces", async () => {
+    const { alice, branch, community: testCommunity } = await createFixtures();
+    await enableCycles(testCommunity.id);
+
+    const previous = await createCycle(alice, {
+      source: "blank",
+      name: "2026 Season",
+      startDate: "2026-01-01",
+      endDate: "2026-12-31",
+      phases: [{ name: "Build", order: 0, startDate: "2026-02-01", endDate: "2026-03-01" }],
+    });
+    const withPhases = await getCycle(alice, previous.id);
+    const build = withPhases.phases[0];
+
+    const gated = await insertTask(testCommunity.id, branch.id, alice.id, {
+      cycleId: previous.id,
+      phaseId: build.id,
+      title: "Build the arbor",
+    });
+    await db.insert(taskMilestone).values({
+      taskId: gated.id,
+      phaseId: build.id,
+      label: "Halfway check-in",
+      dateType: "relative",
+      relativeMode: "offset",
+      anchorType: "phase_start",
+      offsetDays: 5,
+      status: "confirmed",
+      proposedBy: alice.id,
+      createdBy: alice.id,
+    });
+
+    const preview = await previewClonePreviousCycle(alice, "2027-03-01", "2027-11-30");
+    expect(preview?.sourceCycleName).toBe("2026 Season");
+    expect(preview?.phases).toEqual([{ name: "Build", order: 0, start: "2027-04-01", end: "2027-04-29" }]);
+    expect(preview?.milestones).toEqual([
+      { taskTitle: "Build the arbor", label: "Halfway check-in", phaseName: "Build", date: "2027-04-06" },
+    ]);
+
+    // The preview promises to match what a real clone + a real
+    // updateCycleSettings call actually produces — prove it.
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    await updateCycleSettings(alice, cloned.id, { startDate: "2027-03-01", endDate: "2027-11-30" });
+    const clonedWithPhases = await getCycle(alice, cloned.id);
+    expect(clonedWithPhases.phases[0].startDate).toBe(preview?.phases[0].start);
+    expect(clonedWithPhases.phases[0].endDate).toBe(preview?.phases[0].end);
+  });
+
+  it("drops an absolute or still-pending milestone from the preview, same as a real clone", async () => {
+    const { alice, bob, branch, community: testCommunity } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const previous = await createCycle(alice, { source: "blank", name: "2026 Season" });
+    const t = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: previous.id });
+    await claimTask(alice, t.id);
+
+    await db.insert(taskMilestone).values({
+      taskId: t.id,
+      label: "Pinned",
+      dateType: "absolute",
+      absoluteDate: "2026-06-15",
+      status: "confirmed",
+      proposedBy: alice.id,
+      createdBy: alice.id,
+    });
+    await createTaskMilestone(bob, t.id, {
+      label: "Unreviewed",
+      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 1 },
+    });
+
+    const preview = await previewClonePreviousCycle(alice, "2027-01-01", "2027-12-31");
+    expect(preview?.milestones).toHaveLength(0);
   });
 });

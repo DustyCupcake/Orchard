@@ -207,7 +207,7 @@ export default async function DashboardPage() {
             <ul>
               {feed.calendarEventInvites.map((i) => (
                 <li key={i.eventId}>
-                  <Link href="/calendar-events" style={{ color: "inherit" }}>
+                  <Link href="/calendar" style={{ color: "inherit" }}>
                     {i.eventTitle}
                   </Link>{" "}
                   <span style={{ color: "#666" }}>

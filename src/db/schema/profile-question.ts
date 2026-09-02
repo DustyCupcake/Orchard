@@ -7,6 +7,12 @@ export const profileQuestionResponseTypeEnum = pgEnum("profile_question_response
   "free_text",
   "single_choice",
   "multi_choice",
+  // See docs/development-plan.md's Phase 44 — its only real consumer is
+  // an opt-in birthday surfaced as its own layer on /calendar, visible
+  // per whatever visibility the answering member already controls for
+  // any once-ever answer (i.e. only to themselves — no answer-sharing
+  // mechanism exists for any responseType today).
+  "date",
 ]);
 export const profileQuestionScopeEnum = pgEnum("profile_question_scope", [
   "once_ever",

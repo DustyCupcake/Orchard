@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/api";
 import { declareParticipation, declareParticipationInput } from "@/lib/participation";
-import { updateCycleSettings, updateCycleSettingsInput, updatePhaseBoundary } from "@/lib/cycles";
+import { createCycle, updateCycleSettings, updateCycleSettingsInput, updatePhaseBoundary } from "@/lib/cycles";
 import type { DateBoundaryInput } from "@/lib/dates";
 import { AppError } from "@/lib/errors";
 
@@ -37,6 +37,39 @@ export async function declareParticipationAction(formData: FormData) {
 
   revalidatePath("/participation");
   redirect("/participation?declared=1");
+}
+
+// No form anywhere in this app ever called createCycle before this —
+// see docs/development-plan.md's Phase 44, which found that gap while
+// checking code before trusting the dev-plan's own "extends the
+// existing clone/import flow" framing (there was no flow to extend).
+// Cycle-initiation-eligibility-gated, enforced inside createCycle
+// itself. Dates for a fresh clone aren't set here — see this page's own
+// "Preview a clone" section below for why: the Cycle-settings form
+// right above this one already sets them post-creation, and doing it
+// there (not here) means a clone's dates always go through the exact
+// same recompute path an existing cycle's date edit does, not a second
+// one.
+export async function createCycleAction(formData: FormData) {
+  const actor = await requireMember();
+  const source = String(formData.get("source") ?? "blank");
+  const name = String(formData.get("name") ?? "").trim();
+  const cycleTypeId = String(formData.get("cycleTypeId") ?? "").trim() || null;
+
+  try {
+    if (source === "clone_previous") {
+      await createCycle(actor, { source: "clone_previous", name, cycleTypeId });
+    } else {
+      const startDate = String(formData.get("startDate") ?? "").trim() || null;
+      const endDate = String(formData.get("endDate") ?? "").trim() || null;
+      await createCycle(actor, { source: "blank", name, cycleTypeId, startDate, endDate });
+    }
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/participation");
+  redirect("/participation?cycleCreated=1");
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside updateCycleSettings.

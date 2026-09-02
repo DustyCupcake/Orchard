@@ -225,6 +225,13 @@
       "when": 1788193348822,
       "tag": "0031_daily_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1788338131573,
+      "tag": "0032_wet_lucky_pierre",
+      "breakpoints": true
     }
   ]
 }

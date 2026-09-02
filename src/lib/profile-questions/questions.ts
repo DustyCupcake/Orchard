@@ -7,7 +7,7 @@ import { AppError, NotFoundError } from "../errors";
 
 type Member = typeof memberTable.$inferSelect;
 
-const responseTypes = ["free_text", "single_choice", "multi_choice"] as const;
+const responseTypes = ["free_text", "single_choice", "multi_choice", "date"] as const;
 const scopes = ["once_ever", "per_cycle", "phase"] as const;
 
 // Standing community structure — gated by requireAdmins at the settings

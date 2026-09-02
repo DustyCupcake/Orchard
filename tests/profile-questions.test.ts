@@ -220,6 +220,25 @@ describe("answering profile questions", () => {
     expect(answer.value).toEqual(["carpentry", "cooking"]);
   });
 
+  it("accepts a well-formed date answer and rejects a malformed one", async () => {
+    const { alice } = await createFixtures();
+    const q = await createProfileQuestion(alice, {
+      label: "Birthday",
+      responseType: "date",
+      scope: "once_ever",
+    });
+
+    const answer = await answerProfileQuestion(alice, q.id, { status: "answered", value: "1990-07-14" });
+    expect(answer.value).toBe("1990-07-14");
+
+    await expect(
+      answerProfileQuestion(alice, q.id, { status: "answered", value: "not a date" }),
+    ).rejects.toThrow(ConflictError);
+    await expect(
+      answerProfileQuestion(alice, q.id, { status: "answered", value: "07/14/1990" }),
+    ).rejects.toThrow(ConflictError);
+  });
+
   it("stamps the current cycle's id on a per_cycle answer, and rejects when there's no current cycle", async () => {
     const { alice, community: testCommunity } = await createFixtures();
     const q = await createProfileQuestion(alice, {

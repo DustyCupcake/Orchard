@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { cycle, phase, taskMilestone } from "@/db/schema";
+import { cycle, phase, task, taskAssignment, taskMilestone } from "@/db/schema";
 import type { member as memberTable, task as taskTable, taskAssignment as taskAssignmentTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { addDays, daysBetween, percentBetween, resolvePercent } from "../dates";
@@ -229,6 +229,42 @@ export async function listTaskMilestones(actor: Member, taskId: string) {
   const taskRow = await getTask(actor, taskId);
   const rows = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, taskId)).orderBy(taskMilestone.createdAt);
   return Promise.all(rows.map(async (m) => ({ ...m, ...(await resolveMilestone(taskRow, m)) })));
+}
+
+// The Calendar view's own layer (docs/development-plan.md's Phase 44) —
+// "their own task milestones," read as every confirmed milestone on a
+// task the actor currently holds (non-shadow, not done), the same
+// currently-held scoping src/lib/dashboard.ts's getPersonalFeed already
+// uses for flaggedHeldTasks/upcomingCheckins. A still-pending milestone
+// doesn't belong on a read-only calendar — it isn't real yet.
+export async function listMyTaskMilestones(actor: Member) {
+  const heldTasks = await db
+    .select({ taskId: task.id, title: task.title, cycleId: task.cycleId, phaseId: task.phaseId })
+    .from(taskAssignment)
+    .innerJoin(task, eq(taskAssignment.taskId, task.id))
+    .where(
+      and(
+        eq(taskAssignment.memberId, actor.id),
+        eq(taskAssignment.isShadow, false),
+        eq(task.communityId, actor.communityId),
+        ne(task.status, "done"),
+      ),
+    );
+  if (heldTasks.length === 0) return [];
+
+  const taskById = new Map(heldTasks.map((t) => [t.taskId, t]));
+  const rows = await db
+    .select()
+    .from(taskMilestone)
+    .where(and(inArray(taskMilestone.taskId, [...taskById.keys()]), eq(taskMilestone.status, "confirmed")));
+
+  return Promise.all(
+    rows.map(async (m) => {
+      const t = taskById.get(m.taskId)!;
+      const resolution = await resolveMilestone(t, m);
+      return { ...m, taskTitle: t.title, ...resolution };
+    }),
+  );
 }
 
 // "Confirmation follows ownership" — reuses Phase 38's propose→pending→

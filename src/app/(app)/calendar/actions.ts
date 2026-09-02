@@ -21,17 +21,17 @@ import { AppError } from "@/lib/errors";
 
 function redirectWithError(err: unknown): never {
   if (err instanceof ZodError) {
-    redirect(`/calendar-events?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
+    redirect(`/calendar?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
   }
   if (err instanceof AppError) {
-    redirect(`/calendar-events?error=${encodeURIComponent(err.message)}`);
+    redirect(`/calendar?error=${encodeURIComponent(err.message)}`);
   }
   throw err;
 }
 
-// Mirrors src/app/participation/actions.ts's own boundaryFromForm,
+// Mirrors src/app/(app)/participation/actions.ts's own boundaryFromForm,
 // simplified to one field (an event has a single date, not a start/end
-// pair) — see src/app/calendar-events/page.tsx's EventDateFields.
+// pair) — see src/app/(app)/calendar/page.tsx's EventDateFields.
 function dateFromForm(formData: FormData): DateBoundaryInput {
   const mode = String(formData.get("dateMode") ?? "absolute");
   const targetDate = String(formData.get("targetDate") ?? "").trim();
@@ -76,9 +76,9 @@ export async function createCalendarEventAction(formData: FormData) {
     redirectWithError(err);
   }
 
-  revalidatePath("/calendar-events");
+  revalidatePath("/calendar");
   revalidatePath("/dashboard");
-  redirect("/calendar-events?created=1");
+  redirect("/calendar?created=1");
 }
 
 export async function updateCalendarEventAction(formData: FormData) {
@@ -101,8 +101,8 @@ export async function updateCalendarEventAction(formData: FormData) {
     redirectWithError(err);
   }
 
-  revalidatePath("/calendar-events");
-  redirect("/calendar-events?updated=1");
+  revalidatePath("/calendar");
+  redirect("/calendar?updated=1");
 }
 
 export async function deleteCalendarEventAction(formData: FormData) {
@@ -115,9 +115,9 @@ export async function deleteCalendarEventAction(formData: FormData) {
     redirectWithError(err);
   }
 
-  revalidatePath("/calendar-events");
+  revalidatePath("/calendar");
   revalidatePath("/dashboard");
-  redirect("/calendar-events?deleted=1");
+  redirect("/calendar?deleted=1");
 }
 
 export async function inviteMemberAction(formData: FormData) {
@@ -131,8 +131,8 @@ export async function inviteMemberAction(formData: FormData) {
     redirectWithError(err);
   }
 
-  revalidatePath("/calendar-events");
-  redirect("/calendar-events?invited=1");
+  revalidatePath("/calendar");
+  redirect("/calendar?invited=1");
 }
 
 export async function inviteBranchAction(formData: FormData) {
@@ -146,8 +146,8 @@ export async function inviteBranchAction(formData: FormData) {
     redirectWithError(err);
   }
 
-  revalidatePath("/calendar-events");
-  redirect("/calendar-events?invited=1");
+  revalidatePath("/calendar");
+  redirect("/calendar?invited=1");
 }
 
 export async function inviteCommunityAction(formData: FormData) {
@@ -160,8 +160,8 @@ export async function inviteCommunityAction(formData: FormData) {
     redirectWithError(err);
   }
 
-  revalidatePath("/calendar-events");
-  redirect("/calendar-events?invited=1");
+  revalidatePath("/calendar");
+  redirect("/calendar?invited=1");
 }
 
 export async function acceptInviteAction(formData: FormData) {
@@ -174,9 +174,9 @@ export async function acceptInviteAction(formData: FormData) {
     redirectWithError(err);
   }
 
-  revalidatePath("/calendar-events");
+  revalidatePath("/calendar");
   revalidatePath("/dashboard");
-  redirect("/calendar-events?responded=1");
+  redirect("/calendar?responded=1");
 }
 
 export async function declineInviteAction(formData: FormData) {
@@ -189,7 +189,7 @@ export async function declineInviteAction(formData: FormData) {
     redirectWithError(err);
   }
 
-  revalidatePath("/calendar-events");
+  revalidatePath("/calendar");
   revalidatePath("/dashboard");
-  redirect("/calendar-events?responded=1");
+  redirect("/calendar?responded=1");
 }

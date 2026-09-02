@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, phase, task, taskMilestone } from "@/db/schema";
+import { community, phase, task, taskAssignment, taskMilestone } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import {
   confirmTaskMilestone,
   createTaskMilestone,
   deleteTaskMilestone,
+  listMyTaskMilestones,
   listTaskMilestones,
   updateTaskMilestone,
 } from "@/lib/tasks";
@@ -403,4 +404,82 @@ describe("carrying forward through a Cycle clone", () => {
     expect(clonedMilestones).toHaveLength(0);
   });
 
+});
+
+// The Calendar view's own read layer (docs/development-plan.md's Phase
+// 44 — "their own task milestones").
+describe("listMyTaskMilestones", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("only surfaces a confirmed milestone on a task the actor currently holds", async () => {
+    const { alice, bob, taskRow } = await setUp();
+    await claimTask(alice, taskRow.id);
+    const confirmed = await createTaskMilestone(alice, taskRow.id, {
+      label: "Order arrives",
+      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 5 },
+    });
+    // Bob's own addition to a task Alice holds lands pending — shouldn't
+    // surface for Alice, and Bob doesn't hold the task at all.
+    await createTaskMilestone(bob, taskRow.id, {
+      label: "Unreviewed",
+      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 1 },
+    });
+
+    const mine = await listMyTaskMilestones(alice);
+    expect(mine).toHaveLength(1);
+    expect(mine[0].id).toBe(confirmed.id);
+    expect(mine[0].taskTitle).toBe(taskRow.title);
+    expect(mine[0].resolvedDate).not.toBeNull();
+
+    expect(await listMyTaskMilestones(bob)).toHaveLength(0);
+  });
+
+  it("excludes a milestone on a task the actor only shadows, or that's already done", async () => {
+    const { alice, bob, taskRow, cyc, branch, community: testCommunity } = await setUp();
+    await claimTask(alice, taskRow.id);
+    await db.insert(taskMilestone).values({
+      taskId: taskRow.id,
+      label: "Shadow shouldn't see this",
+      dateType: "relative",
+      relativeMode: "offset",
+      anchorType: "cycle_start",
+      offsetDays: 1,
+      status: "confirmed",
+      proposedBy: alice.id,
+      createdBy: alice.id,
+    });
+    await db.insert(taskAssignment).values({ taskId: taskRow.id, memberId: bob.id, isShadow: true });
+
+    expect(await listMyTaskMilestones(bob)).toHaveLength(0);
+
+    const [doneTask] = await db
+      .insert(task)
+      .values({
+        communityId: testCommunity.id,
+        branchId: branch.id,
+        cycleId: cyc.id,
+        title: "Already finished",
+        effort: "one_off",
+        effortMagnitude: { duration: "few_hours" },
+        createdBy: alice.id,
+        status: "done",
+      })
+      .returning();
+    await db.insert(taskAssignment).values({ taskId: doneTask.id, memberId: alice.id, isShadow: false });
+    await db.insert(taskMilestone).values({
+      taskId: doneTask.id,
+      label: "Stale",
+      dateType: "relative",
+      relativeMode: "offset",
+      anchorType: "cycle_start",
+      offsetDays: 1,
+      status: "confirmed",
+      proposedBy: alice.id,
+      createdBy: alice.id,
+    });
+
+    expect(await listMyTaskMilestones(alice)).toHaveLength(1); // still just taskRow's own
+  });
 });

@@ -317,6 +317,118 @@ async function cloneMostRecentCycle(
   });
 }
 
+export interface ClonePreviewPhase {
+  name: string;
+  order: number;
+  start: string | null;
+  end: string | null;
+}
+export interface ClonePreviewMilestone {
+  taskTitle: string;
+  label: string;
+  phaseName: string | null;
+  date: string | null;
+}
+export interface ClonePreview {
+  sourceCycleName: string;
+  phases: ClonePreviewPhase[];
+  milestones: ClonePreviewMilestone[];
+}
+
+// A milestone's 4-way anchor (phase_start/phase_end/cycle_start/
+// cycle_end) reframed onto recomputeBoundary's own 2-way "which end of
+// the given pair" shape — the offset/percent math is identical either
+// way, only which start/end pair applies differs (see
+// src/lib/tasks/milestones.ts's own fetchParentBoundary for the
+// non-preview equivalent of this same split).
+function previewMilestoneDate(
+  m: Pick<typeof taskMilestone.$inferSelect, "relativeMode" | "anchorType" | "offsetDays" | "percent">,
+  phaseStart: string | null,
+  phaseEnd: string | null,
+  cycleStart: string | null,
+  cycleEnd: string | null,
+): string | null {
+  if (!m.anchorType || !m.relativeMode) return null;
+  const isPhaseAnchor = m.anchorType === "phase_start" || m.anchorType === "phase_end";
+  const start = isPhaseAnchor ? phaseStart : cycleStart;
+  const end = isPhaseAnchor ? phaseEnd : cycleEnd;
+  const directionalAnchor = m.anchorType === "phase_start" || m.anchorType === "cycle_start" ? "cycle_start" : "cycle_end";
+  return recomputeBoundary(
+    { dateType: "relative", date: null, relativeMode: m.relativeMode, offsetAnchor: directionalAnchor, offsetDays: m.offsetDays, percent: m.percent },
+    start,
+    end,
+  ).date;
+}
+
+// Non-mutating — computes exactly what cloneMostRecentCycle's own
+// clonePhases/cloneTaskMilestones would produce, against a hypothetical
+// destination start/end the reviewer hasn't committed to yet. See
+// docs/development-plan.md's Phase 44 ("the Pack import review screen
+// gains the date preview"). Reuses the exact same
+// deriveClonedBoundaryRecipe/recomputeBoundary primitives those
+// mutating functions call, so a preview's numbers are guaranteed to
+// match what actually lands once the clone (and then a real
+// updateCycleSettings call, which cascades the identical recompute)
+// commits — never a second, drifting implementation of the same math.
+// Gated the same way starting a cycle is: this only makes sense inside
+// that same flow, even though it reveals nothing a member couldn't
+// already piece together from getCycle/listTaskMilestones directly.
+export async function previewClonePreviousCycle(
+  actor: Member,
+  hypotheticalStart: string | null,
+  hypotheticalEnd: string | null,
+): Promise<ClonePreview | null> {
+  await requireCycleInitiationEligibility(actor);
+
+  const [previous] = await db
+    .select()
+    .from(cycle)
+    .where(eq(cycle.communityId, actor.communityId))
+    .orderBy(desc(cycle.startedAt))
+    .limit(1);
+  if (!previous) return null;
+
+  const oldPhases = await db.select().from(phase).where(eq(phase.cycleId, previous.id)).orderBy(phase.order);
+  const previewPhases: ClonePreviewPhase[] = oldPhases.map((p) => {
+    const start = recomputeBoundary(
+      deriveClonedBoundaryRecipe(startBoundaryOf(p), previous.startDate),
+      hypotheticalStart,
+      hypotheticalEnd,
+    );
+    const end = recomputeBoundary(
+      deriveClonedBoundaryRecipe(endBoundaryOf(p), previous.startDate),
+      hypotheticalStart,
+      hypotheticalEnd,
+    );
+    return { name: p.name, order: p.order, start: start.date, end: end.date };
+  });
+  const previewByOldPhaseId = new Map(oldPhases.map((p, i) => [p.id, previewPhases[i]]));
+
+  const oldTasks = await db
+    .select({ id: task.id, title: task.title })
+    .from(task)
+    .where(eq(task.cycleId, previous.id));
+  const taskById = new Map(oldTasks.map((t) => [t.id, t]));
+  const oldMilestones =
+    oldTasks.length === 0
+      ? []
+      : await db
+          .select()
+          .from(taskMilestone)
+          .where(inArray(taskMilestone.taskId, oldTasks.map((t) => t.id)));
+  const carried = oldMilestones.filter((m) => m.dateType === "relative" && m.status === "confirmed");
+
+  const previewMilestones: ClonePreviewMilestone[] = carried.map((m) => {
+    const t = taskById.get(m.taskId)!;
+    const isPhaseAnchor = m.anchorType === "phase_start" || m.anchorType === "phase_end";
+    const previewPhase = isPhaseAnchor && m.phaseId ? previewByOldPhaseId.get(m.phaseId) : undefined;
+    const date = previewMilestoneDate(m, previewPhase?.start ?? null, previewPhase?.end ?? null, hypotheticalStart, hypotheticalEnd);
+    return { taskTitle: t.title, label: m.label, phaseName: previewPhase?.name ?? null, date };
+  });
+
+  return { sourceCycleName: previous.name, phases: previewPhases, milestones: previewMilestones };
+}
+
 // Inserted one row at a time rather than as a single batched insert:
 // Postgres doesn't guarantee a multi-row INSERT...RETURNING preserves
 // input order, and correctly mapping old ids to new ones depends on it.

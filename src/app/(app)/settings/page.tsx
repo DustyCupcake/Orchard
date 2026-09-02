@@ -797,6 +797,7 @@ export default async function SettingsPage({
             <option value="free_text">Free text</option>
             <option value="single_choice">Single choice</option>
             <option value="multi_choice">Multi choice</option>
+            <option value="date">Date</option>
           </select>
           <input
             type="text"

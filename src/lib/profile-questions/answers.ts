@@ -29,6 +29,12 @@ function validateValue(question: ProfileQuestion, value: unknown) {
     }
     return value;
   }
+  if (question.responseType === "date") {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value))) {
+      throw new ConflictError("Answer must be a valid date (YYYY-MM-DD)");
+    }
+    return value;
+  }
   // multi_choice
   if (!Array.isArray(value) || value.length === 0 || !value.every((v) => question.options.includes(v))) {
     throw new ConflictError("Answer must be a non-empty subset of this question's options");

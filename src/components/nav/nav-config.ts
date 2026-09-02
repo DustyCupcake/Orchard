@@ -45,10 +45,15 @@ export const NAV_GROUPS: NavGroup[] = [
       { key: "schedule", label: "Event schedule", href: "/schedule", icon: "calendar", moduleKey: "eventScheduling" },
       { key: "scheduling-polls", label: "Scheduling polls", href: "/scheduling-polls", icon: "calendar" },
       { key: "shifts", label: "Shifts", href: "/shifts", icon: "calendar", moduleKey: "shifts" },
-      { key: "participation", label: "Participation", href: "/participation", icon: "calendar" },
-      { key: "calendar-events", label: "Calendar events", href: "/calendar-events", icon: "calendar" },
+      { key: "calendar", label: "Calendar", href: "/calendar", icon: "calendar" },
       { key: "input-rounds", label: "Input rounds", href: "/input-rounds", icon: "calendar" },
     ],
+  },
+  {
+    key: "cycle",
+    label: "Cycle",
+    icon: "cycle",
+    items: [{ key: "participation", label: "Participation", href: "/participation", icon: "cycle" }],
   },
   {
     key: "community",
