@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { eventProposal } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError } from "../errors";
+import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
 import { cycleScopeCondition } from "./crud";
 import { requireEventSchedulingOwner } from "./conflicts";
 
@@ -15,6 +16,7 @@ type Member = typeof memberTable.$inferSelect;
 // /schedule visibility gate — no separate "the schedule" entity (see
 // event-scheduling.ts's schema comment).
 export async function publishEventSchedule(actor: Member, cycleId?: string | null) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
   await requireEventSchedulingOwner(actor);
 
   const conditions = [

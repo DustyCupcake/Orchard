@@ -386,6 +386,13 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
       <main
         className={`pt-14 transition-[margin] duration-150 md:pt-0 ${collapsed ? "md:ml-16" : "md:ml-64"}`}
       >
+        {ctx.onsiteModeEnabled && (
+          <div className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900">
+            On-site mode is on — settings, branches, tiers, cycle types, starting a new Cycle,
+            Requirement changes, publishing the Event schedule, and Spatial-planning edits are all
+            locked until it&rsquo;s turned off from Settings.
+          </div>
+        )}
         {children}
       </main>
     </>

@@ -175,6 +175,19 @@ export default async function SettingsPage({
             Phases on (a cycle can define a named phase spine)
           </label>
 
+          {communityRow.phasesEnabled && (
+            <label>
+              <input
+                type="checkbox"
+                name="onsiteModeEnabled"
+                defaultChecked={communityRow.onsiteModeEnabled}
+              />{" "}
+              On-site mode (while on, structural changes — this screen, branches, tiers, cycle
+              types, starting a new Cycle, Requirement changes, publishing the Event schedule, and
+              Spatial-planning edits — are all locked; everyday task/wiki/shift work stays live)
+            </label>
+          )}
+
           <label>
             Who may start a cycle
             <br />

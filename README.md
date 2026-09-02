@@ -40,6 +40,8 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 **Navigation & UI** — a collapsible icon-rail sidebar on desktop and a hamburger drawer on mobile, grouped by function, with modules automatically hidden when disabled and auto-pinned for whoever currently holds their gating task.
 
+**On-site mode** — a Community-wide toggle that locks structural/configuration changes (settings, branches, tiers, cycle types, starting a new Cycle, Requirement changes) and further edits to the published Event schedule or the Spatial-planning layout, while everyday task/wiki/shift work stays fully live throughout — a visible banner explains why, and turning it back off restores normal editing immediately.
+
 Built incrementally, one phase at a time — see [`CHANGELOG.md`](CHANGELOG.md) for the full build history and [`docs/development-plan.md`](docs/development-plan.md) for what's scoped next.
 
 ## Documentation

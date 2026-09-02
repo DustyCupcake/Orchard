@@ -17,6 +17,7 @@ import {
 import type { member as memberTable, phase as phaseTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { memberHasTier } from "../eligibility";
+import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
 import { cloneSpatialPlanIntoNewCycle } from "../spatial-planning";
 import { recomputeCalendarEventDatesForCycle } from "../calendar-events";
 import {
@@ -177,7 +178,13 @@ async function requireCycleTypeInCommunity(communityId: string, cycleTypeId: str
   }
 }
 
+// On-site mode's shift-lock only blocks *starting* a new Cycle, not
+// editing an already-running one's dates/capacity (updateCycleSettings,
+// updatePhaseBoundary, updatePhaseHighlight below all reuse
+// requireCycleInitiationEligibility too, deliberately left unlocked) —
+// so the check lives here, not inside that shared eligibility gate.
 export async function createCycle(actor: Member, input: CreateCycleInput) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
   await requireCycleInitiationEligibility(actor);
   if (input.cycleTypeId) {
     await requireCycleTypeInCommunity(actor.communityId, input.cycleTypeId);

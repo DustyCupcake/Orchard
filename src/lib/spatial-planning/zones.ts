@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { plot, zone } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { NotFoundError } from "../errors";
+import { requireNotOnsiteLocked } from "../onsite-mode";
 import { requireSpatialPlanningHolder, getCommunityRow } from "./access";
 import { getPlot } from "./plots";
 
@@ -49,6 +50,7 @@ export async function createZone(actor: Member, plotId: string, rawInput: Create
   // plots.ts's createPlot.
   const input = createZoneInput.parse(rawInput);
   const communityRow = await getCommunityRow(actor.communityId);
+  requireNotOnsiteLocked(communityRow);
   await requireSpatialPlanningHolder(actor, communityRow);
   await getPlot(actor, plotId); // 404s if not in this community
 
@@ -68,6 +70,7 @@ export async function createZone(actor: Member, plotId: string, rawInput: Create
 export async function updateZone(actor: Member, zoneId: string, rawInput: UpdateZoneInput) {
   const input = updateZoneInput.parse(rawInput);
   const communityRow = await getCommunityRow(actor.communityId);
+  requireNotOnsiteLocked(communityRow);
   await requireSpatialPlanningHolder(actor, communityRow);
   await getZone(actor, zoneId); // 404s if not in this community
 
@@ -87,6 +90,7 @@ export async function updateZone(actor: Member, zoneId: string, rawInput: Update
 
 export async function deleteZone(actor: Member, zoneId: string) {
   const communityRow = await getCommunityRow(actor.communityId);
+  requireNotOnsiteLocked(communityRow);
   await requireSpatialPlanningHolder(actor, communityRow);
   await getZone(actor, zoneId); // 404s if not in this community
 

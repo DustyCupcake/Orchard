@@ -5,6 +5,7 @@ import { requirement, task, taskAssignment, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { NotFoundError } from "../errors";
 import { memberHasTier } from "../eligibility";
+import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
 import { requireTaskInCommunity } from "./shared";
 
 type Member = typeof memberTable.$inferSelect;
@@ -57,6 +58,7 @@ export async function createRequirement(
   taskId: string,
   input: CreateRequirementInput,
 ) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
   await requireTaskInCommunity(actor, taskId);
 
   const [created] = await db
@@ -77,6 +79,7 @@ export async function updateRequirement(
   requirementId: string,
   input: UpdateRequirementInput,
 ) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
   await requireTaskInCommunity(actor, taskId);
 
   const [updated] = await db
@@ -91,6 +94,7 @@ export async function updateRequirement(
 }
 
 export async function deleteRequirement(actor: Member, taskId: string, requirementId: string) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
   await requireTaskInCommunity(actor, taskId);
 
   const deleted = await db

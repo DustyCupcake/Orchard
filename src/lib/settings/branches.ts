@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { branch, task } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, NotFoundError } from "../errors";
+import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -33,6 +34,8 @@ export async function listBranches(actor: Member) {
 // No Admins yet (per MVP scope) — any authenticated member can define
 // the Community's branches, same as every other settings surface here.
 export async function createBranch(actor: Member, input: CreateBranchInput) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
+
   const [created] = await db
     .insert(branch)
     .values({
@@ -48,6 +51,8 @@ export async function createBranch(actor: Member, input: CreateBranchInput) {
 }
 
 export async function updateBranch(actor: Member, branchId: string, input: UpdateBranchInput) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
+
   const [updated] = await db
     .update(branch)
     .set({
@@ -70,6 +75,8 @@ export async function updateBranch(actor: Member, branchId: string, input: Updat
 }
 
 export async function deleteBranch(actor: Member, branchId: string) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
+
   const [existing] = await db
     .select({ id: branch.id })
     .from(branch)

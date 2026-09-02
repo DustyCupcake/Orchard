@@ -3,8 +3,9 @@ import { z } from "zod";
 import { db } from "@/db";
 import { community, form, task, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { NotFoundError } from "../errors";
+import { AppError, NotFoundError } from "../errors";
 import { recruitmentDecisionRulesSchema, requireValidDecisionRules } from "../recruitment/evaluations";
+import { requireNotOnsiteLocked } from "../onsite-mode";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -65,10 +66,35 @@ export const updateCommunityInput = z.object({
   // src/db/schema/community.ts's schema comment and
   // src/lib/spatial-planning.
   spatialPlanningTaskId: z.string().uuid().nullable().optional(),
+  // "Only offered if phases are on" (docs/spec.md's Configuration
+  // table) — /settings only renders the checkbox when phasesEnabled is
+  // already true, re-checked here too. See src/lib/onsite-mode.ts for
+  // what turning it on actually locks.
+  onsiteModeEnabled: z.boolean().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
 export async function updateCommunity(actor: Member, input: UpdateCommunityInput) {
+  const [currentRow] = await db.select().from(community).where(eq(community.id, actor.communityId));
+  if (!currentRow) {
+    throw new NotFoundError("Community not found");
+  }
+
+  // The one escape hatch: turning on-site mode off is always allowed
+  // even while locked (it's the only way back to normal editing) — any
+  // other settings change while it's on, including bundling one into
+  // the same submission, is rejected.
+  if (input.onsiteModeEnabled !== false) {
+    requireNotOnsiteLocked(currentRow);
+  }
+
+  if (input.onsiteModeEnabled === true) {
+    const effectivePhasesEnabled = input.phasesEnabled ?? currentRow.phasesEnabled;
+    if (!effectivePhasesEnabled) {
+      throw new AppError("On-site mode requires Phases to be enabled first");
+    }
+  }
+
   if (input.cycleInitiationTierId) {
     const [tierRow] = await db
       .select({ id: tier.id, communityId: tier.communityId })
@@ -205,6 +231,7 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.spatialPlanningTaskId !== undefined && {
         spatialPlanningTaskId: input.spatialPlanningTaskId,
       }),
+      ...(input.onsiteModeEnabled !== undefined && { onsiteModeEnabled: input.onsiteModeEnabled }),
     })
     .where(eq(community.id, actor.communityId))
     .returning();

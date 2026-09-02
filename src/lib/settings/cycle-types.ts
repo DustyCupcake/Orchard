@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { cycle, cycleType } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, NotFoundError } from "../errors";
+import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -35,6 +36,7 @@ export async function listCycleTypes(actor: Member) {
 }
 
 export async function createCycleType(actor: Member, input: CreateCycleTypeInput) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
   if (input.defaultSourceCycleId) {
     await requireCycleInCommunity(actor.communityId, input.defaultSourceCycleId);
   }
@@ -51,6 +53,7 @@ export async function createCycleType(actor: Member, input: CreateCycleTypeInput
 }
 
 export async function updateCycleType(actor: Member, cycleTypeId: string, input: UpdateCycleTypeInput) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
   if (input.defaultSourceCycleId) {
     await requireCycleInCommunity(actor.communityId, input.defaultSourceCycleId);
   }
@@ -70,6 +73,8 @@ export async function updateCycleType(actor: Member, cycleTypeId: string, input:
 }
 
 export async function deleteCycleType(actor: Member, cycleTypeId: string) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
+
   const [existing] = await db
     .select({ id: cycleType.id })
     .from(cycleType)

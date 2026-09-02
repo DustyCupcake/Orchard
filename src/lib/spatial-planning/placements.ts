@@ -4,6 +4,7 @@ import { db, type Tx } from "@/db";
 import { member, placement, placementMember, placementRevertNotice, plot, task, taskAssignment, zone } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { requireNotOnsiteLocked } from "../onsite-mode";
 import {
   getCommunityRow,
   isPlacementEditor,
@@ -160,6 +161,7 @@ export async function createPlacement(actor: Member, plotId: string, rawInput: C
   // Phase 36's createPlot/createZone already established.
   const input = createPlacementInput.parse(rawInput);
   const communityRow = await getCommunityRow(actor.communityId);
+  requireNotOnsiteLocked(communityRow);
   await requireSpatialPlanningHolder(actor, communityRow);
   await getPlot(actor, plotId); // 404s if not in this community
   const geometry = parsePlacementGeometry(input.shapeType, input.geometry);
@@ -191,6 +193,7 @@ export async function createPlacement(actor: Member, plotId: string, rawInput: C
 export async function updatePlacement(actor: Member, placementId: string, rawInput: UpdatePlacementInput) {
   const input = updatePlacementInput.parse(rawInput);
   const communityRow = await getCommunityRow(actor.communityId);
+  requireNotOnsiteLocked(communityRow);
   await requireSpatialPlanningHolder(actor, communityRow);
   const existing = await getPlacement(actor, placementId); // 404s if not in this community
 
@@ -222,6 +225,7 @@ export async function updatePlacement(actor: Member, placementId: string, rawInp
 
 export async function deletePlacement(actor: Member, placementId: string) {
   const communityRow = await getCommunityRow(actor.communityId);
+  requireNotOnsiteLocked(communityRow);
   await requireSpatialPlanningHolder(actor, communityRow);
   await getPlacement(actor, placementId); // 404s if not in this community
 
@@ -246,6 +250,7 @@ export const proposeMoveInput = z.object({ geometry: z.unknown() });
 export async function proposePlacementMove(actor: Member, placementId: string, rawInput: { geometry: unknown }) {
   const input = proposeMoveInput.parse(rawInput);
   const communityRow = await requireSpatialPlanningEnabled(actor);
+  requireNotOnsiteLocked(communityRow);
   const existing = await getPlacement(actor, placementId); // 404s if not in this community
   const geometry = parsePlacementGeometry(existing.shapeType, input.geometry);
 
@@ -285,6 +290,7 @@ export async function proposePlacementMove(actor: Member, placementId: string, r
 
 export async function approvePendingPlacement(actor: Member, placementId: string) {
   const communityRow = await getCommunityRow(actor.communityId);
+  requireNotOnsiteLocked(communityRow);
   await requireSpatialPlanningHolder(actor, communityRow);
   const existing = await getPlacement(actor, placementId);
   if (existing.status !== "pending") {
@@ -305,6 +311,7 @@ export async function approvePendingPlacement(actor: Member, placementId: string
 // that needs a real row instead of a computed read.
 export async function revertPendingPlacement(actor: Member, placementId: string, note?: string | null) {
   const communityRow = await getCommunityRow(actor.communityId);
+  requireNotOnsiteLocked(communityRow);
   await requireSpatialPlanningHolder(actor, communityRow);
   const existing = await getPlacement(actor, placementId);
   if (existing.status !== "pending" || !existing.pendingByMemberId || existing.pendingPrevGeometry == null) {

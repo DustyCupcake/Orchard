@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { community, cycle, cycleType, member, participation, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, NotFoundError } from "../errors";
+import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -59,6 +60,7 @@ export async function listTiers(actor: Member) {
 }
 
 export async function createTier(actor: Member, input: CreateTierInput) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
   await requireValidCriterionConfig(actor.communityId, input.criterionType, input.criterionConfig);
 
   const [created] = await db
@@ -74,6 +76,8 @@ export async function createTier(actor: Member, input: CreateTierInput) {
 }
 
 export async function updateTier(actor: Member, tierId: string, input: UpdateTierInput) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
+
   const [existing] = await db
     .select()
     .from(tier)
@@ -100,6 +104,8 @@ export async function updateTier(actor: Member, tierId: string, input: UpdateTie
 }
 
 export async function deleteTier(actor: Member, tierId: string) {
+  await requireNotOnsiteLockedForCommunity(actor.communityId);
+
   const [existing] = await db
     .select({ id: tier.id })
     .from(tier)

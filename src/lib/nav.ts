@@ -102,6 +102,8 @@ export type NavContext = {
   // can tell "manually pinned by this member" apart from "auto-pinned,
   // not independently toggleable here."
   manualPinnedKeys: string[];
+  // Phase 47 — drives the community-wide banner in AppShell.tsx.
+  onsiteModeEnabled: boolean;
 };
 
 // Computed once per request (in the (app) shell layout) and handed to
@@ -191,7 +193,10 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     feed.myLinkedPendingPlacements.length +
     feed.placementRevertNotices.length +
     feed.placementPendingReviews.length +
-    feed.calendarEventInvites.length;
+    feed.calendarEventInvites.length +
+    // Phase 46's own feed section — missed when it was first added
+    // here, caught while touching this same return block for Phase 47.
+    feed.emergencyAccessActivity.length;
 
   return {
     memberName: actor.name,
@@ -200,5 +205,6 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     visibleModules,
     pinnedKeys,
     manualPinnedKeys: actor.pinnedModuleKeys,
+    onsiteModeEnabled: community.onsiteModeEnabled,
   };
 }
