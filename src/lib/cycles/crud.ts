@@ -11,6 +11,8 @@ import {
   taskAssignment,
   taskDependency,
   taskMilestone,
+  taskResource,
+  taskWikiRevision,
 } from "@/db/schema";
 import type { member as memberTable, phase as phaseTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
@@ -297,6 +299,7 @@ async function cloneMostRecentCycle(
     await cloneRequirements(tx, taskIdMap);
     await cloneDependencies(tx, taskIdMap);
     await cloneTaskMilestones(tx, taskIdMap, phaseIdMap);
+    await cloneWikiAndResources(tx, taskIdMap);
 
     // Phase 38's own integration — see docs/spec.md's "Cloning across
     // cycles." Tasks were just cloned above in this same transaction,
@@ -627,6 +630,58 @@ async function cloneTaskMilestones(tx: Tx, taskIdMap: Map<string, string>, phase
 
   if (rowsToInsert.length > 0) {
     await tx.insert(taskMilestone).values(rowsToInsert);
+  }
+}
+
+// "Carrying forward across cycles" — docs/spec.md: the wiki summary and
+// the resource list both come along as the new task's starting point on
+// clone. Only the current (most recent) wiki revision carries forward,
+// as one new seed revision — not the whole edit history. Spec calls it
+// "the wiki summary," singular, and task-notes.ts already establishes
+// that "current" is nothing but the latest revision; dragging every old
+// edit forward would re-create the exact clutter spec explicitly avoids
+// by dropping comments on clone. Resources copy wholesale (spec's own
+// word) since there's no revision concept to collapse there — every
+// link is independently useful next time. Attribution carries with the
+// content (editedBy/addedBy stay the original author) rather than
+// reassigning to the cloning actor, the same posture cloneTaskMilestones
+// already takes for createdBy/proposedBy above.
+async function cloneWikiAndResources(tx: Tx, taskIdMap: Map<string, string>) {
+  if (taskIdMap.size === 0) return;
+  const oldTaskIds = [...taskIdMap.keys()];
+
+  const allRevisions = await tx
+    .select()
+    .from(taskWikiRevision)
+    .where(inArray(taskWikiRevision.taskId, oldTaskIds))
+    .orderBy(desc(taskWikiRevision.editedAt));
+  const currentRevisionByTask = new Map<string, (typeof allRevisions)[number]>();
+  for (const r of allRevisions) {
+    // Ordered newest-first — the first one seen per task is its current
+    // revision, same "first wins" dedup shadowSuggestionsByTask uses.
+    if (!currentRevisionByTask.has(r.taskId)) currentRevisionByTask.set(r.taskId, r);
+  }
+  if (currentRevisionByTask.size > 0) {
+    await tx.insert(taskWikiRevision).values(
+      [...currentRevisionByTask.values()].map((r) => ({
+        taskId: taskIdMap.get(r.taskId)!,
+        content: r.content,
+        editedBy: r.editedBy,
+      })),
+    );
+  }
+
+  const oldResources = await tx.select().from(taskResource).where(inArray(taskResource.taskId, oldTaskIds));
+  if (oldResources.length > 0) {
+    await tx.insert(taskResource).values(
+      oldResources.map((res) => ({
+        taskId: taskIdMap.get(res.taskId)!,
+        addedBy: res.addedBy,
+        label: res.label,
+        url: res.url,
+        tag: res.tag,
+      })),
+    );
   }
 }
 

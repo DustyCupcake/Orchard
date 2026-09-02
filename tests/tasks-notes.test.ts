@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { task } from "@/db/schema";
+import { community, task } from "@/db/schema";
 import {
   addComment,
   addResource,
@@ -10,10 +11,20 @@ import {
   listResources,
   listWikiRevisions,
 } from "@/lib/tasks";
+import { createCycle } from "@/lib/cycles";
 import { NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
-async function insertTask(communityId: string, branchId: string, createdBy: string) {
+async function enableCycles(communityId: string) {
+  await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
+}
+
+async function insertTask(
+  communityId: string,
+  branchId: string,
+  createdBy: string,
+  overrides: Partial<typeof task.$inferInsert> = {},
+) {
   const [row] = await db
     .insert(task)
     .values({
@@ -23,6 +34,7 @@ async function insertTask(communityId: string, branchId: string, createdBy: stri
       effort: "one_off",
       effortMagnitude: { duration: "few_hours" },
       createdBy,
+      ...overrides,
     })
     .returning();
   return row;
@@ -134,6 +146,72 @@ describe("getTaskNotes", () => {
     const t = await insertTask(alice.communityId, branch.id, alice.id);
 
     const notes = await getTaskNotes(alice, t.id);
+    expect(notes).toEqual({ wikiRevisions: [], comments: [], resources: [] });
+  });
+});
+
+// See docs/spec.md's "Carrying forward across cycles": the wiki summary
+// and resource list are meant to come along on clone as the new task's
+// starting point, the same way Task milestones' own carry-forward is
+// tested in tests/task-milestones.test.ts's "carrying forward through a
+// Cycle clone" block.
+describe("carrying forward through a Cycle clone", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("carries only the current wiki revision forward, attributed to its original author", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const previous = await createCycle(alice, { source: "blank", name: "2026 Season" });
+    const t = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: previous.id });
+
+    await addWikiRevision(alice, t.id, { content: "First pass at the how-to." });
+    await addWikiRevision(bob, t.id, { content: "Updated with the new supplier." });
+
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
+
+    const clonedRevisions = await listWikiRevisions(alice, clonedTask.id);
+    expect(clonedRevisions).toHaveLength(1);
+    expect(clonedRevisions[0].content).toBe("Updated with the new supplier.");
+    expect(clonedRevisions[0].editedBy).toBe(bob.id); // preserved, not reassigned to alice (the cloning actor)
+
+    // The original task's full history is untouched.
+    const originalRevisions = await listWikiRevisions(alice, t.id);
+    expect(originalRevisions).toHaveLength(2);
+  });
+
+  it("copies every resource wholesale, attributed to its original adder", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const previous = await createCycle(alice, { source: "blank", name: "2026 Season" });
+    const t = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: previous.id });
+
+    await addResource(alice, t.id, { label: "Order form we used", url: "https://example.com/order-form" });
+    await addResource(bob, t.id, { label: "Sign design", url: "https://example.com/sign", tag: "design asset" });
+
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
+
+    const clonedResources = await listResources(alice, clonedTask.id);
+    expect(clonedResources).toHaveLength(2);
+    const signResource = clonedResources.find((r) => r.label === "Sign design")!;
+    expect(signResource.url).toBe("https://example.com/sign");
+    expect(signResource.tag).toBe("design asset");
+    expect(signResource.addedBy).toBe(bob.id); // preserved, not reassigned to alice (the cloning actor)
+  });
+
+  it("leaves a cloned task with no wiki or resources when the source task had none", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const previous = await createCycle(alice, { source: "blank", name: "2026 Season" });
+    await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: previous.id });
+
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
+
+    const notes = await getTaskNotes(alice, clonedTask.id);
     expect(notes).toEqual({ wikiRevisions: [], comments: [], resources: [] });
   });
 });
