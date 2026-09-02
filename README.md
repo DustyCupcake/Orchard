@@ -16,7 +16,9 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 **Conflict management** — a reporting/recusal flow where the conflict team is just whoever holds a designated task; database-enforced invisibility for excluded members, with visibility narrowing or widening as a report is acknowledged or escalated.
 
-**Privacy & sensitive data** — purpose-bound (not role-bound) access to a small fixed set of sensitive member fields, off by default and configured per task or tier.
+**Privacy & sensitive data** — purpose-bound (not role-bound) access to a small fixed set of sensitive member fields, off by default and configured per task or tier, with each field optionally gated behind an active, member-granted consent record that stops the field showing the moment it's withdrawn.
+
+**Member contact & privacy** — per-method contact visibility (everyone/task-or-group-mates/emergency-only), logged Emergency access that any member can activate on another's emergency-only info, and a community-defined consent-purpose registry members grant or withdraw against.
 
 **Contribution tracking** — a member's own completed/active/future picture across tasks and shifts, categorized by Phase, with an opt-in community-visible share and cycle-wide averages.
 

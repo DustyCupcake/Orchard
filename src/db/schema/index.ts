@@ -38,3 +38,4 @@ export * from "./community-invite";
 export * from "./inquiry";
 export * from "./recruitment";
 export * from "./spatial-planning";
+export * from "./member-privacy";

@@ -3,11 +3,34 @@
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { ZodError } from "zod";
 import { db } from "@/db";
 import { member, tier } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { answerProfileQuestion } from "@/lib/profile-questions";
-import { updateOwnSensitiveData, updateOwnSensitiveDataInput } from "@/lib/sensitive-data";
+import {
+  SensitiveFieldKey,
+  updateOwnSensitiveData,
+  updateOwnSensitiveDataInput,
+} from "@/lib/sensitive-data";
+import { getGatingPurposesForCommunity, grantConsent, withdrawConsent } from "@/lib/consent";
+import {
+  contactMethodInput,
+  createContactMethod,
+  deleteContactMethod,
+  updateContactMethod,
+} from "@/lib/contact-methods";
+import { AppError } from "@/lib/errors";
+
+function redirectWithError(err: unknown): never {
+  if (err instanceof ZodError) {
+    redirect(`/profile?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
+  }
+  if (err instanceof AppError) {
+    redirect(`/profile?error=${encodeURIComponent(err.message)}`);
+  }
+  throw err;
+}
 
 export async function updateProfile(formData: FormData) {
   const current = await getCurrentMember();
@@ -67,18 +90,137 @@ export async function submitProfileAnswerAction(formData: FormData) {
   revalidatePath("/profile");
 }
 
+const SENSITIVE_FIELD_FORM_KEYS: Record<SensitiveFieldKey, string> = {
+  health_conditions: "healthConditions",
+  allergies: "allergies",
+  emergency_contact: "emergencyContact",
+  orientation: "orientation",
+};
+
+// Phase 46: "filling in a health condition prompts the matching consent
+// first, not a separate settings screen visited in advance" — a
+// checked "consent_<field>" checkbox on this same form grants consent
+// for that field's gating purpose (if any) before the field write is
+// attempted, so a single submit does both in one act. Re-derives the
+// field->purpose mapping server-side rather than trusting a hidden
+// input, since a member could otherwise point a checkbox at an
+// arbitrary purpose id.
 export async function updateSensitiveDataAction(formData: FormData) {
   const current = await getCurrentMember();
   if (!current) {
     redirect("/login");
   }
 
-  const input = updateOwnSensitiveDataInput.parse({
-    healthConditions: String(formData.get("healthConditions") ?? "").trim() || null,
-    allergies: String(formData.get("allergies") ?? "").trim() || null,
-    emergencyContact: String(formData.get("emergencyContact") ?? "").trim() || null,
-    orientation: String(formData.get("orientation") ?? "").trim() || null,
-  });
-  await updateOwnSensitiveData(current, input);
+  try {
+    const gatingPurposes = await getGatingPurposesForCommunity(current.communityId);
+    for (const [fieldKey, formKey] of Object.entries(SENSITIVE_FIELD_FORM_KEYS) as [
+      SensitiveFieldKey,
+      string,
+    ][]) {
+      const purpose = gatingPurposes.get(fieldKey);
+      if (!purpose) continue;
+      if (formData.get(`consent_${formKey}`) === "on") {
+        await grantConsent(current, purpose.id, "explicit_action");
+      }
+    }
+
+    const input = updateOwnSensitiveDataInput.parse({
+      healthConditions: String(formData.get("healthConditions") ?? "").trim() || null,
+      allergies: String(formData.get("allergies") ?? "").trim() || null,
+      emergencyContact: String(formData.get("emergencyContact") ?? "").trim() || null,
+      orientation: String(formData.get("orientation") ?? "").trim() || null,
+    });
+    await updateOwnSensitiveData(current, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+export async function createContactMethodAction(formData: FormData) {
+  const current = await getCurrentMember();
+  if (!current) {
+    redirect("/login");
+  }
+
+  try {
+    const input = contactMethodInput.parse({
+      type: String(formData.get("type") ?? "").trim(),
+      value: String(formData.get("value") ?? "").trim(),
+      visibility: String(formData.get("visibility") ?? "everyone"),
+    });
+    await createContactMethod(current, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+export async function updateContactMethodAction(formData: FormData) {
+  const current = await getCurrentMember();
+  if (!current) {
+    redirect("/login");
+  }
+
+  const id = String(formData.get("id"));
+  try {
+    const input = contactMethodInput.parse({
+      type: String(formData.get("type") ?? "").trim(),
+      value: String(formData.get("value") ?? "").trim(),
+      visibility: String(formData.get("visibility") ?? "everyone"),
+    });
+    await updateContactMethod(current, id, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+export async function deleteContactMethodAction(formData: FormData) {
+  const current = await getCurrentMember();
+  if (!current) {
+    redirect("/login");
+  }
+
+  const id = String(formData.get("id"));
+  try {
+    await deleteContactMethod(current, id);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+// The general consent list — every purpose in the community, including
+// ones with no sensitive field to attach an inline prompt to
+// (photo_publication, marketing_comms, ...). Field-gating purposes are
+// also grantable/withdrawable here, on top of the inline prompt above.
+export async function grantConsentAction(formData: FormData) {
+  const current = await getCurrentMember();
+  if (!current) {
+    redirect("/login");
+  }
+
+  const purposeId = String(formData.get("purposeId"));
+  try {
+    await grantConsent(current, purposeId, "explicit_action");
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+export async function withdrawConsentAction(formData: FormData) {
+  const current = await getCurrentMember();
+  if (!current) {
+    redirect("/login");
+  }
+
+  const purposeId = String(formData.get("purposeId"));
+  try {
+    await withdrawConsent(current, purposeId);
+  } catch (err) {
+    redirectWithError(err);
+  }
   revalidatePath("/profile");
 }

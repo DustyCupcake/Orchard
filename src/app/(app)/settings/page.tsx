@@ -9,17 +9,20 @@ import { listProfileQuestions } from "@/lib/profile-questions";
 import { MODULE_DEFINITIONS } from "@/lib/modules";
 import { SENSITIVE_FIELD_KEYS, SENSITIVE_FIELD_LABELS, listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
 import { listForms } from "@/lib/forms";
+import { listConsentPurposes } from "@/lib/consent";
 import { ForbiddenError } from "@/lib/errors";
 import {
   archiveFormAction,
   archiveProfileQuestionAction,
   createBranchAction,
+  createConsentPurposeAction,
   createCycleTypeAction,
   createFormAction,
   createProfileQuestionAction,
   createSensitiveFieldAccessRuleAction,
   createTierAction,
   deleteBranchAction,
+  deleteConsentPurposeAction,
   deleteCycleTypeAction,
   deleteSensitiveFieldAccessRuleAction,
   deleteTierAction,
@@ -57,7 +60,7 @@ export default async function SettingsPage({
     }
   }
 
-  const [communityRow, branches, tiers, cycleTypes, cyclesForPicker, profileQuestions, sensitiveFieldRules, forms] =
+  const [communityRow, branches, tiers, cycleTypes, cyclesForPicker, profileQuestions, sensitiveFieldRules, forms, consentPurposes] =
     await Promise.all([
       getCommunity(currentMember),
       listBranches(currentMember),
@@ -67,6 +70,7 @@ export default async function SettingsPage({
       authorized ? listProfileQuestions(currentMember, { includeArchived: true }) : Promise.resolve([]),
       authorized ? listSensitiveFieldAccessRules(currentMember) : Promise.resolve([]),
       authorized ? listForms(currentMember, { includeArchived: true }) : Promise.resolve([]),
+      authorized ? listConsentPurposes(currentMember) : Promise.resolve([]),
     ]);
 
   const conflictTeamTask = communityRow.conflictTeamTaskId
@@ -897,6 +901,72 @@ export default async function SettingsPage({
           </label>
           <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
             Add rule
+          </button>
+        </form>
+      </section>
+
+      <section style={{ marginTop: "2rem" }}>
+        <h2>Consent purposes</h2>
+        <p style={{ color: "#666", fontSize: "0.85rem" }}>
+          One row per distinct purpose needing a member&rsquo;s consent — ordinary/operational
+          processing gets no row here at all. Optionally pin a purpose to one Sensitive-data field:
+          once set, that field only populates or shows once the owning member has granted this
+          purpose, and stops the moment they withdraw it.
+        </p>
+        {consentPurposes.length === 0 && <p style={{ color: "#666" }}>No purposes yet.</p>}
+        {consentPurposes.map((p) => (
+          <div
+            key={p.id}
+            style={{
+              border: "1px solid #ccc",
+              borderRadius: 6,
+              padding: "0.6rem",
+              marginBottom: "0.5rem",
+              display: "flex",
+              gap: "0.5rem",
+              alignItems: "center",
+            }}
+          >
+            <span style={{ flex: 1 }}>
+              <strong>{p.label}</strong> <code>{p.key}</code>
+              {p.gatesSensitiveField && (
+                <span style={{ color: "#666" }}> — gates {SENSITIVE_FIELD_LABELS[p.gatesSensitiveField]}</span>
+              )}
+              {p.requiresExplicit && <span style={{ color: "#666" }}> (explicit)</span>}
+              <br />
+              <span style={{ color: "#666", fontSize: "0.8rem" }}>{p.noticeText}</span>
+            </span>
+            <form action={deleteConsentPurposeAction}>
+              <input type="hidden" name="purposeId" value={p.id} />
+              <button type="submit">Delete</button>
+            </form>
+          </div>
+        ))}
+
+        <form
+          action={createConsentPurposeAction}
+          style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem", maxWidth: 420 }}
+        >
+          <input type="text" name="key" placeholder="key (e.g. sensitive_health)" required style={{ padding: "0.4rem" }} />
+          <input type="text" name="label" placeholder="label" required style={{ padding: "0.4rem" }} />
+          <textarea name="noticeText" placeholder="notice text shown to the member" required rows={2} style={{ padding: "0.4rem" }} />
+          <label style={{ fontSize: "0.85rem" }}>
+            Gates a Sensitive-data field (optional)
+            <select name="gatesSensitiveField" defaultValue="" style={{ padding: "0.4rem", width: "100%" }}>
+              <option value="">— none —</option>
+              {SENSITIVE_FIELD_KEYS.map((k) => (
+                <option key={k} value={k}>
+                  {SENSITIVE_FIELD_LABELS[k]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ fontSize: "0.85rem" }}>
+            <input type="checkbox" name="requiresExplicit" /> requires explicit consent (required if
+            gating a field)
+          </label>
+          <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+            Add purpose
           </button>
         </form>
       </section>

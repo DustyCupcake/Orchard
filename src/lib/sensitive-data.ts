@@ -5,6 +5,7 @@ import { community, member, sensitiveFieldAccessRule, task, taskAssignment, tier
 import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "./errors";
 import { requireModuleEnabled } from "./modules";
+import { getGatingPurposesForCommunity, hasActiveConsent, listMembersWithActiveConsent } from "./consent";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -46,6 +47,29 @@ export type UpdateOwnSensitiveDataInput = z.infer<typeof updateOwnSensitiveDataI
 export async function updateOwnSensitiveData(actor: Member, input: UpdateOwnSensitiveDataInput) {
   const communityRow = await getCommunityRow(actor.communityId);
   requireModuleEnabled(communityRow, "sensitive_data");
+
+  // Phase 46: "turning a given field on for a member requires an
+  // active, non-withdrawn ConsentRecord against the matching
+  // ConsentPurpose... before the field is populated" — only checked for
+  // a field actually being set to a non-null value; clearing one never
+  // needs consent, and a field with no configured gating purpose stays
+  // exactly as ungated as it was in Phase 22 (a Community has to
+  // consciously define the purpose before this gate does anything).
+  const fieldsBeingSet: { key: SensitiveFieldKey; value: string | null | undefined }[] = [
+    { key: "health_conditions", value: input.healthConditions },
+    { key: "allergies", value: input.allergies },
+    { key: "emergency_contact", value: input.emergencyContact },
+    { key: "orientation", value: input.orientation },
+  ];
+  const gatingPurposes = await getGatingPurposesForCommunity(actor.communityId);
+  for (const { key, value } of fieldsBeingSet) {
+    if (!value) continue;
+    const purpose = gatingPurposes.get(key);
+    if (!purpose) continue;
+    if (!(await hasActiveConsent(actor.id, purpose.id))) {
+      throw new AppError(`Grant consent for "${purpose.label}" before setting ${SENSITIVE_FIELD_LABELS[key]}`);
+    }
+  }
 
   const [updated] = await db
     .update(member)
@@ -194,10 +218,31 @@ export async function getSensitiveDataTable(actor: Member) {
     .where(eq(member.communityId, actor.communityId))
     .orderBy(member.name);
 
+  // Phase 46's read-gate: a field with a configured gating purpose only
+  // shows for a member who currently has active, non-withdrawn consent
+  // against it — re-checked here on every read, so a withdrawal takes
+  // effect immediately rather than needing a separate sweep. A field
+  // with no gating purpose configured stays exactly as visible as
+  // Phase 22 always made it (SensitiveFieldAccessRule's own task/tier
+  // gate is unaffected either way, applied on top as before).
+  const gatingPurposes = await getGatingPurposesForCommunity(actor.communityId);
+  const activeMembersByPurposeId = new Map<string, Set<string>>();
+  for (const purpose of gatingPurposes.values()) {
+    activeMembersByPurposeId.set(purpose.id, await listMembersWithActiveConsent(purpose.id));
+  }
+
   const rows = members.map((m) => ({
     id: m.id,
     name: m.name,
-    values: Object.fromEntries(fields.map((f) => [f, m[camelField(f)]])),
+    values: Object.fromEntries(
+      fields.map((f) => {
+        const purpose = gatingPurposes.get(f);
+        if (purpose && !activeMembersByPurposeId.get(purpose.id)!.has(m.id)) {
+          return [f, null];
+        }
+        return [f, m[camelField(f)]];
+      }),
+    ),
   }));
 
   return { fields, rows };

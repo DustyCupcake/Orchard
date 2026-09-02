@@ -27,6 +27,7 @@ export default async function DashboardPage() {
     feed.pendingJoinRequests.length > 0 ||
     feed.upcomingCheckins.length > 0 ||
     feed.flaggedHeldTasks.length > 0 ||
+    feed.emergencyAccessActivity.length > 0 ||
     feed.recruitmentNeedsAction.length > 0 ||
     feed.placementInvites.length > 0 ||
     feed.myLinkedPendingPlacements.length > 0 ||
@@ -65,6 +66,26 @@ export default async function DashboardPage() {
                   </Link>{" "}
                   <span style={{ color: "#666" }}>
                     — {r.requestedByName} asked to join, {new Date(r.requestedAt).toLocaleDateString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {feed.emergencyAccessActivity.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Emergency access activity</h3>
+            <ul>
+              {feed.emergencyAccessActivity.map((a) => (
+                <li key={a.id}>
+                  <Link href={`/members/${a.role === "activator" ? a.targetMemberId : a.activatedBy}`} style={{ color: "inherit" }}>
+                    {a.counterpartName}
+                  </Link>{" "}
+                  <span style={{ color: "#666" }}>
+                    — {a.role === "activator" ? "you activated on them" : "activated on you"},{" "}
+                    {new Date(a.activatedAt).toLocaleString()}
+                    {a.explanation ? `: "${a.explanation}"` : ""}
                   </span>
                 </li>
               ))}

@@ -14,6 +14,7 @@ import {
   updateOwnSensitiveData,
 } from "@/lib/sensitive-data";
 import { AppError, NotFoundError } from "@/lib/errors";
+import { createConsentPurpose, grantConsent, withdrawConsent } from "@/lib/consent";
 import { createFixtures, resetDatabase } from "./helpers";
 
 async function insertTask(communityId: string, branchId: string, createdBy: string) {
@@ -210,5 +211,78 @@ describe("getSensitiveDataTable", () => {
     await createSensitiveFieldAccessRule(alice, { fieldKey: "allergies", unlockedByTaskId: cateringTask.id });
 
     expect(await listUnlockedFields(strangerAlice)).toEqual([]);
+  });
+});
+
+describe("Phase 46: consent gating of sensitive fields", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("lets a field populate freely when no gating purpose is configured (Phase 22's original behavior)", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["sensitive_data"] });
+    const updated = await updateOwnSensitiveData(alice, { allergies: "peanuts" });
+    expect(updated.allergies).toBe("peanuts");
+  });
+
+  it("rejects populating a field whose gating purpose has no active consent", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["sensitive_data"] });
+    await createConsentPurpose(alice, {
+      key: "sensitive_health",
+      label: "Health data",
+      noticeText: "...",
+      gatesSensitiveField: "allergies",
+      requiresExplicit: true,
+    });
+
+    await expect(updateOwnSensitiveData(alice, { allergies: "peanuts" })).rejects.toThrow(AppError);
+  });
+
+  it("allows the write once consent is granted, and always allows clearing a field back to null", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["sensitive_data"] });
+    const purpose = await createConsentPurpose(alice, {
+      key: "sensitive_health",
+      label: "Health data",
+      noticeText: "...",
+      gatesSensitiveField: "allergies",
+      requiresExplicit: true,
+    });
+    await grantConsent(alice, purpose.id);
+
+    const updated = await updateOwnSensitiveData(alice, { allergies: "peanuts" });
+    expect(updated.allergies).toBe("peanuts");
+
+    const cleared = await updateOwnSensitiveData(alice, { allergies: null });
+    expect(cleared.allergies).toBeNull();
+  });
+
+  it("stops showing a field to an unlocked viewer the moment consent is withdrawn, re-checked live at read time", async () => {
+    const { alice, bob, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["sensitive_data"] });
+    const purpose = await createConsentPurpose(alice, {
+      key: "sensitive_health",
+      label: "Health data",
+      noticeText: "...",
+      gatesSensitiveField: "allergies",
+      requiresExplicit: true,
+    });
+    await grantConsent(bob, purpose.id);
+    await updateOwnSensitiveData(bob, { allergies: "shellfish" });
+
+    const cateringTask = await insertTask(alice.communityId, branch.id, alice.id);
+    await claimTask(alice, cateringTask.id);
+    await createSensitiveFieldAccessRule(alice, { fieldKey: "allergies", unlockedByTaskId: cateringTask.id });
+
+    const refetchedAlice = (await db.select().from(member).where(eq(member.id, alice.id)))[0];
+    const beforeWithdraw = await getSensitiveDataTable(refetchedAlice);
+    expect(beforeWithdraw.rows.find((r) => r.id === bob.id)?.values.allergies).toBe("shellfish");
+
+    await withdrawConsent(bob, purpose.id);
+
+    const afterWithdraw = await getSensitiveDataTable(refetchedAlice);
+    expect(afterWithdraw.rows.find((r) => r.id === bob.id)?.values.allergies).toBeNull();
   });
 });

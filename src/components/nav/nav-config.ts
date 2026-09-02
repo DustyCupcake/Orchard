@@ -55,6 +55,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Community",
     icon: "people",
     items: [
+      { key: "members", label: "Members", href: "/members", icon: "people" },
       { key: "assemblies", label: "Assemblies", href: "/assemblies", icon: "people" },
       { key: "documentation", label: "Documentation", href: "/documentation", icon: "people" },
       { key: "feedback", label: "Feedback", href: "/feedback", icon: "people", moduleKey: "feedback" },

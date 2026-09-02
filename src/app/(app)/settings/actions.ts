@@ -38,6 +38,7 @@ import {
   deleteSensitiveFieldAccessRule,
 } from "@/lib/sensitive-data";
 import { archiveForm, createForm, createFormInput, unarchiveForm } from "@/lib/forms";
+import { createConsentPurpose, createConsentPurposeInput, deleteConsentPurpose } from "@/lib/consent";
 import { AppError } from "@/lib/errors";
 
 // Fields are entered one per line in a plain textarea rather than a
@@ -443,6 +444,41 @@ export async function unarchiveFormAction(formData: FormData) {
   try {
     await requireAdmins(actor);
     await unarchiveForm(actor, formId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function createConsentPurposeAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    await requireAdmins(actor);
+    const gatesSensitiveField = String(formData.get("gatesSensitiveField") ?? "").trim();
+    const input = createConsentPurposeInput.parse({
+      key: String(formData.get("key") ?? "").trim(),
+      label: String(formData.get("label") ?? "").trim(),
+      noticeText: String(formData.get("noticeText") ?? "").trim(),
+      requiresExplicit: formData.get("requiresExplicit") === "on",
+      gatesSensitiveField: gatesSensitiveField || null,
+    });
+    await createConsentPurpose(actor, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function deleteConsentPurposeAction(formData: FormData) {
+  const actor = await requireMember();
+  const purposeId = String(formData.get("purposeId"));
+
+  try {
+    await requireAdmins(actor);
+    await deleteConsentPurpose(actor, purposeId);
   } catch (err) {
     redirectWithError(err);
   }

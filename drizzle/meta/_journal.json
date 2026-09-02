@@ -239,6 +239,13 @@
       "when": 1788341138658,
       "tag": "0033_nasty_shocker",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788366541086,
+      "tag": "0034_foamy_zeigeist",
+      "breakpoints": true
     }
   ]
 }

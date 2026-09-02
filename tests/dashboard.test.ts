@@ -52,6 +52,7 @@ describe("getPersonalFeed", () => {
       placementRevertNotices: [],
       placementPendingReviews: [],
       calendarEventInvites: [],
+      emergencyAccessActivity: [],
     });
   });
 

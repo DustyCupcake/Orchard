@@ -16,6 +16,7 @@ import {
   listMyRevertNotices,
   listPendingPlacementReviews,
 } from "./spatial-planning";
+import { listEmergencyAccessActivity } from "./emergency-access";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -123,6 +124,11 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
   // Core, not module-gated — see docs/development-plan.md's Phase 42.
   const calendarEventInvites = await listMyCalendarEventInvites(actor);
 
+  // Core, not module-gated — see docs/development-plan.md's Phase 46.
+  // "Both parties notified" — recent activations where the actor was
+  // either side, most recent first.
+  const emergencyAccessActivity = await listEmergencyAccessActivity(actor, 5);
+
   return {
     pendingJoinRequests,
     upcomingCheckins,
@@ -133,6 +139,7 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
     placementRevertNotices,
     placementPendingReviews,
     calendarEventInvites,
+    emergencyAccessActivity,
   };
 });
 
