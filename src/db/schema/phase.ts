@@ -52,4 +52,13 @@ export const phase = pgTable("phase", {
   endOffsetAnchor: cycleOffsetAnchorEnum("end_offset_anchor"),
   endOffsetDays: integer("end_offset_days"),
   endPercent: integer("end_percent"),
+
+  // Optional — "while this Phase is current, pin this module for
+  // everyone actually coming to the Cycle" (e.g. Recruitment during a
+  // Recruitment phase, Shifts once sign-ups matter). A plain nav
+  // moduleKey (src/components/nav/nav-config.ts's ModuleKey), read by
+  // src/lib/nav.ts's getNavContext — never bypasses
+  // Community.modulesEnabled, only promotes an already-visible module
+  // into the pinned section for Participation.status='coming' members.
+  highlightModuleKey: text("highlight_module_key"),
 });

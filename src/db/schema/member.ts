@@ -40,4 +40,12 @@ export const member = pgTable("member", {
   // above and contact-method visibility. Only gates *others'* view of
   // this member's breakdown; their own is always visible to themselves.
   contributionVisible: boolean("contribution_visible").notNull().default(false),
+  // Manual "pin this for me" nav overrides — module/nav-item keys (see
+  // src/components/nav/nav-config.ts) a member chose to pin themselves,
+  // on top of whatever auto-pins from task-holdership or the current
+  // Phase's highlighted module (src/lib/nav.ts). Filtered against
+  // current visibility at read time, so a key surviving here for a
+  // module that's since been disabled or an item that's been renamed
+  // just silently drops out rather than needing cleanup.
+  pinnedModuleKeys: text("pinned_module_keys").array().notNull().default([]),
 });

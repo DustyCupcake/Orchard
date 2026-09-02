@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "./Icon";
 import {
   ALL_ITEMS,
+  CALENDAR_ITEM,
   DASHBOARD_ITEM,
   NAV_GROUPS,
   SETTINGS_ITEM,
@@ -14,14 +15,22 @@ import {
   type NavItem,
 } from "./nav-config";
 import type { NavContext } from "@/lib/nav";
+import { toggleFavoriteNavItem } from "@/app/(app)/nav-actions";
 
 const COLLAPSE_KEY = "orchard.sidebar.collapsed";
+const CLOSED_GROUPS_KEY = "orchard.sidebar.closedGroups";
+const PINNED_GROUP_KEY = "__pinned";
 
-function GroupLabel({ label }: { label: string }) {
+function GroupLabel({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
   return (
-    <div className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
-      {label}
-    </div>
+    <button
+      onClick={onToggle}
+      aria-expanded={open}
+      className="flex w-full items-center gap-1 px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-400 hover:text-neutral-600"
+    >
+      <Icon name="chevronDown" className={`h-3 w-3 shrink-0 transition-transform ${open ? "" : "-rotate-90"}`} />
+      <span>{label}</span>
+    </button>
   );
 }
 
@@ -30,18 +39,22 @@ function NavLink({
   collapsed,
   active,
   badge,
+  pinned,
+  onTogglePin,
 }: {
   item: NavItem;
   collapsed: boolean;
   active: boolean;
   badge?: number;
+  pinned?: boolean;
+  onTogglePin?: () => void;
 }) {
   return (
-    <li>
+    <li className="group/navitem flex items-center">
       <Link
         href={item.href}
         title={collapsed ? item.label : undefined}
-        className={`flex items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors ${
+        className={`flex flex-1 items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors ${
           collapsed ? "justify-center" : ""
         } ${
           active
@@ -59,6 +72,17 @@ function NavLink({
         </span>
         {!collapsed && <span className="truncate">{item.label}</span>}
       </Link>
+      {!collapsed && onTogglePin && (
+        <button
+          onClick={onTogglePin}
+          title={pinned ? "Unpin" : "Pin to top"}
+          className={`mr-1 shrink-0 rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 ${
+            pinned ? "opacity-100" : "opacity-0 group-hover/navitem:opacity-100"
+          }`}
+        >
+          <Icon name="pin" className={`h-3.5 w-3.5 ${pinned ? "text-amber-600" : ""}`} />
+        </button>
+      )}
     </li>
   );
 }
@@ -67,10 +91,18 @@ function NavGroupBlock({
   group,
   collapsed,
   isActive,
+  open,
+  onToggleOpen,
+  manualPinnedKeys,
+  onTogglePin,
 }: {
   group: NavGroup;
   collapsed: boolean;
   isActive: (href: string) => boolean;
+  open: boolean;
+  onToggleOpen: () => void;
+  manualPinnedKeys: string[];
+  onTogglePin: (key: string) => void;
 }) {
   if (collapsed) {
     const primary = group.items[0];
@@ -96,12 +128,21 @@ function NavGroupBlock({
 
   return (
     <div>
-      <GroupLabel label={group.label} />
-      <ul className="space-y-0.5">
-        {group.items.map((item) => (
-          <NavLink key={item.key} item={item} collapsed={false} active={isActive(item.href)} />
-        ))}
-      </ul>
+      <GroupLabel label={group.label} open={open} onToggle={onToggleOpen} />
+      {open && (
+        <ul className="space-y-0.5">
+          {group.items.map((item) => (
+            <NavLink
+              key={item.key}
+              item={item}
+              collapsed={false}
+              active={isActive(item.href)}
+              pinned={manualPinnedKeys.includes(item.key)}
+              onTogglePin={() => onTogglePin(item.key)}
+            />
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -112,31 +153,57 @@ function SidebarNavList({
   pinnedItems,
   badgeCount,
   isActive,
+  closedGroups,
+  onToggleGroup,
+  manualPinnedKeys,
+  onTogglePin,
 }: {
   collapsed: boolean;
   visibleGroups: NavGroup[];
   pinnedItems: NavItem[];
   badgeCount: number;
   isActive: (href: string) => boolean;
+  closedGroups: Set<string>;
+  onToggleGroup: (key: string) => void;
+  manualPinnedKeys: string[];
+  onTogglePin: (key: string) => void;
 }) {
   return (
     <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-2 py-3">
       <ul className="space-y-0.5">
         <NavLink item={DASHBOARD_ITEM} collapsed={collapsed} active={isActive(DASHBOARD_ITEM.href)} badge={badgeCount} />
+        <NavLink item={CALENDAR_ITEM} collapsed={collapsed} active={isActive(CALENDAR_ITEM.href)} />
       </ul>
 
       {visibleGroups.map((group) => (
-        <NavGroupBlock key={group.key} group={group} collapsed={collapsed} isActive={isActive} />
+        <NavGroupBlock
+          key={group.key}
+          group={group}
+          collapsed={collapsed}
+          isActive={isActive}
+          open={!closedGroups.has(group.key)}
+          onToggleOpen={() => onToggleGroup(group.key)}
+          manualPinnedKeys={manualPinnedKeys}
+          onTogglePin={onTogglePin}
+        />
       ))}
 
       {pinnedItems.length > 0 && (
         <div>
-          {!collapsed && <GroupLabel label="Pinned for you" />}
-          <ul className="space-y-0.5">
-            {pinnedItems.map((item) => (
-              <NavLink key={item.key} item={item} collapsed={collapsed} active={isActive(item.href)} />
-            ))}
-          </ul>
+          {!collapsed && (
+            <GroupLabel
+              label="Pinned for you"
+              open={!closedGroups.has(PINNED_GROUP_KEY)}
+              onToggle={() => onToggleGroup(PINNED_GROUP_KEY)}
+            />
+          )}
+          {(collapsed || !closedGroups.has(PINNED_GROUP_KEY)) && (
+            <ul className="space-y-0.5">
+              {pinnedItems.map((item) => (
+                <NavLink key={item.key} item={item} collapsed={collapsed} active={isActive(item.href)} />
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -215,14 +282,18 @@ function UserBlock({ memberName, collapsed }: { memberName: string; collapsed: b
 
 export default function AppShell({ ctx, children }: { ctx: NavContext; children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     try {
       if (window.localStorage.getItem(COLLAPSE_KEY) === "1") setCollapsed(true);
+      const storedClosed = window.localStorage.getItem(CLOSED_GROUPS_KEY);
+      if (storedClosed) setClosedGroups(new Set(JSON.parse(storedClosed)));
     } catch {
-      // localStorage unavailable (private browsing, etc.) — default expanded.
+      // localStorage unavailable (private browsing, etc.) — default expanded/open.
     }
   }, []);
 
@@ -238,18 +309,49 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
     setMobileOpen(false);
   }, [pathname]);
 
+  function toggleGroup(key: string) {
+    setClosedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        window.localStorage.setItem(CLOSED_GROUPS_KEY, JSON.stringify([...next]));
+      } catch {
+        // ignore — nothing to persist to
+      }
+      return next;
+    });
+  }
+
+  async function togglePin(key: string) {
+    await toggleFavoriteNavItem(key);
+    router.refresh();
+  }
+
   function isActive(href: string) {
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 
   const pinnedItems = ctx.pinnedKeys
     .map((key) => ALL_ITEMS.find((item) => item.key === key))
-    .filter((item): item is NavItem => Boolean(item));
+    .filter((item): item is NavItem => item !== undefined)
+    .filter((item) => isItemVisible(item, ctx));
 
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,
     items: group.items.filter((item) => isItemVisible(item, ctx)),
   })).filter((group) => group.items.length > 0);
+
+  const navListProps = {
+    visibleGroups,
+    pinnedItems,
+    badgeCount: ctx.badgeCount,
+    isActive,
+    closedGroups,
+    onToggleGroup: toggleGroup,
+    manualPinnedKeys: ctx.manualPinnedKeys,
+    onTogglePin: togglePin,
+  };
 
   return (
     <>
@@ -264,13 +366,7 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
         <div className="fixed inset-0 z-40 flex md:hidden">
           <div className="flex h-full w-72 max-w-[85vw] flex-col bg-white">
             <SidebarHeader collapsed={false} variant="mobile" onCloseMobile={() => setMobileOpen(false)} />
-            <SidebarNavList
-              collapsed={false}
-              visibleGroups={visibleGroups}
-              pinnedItems={pinnedItems}
-              badgeCount={ctx.badgeCount}
-              isActive={isActive}
-            />
+            <SidebarNavList collapsed={false} {...navListProps} />
             <UserBlock memberName={ctx.memberName} collapsed={false} />
           </div>
           <div className="flex-1 bg-black/30" aria-hidden="true" onClick={() => setMobileOpen(false)} />
@@ -283,13 +379,7 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
         }`}
       >
         <SidebarHeader collapsed={collapsed} variant="desktop" onToggleCollapsed={() => setCollapsed((v) => !v)} />
-        <SidebarNavList
-          collapsed={collapsed}
-          visibleGroups={visibleGroups}
-          pinnedItems={pinnedItems}
-          badgeCount={ctx.badgeCount}
-          isActive={isActive}
-        />
+        <SidebarNavList collapsed={collapsed} {...navListProps} />
         <UserBlock memberName={ctx.memberName} collapsed={collapsed} />
       </div>
 

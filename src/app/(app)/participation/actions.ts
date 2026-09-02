@@ -5,7 +5,13 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember } from "@/lib/api";
 import { declareParticipation, declareParticipationInput } from "@/lib/participation";
-import { createCycle, updateCycleSettings, updateCycleSettingsInput, updatePhaseBoundary } from "@/lib/cycles";
+import {
+  createCycle,
+  updateCycleSettings,
+  updateCycleSettingsInput,
+  updatePhaseBoundary,
+  updatePhaseHighlight,
+} from "@/lib/cycles";
 import type { DateBoundaryInput } from "@/lib/dates";
 import { AppError } from "@/lib/errors";
 
@@ -140,4 +146,22 @@ export async function updatePhaseBoundaryAction(formData: FormData) {
 
   revalidatePath("/participation");
   redirect("/participation?phaseUpdated=1");
+}
+
+// Cycle-initiation-eligibility-gated, enforced inside updatePhaseHighlight
+// — same authority as everything else on this page. See src/lib/nav.ts's
+// HIGHLIGHTABLE_MODULES for the option set this form's select renders.
+export async function updatePhaseHighlightAction(formData: FormData) {
+  const actor = await requireMember();
+  const phaseId = String(formData.get("phaseId"));
+  const highlightModuleKey = String(formData.get("highlightModuleKey") ?? "").trim() || null;
+
+  try {
+    await updatePhaseHighlight(actor, phaseId, highlightModuleKey);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/participation");
+  redirect("/participation?highlightUpdated=1");
 }

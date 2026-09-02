@@ -798,3 +798,32 @@ export async function updatePhaseBoundary(actor: Member, phaseId: string, input:
     .returning();
   return { ...updated, flags: getPhaseFlags(cycleRow, updated) };
 }
+
+// Which module (if any) getNavContext (src/lib/nav.ts) should pin for
+// every member currently `coming` to this Cycle while this Phase is
+// the current one — e.g. Recruitment during a Recruitment phase, so
+// non-holders can still track progress and invite people; Shifts once
+// sign-ups matter, ahead of the event. Same authority gate as every
+// other Phase/Cycle-configuration write above. Not validated against
+// nav.ts's HIGHLIGHTABLE_MODULES here — an unrecognized or since-
+// removed key just never matches in getNavContext, same "stale key
+// silently drops" posture member.pinnedModuleKeys already takes.
+export async function updatePhaseHighlight(actor: Member, phaseId: string, highlightModuleKey: string | null) {
+  await requireCycleInitiationEligibility(actor);
+
+  const [phaseRow] = await db.select().from(phase).where(eq(phase.id, phaseId));
+  if (!phaseRow) {
+    throw new NotFoundError("Phase not found");
+  }
+  const [cycleRow] = await db.select().from(cycle).where(eq(cycle.id, phaseRow.cycleId));
+  if (!cycleRow || cycleRow.communityId !== actor.communityId) {
+    throw new NotFoundError("Phase not found");
+  }
+
+  const [updated] = await db
+    .update(phase)
+    .set({ highlightModuleKey })
+    .where(eq(phase.id, phaseId))
+    .returning();
+  return updated;
+}

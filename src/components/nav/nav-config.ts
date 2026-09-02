@@ -21,8 +21,16 @@ export type NavGroup = {
 };
 
 export const DASHBOARD_ITEM: NavItem = { key: "dashboard", label: "Dashboard", href: "/dashboard", icon: "home" };
+export const CALENDAR_ITEM: NavItem = { key: "calendar", label: "Calendar", href: "/calendar", icon: "calendar" };
 export const SETTINGS_ITEM: NavItem = { key: "settings", label: "Settings", href: "/settings", icon: "gear" };
 
+// Calendar is a single aggregating read view (Phase 44) — it has no
+// sub-pages of its own, unlike the groups below, so it sits at the top
+// level alongside Dashboard/Settings rather than as a group. Everything
+// that used to live under a "Calendar" group but is actually its own
+// working surface (submit a poll response, sign up for a shift, review
+// an event proposal, answer an input round) moved to whichever group
+// matches what kind of surface it is — see each item's new home below.
 export const NAV_GROUPS: NavGroup[] = [
   {
     key: "tasks",
@@ -35,25 +43,12 @@ export const NAV_GROUPS: NavGroup[] = [
       { key: "contribution", label: "My contribution", href: "/contribution", icon: "check" },
       { key: "coordination", label: "Coordination", href: "/coordination", icon: "check", coordinatorOnly: true },
       { key: "escalation", label: "Escalation", href: "/escalation", icon: "check", coordinatorOnly: true },
+      // Core coordination mechanics, not calendar content — a poll
+      // spins up real tasks, an input round is questions posed against
+      // one.
+      { key: "scheduling-polls", label: "Scheduling polls", href: "/scheduling-polls", icon: "check" },
+      { key: "input-rounds", label: "Input rounds", href: "/input-rounds", icon: "check" },
     ],
-  },
-  {
-    key: "calendar",
-    label: "Calendar",
-    icon: "calendar",
-    items: [
-      { key: "schedule", label: "Event schedule", href: "/schedule", icon: "calendar", moduleKey: "eventScheduling" },
-      { key: "scheduling-polls", label: "Scheduling polls", href: "/scheduling-polls", icon: "calendar" },
-      { key: "shifts", label: "Shifts", href: "/shifts", icon: "calendar", moduleKey: "shifts" },
-      { key: "calendar", label: "Calendar", href: "/calendar", icon: "calendar" },
-      { key: "input-rounds", label: "Input rounds", href: "/input-rounds", icon: "calendar" },
-    ],
-  },
-  {
-    key: "cycle",
-    label: "Cycle",
-    icon: "cycle",
-    items: [{ key: "participation", label: "Participation", href: "/participation", icon: "cycle" }],
   },
   {
     key: "community",
@@ -63,6 +58,12 @@ export const NAV_GROUPS: NavGroup[] = [
       { key: "assemblies", label: "Assemblies", href: "/assemblies", icon: "people" },
       { key: "documentation", label: "Documentation", href: "/documentation", icon: "people" },
       { key: "feedback", label: "Feedback", href: "/feedback", icon: "people", moduleKey: "feedback" },
+      // The community's relationship to Cycles over time — history,
+      // current-cycle composition/participation stats — with a
+      // member's own participation declaration as one part of that,
+      // not a separate destination. Cycle-scoped data (who's part of
+      // it), as distinct from Calendar's when-things-happen dates.
+      { key: "cycles", label: "Cycles", href: "/participation", icon: "cycle" },
     ],
   },
   {
@@ -78,18 +79,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: "map",
         moduleKey: "spatialPlanning",
       },
+      // Invites/Applications are reachable from within Recruitment
+      // itself (its own tabs/links), not separate nav destinations.
       {
         key: "recruitment",
-        label: "Recruitment pipeline",
+        label: "Recruitment",
         href: "/recruitment",
-        icon: "recruitment",
-        moduleKey: "recruitment",
-      },
-      { key: "invites", label: "Invites", href: "/invites", icon: "recruitment", moduleKey: "recruitment" },
-      {
-        key: "applications",
-        label: "Applications",
-        href: "/applications",
         icon: "recruitment",
         moduleKey: "recruitment",
       },
@@ -107,11 +102,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: "shield",
         moduleKey: "sensitiveData",
       },
+      { key: "schedule", label: "Event schedule", href: "/schedule", icon: "calendar", moduleKey: "eventScheduling" },
+      { key: "shifts", label: "Shifts", href: "/shifts", icon: "calendar", moduleKey: "shifts" },
     ],
   },
 ];
 
-export const ALL_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
+export const ALL_ITEMS: NavItem[] = [DASHBOARD_ITEM, CALENDAR_ITEM, SETTINGS_ITEM, ...NAV_GROUPS.flatMap((g) => g.items)];
 
 export function isItemVisible(item: NavItem, ctx: NavContext): boolean {
   if (item.coordinatorOnly && !ctx.isCoordinator) return false;

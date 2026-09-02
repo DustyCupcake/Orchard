@@ -12,8 +12,43 @@ import { getCurrentBudgetCycle } from "./budget/cycles";
 import { isBudgetOwner } from "./budget/voting";
 import { listShiftSeries, isShiftCoordinator } from "./shifts/series";
 import { getPersonalFeed } from "./dashboard";
+import { getCurrentPhase } from "./profile-questions";
+import { getMyParticipation } from "./participation";
 
 type Member = typeof memberTable.$inferSelect;
+
+// Maps a visibleModules key to the nav item that represents it
+// (src/components/nav/nav-config.ts) — the one place this codebase
+// translates between the two naming schemes, used both for auto-pin-
+// by-task-holdership below and for a Phase's highlightModuleKey.
+const MODULE_NAV_ITEM_KEY = {
+  eventScheduling: "schedule",
+  shifts: "shifts",
+  recruitment: "recruitment",
+  spatialPlanning: "spatial-planning",
+  sensitiveData: "sensitive-data",
+  budget: "budget",
+  conflictReports: "conflict-reports",
+  feedback: "feedback",
+} as const;
+export type VisibleModuleKey = keyof typeof MODULE_NAV_ITEM_KEY;
+
+// The options a Phase's "highlight this module" picker offers — see
+// src/app/(app)/participation/actions.ts's updatePhaseHighlightAction
+// and PhaseDatesSection's own form. Every module-shaped nav item is
+// offered generically; which ones actually make sense for a given
+// Community is a judgment call for whoever's setting it, not something
+// worth hardcoding here.
+export const HIGHLIGHTABLE_MODULES: { key: VisibleModuleKey; label: string }[] = [
+  { key: "recruitment", label: "Recruitment" },
+  { key: "shifts", label: "Shifts" },
+  { key: "budget", label: "Budget" },
+  { key: "eventScheduling", label: "Event schedule" },
+  { key: "spatialPlanning", label: "Spatial planning" },
+  { key: "conflictReports", label: "Conflict reports" },
+  { key: "sensitiveData", label: "Sensitive data" },
+  { key: "feedback", label: "Feedback" },
+];
 
 // Whether the current viewer currently holds a given Community-level
 // task pointer (conflictTeamTaskId, feedbackReviewTaskId, ...) — the
@@ -62,6 +97,11 @@ export type NavContext = {
     feedback: boolean;
   };
   pinnedKeys: string[];
+  // Raw member.pinnedModuleKeys, unfiltered — separate from pinnedKeys
+  // (which also carries auto-pins) so the sidebar's pin-toggle button
+  // can tell "manually pinned by this member" apart from "auto-pinned,
+  // not independently toggleable here."
+  manualPinnedKeys: string[];
 };
 
 // Computed once per request (in the (app) shell layout) and handed to
@@ -115,6 +155,33 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
   if (visibleModules.budget && isBudgetOwnerNow) pinnedKeys.push("budget");
   if (visibleModules.shifts && isShiftCoordinatorNow) pinnedKeys.push("shifts");
 
+  // "While this Phase is current, pin its highlighted module for
+  // everyone actually coming" — e.g. Recruitment during a Recruitment
+  // phase so non-holders can still track progress and invite people;
+  // Shifts once sign-ups matter, ahead of the event. Reuses
+  // getCurrentPhase (src/lib/profile-questions/capacity.ts, already
+  // established for Availability's phase-scoped question) rather than
+  // a second "what's the current phase" resolution. Never bypasses
+  // Community.modulesEnabled — only promotes an already-visible module.
+  const currentPhase = await getCurrentPhase(actor.communityId);
+  if (currentPhase?.highlightModuleKey) {
+    const highlightKey = currentPhase.highlightModuleKey as VisibleModuleKey;
+    if (highlightKey in MODULE_NAV_ITEM_KEY && visibleModules[highlightKey]) {
+      const myParticipation = await getMyParticipation(actor, currentPhase.cycleId);
+      if (myParticipation.status === "coming") {
+        pinnedKeys.push(MODULE_NAV_ITEM_KEY[highlightKey]);
+      }
+    }
+  }
+
+  // Manual "pin this for me" overrides — validated for visibility by
+  // the caller (src/components/nav/AppShell.tsx), since a stale key
+  // (a disabled module, a coordinator-only item after losing that
+  // status) should just silently drop rather than needing cleanup here.
+  for (const key of actor.pinnedModuleKeys) {
+    if (!pinnedKeys.includes(key)) pinnedKeys.push(key);
+  }
+
   const badgeCount =
     feed.pendingJoinRequests.length +
     feed.upcomingCheckins.length +
@@ -126,5 +193,12 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     feed.placementPendingReviews.length +
     feed.calendarEventInvites.length;
 
-  return { memberName: actor.name, badgeCount, isCoordinator, visibleModules, pinnedKeys };
+  return {
+    memberName: actor.name,
+    badgeCount,
+    isCoordinator,
+    visibleModules,
+    pinnedKeys,
+    manualPinnedKeys: actor.pinnedModuleKeys,
+  };
 }

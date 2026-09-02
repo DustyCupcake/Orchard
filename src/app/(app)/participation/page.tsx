@@ -5,12 +5,14 @@ import { canInitiateCycle, getCycle, previewClonePreviousCycle, type ClonePrevie
 import { getCycleParticipationSummary, getMyParticipation } from "@/lib/participation";
 import { listCycleTypes } from "@/lib/settings";
 import { buildMonthGrid, MONTH_LABEL } from "@/lib/calendar";
+import { HIGHLIGHTABLE_MODULES } from "@/lib/nav";
 import type { member as memberTable } from "@/db/schema";
 import {
   createCycleAction,
   declareParticipationAction,
   updateCycleSettingsAction,
   updatePhaseBoundaryAction,
+  updatePhaseHighlightAction,
 } from "./actions";
 
 type Member = typeof memberTable.$inferSelect;
@@ -45,6 +47,7 @@ export default async function ParticipationPage({
     declared?: string;
     settingsUpdated?: string;
     phaseUpdated?: string;
+    highlightUpdated?: string;
     cycleCreated?: string;
     previewStart?: string;
     previewEnd?: string;
@@ -56,8 +59,17 @@ export default async function ParticipationPage({
     redirect("/login");
   }
 
-  const { error, declared, settingsUpdated, phaseUpdated, cycleCreated, previewStart, previewEnd, previewView } =
-    await searchParams;
+  const {
+    error,
+    declared,
+    settingsUpdated,
+    phaseUpdated,
+    highlightUpdated,
+    cycleCreated,
+    previewStart,
+    previewEnd,
+    previewView,
+  } = await searchParams;
 
   const [currentCycle, canConfigure] = await Promise.all([
     getCurrentCycle(currentMember.communityId),
@@ -72,6 +84,7 @@ export default async function ParticipationPage({
       {declared && <p style={{ color: "#2a7a2a" }}>Your participation is saved.</p>}
       {settingsUpdated && <p style={{ color: "#2a7a2a" }}>Cycle settings updated.</p>}
       {phaseUpdated && <p style={{ color: "#2a7a2a" }}>Phase dates updated.</p>}
+      {highlightUpdated && <p style={{ color: "#2a7a2a" }}>Phase highlight updated.</p>}
       {cycleCreated && <p style={{ color: "#2a7a2a" }}>Cycle created — set its dates below, if you know them yet.</p>}
 
       {!currentCycle ? (
@@ -571,6 +584,31 @@ function PhaseDatesSection({ phases }: { phases: PhaseRow[] }) {
             <PhaseBoundaryFields prefix="end" p={p} />
             <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
               Save dates
+            </button>
+          </form>
+          <form
+            action={updatePhaseHighlightAction}
+            style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.75rem" }}
+          >
+            <input type="hidden" name="phaseId" value={p.id} />
+            <label style={{ fontSize: "0.85rem" }}>
+              Pin a module for everyone coming while this phase is current
+              <br />
+              <select
+                name="highlightModuleKey"
+                defaultValue={p.highlightModuleKey ?? ""}
+                style={{ padding: "0.4rem" }}
+              >
+                <option value="">None</option>
+                {HIGHLIGHTABLE_MODULES.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" style={{ padding: "0.4rem 1rem", height: "fit-content" }}>
+              Save
             </button>
           </form>
         </div>

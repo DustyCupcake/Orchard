@@ -232,6 +232,13 @@
       "when": 1788338131573,
       "tag": "0032_wet_lucky_pierre",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788341138658,
+      "tag": "0033_nasty_shocker",
+      "breakpoints": true
     }
   ]
 }
