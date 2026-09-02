@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, member, task, tier } from "@/db/schema";
+import { community, member, task, taskAssignment, tier } from "@/db/schema";
 import {
   claimTask,
+  computeRequirementFitScore,
   createRequirement,
   createRequirementInput,
   deleteRequirement,
   finishTask,
+  getGroupCoverageStatus,
   listRequirements,
+  listTasksWithAssignments,
   updateRequirement,
 } from "@/lib/tasks";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
@@ -45,7 +48,7 @@ describe("requirement CRUD", () => {
     expect(result.success).toBe(false);
   });
 
-  it("always creates with mode individual_gate, regardless of what's asked for", async () => {
+  it("defaults to individual_gate when no mode is given", async () => {
     const { branch, alice } = await createFixtures();
     const t = await insertTask(alice.communityId, branch.id, alice.id);
 
@@ -54,6 +57,25 @@ describe("requirement CRUD", () => {
       value: { flag: "kitchen_cert" },
     });
     expect(created.mode).toBe("individual_gate");
+  });
+
+  it("honors an explicit group_coverage or soft_priority mode (Phase 50)", async () => {
+    const { branch, alice } = await createFixtures();
+    const t = await insertTask(alice.communityId, branch.id, alice.id);
+
+    const coverage = await createRequirement(alice, t.id, {
+      type: "language",
+      mode: "group_coverage",
+      value: { language: "nl" },
+    });
+    expect(coverage.mode).toBe("group_coverage");
+
+    const soft = await createRequirement(alice, t.id, {
+      type: "custom",
+      mode: "soft_priority",
+      value: { flag: "own_van" },
+    });
+    expect(soft.mode).toBe("soft_priority");
   });
 
   it("lists, updates, and deletes requirements scoped to the task", async () => {
@@ -206,5 +228,152 @@ describe("claim eligibility", () => {
 
     await claimTask(alice, t.id);
     await expect(claimTask(bob, t.id)).rejects.toThrow(ConflictError);
+  });
+
+  it("never blocks a claim for group_coverage or soft_priority, unlike individual_gate", async () => {
+    const { community, branch, alice } = await createFixtures();
+    const t = await insertTask(community.id, branch.id, alice.id, { capacity: 3 });
+    await createRequirement(alice, t.id, { type: "language", mode: "group_coverage", value: { language: "nl" } });
+    await createRequirement(alice, t.id, { type: "custom", mode: "soft_priority", value: { flag: "own_van" } });
+
+    // Alice satisfies neither — a real individual_gate requirement
+    // with the same shape would reject this exact claim (see the
+    // "blocks claiming when the member lacks a required language tag"
+    // test above); these two modes must not.
+    const claimed = await claimTask(alice, t.id);
+    expect(claimed.status).toBe("claimed");
+  });
+});
+
+// docs/development-plan.md's Phase 50: group_coverage's live "covered /
+// not yet covered" status line, computed off current real (non-shadow)
+// holders only.
+describe("getGroupCoverageStatus", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("is unmet with no holders, unmet with a holder who doesn't satisfy it, covered once a real holder does", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    const t = await insertTask(testCommunity.id, branch.id, alice.id, { capacity: 2 });
+    const req = await createRequirement(alice, t.id, {
+      type: "language",
+      mode: "group_coverage",
+      value: { language: "nl" },
+    });
+
+    expect((await getGroupCoverageStatus(db, t.id, [req])).get(req.id)).toBe(false);
+
+    await claimTask(alice, t.id);
+    expect((await getGroupCoverageStatus(db, t.id, [req])).get(req.id)).toBe(false);
+
+    await db.update(member).set({ tags: ["nl"] }).where(eq(member.id, bob.id));
+    const [dutchBob] = await db.select().from(member).where(eq(member.id, bob.id));
+    await claimTask(dutchBob, t.id);
+    expect((await getGroupCoverageStatus(db, t.id, [req])).get(req.id)).toBe(true);
+  });
+
+  it("doesn't count a shadow claim toward coverage", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    const t = await insertTask(testCommunity.id, branch.id, alice.id);
+    const req = await createRequirement(alice, t.id, {
+      type: "language",
+      mode: "group_coverage",
+      value: { language: "nl" },
+    });
+    await db.update(member).set({ tags: ["nl"] }).where(eq(member.id, bob.id));
+    await db.insert(taskAssignment).values({ taskId: t.id, memberId: bob.id, isShadow: true });
+
+    expect((await getGroupCoverageStatus(db, t.id, [req])).get(req.id)).toBe(false);
+  });
+});
+
+// docs/development-plan.md's Phase 50: the "requirements that fit you"
+// sort dimension.
+describe("computeRequirementFitScore", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("boosts an individual_gate requirement only when satisfied, weighted by 1/eligible-pool-size", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    const t = await insertTask(testCommunity.id, branch.id, alice.id);
+    const req = await createRequirement(alice, t.id, { type: "language", value: { language: "nl" } });
+
+    // Nobody satisfies it yet.
+    expect(await computeRequirementFitScore(db, alice, [req], new Map())).toBe(0);
+
+    // Alice alone satisfies it — pool of 1, full boost.
+    await db.update(member).set({ tags: ["nl"] }).where(eq(member.id, alice.id));
+    const [dutchAlice] = await db.select().from(member).where(eq(member.id, alice.id));
+    expect(await computeRequirementFitScore(db, dutchAlice, [req], new Map())).toBe(1);
+
+    // Bob also satisfies it now — pool of 2, halved boost for each.
+    await db.update(member).set({ tags: ["nl"] }).where(eq(member.id, bob.id));
+    const [dutchAlice2] = await db.select().from(member).where(eq(member.id, alice.id));
+    expect(await computeRequirementFitScore(db, dutchAlice2, [req], new Map())).toBe(0.5);
+  });
+
+  it("boosts a group_coverage requirement only while unmet and the actor would satisfy it", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const t = await insertTask(testCommunity.id, branch.id, alice.id);
+    const req = await createRequirement(alice, t.id, {
+      type: "language",
+      mode: "group_coverage",
+      value: { language: "nl" },
+    });
+    await db.update(member).set({ tags: ["nl"] }).where(eq(member.id, alice.id));
+    const [dutchAlice] = await db.select().from(member).where(eq(member.id, alice.id));
+
+    // Unmet, and she'd satisfy it — boosts.
+    expect(await computeRequirementFitScore(db, dutchAlice, [req], new Map([[req.id, false]]))).toBe(1);
+    // Already covered by someone else — stops pulling on her.
+    expect(await computeRequirementFitScore(db, dutchAlice, [req], new Map([[req.id, true]]))).toBe(0);
+    // Unmet, but she herself doesn't satisfy it — no boost either.
+    expect(await computeRequirementFitScore(db, alice, [req], new Map([[req.id, false]]))).toBe(0);
+  });
+
+  it("gives soft_priority a flat boost whenever satisfied, never gated by coverage", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const t = await insertTask(testCommunity.id, branch.id, alice.id);
+    const req = await createRequirement(alice, t.id, {
+      type: "custom",
+      mode: "soft_priority",
+      value: { flag: "own_van" },
+    });
+
+    expect(await computeRequirementFitScore(db, alice, [req], new Map())).toBe(0);
+
+    await db.update(member).set({ tags: ["own_van"] }).where(eq(member.id, alice.id));
+    const [vanAlice] = await db.select().from(member).where(eq(member.id, alice.id));
+    expect(await computeRequirementFitScore(db, vanAlice, [req], new Map())).toBe(1);
+  });
+});
+
+describe("listTasksWithAssignments: sortByFit", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("reorders toward the actor's best-fitting task only when sortByFit is requested", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const plainTask = await insertTask(testCommunity.id, branch.id, alice.id, { title: "A — plain task" });
+    const fittingTask = await insertTask(testCommunity.id, branch.id, alice.id, { title: "Z — fits alice" });
+    await createRequirement(alice, fittingTask.id, {
+      type: "custom",
+      mode: "soft_priority",
+      value: { flag: "own_van" },
+    });
+    await db.update(member).set({ tags: ["own_van"] }).where(eq(member.id, alice.id));
+    const [vanAlice] = await db.select().from(member).where(eq(member.id, alice.id));
+
+    // Default order: plain alphabetical (A before Z), untouched by fit.
+    const unsorted = await listTasksWithAssignments(vanAlice, { branchId: branch.id });
+    expect(unsorted.map((t) => t.id)).toEqual([plainTask.id, fittingTask.id]);
+    expect(unsorted.every((t) => t.fitScore === 0)).toBe(true);
+
+    // Opted in: the fitting task moves to the top despite the alphabet.
+    const sorted = await listTasksWithAssignments(vanAlice, { branchId: branch.id, sortByFit: true });
+    expect(sorted.map((t) => t.id)).toEqual([fittingTask.id, plainTask.id]);
   });
 });

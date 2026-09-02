@@ -27,24 +27,37 @@ const COLUMNS = [
 export default async function BoardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ branchId?: string; tag?: string; error?: string; notice?: string }>;
+  searchParams: Promise<{ branchId?: string; tag?: string; fit?: string; error?: string; notice?: string }>;
 }) {
   const currentMember = await getCurrentMember();
   if (!currentMember) {
     redirect("/login");
   }
 
-  const { branchId, tag, error, notice } = await searchParams;
+  const { branchId, tag, fit, error, notice } = await searchParams;
+  const sortByFit = fit === "1";
 
   const [branches, tasks, tierNames, myPendingRequests, allTags, coordinationBranchIds] =
     await Promise.all([
       db.select().from(branch).where(eq(branch.communityId, currentMember.communityId)),
-      listTasksWithAssignments(currentMember, { branchId, tag }),
+      listTasksWithAssignments(currentMember, { branchId, tag, sortByFit }),
       tierNameLookup(currentMember.communityId),
       listMyPendingJoinRequests(currentMember),
       listDistinctTags(currentMember),
       listCoordinationBranchIds(currentMember),
     ]);
+
+  // Preserves the other filters while toggling fit — a plain link,
+  // same "no client JS needed for something a link can do" posture as
+  // everywhere else this codebase avoids it.
+  const fitToggleHref = (() => {
+    const params = new URLSearchParams();
+    if (branchId) params.set("branchId", branchId);
+    if (tag) params.set("tag", tag);
+    if (!sortByFit) params.set("fit", "1");
+    const query = params.toString();
+    return query ? `/board?${query}` : "/board";
+  })();
 
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
 
@@ -71,6 +84,9 @@ export default async function BoardPage({
           {allTags.length > 0 && (
             <TagFilter tags={allTags} selectedTag={tag} branchId={branchId} />
           )}
+          <a href={fitToggleHref} style={{ fontSize: "0.9rem" }}>
+            {sortByFit ? "✓ Sorted by what fits me" : "Sort by what fits me"}
+          </a>
         </div>
       )}
 
@@ -126,6 +142,7 @@ export default async function BoardPage({
                   assignments={t.assignments}
                   requirements={t.requirements}
                   unmetRequirements={t.unmetRequirements}
+                  groupCoverage={t.groupCoverage}
                   tierNames={tierNames}
                   branchName={branchNameById.get(t.branchId) ?? "—"}
                   currentMemberId={currentMember.id}

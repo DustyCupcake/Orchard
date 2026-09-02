@@ -9,7 +9,7 @@ import { declareParticipation } from "@/lib/participation";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
 import { createBudgetCycle, submitBudgetVote } from "@/lib/budget";
 import { closeProposalsToVoting } from "@/lib/budget";
-import { confirmEventProposalSlot, createEventProposal } from "@/lib/event-scheduling";
+import { createEventProposal } from "@/lib/event-scheduling";
 import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
 import { fileConflictReport } from "@/lib/conflict";
 import { createFixtures, resetDatabase } from "./helpers";

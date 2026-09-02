@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { branch, member } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import {
+  getGroupCoverageStatus,
   getParentTaskSummary,
   getTask,
   getTaskNotes,
@@ -124,6 +125,7 @@ export default async function TaskDetailPage({
       ? getCycle(currentMember, taskRow.cycleId).then((c) => c.phases)
       : Promise.resolve([]),
   ]);
+  const groupCoverage = await getGroupCoverageStatus(db, id, requirements);
   const shiftsModuleOn = isModuleEnabled(communityRow, "shifts");
   const myEndorsements = isCommunityEndorsed
     ? await listMyEndorsements(
@@ -323,12 +325,29 @@ export default async function TaskDetailPage({
 
       {requirements.length > 0 && (
         <ul style={{ fontSize: "0.85rem" }}>
-          {requirements.map((r) => (
-            <li key={r.id} style={{ color: unmetIds.has(r.id) ? "crimson" : "#2a7a2a" }}>
-              {describeRequirement(r, tierNames)}
-              {unmetIds.has(r.id) ? " (not met)" : " (met)"}
-            </li>
-          ))}
+          {requirements.map((r) => {
+            if (r.mode === "group_coverage") {
+              const covered = groupCoverage.get(r.id) ?? false;
+              return (
+                <li key={r.id} style={{ color: covered ? "#2a7a2a" : "#a15c00" }}>
+                  {describeRequirement(r, tierNames)} — {covered ? "covered" : "not yet covered"}
+                </li>
+              );
+            }
+            if (r.mode === "soft_priority") {
+              return (
+                <li key={r.id} style={{ color: "#666" }}>
+                  {describeRequirement(r, tierNames)} (preferred)
+                </li>
+              );
+            }
+            return (
+              <li key={r.id} style={{ color: unmetIds.has(r.id) ? "crimson" : "#2a7a2a" }}>
+                {describeRequirement(r, tierNames)}
+                {unmetIds.has(r.id) ? " (not met)" : " (met)"}
+              </li>
+            );
+          })}
         </ul>
       )}
 

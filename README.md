@@ -6,7 +6,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 ## Features
 
-**Task coordination** — a claim-based kanban board (claim/release/park/resume/finish, multi-slot capacity, dependency gating), requirement-gated claiming (tier/language/completed-task/custom eligibility), subtasks, shadow slots for succession, open/request-to-join tasks, requirement waiving with a standing reason, anonymous signals and coordinator pings, a community-wide Escalation view, and bulk tag-based task selection.
+**Task coordination** — a claim-based kanban board (claim/release/park/resume/finish, multi-slot capacity, dependency gating), requirement-gated claiming (tier/language/completed-task/custom eligibility, plus non-gating group-coverage and soft-priority requirements with a live "covered" status line and an opt-in "sort by what fits me" board dimension), subtasks, shadow slots for succession, open/request-to-join tasks, requirement waiving with a standing reason, anonymous signals and coordinator pings, a community-wide Escalation view, and bulk tag-based task selection.
 
 **Cycles & seasons** — create a Cycle blank or cloned from the previous one (phases and tasks included), a real resolvable date model for Cycle/Phase boundaries (absolute or relative — a day offset or a percent-through, recomputed as anchors move), named Cycle types (Season, Reunion, Workday) that Tiers can count occurrences of, and Participation declarations (coming/maybe/not-coming, arrival/departure) against a Cycle's capacity and returning-priority window.
 

@@ -33,6 +33,7 @@ export default function TaskCard({
   assignments,
   requirements,
   unmetRequirements,
+  groupCoverage,
   tierNames,
   branchName,
   currentMemberId,
@@ -43,6 +44,7 @@ export default function TaskCard({
   assignments: Assignment[];
   requirements: Requirement[];
   unmetRequirements: Requirement[];
+  groupCoverage: Map<string, boolean>;
   tierNames: Map<string, string>;
   branchName: string;
   currentMemberId: string;
@@ -159,12 +161,35 @@ export default function TaskCard({
 
       {requirements.length > 0 && (
         <ul style={{ fontSize: "0.8rem", margin: "0.4rem 0", paddingLeft: "1.1rem" }}>
-          {requirements.map((r) => (
-            <li key={r.id} style={{ color: unmetIds.has(r.id) ? "crimson" : "#2a7a2a" }}>
-              {describeRequirement(r, tierNames)}
-              {unmetIds.has(r.id) ? " (not met)" : " (met)"}
-            </li>
-          ))}
+          {requirements.map((r) => {
+            // Three modes, three different lines — see docs/spec.md's
+            // Requirement. individual_gate is a personal met/not-met
+            // gate (unmetRequirements, computed for this viewer only);
+            // group_coverage is a standing team-wide status line, never
+            // gated on who's looking; soft_priority never gates or
+            // flags anything, purely informational.
+            if (r.mode === "group_coverage") {
+              const covered = groupCoverage.get(r.id) ?? false;
+              return (
+                <li key={r.id} style={{ color: covered ? "#2a7a2a" : "#a15c00" }}>
+                  {describeRequirement(r, tierNames)} — {covered ? "covered" : "not yet covered"}
+                </li>
+              );
+            }
+            if (r.mode === "soft_priority") {
+              return (
+                <li key={r.id} style={{ color: "#666" }}>
+                  {describeRequirement(r, tierNames)} (preferred)
+                </li>
+              );
+            }
+            return (
+              <li key={r.id} style={{ color: unmetIds.has(r.id) ? "crimson" : "#2a7a2a" }}>
+                {describeRequirement(r, tierNames)}
+                {unmetIds.has(r.id) ? " (not met)" : " (met)"}
+              </li>
+            );
+          })}
         </ul>
       )}
 

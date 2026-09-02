@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { branch, member, requirement, task, taskAssignment, taskDependency } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import { getUnmetRequirements } from "./requirements";
+import { computeRequirementFitScore, getGroupCoverageStatus, getUnmetRequirements } from "./requirements";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -140,9 +140,15 @@ export async function listDistinctTags(actor: Member) {
 
 // Board-shaped: each task comes back with who currently holds it, for
 // rendering "Claimed by ..." and deciding which action buttons to show.
+// sortByFit (docs/development-plan.md's Phase 50) is opt-in — computing
+// a fit score touches every requirement's countEligibleMembers, real
+// extra cost not worth paying on every ordinary board load, so it's
+// only actually run when a member has chosen to sort by it. groupCoverage
+// (the always-visible "not yet covered" line) is cheap by comparison —
+// computed unconditionally, same as unmetRequirements already is.
 export async function listTasksWithAssignments(
   actor: Member,
-  filters: { branchId?: string; status?: string; cycleId?: string; tag?: string } = {},
+  filters: { branchId?: string; status?: string; cycleId?: string; tag?: string; sortByFit?: boolean } = {},
 ) {
   const tasks = await listTasks(actor, filters);
   if (tasks.length === 0) {
@@ -189,16 +195,34 @@ export async function listTasksWithAssignments(
     requirementsByTask.set(r.taskId, list);
   }
 
-  return Promise.all(
-    tasks.map(async (t) => ({
-      ...t,
-      assignments: assignmentsByTask.get(t.id) ?? [],
-      requirements: requirementsByTask.get(t.id) ?? [],
-      unmetRequirements: requirementsByTask.has(t.id)
-        ? await getUnmetRequirements(db, actor, t.id)
-        : [],
-    })),
+  const withRequirements = await Promise.all(
+    tasks.map(async (t) => {
+      const taskRequirements = requirementsByTask.get(t.id) ?? [];
+      const groupCoverage = await getGroupCoverageStatus(db, t.id, taskRequirements);
+      const fitScore = filters.sortByFit
+        ? await computeRequirementFitScore(db, actor, taskRequirements, groupCoverage)
+        : 0;
+      return {
+        ...t,
+        assignments: assignmentsByTask.get(t.id) ?? [],
+        requirements: taskRequirements,
+        unmetRequirements: requirementsByTask.has(t.id) ? await getUnmetRequirements(db, actor, t.id) : [],
+        groupCoverage,
+        fitScore,
+      };
+    }),
   );
+
+  // Sort dimension, not a filter — "surfacing, not deciding" (Phase
+  // 50's own resolved framing). A member opting into this sees the
+  // same task list, just reordered toward what fits them; nothing is
+  // hidden. Array.sort is stable (ES2019+), so ties keep listTasks'
+  // own title-alphabetical order.
+  if (filters.sortByFit) {
+    withRequirements.sort((a, b) => b.fitScore - a.fitScore);
+  }
+
+  return withRequirements;
 }
 
 export async function getTask(actor: Member, taskId: string) {
