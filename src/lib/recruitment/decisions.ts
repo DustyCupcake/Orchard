@@ -6,6 +6,7 @@ import {
   form,
   formResponse,
   member,
+  memberIdentity,
   objection,
   recruitmentApplicationInvite,
   recruitmentDecision,
@@ -13,6 +14,7 @@ import {
   taskAssignment,
 } from "@/db/schema";
 import type { community as communityTable, member as memberTable } from "@/db/schema";
+import type { FormField } from "../forms";
 import { ConflictError, NotFoundError } from "../errors";
 import { createTask } from "../tasks";
 import { createPoll } from "../scheduling-polls";
@@ -102,45 +104,137 @@ async function createIntroCallPoll(
   return { pollId: poll.id, token: generateToken() };
 }
 
+// Idempotent — convertedMemberId is the marker. docs/development-
+// plan.md's Phase 48: the real conversion step Phases 32-34
+// deliberately left un-mechanized (see maybeCreateAccompanimentTask's
+// own historical comment above, and src/db/schema/recruitment.ts's
+// recruitmentDecision comment). Since a Form's fields are opaque to
+// the platform (docs/spec.md's Forms), this only ever runs when the
+// application Form itself tags which field holds the applicant's name
+// and which holds their email (src/lib/forms.ts's
+// isNameField/isEmailField) — an untagged form is a real, visible
+// limitation (surfaced on the Accompaniment task's own description
+// below), not a silent failure. Mirrors src/lib/recruitment/
+// invites.ts's redeemCommunityInvite almost exactly (same Member +
+// MemberIdentity two-row shape, same "an email already on file links
+// to the existing member rather than erroring or duplicating" posture
+// — an applicant who separately redeemed an invite, or already had an
+// account before Recruitment was turned on, is a real, if rare, case
+// worth handling gracefully rather than crashing the decision).
+async function maybeConvertApplicantToMember(
+  communityRow: CommunityRow,
+  decision: RecruitmentDecisionRow,
+): Promise<RecruitmentDecisionRow> {
+  if (decision.convertedMemberId) return decision;
+
+  const [responseRow] = await db.select().from(formResponse).where(eq(formResponse.id, decision.formResponseId));
+  if (!responseRow) return decision;
+  const [formRow] = await db.select().from(form).where(eq(form.id, responseRow.formId));
+  if (!formRow) return decision;
+
+  const fields = formRow.fields as FormField[];
+  const nameField = fields.find((f) => f.isNameField);
+  const emailField = fields.find((f) => f.isEmailField);
+  if (!nameField || !emailField) return decision;
+
+  const values = responseRow.values as Record<string, unknown>;
+  const name = typeof values[nameField.key] === "string" ? (values[nameField.key] as string).trim() : "";
+  const rawEmail = typeof values[emailField.key] === "string" ? (values[emailField.key] as string).trim().toLowerCase() : "";
+  if (!name || !z.string().email().safeParse(rawEmail).success) return decision;
+
+  // The same "who vouched for this person" fact
+  // maybeCreateAccompanimentTask already read on its own before this
+  // function existed — reused here so the new Member's own
+  // referredByMemberId carries it directly, per spec's exact framing
+  // ("pre-filling suggestedMemberId from the new member's
+  // referredByMemberId"), rather than maybeCreateAccompanimentTask
+  // re-deriving it a second, parallel way.
+  const [linkedInvite] = await db
+    .select({ createdBy: communityInvite.createdBy })
+    .from(recruitmentApplicationInvite)
+    .innerJoin(communityInvite, eq(recruitmentApplicationInvite.communityInviteId, communityInvite.id))
+    .where(eq(recruitmentApplicationInvite.formResponseId, decision.formResponseId));
+
+  const [existingIdentity] = await db
+    .select({ memberId: memberIdentity.memberId })
+    .from(memberIdentity)
+    .where(and(eq(memberIdentity.provider, "magic_link"), eq(memberIdentity.loginEmail, rawEmail)));
+
+  const memberId = existingIdentity
+    ? existingIdentity.memberId
+    : await db.transaction(async (tx) => {
+        const [newMember] = await tx
+          .insert(member)
+          .values({
+            communityId: communityRow.id,
+            name,
+            referredByMemberId: linkedInvite?.createdBy ?? null,
+          })
+          .returning();
+        await tx.insert(memberIdentity).values({
+          memberId: newMember.id,
+          provider: "magic_link",
+          loginEmail: rawEmail,
+        });
+        return newMember.id;
+      });
+
+  const [updated] = await db
+    .update(recruitmentDecision)
+    .set({ convertedMemberId: memberId })
+    .where(eq(recruitmentDecision.id, decision.id))
+    .returning();
+  return updated;
+}
+
 // Idempotent — accompanimentTaskId is the marker. suggestedMemberId
-// pre-fills from the linked invite's own creator when the application
-// referenced one (src/db/schema/recruitment.ts's
-// recruitmentApplicationInvite) — "the same 'carry a shadow forward as
-// a suggested next claimant' reasoning Phase 14 already established
-// for succession, applied here to a referrer instead of a shadow"
-// (docs/development-plan.md's Phase 34). This resolves a real gap
-// dev-plan's own phrasing glosses over ("the new member's
-// referredByMemberId") — nothing in Phases 32-35 actually converts an
-// accepted applicant into a Member, so there's no Member row to read
-// referredByMemberId off yet. The linked invite's creator is the same
-// underlying fact (who vouched for this person) without needing that
-// conversion to exist first.
+// pre-fills from the accepted applicant's own referredByMemberId once
+// maybeConvertApplicantToMember above has run (spec's exact framing —
+// "the same 'carry a shadow forward as a suggested next claimant'
+// reasoning Phase 14 already established for succession, applied here
+// to a referrer instead of a shadow," docs/development-plan.md's Phase
+// 34); falls back to the linked invite's own creator directly when
+// conversion didn't happen (an untagged application Form — see
+// maybeConvertApplicantToMember's own comment) so this still degrades
+// to Phase 34's original resolved interpretation rather than losing
+// the suggestion entirely.
 async function maybeCreateAccompanimentTask(actor: Member, communityRow: CommunityRow, decision: RecruitmentDecisionRow) {
   if (decision.accompanimentTaskId) return null;
   if (!communityRow.recruitmentTaskId) return null;
   const [recruitmentTaskRow] = await db.select().from(task).where(eq(task.id, communityRow.recruitmentTaskId));
   if (!recruitmentTaskRow) return null;
 
-  const [linked] = await db
-    .select({ createdBy: communityInvite.createdBy })
-    .from(recruitmentApplicationInvite)
-    .innerJoin(communityInvite, eq(recruitmentApplicationInvite.communityInviteId, communityInvite.id))
-    .where(eq(recruitmentApplicationInvite.formResponseId, decision.formResponseId));
+  let suggestedMemberId: string | null = null;
+  if (decision.convertedMemberId) {
+    const [convertedMember] = await db.select().from(member).where(eq(member.id, decision.convertedMemberId));
+    suggestedMemberId = convertedMember?.referredByMemberId ?? null;
+  } else {
+    const [linked] = await db
+      .select({ createdBy: communityInvite.createdBy })
+      .from(recruitmentApplicationInvite)
+      .innerJoin(communityInvite, eq(recruitmentApplicationInvite.communityInviteId, communityInvite.id))
+      .where(eq(recruitmentApplicationInvite.formResponseId, decision.formResponseId));
+    suggestedMemberId = linked?.createdBy ?? null;
+  }
+
+  const description = decision.convertedMemberId
+    ? `Accompany the new member accepted via the application submitted through /apply (id ${decision.formResponseId}) — see /applications for the full submission.`
+    : `Accompany the new member accepted via the application submitted through /apply (id ${decision.formResponseId}) — see /applications for the full submission. The application Form isn't tagged with a name/email field, so no Member was created automatically; someone will need to invite or otherwise onboard this person by hand.`;
 
   const created = await createTask(
     actor,
     {
       branchId: recruitmentTaskRow.branchId,
       title: "Accompany new member",
-      description: `Accompany the new member accepted via the application submitted through /apply (id ${decision.formResponseId}) — see /applications for the full submission.`,
+      description,
       effort: "owns_a_thing",
       effortMagnitude: { hours_per_week: 1 },
     },
     actor.id,
   );
 
-  if (linked?.createdBy) {
-    await db.update(task).set({ suggestedMemberId: linked.createdBy }).where(eq(task.id, created.id));
+  if (suggestedMemberId) {
+    await db.update(task).set({ suggestedMemberId }).where(eq(task.id, created.id));
   }
 
   const [updated] = await db
@@ -201,6 +295,7 @@ export async function recordDecisionIfReached(actor: Member, formResponseId: str
   }
 
   if (resolution === "accepted") {
+    decisionRow = await maybeConvertApplicantToMember(communityRow, decisionRow);
     const updated = await maybeCreateAccompanimentTask(actor, communityRow, decisionRow);
     if (updated) decisionRow = updated;
   }
@@ -241,8 +336,9 @@ export async function resolveWiderDiscussionManually(
 
   if (input.resolution === "accepted") {
     const communityRow = await getCommunityRow(actor.communityId);
-    const withTask = await maybeCreateAccompanimentTask(actor, communityRow, updated);
-    return withTask ?? updated;
+    const converted = await maybeConvertApplicantToMember(communityRow, updated);
+    const withTask = await maybeCreateAccompanimentTask(actor, communityRow, converted);
+    return withTask ?? converted;
   }
   return updated;
 }
@@ -290,9 +386,16 @@ export async function resolveWiderDiscussionWindows() {
         .innerJoin(form, eq(formResponse.formId, form.id))
         .where(eq(formResponse.id, decision.formResponseId));
       const communityRow = await getCommunityRow(formRow.communityId);
+      // Conversion needs no acting Member (it's a pure record-creation
+      // step, same as findOrCreateMemberByEmail), so this still runs
+      // even if the recruitment task currently has no holder —
+      // Accompaniment's own task creation genuinely does need a real
+      // actor to create a Task as, so that part alone stays gated on
+      // one existing.
+      const converted = await maybeConvertApplicantToMember(communityRow, updated);
       const actorMember = await getRecruitmentTaskHolderMember(communityRow);
       if (actorMember) {
-        const withTask = await maybeCreateAccompanimentTask(actorMember, communityRow, updated);
+        const withTask = await maybeCreateAccompanimentTask(actorMember, communityRow, converted);
         if (withTask?.accompanimentTaskId) accompanimentsCreated++;
       }
     }

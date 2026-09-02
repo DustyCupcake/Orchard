@@ -14,7 +14,7 @@ export async function register() {
   const { recomputeAttentionLevels } = await import("@/lib/attention");
   const { resolveBrowsePeriods } = await import("@/lib/tasks");
   const { resolveInputRounds } = await import("@/lib/input-rounds");
-  const { resolveWiderDiscussionWindows } = await import("@/lib/recruitment");
+  const { resolveWiderDiscussionWindows, updateRecruitmentSubscriptionLapses } = await import("@/lib/recruitment");
 
   // "polled every few minutes" per docs/architecture.md.
   registerJob("attention-level", "*/5 * * * *", recomputeAttentionLevels);
@@ -28,4 +28,9 @@ export async function register() {
   // deadline passes with no Objection raised — see
   // src/lib/recruitment/decisions.ts.
   registerJob("recruitment-wider-discussion", "*/5 * * * *", resolveWiderDiscussionWindows);
+  // Increments/resets each active RecruitmentSubscription's
+  // consecutiveNoAvailabilityCount once its intro-call poll confirms a
+  // slot, auto-lapsing past the configured threshold — see
+  // src/lib/recruitment/subscriptions.ts.
+  registerJob("recruitment-subscription-lapse", "*/5 * * * *", updateRecruitmentSubscriptionLapses);
 }

@@ -32,7 +32,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 **Shifts / rota** — recurring, never-"done" work distinct from one-shot tasks: batch-generated occurrences, first-come sign-up, self-reported completion or coordinator-marked no-shows, and a one-click "rotate this task into a shift."
 
-**Recruitment** — public invite links and an inquiry inbox, an evaluated-admission funnel (configurable evaluator count and decision rules), blind-availability intro-call scheduling for not-yet-members, and a live pipeline view of every candidate in flight.
+**Recruitment** — public invite links and an inquiry inbox, an evaluated-admission funnel (configurable evaluator count and decision rules) that converts an accepted applicant into a real, loggable-in member, blind-availability intro-call scheduling for not-yet-members with an auto-lapsing availability subscription, and a live pipeline view of every candidate in flight.
 
 **Spatial planning** — an SVG-based collaborative site editor (plots, zones, and to-scale placements — tents, vehicles, structures), vertex-level editing with live area/length labels, optional GPS geo-anchoring, GeoJSON/image export, and a propose→approve flow for shared or task-linked placements.
 

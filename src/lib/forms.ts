@@ -9,14 +9,30 @@ type Member = typeof memberTable.$inferSelect;
 
 const responseTypes = ["free_text", "single_choice", "multi_choice"] as const;
 
+// isNameField/isEmailField: a Form stays a generic, Recruitment-
+// unaware primitive (docs/spec.md's Forms — "the mechanism doesn't
+// care which [module uses it]"), but any consumer that eventually
+// needs to turn a submission into a real person — Recruitment's own
+// applicant→Member conversion (docs/development-plan.md's Phase 48)
+// is the first, not the only plausible one — needs the form itself to
+// say which of its own opaque fields hold that person's name and
+// email, since a Form's fields are otherwise opaque to the platform
+// (spec's own test in this same section). At most one of each per
+// Form, enforced below alongside the existing per-field checks.
 const formFieldInput = z.object({
   key: z.string().min(1),
   label: z.string().min(1),
   responseType: z.enum(responseTypes),
   options: z.array(z.string().min(1)).optional(),
   required: z.boolean().optional(),
+  isNameField: z.boolean().optional(),
+  isEmailField: z.boolean().optional(),
 });
 export type FormField = z.infer<typeof formFieldInput>;
+
+function tooManyTaggedFields(fields: FormField[], tag: "isNameField" | "isEmailField") {
+  return fields.filter((f) => f[tag]).length > 1;
+}
 
 // A community-defined set of fields with a stated purpose — shared
 // infrastructure, not a module. See docs/spec.md's "Forms". Gated the
@@ -48,6 +64,12 @@ export const createFormInput = z
     if (new Set(keys).size !== keys.length) {
       ctx.addIssue({ code: "custom", message: "field keys must be unique", path: ["fields"] });
     }
+    if (tooManyTaggedFields(input.fields, "isNameField")) {
+      ctx.addIssue({ code: "custom", message: "at most one field can be tagged as the name field", path: ["fields"] });
+    }
+    if (tooManyTaggedFields(input.fields, "isEmailField")) {
+      ctx.addIssue({ code: "custom", message: "at most one field can be tagged as the email field", path: ["fields"] });
+    }
   });
 export type CreateFormInput = z.infer<typeof createFormInput>;
 
@@ -64,6 +86,12 @@ function requireValidFields(fields: FormField[]) {
   const keys = fields.map((f) => f.key);
   if (new Set(keys).size !== keys.length) {
     throw new AppError("field keys must be unique");
+  }
+  if (tooManyTaggedFields(fields, "isNameField")) {
+    throw new AppError("at most one field can be tagged as the name field");
+  }
+  if (tooManyTaggedFields(fields, "isEmailField")) {
+    throw new AppError("at most one field can be tagged as the email field");
   }
 }
 

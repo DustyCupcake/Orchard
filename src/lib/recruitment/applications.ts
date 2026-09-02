@@ -5,6 +5,7 @@ import {
   communityInvite,
   form,
   formResponse,
+  member,
   recruitmentApplicationInvite,
   recruitmentSubscription,
 } from "@/db/schema";
@@ -165,6 +166,9 @@ export async function listApplicationsForEvaluation(actor: Member) {
       );
       const decision = await getRecruitmentDecision(response.id);
       const objections = decision ? await listObjections(actor, response.id) : [];
+      const convertedMember = decision?.convertedMemberId
+        ? await db.select().from(member).where(eq(member.id, decision.convertedMemberId)).then((rows) => rows[0] ?? null)
+        : null;
       return {
         response,
         evaluations,
@@ -174,6 +178,7 @@ export async function listApplicationsForEvaluation(actor: Member) {
         decision,
         widerDiscussionStatus: decision ? computeWiderDiscussionStatus(decision) : null,
         objections,
+        convertedMember,
       };
     }),
   );

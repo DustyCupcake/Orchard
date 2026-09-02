@@ -46,20 +46,29 @@ import { AppError } from "@/lib/errors";
 // Scheduling polls' one deliberate exception) — matches spec's own
 // "MVP forms are hardcoded per use" framing; a no-code field builder
 // is explicitly out of scope. Format: key|label|response_type|options
-// (comma-separated, choice types only)|required (yes/no).
+// (comma-separated, choice types only)|required (yes/no)|role. `role`
+// is optional and only meaningful for a form a later step might need
+// to convert into a real person (Recruitment's own application form —
+// see docs/development-plan.md's Phase 48) — `name` or `email` tags
+// that one field as isNameField/isEmailField (src/lib/forms.ts);
+// blank/anything else leaves both unset, same as before this segment
+// existed.
 function parseFormFields(raw: string) {
   return raw
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [key, label, responseType, options, required] = line.split("|").map((p) => p?.trim() ?? "");
+      const [key, label, responseType, options, required, role] = line.split("|").map((p) => p?.trim() ?? "");
+      const normalizedRole = role?.toLowerCase();
       return {
         key,
         label,
         responseType: (responseType || "free_text") as "free_text" | "single_choice" | "multi_choice",
         options: options ? options.split(",").map((o) => o.trim()).filter(Boolean) : undefined,
         required: required?.toLowerCase() === "yes",
+        isNameField: normalizedRole === "name" || undefined,
+        isEmailField: normalizedRole === "email" || undefined,
       };
     });
 }

@@ -172,4 +172,22 @@ export const recruitmentDecision = pgTable("recruitment_decision", {
   // already established, for the identical reason.
   introCallToken: text("intro_call_token").unique(),
   accompanimentTaskId: uuid("accompaniment_task_id").references(() => task.id),
+  // docs/development-plan.md's Phase 48: the real conversion step
+  // Phases 32-34 deliberately left un-mechanized (see this file's own
+  // recruitmentDecision comment above, and decisions.ts's
+  // maybeCreateAccompanimentTask, which used to have no Member row to
+  // read referredByMemberId off at all). Set at most once, the same
+  // idempotency-marker posture as accompanimentTaskId — a real
+  // Member/MemberIdentity pair only ever gets created here when the
+  // application Form's own fields are tagged isNameField/isEmailField
+  // (see src/lib/forms.ts); an untagged form's decision simply never
+  // gets this set, a real, visible limitation rather than a silent
+  // failure (surfaced on the Accompaniment task's own description).
+  convertedMemberId: uuid("converted_member_id").references(() => member.id),
+  // Idempotency marker for src/lib/recruitment/subscriptions.ts's
+  // updateRecruitmentSubscriptionLapses scheduled job — set once this
+  // decision's intro-call poll has confirmed a slot and every
+  // currently-active subscriber's consecutiveNoAvailabilityCount has
+  // been updated for it, so a decision is never processed twice.
+  subscriptionLapseProcessedAt: timestamp("subscription_lapse_processed_at", { withTimezone: true }),
 });

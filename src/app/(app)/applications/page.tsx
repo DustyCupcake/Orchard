@@ -9,6 +9,7 @@ import {
   isRecruitmentTaskHolder,
   listApplicationAlerts,
   listApplicationsForEvaluation,
+  listOpenIntroCallsForSubscriber,
 } from "@/lib/recruitment";
 import type { FormField } from "@/lib/forms";
 import { ForbiddenError } from "@/lib/errors";
@@ -59,13 +60,18 @@ export default async function ApplicationsPage({
   const communityRow = await getCommunity(currentMember);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");
 
-  const [subscription, isHolder, form, appUrl] = await Promise.all([
+  const [subscription, isHolder, form, appUrl, openIntroCalls] = await Promise.all([
     moduleOn ? getMyRecruitmentSubscription(currentMember) : Promise.resolve(null),
     moduleOn ? isRecruitmentTaskHolder(currentMember) : Promise.resolve(false),
     moduleOn ? getRecruitmentApplicationForm(currentMember) : Promise.resolve(null),
     resolveAppUrlFromHeaders(),
+    moduleOn ? listOpenIntroCallsForSubscriber(currentMember) : Promise.resolve([]),
   ]);
   const fields = (form?.fields as FormField[] | undefined) ?? [];
+  const lapsed =
+    Boolean(subscription?.id) &&
+    !subscription?.active &&
+    (subscription?.consecutiveNoAvailabilityCount ?? 0) >= communityRow.recruitmentSubscriptionLapseThreshold;
 
   let alerts: Awaited<ReturnType<typeof listApplicationAlerts>> = [];
   let full: Awaited<ReturnType<typeof listApplicationsForEvaluation>> = [];
@@ -100,10 +106,17 @@ export default async function ApplicationsPage({
           {decisionResolved && <p style={{ color: "#2a7a2a" }}>Decision resolved.</p>}
 
           <section style={{ marginTop: "1rem" }}>
+            {lapsed && (
+              <p style={{ color: "#b45309", fontSize: "0.85rem", marginBottom: "0.4rem" }}>
+                You were automatically unsubscribed after {subscription?.consecutiveNoAvailabilityCount}{" "}
+                intro calls in a row with no availability from you — no penalty, just a pause. Resubscribe
+                any time below.
+              </p>
+            )}
             <form action={setRecruitmentSubscriptionAction}>
               <input type="hidden" name="active" value={(!subscription?.active).toString()} />
               <button type="submit" style={{ padding: "0.4rem 1rem" }}>
-                {subscription?.active ? "Unsubscribe from alerts" : "Subscribe to application alerts"}
+                {subscription?.active ? "Unsubscribe from alerts" : lapsed ? "Resubscribe" : "Subscribe to application alerts"}
               </button>
               {subscription?.active && (
                 <span style={{ marginLeft: "0.5rem", fontSize: "0.85rem", color: "#666" }}>
@@ -111,6 +124,24 @@ export default async function ApplicationsPage({
                 </span>
               )}
             </form>
+
+            {subscription?.active && openIntroCalls.length > 0 && (
+              <div style={{ marginTop: "0.6rem" }}>
+                <p style={{ fontSize: "0.85rem", margin: "0 0 0.3rem" }}>
+                  Intro call{openIntroCalls.length > 1 ? "s" : ""} still gathering availability:
+                </p>
+                <ul style={{ margin: 0, fontSize: "0.85rem" }}>
+                  {openIntroCalls.map((c) => (
+                    <li key={c.pollId}>
+                      <Link href={`/scheduling-polls/${c.pollId}`}>
+                        {c.submittedByMe ? "Update your availability" : "Submit your availability"}
+                      </Link>
+                      {c.submittedByMe && <span style={{ color: "#2a7a2a" }}> — submitted</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </section>
 
           {!form && (
@@ -177,7 +208,7 @@ export default async function ApplicationsPage({
             <section style={{ marginTop: "1.5rem" }}>
               <h2>Applications ({full.length})</h2>
               {full.length === 0 && <p style={{ color: "#666" }}>Nothing pending.</p>}
-              {full.map(({ response, evaluations, outcome, evaluationsFiled, evaluatorsNeeded, decision, widerDiscussionStatus, objections }) => {
+              {full.map(({ response, evaluations, outcome, evaluationsFiled, evaluatorsNeeded, decision, widerDiscussionStatus, objections, convertedMember }) => {
                 const myEvaluation = evaluations.find((e) => e.evaluatorId === currentMember.id);
                 return (
                   <div
@@ -318,6 +349,19 @@ export default async function ApplicationsPage({
                               {communityRow.recruitmentRejectionTemplate}
                             </p>
                           </details>
+                        )}
+
+                        {decision.resolution === "accepted" && (
+                          <p style={{ margin: "0.3rem 0 0", fontSize: "0.85rem" }}>
+                            {convertedMember ? (
+                              <>New member created: <strong>{convertedMember.name}</strong>.</>
+                            ) : (
+                              <span style={{ color: "#b45309" }}>
+                                No member was created automatically — this application&rsquo;s form
+                                isn&rsquo;t tagged with a name/email field.
+                              </span>
+                            )}
+                          </p>
                         )}
 
                         {decision.accompanimentTaskId && (

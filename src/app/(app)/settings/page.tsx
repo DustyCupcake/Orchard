@@ -1033,11 +1033,14 @@ export default async function SettingsPage({
             style={{ padding: "0.4rem" }}
           />
           <label style={{ fontSize: "0.85rem" }}>
-            Fields, one per line: <code>key|label|response_type|options|required</code>
+            Fields, one per line: <code>key|label|response_type|options|required|role</code>
             <br />
             <span style={{ color: "#666" }}>
               response_type is free_text/single_choice/multi_choice; options is comma-separated
-              (choice types only); required is yes/no.
+              (choice types only); required is yes/no; role is optional — set it to{" "}
+              <code>name</code> or <code>email</code> on at most one field each if this form
+              should be able to convert its submissions into real members (e.g. a Recruitment
+              application form, under Recruitment below).
             </span>
             <textarea
               name="fieldsRaw"

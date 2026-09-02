@@ -1,0 +1,3 @@
+ALTER TABLE "recruitment_decision" ADD COLUMN "converted_member_id" uuid;--> statement-breakpoint
+ALTER TABLE "recruitment_decision" ADD COLUMN "subscription_lapse_processed_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "recruitment_decision" ADD CONSTRAINT "recruitment_decision_converted_member_id_member_id_fk" FOREIGN KEY ("converted_member_id") REFERENCES "public"."member"("id") ON DELETE no action ON UPDATE no action;
