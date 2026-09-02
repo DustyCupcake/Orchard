@@ -19,7 +19,6 @@ import {
   listSpacePreferences,
   listZones,
 } from "@/lib/spatial-planning";
-import Nav from "@/components/Nav";
 import PlotEditor from "./PlotEditor";
 import {
   acceptPlacementInviteAction,
@@ -103,7 +102,6 @@ export default async function SpatialPlanningPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 1100 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Spatial planning</h1>
 
       {!moduleOn && (

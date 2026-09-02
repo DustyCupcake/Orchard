@@ -5,7 +5,6 @@ import { db } from "@/db";
 import { branch, member } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { getWikiPage, listWikiPages } from "@/lib/wiki-pages";
-import Nav from "@/components/Nav";
 import { editWikiPageAction, markDuplicateAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +36,6 @@ export default async function WikiPageDetail({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <p>
         <Link href="/documentation" style={{ color: "inherit" }}>
           ← Back to Documentation

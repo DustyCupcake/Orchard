@@ -13,7 +13,6 @@ import {
   listAttendance,
   listSummaryReads,
 } from "@/lib/scheduling-polls";
-import Nav from "@/components/Nav";
 import AvailabilityGrid from "../AvailabilityGrid";
 import {
   addAgendaItemAction,
@@ -65,7 +64,6 @@ export default async function SchedulingPollDetailPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 700 }}>
-      <Nav memberName={currentMember.name} />
       <h1>{poll.title}</h1>
       <p style={{ color: "#666" }}>
         {branchRow?.name} · organized by {memberNameById.get(poll.organizedBy) ?? "—"} ·{" "}

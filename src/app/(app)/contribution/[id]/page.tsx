@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { getVisibleContribution } from "@/lib/contribution";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
-import Nav from "@/components/Nav";
 import ContributionCategories from "@/components/ContributionCategories";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +36,6 @@ export default async function MemberContributionPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <p>
         <Link href="/contribution" style={{ color: "inherit" }}>
           ← Back to your contribution

@@ -3,7 +3,6 @@ import { getCurrentMember } from "@/lib/session";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import { SENSITIVE_FIELD_LABELS, getSensitiveDataTable } from "@/lib/sensitive-data";
-import Nav from "@/components/Nav";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +25,6 @@ export default async function SensitiveDataPage() {
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 720 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Sensitive data</h1>
 
       {!moduleOn && (

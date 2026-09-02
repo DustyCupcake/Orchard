@@ -9,7 +9,6 @@ import {
   listMyCommunityInvites,
 } from "@/lib/recruitment";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
-import Nav from "@/components/Nav";
 import {
   claimInquiryAction,
   createCommunityInviteAction,
@@ -60,7 +59,6 @@ export default async function InvitesPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 760 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Invites</h1>
 
       {!moduleOn && (

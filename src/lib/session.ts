@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -30,8 +31,11 @@ export async function createSession(memberId: string) {
 }
 
 // Reads the session cookie and returns the logged-in Member, or null.
-// Safe to call from Server Components (read-only).
-export async function getCurrentMember() {
+// Safe to call from Server Components (read-only). Wrapped in React's
+// cache() since the (app) shell layout now calls this on every
+// authenticated page in addition to the page itself — dedupes to one
+// query per request instead of two.
+export const getCurrentMember = cache(async function getCurrentMember() {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) {
@@ -49,7 +53,7 @@ export async function getCurrentMember() {
   }
 
   return row.member;
-}
+});
 
 // Deletes the session row and clears the cookie. Only callable from a
 // Route Handler or Server Action.

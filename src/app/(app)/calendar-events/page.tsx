@@ -11,7 +11,6 @@ import {
 } from "@/lib/calendar-events";
 import { listBranches } from "@/lib/settings";
 import { listCycles } from "@/lib/cycles";
-import Nav from "@/components/Nav";
 import {
   acceptInviteAction,
   createCalendarEventAction,
@@ -70,7 +69,6 @@ export default async function CalendarEventsPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 720 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Calendar events</h1>
       <p style={{ color: "#666", fontSize: "0.85rem" }}>
         A personal or shared calendar entry that isn&rsquo;t about any one task. Always exactly one

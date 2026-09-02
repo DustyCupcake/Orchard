@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { branch, member } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
-import Nav from "@/components/Nav";
 import { proposePollAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +29,6 @@ export default async function NewSchedulingPollPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 560 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Open a scheduling poll</h1>
       <p style={{ color: "#666" }}>
         Members submit their own availability blind — you&rsquo;ll only see the aggregate overlap,

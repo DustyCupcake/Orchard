@@ -8,7 +8,6 @@ import { isModuleEnabled } from "@/lib/modules";
 import { getBudgetVotingView, getCurrentBudgetCycle, isBudgetOwner, listBudgetProposals } from "@/lib/budget";
 import type { BudgetLineItem } from "@/lib/budget";
 import { ForbiddenError } from "@/lib/errors";
-import Nav from "@/components/Nav";
 import {
   closeProposalsToVotingAction,
   createBudgetCycleAction,
@@ -106,7 +105,6 @@ export default async function BudgetPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 720 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Budget</h1>
 
       {!moduleOn && (

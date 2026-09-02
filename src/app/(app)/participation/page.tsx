@@ -4,7 +4,6 @@ import { getCurrentCycle } from "@/lib/profile-questions";
 import { canInitiateCycle, getCycle } from "@/lib/cycles";
 import { getCycleParticipationSummary, getMyParticipation } from "@/lib/participation";
 import type { member as memberTable } from "@/db/schema";
-import Nav from "@/components/Nav";
 import { declareParticipationAction, updateCycleSettingsAction, updatePhaseBoundaryAction } from "./actions";
 
 type Member = typeof memberTable.$inferSelect;
@@ -47,7 +46,6 @@ export default async function ParticipationPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Participation</h1>
 
       {error && <p style={{ color: "crimson" }}>{error}</p>}

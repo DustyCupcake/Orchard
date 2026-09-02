@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { listAssemblies } from "@/lib/assemblies";
-import Nav from "@/components/Nav";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +25,6 @@ export default async function AssembliesPage() {
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Assemblies</h1>
       <p style={{ color: "#666" }}>
         Community-wide decisions — anything from a genuinely urgent one-off to a slower,

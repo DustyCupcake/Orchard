@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { listEscalatedTasks } from "@/lib/tasks";
 import { isCoordinationHolder } from "@/lib/coordination";
-import Nav from "@/components/Nav";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +19,6 @@ export default async function EscalationPage() {
   if (!authorized) {
     return (
       <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-        <Nav memberName={currentMember.name} />
         <h1>Escalation</h1>
         <p style={{ color: "crimson" }}>
           Only a current holder of any branch&rsquo;s coordination-tagged task can see this —
@@ -34,7 +32,6 @@ export default async function EscalationPage() {
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Escalation</h1>
       <p style={{ color: "#666" }}>
         Tasks that have escalated — no owner, past the point staleness/deadline tolerates.

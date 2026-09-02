@@ -13,7 +13,6 @@ import {
   listPublishedSchedule,
 } from "@/lib/event-scheduling";
 import type { EventSlot } from "@/lib/event-scheduling";
-import Nav from "@/components/Nav";
 import { submitEventProposalAction, updateEventProposalAction } from "./actions";
 import EventReviewSection from "./EventReviewSection";
 
@@ -87,7 +86,6 @@ export default async function SchedulePage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 760 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Schedule</h1>
 
       {!moduleOn && (

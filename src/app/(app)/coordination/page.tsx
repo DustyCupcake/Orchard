@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { listCapacitySignal } from "@/lib/profile-questions";
 import { isCoordinationHolder } from "@/lib/coordination";
-import Nav from "@/components/Nav";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +26,6 @@ export default async function CoordinationPage() {
   if (!authorized) {
     return (
       <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-        <Nav memberName={currentMember.name} />
         <h1>Coordination</h1>
         <p style={{ color: "crimson" }}>
           Only a current holder of any branch&rsquo;s coordination-tagged task can see this.
@@ -40,7 +38,6 @@ export default async function CoordinationPage() {
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Coordination</h1>
 
       {!phaseName && (

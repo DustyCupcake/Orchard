@@ -1,5 +1,5 @@
 import { getIntroCallAvailability, getIntroCallByToken } from "@/lib/recruitment";
-import AvailabilityGrid from "@/app/scheduling-polls/AvailabilityGrid";
+import AvailabilityGrid from "@/app/(app)/scheduling-polls/AvailabilityGrid";
 
 export const dynamic = "force-dynamic";
 

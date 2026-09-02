@@ -10,7 +10,6 @@ import {
   listConflictReports,
   listConflictTeamMemberIds,
 } from "@/lib/conflict";
-import Nav from "@/components/Nav";
 import {
   acknowledgeConflictReportAction,
   escalateConflictReportAction,
@@ -58,7 +57,6 @@ export default async function ConflictReportsPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Conflict management</h1>
 
       {!moduleOn && (

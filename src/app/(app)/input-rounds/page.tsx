@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { getNextCutoffAt, listCurrentRoundQuestions } from "@/lib/input-rounds";
-import Nav from "@/components/Nav";
 import { submitQuestionResponseAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +33,6 @@ export default async function InputRoundsPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Input round</h1>
       <p style={{ color: "#666" }}>
         Small, task-specific questions batch on a fixed cadence rather than pinging you one at a

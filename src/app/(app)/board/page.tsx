@@ -10,7 +10,6 @@ import {
   tierNameLookup,
 } from "@/lib/tasks";
 import { listCoordinationBranchIds } from "@/lib/coordination";
-import Nav from "@/components/Nav";
 import BranchFilter from "./BranchFilter";
 import TagFilter from "./TagFilter";
 import TaskCard from "./TaskCard";
@@ -61,7 +60,6 @@ export default async function BoardPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem" }}>
-      <Nav memberName={currentMember.name} />
       <h1>Board</h1>
 
       {error && <p style={{ color: "crimson" }}>{error}</p>}

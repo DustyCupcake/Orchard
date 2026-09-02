@@ -7,7 +7,6 @@ import { listOnceEverAnswers, listOutstandingQuestions } from "@/lib/profile-que
 import { getCommunity, getCycleTypeCountProgress } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import { SENSITIVE_FIELD_LABELS } from "@/lib/sensitive-data";
-import Nav from "@/components/Nav";
 import { submitProfileAnswerAction, updateProfile, updateSensitiveDataAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -112,7 +111,6 @@ export default async function ProfilePage() {
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 480 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Your profile</h1>
       <form action={updateProfile} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
         <label>

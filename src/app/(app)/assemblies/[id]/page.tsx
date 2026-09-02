@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { getAssembly } from "@/lib/assemblies";
-import Nav from "@/components/Nav";
 import { addAgendaItemAction, submitAssemblyResponseAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +30,6 @@ export default async function AssemblyDetailPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <h1>{a.title}</h1>
       {a.description && <p>{a.description}</p>}
       <p style={{ color: "#666" }}>

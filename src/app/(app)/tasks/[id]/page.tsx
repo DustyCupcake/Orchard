@@ -27,7 +27,6 @@ import { isModuleEnabled } from "@/lib/modules";
 import { listTaskQuestions } from "@/lib/input-rounds";
 import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
-import Nav from "@/components/Nav";
 import {
   acceptJoinRequestAction,
   addCommentAction,
@@ -210,7 +209,6 @@ export default async function TaskDetailPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <p>
         <Link href="/board" style={{ color: "inherit" }}>
           ← Back to board

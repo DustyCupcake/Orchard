@@ -13,7 +13,6 @@ import {
   listShiftSeries,
   listUpcomingShiftOccurrences,
 } from "@/lib/shifts";
-import Nav from "@/components/Nav";
 import {
   createShiftSeriesAction,
   markShiftSignupCompletedAction,
@@ -120,7 +119,6 @@ export default async function ShiftsPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 760 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Shifts</h1>
 
       {!moduleOn && (

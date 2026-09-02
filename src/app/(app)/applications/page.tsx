@@ -13,7 +13,6 @@ import {
 import type { FormField } from "@/lib/forms";
 import { ForbiddenError } from "@/lib/errors";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
-import Nav from "@/components/Nav";
 import {
   raiseObjectionAction,
   resolveWiderDiscussionAction,
@@ -82,7 +81,6 @@ export default async function ApplicationsPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 760 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Applications</h1>
 
       {!moduleOn && (

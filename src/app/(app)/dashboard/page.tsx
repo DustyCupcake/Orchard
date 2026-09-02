@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
 import { ATTENTION_STYLES } from "@/lib/format";
-import Nav from "@/components/Nav";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +42,6 @@ export default async function DashboardPage() {
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 720 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Dashboard</h1>
 
       <section style={{ marginTop: "1rem" }}>

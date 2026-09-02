@@ -5,7 +5,6 @@ import { db } from "@/db";
 import { branch } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { listPolls } from "@/lib/scheduling-polls";
-import Nav from "@/components/Nav";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +24,6 @@ export default async function SchedulingPollsPage() {
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Scheduling polls</h1>
       <p style={{ color: "#666" }}>
         Blind availability — you only ever see the aggregate, never who submitted what, until a

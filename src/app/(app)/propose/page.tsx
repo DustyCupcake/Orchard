@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
-import Nav from "@/components/Nav";
 import { submitProposal } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +26,6 @@ export default async function ProposePage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 520 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Propose a task</h1>
       <p style={{ color: "#666" }}>
         Just a title and a rough description is enough — no need to know its branch, tags, or

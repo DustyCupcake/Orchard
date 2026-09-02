@@ -4,7 +4,6 @@ import { getCurrentMember } from "@/lib/session";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import { getRecruitmentPipeline, isRecruitmentTaskHolder } from "@/lib/recruitment";
-import Nav from "@/components/Nav";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +49,6 @@ export default async function RecruitmentPipelinePage() {
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 860 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Recruitment pipeline</h1>
 
       {!moduleOn && (

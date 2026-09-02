@@ -6,7 +6,6 @@ import { getCurrentMember } from "@/lib/session";
 import { getPostCycleFeedbackForm, listPostCycleFeedbackResponses } from "@/lib/forms";
 import type { FormField } from "@/lib/forms";
 import { ForbiddenError } from "@/lib/errors";
-import Nav from "@/components/Nav";
 import { submitFeedbackAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +45,6 @@ export default async function FeedbackPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Feedback</h1>
 
       {!form && (

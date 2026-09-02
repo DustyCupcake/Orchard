@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { listWikiPages, listTaskWikiIndex } from "@/lib/wiki-pages";
 import { listBranches } from "@/lib/settings";
-import Nav from "@/components/Nav";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +33,6 @@ export default async function DocumentationPage() {
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 720 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Documentation</h1>
       <p style={{ color: "#666" }}>
         General reference, platform how-to, camp policy or lore, and FAQs that don&rsquo;t belong

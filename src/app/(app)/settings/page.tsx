@@ -10,7 +10,6 @@ import { MODULE_DEFINITIONS } from "@/lib/modules";
 import { SENSITIVE_FIELD_KEYS, SENSITIVE_FIELD_LABELS, listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
 import { listForms } from "@/lib/forms";
 import { ForbiddenError } from "@/lib/errors";
-import Nav from "@/components/Nav";
 import {
   archiveFormAction,
   archiveProfileQuestionAction,
@@ -119,7 +118,6 @@ export default async function SettingsPage({
   if (!authorized) {
     return (
       <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-        <Nav memberName={currentMember.name} />
         <h1>Community settings</h1>
         <p style={{ color: "crimson" }}>
           Only a current holder of the &ldquo;{communityRow.adminsTag}&rdquo;-tagged Admins task
@@ -132,7 +130,6 @@ export default async function SettingsPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Community settings</h1>
       <p style={{ color: "#666" }}>
         {communityRow.adminsEverClaimed

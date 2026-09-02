@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { getContributionCommunityAverage, getOwnContribution, listVisibleContributors } from "@/lib/contribution";
-import Nav from "@/components/Nav";
 import ContributionCategories from "@/components/ContributionCategories";
 import { setContributionVisibleAction } from "./actions";
 
@@ -27,7 +26,6 @@ export default async function ContributionPage() {
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Your contribution</h1>
       <p style={{ color: "#666" }}>
         What you&rsquo;ve done, what you&rsquo;re carrying now, and what&rsquo;s coming — nothing

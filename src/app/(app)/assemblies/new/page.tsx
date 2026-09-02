@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
-import Nav from "@/components/Nav";
 import { proposeAssemblyAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +18,6 @@ export default async function NewAssemblyPage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 520 }}>
-      <Nav memberName={currentMember.name} />
       <h1>Propose an Assembly</h1>
       <p style={{ color: "#666" }}>
         Every duration is yours to set — compress agenda and notice to nearly nothing for

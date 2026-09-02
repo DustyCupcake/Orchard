@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { branch, member, participation, task, taskAssignment, taskJoinRequest } from "@/db/schema";
@@ -26,7 +27,11 @@ type Member = typeof memberTable.$inferSelect;
 // scope; that subsystem doesn't exist yet. See docs/spec.md's
 // Dashboard section ("Anyone invited to share a Placement sees that
 // invite... anyone linked to a Placement that moves sees that too").
-export async function getPersonalFeed(actor: Member) {
+// Wrapped in React's cache() since the (app) shell layout now also
+// reads this (for the sidebar's Dashboard badge count) on every
+// authenticated page — dedupes to one query set per request instead
+// of running twice on /dashboard itself.
+export const getPersonalFeed = cache(async function getPersonalFeed(actor: Member) {
   const heldTaskRows = await db
     .select({
       taskId: task.id,
@@ -129,7 +134,7 @@ export async function getPersonalFeed(actor: Member) {
     placementPendingReviews,
     calendarEventInvites,
   };
-}
+});
 
 export type BranchHealthStatus = "on_track" | "attention_needed" | "struggling";
 

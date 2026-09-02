@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { listBranches } from "@/lib/settings";
-import Nav from "@/components/Nav";
 import { createWikiPageAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +20,6 @@ export default async function NewWikiPagePage({
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 520 }}>
-      <Nav memberName={currentMember.name} />
       <h1>New page</h1>
       <p style={{ color: "#666" }}>
         Leave the content blank to post it as an open question instead — it&rsquo;ll sit flagged
