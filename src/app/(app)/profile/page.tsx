@@ -238,6 +238,15 @@ export default async function ProfilePage({
           </fieldset>
         )}
 
+        <label>
+          <input
+            type="checkbox"
+            name="emailNotificationsEnabled"
+            defaultChecked={currentMember.emailNotificationsEnabled}
+          />{" "}
+          Email me targeted messages and announcements
+        </label>
+
         <button type="submit" style={{ padding: "0.5rem 1rem", width: "fit-content" }}>
           Save
         </button>

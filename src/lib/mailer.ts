@@ -128,3 +128,16 @@ export async function sendTaskNominationEmail(
     `task nomination for ${email} ("${input.taskTitle}"):\nAccept: ${input.acceptUrl}\nNot for me: ${input.declineUrl}\nNot right now: ${input.notNowUrl}`,
   );
 }
+
+// A plain outbound message (targeted or community-wide announcement) —
+// see docs/spec.md's Outbound communications and
+// docs/development-plan.md's Phase 53. One-way, no action tokens: "a
+// plain message has nothing to click," unlike the task-nomination
+// email above.
+export async function sendOutboundMessageEmail(
+  email: string,
+  input: { senderName: string; subject: string; body: string },
+) {
+  const text = `From ${input.senderName}:\n\n${input.body}`;
+  await sendPlainTextEmail(email, input.subject, text, `outbound message for ${email}: "${input.subject}"`);
+}

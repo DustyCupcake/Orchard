@@ -104,7 +104,9 @@ function requireOwner(actor: Member, event: CalendarEventRow) {
 // members currently holding a real (non-shadow, not-done) task in that
 // Branch — the only honest, queryable stand-in for "who's in this
 // Branch" this schema can produce without inventing new tracked state.
-async function branchRosterMemberIds(communityId: string, branchId: string): Promise<string[]> {
+// Exported since Phase 53's `branch`-scoped targeted messages reuse
+// this exact definition rather than re-deriving it a third time.
+export async function branchRosterMemberIds(communityId: string, branchId: string): Promise<string[]> {
   const rows = await db
     .selectDistinct({ memberId: taskAssignment.memberId })
     .from(taskAssignment)

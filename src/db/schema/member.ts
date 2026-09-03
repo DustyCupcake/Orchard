@@ -48,4 +48,12 @@ export const member = pgTable("member", {
   // module that's since been disabled or an item that's been renamed
   // just silently drops out rather than needing cleanup.
   pinnedModuleKeys: text("pinned_module_keys").array().notNull().default([]),
+  // "Delivery respects each member's stated contact preference" —
+  // docs/spec.md's Outbound communications, resolved for Phase 53 as
+  // one flat opt-out rather than the per-category granularity spec
+  // doesn't ask this phase to build. Distinct from Phase 46's
+  // ContactMethod visibility, which controls who can *see* a contact
+  // method, not whether the platform emails it — this gates delivery
+  // itself, independent of any method's own visibility setting.
+  emailNotificationsEnabled: boolean("email_notifications_enabled").notNull().default(true),
 });

@@ -142,6 +142,7 @@ export async function updateCommunityAction(formData: FormData) {
       recruitmentWiderDiscussionHours: Number(formData.get("recruitmentWiderDiscussionHours") ?? NaN) || undefined,
       recruitmentRejectionTemplate: String(formData.get("recruitmentRejectionTemplate") ?? "").trim() || null,
       spatialPlanningTaskId: String(formData.get("spatialPlanningTaskId") ?? "").trim() || null,
+      announcementTaskId: String(formData.get("announcementTaskId") ?? "").trim() || null,
       onsiteModeEnabled: formData.get("onsiteModeEnabled") === "on",
     });
     await updateCommunity(actor, input);

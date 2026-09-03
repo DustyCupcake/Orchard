@@ -188,4 +188,15 @@ export const community = pgTable("community", {
   // quote a reference value directly), so this is a resolved default
   // rather than a literal spec quote.
   callSummaryReadWindowDays: integer("call_summary_read_window_days").notNull().default(3),
+  // "Sending an announcement is itself a task on the board (tagged
+  // appropriately), and whoever holds that task can send" — see
+  // docs/spec.md's Outbound communications and
+  // docs/development-plan.md's Phase 53. Same "the task is the
+  // authority" non-FK pointer pattern as eventSchedulingOwnerTaskId/
+  // recruitmentTaskId above (task.ts already imports community.ts).
+  // Null = nobody can send a community-wide announcement yet —
+  // targeted messages (branch/task_holders/arrival_window) don't need
+  // this at all, since each of those is gated by access the sender
+  // already has for other reasons.
+  announcementTaskId: uuid("announcement_task_id"),
 });

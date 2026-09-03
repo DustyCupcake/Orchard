@@ -44,6 +44,7 @@ export async function updateProfile(formData: FormData) {
     .map((t) => t.trim())
     .filter(Boolean);
   const submittedTierIds = formData.getAll("tierIds").map(String);
+  const emailNotificationsEnabled = formData.get("emailNotificationsEnabled") === "on";
 
   if (!name) {
     return;
@@ -65,7 +66,10 @@ export async function updateProfile(formData: FormData) {
   const nextManual = submittedTierIds.filter((id) => manualTierIds.has(id));
   const tierIds = [...new Set([...preserved, ...nextManual])];
 
-  await db.update(member).set({ name, tags, tierIds }).where(eq(member.id, current.id));
+  await db
+    .update(member)
+    .set({ name, tags, tierIds, emailNotificationsEnabled })
+    .where(eq(member.id, current.id));
   revalidatePath("/profile");
 }
 

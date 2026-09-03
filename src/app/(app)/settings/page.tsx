@@ -108,6 +108,13 @@ export default async function SettingsPage({
         .where(eq(task.id, communityRow.spatialPlanningTaskId))
         .then((r) => r[0])
     : null;
+  const announcementTask = communityRow.announcementTaskId
+    ? await db
+        .select({ id: task.id, title: task.title })
+        .from(task)
+        .where(eq(task.id, communityRow.announcementTaskId))
+        .then((r) => r[0])
+    : null;
 
   const ruleTaskIds = [
     ...new Set(sensitiveFieldRules.map((r) => r.unlockedByTaskId).filter((id): id is string => Boolean(id))),
@@ -456,6 +463,27 @@ export default async function SettingsPage({
                 {spatialPlanningTask
                   ? `Currently: "${spatialPlanningTask.title}" — whoever holds it can draw/edit Zones and review pending Placement changes.`
                   : "Nobody can draw or edit Zones until this is set — see /spatial-planning."}
+              </span>
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Outbound messages</legend>
+            <label>
+              Announcement task ID (leave blank to keep community-wide announcements off)
+              <br />
+              <input
+                type="text"
+                name="announcementTaskId"
+                defaultValue={communityRow.announcementTaskId ?? ""}
+                placeholder="paste the task's ID from its /tasks/… URL"
+                style={{ padding: "0.4rem", width: "100%" }}
+              />
+              <br />
+              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+                {announcementTask
+                  ? `Currently: "${announcementTask.title}" — whoever holds it can send a community-wide announcement on /messages.`
+                  : "Targeted messages (branch/task-holders/arrival-window) work without this — it only gates community-wide announcements."}
               </span>
             </label>
           </fieldset>

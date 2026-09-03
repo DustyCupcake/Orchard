@@ -83,6 +83,12 @@ const PATHS: Record<string, React.ReactNode> = {
       <path d="M15 16l4.5-4-4.5-4M19 12H9" />
     </>
   ),
+  mail: (
+    <>
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
+      <path d="m4.5 7 7.5 6 7.5-6" />
+    </>
+  ),
 };
 
 export function Icon({ name, className }: { name: string; className?: string }) {

@@ -80,6 +80,11 @@ export const updateCommunityInput = z.object({
   engagementSoftFlagThreshold: z.number().int().positive().optional(),
   engagementPatternThreshold: z.number().int().positive().optional(),
   callSummaryReadWindowDays: z.number().int().positive().optional(),
+  // Whichever task's holder can send a community-wide announcement —
+  // see src/db/schema/community.ts's own comment and src/lib/messages.ts.
+  // Null clears it, same as every other "the task is the authority"
+  // pointer above.
+  announcementTaskId: z.string().uuid().nullable().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -188,6 +193,16 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
     }
   }
 
+  if (input.announcementTaskId) {
+    const [taskRow] = await db
+      .select({ id: task.id })
+      .from(task)
+      .where(and(eq(task.id, input.announcementTaskId), eq(task.communityId, actor.communityId)));
+    if (!taskRow) {
+      throw new NotFoundError("Task not found in your community");
+    }
+  }
+
   const [updated] = await db
     .update(community)
     .set({
@@ -253,6 +268,7 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.callSummaryReadWindowDays !== undefined && {
         callSummaryReadWindowDays: input.callSummaryReadWindowDays,
       }),
+      ...(input.announcementTaskId !== undefined && { announcementTaskId: input.announcementTaskId }),
     })
     .where(eq(community.id, actor.communityId))
     .returning();
