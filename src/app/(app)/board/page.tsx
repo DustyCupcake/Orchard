@@ -12,6 +12,7 @@ import {
 import { listCoordinationBranchIds } from "@/lib/coordination";
 import { canInitiateCycle } from "@/lib/cycles";
 import { getCurrentCycle } from "@/lib/profile-questions";
+import { listTaskFitSuggestions } from "@/lib/onboarding";
 import BranchFilter from "./BranchFilter";
 import TagFilter from "./TagFilter";
 import TaskCard from "./TaskCard";
@@ -29,14 +30,27 @@ const COLUMNS = [
 export default async function BoardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ branchId?: string; tag?: string; fit?: string; error?: string; notice?: string }>;
+  searchParams: Promise<{
+    branchId?: string;
+    tag?: string;
+    fit?: string;
+    error?: string;
+    notice?: string;
+    done?: string;
+  }>;
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
   }
 
-  const { branchId, tag, fit, error, notice } = await searchParams;
+  const { branchId, tag, fit, error, notice, done } = await searchParams;
+  // "A Done confirmation gains a 'you might also like' strip" — see
+  // docs/development-plan.md's Phase 56 and src/lib/onboarding.ts's
+  // listTaskFitSuggestions, the exact same tag-overlap heuristic
+  // onboarding's own first-login suggestions use, just excluding the
+  // task that was just finished rather than reusing it as an anchor.
+  const relatedToFinished = done ? await listTaskFitSuggestions(viewing, { excludeTaskId: done, limit: 3 }) : [];
   const sortByFit = fit === "1";
 
   const [branches, tasks, tierNames, myPendingRequests, allTags, coordinationBranchIds, canExport, currentCycle] =
@@ -86,6 +100,25 @@ export default async function BoardPage({
 
       {error && <p style={{ color: "crimson" }}>{error}</p>}
       {notice && <p style={{ color: "#2a7a2a" }}>{notice}</p>}
+
+      {done && (
+        <div style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.75rem", marginBottom: "1rem" }}>
+          <p style={{ margin: "0 0 0.4rem", color: "#2a7a2a" }}>Marked as done.</p>
+          {relatedToFinished.length > 0 && (
+            <>
+              <p style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>You might also like:</p>
+              <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                {relatedToFinished.map((t) => (
+                  <li key={t.id} style={{ fontSize: "0.9rem" }}>
+                    <a href={`/tasks/${t.id}`}>{t.title}</a>{" "}
+                    <span style={{ color: "#666" }}>({t.branchName})</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
 
       {branches.length > 0 && (
         <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>

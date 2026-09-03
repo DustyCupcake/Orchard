@@ -3,8 +3,14 @@ import { redirect } from "next/navigation";
 import { CheckCircle, Tree, Users, ChartLineUp, Warning } from "@phosphor-icons/react/dist/ssr";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
+import { listOutstandingQuestions } from "@/lib/profile-questions";
+import { listTaskFitSuggestions, ONBOARDING_CARDS } from "@/lib/onboarding";
 import { ATTENTION_STYLES } from "@/lib/format";
-import { respondToNominationAction } from "./actions";
+import {
+  completeOnboardingAction,
+  respondToNominationAction,
+  submitOnboardingAnswerAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -105,6 +111,67 @@ function SnapshotSection({
   );
 }
 
+function OnboardingQuestionForm({
+  questionId,
+  responseType,
+  options,
+}: {
+  questionId: string;
+  responseType: "free_text" | "single_choice" | "multi_choice" | "date";
+  options: string[];
+}) {
+  return (
+    <form
+      action={submitOnboardingAnswerAction}
+      className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--border)] p-3"
+    >
+      <input type="hidden" name="questionId" value={questionId} />
+      {responseType === "free_text" && (
+        <input type="text" name="value" className="rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1.5 text-[13px]" />
+      )}
+      {responseType === "date" && (
+        <input type="date" name="value" className="rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1.5 text-[13px]" />
+      )}
+      {responseType === "single_choice" && (
+        <div className="flex flex-col gap-1">
+          {options.map((o) => (
+            <label key={o} className="flex items-center gap-1.5 text-[13px]">
+              <input type="radio" name="value" value={o} /> {o}
+            </label>
+          ))}
+        </div>
+      )}
+      {responseType === "multi_choice" && (
+        <div className="flex flex-col gap-1">
+          {options.map((o) => (
+            <label key={o} className="flex items-center gap-1.5 text-[13px]">
+              <input type="checkbox" name="value_multi" value={o} /> {o}
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          name="status"
+          value="answered"
+          className="rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3 py-1.5 text-[12px] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)]"
+        >
+          Save
+        </button>
+        <button
+          type="submit"
+          name="status"
+          value="deferred"
+          className="rounded-[var(--radius-md)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--accent-1)] hover:bg-[var(--accent-1-softer)]"
+        >
+          I don&rsquo;t know yet
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default async function DashboardPage() {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
@@ -115,6 +182,17 @@ export default async function DashboardPage() {
     getPersonalFeed(viewing),
     getCommunitySnapshot(viewing),
   ]);
+
+  // Member onboarding & first session (docs/development-plan.md's
+  // Phase 56) — a nudge, never a gate, so this panel only ever renders
+  // until hasCompletedOnboarding is set (finished or skipped) and never
+  // blocks anything else on this page.
+  const [onboardingQuestions, onboardingSuggestions] = viewing.hasCompletedOnboarding
+    ? [[], []]
+    : await Promise.all([
+        listOutstandingQuestions(viewing, { surface: "onboarding" }),
+        listTaskFitSuggestions(viewing, { limit: 3 }),
+      ]);
 
   const hasFeedItems =
     feed.pendingJoinRequests.length > 0 ||
@@ -155,6 +233,80 @@ export default async function DashboardPage() {
   return (
     <main className="mx-auto max-w-[820px] px-6 py-10 md:px-12 md:py-14">
       <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Dashboard</h1>
+
+      {!viewing.hasCompletedOnboarding && (
+        <section className="mt-8 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-5">
+          <h2 className="mb-1 text-[20px] font-semibold text-[var(--text)]">
+            Welcome — a few things to get you oriented
+          </h2>
+          <p className="mb-4 text-[13px] text-[var(--text-muted)]">
+            Nothing here is required — skip it any time and it won&rsquo;t come back.
+          </p>
+
+          <div className="mb-5 grid gap-3 sm:grid-cols-2">
+            {ONBOARDING_CARDS.map((card) => (
+              <div key={card.title} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
+                <h3 className="mb-1 text-[14px] font-medium text-[var(--text)]">{card.title}</h3>
+                <p className="text-[13px] text-[var(--text-muted)]">{card.body}</p>
+              </div>
+            ))}
+          </div>
+
+          {onboardingQuestions.length > 0 && (
+            <div className="mb-5">
+              <h3 className="mb-2 text-[15px] font-medium text-[var(--text)]">A couple of quick questions</h3>
+              <div className="flex flex-col gap-2">
+                {onboardingQuestions.map(({ question }) => (
+                  <div key={question.id}>
+                    <p className="mb-1 text-[13px] text-[var(--text)]">
+                      {question.label}
+                      {question.required && <span className="text-[var(--danger)]"> *</span>}
+                    </p>
+                    <OnboardingQuestionForm
+                      questionId={question.id}
+                      responseType={question.responseType}
+                      options={question.options}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mb-5">
+            <h3 className="mb-2 text-[15px] font-medium text-[var(--text)]">Open tasks that might fit you</h3>
+            {onboardingSuggestions.length === 0 ? (
+              <p className="text-[13px] text-[var(--text-muted)]">
+                Nothing obviously matching yet —{" "}
+                <Link href="/board" className="text-[var(--accent-1)] hover:underline">
+                  browse the full board
+                </Link>{" "}
+                instead.
+              </p>
+            ) : (
+              <>
+                <ul>
+                  {onboardingSuggestions.map((t) => (
+                    <FeedRow key={t.id} href={`/tasks/${t.id}`} title={t.title} meta={t.branchName} />
+                  ))}
+                </ul>
+                <Link href="/board" className="mt-1 inline-block text-[12px] font-medium text-[var(--accent-1)] hover:underline">
+                  See everything else on the board →
+                </Link>
+              </>
+            )}
+          </div>
+
+          <form action={completeOnboardingAction}>
+            <button
+              type="submit"
+              className="rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)]"
+            >
+              I&rsquo;m all set — don&rsquo;t show this again
+            </button>
+          </form>
+        </section>
+      )}
 
       <section className="mt-8">
         <h2 className="mb-4 text-[22px] font-semibold text-[var(--text)]">What&rsquo;s next for you</h2>

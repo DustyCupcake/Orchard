@@ -27,13 +27,19 @@ export const profileQuestionScopeEnum = pgEnum("profile_question_scope", [
 // src/app/settings/actions.ts) rather than inside this table's own lib
 // module, matching how Branch/Tier CRUD is gated.
 //
-// Not yet included: which surface(s) a question applies to (application,
-// onboarding, ...) — those surfaces don't exist yet (see
-// docs/development-plan.md's Phase 16 scope note), and guessing the
-// shape of that field before a real consumer exists risks getting it
-// wrong the same way building Forms/Profile questions standalone would
-// have. `feedsCapacitySignal` below is this phase's one real, concrete
-// surface instead.
+// `surfaces` (which flow(s) can trigger this question — spec's own
+// example: `["application", "onboarding"]`) sat deliberately unbuilt
+// since Phase 16, since guessing its shape before a real consumer
+// existed risked getting it wrong the same way building Forms/Profile
+// questions standalone would have. docs/development-plan.md's Phase 56
+// (Member onboarding) is that first real consumer — see
+// src/lib/onboarding.ts. Recruitment's own "application" intake never
+// grew into a consumer of this (Phase 33 built application intake on
+// Forms instead, a genuinely different mechanism — see
+// recruitmentApplicationFormId), so "onboarding" is the only value
+// anything in this codebase actually reads today; the field stays a
+// plain free-text array rather than a closed enum since spec frames it
+// as open-ended ("wherever").
 export const profileQuestion = pgTable("profile_question", {
   id: uuid("id").primaryKey().defaultRandom(),
   communityId: uuid("community_id")
@@ -52,6 +58,7 @@ export const profileQuestion = pgTable("profile_question", {
   // cycle with no phase by this name just doesn't surface the question.
   phaseNameHint: text("phase_name_hint"),
   required: boolean("required").notNull().default(false),
+  surfaces: text("surfaces").array().notNull().default([]),
   // Opts a `scope = 'phase'` question into the Coordination view's
   // capacity-aware fitted asks + availability non-response list (see
   // docs/spec.md's Coordination mechanics). Generic rather than a

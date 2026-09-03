@@ -22,6 +22,7 @@ export const createProfileQuestionInput = z
     phaseNameHint: z.string().min(1).nullable().optional(),
     required: z.boolean().optional(),
     feedsCapacitySignal: z.boolean().optional(),
+    surfaces: z.array(z.string().min(1)).optional(),
   })
   .superRefine((input, ctx) => {
     if (input.scope === "phase" && !input.phaseNameHint) {
@@ -48,6 +49,7 @@ export const updateProfileQuestionInput = z.object({
   label: z.string().min(1).optional(),
   required: z.boolean().optional(),
   feedsCapacitySignal: z.boolean().optional(),
+  surfaces: z.array(z.string().min(1)).optional(),
 });
 export type UpdateProfileQuestionInput = z.infer<typeof updateProfileQuestionInput>;
 
@@ -92,6 +94,7 @@ export async function createProfileQuestion(actor: Member, input: CreateProfileQ
       phaseNameHint: input.scope === "phase" ? input.phaseNameHint : null,
       required: input.required ?? false,
       feedsCapacitySignal: input.feedsCapacitySignal ?? false,
+      surfaces: input.surfaces ?? [],
     })
     .returning();
   return created;
@@ -110,6 +113,7 @@ export async function updateProfileQuestion(
       ...(input.feedsCapacitySignal !== undefined && {
         feedsCapacitySignal: input.feedsCapacitySignal,
       }),
+      ...(input.surfaces !== undefined && { surfaces: input.surfaces }),
     })
     .where(and(eq(profileQuestion.id, questionId), eq(profileQuestion.communityId, actor.communityId)))
     .returning();

@@ -116,11 +116,25 @@ export type OutstandingQuestion = {
 // "Surfacing"). A per_cycle/phase question that can't resolve to a
 // current cycle/phase at all just doesn't appear, same as it wouldn't
 // on any other surface.
-export async function listOutstandingQuestions(actor: Member): Promise<OutstandingQuestion[]> {
-  const questions = await db
+//
+// `options.surface`, when given, additionally narrows to questions
+// whose `surfaces` array names it — e.g. Dashboard's onboarding panel
+// (docs/development-plan.md's Phase 56) passes "onboarding" so it only
+// ever surfaces questions a community actually opted into that flow,
+// never every outstanding question community-wide. Filtered in plain
+// JS against the already-fetched array, same posture requirements.ts's
+// own tag/flag checks take rather than a SQL array-contains clause.
+export async function listOutstandingQuestions(
+  actor: Member,
+  options: { surface?: string } = {},
+): Promise<OutstandingQuestion[]> {
+  const allQuestions = await db
     .select()
     .from(profileQuestion)
     .where(and(eq(profileQuestion.communityId, actor.communityId), isNull(profileQuestion.archivedAt)));
+  const questions = options.surface
+    ? allQuestions.filter((q) => q.surfaces.includes(options.surface!))
+    : allQuestions;
 
   const currentCycle = await getCurrentCycle(actor.communityId);
   const currentPhase = await getCurrentPhase(actor.communityId);

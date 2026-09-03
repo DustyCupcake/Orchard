@@ -295,6 +295,13 @@
       "when": 1788450213174,
       "tag": "0041_clammy_joshua_kane",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1788463713957,
+      "tag": "0042_right_red_ghost",
+      "breakpoints": true
     }
   ]
 }

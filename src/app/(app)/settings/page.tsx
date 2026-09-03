@@ -1032,6 +1032,14 @@ export default async function SettingsPage({
                   feeds capacity signal
                 </label>
               )}
+              <label style={{ fontSize: "0.8rem" }}>
+                <input
+                  type="checkbox"
+                  name="onboardingSurface"
+                  defaultChecked={q.surfaces.includes("onboarding")}
+                />{" "}
+                surface during onboarding
+              </label>
               <button type="submit">Save</button>
             </form>
             <form action={q.archivedAt ? unarchiveProfileQuestionAction : archiveProfileQuestionAction} style={{ marginTop: "0.3rem" }}>
@@ -1075,6 +1083,9 @@ export default async function SettingsPage({
           <label>
             <input type="checkbox" name="feedsCapacitySignal" /> feeds capacity signal (phase-scoped
             only)
+          </label>
+          <label>
+            <input type="checkbox" name="onboardingSurface" /> surface during onboarding
           </label>
           <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
             Add profile question

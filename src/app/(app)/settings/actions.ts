@@ -390,6 +390,7 @@ export async function createProfileQuestionAction(formData: FormData) {
         scope === "phase" ? String(formData.get("phaseNameHint") ?? "").trim() || undefined : undefined,
       required: formData.get("required") === "on",
       feedsCapacitySignal: formData.get("feedsCapacitySignal") === "on",
+      surfaces: formData.get("onboardingSurface") === "on" ? ["onboarding"] : [],
     });
     await createProfileQuestion(actor, input);
   } catch (err) {
@@ -409,6 +410,7 @@ export async function updateProfileQuestionAction(formData: FormData) {
       label: String(formData.get("label") ?? "") || undefined,
       required: formData.get("required") === "on",
       feedsCapacitySignal: formData.get("feedsCapacitySignal") === "on",
+      surfaces: formData.get("onboardingSurface") === "on" ? ["onboarding"] : [],
     });
     await updateProfileQuestion(actor, questionId, input);
   } catch (err) {

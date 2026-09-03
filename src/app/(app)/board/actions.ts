@@ -119,10 +119,26 @@ export async function resumeAction(formData: FormData) {
   await runAction(() => resumeTask(actor, taskId));
 }
 
+// docs/development-plan.md's Phase 56 — "a Done confirmation gains a
+// 'you might also like' strip." No separate confirmation screen exists
+// (finishing already just redirects back to the board, same as every
+// other lifecycle action here) — reusing that same redirect-with-query
+// pattern (bulkClaimAction's own `notice=`, Task Packs' `exported=`) is
+// the ephemeral, no-new-schema way to carry "which task just finished"
+// across the redirect for board/page.tsx's strip to read.
 export async function finishAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
-  await runAction(() => finishTask(actor, taskId));
+
+  try {
+    await finishTask(actor, taskId);
+  } catch (err) {
+    if (err instanceof AppError) {
+      redirect(`/board?error=${encodeURIComponent(err.message)}`);
+    }
+    throw err;
+  }
+  redirect(`/board?done=${taskId}`);
 }
 
 export async function parkAction(formData: FormData) {

@@ -56,4 +56,10 @@ export const member = pgTable("member", {
   // method, not whether the platform emails it — this gates delivery
   // itself, independent of any method's own visibility setting.
   emailNotificationsEnabled: boolean("email_notifications_enabled").notNull().default(true),
+  // Member onboarding & first session (docs/development-plan.md's
+  // Phase 56) — a nudge, never a gate: cleared either by finishing the
+  // tutorial/suggestions sequence or by explicitly skipping it, same
+  // "never blocks access behind a required flow" posture this codebase
+  // takes everywhere else. Gates Dashboard's onboarding panel only.
+  hasCompletedOnboarding: boolean("has_completed_onboarding").notNull().default(false),
 });
