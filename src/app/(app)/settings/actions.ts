@@ -123,6 +123,12 @@ export async function updateCommunityAction(formData: FormData) {
       conflictAckWindowHours: Number(formData.get("conflictAckWindowHours") ?? NaN) || undefined,
       taskNominationResponseDays:
         Number(formData.get("taskNominationResponseDays") ?? NaN) || undefined,
+      engagementSoftFlagThreshold:
+        Number(formData.get("engagementSoftFlagThreshold") ?? NaN) || undefined,
+      engagementPatternThreshold:
+        Number(formData.get("engagementPatternThreshold") ?? NaN) || undefined,
+      callSummaryReadWindowDays:
+        Number(formData.get("callSummaryReadWindowDays") ?? NaN) || undefined,
       modulesEnabled: formData.getAll("modulesEnabled").map(String),
       postCycleFeedbackFormId: String(formData.get("postCycleFeedbackFormId") ?? "").trim() || null,
       feedbackReviewTaskId: String(formData.get("feedbackReviewTaskId") ?? "").trim() || null,

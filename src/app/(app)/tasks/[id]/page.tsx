@@ -29,6 +29,8 @@ import { getCycle } from "@/lib/cycles";
 import { isModuleEnabled } from "@/lib/modules";
 import { listTaskQuestions } from "@/lib/input-rounds";
 import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
+import { getAccompaniedMemberId } from "@/lib/recruitment";
+import { computeEngagementPattern } from "@/lib/engagement";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import {
   acceptJoinRequestAction,
@@ -165,6 +167,17 @@ export default async function TaskDetailPage({
   const shadowAssignments = taskRow.assignments.filter((a) => a.isShadow);
   const myAssignment = taskRow.assignments.find((a) => a.memberId === currentMember.id);
   const holdsTask = realAssignments.some((a) => a.memberId === currentMember.id);
+  // "The accompanier gets explicit... visibility into the new member's
+  // engagement record" — see docs/spec.md's Recruitment and
+  // docs/development-plan.md's Phase 52. Only ever resolves to
+  // something when this task actually is an Accompaniment task (see
+  // getAccompaniedMemberId's own comment) and the viewer currently
+  // holds it — access follows the task, same as every other
+  // coordination-facing surface here.
+  const accompaniedMemberId = holdsTask ? await getAccompaniedMemberId(taskRow.id) : null;
+  const accompanimentEngagement = accompaniedMemberId
+    ? await computeEngagementPattern(accompaniedMemberId, currentMember.communityId)
+    : null;
   const isShadowing = myAssignment?.isShadow === true;
   const canShadow =
     !holdsTask && !isShadowing && (taskRow.status === "claimed" || taskRow.status === "waiting");
@@ -639,6 +652,38 @@ export default async function TaskDetailPage({
               </ul>
             </details>
           )}
+        </section>
+      )}
+
+      {accompaniedMemberId && accompanimentEngagement && (
+        <section style={{ marginTop: "1.5rem" }}>
+          <h2>Engagement record</h2>
+          <p style={{ fontSize: "0.85rem" }}>
+            {memberNameById.get(accompaniedMemberId) ?? "This member"} —{" "}
+            {accompanimentEngagement.level === "none" ? (
+              <span style={{ color: "#2a7a2a" }}>no open non-responses</span>
+            ) : (
+              <span
+                style={{
+                  color:
+                    accompanimentEngagement.level === "pattern"
+                      ? "#b3001b"
+                      : accompanimentEngagement.level === "soft_flag"
+                        ? "#a15c00"
+                        : "#666",
+                  fontWeight: 600,
+                }}
+              >
+                {accompanimentEngagement.level === "pattern"
+                  ? "pattern — worth a conversation"
+                  : accompanimentEngagement.level === "soft_flag"
+                    ? "soft flag"
+                    : "noted"}{" "}
+                ({accompanimentEngagement.openCount} open non-response
+                {accompanimentEngagement.openCount === 1 ? "" : "s"})
+              </span>
+            )}
+          </p>
         </section>
       )}
 

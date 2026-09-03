@@ -174,4 +174,18 @@ export const community = pgTable("community", {
   // community-configurable-threshold pattern as conflictAckWindowHours/
   // recruitmentWiderDiscussionHours above.
   taskNominationResponseDays: integer("task_nomination_response_days").notNull().default(3),
+  // "One is just noted, a couple becomes a soft flag... three or more
+  // surfaces as a pattern" — see docs/spec.md's Response tracking and
+  // docs/development-plan.md's Phase 52. "Noted" itself needs no
+  // threshold of its own — it's just 1 up to (not including)
+  // engagementSoftFlagThreshold; see src/lib/engagement.ts's
+  // computeEngagementPattern.
+  engagementSoftFlagThreshold: integer("engagement_soft_flag_threshold").notNull().default(2),
+  engagementPatternThreshold: integer("engagement_pattern_threshold").notNull().default(3),
+  // How long a published, require_read CallSummary waits before a
+  // non-reader logs an engagement event — spec names no number here
+  // (unlike taskNominationResponseDays/conflictAckWindowHours, which
+  // quote a reference value directly), so this is a resolved default
+  // rather than a literal spec quote.
+  callSummaryReadWindowDays: integer("call_summary_read_window_days").notNull().default(3),
 });

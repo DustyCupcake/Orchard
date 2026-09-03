@@ -74,6 +74,12 @@ export const updateCommunityInput = z.object({
   // "Reply within [N days]" — see src/db/schema/community.ts's own
   // comment and src/lib/tasks/nominations.ts.
   taskNominationResponseDays: z.number().int().positive().optional(),
+  // Response tracking thresholds and the call-summary read window —
+  // see src/db/schema/community.ts's own comments and
+  // src/lib/engagement.ts.
+  engagementSoftFlagThreshold: z.number().int().positive().optional(),
+  engagementPatternThreshold: z.number().int().positive().optional(),
+  callSummaryReadWindowDays: z.number().int().positive().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -237,6 +243,15 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.onsiteModeEnabled !== undefined && { onsiteModeEnabled: input.onsiteModeEnabled }),
       ...(input.taskNominationResponseDays !== undefined && {
         taskNominationResponseDays: input.taskNominationResponseDays,
+      }),
+      ...(input.engagementSoftFlagThreshold !== undefined && {
+        engagementSoftFlagThreshold: input.engagementSoftFlagThreshold,
+      }),
+      ...(input.engagementPatternThreshold !== undefined && {
+        engagementPatternThreshold: input.engagementPatternThreshold,
+      }),
+      ...(input.callSummaryReadWindowDays !== undefined && {
+        callSummaryReadWindowDays: input.callSummaryReadWindowDays,
       }),
     })
     .where(eq(community.id, actor.communityId))

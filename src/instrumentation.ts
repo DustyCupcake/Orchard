@@ -16,6 +16,7 @@ export async function register() {
   const { resolveInputRounds } = await import("@/lib/input-rounds");
   const { resolveWiderDiscussionWindows, updateRecruitmentSubscriptionLapses } = await import("@/lib/recruitment");
   const { resolveTaskNominationDeadlines } = await import("@/lib/tasks");
+  const { logCallSummaryUnreadEngagementEvents } = await import("@/lib/engagement");
 
   // "polled every few minutes" per docs/architecture.md.
   registerJob("attention-level", "*/5 * * * *", recomputeAttentionLevels);
@@ -38,4 +39,8 @@ export async function register() {
   // response deadline passes with no reply — see
   // src/lib/tasks/nominations.ts.
   registerJob("task-nomination-deadline", "*/5 * * * *", resolveTaskNominationDeadlines);
+  // Logs an engagement event for anyone who hasn't read a published,
+  // require_read CallSummary once its read window passes — see
+  // src/lib/engagement.ts.
+  registerJob("call-summary-engagement", "*/5 * * * *", logCallSummaryUnreadEngagementEvents);
 }

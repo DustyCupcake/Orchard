@@ -1,7 +1,8 @@
-import { eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { community, phase, task, taskDependency } from "@/db/schema";
+import { community, phase, task, taskAssignment, taskDependency } from "@/db/schema";
 import { computeAttentionLevel } from "./compute";
+import { logEngagementEvent } from "../engagement";
 
 // Recomputes attention_level for every not-done task across every
 // Community, writing back only the rows whose level actually changed.
@@ -72,6 +73,25 @@ export async function recomputeAttentionLevels(): Promise<{ checked: number; upd
     if (level !== t.attentionLevel) {
       await db.update(task).set({ attentionLevel: level }).where(eq(task.id, t.id));
       updated++;
+
+      // "Ignoring the nudge past a grace period re-flags the task" —
+      // see docs/spec.md's Owner-set nudges and
+      // docs/development-plan.md's Phase 52. Only the exact transition
+      // into hard for a still-Waiting task counts as "the nudge got
+      // ignored" — a soft→hard flip from ordinary staleness or a
+      // passed phase end date is a different trigger entirely, not
+      // logged here. nextCheckinAt/waitingNote are task-level, not
+      // per-holder, so every current real (non-shadow) co-holder is
+      // collectively answerable for it — logged for each.
+      if (t.status === "waiting" && level === "hard") {
+        const holders = await db
+          .select({ memberId: taskAssignment.memberId })
+          .from(taskAssignment)
+          .where(and(eq(taskAssignment.taskId, t.id), eq(taskAssignment.isShadow, false)));
+        for (const h of holders) {
+          await logEngagementEvent(db, h.memberId, "nudge_ignored", t.id);
+        }
+      }
     }
   }
 

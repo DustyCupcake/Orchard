@@ -3,6 +3,7 @@ import { db, type Tx } from "@/db";
 import { task, taskAssignment, taskDependency } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { resolveEngagementForMember } from "../engagement";
 import { getUnmetRequirements, describeRequirement } from "./requirements";
 
 type Member = typeof memberTable.$inferSelect;
@@ -173,7 +174,19 @@ export async function releaseAssignmentInTx(tx: Tx, taskId: string, communityId:
 }
 
 export async function releaseTask(actor: Member, taskId: string) {
-  return db.transaction((tx) => releaseAssignmentInTx(tx, taskId, actor.communityId, actor.id));
+  return db.transaction(async (tx) => {
+    // "Release" is one of the Waiting-nudge's own four named response
+    // options (docs/spec.md's Owner-set nudges) — see
+    // docs/development-plan.md's Phase 52. Checked before the release
+    // itself changes the status out from under this read.
+    const before = await loadTaskForUpdate(tx, taskId, actor.communityId);
+    const wasWaiting = before.status === "waiting";
+    const updated = await releaseAssignmentInTx(tx, taskId, actor.communityId, actor.id);
+    if (wasWaiting) {
+      await resolveEngagementForMember(tx, actor.id);
+    }
+    return updated;
+  });
 }
 
 export async function parkTask(
@@ -224,6 +237,15 @@ export async function resumeTask(actor: Member, taskId: string) {
       })
       .where(eq(task.id, taskId))
       .returning();
+
+    // "Update progress (resets the clock)" — the other of the two
+    // Waiting-nudge response actions this codebase's actual lifecycle
+    // graph makes directly callable from `waiting` (see
+    // docs/development-plan.md's Phase 52's own resolved reading —
+    // spec's "mark done"/"re-snooze" options both require resuming
+    // first in this codebase, so aren't separately hooked here).
+    await resolveEngagementForMember(tx, actor.id);
+
     return updated;
   });
 }

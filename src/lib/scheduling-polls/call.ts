@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { callAgendaItem, callSummary, callSummaryRead, pollAttendance, schedulingEntry } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, NotFoundError } from "../errors";
+import { resolveEngagementForMember } from "../engagement";
 import { requirePollInCommunity } from "./crud";
 
 type Member = typeof memberTable.$inferSelect;
@@ -95,6 +96,11 @@ export async function markSummaryRead(actor: Member, summaryId: string) {
     .insert(callSummaryRead)
     .values({ summaryId, memberId: actor.id })
     .returning();
+
+  // Reading a require_read summary is a real response action — see
+  // docs/development-plan.md's Phase 52.
+  await resolveEngagementForMember(db, actor.id);
+
   return created;
 }
 

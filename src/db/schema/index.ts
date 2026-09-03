@@ -17,6 +17,7 @@ export * from "./task-dependency";
 export * from "./task-join-request";
 export * from "./task-nomination";
 export * from "./action-token";
+export * from "./engagement-event";
 export * from "./browse-interest";
 export * from "./endorsement";
 export * from "./task-signal";

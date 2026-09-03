@@ -36,6 +36,14 @@ export const callSummary = pgTable("call_summary", {
   body: text("body").notNull().default(""),
   publishedAt: timestamp("published_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  // Idempotency marker for src/lib/engagement.ts's
+  // logCallSummaryUnreadEngagementEvents scheduled job — set once this
+  // summary's read window has been checked and any non-readers logged,
+  // so a published, require_read summary is only ever scanned once
+  // (see docs/development-plan.md's Phase 52), the same one-shot-
+  // trigger posture Phase 48's subscriptionLapseProcessedAt already
+  // established for a comparably "check once, past a window" case.
+  engagementCheckedAt: timestamp("engagement_checked_at", { withTimezone: true }),
 });
 
 // A plain acknowledgment expected of a defined audience, not an

@@ -7,6 +7,7 @@ import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { isCoordinationHolder } from "../coordination";
 import { issueActionToken, consumeActionToken } from "../notifications";
 import { sendTaskNominationEmail } from "../mailer";
+import { logEngagementEvent, resolveEngagementForMember } from "../engagement";
 import { performClaimInTx, releaseAssignmentInTx } from "./lifecycle";
 
 type Member = typeof memberTable.$inferSelect;
@@ -226,6 +227,18 @@ async function applyNominationResponse(
       if (taskRow) {
         await releaseAssignmentInTx(tx, nomination.taskId, taskRow.communityId, nomination.nominatedMemberId);
       }
+    }
+
+    // See docs/development-plan.md's Phase 52: an unanswered nomination
+    // is itself one of Response tracking's named non-response kinds;
+    // any of the three real human responses (including a decline —
+    // saying no is still re-engaging, silence is what the record
+    // tracks) resets the nominee's whole pattern, not just this one
+    // event, per spec's "resets once the person responds."
+    if (resolution === "expired") {
+      await logEngagementEvent(tx, nomination.nominatedMemberId, "task_nomination_expired", nomination.taskId);
+    } else {
+      await resolveEngagementForMember(tx, nomination.nominatedMemberId);
     }
 
     const [updated] = await tx

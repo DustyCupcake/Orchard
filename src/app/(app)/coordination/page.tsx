@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { listCapacitySignal } from "@/lib/profile-questions";
 import { isCoordinationHolder } from "@/lib/coordination";
+import { listEngagementPatternsForCoordinator } from "@/lib/engagement";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,12 @@ const FLAG_LABEL: Record<string, string> = {
   has_room: "has room",
   about_right: "about right",
   over: "over",
+};
+
+const PATTERN_LABEL: Record<string, { label: string; color: string }> = {
+  noted: { label: "noted", color: "#666" },
+  soft_flag: { label: "soft flag", color: "#a15c00" },
+  pattern: { label: "pattern — worth a conversation", color: "#b3001b" },
 };
 
 // The Coordination view's capacity-aware fitted asks + availability
@@ -35,10 +42,34 @@ export default async function CoordinationPage() {
   }
 
   const { phaseName, questionLabel, entries } = await listCapacitySignal(currentMember);
+  const engagementPatterns = await listEngagementPatternsForCoordinator(currentMember);
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
       <h1>Coordination</h1>
+
+      {engagementPatterns.length > 0 && (
+        <section style={{ marginBottom: "1.5rem" }}>
+          <h2>Engagement patterns</h2>
+          <p style={{ fontSize: "0.85rem", color: "#666" }}>
+            Members on tasks you coordinate with open non-responses — never an automatic
+            consequence, just a real signal worth a human conversation.
+          </p>
+          <ul>
+            {engagementPatterns.map((p) => (
+              <li key={p.memberId}>
+                {p.memberName} —{" "}
+                <span style={{ color: PATTERN_LABEL[p.level]?.color, fontWeight: 600 }}>
+                  {PATTERN_LABEL[p.level]?.label ?? p.level}
+                </span>{" "}
+                <span style={{ color: "#666" }}>
+                  ({p.openCount} open non-response{p.openCount === 1 ? "" : "s"})
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {!phaseName && (
         <p style={{ color: "#666" }}>

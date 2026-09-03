@@ -34,6 +34,22 @@ export async function getRecruitmentDecision(formResponseId: string) {
   return row ?? null;
 }
 
+// The reverse lookup a task detail page needs to know "is this task an
+// Accompaniment task, and if so, whose engagement record does its
+// holder get to see" — see docs/spec.md's Recruitment ("the
+// accompanier gets explicit... visibility into the new member's
+// engagement record") and docs/development-plan.md's Phase 52. Null
+// whenever this isn't an Accompaniment task at all, or the decision
+// that created it never converted a real Member (an untagged
+// application Form — see Phase 48's own maybeConvertApplicantToMember).
+export async function getAccompaniedMemberId(taskId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ convertedMemberId: recruitmentDecision.convertedMemberId })
+    .from(recruitmentDecision)
+    .where(eq(recruitmentDecision.accompanimentTaskId, taskId));
+  return row?.convertedMemberId ?? null;
+}
+
 // Purely time-computed from widerDiscussionDeadline, the same no-
 // scheduler-job-for-the-status-itself pattern Phase 31's returning-
 // priority window and Assemblies' computeAssemblyPhase already

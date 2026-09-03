@@ -316,6 +316,50 @@ export default async function SettingsPage({
           </label>
 
           <fieldset>
+            <legend>Response tracking</legend>
+            <span style={{ fontSize: "0.8rem", color: "#666" }}>
+              How many still-open non-responses (an expired nomination, an ignored Waiting
+              nudge, an unread call summary) before a member&rsquo;s pattern shows as a soft
+              flag, then a real pattern — visible to coordination, never an automatic
+              consequence.
+            </span>
+            <br />
+            <label style={{ display: "inline-block", marginRight: "1rem" }}>
+              Soft flag at
+              <br />
+              <input
+                type="number"
+                name="engagementSoftFlagThreshold"
+                min={1}
+                defaultValue={communityRow.engagementSoftFlagThreshold}
+                style={{ padding: "0.4rem", width: "6rem" }}
+              />
+            </label>
+            <label style={{ display: "inline-block", marginRight: "1rem" }}>
+              Pattern at
+              <br />
+              <input
+                type="number"
+                name="engagementPatternThreshold"
+                min={1}
+                defaultValue={communityRow.engagementPatternThreshold}
+                style={{ padding: "0.4rem", width: "6rem" }}
+              />
+            </label>
+            <label style={{ display: "inline-block" }}>
+              Call summary read window (days)
+              <br />
+              <input
+                type="number"
+                name="callSummaryReadWindowDays"
+                min={1}
+                defaultValue={communityRow.callSummaryReadWindowDays}
+                style={{ padding: "0.4rem", width: "6rem" }}
+              />
+            </label>
+          </fieldset>
+
+          <fieldset>
             <legend>Modules</legend>
             {MODULE_DEFINITIONS.map((m) => (
               <label key={m.key} style={{ display: "block" }}>
