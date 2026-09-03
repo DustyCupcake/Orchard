@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { canInitiateCycle } from "@/lib/cycles";
 import {
   isAnnouncementTaskHolder,
@@ -31,19 +31,19 @@ export default async function MessagesPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { error } = await searchParams;
 
   const [coordinatedBranches, heldTasks, canArrivalWindow, canAnnounce, sentMessages] = await Promise.all([
-    listMyCoordinatedBranches(currentMember),
-    listMyHeldTasksForMessaging(currentMember),
-    canInitiateCycle(currentMember),
-    isAnnouncementTaskHolder(currentMember),
-    listOutboundMessagesVisibleTo(currentMember),
+    listMyCoordinatedBranches(viewing),
+    listMyHeldTasksForMessaging(viewing),
+    canInitiateCycle(viewing),
+    isAnnouncementTaskHolder(viewing),
+    listOutboundMessagesVisibleTo(viewing),
   ]);
 
   return (

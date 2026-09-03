@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { branch, member } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { proposePollAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -12,16 +12,16 @@ export default async function NewSchedulingPollPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { error } = await searchParams;
 
   const [branches, members] = await Promise.all([
-    db.select().from(branch).where(eq(branch.communityId, currentMember.communityId)),
-    db.select().from(member).where(eq(member.communityId, currentMember.communityId)),
+    db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
+    db.select().from(member).where(eq(member.communityId, viewing.communityId)),
   ]);
 
   const today = new Date().toISOString().slice(0, 10);

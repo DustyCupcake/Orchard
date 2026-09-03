@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { submitProposal } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +12,8 @@ export default async function ProposePage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
@@ -22,7 +22,7 @@ export default async function ProposePage({
   const communityMembers = await db
     .select()
     .from(member)
-    .where(eq(member.communityId, currentMember.communityId));
+    .where(eq(member.communityId, viewing.communityId));
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 520 }}>

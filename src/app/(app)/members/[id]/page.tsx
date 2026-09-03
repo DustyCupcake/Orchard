@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { emergencyAccessLog, member } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getVisibleContactMethods, listEmergencyOnlyContactMethods } from "@/lib/contact-methods";
 import { getMostRecentActivation } from "@/lib/emergency-access";
 import { activateEmergencyAccessAction, addEmergencyAccessExplanationAction } from "./actions";
@@ -25,13 +25,13 @@ export default async function MemberPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ activated?: string; error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { id } = await params;
-  if (id === currentMember.id) {
+  if (id === viewing.id) {
     redirect("/profile");
   }
   const { activated, error } = await searchParams;
@@ -41,7 +41,7 @@ export default async function MemberPage({
     .from(member)
     .where(eq(member.id, id));
 
-  if (!target || target.communityId !== currentMember.communityId) {
+  if (!target || target.communityId !== viewing.communityId) {
     return (
       <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 480 }}>
         <p>
@@ -54,7 +54,7 @@ export default async function MemberPage({
     );
   }
 
-  const visibleMethods = await getVisibleContactMethods(currentMember, target.id);
+  const visibleMethods = await getVisibleContactMethods(viewing, target.id);
 
   // Reveal emergency-only methods only right after a real, fresh
   // activation this member just performed — proven by a recent
@@ -64,7 +64,7 @@ export default async function MemberPage({
   let revealedMethods: Awaited<ReturnType<typeof listEmergencyOnlyContactMethods>> = [];
   let recentLog: EmergencyAccessLogRow | null = null;
   if (activated === "1") {
-    const mostRecent = await getMostRecentActivation(currentMember, target.id);
+    const mostRecent = await getMostRecentActivation(viewing, target.id);
     if (mostRecent && Date.now() - mostRecent.activatedAt.getTime() < ACTIVATION_WINDOW_MS) {
       recentLog = mostRecent;
       revealedMethods = await listEmergencyOnlyContactMethods(target.id);

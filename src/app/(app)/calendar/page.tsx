@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import {
   getCalendarEvent,
   listCalendarEventInvites,
@@ -85,20 +85,20 @@ export default async function CalendarPage({
     month?: string;
   }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { error, created, updated, deleted, invited, responded, month } = await searchParams;
 
   const [view, myEvents, myInvites, branches, cycles, communityMembers] = await Promise.all([
-    getCalendarView(currentMember),
-    listMyCalendarEvents(currentMember),
-    listMyCalendarEventInvites(currentMember),
-    listBranches(currentMember),
-    listCycles(currentMember),
-    db.select().from(member).where(eq(member.communityId, currentMember.communityId)),
+    getCalendarView(viewing),
+    listMyCalendarEvents(viewing),
+    listMyCalendarEventInvites(viewing),
+    listBranches(viewing),
+    listCycles(viewing),
+    db.select().from(member).where(eq(member.communityId, viewing.communityId)),
   ]);
 
   const { year, month: monthNum } = parseMonthParam(month);
@@ -116,11 +116,11 @@ export default async function CalendarPage({
   const todayStr = new Date().toISOString().slice(0, 10);
   const upcoming = view.entries.filter((e) => e.date >= todayStr).slice(0, 20);
 
-  const myOwnEvents = myEvents.filter((e) => e.memberId === currentMember.id);
-  const acceptedEvents = myEvents.filter((e) => e.memberId !== currentMember.id);
+  const myOwnEvents = myEvents.filter((e) => e.memberId === viewing.id);
+  const acceptedEvents = myEvents.filter((e) => e.memberId !== viewing.id);
   const inviteListsByEventId = new Map(
     await Promise.all(
-      myOwnEvents.map(async (e) => [e.id, await listCalendarEventInvites(currentMember, e.id)] as const),
+      myOwnEvents.map(async (e) => [e.id, await listCalendarEventInvites(viewing, e.id)] as const),
     ),
   );
 
@@ -305,7 +305,7 @@ export default async function CalendarPage({
                     <select name="memberId" required className="rounded border border-neutral-300 p-1.5 text-sm">
                       <option value="">Pick a member</option>
                       {communityMembers
-                        .filter((m) => m.id !== currentMember.id)
+                        .filter((m) => m.id !== viewing.id)
                         .map((m) => (
                           <option key={m.id} value={m.id}>
                             {m.name}

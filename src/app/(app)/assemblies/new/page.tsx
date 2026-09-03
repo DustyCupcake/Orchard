@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { proposeAssemblyAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -9,8 +9,8 @@ export default async function NewAssemblyPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 

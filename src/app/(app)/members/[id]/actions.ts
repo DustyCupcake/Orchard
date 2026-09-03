@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { ZodError } from "zod";
 import { getCurrentMember } from "@/lib/session";
+import { assertNotViewingAs } from "@/lib/view-as";
 import { activateEmergencyAccess, addEmergencyAccessExplanation } from "@/lib/emergency-access";
 import { AppError } from "@/lib/errors";
 
@@ -16,15 +17,22 @@ function redirectWithError(targetId: string, err: unknown): never {
   throw err;
 }
 
+// Phase 54 (View-as) — see src/lib/view-as.ts.
+async function requireMember() {
+  const actor = await getCurrentMember();
+  if (!actor) {
+    redirect("/login");
+  }
+  await assertNotViewingAs();
+  return actor;
+}
+
 // Any member can activate; the log is the accountability trail. Redirects
 // with a plain `activated=1` marker (never the actual contact values —
 // see the page's own comment for why) — the page re-derives what to show
 // from a fresh, gated DB read.
 export async function activateEmergencyAccessAction(formData: FormData) {
-  const current = await getCurrentMember();
-  if (!current) {
-    redirect("/login");
-  }
+  const current = await requireMember();
 
   const targetMemberId = String(formData.get("targetMemberId"));
   const explanation = String(formData.get("explanation") ?? "").trim() || undefined;
@@ -37,10 +45,7 @@ export async function activateEmergencyAccessAction(formData: FormData) {
 }
 
 export async function addEmergencyAccessExplanationAction(formData: FormData) {
-  const current = await getCurrentMember();
-  if (!current) {
-    redirect("/login");
-  }
+  const current = await requireMember();
 
   const targetMemberId = String(formData.get("targetMemberId"));
   const logId = String(formData.get("logId"));

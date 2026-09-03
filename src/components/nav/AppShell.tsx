@@ -15,7 +15,7 @@ import {
   type NavItem,
 } from "./nav-config";
 import type { NavContext } from "@/lib/nav";
-import { toggleFavoriteNavItem } from "@/app/(app)/nav-actions";
+import { toggleFavoriteNavItem, endViewAsAction } from "@/app/(app)/nav-actions";
 
 const COLLAPSE_KEY = "orchard.sidebar.collapsed";
 const CLOSED_GROUPS_KEY = "orchard.sidebar.closedGroups";
@@ -102,7 +102,7 @@ function NavGroupBlock({
   open: boolean;
   onToggleOpen: () => void;
   manualPinnedKeys: string[];
-  onTogglePin: (key: string) => void;
+  onTogglePin?: (key: string) => void;
 }) {
   if (collapsed) {
     const primary = group.items[0];
@@ -138,7 +138,7 @@ function NavGroupBlock({
               collapsed={false}
               active={isActive(item.href)}
               pinned={manualPinnedKeys.includes(item.key)}
-              onTogglePin={() => onTogglePin(item.key)}
+              onTogglePin={onTogglePin ? () => onTogglePin(item.key) : undefined}
             />
           ))}
         </ul>
@@ -166,7 +166,7 @@ function SidebarNavList({
   closedGroups: Set<string>;
   onToggleGroup: (key: string) => void;
   manualPinnedKeys: string[];
-  onTogglePin: (key: string) => void;
+  onTogglePin?: (key: string) => void;
 }) {
   return (
     <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-2 py-3">
@@ -309,6 +309,45 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
     setMobileOpen(false);
   }, [pathname]);
 
+  // Phase 54 (View-as) — "disabled at the UI layer," applied once here
+  // rather than wrapping every write form on every page individually:
+  // every page already renders exactly as the viewed member would see
+  // it (src/lib/view-as.ts's getViewingContext), including its forms —
+  // this sweep is what keeps those forms visible-but-inert instead of
+  // needing each page to know about View-as. A MutationObserver rather
+  // than a one-shot query since Server Component content can still be
+  // streaming in when this effect first runs. Only forms scoped under
+  // <main> (never the sidebar or the banner's own "End View-as"
+  // button) and never a plain GET form (this app's one read-only
+  // filter form, on /participation, stays interactive). The real
+  // guarantee is server-side (assertNotViewingAs, called from every
+  // Server Action this phase touched) — this is the UX half of "and
+  // re-checked/rejected server-side regardless."
+  useEffect(() => {
+    if (!ctx.viewAs) return;
+
+    function disableWriteForms() {
+      const main = document.querySelector("main");
+      if (!main) return;
+      main.querySelectorAll<HTMLFormElement>("form:not([method='get' i])").forEach((form) => {
+        form.style.pointerEvents = "none";
+        form.style.opacity = "0.55";
+        form.setAttribute("aria-disabled", "true");
+        form.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input[type="submit"]').forEach(
+          (el) => {
+            el.disabled = true;
+          },
+        );
+      });
+    }
+
+    disableWriteForms();
+    const main = document.querySelector("main");
+    const observer = main ? new MutationObserver(disableWriteForms) : null;
+    observer?.observe(main!, { childList: true, subtree: true });
+    return () => observer?.disconnect();
+  }, [ctx.viewAs, pathname]);
+
   function toggleGroup(key: string) {
     setClosedGroups((prev) => {
       const next = new Set(prev);
@@ -325,6 +364,11 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
 
   async function togglePin(key: string) {
     await toggleFavoriteNavItem(key);
+    router.refresh();
+  }
+
+  async function endViewAs() {
+    await endViewAsAction();
     router.refresh();
   }
 
@@ -350,7 +394,14 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
     closedGroups,
     onToggleGroup: toggleGroup,
     manualPinnedKeys: ctx.manualPinnedKeys,
-    onTogglePin: togglePin,
+    // Pinning writes to the *real* member's own pinnedModuleKeys (see
+    // nav-actions.ts's toggleFavoriteNavItem), but ctx here was built
+    // against the View-as target — showing a pin toggle would silently
+    // mutate the wrong member's preferences while looking like it
+    // changed the viewed member's. Same "no writes while viewing as"
+    // rule as everything else this phase touches, so the button just
+    // doesn't render.
+    onTogglePin: ctx.viewAs ? undefined : togglePin,
   };
 
   return (
@@ -386,6 +437,20 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
       <main
         className={`pt-14 transition-[margin] duration-150 md:pt-0 ${collapsed ? "md:ml-16" : "md:ml-64"}`}
       >
+        {ctx.viewAs && (
+          <div className="flex flex-wrap items-center justify-center gap-2 border-b border-violet-300 bg-violet-100 px-4 py-2 text-center text-sm text-violet-900">
+            <span>
+              Viewing as <strong>{ctx.viewAs.targetName}</strong> — read-only. Every action below is
+              disabled; this doesn&rsquo;t affect their real session.
+            </span>
+            <button
+              onClick={endViewAs}
+              className="rounded-md border border-violet-400 bg-white px-2 py-0.5 text-xs font-medium text-violet-800 hover:bg-violet-50"
+            >
+              End View-as
+            </button>
+          </div>
+        )}
         {ctx.onsiteModeEnabled && (
           <div className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900">
             On-site mode is on — settings, branches, tiers, cycle types, starting a new Cycle,

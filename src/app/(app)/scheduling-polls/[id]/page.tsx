@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { branch, member } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import {
   getConfirmedAttendees,
   getMyAvailability,
@@ -32,32 +32,32 @@ export default async function SchedulingPollDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing, viewAs } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { id } = await params;
   const { error } = await searchParams;
-  const poll = await getPoll(currentMember, id);
-  const isOrganizer = poll.organizedBy === currentMember.id;
+  const poll = await getPoll(viewing, id);
+  const isOrganizer = poll.organizedBy === viewing.id;
   const isConfirmed = Boolean(poll.confirmedSlotStart);
 
   const [branchRow, myAvailability, aggregate, agendaItems, summary, confirmedAttendees, communityMembers] =
     await Promise.all([
       db.select().from(branch).where(eq(branch.id, poll.branchId)).then((r) => r[0]),
-      isConfirmed ? Promise.resolve([]) : getMyAvailability(currentMember, id),
-      isConfirmed ? Promise.resolve({ slots: [], submittedCount: 0 }) : getPollAggregate(currentMember, id),
-      poll.hasAgenda ? listAgendaItems(currentMember, id) : Promise.resolve([]),
-      poll.needsSummary ? getSummary(currentMember, id) : Promise.resolve(null),
-      isConfirmed ? getConfirmedAttendees(currentMember, id) : Promise.resolve([]),
-      db.select().from(member).where(eq(member.communityId, currentMember.communityId)),
+      isConfirmed ? Promise.resolve([]) : getMyAvailability(viewing, id),
+      isConfirmed ? Promise.resolve({ slots: [], submittedCount: 0 }) : getPollAggregate(viewing, id),
+      poll.hasAgenda ? listAgendaItems(viewing, id) : Promise.resolve([]),
+      poll.needsSummary ? getSummary(viewing, id) : Promise.resolve(null),
+      isConfirmed ? getConfirmedAttendees(viewing, id) : Promise.resolve([]),
+      db.select().from(member).where(eq(member.communityId, viewing.communityId)),
     ]);
 
   const memberNameById = new Map(communityMembers.map((m) => [m.id, m.name]));
-  const summaryReads = summary && poll.requireRead ? await listSummaryReads(currentMember, summary.id) : [];
-  const iReadSummary = summaryReads.some((r) => r.memberId === currentMember.id);
-  const attendance = isConfirmed ? await listAttendance(currentMember, id) : [];
+  const summaryReads = summary && poll.requireRead ? await listSummaryReads(viewing, summary.id) : [];
+  const iReadSummary = summaryReads.some((r) => r.memberId === viewing.id);
+  const attendance = isConfirmed ? await listAttendance(viewing, id) : [];
   const attendanceByMember = new Map(attendance.map((a) => [a.memberId, a.attended]));
 
   const qualifyingSlots = aggregate.slots.filter((s) => s.qualifies);
@@ -125,7 +125,7 @@ export default async function SchedulingPollDetailPage({
               rangeStart={poll.rangeStart}
               rangeEnd={poll.rangeEnd}
               initialSelected={myAvailability}
-              readOnly={false}
+              readOnly={Boolean(viewAs)}
             />
           </section>
 

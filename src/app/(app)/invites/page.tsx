@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import {
@@ -40,22 +40,22 @@ export default async function InvitesPage({
     inquiryResolved?: string;
   }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { error, created, revoked, claimed, inquiryResolved } = await searchParams;
 
-  const communityRow = await getCommunity(currentMember);
+  const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");
 
   const [myInvites, isHolder, appUrl] = await Promise.all([
-    moduleOn ? listMyCommunityInvites(currentMember) : Promise.resolve([]),
-    moduleOn ? isRecruitmentTaskHolder(currentMember) : Promise.resolve(false),
+    moduleOn ? listMyCommunityInvites(viewing) : Promise.resolve([]),
+    moduleOn ? isRecruitmentTaskHolder(viewing) : Promise.resolve(false),
     resolveAppUrlFromHeaders(),
   ]);
-  const inquiries = moduleOn && isHolder ? await listInquiries(currentMember) : [];
+  const inquiries = moduleOn && isHolder ? await listInquiries(viewing) : [];
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 760 }}>

@@ -199,4 +199,10 @@ export const community = pgTable("community", {
   // this at all, since each of those is gated by access the sender
   // already has for other reasons.
   announcementTaskId: uuid("announcement_task_id"),
+  // "Support is 'claimable like any other' task" - same tag-not-
+  // pointer pattern as adminsTag/coordinationTag above (Phases 13/15):
+  // current holders of anything tagged this are the Support pool, no
+  // dedicated relationship. See docs/spec.md's "View-as (support)" and
+  // docs/development-plan.md's Phase 54, src/lib/view-as.ts.
+  supportTag: text("support_tag").notNull().default("support"),
 });

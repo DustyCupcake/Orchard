@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import {
@@ -48,29 +48,29 @@ export default async function SchedulePage({
     published?: string;
   }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { error, submitted, updated, confirmed, declined, pinged, published } = await searchParams;
 
-  const communityRow = await getCommunity(currentMember);
+  const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "event_scheduling");
 
-  const isOwner = moduleOn ? await isEventSchedulingOwner(currentMember) : false;
+  const isOwner = moduleOn ? await isEventSchedulingOwner(viewing) : false;
 
   const [myProposals, publishedSchedule, reviewProposals] = await Promise.all([
-    moduleOn ? listMyEventProposals(currentMember) : Promise.resolve([]),
-    moduleOn ? listPublishedSchedule(currentMember) : Promise.resolve([]),
-    moduleOn && isOwner ? listEventProposalsForReview(currentMember) : Promise.resolve([]),
+    moduleOn ? listMyEventProposals(viewing) : Promise.resolve([]),
+    moduleOn ? listPublishedSchedule(viewing) : Promise.resolve([]),
+    moduleOn && isOwner ? listEventProposalsForReview(viewing) : Promise.resolve([]),
   ]);
 
   const myPingsByProposalId = new Map(
     await Promise.all(
       myProposals
         .filter((p) => p.status === "conflict")
-        .map(async (p) => [p.id, await listMyEventProposalPings(currentMember, p.id)] as const),
+        .map(async (p) => [p.id, await listMyEventProposalPings(viewing, p.id)] as const),
     ),
   );
 
@@ -78,7 +78,7 @@ export default async function SchedulePage({
   const memberNameById =
     memberIds.length > 0
       ? new Map(
-          (await db.select().from(member).where(eq(member.communityId, currentMember.communityId))).map(
+          (await db.select().from(member).where(eq(member.communityId, viewing.communityId))).map(
             (m) => [m.id, m.name] as const,
           ),
         )

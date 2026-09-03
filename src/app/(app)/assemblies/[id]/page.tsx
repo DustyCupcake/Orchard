@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getAssembly } from "@/lib/assemblies";
 import { addAgendaItemAction, submitAssemblyResponseAction } from "./actions";
 
@@ -19,14 +19,14 @@ export default async function AssemblyDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { id } = await params;
   const { error } = await searchParams;
-  const a = await getAssembly(currentMember, id);
+  const a = await getAssembly(viewing, id);
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>

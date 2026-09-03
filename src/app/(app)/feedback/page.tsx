@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getPostCycleFeedbackForm, listPostCycleFeedbackResponses } from "@/lib/forms";
 import type { FormField } from "@/lib/forms";
 import { ForbiddenError } from "@/lib/errors";
@@ -15,19 +15,19 @@ export default async function FeedbackPage({
 }: {
   searchParams: Promise<{ error?: string; submitted?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { error, submitted } = await searchParams;
 
-  const form = await getPostCycleFeedbackForm(currentMember);
+  const form = await getPostCycleFeedbackForm(viewing);
 
   let responses: Awaited<ReturnType<typeof listPostCycleFeedbackResponses>> = [];
   let canReview = false;
   try {
-    responses = await listPostCycleFeedbackResponses(currentMember);
+    responses = await listPostCycleFeedbackResponses(viewing);
     canReview = true;
   } catch (err) {
     if (!(err instanceof ForbiddenError)) throw err;
@@ -35,7 +35,7 @@ export default async function FeedbackPage({
 
   const memberNameById = canReview
     ? new Map(
-        (await db.select().from(member).where(eq(member.communityId, currentMember.communityId))).map(
+        (await db.select().from(member).where(eq(member.communityId, viewing.communityId))).map(
           (m) => [m.id, m.name] as const,
         ),
       )

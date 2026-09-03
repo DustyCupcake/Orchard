@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import {
@@ -50,22 +50,22 @@ export default async function ApplicationsPage({
     decisionResolved?: string;
   }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { error, subscribed, unsubscribed, evaluated, objectionRaised, decisionResolved } = await searchParams;
 
-  const communityRow = await getCommunity(currentMember);
+  const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");
 
   const [subscription, isHolder, form, appUrl, openIntroCalls] = await Promise.all([
-    moduleOn ? getMyRecruitmentSubscription(currentMember) : Promise.resolve(null),
-    moduleOn ? isRecruitmentTaskHolder(currentMember) : Promise.resolve(false),
-    moduleOn ? getRecruitmentApplicationForm(currentMember) : Promise.resolve(null),
+    moduleOn ? getMyRecruitmentSubscription(viewing) : Promise.resolve(null),
+    moduleOn ? isRecruitmentTaskHolder(viewing) : Promise.resolve(false),
+    moduleOn ? getRecruitmentApplicationForm(viewing) : Promise.resolve(null),
     resolveAppUrlFromHeaders(),
-    moduleOn ? listOpenIntroCallsForSubscriber(currentMember) : Promise.resolve([]),
+    moduleOn ? listOpenIntroCallsForSubscriber(viewing) : Promise.resolve([]),
   ]);
   const fields = (form?.fields as FormField[] | undefined) ?? [];
   const lapsed =
@@ -76,10 +76,10 @@ export default async function ApplicationsPage({
   let alerts: Awaited<ReturnType<typeof listApplicationAlerts>> = [];
   let full: Awaited<ReturnType<typeof listApplicationsForEvaluation>> = [];
   if (moduleOn && isHolder) {
-    full = await listApplicationsForEvaluation(currentMember);
+    full = await listApplicationsForEvaluation(viewing);
   } else if (moduleOn) {
     try {
-      alerts = await listApplicationAlerts(currentMember);
+      alerts = await listApplicationAlerts(viewing);
     } catch (err) {
       if (!(err instanceof ForbiddenError)) throw err;
     }
@@ -209,7 +209,7 @@ export default async function ApplicationsPage({
               <h2>Applications ({full.length})</h2>
               {full.length === 0 && <p style={{ color: "#666" }}>Nothing pending.</p>}
               {full.map(({ response, evaluations, outcome, evaluationsFiled, evaluatorsNeeded, decision, widerDiscussionStatus, objections, convertedMember }) => {
-                const myEvaluation = evaluations.find((e) => e.evaluatorId === currentMember.id);
+                const myEvaluation = evaluations.find((e) => e.evaluatorId === viewing.id);
                 return (
                   <div
                     key={response.id}
@@ -243,7 +243,7 @@ export default async function ApplicationsPage({
                       <ul style={{ margin: "0 0 0.5rem", fontSize: "0.85rem" }}>
                         {evaluations.map((e) => (
                           <li key={e.id}>
-                            {e.evaluatorId === currentMember.id ? "You" : "Another evaluator"}:{" "}
+                            {e.evaluatorId === viewing.id ? "You" : "Another evaluator"}:{" "}
                             {e.recommendation}
                             {e.notes ? ` — ${e.notes}` : ""}
                           </li>

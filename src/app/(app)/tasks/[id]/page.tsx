@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { branch, member } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import {
   getGroupCoverageStatus,
   getParentTaskSummary,
@@ -87,15 +87,15 @@ export default async function TaskDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { id } = await params;
   const { error } = await searchParams;
 
-  const taskRow = await getTask(currentMember, id);
+  const taskRow = await getTask(viewing, id);
   const isCommunityEndorsed = taskRow.openness === "community_endorsed";
   const [
     branchRow,
@@ -120,33 +120,33 @@ export default async function TaskDetailPage({
     nominations,
   ] = await Promise.all([
     db.select().from(branch).where(eq(branch.id, taskRow.branchId)).then((r) => r[0]),
-    getTaskNotes(currentMember, id),
-    listRequirements(currentMember, id),
-    getUnmetRequirements(db, currentMember, id),
-    tierNameLookup(currentMember.communityId),
-    listSubtasks(currentMember, id),
-    taskRow.parentTaskId ? getParentTaskSummary(currentMember, taskRow.parentTaskId) : null,
-    listBranches(currentMember),
-    listJoinRequests(currentMember, id),
-    isCommunityEndorsed ? listCandidacies(currentMember, id) : [],
-    isCoordinationHolder(currentMember, taskRow.branchId),
-    isAuthorizedToWaive(currentMember, taskRow.branchId, id),
-    isAuthorizedToNominate(currentMember, { id, branchId: taskRow.branchId }),
-    listMyPings(currentMember, id),
-    db.select().from(member).where(eq(member.communityId, currentMember.communityId)),
-    listTaskQuestions(currentMember, id),
-    getCommunity(currentMember),
-    listTaskMilestones(currentMember, id),
+    getTaskNotes(viewing, id),
+    listRequirements(viewing, id),
+    getUnmetRequirements(db, viewing, id),
+    tierNameLookup(viewing.communityId),
+    listSubtasks(viewing, id),
+    taskRow.parentTaskId ? getParentTaskSummary(viewing, taskRow.parentTaskId) : null,
+    listBranches(viewing),
+    listJoinRequests(viewing, id),
+    isCommunityEndorsed ? listCandidacies(viewing, id) : [],
+    isCoordinationHolder(viewing, taskRow.branchId),
+    isAuthorizedToWaive(viewing, taskRow.branchId, id),
+    isAuthorizedToNominate(viewing, { id, branchId: taskRow.branchId }),
+    listMyPings(viewing, id),
+    db.select().from(member).where(eq(member.communityId, viewing.communityId)),
+    listTaskQuestions(viewing, id),
+    getCommunity(viewing),
+    listTaskMilestones(viewing, id),
     taskRow.cycleId
-      ? getCycle(currentMember, taskRow.cycleId).then((c) => c.phases)
+      ? getCycle(viewing, taskRow.cycleId).then((c) => c.phases)
       : Promise.resolve([]),
-    listNominationsForTask(currentMember, id),
+    listNominationsForTask(viewing, id),
   ]);
   const groupCoverage = await getGroupCoverageStatus(db, id, requirements);
   const shiftsModuleOn = isModuleEnabled(communityRow, "shifts");
   const myEndorsements = isCommunityEndorsed
     ? await listMyEndorsements(
-        currentMember,
+        viewing,
         candidacies.map((c) => c.id),
       )
     : new Set<string>();
@@ -156,7 +156,7 @@ export default async function TaskDetailPage({
   // of relying on listSignals()/listPings() throwing, matching how
   // canApproveRequests is checked elsewhere on this page.
   const [signals, pings] = isCoordHolderForBranch
-    ? await Promise.all([listSignals(currentMember, id), listPings(currentMember, id)])
+    ? await Promise.all([listSignals(viewing, id), listPings(viewing, id)])
     : [[], []];
 
   // A shadow isn't a real holder — see lifecycle.ts's assignmentCount(),
@@ -165,8 +165,8 @@ export default async function TaskDetailPage({
   // who "Held by" means).
   const realAssignments = taskRow.assignments.filter((a) => !a.isShadow);
   const shadowAssignments = taskRow.assignments.filter((a) => a.isShadow);
-  const myAssignment = taskRow.assignments.find((a) => a.memberId === currentMember.id);
-  const holdsTask = realAssignments.some((a) => a.memberId === currentMember.id);
+  const myAssignment = taskRow.assignments.find((a) => a.memberId === viewing.id);
+  const holdsTask = realAssignments.some((a) => a.memberId === viewing.id);
   // "The accompanier gets explicit... visibility into the new member's
   // engagement record" — see docs/spec.md's Recruitment and
   // docs/development-plan.md's Phase 52. Only ever resolves to
@@ -176,7 +176,7 @@ export default async function TaskDetailPage({
   // coordination-facing surface here.
   const accompaniedMemberId = holdsTask ? await getAccompaniedMemberId(taskRow.id) : null;
   const accompanimentEngagement = accompaniedMemberId
-    ? await computeEngagementPattern(accompaniedMemberId, currentMember.communityId)
+    ? await computeEngagementPattern(accompaniedMemberId, viewing.communityId)
     : null;
   const isShadowing = myAssignment?.isShadow === true;
   const canShadow =
@@ -187,15 +187,15 @@ export default async function TaskDetailPage({
     holdsTask &&
     (taskRow.openness !== "coordination_approved" ||
       coordinationHolders.length === 0 ||
-      coordinationHolders.some((a) => a.memberId === currentMember.id));
+      coordinationHolders.some((a) => a.memberId === viewing.id));
   const pendingRequests = joinRequests.filter((r) => r.status === "pending");
   const resolvedRequests = joinRequests.filter((r) => r.status !== "pending");
-  const myRequest = joinRequests.find((r) => r.memberId === currentMember.id);
+  const myRequest = joinRequests.find((r) => r.memberId === viewing.id);
 
   const browseWindowOpen = Boolean(
     taskRow.browsePeriodEnd && taskRow.browsePeriodEnd.getTime() > Date.now(),
   );
-  const myCandidacy = candidacies.find((c) => c.memberId === currentMember.id);
+  const myCandidacy = candidacies.find((c) => c.memberId === viewing.id);
   const openCandidacies = candidacies.filter((c) => c.status === "open");
   const resolvedCandidacies = candidacies.filter((c) => c.status !== "open");
   const canExpressCandidacy =
@@ -536,17 +536,17 @@ export default async function TaskDetailPage({
                 {memberNameById.get(c.memberId) ?? "—"} — {c.endorsementCount}/
                 {taskRow.endorsementThreshold} endorsements
               </p>
-              {c.memberId === currentMember.id && (
+              {c.memberId === viewing.id && (
                 <form action={withdrawCandidacyAction} style={{ marginTop: "0.25rem" }}>
                   <input type="hidden" name="taskId" value={taskRow.id} />
                   <input type="hidden" name="candidacyId" value={c.id} />
                   <button type="submit">Withdraw</button>
                 </form>
               )}
-              {c.memberId !== currentMember.id && myEndorsements.has(c.id) && (
+              {c.memberId !== viewing.id && myEndorsements.has(c.id) && (
                 <span style={{ fontSize: "0.85rem", color: "#666" }}>You&rsquo;ve endorsed this</span>
               )}
-              {c.memberId !== currentMember.id && !myEndorsements.has(c.id) && browseWindowOpen && (
+              {c.memberId !== viewing.id && !myEndorsements.has(c.id) && browseWindowOpen && (
                 <form action={endorseCandidacyAction} style={{ marginTop: "0.25rem" }}>
                   <input type="hidden" name="taskId" value={taskRow.id} />
                   <input type="hidden" name="candidacyId" value={c.id} />

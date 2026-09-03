@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import { getCurrentCycle } from "@/lib/profile-questions";
@@ -49,39 +49,39 @@ export default async function SpatialPlanningPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { error } = await searchParams;
-  const communityRow = await getCommunity(currentMember);
+  const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "spatial_planning");
 
-  const currentCycle = moduleOn ? await getCurrentCycle(currentMember.communityId) : null;
+  const currentCycle = moduleOn ? await getCurrentCycle(viewing.communityId) : null;
   const cycleId = currentCycle?.id ?? null;
 
-  const plotRow = moduleOn ? await getPlotForCycle(currentMember, cycleId) : null;
+  const plotRow = moduleOn ? await getPlotForCycle(viewing, cycleId) : null;
   const [zones, placements, templates, canEdit, cloneCandidates, communityMembers, mySpacePreference] =
     await Promise.all([
-      plotRow ? listZones(currentMember, plotRow.id) : Promise.resolve([]),
-      plotRow ? listPlacements(currentMember, plotRow.id) : Promise.resolve([]),
-      moduleOn ? listPlacementTemplates(currentMember) : Promise.resolve([]),
-      moduleOn ? isSpatialPlanningHolder(currentMember, communityRow) : Promise.resolve(false),
+      plotRow ? listZones(viewing, plotRow.id) : Promise.resolve([]),
+      plotRow ? listPlacements(viewing, plotRow.id) : Promise.resolve([]),
+      moduleOn ? listPlacementTemplates(viewing) : Promise.resolve([]),
+      moduleOn ? isSpatialPlanningHolder(viewing, communityRow) : Promise.resolve(false),
       // Cloning needs a real Cycle to clone *from* and *into* — nothing to
       // offer for a Community that never turned Cycles on, or once this
       // Cycle already has its own Plot.
       moduleOn && currentCycle && !plotRow
-        ? listCyclesWithPlot(currentMember, currentCycle.id)
+        ? listCyclesWithPlot(viewing, currentCycle.id)
         : Promise.resolve([]),
       moduleOn
-        ? db.select({ id: member.id, name: member.name }).from(member).where(eq(member.communityId, currentMember.communityId))
+        ? db.select({ id: member.id, name: member.name }).from(member).where(eq(member.communityId, viewing.communityId))
         : Promise.resolve([]),
-      moduleOn ? getMySpacePreference(currentMember) : Promise.resolve(null),
+      moduleOn ? getMySpacePreference(viewing) : Promise.resolve(null),
     ]);
 
   const everyonesSpacePreferences =
-    moduleOn && canEdit ? await listSpacePreferences(currentMember) : [];
+    moduleOn && canEdit ? await listSpacePreferences(viewing) : [];
   const memberNameById = new Map(communityMembers.map((m) => [m.id, m.name]));
 
   // Phase 38: which of the current Plot's Placements this member can
@@ -91,13 +91,13 @@ export default async function SpatialPlanningPage({
     !canEdit && placements.length > 0
       ? (
           await Promise.all(
-            placements.map(async (p) => ((await isPlacementEditor(currentMember, p)) ? p.id : null)),
+            placements.map(async (p) => ((await isPlacementEditor(viewing, p)) ? p.id : null)),
           )
         ).filter((id): id is string => id !== null)
       : [];
 
   const [myPlacementInvites, myRevertNotices] = moduleOn
-    ? await Promise.all([listMyPlacementInvites(currentMember), listMyRevertNotices(currentMember)])
+    ? await Promise.all([listMyPlacementInvites(viewing), listMyRevertNotices(viewing)])
     : [[], []];
 
   return (

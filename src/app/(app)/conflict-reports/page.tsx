@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import {
   isConflictTeamMember,
@@ -26,31 +26,31 @@ export default async function ConflictReportsPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { error } = await searchParams;
 
-  const communityRow = await getCommunity(currentMember);
+  const communityRow = await getCommunity(viewing);
   const moduleOn = Boolean(communityRow.conflictTeamTaskId);
 
   const [isTeamMember, teamMemberIds, reports, communityMembers] = await Promise.all([
-    moduleOn ? isConflictTeamMember(currentMember) : false,
-    moduleOn ? listConflictTeamMemberIds(currentMember.communityId) : [],
-    moduleOn ? listConflictReports(currentMember) : [],
-    db.select().from(member).where(eq(member.communityId, currentMember.communityId)),
+    moduleOn ? isConflictTeamMember(viewing) : false,
+    moduleOn ? listConflictTeamMemberIds(viewing.communityId) : [],
+    moduleOn ? listConflictReports(viewing) : [],
+    db.select().from(member).where(eq(member.communityId, viewing.communityId)),
   ]);
   const memberNameById = new Map(communityMembers.map((m) => [m.id, m.name]));
   const excludableMembers = teamMemberIds
-    .filter((id) => id !== currentMember.id)
+    .filter((id) => id !== viewing.id)
     .map((id) => ({ id, name: memberNameById.get(id) ?? "—" }));
 
   const exclusionsByReport = new Map<string, { memberId: string; addedBy: string }[]>();
   await Promise.all(
     reports.map(async (r) => {
-      const rows = await listConflictReportExclusions(currentMember, r.id);
+      const rows = await listConflictReportExclusions(viewing, r.id);
       exclusionsByReport.set(r.id, rows);
     }),
   );
@@ -111,8 +111,8 @@ export default async function ConflictReportsPage({
 
             {reports.map((r) => {
               const exclusions = exclusionsByReport.get(r.id) ?? [];
-              const isReporter = r.reportedBy === currentMember.id;
-              const isPointOfContact = r.acknowledgedBy === currentMember.id;
+              const isReporter = r.reportedBy === viewing.id;
+              const isPointOfContact = r.acknowledgedBy === viewing.id;
               const overdue =
                 !r.acknowledgedAt &&
                 Date.now() - new Date(r.createdAt).getTime() > communityRow.conflictAckWindowHours * 3600_000;

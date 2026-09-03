@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { getCurrentMember } from "@/lib/session";
+import { assertNotViewingAs } from "@/lib/view-as";
 import { sendOutboundMessage } from "@/lib/messages";
 import { AppError } from "@/lib/errors";
 
@@ -22,6 +23,8 @@ async function requireMember() {
   if (!actor) {
     redirect("/login");
   }
+  // Phase 54 (View-as) — see src/lib/view-as.ts.
+  await assertNotViewingAs();
   return actor;
 }
 

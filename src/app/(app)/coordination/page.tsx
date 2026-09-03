@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { listCapacitySignal } from "@/lib/profile-questions";
 import { isCoordinationHolder } from "@/lib/coordination";
 import { listEngagementPatternsForCoordinator } from "@/lib/engagement";
@@ -24,12 +24,12 @@ const PATTERN_LABEL: Record<string, { label: string; color: string }> = {
 // same scope as the Escalation view: Availability isn't branch-scoped
 // data, so there's no branch to narrow it by.
 export default async function CoordinationPage() {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
-  const authorized = await isCoordinationHolder(currentMember, null);
+  const authorized = await isCoordinationHolder(viewing, null);
   if (!authorized) {
     return (
       <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
@@ -41,8 +41,8 @@ export default async function CoordinationPage() {
     );
   }
 
-  const { phaseName, questionLabel, entries } = await listCapacitySignal(currentMember);
-  const engagementPatterns = await listEngagementPatternsForCoordinator(currentMember);
+  const { phaseName, questionLabel, entries } = await listCapacitySignal(viewing);
+  const engagementPatterns = await listEngagementPatternsForCoordinator(viewing);
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>

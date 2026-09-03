@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import { SENSITIVE_FIELD_LABELS, getSensitiveDataTable } from "@/lib/sensitive-data";
@@ -12,15 +12,15 @@ export const dynamic = "force-dynamic";
 // what's relevant to what you hold, in one place" pattern
 // /coordination and /escalation already use.
 export default async function SensitiveDataPage() {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
-  const communityRow = await getCommunity(currentMember);
+  const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "sensitive_data");
   const { fields, rows } = moduleOn
-    ? await getSensitiveDataTable(currentMember)
+    ? await getSensitiveDataTable(viewing)
     : { fields: [], rows: [] };
 
   return (

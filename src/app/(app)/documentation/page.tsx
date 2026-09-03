@@ -1,21 +1,21 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { listWikiPages, listTaskWikiIndex } from "@/lib/wiki-pages";
 import { listBranches } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
 export default async function DocumentationPage() {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const [pages, taskWikiGroups, branches] = await Promise.all([
-    listWikiPages(currentMember),
-    listTaskWikiIndex(currentMember),
-    listBranches(currentMember),
+    listWikiPages(viewing),
+    listTaskWikiIndex(viewing),
+    listBranches(viewing),
   ]);
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
 

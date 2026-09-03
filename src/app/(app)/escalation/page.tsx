@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { listEscalatedTasks } from "@/lib/tasks";
 import { isCoordinationHolder } from "@/lib/coordination";
 
@@ -10,12 +10,12 @@ export const dynamic = "force-dynamic";
 // to all coordinators, with cross-branch placement encouraged" — see
 // docs/spec.md's Coordination mechanics: Escalation.
 export default async function EscalationPage() {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
-  const authorized = await isCoordinationHolder(currentMember, null);
+  const authorized = await isCoordinationHolder(viewing, null);
   if (!authorized) {
     return (
       <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
@@ -28,7 +28,7 @@ export default async function EscalationPage() {
     );
   }
 
-  const tasks = await listEscalatedTasks(currentMember);
+  const tasks = await listEscalatedTasks(viewing);
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>

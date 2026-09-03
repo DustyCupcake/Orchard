@@ -274,6 +274,13 @@
       "when": 1788434912138,
       "tag": "0038_red_landau",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1788444218207,
+      "tag": "0039_skinny_forge",
+      "breakpoints": true
     }
   ]
 }

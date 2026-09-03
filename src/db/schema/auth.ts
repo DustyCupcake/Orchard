@@ -41,4 +41,15 @@ export const session = pgTable("session", {
     .references(() => member.id),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // View-as (see docs/spec.md's "View-as (support)", Phase 54) — an
+  // overlay on this same session row, never a real session swap: the
+  // real memberId above never changes, this just names who a Support-
+  // task holder is currently rendering pages as. Both null when not
+  // viewing as anyone. Cleared the moment the real member no longer
+  // holds a Support task (re-checked live on every read, see
+  // src/lib/view-as.ts's getActiveViewAs) — "access follows the task,
+  // lose it, lose the access," same as everywhere else in this
+  // codebase, deliberately used here instead of a separate expiry TTL.
+  viewingAsMemberId: uuid("viewing_as_member_id").references(() => member.id),
+  viewingAsStartedAt: timestamp("viewing_as_started_at", { withTimezone: true }),
 });

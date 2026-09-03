@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getNextCutoffAt, listCurrentRoundQuestions } from "@/lib/input-rounds";
 import { submitQuestionResponseAction } from "./actions";
 
@@ -17,16 +17,16 @@ export default async function InputRoundsPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { error } = await searchParams;
 
   const [{ round, questions }, nextCutoffAt] = await Promise.all([
-    listCurrentRoundQuestions(currentMember),
-    getNextCutoffAt(currentMember),
+    listCurrentRoundQuestions(viewing),
+    getNextCutoffAt(viewing),
   ]);
 
   const reminderDue = nextCutoffAt ? nextCutoffAt.getTime() - Date.now() < MS_PER_DAY : false;

@@ -104,6 +104,16 @@ export type NavContext = {
   manualPinnedKeys: string[];
   // Phase 47 — drives the community-wide banner in AppShell.tsx.
   onsiteModeEnabled: boolean;
+  // Phase 54 — set by the (app) layout (not this function; see its own
+  // call site), which is the one place that knows both the real member
+  // and any active View-as target. Drives AppShell's persistent
+  // "Viewing as..." banner. Every other field on this context is
+  // already computed against whichever actor the layout passes in, so
+  // when View-as is active the rest of the nav (badge count, pinned
+  // items, module visibility) already renders exactly as the viewed
+  // member would see it — this field is only here for the banner text
+  // and the "End View-as" button.
+  viewAs: { targetId: string; targetName: string } | null;
 };
 
 // Computed once per request (in the (app) shell layout) and handed to
@@ -219,5 +229,6 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     pinnedKeys,
     manualPinnedKeys: actor.pinnedModuleKeys,
     onsiteModeEnabled: community.onsiteModeEnabled,
+    viewAs: null,
   };
 }

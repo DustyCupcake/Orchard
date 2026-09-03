@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getContributionCommunityAverage, getOwnContribution, listVisibleContributors } from "@/lib/contribution";
 import ContributionCategories from "@/components/ContributionCategories";
 import { setContributionVisibleAction } from "./actions";
@@ -12,17 +12,17 @@ export const dynamic = "force-dynamic";
 // docs/spec.md's "Contribution tracking" and
 // docs/development-plan.md's Phase 23.
 export default async function ContributionPage() {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const [categories, visibleContributors, communityAverage] = await Promise.all([
-    getOwnContribution(currentMember),
-    listVisibleContributors(currentMember),
-    getContributionCommunityAverage(currentMember),
+    getOwnContribution(viewing),
+    listVisibleContributors(viewing),
+    getContributionCommunityAverage(viewing),
   ]);
-  const others = visibleContributors.filter((m) => m.id !== currentMember.id);
+  const others = visibleContributors.filter((m) => m.id !== viewing.id);
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
@@ -33,13 +33,13 @@ export default async function ContributionPage() {
       </p>
 
       <form action={setContributionVisibleAction} style={{ marginBottom: "1.5rem" }}>
-        <input type="hidden" name="visible" value={(!currentMember.contributionVisible).toString()} />
+        <input type="hidden" name="visible" value={(!viewing.contributionVisible).toString()} />
         <button type="submit">
-          {currentMember.contributionVisible
+          {viewing.contributionVisible
             ? "Make this private again"
             : "Share this with the rest of the community"}
         </button>
-        {currentMember.contributionVisible && (
+        {viewing.contributionVisible && (
           <span style={{ marginLeft: "0.5rem", fontSize: "0.85rem", color: "#666" }}>
             Currently visible to others.
           </span>

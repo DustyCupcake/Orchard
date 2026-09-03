@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member, task } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getCommunity, listBranches, requireAdmins } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import { getBudgetVotingView, getCurrentBudgetCycle, isBudgetOwner, listBudgetProposals } from "@/lib/budget";
@@ -47,35 +47,35 @@ export default async function BudgetPage({
     confirmed?: string;
   }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { error, submitted, updated, votingOpened, voted, confirmed } = await searchParams;
 
-  const communityRow = await getCommunity(currentMember);
+  const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "budget");
 
   let isAdmin = false;
   try {
-    await requireAdmins(currentMember);
+    await requireAdmins(viewing);
     isAdmin = true;
   } catch (err) {
     if (!(err instanceof ForbiddenError)) throw err;
   }
 
-  const currentCycle = moduleOn ? await getCurrentBudgetCycle(currentMember) : null;
+  const currentCycle = moduleOn ? await getCurrentBudgetCycle(viewing) : null;
   const canStartNewCycle = moduleOn && (!currentCycle || currentCycle.status === "confirmed");
-  const isOwner = currentCycle ? await isBudgetOwner(currentMember, currentCycle) : false;
+  const isOwner = currentCycle ? await isBudgetOwner(viewing, currentCycle) : false;
 
   const [branches, proposals, votingView] = await Promise.all([
-    moduleOn ? listBranches(currentMember) : Promise.resolve([]),
+    moduleOn ? listBranches(viewing) : Promise.resolve([]),
     currentCycle && currentCycle.status === "proposals_open"
-      ? listBudgetProposals(currentMember, currentCycle.id)
+      ? listBudgetProposals(viewing, currentCycle.id)
       : Promise.resolve([]),
     currentCycle && currentCycle.status !== "proposals_open"
-      ? getBudgetVotingView(currentMember, currentCycle.id)
+      ? getBudgetVotingView(viewing, currentCycle.id)
       : Promise.resolve(null),
   ]);
   const branchNameById = new Map(branches.map((b) => [b.id, b.name] as const));
@@ -90,7 +90,7 @@ export default async function BudgetPage({
 
   const memberNameById = currentCycle
     ? new Map(
-        (await db.select().from(member).where(eq(member.communityId, currentMember.communityId))).map(
+        (await db.select().from(member).where(eq(member.communityId, viewing.communityId))).map(
           (m) => [m.id, m.name] as const,
         ),
       )
@@ -155,7 +155,7 @@ export default async function BudgetPage({
               {proposals.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
               {proposals.map((p) => {
                 const items = p.lineItems as BudgetLineItem[];
-                const mine = p.submittedBy === currentMember.id;
+                const mine = p.submittedBy === viewing.id;
                 return (
                   <div
                     key={p.id}

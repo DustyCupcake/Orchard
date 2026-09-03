@@ -7,6 +7,7 @@ import { ZodError } from "zod";
 import { db } from "@/db";
 import { member, tier } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
+import { assertNotViewingAs } from "@/lib/view-as";
 import { answerProfileQuestion } from "@/lib/profile-questions";
 import {
   SensitiveFieldKey,
@@ -32,11 +33,18 @@ function redirectWithError(err: unknown): never {
   throw err;
 }
 
-export async function updateProfile(formData: FormData) {
-  const current = await getCurrentMember();
-  if (!current) {
+// Phase 54 (View-as) -- see src/lib/view-as.ts.
+async function requireMember() {
+  const actor = await getCurrentMember();
+  if (!actor) {
     redirect("/login");
   }
+  await assertNotViewingAs();
+  return actor;
+}
+
+export async function updateProfile(formData: FormData) {
+  const current = await requireMember();
 
   const name = String(formData.get("name") ?? "").trim();
   const tags = String(formData.get("tags") ?? "")
@@ -74,10 +82,7 @@ export async function updateProfile(formData: FormData) {
 }
 
 export async function submitProfileAnswerAction(formData: FormData) {
-  const current = await getCurrentMember();
-  if (!current) {
-    redirect("/login");
-  }
+  const current = await requireMember();
 
   const questionId = String(formData.get("questionId"));
   const status = String(formData.get("status")) === "deferred" ? "deferred" : "answered";
@@ -110,10 +115,7 @@ const SENSITIVE_FIELD_FORM_KEYS: Record<SensitiveFieldKey, string> = {
 // input, since a member could otherwise point a checkbox at an
 // arbitrary purpose id.
 export async function updateSensitiveDataAction(formData: FormData) {
-  const current = await getCurrentMember();
-  if (!current) {
-    redirect("/login");
-  }
+  const current = await requireMember();
 
   try {
     const gatingPurposes = await getGatingPurposesForCommunity(current.communityId);
@@ -142,10 +144,7 @@ export async function updateSensitiveDataAction(formData: FormData) {
 }
 
 export async function createContactMethodAction(formData: FormData) {
-  const current = await getCurrentMember();
-  if (!current) {
-    redirect("/login");
-  }
+  const current = await requireMember();
 
   try {
     const input = contactMethodInput.parse({
@@ -161,10 +160,7 @@ export async function createContactMethodAction(formData: FormData) {
 }
 
 export async function updateContactMethodAction(formData: FormData) {
-  const current = await getCurrentMember();
-  if (!current) {
-    redirect("/login");
-  }
+  const current = await requireMember();
 
   const id = String(formData.get("id"));
   try {
@@ -181,10 +177,7 @@ export async function updateContactMethodAction(formData: FormData) {
 }
 
 export async function deleteContactMethodAction(formData: FormData) {
-  const current = await getCurrentMember();
-  if (!current) {
-    redirect("/login");
-  }
+  const current = await requireMember();
 
   const id = String(formData.get("id"));
   try {
@@ -200,10 +193,7 @@ export async function deleteContactMethodAction(formData: FormData) {
 // (photo_publication, marketing_comms, ...). Field-gating purposes are
 // also grantable/withdrawable here, on top of the inline prompt above.
 export async function grantConsentAction(formData: FormData) {
-  const current = await getCurrentMember();
-  if (!current) {
-    redirect("/login");
-  }
+  const current = await requireMember();
 
   const purposeId = String(formData.get("purposeId"));
   try {
@@ -215,10 +205,7 @@ export async function grantConsentAction(formData: FormData) {
 }
 
 export async function withdrawConsentAction(formData: FormData) {
-  const current = await getCurrentMember();
-  if (!current) {
-    redirect("/login");
-  }
+  const current = await requireMember();
 
   const purposeId = String(formData.get("purposeId"));
   try {

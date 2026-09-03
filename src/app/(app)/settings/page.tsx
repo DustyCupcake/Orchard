@@ -2,7 +2,7 @@ import { eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { task } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getCommunity, listBranches, listCycleTypes, listTiers, requireAdmins } from "@/lib/settings";
 import { listCycles } from "@/lib/cycles";
 import { listProfileQuestions } from "@/lib/profile-questions";
@@ -42,8 +42,8 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
@@ -51,7 +51,7 @@ export default async function SettingsPage({
 
   let authorized = true;
   try {
-    await requireAdmins(currentMember);
+    await requireAdmins(viewing);
   } catch (err) {
     if (err instanceof ForbiddenError) {
       authorized = false;
@@ -62,15 +62,15 @@ export default async function SettingsPage({
 
   const [communityRow, branches, tiers, cycleTypes, cyclesForPicker, profileQuestions, sensitiveFieldRules, forms, consentPurposes] =
     await Promise.all([
-      getCommunity(currentMember),
-      listBranches(currentMember),
-      listTiers(currentMember),
-      listCycleTypes(currentMember),
-      authorized ? listCycles(currentMember) : Promise.resolve([]),
-      authorized ? listProfileQuestions(currentMember, { includeArchived: true }) : Promise.resolve([]),
-      authorized ? listSensitiveFieldAccessRules(currentMember) : Promise.resolve([]),
-      authorized ? listForms(currentMember, { includeArchived: true }) : Promise.resolve([]),
-      authorized ? listConsentPurposes(currentMember) : Promise.resolve([]),
+      getCommunity(viewing),
+      listBranches(viewing),
+      listTiers(viewing),
+      listCycleTypes(viewing),
+      authorized ? listCycles(viewing) : Promise.resolve([]),
+      authorized ? listProfileQuestions(viewing, { includeArchived: true }) : Promise.resolve([]),
+      authorized ? listSensitiveFieldAccessRules(viewing) : Promise.resolve([]),
+      authorized ? listForms(viewing, { includeArchived: true }) : Promise.resolve([]),
+      authorized ? listConsentPurposes(viewing) : Promise.resolve([]),
     ]);
 
   const conflictTeamTask = communityRow.conflictTeamTaskId

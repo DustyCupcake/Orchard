@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { tier } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { listOnceEverAnswers, listOutstandingQuestions } from "@/lib/profile-questions";
 import { getCommunity, getCycleTypeCountProgress } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
@@ -158,8 +158,8 @@ export default async function ProfilePage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
@@ -167,14 +167,14 @@ export default async function ProfilePage({
 
   const [communityTiers, outstanding, onceEverAnswers, communityRow, cycleTypeProgress, ownContactMethods, gatingPurposes, myConsentStatus] =
     await Promise.all([
-      db.select().from(tier).where(eq(tier.communityId, currentMember.communityId)),
-      listOutstandingQuestions(currentMember),
-      listOnceEverAnswers(currentMember),
-      getCommunity(currentMember),
-      getCycleTypeCountProgress(currentMember),
-      listOwnContactMethods(currentMember),
-      getGatingPurposesForCommunity(currentMember.communityId),
-      listMyConsentStatus(currentMember),
+      db.select().from(tier).where(eq(tier.communityId, viewing.communityId)),
+      listOutstandingQuestions(viewing),
+      listOnceEverAnswers(viewing),
+      getCommunity(viewing),
+      getCycleTypeCountProgress(viewing),
+      listOwnContactMethods(viewing),
+      getGatingPurposesForCommunity(viewing.communityId),
+      listMyConsentStatus(viewing),
     ]);
   const sensitiveDataOn = isModuleEnabled(communityRow, "sensitive_data");
   // Only a manual-criterion tier is ever hand-toggled here — a computed
@@ -189,7 +189,7 @@ export default async function ProfilePage({
   // below rather than re-querying per field.
   const fieldConsentActive = new Map<SensitiveFieldKey, boolean>();
   for (const [fieldKey, purpose] of gatingPurposes) {
-    fieldConsentActive.set(fieldKey, await hasActiveConsent(currentMember.id, purpose.id));
+    fieldConsentActive.set(fieldKey, await hasActiveConsent(viewing.id, purpose.id));
   }
 
   return (
@@ -203,7 +203,7 @@ export default async function ProfilePage({
           <input
             type="text"
             name="name"
-            defaultValue={currentMember.name}
+            defaultValue={viewing.name}
             required
             style={{ padding: "0.5rem", width: "100%" }}
           />
@@ -215,7 +215,7 @@ export default async function ProfilePage({
           <input
             type="text"
             name="tags"
-            defaultValue={currentMember.tags.join(", ")}
+            defaultValue={viewing.tags.join(", ")}
             placeholder="carpentry, spanish, night-owl"
             style={{ padding: "0.5rem", width: "100%" }}
           />
@@ -230,7 +230,7 @@ export default async function ProfilePage({
                   type="checkbox"
                   name="tierIds"
                   value={t.id}
-                  defaultChecked={currentMember.tierIds.includes(t.id)}
+                  defaultChecked={viewing.tierIds.includes(t.id)}
                 />{" "}
                 {t.name}
               </label>
@@ -242,7 +242,7 @@ export default async function ProfilePage({
           <input
             type="checkbox"
             name="emailNotificationsEnabled"
-            defaultChecked={currentMember.emailNotificationsEnabled}
+            defaultChecked={viewing.emailNotificationsEnabled}
           />{" "}
           Email me targeted messages and announcements
         </label>
@@ -333,7 +333,7 @@ export default async function ProfilePage({
               <textarea
                 name="healthConditions"
                 rows={2}
-                defaultValue={currentMember.healthConditions ?? ""}
+                defaultValue={viewing.healthConditions ?? ""}
                 style={{ padding: "0.5rem", width: "100%" }}
               />
             </label>
@@ -349,7 +349,7 @@ export default async function ProfilePage({
               <textarea
                 name="allergies"
                 rows={2}
-                defaultValue={currentMember.allergies ?? ""}
+                defaultValue={viewing.allergies ?? ""}
                 style={{ padding: "0.5rem", width: "100%" }}
               />
             </label>
@@ -365,7 +365,7 @@ export default async function ProfilePage({
               <input
                 type="text"
                 name="emergencyContact"
-                defaultValue={currentMember.emergencyContact ?? ""}
+                defaultValue={viewing.emergencyContact ?? ""}
                 style={{ padding: "0.5rem", width: "100%" }}
               />
             </label>
@@ -381,7 +381,7 @@ export default async function ProfilePage({
               <input
                 type="text"
                 name="orientation"
-                defaultValue={currentMember.orientation ?? ""}
+                defaultValue={viewing.orientation ?? ""}
                 style={{ padding: "0.5rem", width: "100%" }}
               />
             </label>

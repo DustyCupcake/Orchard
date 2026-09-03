@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getCurrentCycle } from "@/lib/profile-questions";
 import { canInitiateCycle, getCycle, previewClonePreviousCycle, type ClonePreview } from "@/lib/cycles";
 import { getCycleParticipationSummary, getMyParticipation } from "@/lib/participation";
@@ -54,8 +54,8 @@ export default async function ParticipationPage({
     previewView?: string;
   }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
@@ -72,8 +72,8 @@ export default async function ParticipationPage({
   } = await searchParams;
 
   const [currentCycle, canConfigure] = await Promise.all([
-    getCurrentCycle(currentMember.communityId),
-    canInitiateCycle(currentMember),
+    getCurrentCycle(viewing.communityId),
+    canInitiateCycle(viewing),
   ]);
 
   return (
@@ -94,7 +94,7 @@ export default async function ParticipationPage({
         </p>
       ) : (
         <ParticipationForCycle
-          currentMember={currentMember}
+          viewing={viewing}
           cycleId={currentCycle.id}
           cycleName={currentCycle.name}
         />
@@ -102,7 +102,7 @@ export default async function ParticipationPage({
 
       {canConfigure && (
         <StartNewCycleSection
-          currentMember={currentMember}
+          viewing={viewing}
           hasPreviousCycle={currentCycle !== null}
           previewStart={previewStart}
           previewEnd={previewEnd}
@@ -142,22 +142,22 @@ function monthsSpanned(dates: string[]): { year: number; month: number }[] {
 // hypothetical clone (calendar or list, toggled by the reviewer) before
 // committing to anything, then create for real below.
 async function StartNewCycleSection({
-  currentMember,
+  viewing,
   hasPreviousCycle,
   previewStart,
   previewEnd,
   previewView,
 }: {
-  currentMember: Member;
+  viewing: Member;
   hasPreviousCycle: boolean;
   previewStart?: string;
   previewEnd?: string;
   previewView: "grid" | "list";
 }) {
   const [cycleTypes, preview] = await Promise.all([
-    listCycleTypes(currentMember),
+    listCycleTypes(viewing),
     hasPreviousCycle && (previewStart || previewEnd)
-      ? previewClonePreviousCycle(currentMember, previewStart || null, previewEnd || null)
+      ? previewClonePreviousCycle(viewing, previewStart || null, previewEnd || null)
       : Promise.resolve(null),
   ]);
 
@@ -356,22 +356,22 @@ function ClonePreviewList({ preview }: { preview: ClonePreview }) {
 }
 
 async function ParticipationForCycle({
-  currentMember,
+  viewing,
   cycleId,
   cycleName,
 }: {
-  currentMember: Member;
+  viewing: Member;
   cycleId: string;
   cycleName: string;
 }) {
   const [summary, mine, canConfigure] = await Promise.all([
-    getCycleParticipationSummary(currentMember, cycleId),
-    getMyParticipation(currentMember, cycleId),
-    canInitiateCycle(currentMember),
+    getCycleParticipationSummary(viewing, cycleId),
+    getMyParticipation(viewing, cycleId),
+    canInitiateCycle(viewing),
   ]);
   // Only needed for the cycle-settings/phase-dates sections below —
   // skip the extra query entirely for anyone who can't see them.
-  const withPhases = canConfigure ? await getCycle(currentMember, cycleId) : null;
+  const withPhases = canConfigure ? await getCycle(viewing, cycleId) : null;
 
   return (
     <>

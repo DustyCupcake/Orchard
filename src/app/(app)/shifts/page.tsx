@@ -2,7 +2,7 @@ import { eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member, shiftSignup } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getCommunity, listBranches } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import {
@@ -45,8 +45,8 @@ export default async function ShiftsPage({
     markedNoShow?: string;
   }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
@@ -62,14 +62,14 @@ export default async function ShiftsPage({
     markedNoShow,
   } = await searchParams;
 
-  const communityRow = await getCommunity(currentMember);
+  const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "shifts");
 
   const [upcoming, mySignups, allSeries, branches] = await Promise.all([
-    moduleOn ? listUpcomingShiftOccurrences(currentMember) : Promise.resolve([]),
-    moduleOn ? listMySignupsWithOccurrence(currentMember) : Promise.resolve([]),
-    moduleOn ? listShiftSeries(currentMember, { includeArchived: true }) : Promise.resolve([]),
-    moduleOn ? listBranches(currentMember) : Promise.resolve([]),
+    moduleOn ? listUpcomingShiftOccurrences(viewing) : Promise.resolve([]),
+    moduleOn ? listMySignupsWithOccurrence(viewing) : Promise.resolve([]),
+    moduleOn ? listShiftSeries(viewing, { includeArchived: true }) : Promise.resolve([]),
+    moduleOn ? listBranches(viewing) : Promise.resolve([]),
   ]);
 
   const mySignedUpOccurrenceIds = new Set(mySignups.map((s) => s.signup.occurrenceId));
@@ -91,13 +91,13 @@ export default async function ShiftsPage({
 
   const myCoordinatedSeries = (
     await Promise.all(
-      allSeries.map(async (s) => ((await isShiftCoordinator(currentMember, s)) ? s : null)),
+      allSeries.map(async (s) => ((await isShiftCoordinator(viewing, s)) ? s : null)),
     )
   ).filter((s): s is (typeof allSeries)[number] => s !== null);
 
   const myCoordinatedSeriesWithOccurrences = await Promise.all(
     myCoordinatedSeries.map(async (s) => {
-      const occurrences = await listOccurrencesForSeries(currentMember, s.id);
+      const occurrences = await listOccurrencesForSeries(viewing, s.id);
       const occurrenceIds = occurrences.map((o) => o.id);
       const signups =
         occurrenceIds.length > 0
@@ -111,7 +111,7 @@ export default async function ShiftsPage({
   const memberNameById =
     rosterMemberIds.length > 0
       ? new Map(
-          (await db.select().from(member).where(eq(member.communityId, currentMember.communityId))).map(
+          (await db.select().from(member).where(eq(member.communityId, viewing.communityId))).map(
             (m) => [m.id, m.name] as const,
           ),
         )

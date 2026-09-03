@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { listAssemblies } from "@/lib/assemblies";
 
 export const dynamic = "force-dynamic";
@@ -16,12 +16,12 @@ const PHASE_LABEL: Record<string, string> = {
 // docs/spec.md's "Assemblies". No built-in urgent notification: this
 // page (and each Assembly's own link) is the whole delivery mechanism.
 export default async function AssembliesPage() {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
-  const assemblies = await listAssemblies(currentMember);
+  const assemblies = await listAssemblies(viewing);
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>

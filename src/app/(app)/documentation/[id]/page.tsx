@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { branch, member } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getWikiPage, listWikiPages } from "@/lib/wiki-pages";
 import { editWikiPageAction, markDuplicateAction } from "./actions";
 
@@ -16,19 +16,19 @@ export default async function WikiPageDetail({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { id } = await params;
   const { error } = await searchParams;
 
-  const { page, revisions, alsoAskedAs } = await getWikiPage(currentMember, id);
+  const { page, revisions, alsoAskedAs } = await getWikiPage(viewing, id);
   const [branchRow, otherPages, members] = await Promise.all([
     page.branchId ? db.select().from(branch).where(eq(branch.id, page.branchId)).then((r) => r[0]) : null,
-    listWikiPages(currentMember),
-    db.select().from(member).where(eq(member.communityId, currentMember.communityId)),
+    listWikiPages(viewing),
+    db.select().from(member).where(eq(member.communityId, viewing.communityId)),
   ]);
   const memberNameById = new Map(members.map((m) => [m.id, m.name]));
   const currentContent = revisions[0]?.content ?? null;

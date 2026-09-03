@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import { getRecruitmentPipeline, isRecruitmentTaskHolder } from "@/lib/recruitment";
@@ -36,16 +36,16 @@ function timeSince(date: Date): string {
 // pipeline view & computed status, and docs/development-plan.md's
 // Phase 35. Holder-only, per spec: "not a community-wide view."
 export default async function RecruitmentPipelinePage() {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
-  const communityRow = await getCommunity(currentMember);
+  const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");
-  const isHolder = moduleOn && (await isRecruitmentTaskHolder(currentMember));
+  const isHolder = moduleOn && (await isRecruitmentTaskHolder(viewing));
 
-  const pipeline = isHolder ? await getRecruitmentPipeline(currentMember) : null;
+  const pipeline = isHolder ? await getRecruitmentPipeline(viewing) : null;
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 860 }}>

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { branch } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { listPolls } from "@/lib/scheduling-polls";
 
 export const dynamic = "force-dynamic";
@@ -11,14 +11,14 @@ export const dynamic = "force-dynamic";
 // "When can enough of the right people actually meet" — see
 // docs/spec.md's "Scheduling polls".
 export default async function SchedulingPollsPage() {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const [polls, branches] = await Promise.all([
-    listPolls(currentMember),
-    db.select().from(branch).where(eq(branch.communityId, currentMember.communityId)),
+    listPolls(viewing),
+    db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
   ]);
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
 import { ATTENTION_STYLES } from "@/lib/format";
 import { respondToNominationAction } from "./actions";
@@ -14,14 +14,14 @@ const HEALTH_STYLES: Record<string, { label: string; color: string }> = {
 };
 
 export default async function DashboardPage() {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const [feed, snapshot] = await Promise.all([
-    getPersonalFeed(currentMember),
-    getCommunitySnapshot(currentMember),
+    getPersonalFeed(viewing),
+    getCommunitySnapshot(viewing),
   ]);
 
   const hasFeedItems =

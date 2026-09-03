@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { branch, member } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import { listProposals } from "@/lib/proposals";
 import ProposalCard from "./ProposalCard";
 
@@ -13,17 +13,17 @@ export default async function ProposalsPage({
 }: {
   searchParams: Promise<{ error?: string; submitted?: string; status?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
   const { error, submitted, status } = await searchParams;
 
   const [proposals, branches, members] = await Promise.all([
-    listProposals(currentMember, { status }),
-    db.select().from(branch).where(eq(branch.communityId, currentMember.communityId)),
-    db.select().from(member).where(eq(member.communityId, currentMember.communityId)),
+    listProposals(viewing, { status }),
+    db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
+    db.select().from(member).where(eq(member.communityId, viewing.communityId)),
   ]);
 
   const memberNameById = new Map(members.map((m) => [m.id, m.name]));

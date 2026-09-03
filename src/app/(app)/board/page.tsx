@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { branch } from "@/db/schema";
-import { getCurrentMember } from "@/lib/session";
+import { getViewingContext } from "@/lib/view-as";
 import {
   listDistinctTags,
   listMyPendingJoinRequests,
@@ -29,8 +29,8 @@ export default async function BoardPage({
 }: {
   searchParams: Promise<{ branchId?: string; tag?: string; fit?: string; error?: string; notice?: string }>;
 }) {
-  const currentMember = await getCurrentMember();
-  if (!currentMember) {
+  const { real, viewing } = await getViewingContext();
+  if (!real || !viewing) {
     redirect("/login");
   }
 
@@ -39,12 +39,12 @@ export default async function BoardPage({
 
   const [branches, tasks, tierNames, myPendingRequests, allTags, coordinationBranchIds] =
     await Promise.all([
-      db.select().from(branch).where(eq(branch.communityId, currentMember.communityId)),
-      listTasksWithAssignments(currentMember, { branchId, tag, sortByFit }),
-      tierNameLookup(currentMember.communityId),
-      listMyPendingJoinRequests(currentMember),
-      listDistinctTags(currentMember),
-      listCoordinationBranchIds(currentMember),
+      db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
+      listTasksWithAssignments(viewing, { branchId, tag, sortByFit }),
+      tierNameLookup(viewing.communityId),
+      listMyPendingJoinRequests(viewing),
+      listDistinctTags(viewing),
+      listCoordinationBranchIds(viewing),
     ]);
 
   // Preserves the other filters while toggling fit — a plain link,
@@ -145,7 +145,7 @@ export default async function BoardPage({
                   groupCoverage={t.groupCoverage}
                   tierNames={tierNames}
                   branchName={branchNameById.get(t.branchId) ?? "—"}
-                  currentMemberId={currentMember.id}
+                  currentMemberId={viewing.id}
                   myPendingRequestId={myPendingRequests.get(t.id) ?? null}
                   isCoordinationHolderForBranch={coordinationBranchIds.has(t.branchId)}
                 />
