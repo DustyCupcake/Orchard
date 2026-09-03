@@ -1,5 +1,179 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens — see design_handoff_conventions/README.md for the full
+ * spec this implements. Accent 1/2's *base* hex values are overridden
+ * inline on <html> by src/app/layout.tsx (from the community's own
+ * accentPrimary/accentSecondary, falling back to the defaults below
+ * when unset) — every derived step here (soft/border/hover/active)
+ * references var(--accent-1)/var(--accent-2), so overriding just the
+ * base recomputes the whole ramp automatically in both themes.
+ * Neutral/status/spacing/radius/shadow are fixed regardless of
+ * community. Dark mode follows the device (prefers-color-scheme) by
+ * default; an explicit personal override (see /profile) sets
+ * data-theme="light"/"dark" on <html>, which wins over the device in
+ * both directions — see the two dark-token blocks below.
+ */
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-sunken: #fafafa;
+  --border: #e5e5e5;
+  --text: #171717;
+  --text-muted: #737373;
+
+  --neutral-50: #fafafa;
+  --neutral-100: #f5f5f5;
+  --neutral-200: #e5e5e5;
+  --neutral-300: #d4d4d4;
+  --neutral-400: #a3a3a3;
+  --neutral-500: #737373;
+  --neutral-600: #525252;
+  --neutral-700: #404040;
+  --neutral-800: #262626;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 4px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.14);
+
+  --font-body: var(--font-inter), system-ui, sans-serif;
+
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --danger-border: #fecaca;
+  --warning: #b45309;
+  --warning-soft: #fffbeb;
+  --warning-border: #fde68a;
+  --success: #15803d;
+  --success-soft: #f0fdf4;
+  --success-border: #bbf7d0;
+
+  --accent-1: #3a6cd9;
+  --accent-1-soft: color-mix(in oklch, var(--accent-1) 10%, #ffffff);
+  --accent-1-softer: color-mix(in oklch, var(--accent-1) 6%, #ffffff);
+  --accent-1-border: color-mix(in oklch, var(--accent-1) 45%, #ffffff);
+  --accent-1-hover: color-mix(in oklch, var(--accent-1) 88%, black);
+  --accent-1-active: color-mix(in oklch, var(--accent-1) 78%, black);
+  --accent-1-fg: #ffffff;
+
+  --accent-2: #8a3fa8;
+  --accent-2-soft: color-mix(in oklch, var(--accent-2) 10%, #ffffff);
+  --accent-2-softer: color-mix(in oklch, var(--accent-2) 6%, #ffffff);
+  --accent-2-border: color-mix(in oklch, var(--accent-2) 45%, #ffffff);
+  --accent-2-hover: color-mix(in oklch, var(--accent-2) 88%, black);
+  --accent-2-active: color-mix(in oklch, var(--accent-2) 78%, black);
+  --accent-2-fg: #ffffff;
+}
+
+/* Dark tokens: applied automatically by device preference (unless a
+ * personal override picked "light"), and — identically — whenever a
+ * personal override explicitly picked "dark", regardless of device.
+ * Kept as two blocks (not one shared selector) since one is
+ * media-gated and the other isn't; see globals.css's own header
+ * comment and src/app/layout.tsx's inline theme-init script. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14151f;
+    --surface: #1c1e2a;
+    --surface-sunken: #20222f;
+    --border: #333648;
+    --text: #e9e9ed;
+    --text-muted: #9a9db0;
+
+    --neutral-50: #1c1e2a;
+    --neutral-100: #20222f;
+    --neutral-200: #2a2d3d;
+    --neutral-300: #3a3d52;
+    --neutral-400: #565a72;
+    --neutral-500: #767a94;
+    --neutral-600: #9a9db0;
+    --neutral-700: #c1c3d1;
+    --neutral-800: #e2e3ea;
+
+    --shadow-sm: 0 0 0 1px #333648;
+    --shadow-md: 0 0 0 1px #3a3d52, 0 8px 24px rgba(0, 0, 0, 0.55);
+    --shadow-lg: 0 0 0 1px #565a72, 0 20px 48px rgba(0, 0, 0, 0.65);
+
+    --danger: #f87171;
+    --danger-soft: color-mix(in oklch, #dc2626 18%, var(--surface));
+    --danger-border: color-mix(in oklch, #dc2626 38%, var(--surface));
+    --warning: #fbbf24;
+    --warning-soft: color-mix(in oklch, #d97706 18%, var(--surface));
+    --warning-border: color-mix(in oklch, #d97706 38%, var(--surface));
+    --success: #4ade80;
+    --success-soft: color-mix(in oklch, #16a34a 18%, var(--surface));
+    --success-border: color-mix(in oklch, #16a34a 38%, var(--surface));
+
+    --accent-1-soft: color-mix(in oklch, var(--accent-1) 20%, var(--surface));
+    --accent-1-softer: color-mix(in oklch, var(--accent-1) 12%, var(--surface));
+    --accent-1-border: color-mix(in oklch, var(--accent-1) 45%, var(--surface));
+    --accent-1-hover: color-mix(in oklch, var(--accent-1) 85%, white);
+    --accent-1-active: color-mix(in oklch, var(--accent-1) 72%, white);
+
+    --accent-2-soft: color-mix(in oklch, var(--accent-2) 20%, var(--surface));
+    --accent-2-softer: color-mix(in oklch, var(--accent-2) 12%, var(--surface));
+    --accent-2-border: color-mix(in oklch, var(--accent-2) 45%, var(--surface));
+    --accent-2-hover: color-mix(in oklch, var(--accent-2) 85%, white);
+    --accent-2-active: color-mix(in oklch, var(--accent-2) 72%, white);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #14151f;
+  --surface: #1c1e2a;
+  --surface-sunken: #20222f;
+  --border: #333648;
+  --text: #e9e9ed;
+  --text-muted: #9a9db0;
+
+  --neutral-50: #1c1e2a;
+  --neutral-100: #20222f;
+  --neutral-200: #2a2d3d;
+  --neutral-300: #3a3d52;
+  --neutral-400: #565a72;
+  --neutral-500: #767a94;
+  --neutral-600: #9a9db0;
+  --neutral-700: #c1c3d1;
+  --neutral-800: #e2e3ea;
+
+  --shadow-sm: 0 0 0 1px #333648;
+  --shadow-md: 0 0 0 1px #3a3d52, 0 8px 24px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 0 0 1px #565a72, 0 20px 48px rgba(0, 0, 0, 0.65);
+
+  --danger: #f87171;
+  --danger-soft: color-mix(in oklch, #dc2626 18%, var(--surface));
+  --danger-border: color-mix(in oklch, #dc2626 38%, var(--surface));
+  --warning: #fbbf24;
+  --warning-soft: color-mix(in oklch, #d97706 18%, var(--surface));
+  --warning-border: color-mix(in oklch, #d97706 38%, var(--surface));
+  --success: #4ade80;
+  --success-soft: color-mix(in oklch, #16a34a 18%, var(--surface));
+  --success-border: color-mix(in oklch, #16a34a 38%, var(--surface));
+
+  --accent-1-soft: color-mix(in oklch, var(--accent-1) 20%, var(--surface));
+  --accent-1-softer: color-mix(in oklch, var(--accent-1) 12%, var(--surface));
+  --accent-1-border: color-mix(in oklch, var(--accent-1) 45%, var(--surface));
+  --accent-1-hover: color-mix(in oklch, var(--accent-1) 85%, white);
+  --accent-1-active: color-mix(in oklch, var(--accent-1) 72%, white);
+
+  --accent-2-soft: color-mix(in oklch, var(--accent-2) 20%, var(--surface));
+  --accent-2-softer: color-mix(in oklch, var(--accent-2) 12%, var(--surface));
+  --accent-2-border: color-mix(in oklch, var(--accent-2) 45%, var(--surface));
+  --accent-2-hover: color-mix(in oklch, var(--accent-2) 85%, white);
+  --accent-2-active: color-mix(in oklch, var(--accent-2) 72%, white);
+}
+
 body {
-  font-family: system-ui, sans-serif;
+  font-family: var(--font-body);
 }

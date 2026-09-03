@@ -205,4 +205,14 @@ export const community = pgTable("community", {
   // dedicated relationship. See docs/spec.md's "View-as (support)" and
   // docs/development-plan.md's Phase 54, src/lib/view-as.ts.
   supportTag: text("support_tag").notNull().default("support"),
+  // Per-community branding — see design_handoff_conventions/README.md's
+  // "Data model changes needed". Hex strings (e.g. "#3a6cd9"), null
+  // until a community sets its own; the design tokens fall back to the
+  // README's own documented defaults (cobalt/plum) when null — see
+  // src/app/layout.tsx. logoUrl is a plain hosted-image URL for now —
+  // there's no upload/storage utility anywhere in this codebase yet, so
+  // building one is explicitly deferred rather than guessed at here.
+  accentPrimary: text("accent_primary"),
+  accentSecondary: text("accent_secondary"),
+  logoUrl: text("logo_url"),
 });

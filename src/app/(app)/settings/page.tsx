@@ -168,6 +168,80 @@ export default async function SettingsPage({
             />
           </label>
 
+          <fieldset
+            style={{
+              border: `1px solid var(--border)`,
+              borderRadius: "var(--radius-md)",
+              padding: "0.75rem",
+              display: "flex",
+              gap: "1.5rem",
+              flexWrap: "wrap",
+            }}
+          >
+            <legend style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Branding</legend>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
+                Accent 1 · primary
+              </span>
+              <input
+                type="color"
+                name="accentPrimary"
+                defaultValue={communityRow.accentPrimary ?? "#3a6cd9"}
+                style={{
+                  width: 36,
+                  height: 36,
+                  padding: 2,
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--surface)",
+                  cursor: "pointer",
+                }}
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
+                Accent 2 · secondary
+              </span>
+              <input
+                type="color"
+                name="accentSecondary"
+                defaultValue={communityRow.accentSecondary ?? "#8a3fa8"}
+                style={{
+                  width: 36,
+                  height: 36,
+                  padding: 2,
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--surface)",
+                  cursor: "pointer",
+                }}
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, minWidth: "12rem" }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
+                Logo URL
+              </span>
+              <input
+                type="text"
+                name="logoUrl"
+                defaultValue={communityRow.logoUrl ?? ""}
+                placeholder="https://…"
+                style={{
+                  padding: "0.4rem",
+                  font: "400 14px var(--font-body)",
+                  color: "var(--text)",
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              />
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                A hosted image URL — replaces the sidebar&rsquo;s text wordmark when set. Leave blank
+                to show the community name instead.
+              </span>
+            </label>
+          </fieldset>
+
           <label>
             <input type="checkbox" name="cyclesEnabled" defaultChecked={communityRow.cyclesEnabled} />{" "}
             Cycles on (multiple named production runs over time)

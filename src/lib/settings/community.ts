@@ -9,6 +9,10 @@ import { requireNotOnsiteLocked } from "../onsite-mode";
 
 type Member = typeof memberTable.$inferSelect;
 
+const hexColor = z
+  .string()
+  .regex(/^#[0-9a-fA-F]{6}$/, "Must be a hex color like #3a6cd9");
+
 export async function getCommunity(actor: Member) {
   const [row] = await db.select().from(community).where(eq(community.id, actor.communityId));
   if (!row) {
@@ -85,6 +89,12 @@ export const updateCommunityInput = z.object({
   // Null clears it, same as every other "the task is the authority"
   // pointer above.
   announcementTaskId: z.string().uuid().nullable().optional(),
+  // Community branding — see design_handoff_conventions/README.md. Null
+  // clears back to the design tokens' own default accent (design tokens
+  // fall back to the documented cobalt/plum pair when either is null).
+  accentPrimary: hexColor.nullable().optional(),
+  accentSecondary: hexColor.nullable().optional(),
+  logoUrl: z.string().url().nullable().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -269,6 +279,9 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         callSummaryReadWindowDays: input.callSummaryReadWindowDays,
       }),
       ...(input.announcementTaskId !== undefined && { announcementTaskId: input.announcementTaskId }),
+      ...(input.accentPrimary !== undefined && { accentPrimary: input.accentPrimary }),
+      ...(input.accentSecondary !== undefined && { accentSecondary: input.accentSecondary }),
+      ...(input.logoUrl !== undefined && { logoUrl: input.logoUrl }),
     })
     .where(eq(community.id, actor.communityId))
     .returning();

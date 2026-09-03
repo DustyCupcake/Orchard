@@ -9,6 +9,7 @@ import { isModuleEnabled } from "@/lib/modules";
 import { SENSITIVE_FIELD_LABELS, SensitiveFieldKey } from "@/lib/sensitive-data";
 import { CONTACT_METHOD_VISIBILITIES, listOwnContactMethods } from "@/lib/contact-methods";
 import { getGatingPurposesForCommunity, hasActiveConsent, listMyConsentStatus } from "@/lib/consent";
+import ThemeToggle from "./ThemeToggle";
 import {
   createContactMethodAction,
   deleteContactMethodAction,
@@ -196,6 +197,14 @@ export default async function ProfilePage({
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 480 }}>
       <h1>Your profile</h1>
       {error && <p style={{ color: "crimson" }}>{error}</p>}
+
+      <section style={{ marginTop: "0.5rem", marginBottom: "1.5rem" }}>
+        <p style={{ margin: "0 0 0.5rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+          Theme — yours alone, not a community setting. Defaults to your device.
+        </p>
+        <ThemeToggle />
+      </section>
+
       <form action={updateProfile} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
         <label>
           Name

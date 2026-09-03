@@ -156,6 +156,9 @@ export async function updateCommunityAction(formData: FormData) {
       spatialPlanningTaskId: String(formData.get("spatialPlanningTaskId") ?? "").trim() || null,
       announcementTaskId: String(formData.get("announcementTaskId") ?? "").trim() || null,
       onsiteModeEnabled: formData.get("onsiteModeEnabled") === "on",
+      accentPrimary: String(formData.get("accentPrimary") ?? "").trim() || null,
+      accentSecondary: String(formData.get("accentSecondary") ?? "").trim() || null,
+      logoUrl: String(formData.get("logoUrl") ?? "").trim() || null,
     });
     await updateCommunity(actor, input);
   } catch (err) {

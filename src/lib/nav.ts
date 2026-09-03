@@ -84,6 +84,12 @@ async function isAnyBudgetOwner(actor: Member) {
 
 export type NavContext = {
   memberName: string;
+  // Community branding for the sidebar wordmark/logo slot — see
+  // design_handoff_conventions/README.md's Sidebar component. logoUrl
+  // null means "no logo set," not "still loading" — the sidebar falls
+  // back to communityName in that case.
+  communityName: string;
+  communityLogoUrl: string | null;
   badgeCount: number;
   isCoordinator: boolean;
   visibleModules: {
@@ -223,6 +229,8 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
 
   return {
     memberName: actor.name,
+    communityName: community.name,
+    communityLogoUrl: community.logoUrl,
     badgeCount,
     isCoordinator,
     visibleModules,

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Icon } from "./Icon";
+import { Eye, Warning } from "@phosphor-icons/react";
+import { NavIcon } from "./phosphor-icon-map";
 import {
   ALL_ITEMS,
   CALENDAR_ITEM,
@@ -21,14 +22,20 @@ const COLLAPSE_KEY = "orchard.sidebar.collapsed";
 const CLOSED_GROUPS_KEY = "orchard.sidebar.closedGroups";
 const PINNED_GROUP_KEY = "__pinned";
 
+// Standalone icon-button chrome (collapse toggle, mobile open/close,
+// logout) — the design conventions' "icon button" pattern: 36×36,
+// bordered, radius-md.
+const ICON_BUTTON =
+  "flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] text-[var(--text-muted)] transition-colors hover:bg-[var(--neutral-100)] hover:text-[var(--text)]";
+
 function GroupLabel({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
   return (
     <button
       onClick={onToggle}
       aria-expanded={open}
-      className="flex w-full items-center gap-1 px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-400 hover:text-neutral-600"
+      className="flex w-full items-center gap-1 px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] hover:text-[var(--text)]"
     >
-      <Icon name="chevronDown" className={`h-3 w-3 shrink-0 transition-transform ${open ? "" : "-rotate-90"}`} />
+      <NavIcon name="chevronDown" size={12} className={`shrink-0 transition-transform ${open ? "" : "-rotate-90"}`} />
       <span>{label}</span>
     </button>
   );
@@ -54,18 +61,18 @@ function NavLink({
       <Link
         href={item.href}
         title={collapsed ? item.label : undefined}
-        className={`flex flex-1 items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors ${
+        className={`flex flex-1 items-center gap-3 rounded-[var(--radius-sm)] px-2.5 py-2 text-[13px] transition-colors ${
           collapsed ? "justify-center" : ""
         } ${
           active
-            ? "bg-neutral-200/70 font-medium text-neutral-900"
-            : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
+            ? "bg-[var(--accent-1-soft)] font-medium text-[var(--accent-1)]"
+            : "text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
         }`}
       >
         <span className="relative shrink-0">
-          <Icon name={item.icon} />
+          <NavIcon name={item.icon} weight={active ? "fill" : "regular"} />
           {Boolean(badge) && (
-            <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white">
+            <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[10px] font-semibold leading-none text-white">
               {badge}
             </span>
           )}
@@ -76,11 +83,11 @@ function NavLink({
         <button
           onClick={onTogglePin}
           title={pinned ? "Unpin" : "Pin to top"}
-          className={`mr-1 shrink-0 rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 ${
+          className={`mr-1 shrink-0 rounded-[var(--radius-sm)] p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)] ${
             pinned ? "opacity-100" : "opacity-0 group-hover/navitem:opacity-100"
           }`}
         >
-          <Icon name="pin" className={`h-3.5 w-3.5 ${pinned ? "text-amber-600" : ""}`} />
+          <NavIcon name="pin" weight={pinned ? "fill" : "regular"} size={14} className={pinned ? "text-[var(--warning)]" : ""} />
         </button>
       )}
     </li>
@@ -113,13 +120,13 @@ function NavGroupBlock({
           <Link
             href={primary.href}
             title={group.label}
-            className={`flex items-center justify-center rounded-md px-2.5 py-2 text-sm transition-colors ${
+            className={`flex items-center justify-center rounded-[var(--radius-sm)] px-2.5 py-2 text-[13px] transition-colors ${
               groupActive
-                ? "bg-neutral-200/70 text-neutral-900"
-                : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
+                ? "bg-[var(--accent-1-soft)] text-[var(--accent-1)]"
+                : "text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
             }`}
           >
-            <Icon name={group.icon} />
+            <NavIcon name={group.icon} weight={groupActive ? "fill" : "regular"} />
           </Link>
         </li>
       </ul>
@@ -214,35 +221,39 @@ function SidebarNavList({
   );
 }
 
+function BrandMark({ name, logoUrl }: { name: string; logoUrl: string | null }) {
+  if (logoUrl) {
+    // eslint-disable-next-line @next/next/no-img-element -- a community-supplied external URL, not an optimizable local/remote-pattern asset
+    return <img src={logoUrl} alt={name} className="h-6 w-6 shrink-0 rounded-[var(--radius-sm)] object-cover" />;
+  }
+  return <span className="truncate text-sm font-semibold text-[var(--text)]">{name}</span>;
+}
+
 function SidebarHeader({
   collapsed,
   variant,
+  communityName,
+  communityLogoUrl,
   onToggleCollapsed,
   onCloseMobile,
 }: {
   collapsed: boolean;
   variant: "desktop" | "mobile";
+  communityName: string;
+  communityLogoUrl: string | null;
   onToggleCollapsed?: () => void;
   onCloseMobile?: () => void;
 }) {
   return (
-    <div className={`flex items-center border-b border-neutral-200 px-3 py-3 ${collapsed ? "justify-center" : "justify-between"}`}>
-      {!collapsed && <span className="text-sm font-semibold text-neutral-800">Orchard</span>}
+    <div className={`flex items-center border-b border-[var(--border)] px-3 py-3 ${collapsed ? "justify-center" : "justify-between"}`}>
+      {!collapsed && <BrandMark name={communityName} logoUrl={communityLogoUrl} />}
       {variant === "desktop" ? (
-        <button
-          onClick={onToggleCollapsed}
-          className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
-          aria-label={collapsed ? "Expand menu" : "Collapse menu"}
-        >
-          <Icon name={collapsed ? "chevronRight" : "chevronLeft"} className="h-4 w-4" />
+        <button onClick={onToggleCollapsed} className={ICON_BUTTON} aria-label={collapsed ? "Expand menu" : "Collapse menu"}>
+          <NavIcon name={collapsed ? "chevronRight" : "chevronLeft"} size={16} />
         </button>
       ) : (
-        <button
-          onClick={onCloseMobile}
-          className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100"
-          aria-label="Close menu"
-        >
-          <Icon name="close" className="h-4 w-4" />
+        <button onClick={onCloseMobile} className={ICON_BUTTON} aria-label="Close menu">
+          <NavIcon name="close" size={16} />
         </button>
       )}
     </div>
@@ -252,27 +263,23 @@ function SidebarHeader({
 function UserBlock({ memberName, collapsed }: { memberName: string; collapsed: boolean }) {
   const initial = memberName.trim().charAt(0).toUpperCase() || "?";
   return (
-    <div className="border-t border-neutral-200 p-2">
-      <div className={`flex items-center gap-2 rounded-md px-1 py-1 ${collapsed ? "justify-center" : ""}`}>
+    <div className="border-t border-[var(--border)] p-2">
+      <div className={`flex items-center gap-2 rounded-[var(--radius-md)] px-1 py-1 ${collapsed ? "justify-center" : ""}`}>
         <Link
           href="/profile"
           title="Profile"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-sm font-semibold text-white"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent-1)] text-sm font-semibold text-[var(--accent-1-fg)]"
         >
           {initial}
         </Link>
         {!collapsed && (
-          <Link href="/profile" className="min-w-0 flex-1 truncate text-sm font-medium text-neutral-800 hover:underline">
+          <Link href="/profile" className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text)] hover:underline">
             {memberName}
           </Link>
         )}
         <form action="/api/auth/logout" method="post">
-          <button
-            type="submit"
-            title="Log out"
-            className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
-          >
-            <Icon name="logout" className="h-4 w-4" />
+          <button type="submit" title="Log out" className={ICON_BUTTON}>
+            <NavIcon name="logout" size={16} />
           </button>
         </form>
       </div>
@@ -406,17 +413,25 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
 
   return (
     <>
-      <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center border-b border-neutral-200 bg-white px-3 md:hidden">
-        <button onClick={() => setMobileOpen(true)} className="-ml-2 p-2 text-neutral-600" aria-label="Open menu">
-          <Icon name="menu" />
+      <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center border-b border-[var(--border)] bg-[var(--surface)] px-3 md:hidden">
+        <button onClick={() => setMobileOpen(true)} className="-ml-2 p-2 text-[var(--text-muted)]" aria-label="Open menu">
+          <NavIcon name="menu" size={20} />
         </button>
-        <span className="ml-2 font-semibold text-neutral-800">Orchard</span>
+        <span className="ml-2">
+          <BrandMark name={ctx.communityName} logoUrl={ctx.communityLogoUrl} />
+        </span>
       </div>
 
       {mobileOpen && (
         <div className="fixed inset-0 z-40 flex md:hidden">
-          <div className="flex h-full w-72 max-w-[85vw] flex-col bg-white">
-            <SidebarHeader collapsed={false} variant="mobile" onCloseMobile={() => setMobileOpen(false)} />
+          <div className="flex h-full w-72 max-w-[85vw] flex-col bg-[var(--surface)]">
+            <SidebarHeader
+              collapsed={false}
+              variant="mobile"
+              communityName={ctx.communityName}
+              communityLogoUrl={ctx.communityLogoUrl}
+              onCloseMobile={() => setMobileOpen(false)}
+            />
             <SidebarNavList collapsed={false} {...navListProps} />
             <UserBlock memberName={ctx.memberName} collapsed={false} />
           </div>
@@ -425,37 +440,47 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
       )}
 
       <div
-        className={`fixed inset-y-0 left-0 z-20 hidden flex-col border-r border-neutral-200 bg-neutral-50 transition-[width] duration-150 md:flex ${
+        className={`fixed inset-y-0 left-0 z-20 hidden flex-col border-r border-[var(--border)] bg-[var(--surface)] transition-[width] duration-150 md:flex ${
           collapsed ? "w-16" : "w-64"
         }`}
       >
-        <SidebarHeader collapsed={collapsed} variant="desktop" onToggleCollapsed={() => setCollapsed((v) => !v)} />
+        <SidebarHeader
+          collapsed={collapsed}
+          variant="desktop"
+          communityName={ctx.communityName}
+          communityLogoUrl={ctx.communityLogoUrl}
+          onToggleCollapsed={() => setCollapsed((v) => !v)}
+        />
         <SidebarNavList collapsed={collapsed} {...navListProps} />
         <UserBlock memberName={ctx.memberName} collapsed={collapsed} />
       </div>
 
       <main
-        className={`pt-14 transition-[margin] duration-150 md:pt-0 ${collapsed ? "md:ml-16" : "md:ml-64"}`}
+        className={`bg-[var(--bg)] pt-14 transition-[margin] duration-150 md:pt-0 ${collapsed ? "md:ml-16" : "md:ml-64"}`}
       >
         {ctx.viewAs && (
-          <div className="flex flex-wrap items-center justify-center gap-2 border-b border-violet-300 bg-violet-100 px-4 py-2 text-center text-sm text-violet-900">
+          <div className="flex flex-wrap items-center justify-center gap-2 border-b border-[var(--accent-1-border)] bg-[var(--accent-1-soft)] px-4 py-2 text-center text-sm text-[var(--accent-1)]">
+            <Eye size={16} weight="regular" className="shrink-0" />
             <span>
               Viewing as <strong>{ctx.viewAs.targetName}</strong> — read-only. Every action below is
               disabled; this doesn&rsquo;t affect their real session.
             </span>
             <button
               onClick={endViewAs}
-              className="rounded-md border border-violet-400 bg-white px-2 py-0.5 text-xs font-medium text-violet-800 hover:bg-violet-50"
+              className="rounded-[var(--radius-sm)] border border-[var(--accent-1-border)] bg-[var(--surface)] px-2 py-0.5 text-xs font-medium text-[var(--accent-1)] hover:bg-[var(--accent-1-softer)]"
             >
               End View-as
             </button>
           </div>
         )}
         {ctx.onsiteModeEnabled && (
-          <div className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900">
-            On-site mode is on — settings, branches, tiers, cycle types, starting a new Cycle,
-            Requirement changes, publishing the Event schedule, and Spatial-planning edits are all
-            locked until it&rsquo;s turned off from Settings.
+          <div className="flex items-center justify-center gap-2 border-b border-[var(--warning-border)] bg-[var(--warning-soft)] px-4 py-2 text-center text-sm text-[var(--warning)]">
+            <Warning size={16} weight="regular" className="shrink-0" />
+            <span>
+              On-site mode is on — settings, branches, tiers, cycle types, starting a new Cycle,
+              Requirement changes, publishing the Event schedule, and Spatial-planning edits are all
+              locked until it&rsquo;s turned off from Settings.
+            </span>
           </div>
         )}
         {children}

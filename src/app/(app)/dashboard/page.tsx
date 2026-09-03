@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { CheckCircle, Tree, Users, ChartLineUp, Warning } from "@phosphor-icons/react/dist/ssr";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
 import { ATTENTION_STYLES } from "@/lib/format";
@@ -7,11 +8,102 @@ import { respondToNominationAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-const HEALTH_STYLES: Record<string, { label: string; color: string }> = {
-  on_track: { label: "on track", color: "#2a7a2a" },
-  attention_needed: { label: "attention needed", color: "#a15c00" },
-  struggling: { label: "struggling", color: "#b3001b" },
+type Tone = "neutral" | "accent" | "warning" | "danger" | "success";
+
+const TONE_CLASSES: Record<Tone, string> = {
+  neutral: "bg-[var(--neutral-100)] text-[var(--text-muted)]",
+  accent: "bg-[var(--accent-1-soft)] text-[var(--accent-1)]",
+  warning: "bg-[var(--warning-soft)] text-[var(--warning)] border border-[var(--warning-border)]",
+  danger: "bg-[var(--danger-soft)] text-[var(--danger)] border border-[var(--danger-border)]",
+  success: "bg-[var(--success-soft)] text-[var(--success)] border border-[var(--success-border)]",
 };
+
+function Tag({ tone = "neutral", children }: { tone?: Tone; children: React.ReactNode }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-[var(--radius-sm)] px-2 py-0.5 text-[11px] font-medium tracking-wide ${TONE_CLASSES[tone]}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+const ATTENTION_TONE: Record<string, Tone> = { soft: "warning", hard: "danger", escalated: "danger" };
+
+const HEALTH_STYLES: Record<string, { label: string; tone: Tone }> = {
+  on_track: { label: "on track", tone: "success" },
+  attention_needed: { label: "attention needed", tone: "warning" },
+  struggling: { label: "struggling", tone: "danger" },
+};
+
+// A single feed line — link + optional muted meta line, optional
+// right-aligned tag. Reused across every one of the dashboard's ~15
+// feed sections instead of repeating the row markup each time (see
+// design_handoff_conventions' Table pattern: bottom-rule per row,
+// hover tint).
+function FeedRow({
+  href,
+  title,
+  meta,
+  tag,
+}: {
+  href: string;
+  title: React.ReactNode;
+  meta?: React.ReactNode;
+  tag?: React.ReactNode;
+}) {
+  return (
+    <li className="border-b border-[var(--border)] last:border-b-0">
+      <div className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] px-1 py-2.5 hover:bg-[var(--surface-sunken)]">
+        <div className="min-w-0">
+          <Link href={href} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
+            {title}
+          </Link>
+          {meta && <div className="mt-0.5 text-[13px] text-[var(--text-muted)]">{meta}</div>}
+        </div>
+        {tag && <div className="shrink-0">{tag}</div>}
+      </div>
+    </li>
+  );
+}
+
+function StatRow({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
+  return (
+    <li className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-1 py-2 text-[13px] last:border-b-0">
+      <span className="text-[var(--text)]">{label}</span>
+      <span className="text-[var(--text-muted)]">{value}</span>
+    </li>
+  );
+}
+
+function FeedSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-5">
+      <h3 className="mb-1 text-[15px] font-medium text-[var(--text)]">{title}</h3>
+      <ul>{children}</ul>
+    </div>
+  );
+}
+
+function SnapshotSection({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mb-5">
+      <h3 className="mb-1 flex items-center gap-1.5 text-[15px] font-medium text-[var(--text)]">
+        {icon}
+        {title}
+      </h3>
+      <ul>{children}</ul>
+    </div>
+  );
+}
 
 export default async function DashboardPage() {
   const { real, viewing } = await getViewingContext();
@@ -61,415 +153,357 @@ export default async function DashboardPage() {
   };
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 720 }}>
-      <h1>Dashboard</h1>
+    <main className="mx-auto max-w-[820px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Dashboard</h1>
 
-      <section style={{ marginTop: "1rem" }}>
-        <h2>What&rsquo;s next for you</h2>
+      <section className="mt-8">
+        <h2 className="mb-4 text-[22px] font-semibold text-[var(--text)]">What&rsquo;s next for you</h2>
 
         {!hasFeedItems && (
-          <p style={{ color: "#666" }}>
-            Nothing pending on what you&rsquo;re holding right now. <Link href="/board">Browse the board</Link>{" "}
-            for something to work on.
-          </p>
+          <div className="flex flex-col items-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] px-7 py-8 text-center">
+            <CheckCircle size={22} className="text-[var(--text-muted)]" />
+            <p className="text-[13px] text-[var(--text-muted)]">
+              Nothing pending on what you&rsquo;re holding right now.
+            </p>
+            <Link href="/board" className="text-[12px] font-medium text-[var(--accent-1)] hover:underline">
+              Browse the board
+            </Link>
+          </div>
         )}
 
         {feed.pendingNominations.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Tasks someone thinks fit you</h3>
-            <p style={{ fontSize: "0.8rem", color: "#666", margin: "0 0 0.4rem" }}>
+          <FeedSection title="Tasks someone thinks fit you">
+            <p className="-mt-0.5 mb-2 text-[13px] text-[var(--text-muted)]">
               You&rsquo;re already holding these — a yes, no, or not-now are all fine. No response
               by the deadline releases it back automatically.
             </p>
             {feed.pendingNominations.map(({ nomination, taskTitle, nominatorName }) => (
-              <div key={nomination.id} style={{ marginBottom: "0.5rem" }}>
-                <p style={{ margin: 0 }}>
-                  <Link href={`/tasks/${nomination.taskId}`} style={{ color: "inherit" }}>
-                    {taskTitle}
-                  </Link>{" "}
-                  <span style={{ color: "#666" }}>
-                    — {nominatorName} thinks this is a fit, respond by{" "}
-                    {new Date(nomination.respondByDeadline).toLocaleString()}
-                    {nomination.message && <>: &ldquo;{nomination.message}&rdquo;</>}
-                  </span>
-                </p>
-                <form
-                  action={respondToNominationAction}
-                  style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}
-                >
+              <li key={nomination.id} className="border-b border-[var(--border)] px-1 py-2.5 last:border-b-0">
+                <Link href={`/tasks/${nomination.taskId}`} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
+                  {taskTitle}
+                </Link>{" "}
+                <span className="text-[13px] text-[var(--text-muted)]">
+                  — {nominatorName} thinks this is a fit, respond by{" "}
+                  {new Date(nomination.respondByDeadline).toLocaleString()}
+                  {nomination.message && <>: &ldquo;{nomination.message}&rdquo;</>}
+                </span>
+                <form action={respondToNominationAction} className="mt-2 flex gap-2">
                   <input type="hidden" name="nominationId" value={nomination.id} />
-                  <button type="submit" name="response" value="accepted">
+                  <button
+                    type="submit"
+                    name="response"
+                    value="accepted"
+                    className="rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3 py-1.5 text-[12px] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)]"
+                  >
                     Accept
                   </button>
-                  <button type="submit" name="response" value="declined">
+                  <button
+                    type="submit"
+                    name="response"
+                    value="declined"
+                    className="rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)]"
+                  >
                     Not for me
                   </button>
-                  <button type="submit" name="response" value="not_now">
+                  <button
+                    type="submit"
+                    name="response"
+                    value="not_now"
+                    className="rounded-[var(--radius-md)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--accent-1)] hover:bg-[var(--accent-1-softer)]"
+                  >
                     Not right now
                   </button>
                 </form>
-              </div>
+              </li>
             ))}
-          </div>
+          </FeedSection>
         )}
 
         {feed.expiredNominations.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Nominations that went unanswered</h3>
-            <ul>
-              {feed.expiredNominations.map(({ nomination, taskTitle, nomineeName }) => (
-                <li key={nomination.id}>
-                  <Link href={`/tasks/${nomination.taskId}`} style={{ color: "inherit" }}>
-                    {taskTitle}
-                  </Link>{" "}
-                  <span style={{ color: "#666" }}>
-                    — {nomineeName} didn&rsquo;t respond, released back to Unclaimed
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Nominations that went unanswered">
+            {feed.expiredNominations.map(({ nomination, taskTitle, nomineeName }) => (
+              <FeedRow
+                key={nomination.id}
+                href={`/tasks/${nomination.taskId}`}
+                title={taskTitle}
+                meta={`${nomineeName} didn't respond, released back to Unclaimed`}
+              />
+            ))}
+          </FeedSection>
         )}
 
         {feed.pendingJoinRequests.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Join requests waiting on you</h3>
-            <ul>
-              {feed.pendingJoinRequests.map((r) => (
-                <li key={r.id}>
-                  <Link href={`/tasks/${r.taskId}`} style={{ color: "inherit" }}>
-                    {r.taskTitle}
-                  </Link>{" "}
-                  <span style={{ color: "#666" }}>
-                    — {r.requestedByName} asked to join, {new Date(r.requestedAt).toLocaleDateString()}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Join requests waiting on you">
+            {feed.pendingJoinRequests.map((r) => (
+              <FeedRow
+                key={r.id}
+                href={`/tasks/${r.taskId}`}
+                title={r.taskTitle}
+                meta={`${r.requestedByName} asked to join, ${new Date(r.requestedAt).toLocaleDateString()}`}
+              />
+            ))}
+          </FeedSection>
         )}
 
         {feed.emergencyAccessActivity.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Emergency access activity</h3>
-            <ul>
-              {feed.emergencyAccessActivity.map((a) => (
-                <li key={a.id}>
-                  <Link href={`/members/${a.role === "activator" ? a.targetMemberId : a.activatedBy}`} style={{ color: "inherit" }}>
-                    {a.counterpartName}
-                  </Link>{" "}
-                  <span style={{ color: "#666" }}>
-                    — {a.role === "activator" ? "you activated on them" : "activated on you"},{" "}
+          <FeedSection title="Emergency access activity">
+            {feed.emergencyAccessActivity.map((a) => (
+              <FeedRow
+                key={a.id}
+                href={`/members/${a.role === "activator" ? a.targetMemberId : a.activatedBy}`}
+                title={a.counterpartName}
+                meta={
+                  <>
+                    {a.role === "activator" ? "you activated on them" : "activated on you"},{" "}
                     {new Date(a.activatedAt).toLocaleString()}
                     {a.explanation ? `: "${a.explanation}"` : ""}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+                  </>
+                }
+              />
+            ))}
+          </FeedSection>
         )}
 
         {feed.upcomingCheckins.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Check-ins</h3>
-            <ul>
-              {feed.upcomingCheckins.map((t) => {
-                const overdue = t.nextCheckinAt.getTime() < now;
-                return (
-                  <li key={t.id}>
-                    <Link href={`/tasks/${t.id}`} style={{ color: "inherit" }}>
-                      {t.title}
-                    </Link>{" "}
-                    <span style={{ color: overdue ? "crimson" : "#666" }}>
-                      — {overdue ? "was due" : "due"} {new Date(t.nextCheckinAt).toLocaleDateString()}
+          <FeedSection title="Check-ins">
+            {feed.upcomingCheckins.map((t) => {
+              const overdue = t.nextCheckinAt.getTime() < now;
+              return (
+                <FeedRow
+                  key={t.id}
+                  href={`/tasks/${t.id}`}
+                  title={t.title}
+                  meta={
+                    <span className={`inline-flex items-center gap-1 ${overdue ? "font-medium text-[var(--danger)]" : ""}`}>
+                      {overdue && <Warning size={12} />}
+                      {overdue ? "was due" : "due"} {new Date(t.nextCheckinAt).toLocaleDateString()}
                       {overdue ? " (overdue)" : ""}
                     </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+                  }
+                />
+              );
+            })}
+          </FeedSection>
         )}
 
         {feed.flaggedHeldTasks.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Flagged tasks you hold</h3>
-            <ul>
-              {feed.flaggedHeldTasks.map((t) => (
-                <li key={t.id}>
-                  <Link href={`/tasks/${t.id}`} style={{ color: "inherit" }}>
-                    {t.title}
-                  </Link>{" "}
-                  <span style={{ color: "#666" }}>({t.branchName})</span>{" "}
-                  {ATTENTION_STYLES[t.attentionLevel] && (
-                    <span style={{ color: ATTENTION_STYLES[t.attentionLevel].color, fontWeight: 600 }}>
-                      ⚠ {ATTENTION_STYLES[t.attentionLevel].label}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Flagged tasks you hold">
+            {feed.flaggedHeldTasks.map((t) => (
+              <FeedRow
+                key={t.id}
+                href={`/tasks/${t.id}`}
+                title={t.title}
+                meta={t.branchName}
+                tag={
+                  ATTENTION_STYLES[t.attentionLevel] && (
+                    <Tag tone={ATTENTION_TONE[t.attentionLevel] ?? "neutral"}>
+                      {ATTENTION_STYLES[t.attentionLevel].label}
+                    </Tag>
+                  )
+                }
+              />
+            ))}
+          </FeedSection>
         )}
+
         {feed.recruitmentNeedsAction.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Recruitment candidates stuck waiting on you</h3>
-            <ul>
-              {feed.recruitmentNeedsAction.map((c) => (
-                <li key={c.id}>
-                  <Link href="/recruitment" style={{ color: "inherit" }}>
-                    Application from {new Date(c.submittedAt).toLocaleDateString()}
-                  </Link>{" "}
-                  <span style={{ color: "#a15c00", fontWeight: 600 }}>
-                    — {NEEDS_ACTION_LABEL[c.stage] ?? c.stage}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Recruitment candidates stuck waiting on you">
+            {feed.recruitmentNeedsAction.map((c) => (
+              <FeedRow
+                key={c.id}
+                href="/recruitment"
+                title={`Application from ${new Date(c.submittedAt).toLocaleDateString()}`}
+                tag={<Tag tone="warning">{NEEDS_ACTION_LABEL[c.stage] ?? c.stage}</Tag>}
+              />
+            ))}
+          </FeedSection>
         )}
 
         {feed.placementInvites.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Spatial planning invites waiting on you</h3>
-            <ul>
-              {feed.placementInvites.map((i) => (
-                <li key={i.placementId}>
-                  <Link href="/spatial-planning" style={{ color: "inherit" }}>
-                    {i.placementLabel}
-                  </Link>{" "}
-                  <span style={{ color: "#666" }}>
-                    — invited by {i.invitedByName}, {new Date(i.invitedAt).toLocaleDateString()}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Spatial planning invites waiting on you">
+            {feed.placementInvites.map((i) => (
+              <FeedRow
+                key={i.placementId}
+                href="/spatial-planning"
+                title={i.placementLabel}
+                meta={`invited by ${i.invitedByName}, ${new Date(i.invitedAt).toLocaleDateString()}`}
+              />
+            ))}
+          </FeedSection>
         )}
 
         {feed.myLinkedPendingPlacements.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Placements you&rsquo;re linked to, pending review</h3>
-            <ul>
-              {feed.myLinkedPendingPlacements.map((p) => (
-                <li key={p.id}>
-                  <Link href="/spatial-planning" style={{ color: "inherit" }}>
-                    {p.label}
-                  </Link>{" "}
-                  <span style={{ color: "#a15c00" }}>— pending the holder&rsquo;s review</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Placements you&rsquo;re linked to, pending review">
+            {feed.myLinkedPendingPlacements.map((p) => (
+              <FeedRow key={p.id} href="/spatial-planning" title={p.label} meta="pending the holder's review" />
+            ))}
+          </FeedSection>
         )}
 
         {feed.placementRevertNotices.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Placement edits reverted</h3>
-            <ul>
-              {feed.placementRevertNotices.map((n) => (
-                <li key={n.notice.id}>
-                  <Link href="/spatial-planning" style={{ color: "inherit" }}>
-                    {n.placementLabel}
-                  </Link>{" "}
-                  <span style={{ color: "#666" }}>
-                    — reverted by {n.revertedByName}
-                    {n.notice.note ? `: “${n.notice.note}”` : ""}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Placement edits reverted">
+            {feed.placementRevertNotices.map((n) => (
+              <FeedRow
+                key={n.notice.id}
+                href="/spatial-planning"
+                title={n.placementLabel}
+                meta={`reverted by ${n.revertedByName}${n.notice.note ? `: "${n.notice.note}"` : ""}`}
+              />
+            ))}
+          </FeedSection>
         )}
 
         {feed.placementPendingReviews.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Placement changes awaiting your review</h3>
-            <ul>
-              {feed.placementPendingReviews.map((r) => (
-                <li key={r.placement.id}>
-                  <Link href="/spatial-planning" style={{ color: "inherit" }}>
-                    {r.placement.label}
-                  </Link>{" "}
-                  <span style={{ color: "#666" }}>— moved by {r.movedByName}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Placement changes awaiting your review">
+            {feed.placementPendingReviews.map((r) => (
+              <FeedRow
+                key={r.placement.id}
+                href="/spatial-planning"
+                title={r.placement.label}
+                meta={`moved by ${r.movedByName}`}
+              />
+            ))}
+          </FeedSection>
         )}
 
         {feed.budgetNeedsAction.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Budget needs your attention</h3>
-            <ul>
-              {feed.budgetNeedsAction.map((b, i) => (
-                <li key={`${b.cycleId}-${b.kind}-${i}`}>
-                  <Link href="/budget" style={{ color: "inherit" }}>
-                    {b.cycleTitle}
-                  </Link>{" "}
-                  <span style={{ color: "#a15c00", fontWeight: 600 }}>
-                    — {BUDGET_LABEL[b.kind] ?? b.kind}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Budget needs your attention">
+            {feed.budgetNeedsAction.map((b, i) => (
+              <FeedRow
+                key={`${b.cycleId}-${b.kind}-${i}`}
+                href="/budget"
+                title={b.cycleTitle}
+                tag={<Tag tone="warning">{BUDGET_LABEL[b.kind] ?? b.kind}</Tag>}
+              />
+            ))}
+          </FeedSection>
         )}
 
         {feed.eventSchedulingNeedsAction.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Event proposals awaiting review</h3>
-            <ul>
-              {feed.eventSchedulingNeedsAction.map((p) => (
-                <li key={p.proposalId}>
-                  <Link href="/schedule" style={{ color: "inherit" }}>
-                    {p.title}
-                  </Link>{" "}
-                  <span style={{ color: p.status === "conflict" ? "#b3001b" : "#a15c00", fontWeight: 600 }}>
-                    — {EVENT_STATUS_LABEL[p.status] ?? p.status}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Event proposals awaiting review">
+            {feed.eventSchedulingNeedsAction.map((p) => (
+              <FeedRow
+                key={p.proposalId}
+                href="/schedule"
+                title={p.title}
+                tag={
+                  <Tag tone={p.status === "conflict" ? "danger" : "warning"}>
+                    {EVENT_STATUS_LABEL[p.status] ?? p.status}
+                  </Tag>
+                }
+              />
+            ))}
+          </FeedSection>
         )}
 
         {feed.shiftCoordinatorNeedsAction.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Shift occurrences needing completion marks</h3>
-            <ul>
-              {feed.shiftCoordinatorNeedsAction.map((o) => (
-                <li key={o.occurrenceId}>
-                  <Link href="/shifts" style={{ color: "inherit" }}>
-                    {o.seriesTitle}
-                  </Link>{" "}
-                  <span style={{ color: "#666" }}>
-                    — {new Date(o.startsAt).toLocaleDateString()},{" "}
-                    {o.unresolvedCount} signup{o.unresolvedCount === 1 ? "" : "s"} still unresolved
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Shift occurrences needing completion marks">
+            {feed.shiftCoordinatorNeedsAction.map((o) => (
+              <FeedRow
+                key={o.occurrenceId}
+                href="/shifts"
+                title={o.seriesTitle}
+                meta={`${new Date(o.startsAt).toLocaleDateString()}, ${o.unresolvedCount} signup${o.unresolvedCount === 1 ? "" : "s"} still unresolved`}
+              />
+            ))}
+          </FeedSection>
         )}
 
         {feed.myShiftsNeedingCompletion.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Your own past shifts</h3>
-            <ul>
-              {feed.myShiftsNeedingCompletion.map((s) => (
-                <li key={s.signupId}>
-                  <Link href="/shifts" style={{ color: "inherit" }}>
-                    {s.seriesTitle}
-                  </Link>{" "}
-                  <span style={{ color: "#666" }}>
-                    — ended {new Date(s.endsAt).toLocaleDateString()}, mark it complete
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Your own past shifts">
+            {feed.myShiftsNeedingCompletion.map((s) => (
+              <FeedRow
+                key={s.signupId}
+                href="/shifts"
+                title={s.seriesTitle}
+                meta={`ended ${new Date(s.endsAt).toLocaleDateString()}, mark it complete`}
+              />
+            ))}
+          </FeedSection>
         )}
 
         {feed.conflictNeedsAction.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Conflict reports needing acknowledgment</h3>
-            <ul>
-              {feed.conflictNeedsAction.map((r) => (
-                <li key={r.reportId}>
-                  <Link href="/conflict-reports" style={{ color: "inherit" }}>
-                    Report from {new Date(r.createdAt).toLocaleDateString()}
-                  </Link>{" "}
-                  <span style={{ color: "#b3001b", fontWeight: 600 }}>— past the acknowledgment window</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Conflict reports needing acknowledgment">
+            {feed.conflictNeedsAction.map((r) => (
+              <FeedRow
+                key={r.reportId}
+                href="/conflict-reports"
+                title={`Report from ${new Date(r.createdAt).toLocaleDateString()}`}
+                tag={<Tag tone="danger">past the acknowledgment window</Tag>}
+              />
+            ))}
+          </FeedSection>
         )}
 
         {feed.calendarEventInvites.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Event invites waiting on you</h3>
-            <ul>
-              {feed.calendarEventInvites.map((i) => (
-                <li key={i.eventId}>
-                  <Link href="/calendar" style={{ color: "inherit" }}>
-                    {i.eventTitle}
-                  </Link>{" "}
-                  <span style={{ color: "#666" }}>
-                    — invited by {i.invitedByName}, {new Date(i.invitedAt).toLocaleDateString()}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FeedSection title="Event invites waiting on you">
+            {feed.calendarEventInvites.map((i) => (
+              <FeedRow
+                key={i.eventId}
+                href="/calendar"
+                title={i.eventTitle}
+                meta={`invited by ${i.invitedByName}, ${new Date(i.invitedAt).toLocaleDateString()}`}
+              />
+            ))}
+          </FeedSection>
         )}
       </section>
 
-      <hr style={{ margin: "2rem 0" }} />
+      <div className="my-9 h-px bg-[var(--border)]" />
 
       <section>
-        <h2>Community snapshot</h2>
-        <p style={{ color: "#666", fontSize: "0.85rem" }}>
+        <h2 className="mb-1 text-[22px] font-semibold text-[var(--text)]">Community snapshot</h2>
+        <p className="mb-4 text-[13px] text-[var(--text-muted)]">
           Aggregate only — nothing here is broken out by individual. See{" "}
-          <Link href="/contribution">your own contribution picture</Link> for what you&rsquo;ve
-          done, or opt in to share it.
+          <Link href="/contribution" className="text-[var(--accent-1)] hover:underline">
+            your own contribution picture
+          </Link>{" "}
+          for what you&rsquo;ve done, or opt in to share it.
         </p>
 
         {snapshot.activeMemberCount !== null && (
-          <p>
-            <strong>{snapshot.activeMemberCount}</strong> member{snapshot.activeMemberCount === 1 ? "" : "s"}{" "}
-            coming this cycle
+          <p className="mb-4 text-[14px] text-[var(--text)]">
+            <strong className="font-semibold">{snapshot.activeMemberCount}</strong> member
+            {snapshot.activeMemberCount === 1 ? "" : "s"} coming this cycle
           </p>
         )}
 
         {snapshot.tierCounts.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Tiers</h3>
-            <ul>
-              {snapshot.tierCounts.map((t) => (
-                <li key={t.id}>
-                  {t.name}: {t.count} member{t.count === 1 ? "" : "s"}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <SnapshotSection title="Tiers" icon={<Users size={16} className="text-[var(--text-muted)]" />}>
+            {snapshot.tierCounts.map((t) => (
+              <StatRow key={t.id} label={t.name} value={`${t.count} member${t.count === 1 ? "" : "s"}`} />
+            ))}
+          </SnapshotSection>
         )}
 
         {snapshot.branchSpread.length > 0 && (
-          <div style={{ marginBottom: "1rem" }}>
-            <h3>Branch spread</h3>
-            <ul>
-              {snapshot.branchSpread.map((b) => (
-                <li key={b.id}>
-                  {b.name}: {b.memberCount} member{b.memberCount === 1 ? "" : "s"} currently holding a
-                  task
-                </li>
-              ))}
-            </ul>
-          </div>
+          <SnapshotSection title="Branch spread" icon={<Tree size={16} className="text-[var(--text-muted)]" />}>
+            {snapshot.branchSpread.map((b) => (
+              <StatRow
+                key={b.id}
+                label={b.name}
+                value={`${b.memberCount} member${b.memberCount === 1 ? "" : "s"} holding a task`}
+              />
+            ))}
+          </SnapshotSection>
         )}
 
         {snapshot.branchHealth.length > 0 && (
-          <div>
-            <h3>Branch health</h3>
-            <ul>
-              {snapshot.branchHealth.map((b) => (
-                <li key={b.id}>
-                  {b.name}:{" "}
-                  <span style={{ color: HEALTH_STYLES[b.status].color, fontWeight: 600 }}>
-                    {HEALTH_STYLES[b.status].label}
-                  </span>
+          <SnapshotSection title="Branch health" icon={<ChartLineUp size={16} className="text-[var(--text-muted)]" />}>
+            {snapshot.branchHealth.map((b) => (
+              <li key={b.id} className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-1 py-2 text-[13px] last:border-b-0">
+                <span className="text-[var(--text)]">{b.name}</span>
+                <span className="flex items-center gap-2">
                   {b.counts && (
-                    <span style={{ color: "#666", fontSize: "0.85rem" }}>
-                      {" "}
-                      — {b.counts.soft} soft · {b.counts.hard} hard · {b.counts.escalated} escalated
+                    <span className="text-[var(--text-muted)]">
+                      {b.counts.soft} soft · {b.counts.hard} hard · {b.counts.escalated} escalated
                     </span>
                   )}
-                </li>
-              ))}
-            </ul>
-          </div>
+                  <Tag tone={HEALTH_STYLES[b.status].tone}>{HEALTH_STYLES[b.status].label}</Tag>
+                </span>
+              </li>
+            ))}
+          </SnapshotSection>
         )}
       </section>
     </main>
