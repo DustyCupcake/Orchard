@@ -34,4 +34,15 @@ export const cycleType = pgTable("cycle_type", {
   // nothing reads this to actually clone anything — see Phase 40's own
   // "no enforcement of a type's suggested pack."
   defaultSourceCycleId: uuid("default_source_cycle_id"),
+  // Spec's own real field, now that a real TaskPack table exists (Phase
+  // 55) — "suggested starting pack for a Cycle of this type." Same
+  // non-FK reasoning as defaultSourceCycleId just above (task_pack.ts
+  // already imports task.ts, which imports cycle.ts, which imports
+  // this file — cycle_type.ts importing task_pack.ts back would cycle).
+  // Deliberately kept alongside defaultSourceCycleId rather than
+  // replacing it: an already-configured Community's existing "clone
+  // this specific prior cycle" nudge isn't automatically a saved pack,
+  // and nothing forces a migration between the two — a CycleType can
+  // suggest either, or both, or neither.
+  defaultPackId: uuid("default_pack_id"),
 });

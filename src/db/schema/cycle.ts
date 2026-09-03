@@ -17,10 +17,7 @@ export const cycleSourceTypeEnum = pgEnum("cycle_source_type", ["blank", "pack"]
 // event). Optional — a Community with `cycles_enabled = false` runs one
 // permanent default Cycle instead. See docs/spec.md's "Cycle" section.
 //
-// Not yet included: source_pack_id (→ TaskPack) — points at a table
-// that doesn't exist until Task Pack, as a portable cross-community
-// mechanism, gets built (see docs/development-plan.md's "Beyond
-// Phase 45"). cycle_type_id landed in Phase 40.
+// cycle_type_id landed in Phase 40; source_pack_id (Phase 55) below.
 export const cycle = pgTable("cycle", {
   id: uuid("id").primaryKey().defaultRandom(),
   communityId: uuid("community_id")
@@ -43,4 +40,17 @@ export const cycle = pgTable("cycle", {
   // Phase 39.
   startDate: date("start_date"),
   endDate: date("end_date"),
+  // Plain uuid, no `.references()` — task_pack.ts already has to
+  // import task.ts (for TaskPackItem's effort/openness enums), and
+  // task.ts already imports cycle.ts for its own cycleId, so cycle.ts
+  // importing task_pack.ts back would be a real circular import
+  // between schema files. Same non-FK pattern (and same "the earlier,
+  // more-core file holds the non-FK side") Community's own
+  // conflictTeamTaskId/etc. already establish. Validated at the
+  // application layer instead — see src/lib/task-packs/import.ts. Null
+  // for a `blank` cycle or one built via the older, narrower
+  // clone-previous-cycle path (Phase 6), which still runs entirely
+  // in-memory and creates no real TaskPack row; set only when a cycle
+  // is actually created by importing a saved TaskPack (Phase 55).
+  sourcePackId: uuid("source_pack_id"),
 });

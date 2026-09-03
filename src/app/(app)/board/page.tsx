@@ -10,10 +10,12 @@ import {
   tierNameLookup,
 } from "@/lib/tasks";
 import { listCoordinationBranchIds } from "@/lib/coordination";
+import { canInitiateCycle } from "@/lib/cycles";
+import { getCurrentCycle } from "@/lib/profile-questions";
 import BranchFilter from "./BranchFilter";
 import TagFilter from "./TagFilter";
 import TaskCard from "./TaskCard";
-import { bulkClaimAction } from "./actions";
+import { bulkClaimAction, exportSelectedTasksAsPackAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +39,7 @@ export default async function BoardPage({
   const { branchId, tag, fit, error, notice } = await searchParams;
   const sortByFit = fit === "1";
 
-  const [branches, tasks, tierNames, myPendingRequests, allTags, coordinationBranchIds] =
+  const [branches, tasks, tierNames, myPendingRequests, allTags, coordinationBranchIds, canExport, currentCycle] =
     await Promise.all([
       db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
       listTasksWithAssignments(viewing, { branchId, tag, sortByFit }),
@@ -45,7 +47,14 @@ export default async function BoardPage({
       listMyPendingJoinRequests(viewing),
       listDistinctTags(viewing),
       listCoordinationBranchIds(viewing),
+      canInitiateCycle(viewing),
+      getCurrentCycle(viewing.communityId),
     ]);
+  // Export only ever targets the current cycle — same "the current
+  // one" scoping /participation's own whole-cycle export uses — so a
+  // selected task belonging to a different (or no) cycle is silently
+  // excluded server-side rather than guessed at here.
+  const exportableInView = currentCycle ? tasks.filter((t) => t.cycleId === currentCycle.id) : [];
 
   // Preserves the other filters while toggling fit — a plain link,
   // same "no client JS needed for something a link can do" posture as
@@ -114,6 +123,34 @@ export default async function BoardPage({
             ))}
             <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
               Claim selected
+            </button>
+          </form>
+        </details>
+      )}
+
+      {canExport && exportableInView.length > 0 && (
+        <details style={{ marginTop: "1rem" }}>
+          <summary style={{ cursor: "pointer" }}>
+            Export selected as a Task Pack ({exportableInView.length} in this view)
+          </summary>
+          <form
+            action={exportSelectedTasksAsPackAction}
+            style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginTop: "0.5rem", maxWidth: 400 }}
+          >
+            <input type="hidden" name="cycleId" value={currentCycle!.id} />
+            <label style={{ fontSize: "0.9rem" }}>
+              Pack name
+              <br />
+              <input type="text" name="name" required style={{ padding: "0.4rem", width: "100%" }} />
+            </label>
+            {exportableInView.map((t) => (
+              <label key={t.id} style={{ fontSize: "0.9rem" }}>
+                <input type="checkbox" name="taskIds" value={t.id} defaultChecked /> {t.title}{" "}
+                <span style={{ color: "#666" }}>({branchNameById.get(t.branchId) ?? "—"})</span>
+              </label>
+            ))}
+            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+              Export selected
             </button>
           </form>
         </details>

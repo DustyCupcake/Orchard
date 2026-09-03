@@ -288,6 +288,13 @@
       "when": 1788447836354,
       "tag": "0040_freezing_golden_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1788450213174,
+      "tag": "0041_clammy_joshua_kane",
+      "breakpoints": true
     }
   ]
 }

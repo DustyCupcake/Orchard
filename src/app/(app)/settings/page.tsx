@@ -3,9 +3,10 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { task } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
-import { getCommunity, listBranches, listCycleTypes, listTiers, requireAdmins } from "@/lib/settings";
+import { getCommunity, listBranches, listCycleTypes, listPendingBranches, listTiers, requireAdmins } from "@/lib/settings";
 import { listCycles } from "@/lib/cycles";
 import { listProfileQuestions } from "@/lib/profile-questions";
+import { listTaskPacks } from "@/lib/task-packs";
 import { MODULE_DEFINITIONS } from "@/lib/modules";
 import { SENSITIVE_FIELD_KEYS, SENSITIVE_FIELD_LABELS, listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
 import { listForms } from "@/lib/forms";
@@ -14,6 +15,7 @@ import { ForbiddenError } from "@/lib/errors";
 import {
   archiveFormAction,
   archiveProfileQuestionAction,
+  confirmPendingBranchAction,
   createBranchAction,
   createConsentPurposeAction,
   createCycleTypeAction,
@@ -26,6 +28,7 @@ import {
   deleteCycleTypeAction,
   deleteSensitiveFieldAccessRuleAction,
   deleteTierAction,
+  rejectPendingBranchAction,
   unarchiveFormAction,
   unarchiveProfileQuestionAction,
   updateBranchAction,
@@ -60,18 +63,32 @@ export default async function SettingsPage({
     }
   }
 
-  const [communityRow, branches, tiers, cycleTypes, cyclesForPicker, profileQuestions, sensitiveFieldRules, forms, consentPurposes] =
-    await Promise.all([
-      getCommunity(viewing),
-      listBranches(viewing),
-      listTiers(viewing),
-      listCycleTypes(viewing),
-      authorized ? listCycles(viewing) : Promise.resolve([]),
-      authorized ? listProfileQuestions(viewing, { includeArchived: true }) : Promise.resolve([]),
-      authorized ? listSensitiveFieldAccessRules(viewing) : Promise.resolve([]),
-      authorized ? listForms(viewing, { includeArchived: true }) : Promise.resolve([]),
-      authorized ? listConsentPurposes(viewing) : Promise.resolve([]),
-    ]);
+  const [
+    communityRow,
+    branches,
+    tiers,
+    cycleTypes,
+    cyclesForPicker,
+    profileQuestions,
+    sensitiveFieldRules,
+    forms,
+    consentPurposes,
+    pendingBranches,
+    taskPacks,
+  ] = await Promise.all([
+    getCommunity(viewing),
+    listBranches(viewing),
+    listTiers(viewing),
+    listCycleTypes(viewing),
+    authorized ? listCycles(viewing) : Promise.resolve([]),
+    authorized ? listProfileQuestions(viewing, { includeArchived: true }) : Promise.resolve([]),
+    authorized ? listSensitiveFieldAccessRules(viewing) : Promise.resolve([]),
+    authorized ? listForms(viewing, { includeArchived: true }) : Promise.resolve([]),
+    authorized ? listConsentPurposes(viewing) : Promise.resolve([]),
+    authorized ? listPendingBranches(viewing) : Promise.resolve([]),
+    listTaskPacks(viewing),
+  ]);
+  const confirmedBranches = branches.filter((b) => b.status === "confirmed");
 
   const conflictTeamTask = communityRow.conflictTeamTaskId
     ? await db
@@ -695,10 +712,50 @@ export default async function SettingsPage({
         </form>
       </section>
 
+      {pendingBranches.length > 0 && (
+        <section style={{ marginTop: "2rem" }}>
+          <h2>Pending branches</h2>
+          <p style={{ color: "#666", fontSize: "0.85rem" }}>
+            Created by a Task Pack import from someone who didn&rsquo;t hold Admins at the time —
+            see docs/spec.md&rsquo;s &ldquo;Create new branch&rdquo; needs its own check.&rdquo; Tasks are already
+            attached and claimable; confirming just locks the branch in, rejecting re-points them
+            to a real branch instead.
+          </p>
+          {pendingBranches.map((b) => (
+            <div
+              key={b.id}
+              style={{ border: "1px solid #f0c36d", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
+            >
+              <strong>{b.name}</strong>
+              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.4rem", alignItems: "center" }}>
+                <form action={confirmPendingBranchAction}>
+                  <input type="hidden" name="branchId" value={b.id} />
+                  <button type="submit">Confirm</button>
+                </form>
+                <form action={rejectPendingBranchAction} style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                  <input type="hidden" name="branchId" value={b.id} />
+                  <select name="reassignToBranchId" required defaultValue="" style={{ padding: "0.3rem" }}>
+                    <option value="" disabled>
+                      Reject — reassign its tasks to…
+                    </option>
+                    {confirmedBranches.map((cb) => (
+                      <option key={cb.id} value={cb.id}>
+                        {cb.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="submit">Reject</button>
+                </form>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+
       <section style={{ marginTop: "2rem" }}>
         <h2>Branches</h2>
-        {branches.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
-        {branches.map((b) => (
+        {confirmedBranches.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
+        {confirmedBranches.map((b) => (
           <div
             key={b.id}
             style={{
@@ -793,7 +850,7 @@ export default async function SettingsPage({
               flexWrap: "wrap",
             }}
           >
-            <form action={updateCycleTypeAction} style={{ display: "flex", gap: "0.5rem", flex: 1 }}>
+            <form action={updateCycleTypeAction} style={{ display: "flex", gap: "0.5rem", flex: 1, flexWrap: "wrap" }}>
               <input type="hidden" name="cycleTypeId" value={ct.id} />
               <input type="text" name="name" defaultValue={ct.name} style={{ padding: "0.3rem", flex: 1 }} />
               <select name="defaultSourceCycleId" defaultValue={ct.defaultSourceCycleId ?? ""} style={{ padding: "0.3rem" }}>
@@ -801,6 +858,14 @@ export default async function SettingsPage({
                 {cyclesForPicker.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
+                  </option>
+                ))}
+              </select>
+              <select name="defaultPackId" defaultValue={ct.defaultPackId ?? ""} style={{ padding: "0.3rem" }}>
+                <option value="">No suggested Task Pack</option>
+                {taskPacks.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
                   </option>
                 ))}
               </select>
@@ -813,13 +878,21 @@ export default async function SettingsPage({
           </div>
         ))}
 
-        <form action={createCycleTypeAction} style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+        <form action={createCycleTypeAction} style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
           <input type="text" name="name" required placeholder="New cycle type (e.g. Season)" style={{ padding: "0.4rem" }} />
           <select name="defaultSourceCycleId" defaultValue="" style={{ padding: "0.4rem" }}>
             <option value="">No suggested starting cycle</option>
             {cyclesForPicker.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
+              </option>
+            ))}
+          </select>
+          <select name="defaultPackId" defaultValue="" style={{ padding: "0.4rem" }}>
+            <option value="">No suggested Task Pack</option>
+            {taskPacks.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
               </option>
             ))}
           </select>

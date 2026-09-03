@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { cycle, cycleType } from "@/db/schema";
+import { cycle, cycleType, taskPack } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, NotFoundError } from "../errors";
 import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
@@ -11,16 +11,18 @@ type Member = typeof memberTable.$inferSelect;
 export const createCycleTypeInput = z.object({
   name: z.string().min(1),
   defaultSourceCycleId: z.string().uuid().nullable().optional(),
+  defaultPackId: z.string().uuid().nullable().optional(),
 });
 export type CreateCycleTypeInput = z.infer<typeof createCycleTypeInput>;
 
 export const updateCycleTypeInput = createCycleTypeInput.partial();
 export type UpdateCycleTypeInput = z.infer<typeof updateCycleTypeInput>;
 
-// defaultSourceCycleId is a non-FK pointer (see src/db/schema/cycle-
-// type.ts's own comment) — validated here the same way Community's own
-// task/form pointers are validated in src/lib/settings/community.ts,
-// since the database itself has no FK to enforce it.
+// defaultSourceCycleId/defaultPackId are both non-FK pointers (see
+// src/db/schema/cycle-type.ts's own comment) — validated here the same
+// way Community's own task/form pointers are validated in
+// src/lib/settings/community.ts, since the database itself has no FK
+// to enforce either.
 async function requireCycleInCommunity(communityId: string, cycleId: string) {
   const [row] = await db
     .select({ id: cycle.id })
@@ -28,6 +30,16 @@ async function requireCycleInCommunity(communityId: string, cycleId: string) {
     .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, communityId)));
   if (!row) {
     throw new NotFoundError("Cycle not found in your community");
+  }
+}
+
+async function requirePackInCommunity(communityId: string, packId: string) {
+  const [row] = await db
+    .select({ id: taskPack.id })
+    .from(taskPack)
+    .where(and(eq(taskPack.id, packId), eq(taskPack.communityId, communityId)));
+  if (!row) {
+    throw new NotFoundError("Task Pack not found in your community");
   }
 }
 
@@ -40,6 +52,9 @@ export async function createCycleType(actor: Member, input: CreateCycleTypeInput
   if (input.defaultSourceCycleId) {
     await requireCycleInCommunity(actor.communityId, input.defaultSourceCycleId);
   }
+  if (input.defaultPackId) {
+    await requirePackInCommunity(actor.communityId, input.defaultPackId);
+  }
 
   const [created] = await db
     .insert(cycleType)
@@ -47,6 +62,7 @@ export async function createCycleType(actor: Member, input: CreateCycleTypeInput
       communityId: actor.communityId,
       name: input.name,
       defaultSourceCycleId: input.defaultSourceCycleId ?? null,
+      defaultPackId: input.defaultPackId ?? null,
     })
     .returning();
   return created;
@@ -57,12 +73,16 @@ export async function updateCycleType(actor: Member, cycleTypeId: string, input:
   if (input.defaultSourceCycleId) {
     await requireCycleInCommunity(actor.communityId, input.defaultSourceCycleId);
   }
+  if (input.defaultPackId) {
+    await requirePackInCommunity(actor.communityId, input.defaultPackId);
+  }
 
   const [updated] = await db
     .update(cycleType)
     .set({
       ...(input.name !== undefined && { name: input.name }),
       ...(input.defaultSourceCycleId !== undefined && { defaultSourceCycleId: input.defaultSourceCycleId }),
+      ...(input.defaultPackId !== undefined && { defaultPackId: input.defaultPackId }),
     })
     .where(and(eq(cycleType.id, cycleTypeId), eq(cycleType.communityId, actor.communityId)))
     .returning();

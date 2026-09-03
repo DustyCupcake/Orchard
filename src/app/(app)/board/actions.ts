@@ -12,6 +12,7 @@ import {
   resumeTask,
   withdrawJoinRequest,
 } from "@/lib/tasks";
+import { exportCycleAsTaskPack } from "@/lib/task-packs";
 import { AppError } from "@/lib/errors";
 
 async function runAction(fn: () => Promise<unknown>) {
@@ -73,6 +74,30 @@ export async function bulkClaimAction(formData: FormData) {
       ? `Claimed ${claimed} task(s).`
       : `Claimed ${claimed} task(s); ${failures.length} failed: ${failures.join("; ")}`;
   redirect(`/board?notice=${encodeURIComponent(summary)}`);
+}
+
+// The board's own bulk-selection mechanism, reused for a partial
+// export rather than a claim — see docs/development-plan.md's Phase
+// 55 ("the current cycle, or a hand-picked task subset via the
+// board's existing bulk-selection mechanism").
+export async function exportSelectedTasksAsPackAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleId = String(formData.get("cycleId"));
+  const name = String(formData.get("name") ?? "").trim();
+  const taskIds = formData.getAll("taskIds").map(String);
+
+  let packId: string;
+  try {
+    const created = await exportCycleAsTaskPack(actor, cycleId, { name, taskIds });
+    packId = created.id;
+  } catch (err) {
+    if (err instanceof AppError) {
+      redirect(`/board?error=${encodeURIComponent(err.message)}`);
+    }
+    throw err;
+  }
+
+  redirect(`/task-packs?exported=${packId}`);
 }
 
 export async function withdrawRequestAction(formData: FormData) {

@@ -38,3 +38,19 @@ export async function requireAdmins(actor: Member) {
     throw new ForbiddenError("Only a current Admins holder can change community settings");
   }
 }
+
+// Non-throwing form — see docs/spec.md's "Create new branch" needs its
+// own check" (Pack import review, Phase 55): whether a pack-importing
+// actor holds Admins decides whether a newly-created branch resolves
+// `confirmed` immediately or lands `pending` for later review, a
+// branch rather than a rejection either way. Same canInitiateCycle-
+// style try/catch wrapper this codebase already uses for the identical
+// throw-vs-boolean split.
+export async function isAdmin(actor: Member): Promise<boolean> {
+  try {
+    await requireAdmins(actor);
+    return true;
+  } catch {
+    return false;
+  }
+}

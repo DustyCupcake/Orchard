@@ -40,7 +40,10 @@ type Phase = typeof phaseTable.$inferSelect;
 // mapped onto Phase's own start_*/end_* column pairs. See
 // docs/development-plan.md's Phase 39.
 
-function startBoundaryOf(p: Phase): StoredBoundary {
+// Exported — src/lib/task-packs/export.ts reuses these two exact
+// mappings (a real Phase row -> the shared boundary shape) rather than
+// re-deriving them a second place.
+export function startBoundaryOf(p: Phase): StoredBoundary {
   return {
     dateType: p.startDateType,
     date: p.startDate,
@@ -51,7 +54,7 @@ function startBoundaryOf(p: Phase): StoredBoundary {
   };
 }
 
-function endBoundaryOf(p: Phase): StoredBoundary {
+export function endBoundaryOf(p: Phase): StoredBoundary {
   return {
     dateType: p.endDateType,
     date: p.endDate,
@@ -168,7 +171,9 @@ export async function canInitiateCycle(actor: Member): Promise<boolean> {
   }
 }
 
-async function requireCycleTypeInCommunity(communityId: string, cycleTypeId: string) {
+// Exported — src/lib/task-packs/import.ts's own cycle-from-pack
+// creation reuses this exact check rather than re-deriving it.
+export async function requireCycleTypeInCommunity(communityId: string, cycleTypeId: string) {
   const [row] = await db
     .select({ id: cycleType.id })
     .from(cycleType)

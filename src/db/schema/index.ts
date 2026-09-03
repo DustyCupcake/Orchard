@@ -44,3 +44,4 @@ export * from "./recruitment";
 export * from "./spatial-planning";
 export * from "./member-privacy";
 export * from "./view-as";
+export * from "./task-pack";

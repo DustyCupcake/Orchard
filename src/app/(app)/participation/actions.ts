@@ -14,6 +14,7 @@ import {
   updatePhaseHighlight,
 } from "@/lib/cycles";
 import type { DateBoundaryInput } from "@/lib/dates";
+import { exportCycleAsTaskPack } from "@/lib/task-packs";
 import { AppError } from "@/lib/errors";
 
 function redirectWithError(err: unknown): never {
@@ -113,6 +114,28 @@ export async function updateCycleSettingsAction(formData: FormData) {
 
   revalidatePath("/participation");
   redirect("/participation?settingsUpdated=1");
+}
+
+// Cycle-initiation-eligibility-gated, enforced inside
+// exportCycleAsTaskPack — see docs/development-plan.md's Phase 55.
+// taskIds is left unset here (exports the whole cycle); the board's
+// own bulk-selection checkboxes post to a sibling action for the
+// partial-export case.
+export async function exportCycleAsTaskPackAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleId = String(formData.get("cycleId"));
+  const name = String(formData.get("name") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || null;
+
+  let packId: string;
+  try {
+    const created = await exportCycleAsTaskPack(actor, cycleId, { name, description });
+    packId = created.id;
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  redirect(`/task-packs?exported=${packId}`);
 }
 
 // Reads one boundary's worth of fields off the submitted form — see

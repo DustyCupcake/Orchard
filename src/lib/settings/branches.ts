@@ -5,6 +5,7 @@ import { branch, task } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, NotFoundError } from "../errors";
 import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
+import { requireAdmins } from "./admins";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -91,4 +92,82 @@ export async function deleteBranch(actor: Member, branchId: string) {
   }
 
   await db.delete(branch).where(eq(branch.id, branchId));
+}
+
+// --- Phase 55: branches created `pending` by a non-Admins pack importer ---
+//
+// See docs/spec.md's "Create new branch" needs its own check" (Pack
+// import review): a pack-importing member who doesn't hold Admins can
+// still create a new branch on confirm — tasks attach to it right
+// away, the import doesn't block waiting on anyone — but it lands
+// `pending` instead of `confirmed`, surfacing here the same way a
+// pending Placement surfaces for Spatial planning (Phase 38). Admins-
+// gated, same authority as the rest of /settings.
+
+export async function listPendingBranches(actor: Member) {
+  await requireAdmins(actor);
+  return db
+    .select()
+    .from(branch)
+    .where(and(eq(branch.communityId, actor.communityId), eq(branch.status, "pending")))
+    .orderBy(branch.name);
+}
+
+export async function confirmPendingBranch(actor: Member, branchId: string) {
+  await requireAdmins(actor);
+
+  const [existing] = await db
+    .select()
+    .from(branch)
+    .where(and(eq(branch.id, branchId), eq(branch.communityId, actor.communityId)));
+  if (!existing) {
+    throw new NotFoundError("Branch not found");
+  }
+  if (existing.status !== "pending") {
+    throw new ConflictError("This branch has no pending review to confirm");
+  }
+
+  const [updated] = await db.update(branch).set({ status: "confirmed" }).where(eq(branch.id, branchId)).returning();
+  return updated;
+}
+
+// Unlike a rejected Placement move (which reverts to a real prior
+// confirmed geometry), a rejected pending branch never had one — "the
+// one place this doesn't perfectly mirror Placement" per spec — so
+// rejecting means re-pointing every task that landed on it to a real,
+// already-confirmed branch instead, then removing the now-empty
+// pending row entirely rather than leaving a standing branch nobody
+// ever actually approved.
+export async function rejectPendingBranch(actor: Member, branchId: string, reassignToBranchId: string) {
+  await requireAdmins(actor);
+
+  const [existing] = await db
+    .select()
+    .from(branch)
+    .where(and(eq(branch.id, branchId), eq(branch.communityId, actor.communityId)));
+  if (!existing) {
+    throw new NotFoundError("Branch not found");
+  }
+  if (existing.status !== "pending") {
+    throw new ConflictError("This branch has no pending review to reject");
+  }
+  if (reassignToBranchId === branchId) {
+    throw new ConflictError("Pick a different branch to reassign these tasks to");
+  }
+
+  const [target] = await db
+    .select({ id: branch.id, status: branch.status })
+    .from(branch)
+    .where(and(eq(branch.id, reassignToBranchId), eq(branch.communityId, actor.communityId)));
+  if (!target) {
+    throw new NotFoundError("Reassignment branch not found");
+  }
+  if (target.status !== "confirmed") {
+    throw new ConflictError("Reassign to a confirmed branch, not another pending one");
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.update(task).set({ branchId: reassignToBranchId }).where(eq(task.branchId, branchId));
+    await tx.delete(branch).where(eq(branch.id, branchId));
+  });
 }

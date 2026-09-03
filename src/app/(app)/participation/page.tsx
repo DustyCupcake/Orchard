@@ -1,15 +1,17 @@
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { getCurrentCycle } from "@/lib/profile-questions";
-import { canInitiateCycle, getCycle, previewClonePreviousCycle, type ClonePreview } from "@/lib/cycles";
+import { canInitiateCycle, getCycle, previewClonePreviousCycle } from "@/lib/cycles";
 import { getCycleParticipationSummary, getMyParticipation } from "@/lib/participation";
 import { listCycleTypes } from "@/lib/settings";
-import { buildMonthGrid, MONTH_LABEL } from "@/lib/calendar";
+import { listTaskPacks } from "@/lib/task-packs";
 import { HIGHLIGHTABLE_MODULES } from "@/lib/nav";
+import { ClonePreviewGrid, ClonePreviewList } from "@/components/ClonePreview";
 import type { member as memberTable } from "@/db/schema";
 import {
   createCycleAction,
   declareParticipationAction,
+  exportCycleAsTaskPackAction,
   updateCycleSettingsAction,
   updatePhaseBoundaryAction,
   updatePhaseHighlightAction,
@@ -113,27 +115,6 @@ export default async function ParticipationPage({
   );
 }
 
-const WEEKDAY_LABEL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function monthsSpanned(dates: string[]): { year: number; month: number }[] {
-  if (dates.length === 0) return [];
-  const sorted = [...dates].sort();
-  const [minY, minM] = sorted[0].split("-").map(Number);
-  const [maxY, maxM] = sorted[sorted.length - 1].split("-").map(Number);
-  const months: { year: number; month: number }[] = [];
-  let y = minY;
-  let m = minM;
-  while ((y < maxY || (y === maxY && m <= maxM)) && months.length < 12) {
-    months.push({ year: y, month: m });
-    m += 1;
-    if (m > 12) {
-      m = 1;
-      y += 1;
-    }
-  }
-  return months;
-}
-
 // "The Pack import review screen gains the date preview" —
 // docs/development-plan.md's Phase 44. No such review screen (or any
 // cycle-creation UI at all) existed before this phase — see
@@ -154,16 +135,39 @@ async function StartNewCycleSection({
   previewEnd?: string;
   previewView: "grid" | "list";
 }) {
-  const [cycleTypes, preview] = await Promise.all([
+  const [cycleTypes, packs, preview] = await Promise.all([
     listCycleTypes(viewing),
+    listTaskPacks(viewing),
     hasPreviousCycle && (previewStart || previewEnd)
       ? previewClonePreviousCycle(viewing, previewStart || null, previewEnd || null)
       : Promise.resolve(null),
   ]);
+  const packNameById = new Map(packs.map((p) => [p.id, p.name]));
+  // "Correctly pre-selects that pack when starting a new Cycle of that
+  // type" — see docs/development-plan.md's Phase 55 Done-when. No
+  // client JS to pre-fill one <select> from another's chosen value, so
+  // this is a plain, static link straight into the real import review
+  // screen instead — already carrying the right pack and cycle type.
+  const typesWithDefaultPack = cycleTypes.filter((t) => t.defaultPackId && packNameById.has(t.defaultPackId));
 
   return (
     <section style={{ marginTop: "2rem", borderTop: "1px solid #ddd", paddingTop: "1.5rem" }}>
       <h2>Start a new cycle</h2>
+
+      {typesWithDefaultPack.length > 0 && (
+        <div style={{ border: "1px solid #ddd", borderRadius: 6, padding: "1rem", marginBottom: "1rem" }}>
+          <h3 style={{ marginTop: 0, fontSize: "0.95rem" }}>Quick-start from a Cycle type&rsquo;s default pack</h3>
+          <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+            {typesWithDefaultPack.map((t) => (
+              <li key={t.id}>
+                <a href={`/task-packs/import/${t.defaultPackId}?cycleTypeId=${t.id}&cycleName=${encodeURIComponent(t.name)}`}>
+                  Start a new {t.name} cycle from &ldquo;{packNameById.get(t.defaultPackId!)}&rdquo;
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {hasPreviousCycle && (
         <div style={{ border: "1px solid #ddd", borderRadius: 6, padding: "1rem", marginBottom: "1rem" }}>
@@ -243,115 +247,6 @@ async function StartNewCycleSection({
         </button>
       </form>
     </section>
-  );
-}
-
-function ClonePreviewGrid({ preview }: { preview: ClonePreview }) {
-  const entriesByDate = new Map<string, string[]>();
-  for (const p of preview.phases) {
-    if (p.start) entriesByDate.set(p.start, [...(entriesByDate.get(p.start) ?? []), `${p.name} starts`]);
-    if (p.end) entriesByDate.set(p.end, [...(entriesByDate.get(p.end) ?? []), `${p.name} ends`]);
-  }
-  for (const m of preview.milestones) {
-    if (m.date) entriesByDate.set(m.date, [...(entriesByDate.get(m.date) ?? []), `${m.label} (${m.taskTitle})`]);
-  }
-
-  const months = monthsSpanned([...entriesByDate.keys()]);
-  if (months.length === 0) {
-    return (
-      <p style={{ color: "#666", fontSize: "0.85rem", marginTop: "0.5rem" }}>
-        Nothing resolves yet — give both a hypothetical start and end above.
-      </p>
-    );
-  }
-
-  return (
-    <div style={{ marginTop: "0.75rem" }}>
-      {months.map(({ year, month }) => (
-        <div key={`${year}-${month}`} style={{ marginBottom: "1rem" }}>
-          <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "#444" }}>
-            {MONTH_LABEL[month - 1]} {year}
-          </div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.7rem", marginTop: "0.25rem" }}>
-            <thead>
-              <tr>
-                {WEEKDAY_LABEL.map((w) => (
-                  <th key={w} style={{ border: "1px solid #eee", padding: "2px", color: "#888" }}>
-                    {w}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {buildMonthGrid(year, month).map((week) => (
-                <tr key={week[0].date}>
-                  {week.map((day) => (
-                    <td
-                      key={day.date}
-                      style={{
-                        border: "1px solid #eee",
-                        padding: "2px",
-                        verticalAlign: "top",
-                        height: "3rem",
-                        color: day.inMonth ? "inherit" : "#ccc",
-                      }}
-                    >
-                      <div>{Number(day.date.slice(8, 10))}</div>
-                      {(entriesByDate.get(day.date) ?? []).slice(0, 2).map((label, i) => (
-                        <div key={i} style={{ color: "#2a5a9a", fontSize: "0.6rem" }}>
-                          {label}
-                        </div>
-                      ))}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// "List mode collapses by phase, denser than the grid" — docs/spec.md.
-function ClonePreviewList({ preview }: { preview: ClonePreview }) {
-  const cycleAnchored = preview.milestones.filter((m) => !m.phaseName);
-  return (
-    <div style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
-      {preview.phases.length === 0 && cycleAnchored.length === 0 && (
-        <p style={{ color: "#666" }}>Nothing to carry forward — the source cycle has no phases or milestones.</p>
-      )}
-      {preview.phases.map((p) => (
-        <div key={p.name} style={{ marginBottom: "0.5rem" }}>
-          <strong>{p.name}</strong>
-          <div style={{ color: "#666" }}>
-            Start: {p.start ?? "unresolved"} · End: {p.end ?? "unresolved"}
-          </div>
-          <ul style={{ margin: "0.25rem 0 0 1.25rem" }}>
-            {preview.milestones
-              .filter((m) => m.phaseName === p.name)
-              .map((m, i) => (
-                <li key={i}>
-                  {m.label} ({m.taskTitle}) — {m.date ?? "unresolved"}
-                </li>
-              ))}
-          </ul>
-        </div>
-      ))}
-      {cycleAnchored.length > 0 && (
-        <div>
-          <strong>Cycle-anchored</strong>
-          <ul style={{ margin: "0.25rem 0 0 1.25rem" }}>
-            {cycleAnchored.map((m, i) => (
-              <li key={i}>
-                {m.label} ({m.taskTitle}) — {m.date ?? "unresolved"}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -510,6 +405,36 @@ async function ParticipationForCycle({
 
       {withPhases && withPhases.phases.length > 0 && (
         <PhaseDatesSection phases={withPhases.phases} />
+      )}
+
+      {canConfigure && (
+        <section style={{ marginTop: "1.5rem" }}>
+          <h2>Export as a Task Pack</h2>
+          <p style={{ color: "#666", fontSize: "0.85rem" }}>
+            Save this cycle&rsquo;s full task set (or a hand-picked subset, from the board&rsquo;s own
+            bulk selection) as a named, downloadable pack — see <a href="/task-packs">Task Packs</a>{" "}
+            to manage what&rsquo;s saved, share one as a file, or import one into a new cycle.
+          </p>
+          <form
+            action={exportCycleAsTaskPackAction}
+            style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 400 }}
+          >
+            <input type="hidden" name="cycleId" value={cycleId} />
+            <label>
+              Pack name
+              <br />
+              <input type="text" name="name" required defaultValue={cycleName} style={{ padding: "0.4rem", width: "100%" }} />
+            </label>
+            <label>
+              Description (optional)
+              <br />
+              <textarea name="description" rows={2} style={{ padding: "0.4rem", width: "100%" }} />
+            </label>
+            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+              Export whole cycle
+            </button>
+          </form>
+        </section>
       )}
     </>
   );

@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import {
+  confirmPendingBranch,
   createBranch,
   createBranchInput,
   createCycleType,
@@ -15,6 +16,7 @@ import {
   deleteBranch,
   deleteCycleType,
   deleteTier,
+  rejectPendingBranch,
   requireAdmins,
   updateBranch,
   updateBranchInput,
@@ -220,6 +222,40 @@ export async function deleteBranchAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
+// Phase 55 — see docs/spec.md's "Create new branch" needs its own
+// check." confirmPendingBranch/rejectPendingBranch are already Admins-
+// gated internally; the explicit requireAdmins call here just matches
+// this file's own existing defense-in-depth posture for every other
+// Branch write above.
+export async function confirmPendingBranchAction(formData: FormData) {
+  const actor = await requireMember();
+  const branchId = String(formData.get("branchId"));
+
+  try {
+    await requireAdmins(actor);
+    await confirmPendingBranch(actor, branchId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function rejectPendingBranchAction(formData: FormData) {
+  const actor = await requireMember();
+  const branchId = String(formData.get("branchId"));
+  const reassignToBranchId = String(formData.get("reassignToBranchId"));
+
+  try {
+    await requireAdmins(actor);
+    await rejectPendingBranch(actor, branchId, reassignToBranchId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
 // Only meaningful when criterionType is (or already is) cycle_type_count
 // — see src/lib/settings/tiers.ts's requireValidCriterionConfig, which
 // re-validates this shape regardless of what's built here.
@@ -286,9 +322,11 @@ export async function createCycleTypeAction(formData: FormData) {
   try {
     await requireAdmins(actor);
     const defaultSourceCycleId = String(formData.get("defaultSourceCycleId") ?? "").trim();
+    const defaultPackId = String(formData.get("defaultPackId") ?? "").trim();
     const input = createCycleTypeInput.parse({
       name: String(formData.get("name") ?? ""),
       defaultSourceCycleId: defaultSourceCycleId || null,
+      defaultPackId: defaultPackId || null,
     });
     await createCycleType(actor, input);
   } catch (err) {
@@ -305,9 +343,11 @@ export async function updateCycleTypeAction(formData: FormData) {
   try {
     await requireAdmins(actor);
     const defaultSourceCycleId = String(formData.get("defaultSourceCycleId") ?? "").trim();
+    const defaultPackId = String(formData.get("defaultPackId") ?? "").trim();
     const input = updateCycleTypeInput.parse({
       name: String(formData.get("name") ?? ""),
       defaultSourceCycleId: defaultSourceCycleId || null,
+      defaultPackId: defaultPackId || null,
     });
     await updateCycleType(actor, cycleTypeId, input);
   } catch (err) {
