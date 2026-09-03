@@ -40,40 +40,22 @@ import {
   createSensitiveFieldAccessRuleInput,
   deleteSensitiveFieldAccessRule,
 } from "@/lib/sensitive-data";
-import { archiveForm, createForm, createFormInput, unarchiveForm } from "@/lib/forms";
+import { archiveForm, createForm, createFormInput, unarchiveForm, updateForm, updateFormInput } from "@/lib/forms";
 import { createConsentPurpose, createConsentPurposeInput, deleteConsentPurpose } from "@/lib/consent";
 import { AppError } from "@/lib/errors";
 
-// Fields are entered one per line in a plain textarea rather than a
-// dynamic add-row UI (this codebase has no client-side JS beyond
-// Scheduling polls' one deliberate exception) — matches spec's own
-// "MVP forms are hardcoded per use" framing; a no-code field builder
-// is explicitly out of scope. Format: key|label|response_type|options
-// (comma-separated, choice types only)|required (yes/no)|role. `role`
-// is optional and only meaningful for a form a later step might need
-// to convert into a real person (Recruitment's own application form —
-// see docs/development-plan.md's Phase 48) — `name` or `email` tags
-// that one field as isNameField/isEmailField (src/lib/forms.ts);
-// blank/anything else leaves both unset, same as before this segment
-// existed.
-function parseFormFields(raw: string) {
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [key, label, responseType, options, required, role] = line.split("|").map((p) => p?.trim() ?? "");
-      const normalizedRole = role?.toLowerCase();
-      return {
-        key,
-        label,
-        responseType: (responseType || "free_text") as "free_text" | "single_choice" | "multi_choice",
-        options: options ? options.split(",").map((o) => o.trim()).filter(Boolean) : undefined,
-        required: required?.toLowerCase() === "yes",
-        isNameField: normalizedRole === "name" || undefined,
-        isEmailField: normalizedRole === "email" || undefined,
-      };
-    });
+// Fields arrive as a JSON blob from the real field-builder client
+// component (docs/development-plan.md's Phase 58 —
+// src/app/(app)/settings/FormBuilder.tsx) rather than a hand-typed
+// pipe-delimited textarea — the no-code builder that phase names is
+// this JSON payload's only producer, never something an admin types
+// directly.
+function parseFieldsJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new AppError("Invalid fields payload");
+  }
 }
 
 // Raw JSON, not a dynamic rule-builder UI — same "plain text config,
@@ -380,10 +362,11 @@ export async function createProfileQuestionAction(formData: FormData) {
   try {
     await requireAdmins(actor);
     const scope = String(formData.get("scope") ?? "once_ever");
-    const options = String(formData.get("options") ?? "")
-      .split(",")
-      .map((o) => o.trim())
-      .filter(Boolean);
+    // ProfileQuestionEditor.tsx (Phase 58's field-builder) emits one
+    // hidden "options" input per option rather than a comma-joined
+    // string — getAll reads the same repeated-name shape this codebase
+    // already uses elsewhere (e.g. board's own bulk "taskIds").
+    const options = formData.getAll("options").map(String).map((o) => o.trim()).filter(Boolean);
     const input = createProfileQuestionInput.parse({
       label: String(formData.get("label") ?? ""),
       responseType: String(formData.get("responseType") ?? "free_text"),
@@ -409,8 +392,11 @@ export async function updateProfileQuestionAction(formData: FormData) {
 
   try {
     await requireAdmins(actor);
+    const options = formData.getAll("options").map(String).map((o) => o.trim()).filter(Boolean);
     const input = updateProfileQuestionInput.parse({
       label: String(formData.get("label") ?? "") || undefined,
+      responseType: String(formData.get("responseType") ?? "") || undefined,
+      options,
       required: formData.get("required") === "on",
       feedsCapacitySignal: formData.get("feedsCapacitySignal") === "on",
       surfaces: formData.get("onboardingSurface") === "on" ? ["onboarding"] : [],
@@ -491,10 +477,32 @@ export async function createFormAction(formData: FormData) {
     const input = createFormInput.parse({
       title: String(formData.get("title") ?? ""),
       description: String(formData.get("description") ?? "").trim() || undefined,
-      fields: parseFormFields(String(formData.get("fieldsRaw") ?? "")),
+      fields: parseFieldsJson(String(formData.get("fieldsJson") ?? "[]")),
       allowAnonymous: formData.get("allowAnonymous") === "on",
     });
     await createForm(actor, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+}
+
+// New in Phase 58 — Form.fields (and title/description) are now
+// editable post-creation through the same field-builder the create
+// form uses, not just archivable. See src/lib/forms.ts's updateForm.
+export async function updateFormAction(formData: FormData) {
+  const actor = await requireMember();
+  const formId = String(formData.get("formId"));
+
+  try {
+    await requireAdmins(actor);
+    const input = updateFormInput.parse({
+      title: String(formData.get("title") ?? "") || undefined,
+      description: String(formData.get("description") ?? "").trim() || null,
+      fields: parseFieldsJson(String(formData.get("fieldsJson") ?? "[]")),
+    });
+    await updateForm(actor, formId, input);
   } catch (err) {
     redirectWithError(err);
   }

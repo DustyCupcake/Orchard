@@ -1,6 +1,7 @@
 import { getOrCreateCommunity } from "@/lib/community";
 import { getRecruitmentApplicationFormPublic } from "@/lib/recruitment";
 import type { FormField } from "@/lib/forms";
+import FieldPreview from "@/components/FieldPreview";
 import { submitApplicationAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -42,37 +43,11 @@ export default async function ApplyPage({
           >
             {invite && <input type="hidden" name="inviteToken" value={invite} />}
             {fields.map((f) => (
-              <label key={f.key}>
-                {f.label}
-                {f.required ? " *" : ""}
-                <br />
-                {f.responseType === "free_text" && (
-                  <textarea
-                    name={`field_${f.key}`}
-                    required={f.required}
-                    rows={3}
-                    style={{ padding: "0.5rem", width: "100%" }}
-                  />
-                )}
-                {f.responseType === "single_choice" && (
-                  <div>
-                    {(f.options ?? []).map((o) => (
-                      <label key={o} style={{ display: "block", fontWeight: 400 }}>
-                        <input type="radio" name={`field_${f.key}`} value={o} required={f.required} /> {o}
-                      </label>
-                    ))}
-                  </div>
-                )}
-                {f.responseType === "multi_choice" && (
-                  <div>
-                    {(f.options ?? []).map((o) => (
-                      <label key={o} style={{ display: "block", fontWeight: 400 }}>
-                        <input type="checkbox" name={`field_${f.key}`} value={o} /> {o}
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </label>
+              <FieldPreview
+                key={f.key}
+                field={{ label: f.label, responseType: f.responseType, options: f.options ?? [], required: f.required ?? false }}
+                name={`field_${f.key}`}
+              />
             ))}
 
             <button type="submit" style={{ padding: "0.5rem 1rem", width: "fit-content" }}>

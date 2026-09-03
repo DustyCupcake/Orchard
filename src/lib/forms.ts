@@ -40,6 +40,35 @@ function tooManyTaggedFields(fields: FormField[], tag: "isNameField" | "isEmailF
 // at the Server Action/API layer (not inside this module), since
 // defining what data gets collected from members is a real
 // configuration decision, not an open one.
+// Shared cross-field checks for a fields array, used by both
+// createFormInput and updateFormInput's own superRefine (docs/
+// development-plan.md's Phase 58 makes fields editable post-creation
+// too, so both need the identical check, not two drifting copies).
+function addFieldShapeIssues(fields: FormField[], ctx: z.RefinementCtx) {
+  fields.forEach((f, i) => {
+    if (
+      (f.responseType === "single_choice" || f.responseType === "multi_choice") &&
+      (!f.options || f.options.length === 0)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "options are required for a choice-based response type",
+        path: ["fields", i, "options"],
+      });
+    }
+  });
+  const keys = fields.map((f) => f.key);
+  if (new Set(keys).size !== keys.length) {
+    ctx.addIssue({ code: "custom", message: "field keys must be unique", path: ["fields"] });
+  }
+  if (tooManyTaggedFields(fields, "isNameField")) {
+    ctx.addIssue({ code: "custom", message: "at most one field can be tagged as the name field", path: ["fields"] });
+  }
+  if (tooManyTaggedFields(fields, "isEmailField")) {
+    ctx.addIssue({ code: "custom", message: "at most one field can be tagged as the email field", path: ["fields"] });
+  }
+}
+
 export const createFormInput = z
   .object({
     title: z.string().min(1),
@@ -47,30 +76,7 @@ export const createFormInput = z
     fields: z.array(formFieldInput).min(1),
     allowAnonymous: z.boolean().optional(),
   })
-  .superRefine((input, ctx) => {
-    input.fields.forEach((f, i) => {
-      if (
-        (f.responseType === "single_choice" || f.responseType === "multi_choice") &&
-        (!f.options || f.options.length === 0)
-      ) {
-        ctx.addIssue({
-          code: "custom",
-          message: "options are required for a choice-based response type",
-          path: ["fields", i, "options"],
-        });
-      }
-    });
-    const keys = input.fields.map((f) => f.key);
-    if (new Set(keys).size !== keys.length) {
-      ctx.addIssue({ code: "custom", message: "field keys must be unique", path: ["fields"] });
-    }
-    if (tooManyTaggedFields(input.fields, "isNameField")) {
-      ctx.addIssue({ code: "custom", message: "at most one field can be tagged as the name field", path: ["fields"] });
-    }
-    if (tooManyTaggedFields(input.fields, "isEmailField")) {
-      ctx.addIssue({ code: "custom", message: "at most one field can be tagged as the email field", path: ["fields"] });
-    }
-  });
+  .superRefine((input, ctx) => addFieldShapeIssues(input.fields, ctx));
 export type CreateFormInput = z.infer<typeof createFormInput>;
 
 // Cross-field business rules, re-checked here (not just in the zod
@@ -112,22 +118,39 @@ export async function createForm(actor: Member, input: CreateFormInput) {
   return created;
 }
 
-// Title/description only — fields and allowAnonymous stay fixed after
-// creation, the same "structural shape doesn't change underneath
-// existing answers" posture ProfileQuestion already takes (only
-// label/required are editable there too).
-export const updateFormInput = z.object({
-  title: z.string().min(1).optional(),
-  description: z.string().nullable().optional(),
-});
+// fields is now editable too (docs/development-plan.md's Phase 58 —
+// "editable the same as a freshly-created one"), a real loosening of
+// this table's previous "fields stay fixed after creation" posture. A
+// FormResponse.values already keyed on a since-removed or renamed
+// field's key just stops matching anything the current field list
+// reads back — an honest, visible consequence rather than a data-
+// integrity break, the same "past answers survive a since-changed
+// definition" reasoning ProfileQuestion's own archivedAt already
+// relies on. allowAnonymous stays fixed after creation — spec doesn't
+// name it as part of "the same field shape" this phase is about, so it
+// keeps today's behavior unchanged.
+export const updateFormInput = z
+  .object({
+    title: z.string().min(1).optional(),
+    description: z.string().nullable().optional(),
+    fields: z.array(formFieldInput).min(1).optional(),
+  })
+  .superRefine((input, ctx) => {
+    if (input.fields) addFieldShapeIssues(input.fields, ctx);
+  });
 export type UpdateFormInput = z.infer<typeof updateFormInput>;
 
 export async function updateForm(actor: Member, formId: string, input: UpdateFormInput) {
+  if (input.fields) {
+    requireValidFields(input.fields);
+  }
+
   const [updated] = await db
     .update(form)
     .set({
       ...(input.title !== undefined && { title: input.title }),
       ...(input.description !== undefined && { description: input.description }),
+      ...(input.fields !== undefined && { fields: input.fields }),
     })
     .where(and(eq(form.id, formId), eq(form.communityId, actor.communityId)))
     .returning();

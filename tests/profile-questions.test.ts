@@ -87,7 +87,7 @@ describe("ProfileQuestion CRUD", () => {
     ).rejects.toThrow(AppError);
   });
 
-  it("updates label/required/feedsCapacitySignal but leaves scope/type alone", async () => {
+  it("updates label/required/feedsCapacitySignal, leaving scope/type alone when not asked to change them", async () => {
     const { alice } = await createFixtures();
     const q = await createProfileQuestion(alice, {
       label: "Pronouns",
@@ -98,6 +98,85 @@ describe("ProfileQuestion CRUD", () => {
     expect(updated.label).toBe("Pronouns (optional)");
     expect(updated.required).toBe(true);
     expect(updated.scope).toBe("once_ever");
+    expect(updated.responseType).toBe("free_text");
+  });
+
+  // docs/development-plan.md's Phase 58 — responseType/options become
+  // genuinely editable post-creation too ("editable the same as a
+  // freshly-created one"), a real loosening of this table's previous
+  // "structural shape doesn't change" posture. scope/phaseNameHint stay
+  // fixed regardless — they're not part of updateProfileQuestionInput
+  // at all, so there's no way to change them through this path.
+  describe("Phase 58: editing responseType/options post-creation", () => {
+    it("can switch a free_text question into a choice type with options", async () => {
+      const { alice } = await createFixtures();
+      const q = await createProfileQuestion(alice, {
+        label: "Preferred contact",
+        responseType: "free_text",
+        scope: "once_ever",
+      });
+      const updated = await updateProfileQuestion(alice, q.id, {
+        responseType: "single_choice",
+        options: ["Email", "Phone"],
+      });
+      expect(updated.responseType).toBe("single_choice");
+      expect(updated.options).toEqual(["Email", "Phone"]);
+    });
+
+    it("rejects switching to a choice type with no options given", async () => {
+      const { alice } = await createFixtures();
+      const q = await createProfileQuestion(alice, {
+        label: "Preferred contact",
+        responseType: "free_text",
+        scope: "once_ever",
+      });
+      await expect(updateProfileQuestion(alice, q.id, { responseType: "single_choice" })).rejects.toThrow(
+        AppError,
+      );
+    });
+
+    it("clears stale options when switching away from a choice type", async () => {
+      const { alice } = await createFixtures();
+      const q = await createProfileQuestion(alice, {
+        label: "Preferred contact",
+        responseType: "single_choice",
+        options: ["Email", "Phone"],
+        scope: "once_ever",
+      });
+      const updated = await updateProfileQuestion(alice, q.id, { responseType: "free_text" });
+      expect(updated.responseType).toBe("free_text");
+      expect(updated.options).toEqual([]);
+    });
+
+    it("can add an option to an already-choice-typed question without resending responseType", async () => {
+      const { alice } = await createFixtures();
+      const q = await createProfileQuestion(alice, {
+        label: "Preferred contact",
+        responseType: "single_choice",
+        options: ["Email"],
+        scope: "once_ever",
+      });
+      const updated = await updateProfileQuestion(alice, q.id, { options: ["Email", "Phone"] });
+      expect(updated.options).toEqual(["Email", "Phone"]);
+      expect(updated.responseType).toBe("single_choice");
+    });
+
+    it("editing responseType/options never touches an existing ProfileAnswer's own recorded value", async () => {
+      const { alice } = await createFixtures();
+      const q = await createProfileQuestion(alice, {
+        label: "Preferred contact",
+        responseType: "free_text",
+        scope: "once_ever",
+      });
+      const { answerProfileQuestion, listOnceEverAnswers } = await import("@/lib/profile-questions/answers");
+      await answerProfileQuestion(alice, q.id, { status: "answered", value: "carrier pigeon" });
+
+      await updateProfileQuestion(alice, q.id, { label: "Preferred contact method (renamed)" });
+
+      const answers = await listOnceEverAnswers(alice);
+      const mine = answers.find((a) => a.question.id === q.id);
+      expect(mine?.answer.value).toBe("carrier pigeon");
+    });
   });
 
   it("archives and unarchives, and archived questions are excluded from the default list", async () => {

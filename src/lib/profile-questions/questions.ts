@@ -45,8 +45,22 @@ export const createProfileQuestionInput = z
   });
 export type CreateProfileQuestionInput = z.infer<typeof createProfileQuestionInput>;
 
+// responseType/options are now editable too (docs/development-plan.md's
+// Phase 58 — "editable the same as a freshly-created one"), a real
+// loosening of this table's previous "structural shape doesn't change
+// underneath existing answers" posture. scope/phaseNameHint stay fixed
+// (unchanged): those describe *when* a question is asked, not what its
+// field looks like, and changing them mid-flight is a genuinely
+// different, riskier kind of edit the builder doesn't offer. An
+// existing ProfileAnswer's own `value` was validated against the
+// question's shape *at the time it was answered* — editing the
+// question afterward doesn't retroactively touch any stored answer,
+// the same "past answers survive a since-changed definition" reasoning
+// `archivedAt` already established for archiving.
 export const updateProfileQuestionInput = z.object({
   label: z.string().min(1).optional(),
+  responseType: z.enum(responseTypes).optional(),
+  options: z.array(z.string().min(1)).optional(),
   required: z.boolean().optional(),
   feedsCapacitySignal: z.boolean().optional(),
   surfaces: z.array(z.string().min(1)).optional(),
@@ -105,10 +119,35 @@ export async function updateProfileQuestion(
   questionId: string,
   input: UpdateProfileQuestionInput,
 ) {
+  const [current] = await db
+    .select()
+    .from(profileQuestion)
+    .where(and(eq(profileQuestion.id, questionId), eq(profileQuestion.communityId, actor.communityId)));
+  if (!current) {
+    throw new NotFoundError("Profile question not found");
+  }
+
+  // Same cross-field check createProfileQuestion's requireValidShape
+  // enforces, re-derived against the *effective* (current merged with
+  // incoming) shape, since an update can change responseType without
+  // resending options or vice versa.
+  const effectiveResponseType = input.responseType ?? current.responseType;
+  const effectiveOptions = input.options ?? current.options;
+  const isChoiceType = effectiveResponseType === "single_choice" || effectiveResponseType === "multi_choice";
+  if (isChoiceType && effectiveOptions.length === 0) {
+    throw new AppError("options are required for a choice-based response type");
+  }
+  // Stale options from a since-abandoned choice type shouldn't linger
+  // on the row — the same "clear options once the field stops being
+  // choice-based" call the builder itself makes client-side.
+  const finalOptions = isChoiceType ? effectiveOptions : [];
+
   const [updated] = await db
     .update(profileQuestion)
     .set({
       ...(input.label !== undefined && { label: input.label }),
+      ...(input.responseType !== undefined && { responseType: input.responseType }),
+      ...((input.responseType !== undefined || input.options !== undefined) && { options: finalOptions }),
       ...(input.required !== undefined && { required: input.required }),
       ...(input.feedsCapacitySignal !== undefined && {
         feedsCapacitySignal: input.feedsCapacitySignal,

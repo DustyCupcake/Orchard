@@ -76,12 +76,79 @@ describe("Form CRUD", () => {
     ).rejects.toThrow();
   });
 
-  it("updates title/description but leaves fields untouched", async () => {
+  it("updates title/description but leaves fields untouched when fields is omitted", async () => {
     const { alice } = await createFixtures();
     const created = await createForm(alice, { title: "Original", fields: surveyFields });
     const updated = await updateForm(alice, created.id, { title: "Renamed" });
     expect(updated.title).toBe("Renamed");
     expect(updated.fields).toEqual(surveyFields);
+  });
+
+  // docs/development-plan.md's Phase 58 — fields become genuinely
+  // editable post-creation, the input path a real field-builder client
+  // component now produces instead of the old pipe-delimited textarea.
+  describe("Phase 58: editing fields post-creation", () => {
+    it("can add, relabel, retype, and reorder fields on an existing form", async () => {
+      const { alice } = await createFixtures();
+      const created = await createForm(alice, { title: "Original", fields: surveyFields });
+
+      const newFields = [
+        { ...surveyFields[1], label: "Would you do it again? (renamed)" },
+        surveyFields[0],
+        { key: "new_field", label: "Anything else?", responseType: "free_text" as const, required: false },
+      ];
+      const updated = await updateForm(alice, created.id, { fields: newFields });
+      expect(updated.fields).toEqual(newFields);
+    });
+
+    it("rejects an update introducing a choice field with no options", async () => {
+      const { alice } = await createFixtures();
+      const created = await createForm(alice, { title: "Original", fields: surveyFields });
+      await expect(
+        updateForm(alice, created.id, {
+          fields: [{ key: "bad", label: "Bad", responseType: "single_choice" }] as never,
+        }),
+      ).rejects.toThrow();
+    });
+
+    it("rejects an update introducing duplicate keys", async () => {
+      const { alice } = await createFixtures();
+      const created = await createForm(alice, { title: "Original", fields: surveyFields });
+      await expect(
+        updateForm(alice, created.id, {
+          fields: [
+            { key: "dup", label: "One", responseType: "free_text" },
+            { key: "dup", label: "Two", responseType: "free_text" },
+          ],
+        }),
+      ).rejects.toThrow();
+    });
+
+    it("rejects an update tagging two fields as the name field", async () => {
+      const { alice } = await createFixtures();
+      const created = await createForm(alice, { title: "Original", fields: surveyFields });
+      await expect(
+        updateForm(alice, created.id, {
+          fields: [
+            { key: "a", label: "A", responseType: "free_text", isNameField: true },
+            { key: "b", label: "B", responseType: "free_text", isNameField: true },
+          ],
+        }),
+      ).rejects.toThrow();
+    });
+
+    it("editing fields never touches an existing FormResponse's own recorded values", async () => {
+      const { alice } = await createFixtures();
+      const created = await createForm(alice, { title: "Original", fields: surveyFields });
+      await submitFormResponse(alice, created.id, { values: { overall: "Great", again: "Yes" } });
+
+      await updateForm(alice, created.id, {
+        fields: [{ key: "overall", label: "Renamed label", responseType: "free_text", required: true }],
+      });
+
+      const [response] = await listFormResponses(alice, created.id);
+      expect(response.values).toEqual({ overall: "Great", again: "Yes" });
+    });
   });
 
   it("archiving hides a form from the default list but not includeArchived", async () => {

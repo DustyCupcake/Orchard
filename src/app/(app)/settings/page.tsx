@@ -10,6 +10,7 @@ import { listTaskPacks } from "@/lib/task-packs";
 import { MODULE_DEFINITIONS } from "@/lib/modules";
 import { SENSITIVE_FIELD_KEYS, SENSITIVE_FIELD_LABELS, listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
 import { listForms } from "@/lib/forms";
+import type { FormField } from "@/lib/forms";
 import { listConsentPurposes } from "@/lib/consent";
 import { ForbiddenError } from "@/lib/errors";
 import {
@@ -34,9 +35,12 @@ import {
   updateBranchAction,
   updateCommunityAction,
   updateCycleTypeAction,
+  updateFormAction,
   updateProfileQuestionAction,
   updateTierAction,
 } from "./actions";
+import FormBuilder from "./FormBuilder";
+import ProfileQuestionEditor from "./ProfileQuestionEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -1083,41 +1087,43 @@ export default async function SettingsPage({
           >
             <form
               action={updateProfileQuestionAction}
-              style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}
+              style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
             >
               <input type="hidden" name="questionId" value={q.id} />
-              <input
-                type="text"
-                name="label"
-                defaultValue={q.label}
-                style={{ padding: "0.3rem", flex: 1, minWidth: "10rem" }}
-              />
               <span style={{ fontSize: "0.8rem", color: "#666" }}>
                 {q.scope}
-                {q.scope === "phase" ? ` (${q.phaseNameHint})` : ""} · {q.responseType}
+                {q.scope === "phase" ? ` (${q.phaseNameHint})` : ""} — scope is set at creation, not
+                editable here.
               </span>
-              <label style={{ fontSize: "0.8rem" }}>
-                <input type="checkbox" name="required" defaultChecked={q.required} /> required
-              </label>
-              {q.scope === "phase" && (
+              <ProfileQuestionEditor
+                initial={{
+                  label: q.label,
+                  responseType: q.responseType,
+                  options: q.options,
+                  required: q.required,
+                }}
+              />
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                {q.scope === "phase" && (
+                  <label style={{ fontSize: "0.8rem" }}>
+                    <input
+                      type="checkbox"
+                      name="feedsCapacitySignal"
+                      defaultChecked={q.feedsCapacitySignal}
+                    />{" "}
+                    feeds capacity signal
+                  </label>
+                )}
                 <label style={{ fontSize: "0.8rem" }}>
                   <input
                     type="checkbox"
-                    name="feedsCapacitySignal"
-                    defaultChecked={q.feedsCapacitySignal}
+                    name="onboardingSurface"
+                    defaultChecked={q.surfaces.includes("onboarding")}
                   />{" "}
-                  feeds capacity signal
+                  surface during onboarding
                 </label>
-              )}
-              <label style={{ fontSize: "0.8rem" }}>
-                <input
-                  type="checkbox"
-                  name="onboardingSurface"
-                  defaultChecked={q.surfaces.includes("onboarding")}
-                />{" "}
-                surface during onboarding
-              </label>
-              <button type="submit">Save</button>
+                <button type="submit">Save</button>
+              </div>
             </form>
             <form action={q.archivedAt ? unarchiveProfileQuestionAction : archiveProfileQuestionAction} style={{ marginTop: "0.3rem" }}>
               <input type="hidden" name="questionId" value={q.id} />
@@ -1128,20 +1134,10 @@ export default async function SettingsPage({
 
         <form
           action={createProfileQuestionAction}
-          style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem", maxWidth: 400 }}
+          style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem", maxWidth: 600 }}
         >
-          <input type="text" name="label" required placeholder="Question label" style={{ padding: "0.4rem" }} />
-          <select name="responseType" defaultValue="free_text" style={{ padding: "0.4rem" }}>
-            <option value="free_text">Free text</option>
-            <option value="single_choice">Single choice</option>
-            <option value="multi_choice">Multi choice</option>
-            <option value="date">Date</option>
-          </select>
-          <input
-            type="text"
-            name="options"
-            placeholder="options for choice types, comma-separated"
-            style={{ padding: "0.4rem" }}
+          <ProfileQuestionEditor
+            initial={{ label: "", responseType: "free_text", options: [], required: false }}
           />
           <select name="scope" defaultValue="once_ever" style={{ padding: "0.4rem" }}>
             <option value="once_ever">Once ever</option>
@@ -1154,9 +1150,6 @@ export default async function SettingsPage({
             placeholder="phase name (only if scope is 'phase'), e.g. Build"
             style={{ padding: "0.4rem" }}
           />
-          <label>
-            <input type="checkbox" name="required" /> required
-          </label>
           <label>
             <input type="checkbox" name="feedsCapacitySignal" /> feeds capacity signal (phase-scoped
             only)
@@ -1312,13 +1305,14 @@ export default async function SettingsPage({
         <h2>Forms</h2>
         <p style={{ color: "#666", fontSize: "0.85rem" }}>
           A community-defined set of fields collected together as one submission — infrastructure
-          other things lean on, starting with post-cycle feedback above. Fields can&rsquo;t be
-          edited after creation (archive and recreate instead) so existing responses never end up
-          validated against a shape that&rsquo;s since changed.
+          other things lean on, starting with post-cycle feedback above. Editing an existing
+          form&rsquo;s fields never touches its past responses — a response keeps whatever it
+          recorded under a field&rsquo;s original key even if that field is later renamed, retyped,
+          or removed.
         </p>
         {forms.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
         {forms.map((f) => (
-          <div
+          <details
             key={f.id}
             style={{
               border: "1px solid #ccc",
@@ -1328,59 +1322,55 @@ export default async function SettingsPage({
               opacity: f.archivedAt ? 0.6 : 1,
             }}
           >
-            <p style={{ margin: 0, fontWeight: 600 }}>
+            <summary style={{ cursor: "pointer", fontWeight: 600 }}>
               {f.title}
               {f.allowAnonymous && (
                 <span style={{ fontWeight: 400, color: "#666", fontSize: "0.8rem" }}> · anonymous allowed</span>
               )}
-            </p>
-            {f.description && <p style={{ margin: "0.2rem 0", color: "#666" }}>{f.description}</p>}
-            <p style={{ fontSize: "0.8rem", color: "#666" }}>
-              {(f.fields as { label: string }[]).map((field) => field.label).join(", ")}
-            </p>
-            <form action={f.archivedAt ? unarchiveFormAction : archiveFormAction}>
-              <input type="hidden" name="formId" value={f.id} />
-              <button type="submit">{f.archivedAt ? "Unarchive" : "Archive"}</button>
-            </form>
-          </div>
+              <span style={{ fontWeight: 400, color: "#666", fontSize: "0.8rem" }}>
+                {" "}
+                — {(f.fields as { label: string }[]).map((field) => field.label).join(", ")}
+              </span>
+            </summary>
+            <div style={{ marginTop: "0.6rem" }}>
+              <FormBuilder
+                action={updateFormAction}
+                mode="edit"
+                formId={f.id}
+                initialTitle={f.title}
+                initialDescription={f.description ?? ""}
+                initialAllowAnonymous={f.allowAnonymous}
+                initialFields={(f.fields as FormField[]).map((field) => ({
+                  key: field.key,
+                  label: field.label,
+                  responseType: field.responseType,
+                  options: field.options ?? [],
+                  required: field.required ?? false,
+                  isNameField: field.isNameField,
+                  isEmailField: field.isEmailField,
+                }))}
+                submitLabel="Save"
+              />
+              <form action={f.archivedAt ? unarchiveFormAction : archiveFormAction} style={{ marginTop: "0.5rem" }}>
+                <input type="hidden" name="formId" value={f.id} />
+                <button type="submit">{f.archivedAt ? "Unarchive" : "Archive"}</button>
+              </form>
+            </div>
+          </details>
         ))}
 
-        <form
-          action={createFormAction}
-          style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem", maxWidth: 480 }}
-        >
-          <input type="text" name="title" required placeholder="Form title" style={{ padding: "0.4rem" }} />
-          <textarea
-            name="description"
-            rows={2}
-            placeholder="description (optional)"
-            style={{ padding: "0.4rem" }}
+        <div style={{ marginTop: "0.75rem" }}>
+          <h3 style={{ fontSize: "0.95rem" }}>New form</h3>
+          <FormBuilder
+            action={createFormAction}
+            mode="create"
+            initialTitle=""
+            initialDescription=""
+            initialAllowAnonymous={false}
+            initialFields={[]}
+            submitLabel="Create form"
           />
-          <label style={{ fontSize: "0.85rem" }}>
-            Fields, one per line: <code>key|label|response_type|options|required|role</code>
-            <br />
-            <span style={{ color: "#666" }}>
-              response_type is free_text/single_choice/multi_choice; options is comma-separated
-              (choice types only); required is yes/no; role is optional — set it to{" "}
-              <code>name</code> or <code>email</code> on at most one field each if this form
-              should be able to convert its submissions into real members (e.g. a Recruitment
-              application form, under Recruitment below).
-            </span>
-            <textarea
-              name="fieldsRaw"
-              required
-              rows={4}
-              placeholder={"overall|How did this cycle go overall?|free_text||yes\nkeep|What should we keep doing?|free_text||no"}
-              style={{ padding: "0.4rem", width: "100%", fontFamily: "monospace", fontSize: "0.85rem" }}
-            />
-          </label>
-          <label>
-            <input type="checkbox" name="allowAnonymous" /> allow anonymous submissions
-          </label>
-          <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
-            Create form
-          </button>
-        </form>
+        </div>
       </section>
     </main>
   );

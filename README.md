@@ -28,7 +28,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 **Member onboarding** — a first-session nudge, never a gate: a handful of static orientation cards, any onboarding-tagged Profile questions still unanswered, and 2-3 open tasks tag-matched to the member's own strengths with a link out to the full board — the same tag-overlap heuristic that surfaces a "you might also like" strip once a task is marked done.
 
-**Forms & feedback** — a shared form primitive (free text/single/multi-choice) reused across post-cycle feedback, recruitment applications, and more.
+**Forms & feedback** — a shared form primitive (free text/single/multi-choice) reused across post-cycle feedback, recruitment applications, and more, authored through a real settings-screen builder (add/remove/reorder fields, live preview, inline validation) rather than hand-typed config — the same builder edits a Form's fields or a Profile question's shape after creation too, never just at first authoring.
 
 **Budget** — fixed costs plus itemized member proposals, ranked-choice (Borda-style) voting with cost-per-member and a running total, and an owner confirmation step that requires a rationale only when it deviates from the ranked order.
 

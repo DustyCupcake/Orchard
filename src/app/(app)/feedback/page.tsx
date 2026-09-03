@@ -5,6 +5,7 @@ import { member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getPostCycleFeedbackForm, listPostCycleFeedbackResponses } from "@/lib/forms";
 import type { FormField } from "@/lib/forms";
+import FieldPreview from "@/components/FieldPreview";
 import { ForbiddenError } from "@/lib/errors";
 import { submitFeedbackAction } from "./actions";
 
@@ -68,37 +69,11 @@ export default async function FeedbackPage({
               style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
             >
               {fields.map((f) => (
-                <label key={f.key}>
-                  {f.label}
-                  {f.required ? " *" : ""}
-                  <br />
-                  {f.responseType === "free_text" && (
-                    <textarea
-                      name={`field_${f.key}`}
-                      required={f.required}
-                      rows={3}
-                      style={{ padding: "0.5rem", width: "100%" }}
-                    />
-                  )}
-                  {f.responseType === "single_choice" && (
-                    <div>
-                      {(f.options ?? []).map((o) => (
-                        <label key={o} style={{ display: "block", fontWeight: 400 }}>
-                          <input type="radio" name={`field_${f.key}`} value={o} required={f.required} /> {o}
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                  {f.responseType === "multi_choice" && (
-                    <div>
-                      {(f.options ?? []).map((o) => (
-                        <label key={o} style={{ display: "block", fontWeight: 400 }}>
-                          <input type="checkbox" name={`field_${f.key}`} value={o} /> {o}
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </label>
+                <FieldPreview
+                  key={f.key}
+                  field={{ label: f.label, responseType: f.responseType, options: f.options ?? [], required: f.required ?? false }}
+                  name={`field_${f.key}`}
+                />
               ))}
 
               {form.allowAnonymous && (
