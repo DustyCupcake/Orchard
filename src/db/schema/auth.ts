@@ -18,7 +18,17 @@ export const memberIdentity = pgTable(
     loginEmail: text("login_email").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("member_identity_provider_login_email_idx").on(t.provider, t.loginEmail)],
+  (t) => [
+    uniqueIndex("member_identity_provider_login_email_idx").on(t.provider, t.loginEmail),
+    // "Identity is keyed on the OIDC sub claim, never on email" (see
+    // docs/spec.md's Authentication, docs/development-plan.md's Phase
+    // 57) — a real second lookup key alongside the one above, not a
+    // replacement for it (magic_link identities still key on email;
+    // every magic_link row's provider_subject is null, and Postgres
+    // treats NULLs as distinct in a unique index, so this adds no
+    // constraint among existing magic_link rows at all).
+    uniqueIndex("member_identity_provider_subject_idx").on(t.provider, t.providerSubject),
+  ],
 );
 
 // One-time, short-lived token emailed to a member for the magic-link

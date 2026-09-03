@@ -161,6 +161,9 @@ export async function updateCommunityAction(formData: FormData) {
       accentPrimary: String(formData.get("accentPrimary") ?? "").trim() || null,
       accentSecondary: String(formData.get("accentSecondary") ?? "").trim() || null,
       logoUrl: String(formData.get("logoUrl") ?? "").trim() || null,
+      oidcIssuerUrl: String(formData.get("oidcIssuerUrl") ?? "").trim() || null,
+      oidcClientId: String(formData.get("oidcClientId") ?? "").trim() || null,
+      oidcRequiredRole: String(formData.get("oidcRequiredRole") ?? "").trim() || null,
     });
     await updateCommunity(actor, input);
   } catch (err) {

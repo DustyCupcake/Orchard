@@ -95,6 +95,13 @@ export const updateCommunityInput = z.object({
   accentPrimary: hexColor.nullable().optional(),
   accentSecondary: hexColor.nullable().optional(),
   logoUrl: z.string().url().nullable().optional(),
+  // OIDC second auth provider — see src/db/schema/community.ts's own
+  // comment and src/lib/oidc.ts. Null clears it back to magic-link
+  // only; the client secret itself is never accepted here, it's an env
+  // var (OIDC_CLIENT_SECRET).
+  oidcIssuerUrl: z.string().url().nullable().optional(),
+  oidcClientId: z.string().min(1).nullable().optional(),
+  oidcRequiredRole: z.string().min(1).nullable().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -282,6 +289,9 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.accentPrimary !== undefined && { accentPrimary: input.accentPrimary }),
       ...(input.accentSecondary !== undefined && { accentSecondary: input.accentSecondary }),
       ...(input.logoUrl !== undefined && { logoUrl: input.logoUrl }),
+      ...(input.oidcIssuerUrl !== undefined && { oidcIssuerUrl: input.oidcIssuerUrl }),
+      ...(input.oidcClientId !== undefined && { oidcClientId: input.oidcClientId }),
+      ...(input.oidcRequiredRole !== undefined && { oidcRequiredRole: input.oidcRequiredRole }),
     })
     .where(eq(community.id, actor.communityId))
     .returning();

@@ -215,4 +215,17 @@ export const community = pgTable("community", {
   accentPrimary: text("accent_primary"),
   accentSecondary: text("accent_secondary"),
   logoUrl: text("logo_url"),
+  // OIDC second auth provider (docs/development-plan.md's Phase 57) —
+  // "provider-pluggable, not one fixed method," alongside (never
+  // replacing) magic-link. All three null = OIDC off, magic-link only.
+  // The client secret deliberately lives in env (OIDC_CLIENT_SECRET),
+  // never this row — it's a real credential, not configuration, same
+  // "secret in env, everything else in the row" split SESSION_SECRET
+  // already establishes for magic-link's own signing key.
+  oidcIssuerUrl: text("oidc_issuer_url"),
+  oidcClientId: text("oidc_client_id"),
+  // "Account creation is role-gated, not automatic on a successful
+  // login" — the exact role name (Zitadel project-role) a token must
+  // carry before src/lib/oidc.ts resolves or creates a Member at all.
+  oidcRequiredRole: text("oidc_required_role"),
 });

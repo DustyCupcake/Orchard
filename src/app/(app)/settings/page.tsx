@@ -259,6 +259,83 @@ export default async function SettingsPage({
             </label>
           </fieldset>
 
+          <fieldset
+            style={{
+              border: `1px solid var(--border)`,
+              borderRadius: "var(--radius-md)",
+              padding: "0.75rem",
+              display: "flex",
+              gap: "1rem",
+              flexWrap: "wrap",
+            }}
+          >
+            <legend style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+              Single sign-on (OIDC)
+            </legend>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, minWidth: "14rem" }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
+                Issuer URL
+              </span>
+              <input
+                type="text"
+                name="oidcIssuerUrl"
+                defaultValue={communityRow.oidcIssuerUrl ?? ""}
+                placeholder="https://your-instance.zitadel.cloud"
+                style={{
+                  padding: "0.4rem",
+                  font: "400 14px var(--font-body)",
+                  color: "var(--text)",
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, minWidth: "12rem" }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
+                Client ID
+              </span>
+              <input
+                type="text"
+                name="oidcClientId"
+                defaultValue={communityRow.oidcClientId ?? ""}
+                style={{
+                  padding: "0.4rem",
+                  font: "400 14px var(--font-body)",
+                  color: "var(--text)",
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, minWidth: "12rem" }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
+                Required role
+              </span>
+              <input
+                type="text"
+                name="oidcRequiredRole"
+                defaultValue={communityRow.oidcRequiredRole ?? ""}
+                placeholder="orchard_user"
+                style={{
+                  padding: "0.4rem",
+                  font: "400 14px var(--font-body)",
+                  color: "var(--text)",
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              />
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                A login without this Zitadel project role never creates an account, even for an
+                otherwise-valid login. All three fields are required together — leave the issuer URL
+                blank to keep OIDC off and magic-link-only. The client secret itself is set via this
+                deployment&rsquo;s <code>OIDC_CLIENT_SECRET</code> environment variable, never here.
+              </span>
+            </label>
+          </fieldset>
+
           <label>
             <input type="checkbox" name="cyclesEnabled" defaultChecked={communityRow.cyclesEnabled} />{" "}
             Cycles on (multiple named production runs over time)

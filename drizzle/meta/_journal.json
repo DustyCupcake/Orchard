@@ -302,6 +302,13 @@
       "when": 1788463713957,
       "tag": "0042_right_red_ghost",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1788471002911,
+      "tag": "0043_fixed_beast",
+      "breakpoints": true
     }
   ]
 }
