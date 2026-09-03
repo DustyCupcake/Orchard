@@ -204,7 +204,12 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     feed.eventSchedulingNeedsAction.length +
     feed.shiftCoordinatorNeedsAction.length +
     feed.myShiftsNeedingCompletion.length +
-    feed.conflictNeedsAction.length;
+    feed.conflictNeedsAction.length +
+    // Phase 51's own two new feed sections — added at the same time as
+    // the feed fields themselves, same discipline Phase 49 established
+    // after Phase 46/47's own miss here.
+    feed.pendingNominations.length +
+    feed.expiredNominations.length;
 
   return {
     memberName: actor.name,

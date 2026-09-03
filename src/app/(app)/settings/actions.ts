@@ -121,6 +121,8 @@ export async function updateCommunityAction(formData: FormData) {
       defaultCallRequireRead: formData.get("defaultCallRequireRead") === "on",
       conflictTeamTaskId: String(formData.get("conflictTeamTaskId") ?? "").trim() || null,
       conflictAckWindowHours: Number(formData.get("conflictAckWindowHours") ?? NaN) || undefined,
+      taskNominationResponseDays:
+        Number(formData.get("taskNominationResponseDays") ?? NaN) || undefined,
       modulesEnabled: formData.getAll("modulesEnabled").map(String),
       postCycleFeedbackFormId: String(formData.get("postCycleFeedbackFormId") ?? "").trim() || null,
       feedbackReviewTaskId: String(formData.get("feedbackReviewTaskId") ?? "").trim() || null,

@@ -129,39 +129,51 @@ export async function claimTask(actor: Member, taskId: string) {
   return db.transaction((tx) => performClaimInTx(tx, actor, taskId));
 }
 
-export async function releaseTask(actor: Member, taskId: string) {
-  return db.transaction(async (tx) => {
-    const current = await loadTaskForUpdate(tx, taskId, actor.communityId);
+// The actual act of releasing one member's assignment — shared by
+// releaseTask() (a member releasing their own, actor-gated below) and
+// nominations.ts's own decline/not_now/auto-expire paths, none of
+// which have a real "acting member" the way releaseTask's caller does
+// (a nomination response is authorized by the response itself — an
+// accept/decline click, or a consumed one-click-email token — not by
+// the responder separately holding the task the way a release does).
+// Deletes the given member's own row, unclaimed once nobody's left —
+// same rules either way, just keyed by an explicit memberId instead of
+// actor.id.
+export async function releaseAssignmentInTx(tx: Tx, taskId: string, communityId: string, memberId: string) {
+  const current = await loadTaskForUpdate(tx, taskId, communityId);
 
-    if (current.status !== "claimed" && current.status !== "waiting") {
-      throw new ConflictError(`Cannot release a task that is ${current.status}`);
-    }
+  if (current.status !== "claimed" && current.status !== "waiting") {
+    throw new ConflictError(`Cannot release a task that is ${current.status}`);
+  }
 
-    const deleted = await tx
-      .delete(taskAssignment)
-      .where(and(eq(taskAssignment.taskId, taskId), eq(taskAssignment.memberId, actor.id)))
+  const deleted = await tx
+    .delete(taskAssignment)
+    .where(and(eq(taskAssignment.taskId, taskId), eq(taskAssignment.memberId, memberId)))
+    .returning();
+  if (deleted.length === 0) {
+    throw new ForbiddenError("Doesn't hold this task");
+  }
+
+  const remaining = await assignmentCount(tx, taskId);
+  if (remaining === 0) {
+    const [updated] = await tx
+      .update(task)
+      .set({
+        status: "unclaimed",
+        nextCheckinAt: null,
+        waitingNote: null,
+        statusChangedAt: new Date(),
+        attentionLevel: "ok",
+      })
+      .where(eq(task.id, taskId))
       .returning();
-    if (deleted.length === 0) {
-      throw new ForbiddenError("You don't hold this task");
-    }
+    return updated;
+  }
+  return current;
+}
 
-    const remaining = await assignmentCount(tx, taskId);
-    if (remaining === 0) {
-      const [updated] = await tx
-        .update(task)
-        .set({
-          status: "unclaimed",
-          nextCheckinAt: null,
-          waitingNote: null,
-          statusChangedAt: new Date(),
-          attentionLevel: "ok",
-        })
-        .where(eq(task.id, taskId))
-        .returning();
-      return updated;
-    }
-    return current;
-  });
+export async function releaseTask(actor: Member, taskId: string) {
+  return db.transaction((tx) => releaseAssignmentInTx(tx, taskId, actor.communityId, actor.id));
 }
 
 export async function parkTask(

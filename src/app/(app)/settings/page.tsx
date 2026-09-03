@@ -298,6 +298,23 @@ export default async function SettingsPage({
             />
           </label>
 
+          <label>
+            Task nomination response window (days)
+            <br />
+            <span style={{ fontSize: "0.8rem", color: "#666" }}>
+              How long a nominated member has to accept, decline, or say not-now before it
+              auto-releases back to Unclaimed.
+            </span>
+            <br />
+            <input
+              type="number"
+              name="taskNominationResponseDays"
+              min={1}
+              defaultValue={communityRow.taskNominationResponseDays}
+              style={{ padding: "0.4rem", width: "8rem" }}
+            />
+          </label>
+
           <fieldset>
             <legend>Modules</legend>
             {MODULE_DEFINITIONS.map((m) => (

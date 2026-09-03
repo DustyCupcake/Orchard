@@ -10,10 +10,12 @@ import {
   getTask,
   getTaskNotes,
   getUnmetRequirements,
+  isAuthorizedToNominate,
   listCandidacies,
   listJoinRequests,
   listMyEndorsements,
   listMyPings,
+  listNominationsForTask,
   listPings,
   listRequirements,
   listSignals,
@@ -56,6 +58,7 @@ import {
   waiveAndClaimAction,
   withdrawCandidacyAction,
   withdrawJoinRequestAction,
+  nominateForTaskAction,
 } from "./actions";
 
 const SIGNAL_LABELS: Record<string, string> = {
@@ -63,6 +66,14 @@ const SIGNAL_LABELS: Record<string, string> = {
   might_need_help: "owner might need help",
   something_feels_off: "something feels off",
   worth_a_look: "worth a coordinator look",
+};
+
+const NOMINATION_STATUS_LABEL: Record<string, string> = {
+  pending: "pending response",
+  accepted: "confirmed",
+  declined: "declined",
+  not_now: "not right now",
+  expired: "expired — released",
 };
 
 export const dynamic = "force-dynamic";
@@ -97,12 +108,14 @@ export default async function TaskDetailPage({
     candidacies,
     isCoordHolderForBranch,
     authorizedToWaive,
+    authorizedToNominate,
     myPings,
     communityMembers,
     questions,
     communityRow,
     milestones,
     cyclePhases,
+    nominations,
   ] = await Promise.all([
     db.select().from(branch).where(eq(branch.id, taskRow.branchId)).then((r) => r[0]),
     getTaskNotes(currentMember, id),
@@ -116,6 +129,7 @@ export default async function TaskDetailPage({
     isCommunityEndorsed ? listCandidacies(currentMember, id) : [],
     isCoordinationHolder(currentMember, taskRow.branchId),
     isAuthorizedToWaive(currentMember, taskRow.branchId, id),
+    isAuthorizedToNominate(currentMember, { id, branchId: taskRow.branchId }),
     listMyPings(currentMember, id),
     db.select().from(member).where(eq(member.communityId, currentMember.communityId)),
     listTaskQuestions(currentMember, id),
@@ -124,6 +138,7 @@ export default async function TaskDetailPage({
     taskRow.cycleId
       ? getCycle(currentMember, taskRow.cycleId).then((c) => c.phases)
       : Promise.resolve([]),
+    listNominationsForTask(currentMember, id),
   ]);
   const groupCoverage = await getGroupCoverageStatus(db, id, requirements);
   const shiftsModuleOn = isModuleEnabled(communityRow, "shifts");
@@ -200,6 +215,15 @@ export default async function TaskDetailPage({
   const canWaive =
     authorizedToWaive &&
     requirements.length > 0 &&
+    (taskRow.status === "unclaimed" || (taskRow.status === "claimed" && hasRoom));
+  // "An existing owner can also nominate a specific person for an open
+  // slot" — see docs/spec.md's Multi-slot & collaborative tasks and
+  // src/lib/tasks/nominations.ts. Same room check as canWaive/canActBase;
+  // never offered on a community_endorsed task (candidacy is the only
+  // door there).
+  const canNominate =
+    authorizedToNominate &&
+    !isCommunityEndorsed &&
     (taskRow.status === "unclaimed" || (taskRow.status === "claimed" && hasRoom));
 
   // communityMembers (fetched above for the waive/suggest selects)
@@ -431,6 +455,51 @@ export default async function TaskDetailPage({
         </details>
       )}
 
+      {canNominate && (
+        <details style={{ marginTop: "1rem" }}>
+          <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>
+            Nominate someone for this task
+          </summary>
+          <p style={{ fontSize: "0.8rem", color: "#666", marginTop: "0.3rem" }}>
+            Claims it for them right away — they get a yes/no/not-now window to confirm or
+            release it, no action required if it&rsquo;s a genuine fit.
+          </p>
+          <form
+            action={nominateForTaskAction}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.5rem",
+              marginTop: "0.5rem",
+              maxWidth: 400,
+            }}
+          >
+            <input type="hidden" name="taskId" value={taskRow.id} />
+            <select name="memberId" required defaultValue="" style={{ padding: "0.4rem" }}>
+              <option value="" disabled>
+                Who fits this?
+              </option>
+              {communityMembers
+                .filter((m) => !realAssignments.some((a) => a.memberId === m.id))
+                .map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+            </select>
+            <input
+              type="text"
+              name="message"
+              placeholder="Optional note (why you think this is a fit)"
+              style={{ padding: "0.4rem" }}
+            />
+            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+              Nominate
+            </button>
+          </form>
+        </details>
+      )}
+
       {isCommunityEndorsed && (
         <section style={{ marginTop: "1.5rem" }}>
           <h2>Candidacy</h2>
@@ -570,6 +639,22 @@ export default async function TaskDetailPage({
               </ul>
             </details>
           )}
+        </section>
+      )}
+
+      {nominations.length > 0 && (
+        <section style={{ marginTop: "1.5rem" }}>
+          <h2>Nominations</h2>
+          <ul style={{ fontSize: "0.85rem" }}>
+            {nominations.map(({ nomination, nomineeName }) => (
+              <li key={nomination.id}>
+                {nomineeName} — {NOMINATION_STATUS_LABEL[nomination.status] ?? nomination.status}
+                {nomination.status === "pending" &&
+                  ` (respond by ${nomination.respondByDeadline.toLocaleString()})`}
+                {nomination.message && <> — &ldquo;{nomination.message}&rdquo;</>}
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

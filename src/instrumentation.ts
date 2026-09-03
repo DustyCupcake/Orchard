@@ -15,6 +15,7 @@ export async function register() {
   const { resolveBrowsePeriods } = await import("@/lib/tasks");
   const { resolveInputRounds } = await import("@/lib/input-rounds");
   const { resolveWiderDiscussionWindows, updateRecruitmentSubscriptionLapses } = await import("@/lib/recruitment");
+  const { resolveTaskNominationDeadlines } = await import("@/lib/tasks");
 
   // "polled every few minutes" per docs/architecture.md.
   registerJob("attention-level", "*/5 * * * *", recomputeAttentionLevels);
@@ -33,4 +34,8 @@ export async function register() {
   // slot, auto-lapsing past the configured threshold — see
   // src/lib/recruitment/subscriptions.ts.
   registerJob("recruitment-subscription-lapse", "*/5 * * * *", updateRecruitmentSubscriptionLapses);
+  // Auto-releases a nominated-but-unconfirmed task assignment once its
+  // response deadline passes with no reply — see
+  // src/lib/tasks/nominations.ts.
+  registerJob("task-nomination-deadline", "*/5 * * * *", resolveTaskNominationDeadlines);
 }

@@ -22,6 +22,8 @@ import {
   deleteTaskMilestone,
   endorseCandidacy,
   expressCandidacy,
+  nominateForTask,
+  nominateForTaskInput,
   pingCoordinator,
   releaseTask,
   resolvePing,
@@ -40,6 +42,7 @@ import {
 import { createQuestion, createQuestionInput } from "@/lib/input-rounds";
 import { rotateTaskIntoShift } from "@/lib/shifts";
 import { AppError } from "@/lib/errors";
+import { resolveAppUrlFromHeaders } from "@/lib/app-url";
 
 function redirectWithError(taskId: string, err: unknown): never {
   if (err instanceof ZodError) {
@@ -435,6 +438,26 @@ export async function waiveAndClaimAction(formData: FormData) {
 
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/board");
+}
+
+export async function nominateForTaskAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    const input = nominateForTaskInput.parse({
+      memberId: String(formData.get("memberId") ?? ""),
+      message: String(formData.get("message") ?? "").trim() || null,
+    });
+    const appUrl = await resolveAppUrlFromHeaders();
+    await nominateForTask(actor, taskId, input, appUrl);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+  revalidatePath("/dashboard");
 }
 
 export async function createSignalAction(formData: FormData) {

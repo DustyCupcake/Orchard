@@ -59,22 +59,72 @@ async function sendViaBrevoApi(from: string, to: string, subject: string, text: 
   }
 }
 
-export async function sendMagicLinkEmail(email: string, url: string) {
+// The shared low-level send path both sendMagicLinkEmail and Phase 51's
+// own sendTaskNominationEmail now go through — same
+// Brevo-API-first-then-SMTP-then-console-log fallback either way, kept
+// in one place rather than duplicated per email kind.
+async function sendPlainTextEmail(to: string, subject: string, text: string, logFallback: string) {
   const from = process.env.SMTP_FROM || "Orchard <no-reply@example.com>";
-  const subject = "Your Orchard login link";
-  const text = `Click to log in to Orchard:\n\n${url}\n\nThis link expires in 15 minutes and works once.`;
 
   if (process.env.BREVO_API_KEY) {
-    await sendViaBrevoApi(from, email, subject, text);
+    await sendViaBrevoApi(from, to, subject, text);
     return;
   }
 
   const client = getTransporter();
   if (!client) {
     // Lets `npm run dev` and local testing work without real credentials.
-    console.log(`[mailer] no BREVO_API_KEY or SMTP_HOST configured — magic link for ${email}:\n${url}`);
+    console.log(`[mailer] no BREVO_API_KEY or SMTP_HOST configured — ${logFallback}`);
     return;
   }
 
-  await client.sendMail({ from, to: email, subject, text });
+  await client.sendMail({ from, to, subject, text });
+}
+
+export async function sendMagicLinkEmail(email: string, url: string) {
+  const subject = "Your Orchard login link";
+  const text = `Click to log in to Orchard:\n\n${url}\n\nThis link expires in 15 minutes and works once.`;
+  await sendPlainTextEmail(email, subject, text, `magic link for ${email}:\n${url}`);
+}
+
+// "[Coordinator] thinks this is a fit for you: [task]. A yes, no, or
+// not-now are all fine — reply within [N days]." — see docs/spec.md's
+// Task assignment notification. The first real click-to-act email this
+// app sends — every prior notification stayed a visible in-app flag,
+// deliberately, since nothing needed one-click action before this (see
+// docs/development-plan.md's Phase 51). Each of the three URLs already
+// carries its own single-use, single-action token — see
+// src/lib/notifications/action-tokens.ts — so clicking one needs no
+// login and can't be repurposed into a different response.
+export async function sendTaskNominationEmail(
+  email: string,
+  input: {
+    nominatorName: string;
+    taskTitle: string;
+    message: string | null;
+    responseDays: number;
+    acceptUrl: string;
+    declineUrl: string;
+    notNowUrl: string;
+  },
+) {
+  const subject = `${input.nominatorName} thinks "${input.taskTitle}" is a fit for you`;
+  const text = [
+    `${input.nominatorName} thinks this is a fit for you: ${input.taskTitle}`,
+    input.message ? `\n"${input.message}"` : null,
+    `\nA yes, no, or not-now are all fine — reply within ${input.responseDays} day${input.responseDays === 1 ? "" : "s"}.`,
+    `\nAccept: ${input.acceptUrl}`,
+    `Not for me: ${input.declineUrl}`,
+    `Not right now: ${input.notNowUrl}`,
+    `\nNo response by the deadline releases it back to Unclaimed automatically — no penalty either way.`,
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+
+  await sendPlainTextEmail(
+    email,
+    subject,
+    text,
+    `task nomination for ${email} ("${input.taskTitle}"):\nAccept: ${input.acceptUrl}\nNot for me: ${input.declineUrl}\nNot right now: ${input.notNowUrl}`,
+  );
 }

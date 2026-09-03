@@ -15,6 +15,8 @@ export * from "./calendar-event";
 export * from "./task-assignment";
 export * from "./task-dependency";
 export * from "./task-join-request";
+export * from "./task-nomination";
+export * from "./action-token";
 export * from "./browse-interest";
 export * from "./endorsement";
 export * from "./task-signal";

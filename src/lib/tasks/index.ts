@@ -5,6 +5,7 @@ export * from "./notes";
 export * from "./milestones";
 export * from "./subtasks";
 export * from "./join-requests";
+export * from "./nominations";
 export * from "./endorsements";
 export * from "./shadows";
 export * from "./waive";

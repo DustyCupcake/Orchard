@@ -1,8 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { branch as branchTable, community, conflictReport, member, shiftOccurrence, task, taskAssignment } from "@/db/schema";
-import { claimTask, claimOrRequestToJoin, parkTask } from "@/lib/tasks";
+import {
+  branch as branchTable,
+  community,
+  conflictReport,
+  member,
+  shiftOccurrence,
+  task,
+  taskAssignment,
+  taskNomination,
+} from "@/db/schema";
+import { claimTask, claimOrRequestToJoin, nominateForTask, parkTask, resolveTaskNominationDeadlines } from "@/lib/tasks";
 import { createTier, updateCommunity } from "@/lib/settings";
 import { createCycle } from "@/lib/cycles";
 import { declareParticipation } from "@/lib/participation";
@@ -63,6 +72,8 @@ describe("getPersonalFeed", () => {
       shiftCoordinatorNeedsAction: [],
       myShiftsNeedingCompletion: [],
       conflictNeedsAction: [],
+      pendingNominations: [],
+      expiredNominations: [],
     });
   });
 
@@ -458,5 +469,49 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
 
     const feed = await getPersonalFeed(alice);
     expect(feed.conflictNeedsAction).toEqual([{ reportId: stale.id, createdAt: expect.any(Date) }]);
+  });
+
+  async function makeCoordinationHolder(communityId: string, branchId: string, actor: typeof member.$inferSelect) {
+    const [coordTask] = await db
+      .insert(task)
+      .values({
+        communityId,
+        branchId,
+        title: "Coordination",
+        tags: ["coordination"],
+        effort: "owns_a_thing",
+        effortMagnitude: { hours_per_week: 2 },
+        createdBy: actor.id,
+      })
+      .returning();
+    await claimTask(actor, coordTask.id);
+  }
+
+  it("Task nomination: the nominee sees their own pending nomination, the nominator sees nothing yet", async () => {
+    const { alice, bob, branch } = await createFixtures();
+    await makeCoordinationHolder(alice.communityId, branch.id, alice);
+    const target = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Water the trees");
+    await nominateForTask(alice, target.id, { memberId: bob.id }, "http://localhost:3000");
+
+    const nomineeFeed = await getPersonalFeed(bob);
+    expect(nomineeFeed.pendingNominations).toHaveLength(1);
+    expect(nomineeFeed.pendingNominations[0].taskTitle).toBe("Water the trees");
+    expect(nomineeFeed.expiredNominations).toEqual([]);
+  });
+
+  it("Task nomination: the nominator sees an expired-without-response nomination", async () => {
+    const { alice, bob, branch } = await createFixtures();
+    await makeCoordinationHolder(alice.communityId, branch.id, alice);
+    const target = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Water the trees");
+    const { nomination } = await nominateForTask(alice, target.id, { memberId: bob.id }, "http://localhost:3000");
+    await db
+      .update(taskNomination)
+      .set({ respondByDeadline: new Date(Date.now() - 1000) })
+      .where(eq(taskNomination.id, nomination.id));
+    await resolveTaskNominationDeadlines();
+
+    const nominatorFeed = await getPersonalFeed(alice);
+    expect(nominatorFeed.expiredNominations).toHaveLength(1);
+    expect(nominatorFeed.expiredNominations[0].nomineeName).toBe("Bob");
   });
 });

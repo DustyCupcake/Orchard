@@ -71,6 +71,9 @@ export const updateCommunityInput = z.object({
   // already true, re-checked here too. See src/lib/onsite-mode.ts for
   // what turning it on actually locks.
   onsiteModeEnabled: z.boolean().optional(),
+  // "Reply within [N days]" — see src/db/schema/community.ts's own
+  // comment and src/lib/tasks/nominations.ts.
+  taskNominationResponseDays: z.number().int().positive().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -232,6 +235,9 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         spatialPlanningTaskId: input.spatialPlanningTaskId,
       }),
       ...(input.onsiteModeEnabled !== undefined && { onsiteModeEnabled: input.onsiteModeEnabled }),
+      ...(input.taskNominationResponseDays !== undefined && {
+        taskNominationResponseDays: input.taskNominationResponseDays,
+      }),
     })
     .where(eq(community.id, actor.communityId))
     .returning();

@@ -169,4 +169,9 @@ export const community = pgTable("community", {
   // inventing a new one. Null = nobody can edit Zones or review pending
   // Placement changes yet — see src/lib/spatial-planning.
   spatialPlanningTaskId: uuid("spatial_planning_task_id"),
+  // "Reply within [N days]" — see docs/spec.md's Task assignment
+  // notification and docs/development-plan.md's Phase 51. Same
+  // community-configurable-threshold pattern as conflictAckWindowHours/
+  // recruitmentWiderDiscussionHours above.
+  taskNominationResponseDays: integer("task_nomination_response_days").notNull().default(3),
 });

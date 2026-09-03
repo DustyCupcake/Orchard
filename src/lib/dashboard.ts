@@ -21,6 +21,7 @@ import { listBudgetNeedsAction } from "./budget";
 import { listEventSchedulingNeedsAction } from "./event-scheduling";
 import { listMySignupsWithOccurrence, listShiftCoordinatorNeedsAction } from "./shifts";
 import { listConflictNeedsAction } from "./conflict";
+import { listMyExpiredNominations, listMyPendingNominations } from "./tasks";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -156,6 +157,14 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
     .map((s) => ({ signupId: s.signup.id, seriesTitle: s.series.title, endsAt: s.occurrence.endsAt }));
   const conflictNeedsAction = await listConflictNeedsAction(actor);
 
+  // Core, not module-gated — task nomination is part of ordinary task
+  // coordination, same footing as claim/release itself. See
+  // docs/development-plan.md's Phase 51 and src/lib/tasks/nominations.ts.
+  const [pendingNominations, expiredNominations] = await Promise.all([
+    listMyPendingNominations(actor),
+    listMyExpiredNominations(actor),
+  ]);
+
   return {
     pendingJoinRequests,
     upcomingCheckins,
@@ -172,6 +181,8 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
     shiftCoordinatorNeedsAction,
     myShiftsNeedingCompletion,
     conflictNeedsAction,
+    pendingNominations,
+    expiredNominations,
   };
 });
 

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/session";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
 import { ATTENTION_STYLES } from "@/lib/format";
+import { respondToNominationAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,9 @@ export default async function DashboardPage() {
     feed.eventSchedulingNeedsAction.length > 0 ||
     feed.shiftCoordinatorNeedsAction.length > 0 ||
     feed.myShiftsNeedingCompletion.length > 0 ||
-    feed.conflictNeedsAction.length > 0;
+    feed.conflictNeedsAction.length > 0 ||
+    feed.pendingNominations.length > 0 ||
+    feed.expiredNominations.length > 0;
   const now = Date.now();
 
   const NEEDS_ACTION_LABEL: Record<string, string> = {
@@ -69,6 +72,63 @@ export default async function DashboardPage() {
             Nothing pending on what you&rsquo;re holding right now. <Link href="/board">Browse the board</Link>{" "}
             for something to work on.
           </p>
+        )}
+
+        {feed.pendingNominations.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Tasks someone thinks fit you</h3>
+            <p style={{ fontSize: "0.8rem", color: "#666", margin: "0 0 0.4rem" }}>
+              You&rsquo;re already holding these — a yes, no, or not-now are all fine. No response
+              by the deadline releases it back automatically.
+            </p>
+            {feed.pendingNominations.map(({ nomination, taskTitle, nominatorName }) => (
+              <div key={nomination.id} style={{ marginBottom: "0.5rem" }}>
+                <p style={{ margin: 0 }}>
+                  <Link href={`/tasks/${nomination.taskId}`} style={{ color: "inherit" }}>
+                    {taskTitle}
+                  </Link>{" "}
+                  <span style={{ color: "#666" }}>
+                    — {nominatorName} thinks this is a fit, respond by{" "}
+                    {new Date(nomination.respondByDeadline).toLocaleString()}
+                    {nomination.message && <>: &ldquo;{nomination.message}&rdquo;</>}
+                  </span>
+                </p>
+                <form
+                  action={respondToNominationAction}
+                  style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}
+                >
+                  <input type="hidden" name="nominationId" value={nomination.id} />
+                  <button type="submit" name="response" value="accepted">
+                    Accept
+                  </button>
+                  <button type="submit" name="response" value="declined">
+                    Not for me
+                  </button>
+                  <button type="submit" name="response" value="not_now">
+                    Not right now
+                  </button>
+                </form>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {feed.expiredNominations.length > 0 && (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Nominations that went unanswered</h3>
+            <ul>
+              {feed.expiredNominations.map(({ nomination, taskTitle, nomineeName }) => (
+                <li key={nomination.id}>
+                  <Link href={`/tasks/${nomination.taskId}`} style={{ color: "inherit" }}>
+                    {taskTitle}
+                  </Link>{" "}
+                  <span style={{ color: "#666" }}>
+                    — {nomineeName} didn&rsquo;t respond, released back to Unclaimed
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {feed.pendingJoinRequests.length > 0 && (
