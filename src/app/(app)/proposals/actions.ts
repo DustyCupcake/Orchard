@@ -70,6 +70,10 @@ export async function activateProposalAction(formData: FormData) {
     .getAll("dependsOnTaskIds")
     .map(String)
     .filter(Boolean);
+  const grantModuleKeys = formData
+    .getAll("grantModuleKeys")
+    .map(String)
+    .filter(Boolean);
 
   try {
     const input = activateProposalInput.parse({
@@ -86,6 +90,7 @@ export async function activateProposalAction(formData: FormData) {
       browsePeriodEnd: browsePeriodEndRaw ? new Date(browsePeriodEndRaw).toISOString() : undefined,
       requirements,
       dependsOnTaskIds: dependsOnTaskIds.length > 0 ? dependsOnTaskIds : undefined,
+      grantModuleKeys: grantModuleKeys.length > 0 ? grantModuleKeys : undefined,
     });
     await activateProposal(actor, proposalId, input);
   } catch (err) {

@@ -8,6 +8,8 @@ import { createTask, createTaskInput } from "../tasks/crud";
 import { addTaskDependency } from "../tasks/dependencies";
 import { claimTask } from "../tasks/lifecycle";
 import { createRequirement, createRequirementInput } from "../tasks/requirements";
+import { isAdmin } from "../settings/admins";
+import { addPermissionGrant, allowsMultipleGrants, PERMISSION_MODULE_KEYS, setPermissionGrant } from "../permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -84,6 +86,7 @@ export const activateProposalInput = createTaskInput
     description: z.string().optional(),
     requirements: z.array(createRequirementInput).optional(),
     dependsOnTaskIds: z.array(z.string().uuid()).optional(),
+    grantModuleKeys: z.array(z.enum(PERMISSION_MODULE_KEYS)).optional(),
   });
 export type ActivateProposalInput = z.infer<typeof activateProposalInput>;
 
@@ -141,6 +144,27 @@ export async function activateProposal(
 
   for (const dependsOnTaskId of input.dependsOnTaskIds ?? []) {
     await addTaskDependency(actor, newTask.id, dependsOnTaskId);
+  }
+
+  // "Permissions granted by this task" (docs/development-plan.md's
+  // Phase 64) — deliberately a follow-up write, not folded into
+  // createTask above: PermissionGrant.taskId needs a real task row,
+  // which doesn't exist until createTask returns. Re-checked here,
+  // not just trusted from the caller, since activateProposal/
+  // activateProposalAction are intentionally open to any member
+  // (proposals/page.tsx: "no coordinator role gating this yet") while
+  // every other PermissionGrant write in this codebase is Admin-only
+  // (settings/actions.ts's setPermissionGrantAction et al.) — silently
+  // skipping rather than throwing keeps a forged grantModuleKeys field
+  // from blocking the rest of an otherwise-legitimate activation.
+  if (input.grantModuleKeys && input.grantModuleKeys.length > 0 && (await isAdmin(actor))) {
+    for (const moduleKey of input.grantModuleKeys) {
+      if (allowsMultipleGrants(moduleKey)) {
+        await addPermissionGrant(actor.communityId, moduleKey, newTask.id);
+      } else {
+        await setPermissionGrant(actor.communityId, moduleKey, newTask.id);
+      }
+    }
   }
 
   let autoClaimed = false;

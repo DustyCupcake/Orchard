@@ -1,4 +1,5 @@
-import { Tag, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT } from "@/components/ui/kit";
+import { Tag, BUTTON_PRIMARY, BUTTON_SECONDARY, CheckField, INPUT } from "@/components/ui/kit";
+import { PERMISSION_MODULE_KEYS, PERMISSION_MODULE_LABELS, type PermissionModuleKey } from "@/lib/permissions";
 import { activateProposalAction, declineProposalAction } from "./actions";
 
 type Proposal = {
@@ -19,6 +20,8 @@ export default function ProposalCard({
   communityTasks,
   submitterName,
   suggestedMemberName,
+  canGrantPermissions,
+  elsewhereHolderByModule,
 }: {
   proposal: Proposal;
   branches: { id: string; name: string }[];
@@ -26,6 +29,8 @@ export default function ProposalCard({
   communityTasks: { id: string; title: string }[];
   submitterName: string;
   suggestedMemberName: string | null;
+  canGrantPermissions: boolean;
+  elsewhereHolderByModule: Partial<Record<PermissionModuleKey, string>>;
 }) {
   return (
     <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
@@ -177,6 +182,27 @@ export default function ProposalCard({
                 ))}
               </select>
             </fieldset>
+
+            {canGrantPermissions && (
+              <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+                <legend className="px-1 text-[12px] text-[var(--text-muted)]">
+                  Permissions granted by this task (optional)
+                </legend>
+                <div className="flex flex-col gap-1">
+                  {PERMISSION_MODULE_KEYS.map((moduleKey) => (
+                    <div key={moduleKey}>
+                      <CheckField label={PERMISSION_MODULE_LABELS[moduleKey]} name="grantModuleKeys" value={moduleKey} />
+                      {elsewhereHolderByModule[moduleKey] && (
+                        <p className="ml-6 text-[12px] text-[var(--text-muted)]">
+                          Currently held by &ldquo;{elsewhereHolderByModule[moduleKey]}&rdquo; — checking this
+                          moves it here.
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </fieldset>
+            )}
 
             <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Activate onto the board

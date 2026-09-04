@@ -26,7 +26,15 @@ import {
   tierNameLookup,
   describeRequirement,
 } from "@/lib/tasks";
-import { getCommunity, listBranches, listTiers } from "@/lib/settings";
+import { getCommunity, isAdmin, listBranches, listTiers } from "@/lib/settings";
+import {
+  allowsMultipleGrants,
+  listGrantsWithTaskInfo,
+  listModuleKeysGrantedByTask,
+  PERMISSION_MODULE_KEYS,
+  PERMISSION_MODULE_LABELS,
+  type PermissionModuleKey,
+} from "@/lib/permissions";
 import { getCycle } from "@/lib/cycles";
 import { isModuleEnabled } from "@/lib/modules";
 import { listTaskQuestions } from "@/lib/input-rounds";
@@ -34,7 +42,7 @@ import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
 import { getAccompaniedMemberId } from "@/lib/recruitment";
 import { computeEngagementPattern } from "@/lib/engagement";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
-import { Tag, type Tone, ATTENTION_TONE, Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_GHOST, INPUT, LABEL } from "@/components/ui/kit";
+import { Tag, type Tone, ATTENTION_TONE, Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_GHOST, CheckField, INPUT, LABEL } from "@/components/ui/kit";
 import {
   acceptJoinRequestAction,
   addCommentAction,
@@ -65,6 +73,7 @@ import {
   suggestSomeoneAction,
   updateMilestoneAction,
   updateRequirementAction,
+  updateTaskPermissionGrantsAction,
   waiveAndClaimAction,
   withdrawCandidacyAction,
   withdrawJoinRequestAction,
@@ -187,6 +196,29 @@ export default async function TaskDetailPage({
   const dependencyOptions = communityTasks.filter(
     (t) => !dependencies.some((d) => d.dependsOnTaskId === t.id),
   );
+
+  // "Permissions granted by this task" (docs/development-plan.md's
+  // Phase 64) reads/writes the exact same PermissionGrant rows the
+  // settings panel's Access & permissions tab does — visibility and
+  // the underlying write path are both Admin-only here too, a
+  // genuinely stricter gate than the rest of this page's editing
+  // surface (Requirements/Dependencies are open to any member; see
+  // updateTaskPermissionGrantsAction in ./actions.ts for the server-
+  // side enforcement this mirrors).
+  const canGrantPermissions = await isAdmin(viewing);
+  const [communityGrants, grantedByThisTask] = canGrantPermissions
+    ? await Promise.all([
+        listGrantsWithTaskInfo(taskRow.communityId),
+        listModuleKeysGrantedByTask(taskRow.communityId, taskRow.id),
+      ])
+    : [[], new Set<PermissionModuleKey>()];
+  const elsewhereHolderByModule = new Map<PermissionModuleKey, string>();
+  for (const g of communityGrants) {
+    if (g.taskId !== taskRow.id && !allowsMultipleGrants(g.moduleKey)) {
+      elsewhereHolderByModule.set(g.moduleKey, g.title);
+    }
+  }
+
   const groupCoverage = await getGroupCoverageStatus(db, id, requirements);
   const shiftsModuleOn = isModuleEnabled(communityRow, "shifts");
   const myEndorsements = isCommunityEndorsed
@@ -586,6 +618,39 @@ export default async function TaskDetailPage({
           </details>
         )}
       </section>
+
+      {canGrantPermissions && (
+        <section className="mt-6">
+          <SectionHeading>Permissions granted by this task</SectionHeading>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            Check which module-level access gate(s) whoever currently holds this task should get —
+            the identical <code>PermissionGrant</code> rows the settings panel&rsquo;s Access &amp;
+            permissions tab edits.
+          </p>
+          <form action={updateTaskPermissionGrantsAction} className="mt-3 flex flex-col gap-2">
+            <input type="hidden" name="taskId" value={taskRow.id} />
+            {PERMISSION_MODULE_KEYS.map((moduleKey) => (
+              <div key={moduleKey}>
+                <CheckField
+                  label={PERMISSION_MODULE_LABELS[moduleKey]}
+                  name="moduleKeys"
+                  value={moduleKey}
+                  defaultChecked={grantedByThisTask.has(moduleKey)}
+                />
+                {elsewhereHolderByModule.has(moduleKey) && (
+                  <p className="ml-6 text-[12px] text-[var(--text-muted)]">
+                    Currently held by &ldquo;{elsewhereHolderByModule.get(moduleKey)}&rdquo; — checking this
+                    moves it here.
+                  </p>
+                )}
+              </div>
+            ))}
+            <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
+              Save
+            </button>
+          </form>
+        </section>
+      )}
 
       {needsSelfAssignConfirmation && (
         <section className="mt-6 rounded-[var(--radius-md)] p-3.5" style={{ background: "var(--warning-soft)", border: "1px solid var(--warning-border)" }}>

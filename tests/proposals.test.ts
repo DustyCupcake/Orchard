@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, member, task } from "@/db/schema";
+import { community, member, task, taskAssignment } from "@/db/schema";
 import {
   activateProposal,
   createProposal,
@@ -10,8 +10,9 @@ import {
   listProposals,
 } from "@/lib/proposals";
 import { listTaskDependencies } from "@/lib/tasks";
+import { listGrantingTaskIds } from "@/lib/permissions";
 import { ConflictError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 describe("creating and listing proposals", () => {
   beforeEach(async () => {
@@ -162,6 +163,58 @@ describe("activating a proposal", () => {
 
     const deps = await listTaskDependencies(alice, created.id);
     expect(deps.map((d) => d.dependsOnTaskId)).toEqual([existingTask.id]);
+  });
+
+  // docs/development-plan.md's Phase 64 — "Permissions granted by this
+  // task" on the activation screen itself, a follow-up write against
+  // the newly-created task's own id (see crud.ts's own comment on why
+  // it can't be folded into createTask). Alice counts as Admin here
+  // purely via the pre-latch "any member" fallback (adminsEverClaimed
+  // is false on a fresh fixture community) — the negative case below
+  // needs a real latched Admin gate to prove the fallback isn't what's
+  // silently making this pass.
+  it("attaches PermissionGrant rows passed at activation time when the activator is an Admin", async () => {
+    const { branch, alice, bob, community: testCommunity } = await createFixtures();
+    const proposal = await createProposal(bob, { title: "Fix the gate latch" });
+
+    const { task: created } = await activateProposal(alice, proposal.id, {
+      branchId: branch.id,
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+      grantModuleKeys: ["recruitment"],
+    });
+
+    expect(await listGrantingTaskIds(testCommunity.id, "recruitment")).toEqual([created.id]);
+  });
+
+  it("silently skips grantModuleKeys for a non-Admin activator, without blocking activation itself", async () => {
+    const { branch, alice, bob, community: testCommunity } = await createFixtures();
+    const [adminsTask] = await db
+      .insert(task)
+      .values({
+        communityId: testCommunity.id,
+        branchId: branch.id,
+        title: "Admins",
+        effort: "owns_a_thing",
+        effortMagnitude: { hours_per_week: 1 },
+        openness: "community_endorsed",
+        createdBy: alice.id,
+      })
+      .returning();
+    await grantPermission(testCommunity.id, "admin", adminsTask.id);
+    await db.insert(taskAssignment).values({ taskId: adminsTask.id, memberId: alice.id });
+    await db.update(community).set({ adminsEverClaimed: true }).where(eq(community.id, testCommunity.id));
+
+    const proposal = await createProposal(bob, { title: "Fix the gate latch" });
+    const { task: created } = await activateProposal(bob, proposal.id, {
+      branchId: branch.id,
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+      grantModuleKeys: ["recruitment"],
+    });
+
+    expect(created.id).toBeTruthy();
+    expect(await listGrantingTaskIds(testCommunity.id, "recruitment")).toEqual([]);
   });
 
   it("auto-claims for the proposer when wantsToClaim is set", async () => {

@@ -58,6 +58,31 @@ export const BUTTON_GHOST =
 export const BUTTON_DESTRUCTIVE =
   "rounded-[var(--radius-md)] bg-[var(--danger)] px-3.5 py-1.5 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-45 disabled:cursor-not-allowed";
 
+// Extracted once a third page (Phase 64's task/proposal Permissions
+// checkboxes) needed the identical "checkbox + inline label" markup
+// settings/page.tsx's own field already had.
+export function CheckField({
+  label,
+  name,
+  value,
+  defaultChecked,
+}: {
+  label: ReactNode;
+  name: string;
+  // Only needed when several checkboxes share one name (e.g. a
+  // moduleKeys group) — formData.getAll(name) needs each box to carry
+  // its own distinct value, not the browser's "on" default a lone
+  // checkbox already gets correctly without this.
+  value?: string;
+  defaultChecked?: boolean;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+      <input type="checkbox" name={name} value={value} defaultChecked={defaultChecked} /> {label}
+    </label>
+  );
+}
+
 export const INPUT =
   "rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none";
 export const SELECT = INPUT;

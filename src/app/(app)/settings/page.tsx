@@ -1,11 +1,19 @@
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { permissionGrant, task } from "@/db/schema";
+import { task } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity, listBranches, listCycleTypes, listPendingBranches, listTiers, requireAdmins } from "@/lib/settings";
-import type { PermissionModuleKey } from "@/lib/permissions";
+import {
+  allowsMultipleGrants,
+  listGrantsWithTaskInfo,
+  PERMISSION_MODULE_KEYS,
+  PERMISSION_MODULE_HINTS,
+  PERMISSION_MODULE_LABELS,
+  type PermissionModuleKey,
+} from "@/lib/permissions";
+import { listTasks } from "@/lib/tasks";
 import { listCycles } from "@/lib/cycles";
 import { listProfileQuestions } from "@/lib/profile-questions";
 import { listTaskPacks } from "@/lib/task-packs";
@@ -15,7 +23,7 @@ import { listForms } from "@/lib/forms";
 import type { FormField } from "@/lib/forms";
 import { listConsentPurposes } from "@/lib/consent";
 import { ForbiddenError } from "@/lib/errors";
-import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT, LABEL, Tag } from "@/components/ui/kit";
+import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CheckField, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import {
   addPermissionGrantAction,
   archiveFormAction,
@@ -58,6 +66,7 @@ export const dynamic = "force-dynamic";
 
 const TABS = [
   { key: "general", label: "General" },
+  { key: "permissions", label: "Access & permissions" },
   { key: "coordination", label: "Coordination" },
   { key: "modules", label: "Modules" },
   { key: "recruitment", label: "Recruitment" },
@@ -125,109 +134,44 @@ function TextField({
   );
 }
 
-function CheckField({
-  label,
-  name,
-  value,
-  defaultChecked,
-}: {
-  label: string;
-  name: string;
-  // Only needed when several checkboxes share one name (e.g. Modules'
-  // modulesEnabled group) — formData.getAll(name) needs each box to
-  // carry its own distinct value, not the browser's "on" default every
-  // lone checkbox already gets correctly without this.
-  value?: string;
-  defaultChecked?: boolean;
-}) {
-  return (
-    <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
-      <input type="checkbox" name={name} value={value} defaultChecked={defaultChecked} /> {label}
-    </label>
-  );
-}
-
-// Every single-cardinality access gate (conflict_team, feedback_review,
-// event_scheduling_owner, recruitment, spatial_planning, announcements)
-// renders through this one component now — a real PermissionGrant row
-// (docs/development-plan.md's Phase 63) replacing what used to be a
-// raw scalar Community column, still just "paste a task's ID," still
-// exactly one granting task at a time. A standalone form (not nested
-// inside the surrounding tab's own settings form — forms can't nest),
-// submitting straight to setPermissionGrantAction.
-function SingleGrantField({
-  label,
+// Every access gate — single- or multi-cardinality alike — renders
+// through this one component now (docs/development-plan.md's Phase
+// 64), replacing Phase 63's two separate stopgap components
+// (SingleGrantField/MultiGrantField) that each tab used to render
+// its own scattered field with. A single-cardinality module
+// (allowsMultipleGrants === false) still enforces at most one
+// grantee — the Add form posts to setPermissionGrantAction (delete-
+// then-insert) instead of addPermissionGrantAction, with a static
+// warning next to it once a grantee already exists, rather than the
+// old pre-filled-input-doubling-as-replace UX. The Add input's
+// `list` attribute wires it to the shared task datalist rendered once
+// for the whole tab (see the "permissions" tab body below) — a
+// zero-JS "search by title" picker; the datalist's own <option value>
+// is still the raw taskId (that's how HTML datalists work), so the
+// input's text collapses to the ID once a suggestion is picked, but
+// the human-readable label is what's actually searched/matched while
+// typing.
+function GrantField({
   moduleKey,
-  tab,
-  currentGrant,
-  offHint,
-}: {
-  label: string;
-  moduleKey: PermissionModuleKey;
-  tab: string;
-  currentGrant: { taskId: string; title: string } | undefined;
-  offHint: string;
-}) {
-  return (
-    <form action={setPermissionGrantAction} className="flex flex-col gap-1">
-      <input type="hidden" name="moduleKey" value={moduleKey} />
-      <input type="hidden" name="tab" value={tab} />
-      <span className={LABEL}>{label}</span>
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="text"
-          name="taskId"
-          defaultValue={currentGrant?.taskId ?? ""}
-          placeholder="paste the task's ID from its /tasks/… URL"
-          className={`${INPUT} min-w-[18rem] flex-1`}
-        />
-        <button type="submit" className={BUTTON_SECONDARY}>
-          Save
-        </button>
-      </div>
-      <span className="text-[12px] text-[var(--text-muted)]">
-        {currentGrant ? `Currently: "${currentGrant.title}"` : offHint}
-      </span>
-    </form>
-  );
-}
-
-// Every multi-cardinality access gate (admin, branch_coordination,
-// support) renders through this one component — replacing what used to
-// be a free-text "type a tag" field matched against a task's own
-// general-purpose Task.tags (docs/development-plan.md's Phase 63 —
-// that match was also this codebase's one confirmed real bug: an
-// ordinary categorization tag could silently grant real access if it
-// collided with the configured string). More than one task can grant
-// the same module here, so this lists every current grantee with its
-// own remove form, plus one add form — two more standalone forms, for
-// the same reason SingleGrantField's own form can't nest either.
-function MultiGrantField({
-  label,
-  moduleKey,
-  tab,
   grants,
-  hint,
 }: {
-  label: string;
   moduleKey: PermissionModuleKey;
-  tab: string;
-  grants: { taskId: string; title: string }[];
-  hint: string;
+  grants: { taskId: string; title: string; branchName: string }[];
 }) {
+  const multi = allowsMultipleGrants(moduleKey);
   return (
-    <FieldSet legend={label}>
-      <p className="text-[12px] text-[var(--text-muted)]">{hint}</p>
+    <FieldSet legend={PERMISSION_MODULE_LABELS[moduleKey]}>
+      <p className="text-[12px] text-[var(--text-muted)]">{PERMISSION_MODULE_HINTS[moduleKey]}</p>
       {grants.length === 0 && <p className="text-[13px] text-[var(--text-muted)]">No task grants this yet.</p>}
       {grants.length > 0 && (
         <ul className="flex flex-col gap-1.5">
           {grants.map((g) => (
             <li key={g.taskId} className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text)]">
-              {g.title}
+              {g.title} — {g.branchName}
               <form action={removePermissionGrantAction}>
                 <input type="hidden" name="moduleKey" value={moduleKey} />
                 <input type="hidden" name="taskId" value={g.taskId} />
-                <input type="hidden" name="tab" value={tab} />
+                <input type="hidden" name="tab" value="permissions" />
                 <button type="submit" className={BUTTON_SECONDARY}>
                   Remove
                 </button>
@@ -236,17 +180,26 @@ function MultiGrantField({
           ))}
         </ul>
       )}
-      <form action={addPermissionGrantAction} className="flex flex-wrap items-center gap-2">
+      {!multi && grants.length > 0 && (
+        <p className="text-[12px] text-[var(--text-muted)]">
+          Only one task can hold this — adding another below moves it here instead of alongside it.
+        </p>
+      )}
+      <form
+        action={multi ? addPermissionGrantAction : setPermissionGrantAction}
+        className="flex flex-wrap items-center gap-2"
+      >
         <input type="hidden" name="moduleKey" value={moduleKey} />
-        <input type="hidden" name="tab" value={tab} />
+        <input type="hidden" name="tab" value="permissions" />
         <input
           type="text"
           name="taskId"
-          placeholder="paste a task's ID to add it"
+          list="permissions-community-tasks"
+          placeholder="search by task title…"
           className={`${INPUT} min-w-[18rem] flex-1`}
         />
         <button type="submit" className={BUTTON_SECONDARY}>
-          Add
+          {multi ? "Add" : grants.length > 0 ? "Replace" : "Grant"}
         </button>
       </form>
     </FieldSet>
@@ -290,6 +243,7 @@ export default async function SettingsPage({
     consentPurposes,
     pendingBranches,
     taskPacks,
+    communityTasksRaw,
   ] = await Promise.all([
     getCommunity(viewing),
     listBranches(viewing),
@@ -302,30 +256,29 @@ export default async function SettingsPage({
     authorized ? listConsentPurposes(viewing) : Promise.resolve([]),
     authorized ? listPendingBranches(viewing) : Promise.resolve([]),
     listTaskPacks(viewing),
+    authorized ? listTasks(viewing) : Promise.resolve([]),
   ]);
   const confirmedBranches = branches.filter((b) => b.status === "confirmed");
+  const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
 
   // Every access gate this screen configures reads from one real table
   // now (docs/development-plan.md's Phase 63) — one query, grouped by
-  // module in JS, rather than nine separate lookups.
-  const allGrants = await db
-    .select({ moduleKey: permissionGrant.moduleKey, taskId: permissionGrant.taskId, title: task.title })
-    .from(permissionGrant)
-    .innerJoin(task, eq(task.id, permissionGrant.taskId))
-    .where(eq(permissionGrant.communityId, communityRow.id));
-  const grantsByModule = new Map<PermissionModuleKey, { taskId: string; title: string }[]>();
+  // module in JS, rather than nine separate lookups. Branch name is
+  // resolved from the branch list this page already has in hand
+  // (branchNameById, above) rather than joined a second time.
+  const allGrants = await listGrantsWithTaskInfo(communityRow.id);
+  const grantsByModule = new Map<PermissionModuleKey, { taskId: string; title: string; branchName: string }[]>();
   for (const g of allGrants) {
     const list = grantsByModule.get(g.moduleKey) ?? [];
-    list.push({ taskId: g.taskId, title: g.title });
+    list.push({ taskId: g.taskId, title: g.title, branchName: branchNameById.get(g.branchId) ?? "—" });
     grantsByModule.set(g.moduleKey, list);
   }
   const grantsFor = (moduleKey: PermissionModuleKey) => grantsByModule.get(moduleKey) ?? [];
-  const conflictTeamTask = grantsFor("conflict_team")[0];
-  const feedbackReviewTask = grantsFor("feedback_review")[0];
-  const eventSchedulingOwnerTask = grantsFor("event_scheduling_owner")[0];
-  const recruitmentTask = grantsFor("recruitment")[0];
-  const spatialPlanningTask = grantsFor("spatial_planning")[0];
-  const announcementTask = grantsFor("announcements")[0];
+  const communityTasksForPicker = communityTasksRaw.map((t) => ({
+    id: t.id,
+    title: t.title,
+    branchName: branchNameById.get(t.branchId) ?? "—",
+  }));
 
   const ruleTaskIds = [
     ...new Set(sensitiveFieldRules.map((r) => r.unlockedByTaskId).filter((id): id is string => Boolean(id))),
@@ -454,40 +407,31 @@ export default async function SettingsPage({
                 Save
               </button>
             </form>
+          </div>
+        )}
 
-            <MultiGrantField
-              label="Admin"
-              moduleKey="admin"
-              tab="general"
-              grants={grantsFor("admin")}
-              hint="Whoever currently holds any task granted here gates this whole settings screen — see its own candidacy/endorsement flow on the task itself."
-            />
-            <MultiGrantField
-              label="Branch coordination"
-              moduleKey="branch_coordination"
-              tab="general"
-              grants={grantsFor("branch_coordination")}
-              hint="Whoever currently holds a task granted here does that task's branch's coordination — waiving requirements, seeing escalations and talk-to-coordinator pings for that branch."
-            />
-            <MultiGrantField
-              label="Support (View-as)"
-              moduleKey="support"
-              tab="general"
-              grants={grantsFor("support")}
-              hint="Whoever currently holds a task granted here can view the platform exactly as another member would, read-only — see docs/spec.md's View-as (support)."
-            />
+        {activeTab === "permissions" && (
+          <div className="flex flex-col gap-5">
+            <p className="text-[13px] text-[var(--text-muted)]">
+              Every access-gated capability in the app, in one place — who currently holds it, and a
+              search-by-title picker to add or replace a grant. See a task&rsquo;s own detail or
+              proposal-activation screen for the identical checkbox-driven equivalent.
+            </p>
+            <datalist id="permissions-community-tasks">
+              {communityTasksForPicker.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title} — {t.branchName}
+                </option>
+              ))}
+            </datalist>
+            {PERMISSION_MODULE_KEYS.map((moduleKey) => (
+              <GrantField key={moduleKey} moduleKey={moduleKey} grants={grantsFor(moduleKey)} />
+            ))}
           </div>
         )}
 
         {activeTab === "coordination" && (
           <div className="flex flex-col gap-5">
-            <SingleGrantField
-              label="Conflict team task ID (leave blank to keep Conflict management off)"
-              moduleKey="conflict_team"
-              tab="coordination"
-              currentGrant={conflictTeamTask}
-              offHint="A critical, multi-slot coordination task like any other — whoever holds it becomes the conflict team."
-            />
           <form action={updateCoordinationSettingsAction} className="flex flex-col gap-4">
             <div className="w-32">
               <TextField label="Acknowledgment window (hours)" name="conflictAckWindowHours" type="number" defaultValue={communityRow.conflictAckWindowHours} />
@@ -554,47 +498,11 @@ export default async function SettingsPage({
               Save
             </button>
           </form>
-
-          <SingleGrantField
-            label="Feedback review task ID"
-            moduleKey="feedback_review"
-            tab="modules"
-            currentGrant={feedbackReviewTask}
-            offHint="Whoever holds this task sees feedback responses on /feedback."
-          />
-          <SingleGrantField
-            label="Event scheduling owner task ID (leave blank to keep Event scheduling review/publish off)"
-            moduleKey="event_scheduling_owner"
-            tab="modules"
-            currentGrant={eventSchedulingOwnerTask}
-            offHint="Members can still submit proposals without this set, but nobody can review, confirm, or publish until it is."
-          />
-          <SingleGrantField
-            label="Spatial-planning task ID"
-            moduleKey="spatial_planning"
-            tab="modules"
-            currentGrant={spatialPlanningTask}
-            offHint="Nobody can draw or edit Zones until this is set — see /spatial-planning."
-          />
-          <SingleGrantField
-            label="Announcement task ID (leave blank to keep community-wide announcements off)"
-            moduleKey="announcements"
-            tab="modules"
-            currentGrant={announcementTask}
-            offHint="Targeted messages (branch/task-holders/arrival-window) work without this — it only gates community-wide announcements."
-          />
           </div>
         )}
 
         {activeTab === "recruitment" && (
           <div className="flex flex-col gap-5">
-          <SingleGrantField
-            label="Recruitment task ID"
-            moduleKey="recruitment"
-            tab="recruitment"
-            currentGrant={recruitmentTask}
-            offHint="Invite links and inquiries still work without this set, but nobody sees the inquiry inbox until it is."
-          />
           <form action={updateRecruitmentSettingsAction} className="flex flex-col gap-4">
             <label className="flex flex-col gap-1">
               <span className={LABEL}>Application form</span>

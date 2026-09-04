@@ -49,6 +49,15 @@ import {
 } from "@/lib/tasks";
 import { createQuestion, createQuestionInput } from "@/lib/input-rounds";
 import { rotateTaskIntoShift } from "@/lib/shifts";
+import { requireAdmins } from "@/lib/settings";
+import {
+  addPermissionGrant,
+  allowsMultipleGrants,
+  listModuleKeysGrantedByTask,
+  PERMISSION_MODULE_KEYS,
+  removePermissionGrant,
+  setPermissionGrant,
+} from "@/lib/permissions";
 import { AppError } from "@/lib/errors";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
 
@@ -660,4 +669,49 @@ export async function removeDependencyAction(formData: FormData) {
   }
 
   revalidatePath(`/tasks/${taskId}`);
+}
+
+// The task-side entry point onto the exact same PermissionGrant rows
+// the settings panel's Access & permissions tab edits
+// (docs/development-plan.md's Phase 64) — one code path
+// (setPermissionGrant/addPermissionGrant/removePermissionGrant), two
+// entry points, never two sources of truth. Admin-gated here too
+// (requireAdmins), a genuinely stricter check than the rest of this
+// file's own actions — the page only renders these checkboxes for an
+// Admin in the first place, but this re-checks server-side regardless,
+// since a forged POST could otherwise reach this code path without
+// ever seeing the UI. Diffs against a fresh DB read of what this task
+// currently grants (never the form's own stale render-time snapshot)
+// so a concurrent change elsewhere can't get silently clobbered.
+export async function updateTaskPermissionGrantsAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const selectedModuleKeys = new Set(formData.getAll("moduleKeys").map(String));
+
+  try {
+    await requireAdmins(actor);
+    const currentModuleKeys = await listModuleKeysGrantedByTask(actor.communityId, taskId);
+    for (const moduleKey of PERMISSION_MODULE_KEYS) {
+      const selected = selectedModuleKeys.has(moduleKey);
+      const current = currentModuleKeys.has(moduleKey);
+      if (selected && !current) {
+        if (allowsMultipleGrants(moduleKey)) {
+          await addPermissionGrant(actor.communityId, moduleKey, taskId);
+        } else {
+          await setPermissionGrant(actor.communityId, moduleKey, taskId);
+        }
+      } else if (!selected && current) {
+        if (allowsMultipleGrants(moduleKey)) {
+          await removePermissionGrant(actor.communityId, moduleKey, taskId);
+        } else {
+          await setPermissionGrant(actor.communityId, moduleKey, null);
+        }
+      }
+    }
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/settings");
 }
