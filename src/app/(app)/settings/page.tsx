@@ -2,9 +2,10 @@ import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { task } from "@/db/schema";
+import { permissionGrant, task } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity, listBranches, listCycleTypes, listPendingBranches, listTiers, requireAdmins } from "@/lib/settings";
+import type { PermissionModuleKey } from "@/lib/permissions";
 import { listCycles } from "@/lib/cycles";
 import { listProfileQuestions } from "@/lib/profile-questions";
 import { listTaskPacks } from "@/lib/task-packs";
@@ -16,6 +17,7 @@ import { listConsentPurposes } from "@/lib/consent";
 import { ForbiddenError } from "@/lib/errors";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import {
+  addPermissionGrantAction,
   archiveFormAction,
   archiveProfileQuestionAction,
   confirmBulkMemberImportAction,
@@ -33,7 +35,9 @@ import {
   deleteSensitiveFieldAccessRuleAction,
   deleteTierAction,
   rejectPendingBranchAction,
+  removePermissionGrantAction,
   reviewBulkMemberImportAction,
+  setPermissionGrantAction,
   unarchiveFormAction,
   unarchiveProfileQuestionAction,
   updateBranchAction,
@@ -143,6 +147,112 @@ function CheckField({
   );
 }
 
+// Every single-cardinality access gate (conflict_team, feedback_review,
+// event_scheduling_owner, recruitment, spatial_planning, announcements)
+// renders through this one component now — a real PermissionGrant row
+// (docs/development-plan.md's Phase 63) replacing what used to be a
+// raw scalar Community column, still just "paste a task's ID," still
+// exactly one granting task at a time. A standalone form (not nested
+// inside the surrounding tab's own settings form — forms can't nest),
+// submitting straight to setPermissionGrantAction.
+function SingleGrantField({
+  label,
+  moduleKey,
+  tab,
+  currentGrant,
+  offHint,
+}: {
+  label: string;
+  moduleKey: PermissionModuleKey;
+  tab: string;
+  currentGrant: { taskId: string; title: string } | undefined;
+  offHint: string;
+}) {
+  return (
+    <form action={setPermissionGrantAction} className="flex flex-col gap-1">
+      <input type="hidden" name="moduleKey" value={moduleKey} />
+      <input type="hidden" name="tab" value={tab} />
+      <span className={LABEL}>{label}</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          name="taskId"
+          defaultValue={currentGrant?.taskId ?? ""}
+          placeholder="paste the task's ID from its /tasks/… URL"
+          className={`${INPUT} min-w-[18rem] flex-1`}
+        />
+        <button type="submit" className={BUTTON_SECONDARY}>
+          Save
+        </button>
+      </div>
+      <span className="text-[12px] text-[var(--text-muted)]">
+        {currentGrant ? `Currently: "${currentGrant.title}"` : offHint}
+      </span>
+    </form>
+  );
+}
+
+// Every multi-cardinality access gate (admin, branch_coordination,
+// support) renders through this one component — replacing what used to
+// be a free-text "type a tag" field matched against a task's own
+// general-purpose Task.tags (docs/development-plan.md's Phase 63 —
+// that match was also this codebase's one confirmed real bug: an
+// ordinary categorization tag could silently grant real access if it
+// collided with the configured string). More than one task can grant
+// the same module here, so this lists every current grantee with its
+// own remove form, plus one add form — two more standalone forms, for
+// the same reason SingleGrantField's own form can't nest either.
+function MultiGrantField({
+  label,
+  moduleKey,
+  tab,
+  grants,
+  hint,
+}: {
+  label: string;
+  moduleKey: PermissionModuleKey;
+  tab: string;
+  grants: { taskId: string; title: string }[];
+  hint: string;
+}) {
+  return (
+    <FieldSet legend={label}>
+      <p className="text-[12px] text-[var(--text-muted)]">{hint}</p>
+      {grants.length === 0 && <p className="text-[13px] text-[var(--text-muted)]">No task grants this yet.</p>}
+      {grants.length > 0 && (
+        <ul className="flex flex-col gap-1.5">
+          {grants.map((g) => (
+            <li key={g.taskId} className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text)]">
+              {g.title}
+              <form action={removePermissionGrantAction}>
+                <input type="hidden" name="moduleKey" value={moduleKey} />
+                <input type="hidden" name="taskId" value={g.taskId} />
+                <input type="hidden" name="tab" value={tab} />
+                <button type="submit" className={BUTTON_SECONDARY}>
+                  Remove
+                </button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form action={addPermissionGrantAction} className="flex flex-wrap items-center gap-2">
+        <input type="hidden" name="moduleKey" value={moduleKey} />
+        <input type="hidden" name="tab" value={tab} />
+        <input
+          type="text"
+          name="taskId"
+          placeholder="paste a task's ID to add it"
+          className={`${INPUT} min-w-[18rem] flex-1`}
+        />
+        <button type="submit" className={BUTTON_SECONDARY}>
+          Add
+        </button>
+      </form>
+    </FieldSet>
+  );
+}
+
 export default async function SettingsPage({
   searchParams,
 }: {
@@ -195,48 +305,27 @@ export default async function SettingsPage({
   ]);
   const confirmedBranches = branches.filter((b) => b.status === "confirmed");
 
-  const conflictTeamTask = communityRow.conflictTeamTaskId
-    ? await db
-        .select({ id: task.id, title: task.title })
-        .from(task)
-        .where(eq(task.id, communityRow.conflictTeamTaskId))
-        .then((r) => r[0])
-    : null;
-  const feedbackReviewTask = communityRow.feedbackReviewTaskId
-    ? await db
-        .select({ id: task.id, title: task.title })
-        .from(task)
-        .where(eq(task.id, communityRow.feedbackReviewTaskId))
-        .then((r) => r[0])
-    : null;
-  const eventSchedulingOwnerTask = communityRow.eventSchedulingOwnerTaskId
-    ? await db
-        .select({ id: task.id, title: task.title })
-        .from(task)
-        .where(eq(task.id, communityRow.eventSchedulingOwnerTaskId))
-        .then((r) => r[0])
-    : null;
-  const recruitmentTask = communityRow.recruitmentTaskId
-    ? await db
-        .select({ id: task.id, title: task.title })
-        .from(task)
-        .where(eq(task.id, communityRow.recruitmentTaskId))
-        .then((r) => r[0])
-    : null;
-  const spatialPlanningTask = communityRow.spatialPlanningTaskId
-    ? await db
-        .select({ id: task.id, title: task.title })
-        .from(task)
-        .where(eq(task.id, communityRow.spatialPlanningTaskId))
-        .then((r) => r[0])
-    : null;
-  const announcementTask = communityRow.announcementTaskId
-    ? await db
-        .select({ id: task.id, title: task.title })
-        .from(task)
-        .where(eq(task.id, communityRow.announcementTaskId))
-        .then((r) => r[0])
-    : null;
+  // Every access gate this screen configures reads from one real table
+  // now (docs/development-plan.md's Phase 63) — one query, grouped by
+  // module in JS, rather than nine separate lookups.
+  const allGrants = await db
+    .select({ moduleKey: permissionGrant.moduleKey, taskId: permissionGrant.taskId, title: task.title })
+    .from(permissionGrant)
+    .innerJoin(task, eq(task.id, permissionGrant.taskId))
+    .where(eq(permissionGrant.communityId, communityRow.id));
+  const grantsByModule = new Map<PermissionModuleKey, { taskId: string; title: string }[]>();
+  for (const g of allGrants) {
+    const list = grantsByModule.get(g.moduleKey) ?? [];
+    list.push({ taskId: g.taskId, title: g.title });
+    grantsByModule.set(g.moduleKey, list);
+  }
+  const grantsFor = (moduleKey: PermissionModuleKey) => grantsByModule.get(moduleKey) ?? [];
+  const conflictTeamTask = grantsFor("conflict_team")[0];
+  const feedbackReviewTask = grantsFor("feedback_review")[0];
+  const eventSchedulingOwnerTask = grantsFor("event_scheduling_owner")[0];
+  const recruitmentTask = grantsFor("recruitment")[0];
+  const spatialPlanningTask = grantsFor("spatial_planning")[0];
+  const announcementTask = grantsFor("announcements")[0];
 
   const ruleTaskIds = [
     ...new Set(sensitiveFieldRules.map((r) => r.unlockedByTaskId).filter((id): id is string => Boolean(id))),
@@ -254,9 +343,8 @@ export default async function SettingsPage({
         <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Community settings</h1>
         <div className="mt-4">
           <Banner tone="danger">
-            Only a current holder of the &ldquo;{communityRow.adminsTag}&rdquo;-tagged Admins task
-            can view or change these — see its detail page to put yourself forward or endorse a
-            candidate.
+            Only a current holder of an Admins-granting task can view or change these — see its
+            detail page to put yourself forward or endorse a candidate.
           </Banner>
         </div>
       </main>
@@ -269,7 +357,7 @@ export default async function SettingsPage({
       <p className="mt-1 text-[13px] text-[var(--text-muted)]">
         {communityRow.adminsEverClaimed
           ? "Editable by whoever currently holds the Admins task."
-          : "No Admins task has ever been claimed in this Community yet, so any member can change these — including tagging a community_endorsed task with the Admins tag below to start gating this screen for real."}
+          : "No Admins task has ever been claimed in this Community yet, so any member can change these — including granting Admin access to a community_endorsed task below to start gating this screen for real."}
       </p>
 
       {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
@@ -356,21 +444,6 @@ export default async function SettingsPage({
                 </select>
               </label>
 
-              <TextField
-                label="Admins tag"
-                name="adminsTag"
-                defaultValue={communityRow.adminsTag}
-                required
-                hint='A community_endorsed task carrying this tag is "the" Admins task — whoever currently holds one gates this screen.'
-              />
-              <TextField
-                label="Coordination tag"
-                name="coordinationTag"
-                defaultValue={communityRow.coordinationTag}
-                required
-                hint="Whoever currently holds a task carrying this tag does that task's branch's coordination — waiving requirements, seeing escalations and talk-to-coordinator pings for that branch."
-              />
-
               <FieldSet legend="Call defaults (a Branch's own default overrides these — see Branches tab)">
                 <CheckField label="Open agenda" name="defaultCallHasAgenda" defaultChecked={communityRow.defaultCallHasAgenda} />
                 <CheckField label="Expected summary" name="defaultCallNeedsSummary" defaultChecked={communityRow.defaultCallNeedsSummary} />
@@ -381,22 +454,41 @@ export default async function SettingsPage({
                 Save
               </button>
             </form>
+
+            <MultiGrantField
+              label="Admin"
+              moduleKey="admin"
+              tab="general"
+              grants={grantsFor("admin")}
+              hint="Whoever currently holds any task granted here gates this whole settings screen — see its own candidacy/endorsement flow on the task itself."
+            />
+            <MultiGrantField
+              label="Branch coordination"
+              moduleKey="branch_coordination"
+              tab="general"
+              grants={grantsFor("branch_coordination")}
+              hint="Whoever currently holds a task granted here does that task's branch's coordination — waiving requirements, seeing escalations and talk-to-coordinator pings for that branch."
+            />
+            <MultiGrantField
+              label="Support (View-as)"
+              moduleKey="support"
+              tab="general"
+              grants={grantsFor("support")}
+              hint="Whoever currently holds a task granted here can view the platform exactly as another member would, read-only — see docs/spec.md's View-as (support)."
+            />
           </div>
         )}
 
         {activeTab === "coordination" && (
-          <form action={updateCoordinationSettingsAction} className="flex flex-col gap-4">
-            <TextField
+          <div className="flex flex-col gap-5">
+            <SingleGrantField
               label="Conflict team task ID (leave blank to keep Conflict management off)"
-              name="conflictTeamTaskId"
-              defaultValue={communityRow.conflictTeamTaskId ?? ""}
-              placeholder="paste the task's ID from its /tasks/… URL"
-              hint={
-                conflictTeamTask
-                  ? `Currently: "${conflictTeamTask.title}" — whoever holds it is the conflict team.`
-                  : "A critical, multi-slot coordination task like any other — whoever holds it becomes the conflict team."
-              }
+              moduleKey="conflict_team"
+              tab="coordination"
+              currentGrant={conflictTeamTask}
+              offHint="A critical, multi-slot coordination task like any other — whoever holds it becomes the conflict team."
             />
+          <form action={updateCoordinationSettingsAction} className="flex flex-col gap-4">
             <div className="w-32">
               <TextField label="Acknowledgment window (hours)" name="conflictAckWindowHours" type="number" defaultValue={communityRow.conflictAckWindowHours} />
             </div>
@@ -431,9 +523,11 @@ export default async function SettingsPage({
               Save
             </button>
           </form>
+          </div>
         )}
 
         {activeTab === "modules" && (
+          <div className="flex flex-col gap-5">
           <form action={updateModulesSettingsAction} className="flex flex-col gap-4">
             <FieldSet legend="Modules">
               {MODULE_DEFINITIONS.map((m) => (
@@ -454,80 +548,54 @@ export default async function SettingsPage({
                 </select>
                 <span className="text-[12px] text-[var(--text-muted)]">Define the form itself under the Forms tab, then pick it here.</span>
               </label>
-              <TextField
-                label="Review task ID"
-                name="feedbackReviewTaskId"
-                defaultValue={communityRow.feedbackReviewTaskId ?? ""}
-                placeholder="paste the task's ID from its /tasks/… URL"
-                hint={
-                  feedbackReviewTask
-                    ? `Currently: "${feedbackReviewTask.title}" — whoever holds it sees responses.`
-                    : "Whoever holds this task sees feedback responses on /feedback."
-                }
-              />
-            </FieldSet>
-
-            <FieldSet legend="Event scheduling">
-              <TextField
-                label="Scheduling owner task ID (leave blank to keep Event scheduling review/publish off)"
-                name="eventSchedulingOwnerTaskId"
-                defaultValue={communityRow.eventSchedulingOwnerTaskId ?? ""}
-                placeholder="paste the task's ID from its /tasks/… URL"
-                hint={
-                  eventSchedulingOwnerTask
-                    ? `Currently: "${eventSchedulingOwnerTask.title}" — whoever holds it reviews proposals and publishes the schedule.`
-                    : "Members can still submit proposals without this set, but nobody can review, confirm, or publish until it is."
-                }
-              />
-            </FieldSet>
-
-            <FieldSet legend="Spatial planning">
-              <TextField
-                label="Spatial-planning task ID"
-                name="spatialPlanningTaskId"
-                defaultValue={communityRow.spatialPlanningTaskId ?? ""}
-                placeholder="paste the task's ID from its /tasks/… URL"
-                hint={
-                  spatialPlanningTask
-                    ? `Currently: "${spatialPlanningTask.title}" — whoever holds it can draw/edit Zones and review pending Placement changes.`
-                    : "Nobody can draw or edit Zones until this is set — see /spatial-planning."
-                }
-              />
-            </FieldSet>
-
-            <FieldSet legend="Outbound messages">
-              <TextField
-                label="Announcement task ID (leave blank to keep community-wide announcements off)"
-                name="announcementTaskId"
-                defaultValue={communityRow.announcementTaskId ?? ""}
-                placeholder="paste the task's ID from its /tasks/… URL"
-                hint={
-                  announcementTask
-                    ? `Currently: "${announcementTask.title}" — whoever holds it can send a community-wide announcement on /messages.`
-                    : "Targeted messages (branch/task-holders/arrival-window) work without this — it only gates community-wide announcements."
-                }
-              />
             </FieldSet>
 
             <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Save
             </button>
           </form>
+
+          <SingleGrantField
+            label="Feedback review task ID"
+            moduleKey="feedback_review"
+            tab="modules"
+            currentGrant={feedbackReviewTask}
+            offHint="Whoever holds this task sees feedback responses on /feedback."
+          />
+          <SingleGrantField
+            label="Event scheduling owner task ID (leave blank to keep Event scheduling review/publish off)"
+            moduleKey="event_scheduling_owner"
+            tab="modules"
+            currentGrant={eventSchedulingOwnerTask}
+            offHint="Members can still submit proposals without this set, but nobody can review, confirm, or publish until it is."
+          />
+          <SingleGrantField
+            label="Spatial-planning task ID"
+            moduleKey="spatial_planning"
+            tab="modules"
+            currentGrant={spatialPlanningTask}
+            offHint="Nobody can draw or edit Zones until this is set — see /spatial-planning."
+          />
+          <SingleGrantField
+            label="Announcement task ID (leave blank to keep community-wide announcements off)"
+            moduleKey="announcements"
+            tab="modules"
+            currentGrant={announcementTask}
+            offHint="Targeted messages (branch/task-holders/arrival-window) work without this — it only gates community-wide announcements."
+          />
+          </div>
         )}
 
         {activeTab === "recruitment" && (
+          <div className="flex flex-col gap-5">
+          <SingleGrantField
+            label="Recruitment task ID"
+            moduleKey="recruitment"
+            tab="recruitment"
+            currentGrant={recruitmentTask}
+            offHint="Invite links and inquiries still work without this set, but nobody sees the inquiry inbox until it is."
+          />
           <form action={updateRecruitmentSettingsAction} className="flex flex-col gap-4">
-            <TextField
-              label="Recruitment task ID"
-              name="recruitmentTaskId"
-              defaultValue={communityRow.recruitmentTaskId ?? ""}
-              placeholder="paste the task's ID from its /tasks/… URL"
-              hint={
-                recruitmentTask
-                  ? `Currently: "${recruitmentTask.title}" — whoever holds it sees the inquiry inbox and, once the module is on, the rest of Recruitment's holder-facing surface.`
-                  : "Invite links and inquiries still work without this set, but nobody sees the inquiry inbox until it is."
-              }
-            />
             <label className="flex flex-col gap-1">
               <span className={LABEL}>Application form</span>
               <select name="recruitmentApplicationFormId" defaultValue={communityRow.recruitmentApplicationFormId ?? ""} className={INPUT}>
@@ -582,6 +650,7 @@ export default async function SettingsPage({
               Save
             </button>
           </form>
+          </div>
         )}
 
         {activeTab === "branches" && (

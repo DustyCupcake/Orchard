@@ -13,7 +13,7 @@ import { createBudgetCycle } from "@/lib/budget";
 import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
 import { updateCommunity } from "@/lib/settings";
 import { getCalendarView } from "@/lib/calendar";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
@@ -199,7 +199,7 @@ describe("getCalendarView", () => {
       })
       .returning();
     await claimTask(alice, ownerTask.id);
-    await updateCommunity(alice, { eventSchedulingOwnerTaskId: ownerTask.id });
+    await grantPermission(alice.communityId, "event_scheduling_owner", ownerTask.id);
 
     const confirmed = await createEventProposal(bob, {
       host: "Bob",

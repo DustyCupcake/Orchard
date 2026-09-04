@@ -29,37 +29,22 @@ export const community = pgTable("community", {
   ),
   phasesEnabled: boolean("phases_enabled").notNull().default(false),
   onsiteModeEnabled: boolean("onsite_mode_enabled").notNull().default(false),
-  // Plain uuid, no `.references()` call — pointing this at Task would
-  // create a Community ↔ Task circular import (task.ts already imports
-  // community.ts). Validated at the application layer instead (task
-  // exists, same community) — see src/lib/conflict.ts, and the same
-  // non-FK approach Requirement.value's completed_task reference
-  // already uses for the identical problem. Null = the conflict-
-  // management module is off for this Community; no separate flag.
-  conflictTeamTaskId: uuid("conflict_team_task_id"),
   // How long the conflict team has to acknowledge a new report before
   // it's shown as overdue — see docs/spec.md's Conflict management
   // Flow ("24h in the reference case, community-configurable").
   conflictAckWindowHours: integer("conflict_ack_window_hours").notNull().default(24),
   //
-  // The Admins task isn't a dedicated Community → Task column for the
-  // same circular-import reason — it's identified the same way Phase 15
-  // plans to identify a branch's coordination task(s): whichever task(s)
-  // carry this tag and are `community_endorsed` (see
-  // src/lib/settings/admins.ts). adminsEverClaimed latches true the
-  // first time any such task is actually claimed and never resets, even
-  // across a later gap with no current holder — that's what keeps
-  // /settings gated shut rather than quietly reopening to everyone
-  // whenever Admins happens to be between holders.
-  adminsTag: text("admins_tag").notNull().default("admin"),
+  // The Admins task isn't a dedicated Community → Task column, same as
+  // branch coordination below — see `PermissionGrant`
+  // (src/db/schema/permission-grant.ts, docs/development-plan.md's
+  // Phase 63), which replaced both this and every other single-task/
+  // tag-based access gate with one real table. adminsEverClaimed
+  // latches true the first time any admin-module PermissionGrant's task
+  // is actually claimed and never resets, even across a later gap with
+  // no current holder — that's what keeps /settings gated shut rather
+  // than quietly reopening to everyone whenever Admins happens to be
+  // between holders.
   adminsEverClaimed: boolean("admins_ever_claimed").notNull().default(false),
-  // "Whoever does branch coordination for branch X" = the current
-  // TaskAssignment holders, unioned across every task where
-  // branch_id = X and tags contains this tag — see
-  // docs/development-plan.md's Phase 15 ("Who 'does branch
-  // coordination' (resolved)") and src/lib/coordination.ts. Same
-  // no-dedicated-relationship reasoning as adminsTag just above.
-  coordinationTag: text("coordination_tag").notNull().default("coordination"),
   inputRoundIntervalDays: integer("input_round_interval_days").notNull().default(7),
   // The next scheduled Input-round cutoff — an explicit, scheduler-
   // managed clock rather than derived from Community/round history, so
@@ -83,31 +68,12 @@ export const community = pgTable("community", {
   // near-identical column for that.
   stalenessSoftDays: integer("staleness_soft_days").notNull().default(7),
   stalenessHardDays: integer("staleness_hard_days").notNull().default(14),
-  // Plain uuid, no `.references()` — same non-FK pattern
-  // conflictTeamTaskId already uses above, for the identical circular-
-  // import reason (form.ts needs to import community.ts for its own
-  // communityId column, so community.ts importing form.ts back would
-  // cycle). Validated at the application layer instead — see
-  // src/lib/forms.ts. Null = no standing post-cycle feedback form
-  // configured yet.
+  // Plain uuid, no `.references()` — form.ts needs to import
+  // community.ts for its own communityId column, so community.ts
+  // importing form.ts back would cycle. Validated at the application
+  // layer instead — see src/lib/forms.ts. Null = no standing
+  // post-cycle feedback form configured yet.
   postCycleFeedbackFormId: uuid("post_cycle_feedback_form_id"),
-  // Whichever task reviews feedback responses — same "the task is the
-  // authority" pattern conflictTeamTaskId established, same non-FK
-  // reasoning (task.ts already imports community.ts).
-  feedbackReviewTaskId: uuid("feedback_review_task_id"),
-  // Whichever task reviews Event scheduling proposals — same "the task
-  // is the authority" pattern and same non-FK reasoning as
-  // feedbackReviewTaskId/conflictTeamTaskId above. Null = no owner
-  // designated yet (proposals can still be submitted, but nobody can
-  // review/confirm/publish until this is set).
-  eventSchedulingOwnerTaskId: uuid("event_scheduling_owner_task_id"),
-  // "Whoever currently holds it is 'a recruitment-facing task' holder
-  // throughout this whole batch (Phases 32-35), not a dedicated role" —
-  // same "the task is the authority" pattern and same non-FK reasoning
-  // as feedbackReviewTaskId/eventSchedulingOwnerTaskId above. Null = no
-  // holder designated yet — invite links and inquiries still work, but
-  // nobody sees the inquiry inbox until this is set.
-  recruitmentTaskId: uuid("recruitment_task_id"),
   // Same non-FK pointer pattern as postCycleFeedbackFormId — form.ts
   // needs to import community.ts, so community.ts importing form.ts
   // back would cycle. Deliberately *not* spec's own `form.purpose`
@@ -117,10 +83,11 @@ export const community = pgTable("community", {
   recruitmentApplicationFormId: uuid("recruitment_application_form_id"),
   // "However many evaluators the Community assigns (two, in the
   // reference case)" — see docs/spec.md's Recruitment. "The
-  // evaluators" are resolved as whoever currently holds
-  // recruitmentTaskId (src/lib/recruitment/access.ts), not a separate
-  // assignment mechanism — this is just how many distinct evaluators
-  // have to file before a decision is considered reached.
+  // evaluators" are resolved as whoever currently holds a task granting
+  // the `recruitment` module (src/lib/recruitment/access.ts,
+  // `PermissionGrant`), not a separate assignment mechanism — this is
+  // just how many distinct evaluators have to file before a decision is
+  // considered reached.
   recruitmentEvaluatorCount: integer("recruitment_evaluator_count").notNull().default(2),
   // The recommendation→outcome mapping, community-configured per spec
   // ("Peach Please's specific matrix becomes one configuration of
@@ -156,19 +123,6 @@ export const community = pgTable("community", {
   // surfaced to whoever's about to send an actual decline, never sent
   // automatically. A single field for v1, per spec's own framing.
   recruitmentRejectionTemplate: text("recruitment_rejection_template"),
-  // Whichever task reviews pending Placement changes and directly edits
-  // Zones/unowned Placements — same "the task is the authority" pattern
-  // and same non-FK reasoning as eventSchedulingOwnerTaskId/
-  // recruitmentTaskId above (task.ts already imports community.ts).
-  // Resolved as a single pointer, not a tag like adminsTag/
-  // coordinationTag: spec.md's "or any task tagged for it, if there are
-  // several co-holders" describes a multi-slot task's holders sharing
-  // the load (the same framing the Conflict team gets), not a request
-  // for a second tag mechanism — this follows the dominant "one task
-  // pointer" pattern already established four times over rather than
-  // inventing a new one. Null = nobody can edit Zones or review pending
-  // Placement changes yet — see src/lib/spatial-planning.
-  spatialPlanningTaskId: uuid("spatial_planning_task_id"),
   // "Reply within [N days]" — see docs/spec.md's Task assignment
   // notification and docs/development-plan.md's Phase 51. Same
   // community-configurable-threshold pattern as conflictAckWindowHours/
@@ -188,23 +142,6 @@ export const community = pgTable("community", {
   // quote a reference value directly), so this is a resolved default
   // rather than a literal spec quote.
   callSummaryReadWindowDays: integer("call_summary_read_window_days").notNull().default(3),
-  // "Sending an announcement is itself a task on the board (tagged
-  // appropriately), and whoever holds that task can send" — see
-  // docs/spec.md's Outbound communications and
-  // docs/development-plan.md's Phase 53. Same "the task is the
-  // authority" non-FK pointer pattern as eventSchedulingOwnerTaskId/
-  // recruitmentTaskId above (task.ts already imports community.ts).
-  // Null = nobody can send a community-wide announcement yet —
-  // targeted messages (branch/task_holders/arrival_window) don't need
-  // this at all, since each of those is gated by access the sender
-  // already has for other reasons.
-  announcementTaskId: uuid("announcement_task_id"),
-  // "Support is 'claimable like any other' task" - same tag-not-
-  // pointer pattern as adminsTag/coordinationTag above (Phases 13/15):
-  // current holders of anything tagged this are the Support pool, no
-  // dedicated relationship. See docs/spec.md's "View-as (support)" and
-  // docs/development-plan.md's Phase 54, src/lib/view-as.ts.
-  supportTag: text("support_tag").notNull().default("support"),
   // Per-community branding — see design_handoff_conventions/README.md's
   // "Data model changes needed". Hex strings (e.g. "#3a6cd9"), null
   // until a community sets its own; the design tokens fall back to the

@@ -24,7 +24,7 @@ import {
 } from "@/lib/recruitment";
 import type { RecruitmentDecisionRule } from "@/lib/recruitment";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
   { key: "name", label: "Name", responseType: "free_text", required: true },
@@ -73,10 +73,10 @@ async function setUpApplicationPipeline(
   const t = await insertTask(testCommunity.id, branch.id, alice.id);
   await updateCommunity(alice, {
     recruitmentApplicationFormId: form.id,
-    recruitmentTaskId: t.id,
     ...(overrides.evaluatorCount !== undefined && { recruitmentEvaluatorCount: overrides.evaluatorCount }),
     ...(overrides.decisionRules !== undefined && { recruitmentDecisionRules: overrides.decisionRules }),
   });
+  await grantPermission(testCommunity.id, "recruitment", t.id);
   const [refetchedAlice] = await db.select().from(member).where(eq(member.id, alice.id));
   await claimTask(refetchedAlice, t.id);
   return { form, task: t, alice: refetchedAlice };

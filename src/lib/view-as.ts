@@ -1,22 +1,28 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { community, member, task, taskAssignment, viewAsLog } from "@/db/schema";
+import { member, task, taskAssignment, viewAsLog } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { getCurrentSession, setViewAsOverlay } from "./session";
 import { ForbiddenError, NotFoundError } from "./errors";
+import { listGrantingTaskIds } from "./permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
 // Same "claimable like any other task, current holders are the pool"
 // pattern as isCoordinationHolder/isAdmin (Phases 15/13) — see
-// docs/spec.md's "View-as (support)". Shadows don't count, same as
+// docs/spec.md's "View-as (support)". A real `support`-module
+// PermissionGrant row now (docs/development-plan.md's Phase 63 —
+// previously a Task.tags match against Community.supportTag, which was
+// also this codebase's one confirmed real bug: an ordinary
+// categorization tag could silently grant real View-as access if it
+// collided with the configured string). Shadows don't count, same as
 // everywhere else this pattern is used.
 export async function isSupportHolder(actor: Member) {
-  const [communityRow] = await db.select().from(community).where(eq(community.id, actor.communityId));
-  if (!communityRow) return false;
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "support");
+  if (grantingTaskIds.length === 0) return false;
 
-  const holdings = await db
-    .select({ tags: task.tags })
+  const [holding] = await db
+    .select({ taskId: taskAssignment.taskId })
     .from(taskAssignment)
     .innerJoin(task, eq(taskAssignment.taskId, task.id))
     .where(
@@ -24,10 +30,11 @@ export async function isSupportHolder(actor: Member) {
         eq(taskAssignment.memberId, actor.id),
         eq(taskAssignment.isShadow, false),
         eq(task.communityId, actor.communityId),
+        inArray(taskAssignment.taskId, grantingTaskIds),
       ),
     );
 
-  return holdings.some((h) => h.tags.includes(communityRow.supportTag));
+  return Boolean(holding);
 }
 
 export async function requireSupportHolder(actor: Member) {

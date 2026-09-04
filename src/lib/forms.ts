@@ -1,9 +1,10 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { community, form, formResponse, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "./errors";
+import { listGrantingTaskIds } from "./permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -301,8 +302,8 @@ async function getCommunityRow(communityId: string) {
 }
 
 async function isFeedbackReviewHolder(actor: Member): Promise<boolean> {
-  const communityRow = await getCommunityRow(actor.communityId);
-  if (!communityRow.feedbackReviewTaskId) return false;
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "feedback_review");
+  if (grantingTaskIds.length === 0) return false;
 
   const [holding] = await db
     .select({ id: task.id })
@@ -310,7 +311,7 @@ async function isFeedbackReviewHolder(actor: Member): Promise<boolean> {
     .innerJoin(taskAssignment, eq(taskAssignment.taskId, task.id))
     .where(
       and(
-        eq(task.id, communityRow.feedbackReviewTaskId),
+        inArray(task.id, grantingTaskIds),
         eq(task.communityId, actor.communityId),
         eq(taskAssignment.memberId, actor.id),
         eq(taskAssignment.isShadow, false),

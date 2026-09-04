@@ -18,14 +18,10 @@ import {
   updateProfileQuestion,
 } from "@/lib/profile-questions";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
-}
-
-async function setCoordinationTag(communityId: string, tag = "coordination") {
-  await db.update(community).set({ coordinationTag: tag }).where(eq(community.id, communityId));
 }
 
 async function insertTask(
@@ -500,11 +496,9 @@ describe("listCapacitySignal (Coordination view)", () => {
 
   it("lists members with no answer as non-responders", async () => {
     const { alice, bob, branch: testBranch, community: testCommunity } = await createFixtures();
-    await setCoordinationTag(testCommunity.id);
-    const coordTask = await insertTask(testCommunity.id, testBranch.id, alice.id, {
-      tags: ["coordination"],
-    });
+    const coordTask = await insertTask(testCommunity.id, testBranch.id, alice.id);
     await claimTask(alice, coordTask.id);
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await setUpPhaseAndQuestion(testCommunity.id, alice);
 
     const { entries, phaseName, questionLabel } = await listCapacitySignal(alice);
@@ -516,11 +510,9 @@ describe("listCapacitySignal (Coordination view)", () => {
 
   it("shows the exact declared number when capacityVisibility is open, a flag otherwise", async () => {
     const { alice, bob, branch: testBranch, community: testCommunity } = await createFixtures();
-    await setCoordinationTag(testCommunity.id);
-    const coordTask = await insertTask(testCommunity.id, testBranch.id, alice.id, {
-      tags: ["coordination"],
-    });
+    const coordTask = await insertTask(testCommunity.id, testBranch.id, alice.id);
     await claimTask(alice, coordTask.id);
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     const { question } = await setUpPhaseAndQuestion(testCommunity.id, alice);
 
     await answerProfileQuestion(bob, question.id, {
@@ -537,11 +529,9 @@ describe("listCapacitySignal (Coordination view)", () => {
 
   it("computes over/about_right/has_room from declared hours minus current ongoing load", async () => {
     const { alice, bob, branch: testBranch, community: testCommunity } = await createFixtures();
-    await setCoordinationTag(testCommunity.id);
-    const coordTask = await insertTask(testCommunity.id, testBranch.id, alice.id, {
-      tags: ["coordination"],
-    });
+    const coordTask = await insertTask(testCommunity.id, testBranch.id, alice.id);
     await claimTask(alice, coordTask.id);
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     const { question } = await setUpPhaseAndQuestion(testCommunity.id, alice);
 
     const heavyTask = await insertTask(testCommunity.id, testBranch.id, alice.id, {
@@ -560,11 +550,9 @@ describe("listCapacitySignal (Coordination view)", () => {
 
   it("excludes a one_off task's duration bucket and a shadow claim from the load calculation", async () => {
     const { alice, bob, branch: testBranch, community: testCommunity } = await createFixtures();
-    await setCoordinationTag(testCommunity.id);
-    const coordTask = await insertTask(testCommunity.id, testBranch.id, alice.id, {
-      tags: ["coordination"],
-    });
+    const coordTask = await insertTask(testCommunity.id, testBranch.id, alice.id);
     await claimTask(alice, coordTask.id);
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     const { question } = await setUpPhaseAndQuestion(testCommunity.id, alice);
 
     const oneOff = await insertTask(testCommunity.id, testBranch.id, alice.id, {

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { branch as branchTable, community, member, task, taskAssignment } from "@/db/schema";
+import { branch as branchTable, member, task, taskAssignment } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import {
   holdsTaskCoordinationSlot,
@@ -11,7 +11,7 @@ import {
   requireCoordinationHolder,
 } from "@/lib/coordination";
 import { ForbiddenError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertTask(
   communityId: string,
@@ -44,39 +44,29 @@ describe("isCoordinationHolder", () => {
     expect(await isCoordinationHolder(alice, branch.id)).toBe(false);
   });
 
-  it("is true for a real holder of a task tagged with the community's coordinationTag", async () => {
+  it("is true for a real holder of a task granted the branch_coordination module", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const t = await insertTask(testCommunity.id, branch.id, alice.id);
+    await grantPermission(testCommunity.id, "branch_coordination", t.id);
+    await claimTask(alice, t.id);
+
+    expect(await isCoordinationHolder(alice, branch.id)).toBe(true);
+  });
+
+  it("is false for an ordinary task's own tags — granting is per-task now, not a tag match (Phase 63)", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     const t = await insertTask(testCommunity.id, branch.id, alice.id, {
       tags: ["coordination"],
     });
     await claimTask(alice, t.id);
 
-    expect(await isCoordinationHolder(alice, branch.id)).toBe(true);
-  });
-
-  it("respects a custom coordinationTag", async () => {
-    const { community: testCommunity, branch, alice } = await createFixtures();
-    await db.update(community).set({ coordinationTag: "backstop" }).where(eq(community.id, testCommunity.id));
-    const t = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"], // the old tag, no longer the configured one
-    });
-    await claimTask(alice, t.id);
     expect(await isCoordinationHolder(alice, branch.id)).toBe(false);
-
-    const t2 = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["backstop"],
-      title: "Backstop",
-    });
-    await claimTask(alice, t2.id);
-    expect(await isCoordinationHolder(alice, branch.id)).toBe(true);
   });
 
-  it("is false for a shadow of a coordination-tagged task", async () => {
+  it("is false for a shadow of a branch_coordination-granted task", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
-    const t = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
-      capacity: 2,
-    });
+    const t = await insertTask(testCommunity.id, branch.id, alice.id, { capacity: 2 });
+    await grantPermission(testCommunity.id, "branch_coordination", t.id);
     await claimTask(alice, t.id);
     await db.insert(taskAssignment).values({ taskId: t.id, memberId: bob.id, isShadow: true });
 
@@ -89,7 +79,8 @@ describe("isCoordinationHolder", () => {
       .insert(branchTable)
       .values({ communityId: testCommunity.id, name: "Wood" })
       .returning();
-    const t = await insertTask(testCommunity.id, branch.id, alice.id, { tags: ["coordination"] });
+    const t = await insertTask(testCommunity.id, branch.id, alice.id);
+    await grantPermission(testCommunity.id, "branch_coordination", t.id);
     await claimTask(alice, t.id);
 
     expect(await isCoordinationHolder(alice, otherBranch.id)).toBe(false);
@@ -129,9 +120,9 @@ describe("holdsTaskCoordinationSlot / isAuthorizedToWaive", () => {
       .returning();
 
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
 
     const target = await insertTask(testCommunity.id, branch.id, alice.id, {
@@ -165,11 +156,12 @@ describe("listCoordinationBranchIds", () => {
       .values({ communityId: testCommunity.id, name: "Wood" })
       .returning();
 
-    const t1 = await insertTask(testCommunity.id, branch.id, alice.id, { tags: ["coordination"] });
+    const t1 = await insertTask(testCommunity.id, branch.id, alice.id);
     const t2 = await insertTask(testCommunity.id, otherBranch.id, alice.id, {
-      tags: ["coordination"],
       title: "Wood coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", t1.id);
+    await grantPermission(testCommunity.id, "branch_coordination", t2.id);
     await claimTask(alice, t1.id);
     await claimTask(alice, t2.id);
 

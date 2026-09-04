@@ -16,7 +16,7 @@ import {
   updateTier,
 } from "@/lib/settings";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 describe("community settings", () => {
   beforeEach(async () => {
@@ -151,7 +151,7 @@ describe("Admins gate (requireAdmins)", () => {
     await expect(requireAdmins(bob)).resolves.toBeUndefined();
   });
 
-  it("once claimed, allows only a current holder of the tagged community_endorsed task", async () => {
+  it("once claimed, allows only a current holder of the community_endorsed task granted the admin module", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     const [adminsTask] = await db
       .insert(task)
@@ -163,11 +163,11 @@ describe("Admins gate (requireAdmins)", () => {
         effortMagnitude: { hours_per_week: 1 },
         createdBy: alice.id,
         openness: "community_endorsed",
-        tags: ["admin"],
         endorsementThreshold: 1,
         browsePeriodEnd: new Date(Date.now() + 3600000),
       })
       .returning();
+    await grantPermission(testCommunity.id, "admin", adminsTask.id);
     await db.insert(taskAssignment).values({ taskId: adminsTask.id, memberId: alice.id });
     await db
       .update(community)
@@ -178,7 +178,7 @@ describe("Admins gate (requireAdmins)", () => {
     await expect(requireAdmins(bob)).rejects.toThrow(ForbiddenError);
   });
 
-  it("doesn't recognize a task tagged differently from the community's adminsTag", async () => {
+  it("is false for an ordinary task's own tags — granting is per-task now, not a tag match (Phase 63)", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     const [adminsTask] = await db
       .insert(task)
@@ -190,7 +190,7 @@ describe("Admins gate (requireAdmins)", () => {
         effortMagnitude: { hours_per_week: 1 },
         createdBy: alice.id,
         openness: "community_endorsed",
-        tags: ["something_else"],
+        tags: ["admin"],
         endorsementThreshold: 1,
         browsePeriodEnd: new Date(Date.now() + 3600000),
       })
@@ -212,11 +212,5 @@ describe("Admins gate (requireAdmins)", () => {
       .where(eq(community.id, alice.communityId));
 
     await expect(requireAdmins(alice)).rejects.toThrow(ForbiddenError);
-  });
-
-  it("lets an Admins holder update the adminsTag itself through updateCommunity", async () => {
-    const { alice } = await createFixtures();
-    const updated = await updateCommunity(alice, { adminsTag: "leadership" });
-    expect(updated.adminsTag).toBe("leadership");
   });
 });

@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { task } from "@/db/schema";
 import { claimTask, createSignal, listSignals, resolveSignal } from "@/lib/tasks";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertTask(
   communityId: string,
@@ -43,9 +43,9 @@ describe("task signals", () => {
   it("is only visible to that branch's coordination holders", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
 
     const t = await insertTask(testCommunity.id, branch.id, alice.id);
@@ -60,9 +60,9 @@ describe("task signals", () => {
   it("lets a coordination holder resolve an open signal", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
 
     const t = await insertTask(testCommunity.id, branch.id, alice.id);

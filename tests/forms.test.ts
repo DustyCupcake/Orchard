@@ -18,7 +18,8 @@ import {
   updateForm,
 } from "@/lib/forms";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { setPermissionGrant } from "@/lib/permissions";
 
 async function insertReviewTask(communityId: string, branchId: string, createdBy: string) {
   const [row] = await db
@@ -255,10 +256,8 @@ describe("post-cycle feedback consumer", () => {
     const reviewTask = await insertReviewTask(alice.communityId, testBranch.id, alice.id);
     await claimTask(alice, reviewTask.id);
 
-    await updateCommunity(alice, {
-      postCycleFeedbackFormId: surveyForm.id,
-      feedbackReviewTaskId: reviewTask.id,
-    });
+    await updateCommunity(alice, { postCycleFeedbackFormId: surveyForm.id });
+    await grantPermission(alice.communityId, "feedback_review", reviewTask.id);
 
     const refetchedAlice = (await db.select().from(member).where(eq(member.id, alice.id)))[0];
 
@@ -290,7 +289,7 @@ describe("post-cycle feedback consumer", () => {
       updateCommunity(alice, { postCycleFeedbackFormId: strangerForm.id }),
     ).rejects.toThrow(NotFoundError);
     await expect(
-      updateCommunity(alice, { feedbackReviewTaskId: strangerTask.id }),
+      setPermissionGrant(alice.communityId, "feedback_review", strangerTask.id),
     ).rejects.toThrow(NotFoundError);
   });
 });

@@ -309,6 +309,13 @@
       "when": 1788471002911,
       "tag": "0043_fixed_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1788532926908,
+      "tag": "0044_phase_63_permission_grant",
+      "breakpoints": true
     }
   ]
 }

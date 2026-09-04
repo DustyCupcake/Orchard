@@ -1,8 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { community, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ForbiddenError, NotFoundError } from "../errors";
+import { listGrantingTaskIds } from "../permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -19,8 +20,8 @@ export async function getCommunityRow(communityId: string) {
 // same access-follows-the-task pattern Event scheduling's
 // isEventSchedulingOwner / Budget's isBudgetOwner already establish.
 export async function isRecruitmentTaskHolder(actor: Member) {
-  const communityRow = await getCommunityRow(actor.communityId);
-  if (!communityRow.recruitmentTaskId) return false;
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "recruitment");
+  if (grantingTaskIds.length === 0) return false;
 
   const [holding] = await db
     .select({ id: task.id })
@@ -28,7 +29,7 @@ export async function isRecruitmentTaskHolder(actor: Member) {
     .innerJoin(taskAssignment, eq(taskAssignment.taskId, task.id))
     .where(
       and(
-        eq(task.id, communityRow.recruitmentTaskId),
+        inArray(task.id, grantingTaskIds),
         eq(taskAssignment.memberId, actor.id),
         eq(taskAssignment.isShadow, false),
       ),

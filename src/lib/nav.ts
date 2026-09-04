@@ -1,9 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { getCommunity } from "./settings/community";
 import { isModuleEnabled } from "./modules";
+import { listGrantingTaskIds, type PermissionModuleKey } from "./permissions";
 import { isCoordinationHolder } from "./coordination";
 import { isRecruitmentTaskHolder } from "./recruitment";
 import { isEventSchedulingOwner } from "./event-scheduling/conflicts";
@@ -50,20 +51,25 @@ export const HIGHLIGHTABLE_MODULES: { key: VisibleModuleKey; label: string }[] =
   { key: "feedback", label: "Feedback" },
 ];
 
-// Whether the current viewer currently holds a given Community-level
-// task pointer (conflictTeamTaskId, feedbackReviewTaskId, ...) — the
+// Whether the current viewer currently holds a task granting the given
+// PermissionGrant module (conflict_team, feedback_review, ...) — the
 // same "access follows the task" join every module's own holder-check
 // already does (see e.g. isRecruitmentTaskHolder), duplicated here
 // rather than exported from each module, since this is purely a nav-
 // decoration signal (what to auto-pin), not an authorization gate.
-async function holdsTask(actor: Member, taskId: string | null) {
-  if (!taskId) return false;
+async function holdsGrantedTask(actor: Member, moduleKey: PermissionModuleKey) {
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, moduleKey);
+  if (grantingTaskIds.length === 0) return false;
   const [holding] = await db
     .select({ id: task.id })
     .from(task)
     .innerJoin(taskAssignment, eq(taskAssignment.taskId, task.id))
     .where(
-      and(eq(task.id, taskId), eq(taskAssignment.memberId, actor.id), eq(taskAssignment.isShadow, false)),
+      and(
+        inArray(task.id, grantingTaskIds),
+        eq(taskAssignment.memberId, actor.id),
+        eq(taskAssignment.isShadow, false),
+      ),
     );
   return Boolean(holding);
 }
@@ -129,6 +135,7 @@ export type NavContext = {
 // state instead of drifting into a second, nav-only notion of access.
 export async function getNavContext(actor: Member): Promise<NavContext> {
   const community = await getCommunity(actor);
+  const conflictTeamGrantingTaskIds = await listGrantingTaskIds(community.id, "conflict_team");
 
   const visibleModules = {
     eventScheduling: isModuleEnabled(community, "event_scheduling"),
@@ -137,7 +144,7 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     spatialPlanning: isModuleEnabled(community, "spatial_planning"),
     sensitiveData: isModuleEnabled(community, "sensitive_data"),
     budget: isModuleEnabled(community, "budget"),
-    conflictReports: community.conflictTeamTaskId !== null,
+    conflictReports: conflictTeamGrantingTaskIds.length > 0,
     feedback: community.postCycleFeedbackFormId !== null,
   };
 
@@ -153,8 +160,8 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     feed,
   ] = await Promise.all([
     isCoordinationHolder(actor, null),
-    holdsTask(actor, community.conflictTeamTaskId),
-    holdsTask(actor, community.feedbackReviewTaskId),
+    holdsGrantedTask(actor, "conflict_team"),
+    holdsGrantedTask(actor, "feedback_review"),
     visibleModules.eventScheduling ? isEventSchedulingOwner(actor) : Promise.resolve(false),
     visibleModules.recruitment ? isRecruitmentTaskHolder(actor) : Promise.resolve(false),
     visibleModules.spatialPlanning ? isSpatialPlanningHolder(actor, community) : Promise.resolve(false),

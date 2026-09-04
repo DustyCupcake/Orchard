@@ -1,10 +1,20 @@
 "use server";
 
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
+import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { db } from "@/db";
+import { task } from "@/db/schema";
 import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
+import {
+  addPermissionGrant,
+  PERMISSION_MODULE_KEYS,
+  removePermissionGrant,
+  setPermissionGrant,
+} from "@/lib/permissions";
+import { NotFoundError } from "@/lib/errors";
 import {
   commitBulkMemberImport,
   confirmPendingBranch,
@@ -133,8 +143,6 @@ export async function updateGeneralSettingsAction(formData: FormData) {
       cyclesEnabled: formData.get("cyclesEnabled") === "on",
       phasesEnabled: formData.get("phasesEnabled") === "on",
       cycleInitiationTierId: String(formData.get("cycleInitiationTierId") ?? "") || null,
-      adminsTag: String(formData.get("adminsTag") ?? "").trim() || undefined,
-      coordinationTag: String(formData.get("coordinationTag") ?? "").trim() || undefined,
       defaultCallHasAgenda: formData.get("defaultCallHasAgenda") === "on",
       defaultCallNeedsSummary: formData.get("defaultCallNeedsSummary") === "on",
       defaultCallRequireRead: formData.get("defaultCallRequireRead") === "on",
@@ -160,7 +168,6 @@ export async function updateCoordinationSettingsAction(formData: FormData) {
   try {
     await requireAdmins(actor);
     const input = updateCommunityInput.parse({
-      conflictTeamTaskId: String(formData.get("conflictTeamTaskId") ?? "").trim() || null,
       conflictAckWindowHours: Number(formData.get("conflictAckWindowHours") ?? NaN) || undefined,
       taskNominationResponseDays:
         Number(formData.get("taskNominationResponseDays") ?? NaN) || undefined,
@@ -187,10 +194,6 @@ export async function updateModulesSettingsAction(formData: FormData) {
     const input = updateCommunityInput.parse({
       modulesEnabled: formData.getAll("modulesEnabled").map(String),
       postCycleFeedbackFormId: String(formData.get("postCycleFeedbackFormId") ?? "").trim() || null,
-      feedbackReviewTaskId: String(formData.get("feedbackReviewTaskId") ?? "").trim() || null,
-      eventSchedulingOwnerTaskId: String(formData.get("eventSchedulingOwnerTaskId") ?? "").trim() || null,
-      spatialPlanningTaskId: String(formData.get("spatialPlanningTaskId") ?? "").trim() || null,
-      announcementTaskId: String(formData.get("announcementTaskId") ?? "").trim() || null,
     });
     await updateCommunity(actor, input);
   } catch (err) {
@@ -206,7 +209,6 @@ export async function updateRecruitmentSettingsAction(formData: FormData) {
   try {
     await requireAdmins(actor);
     const input = updateCommunityInput.parse({
-      recruitmentTaskId: String(formData.get("recruitmentTaskId") ?? "").trim() || null,
       recruitmentApplicationFormId: String(formData.get("recruitmentApplicationFormId") ?? "").trim() || null,
       recruitmentEvaluatorCount: Number(formData.get("recruitmentEvaluatorCount") ?? NaN) || undefined,
       recruitmentDecisionRules: parseDecisionRules(String(formData.get("recruitmentDecisionRulesRaw") ?? "")),
@@ -218,6 +220,93 @@ export async function updateRecruitmentSettingsAction(formData: FormData) {
     await updateCommunity(actor, input);
   } catch (err) {
     redirectWithError(err, "recruitment");
+  }
+
+  revalidatePath("/settings");
+}
+
+const permissionGrantFields = z.object({
+  moduleKey: z.enum(PERMISSION_MODULE_KEYS),
+  taskId: z.string().uuid(),
+});
+
+async function requireTaskInActorCommunity(taskId: string, communityId: string) {
+  const [row] = await db
+    .select({ id: task.id })
+    .from(task)
+    .where(and(eq(task.id, taskId), eq(task.communityId, communityId)));
+  if (!row) {
+    throw new NotFoundError("Task not found in your community");
+  }
+}
+
+// Single-cardinality modules (conflict_team, feedback_review,
+// event_scheduling_owner, recruitment, spatial_planning, announcements)
+// — sets (or, with an empty taskId, clears) the one task granting this
+// module, replacing whatever previously granted it. Every one of these
+// six previously had its own bespoke Community column/action; this one
+// generic action now backs every one of their settings-tab forms.
+export async function setPermissionGrantAction(formData: FormData) {
+  const actor = await requireMember();
+  const moduleKeyRaw = String(formData.get("moduleKey") ?? "");
+  const taskIdRaw = String(formData.get("taskId") ?? "").trim();
+  const tab = String(formData.get("tab") ?? "") || undefined;
+
+  try {
+    await requireAdmins(actor);
+    const moduleKey = permissionGrantFields.shape.moduleKey.parse(moduleKeyRaw);
+    if (taskIdRaw) {
+      const { taskId } = permissionGrantFields.parse({ moduleKey, taskId: taskIdRaw });
+      await requireTaskInActorCommunity(taskId, actor.communityId);
+      await setPermissionGrant(actor.communityId, moduleKey, taskId);
+    } else {
+      await setPermissionGrant(actor.communityId, moduleKey, null);
+    }
+  } catch (err) {
+    redirectWithError(err, tab);
+  }
+
+  revalidatePath("/settings");
+}
+
+// Multi-cardinality modules (admin, branch_coordination, support) —
+// adds one more granting task without touching any others already
+// granting the same module. Replaces the old free-text "type a tag"
+// fields (adminsTag/coordinationTag) and supportTag's previously-
+// nonexistent settings UI alike — see docs/development-plan.md's Phase
+// 63 on why a tag string could never safely stay the mechanism.
+export async function addPermissionGrantAction(formData: FormData) {
+  const actor = await requireMember();
+  const tab = String(formData.get("tab") ?? "") || undefined;
+
+  try {
+    await requireAdmins(actor);
+    const { moduleKey, taskId } = permissionGrantFields.parse({
+      moduleKey: String(formData.get("moduleKey") ?? ""),
+      taskId: String(formData.get("taskId") ?? "").trim(),
+    });
+    await requireTaskInActorCommunity(taskId, actor.communityId);
+    await addPermissionGrant(actor.communityId, moduleKey, taskId);
+  } catch (err) {
+    redirectWithError(err, tab);
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function removePermissionGrantAction(formData: FormData) {
+  const actor = await requireMember();
+  const tab = String(formData.get("tab") ?? "") || undefined;
+
+  try {
+    await requireAdmins(actor);
+    const { moduleKey, taskId } = permissionGrantFields.parse({
+      moduleKey: String(formData.get("moduleKey") ?? ""),
+      taskId: String(formData.get("taskId") ?? ""),
+    });
+    await removePermissionGrant(actor.communityId, moduleKey, taskId);
+  } catch (err) {
+    redirectWithError(err, tab);
   }
 
   revalidatePath("/settings");

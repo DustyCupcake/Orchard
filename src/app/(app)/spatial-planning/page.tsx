@@ -5,6 +5,7 @@ import { member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
+import { listGrantingTaskIds } from "@/lib/permissions";
 import { getCurrentCycle } from "@/lib/profile-questions";
 import {
   getMySpacePreference,
@@ -57,6 +58,7 @@ export default async function SpatialPlanningPage({
   const { error } = await searchParams;
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "spatial_planning");
+  const spatialPlanningGrantingTaskIds = await listGrantingTaskIds(communityRow.id, "spatial_planning");
 
   const currentCycle = moduleOn ? await getCurrentCycle(viewing.communityId) : null;
   const cycleId = currentCycle?.id ?? null;
@@ -111,7 +113,7 @@ export default async function SpatialPlanningPage({
         </p>
       )}
 
-      {moduleOn && !communityRow.spatialPlanningTaskId && (
+      {moduleOn && spatialPlanningGrantingTaskIds.length === 0 && (
         <p style={{ color: "#666" }}>
           No Spatial-planning task designated yet — anyone can view once a Plot exists, but nobody
           can draw or edit until a current Admins holder sets one under Settings.

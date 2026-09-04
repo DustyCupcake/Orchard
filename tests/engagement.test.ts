@@ -20,7 +20,7 @@ import {
   logCallSummaryUnreadEngagementEvents,
 } from "@/lib/engagement";
 import { updateCommunity } from "@/lib/settings";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 const APP_URL = "http://localhost:3000";
 
@@ -52,12 +52,12 @@ async function makeCoordinationHolder(fixtures: Awaited<ReturnType<typeof create
       communityId: fixtures.community.id,
       branchId: fixtures.branch.id,
       title: "Coordination",
-      tags: ["coordination"],
       effort: "owns_a_thing",
       effortMagnitude: { hours_per_week: 2 },
       createdBy: actor.id,
     })
     .returning();
+  await grantPermission(fixtures.community.id, "branch_coordination", coordTask.id);
   await claimTask(actor, coordTask.id);
 }
 

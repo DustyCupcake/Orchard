@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { branch as branchTable, task } from "@/db/schema";
 import { claimTask, listEscalatedTasks } from "@/lib/tasks";
 import { ForbiddenError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertTask(
   communityId: string,
@@ -44,9 +44,9 @@ describe("listEscalatedTasks", () => {
       .returning();
 
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
 
     const escalatedElsewhere = await insertTask(testCommunity.id, otherBranch.id, alice.id, {
@@ -71,9 +71,9 @@ describe("listEscalatedTasks", () => {
   it("excludes escalated tasks from another community", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
 
     const { community: otherCommunity, branch: otherBranch, alice: otherAlice } =

@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { task } from "@/db/schema";
 import { claimTask, listMyPings, listPings, pingCoordinator, resolvePing } from "@/lib/tasks";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertTask(
   communityId: string,
@@ -51,9 +51,9 @@ describe("pingCoordinator", () => {
   it("is visible to that branch's coordination holders, not just anyone", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
 
     const t = await insertTask(testCommunity.id, branch.id, bob.id);
@@ -79,9 +79,9 @@ describe("pingCoordinator", () => {
   it("lets a coordination holder resolve an open ping", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
 
     const t = await insertTask(testCommunity.id, branch.id, alice.id);

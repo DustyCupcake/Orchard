@@ -142,8 +142,9 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
   // relevant to see, the same "check the gate here, not inside a
   // try/catch" posture recruitmentNeedsAction/placementPendingReviews
   // already use above — Conflict management needs no module-enabled
-  // check at all, since it's gated purely by conflictTeamTaskId being
-  // set (see src/lib/conflict.ts), not a modulesEnabled entry.
+  // check at all, since it's gated purely by whether a real
+  // `conflict_team` PermissionGrant exists (see src/lib/conflict.ts),
+  // not a modulesEnabled entry.
   const budgetNeedsAction = isModuleEnabled(communityRow, "budget") ? await listBudgetNeedsAction(actor) : [];
   const eventSchedulingNeedsAction = isModuleEnabled(communityRow, "event_scheduling")
     ? await listEventSchedulingNeedsAction(actor)

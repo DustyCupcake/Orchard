@@ -13,7 +13,7 @@ import {
   sendOutboundMessage,
 } from "@/lib/messages";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 type Fixtures = Awaited<ReturnType<typeof createFixtures>>;
 
@@ -38,13 +38,14 @@ async function insertTask(
   return row;
 }
 
-// A "coordination"-tagged task, claimed by `actor` — the same shape
-// isCoordinationHolder checks against everywhere else in this codebase.
+// A task granted the branch_coordination module, claimed by `actor` —
+// the same shape isCoordinationHolder checks against everywhere else
+// in this codebase.
 async function makeCoordinationHolder(fixtures: Fixtures, actor: Fixtures["alice"]) {
   const coordTask = await insertTask(fixtures.community.id, fixtures.branch.id, actor.id, {
     title: "Coordination",
-    tags: ["coordination"],
   });
+  await grantPermission(fixtures.community.id, "branch_coordination", coordTask.id);
   await claimTask(actor, coordTask.id);
   return coordTask;
 }
@@ -96,7 +97,7 @@ describe("isAnnouncementTaskHolder / requireAnnouncementTaskHolder", () => {
     const announceTask = await insertTask(fixtures.community.id, fixtures.branch.id, fixtures.alice.id, {
       title: "Announcements",
     });
-    await updateCommunity(fixtures.alice, { announcementTaskId: announceTask.id });
+    await grantPermission(fixtures.community.id, "announcements", announceTask.id);
 
     expect(await isAnnouncementTaskHolder(fixtures.bob)).toBe(false);
     await claimTask(fixtures.bob, announceTask.id);
@@ -309,7 +310,7 @@ describe("sendOutboundMessage: community scope (announcements)", () => {
     const announceTask = await insertTask(fixtures.community.id, fixtures.branch.id, fixtures.alice.id, {
       title: "Announcements",
     });
-    await updateCommunity(fixtures.alice, { announcementTaskId: announceTask.id });
+    await grantPermission(fixtures.community.id, "announcements", announceTask.id);
     await claimTask(fixtures.alice, announceTask.id);
     const [carol] = await db.insert(member).values({ communityId: fixtures.community.id, name: "Carol" }).returning();
 

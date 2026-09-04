@@ -18,7 +18,7 @@ import {
 import { issueActionToken } from "@/lib/notifications";
 import { updateCommunity } from "@/lib/settings";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 const APP_URL = "http://localhost:3000";
 
@@ -45,9 +45,9 @@ async function insertTask(
 
 async function makeCoordinationHolder(fixtures: Awaited<ReturnType<typeof createFixtures>>, actor: typeof fixtures.alice) {
   const coordTask = await insertTask(fixtures.community.id, fixtures.branch.id, fixtures.alice.id, {
-    tags: ["coordination"],
     title: "Coordination",
   });
+  await grantPermission(fixtures.community.id, "branch_coordination", coordTask.id);
   await claimTask(actor, coordTask.id);
 }
 

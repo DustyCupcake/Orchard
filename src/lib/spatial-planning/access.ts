@@ -1,26 +1,32 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { community, placementMember, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable, placement as placementTable } from "@/db/schema";
 import { ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
+import { listGrantingTaskIds } from "../permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
 // "The task is the authority" — same pattern isBudgetOwner/
-// isRecruitmentTaskHolder already establish, just against Community's
-// spatialPlanningTaskId. Used to gate Zone edits and pending-Placement
+// isRecruitmentTaskHolder already establish, now against a real
+// `spatial_planning`-module PermissionGrant row (docs/development-
+// plan.md's Phase 63 — previously Community.spatialPlanningTaskId, a
+// single scalar pointer). Used to gate Zone edits and pending-Placement
 // review (see docs/spec.md's "Whoever holds a Spatial planning task
-// reviews pending changes").
-export async function isSpatialPlanningHolder(actor: Member, communityRow: { spatialPlanningTaskId: string | null }) {
-  if (!communityRow.spatialPlanningTaskId) return false;
+// reviews pending changes"). Callers still pass their already-fetched
+// communityRow — only its `.id` matters now — so no call site needed
+// to change.
+export async function isSpatialPlanningHolder(actor: Member, communityRow: { id: string }) {
+  const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "spatial_planning");
+  if (grantingTaskIds.length === 0) return false;
   const [holding] = await db
     .select({ id: task.id })
     .from(task)
     .innerJoin(taskAssignment, eq(taskAssignment.taskId, task.id))
     .where(
       and(
-        eq(task.id, communityRow.spatialPlanningTaskId),
+        inArray(task.id, grantingTaskIds),
         eq(taskAssignment.memberId, actor.id),
         eq(taskAssignment.isShadow, false),
       ),
@@ -28,10 +34,7 @@ export async function isSpatialPlanningHolder(actor: Member, communityRow: { spa
   return Boolean(holding);
 }
 
-export async function requireSpatialPlanningHolder(
-  actor: Member,
-  communityRow: { spatialPlanningTaskId: string | null },
-) {
+export async function requireSpatialPlanningHolder(actor: Member, communityRow: { id: string }) {
   if (!(await isSpatialPlanningHolder(actor, communityRow))) {
     throw new ForbiddenError("Only the current Spatial-planning task holder can do this");
   }

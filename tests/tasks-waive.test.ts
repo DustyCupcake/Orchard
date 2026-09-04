@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { task, taskAssignment } from "@/db/schema";
 import { claimTask, createRequirement, waiveAndClaim } from "@/lib/tasks";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertTask(
   communityId: string,
@@ -35,9 +35,9 @@ describe("waiveAndClaim", () => {
   it("lets a branch coordination holder waive a Requirement and claim for someone else", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
 
     const target = await insertTask(testCommunity.id, branch.id, alice.id, { capacity: 2 });
@@ -88,9 +88,9 @@ describe("waiveAndClaim", () => {
   it("still enforces capacity even under a waiver", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
 
     const target = await insertTask(testCommunity.id, branch.id, alice.id, { capacity: 1 });
@@ -105,9 +105,9 @@ describe("waiveAndClaim", () => {
   it("rejects an unknown task or member", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
     const target = await insertTask(testCommunity.id, branch.id, alice.id, { capacity: 2 });
 

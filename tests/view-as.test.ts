@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, member, task, taskAssignment } from "@/db/schema";
+import { member, task, taskAssignment } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { fileConflictReport, listConflictReports, recuseSelf, requireConflictTeamMember } from "@/lib/conflict";
 import { isSupportHolder, requireSupportHolder } from "@/lib/view-as";
 import { ForbiddenError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertTask(
   communityId: string,
@@ -49,32 +48,27 @@ describe("isSupportHolder", () => {
     expect(await isSupportHolder(alice)).toBe(false);
   });
 
-  it("is true for a real holder of a task tagged with the community's supportTag", async () => {
+  it("is true for a real holder of a task granted the support module", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const t = await insertTask(testCommunity.id, branch.id, alice.id);
+    await grantPermission(testCommunity.id, "support", t.id);
+    await claimTask(alice, t.id);
+
+    expect(await isSupportHolder(alice)).toBe(true);
+  });
+
+  it("is false for an ordinary task's own tags — granting is per-task now, not a tag match (Phase 63)", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     const t = await insertTask(testCommunity.id, branch.id, alice.id, { tags: ["support"] });
     await claimTask(alice, t.id);
 
-    expect(await isSupportHolder(alice)).toBe(true);
-  });
-
-  it("respects a custom supportTag", async () => {
-    const { community: testCommunity, branch, alice } = await createFixtures();
-    await db.update(community).set({ supportTag: "helpdesk" }).where(eq(community.id, testCommunity.id));
-
-    const t = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["support"], // the old tag, no longer the configured one
-    });
-    await claimTask(alice, t.id);
     expect(await isSupportHolder(alice)).toBe(false);
-
-    const t2 = await insertTask(testCommunity.id, branch.id, alice.id, { tags: ["helpdesk"], title: "Helpdesk" });
-    await claimTask(alice, t2.id);
-    expect(await isSupportHolder(alice)).toBe(true);
   });
 
-  it("is false for a shadow of a Support-tagged task", async () => {
+  it("is false for a shadow of a support-granted task", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
-    const t = await insertTask(testCommunity.id, branch.id, alice.id, { tags: ["support"], capacity: 2 });
+    const t = await insertTask(testCommunity.id, branch.id, alice.id, { capacity: 2 });
+    await grantPermission(testCommunity.id, "support", t.id);
     await claimTask(alice, t.id);
     await db.insert(taskAssignment).values({ taskId: t.id, memberId: bob.id, isShadow: true });
 
@@ -114,7 +108,7 @@ describe("View-as composes correctly with Conflict management's exclusion guaran
     });
     await claimTask(alice, conflictTask.id);
     await claimTask(bob, conflictTask.id);
-    await db.update(community).set({ conflictTeamTaskId: conflictTask.id }).where(eq(community.id, testCommunity.id));
+    await grantPermission(testCommunity.id, "conflict_team", conflictTask.id);
 
     await requireConflictTeamMember(alice);
     const report = await fileConflictReport(alice, { description: "issue", excludeMemberIds: [] });

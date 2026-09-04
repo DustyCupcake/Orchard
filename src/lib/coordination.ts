@@ -1,8 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { community, task, taskAssignment } from "@/db/schema";
+import { task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ForbiddenError } from "./errors";
+import { listGrantingTaskIds } from "./permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -11,33 +12,33 @@ type Member = typeof memberTable.$inferSelect;
 // coordination' (resolved)"). Not a dedicated relationship: a member
 // currently does branch coordination for branchId if they currently
 // hold (really hold — a shadow doesn't count, same as everywhere else)
-// any task in that branch carrying the community's configured
-// coordinationTag. Pass branchId=null for the community-wide check
-// ("any coordination task, any branch at all") — used by the
-// Escalation view, which is explicitly cross-branch per spec.
+// any task in that branch with a real `branch_coordination`-module
+// PermissionGrant row (docs/development-plan.md's Phase 63 — previously
+// a Task.tags match against Community.coordinationTag). Pass
+// branchId=null for the community-wide check ("any coordination task,
+// any branch at all") — used by the Escalation view, which is
+// explicitly cross-branch per spec.
 export async function isCoordinationHolder(actor: Member, branchId: string | null) {
-  const [communityRow] = await db
-    .select()
-    .from(community)
-    .where(eq(community.id, actor.communityId));
-  if (!communityRow) return false;
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "branch_coordination");
+  if (grantingTaskIds.length === 0) return false;
 
   const conditions = [
     eq(taskAssignment.memberId, actor.id),
     eq(taskAssignment.isShadow, false),
     eq(task.communityId, actor.communityId),
+    inArray(taskAssignment.taskId, grantingTaskIds),
   ];
   if (branchId) {
     conditions.push(eq(task.branchId, branchId));
   }
 
-  const holdings = await db
-    .select({ tags: task.tags })
+  const [holding] = await db
+    .select({ taskId: taskAssignment.taskId })
     .from(taskAssignment)
     .innerJoin(task, eq(taskAssignment.taskId, task.id))
     .where(and(...conditions));
 
-  return holdings.some((h) => h.tags.includes(communityRow.coordinationTag));
+  return Boolean(holding);
 }
 
 export async function requireCoordinationHolder(actor: Member, branchId: string | null) {
@@ -51,14 +52,11 @@ export async function requireCoordinationHolder(actor: Member, branchId: string 
 // Returns the set of branchIds the actor currently does coordination
 // for, community-wide.
 export async function listCoordinationBranchIds(actor: Member) {
-  const [communityRow] = await db
-    .select()
-    .from(community)
-    .where(eq(community.id, actor.communityId));
-  if (!communityRow) return new Set<string>();
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "branch_coordination");
+  if (grantingTaskIds.length === 0) return new Set<string>();
 
   const holdings = await db
-    .select({ branchId: task.branchId, tags: task.tags })
+    .select({ branchId: task.branchId })
     .from(taskAssignment)
     .innerJoin(task, eq(taskAssignment.taskId, task.id))
     .where(
@@ -66,12 +64,11 @@ export async function listCoordinationBranchIds(actor: Member) {
         eq(taskAssignment.memberId, actor.id),
         eq(taskAssignment.isShadow, false),
         eq(task.communityId, actor.communityId),
+        inArray(taskAssignment.taskId, grantingTaskIds),
       ),
     );
 
-  return new Set(
-    holdings.filter((h) => h.tags.includes(communityRow.coordinationTag)).map((h) => h.branchId),
-  );
+  return new Set(holdings.map((h) => h.branchId));
 }
 
 // The task's own coordination slot (Phase 12's is_coordination_slot,

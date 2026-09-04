@@ -3,7 +3,6 @@ import { z } from "zod";
 import { db } from "@/db";
 import {
   branch,
-  community,
   member,
   memberIdentity,
   outboundMessage,
@@ -18,26 +17,20 @@ import { requireCycleInitiationEligibility } from "./cycles";
 import { getCurrentCycle } from "./profile-questions";
 import { branchRosterMemberIds } from "./calendar-events";
 import { sendOutboundMessageEmail } from "./mailer";
+import { listGrantingTaskIds } from "./permissions";
 
 type Member = typeof memberTable.$inferSelect;
 type OutboundMessageRow = typeof outboundMessageTable.$inferSelect;
 type OutboundMessageScope = OutboundMessageRow["scope"];
 
-async function getCommunityRow(communityId: string) {
-  const [row] = await db.select().from(community).where(eq(community.id, communityId));
-  if (!row) {
-    throw new NotFoundError("Community not found");
-  }
-  return row;
-}
-
 // "Sending an announcement is itself a task on the board... whoever
 // holds that task can send" — same "the task is the authority" check
-// isEventSchedulingOwner/isBudgetOwner already establish, baked into
-// this module rather than left to each caller.
+// isEventSchedulingOwner/isBudgetOwner already establish, now against a
+// real `announcements`-module PermissionGrant row (docs/development-
+// plan.md's Phase 63 — previously Community.announcementTaskId).
 export async function isAnnouncementTaskHolder(actor: Member): Promise<boolean> {
-  const communityRow = await getCommunityRow(actor.communityId);
-  if (!communityRow.announcementTaskId) return false;
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "announcements");
+  if (grantingTaskIds.length === 0) return false;
 
   const [holding] = await db
     .select({ id: task.id })
@@ -45,7 +38,7 @@ export async function isAnnouncementTaskHolder(actor: Member): Promise<boolean> 
     .innerJoin(taskAssignment, eq(taskAssignment.taskId, task.id))
     .where(
       and(
-        eq(task.id, communityRow.announcementTaskId),
+        inArray(task.id, grantingTaskIds),
         eq(taskAssignment.memberId, actor.id),
         eq(taskAssignment.isShadow, false),
       ),

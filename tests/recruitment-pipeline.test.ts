@@ -18,7 +18,7 @@ import {
 } from "@/lib/recruitment";
 import type { RecruitmentDecisionRule } from "@/lib/recruitment";
 import { ForbiddenError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
   { key: "name", label: "Name", responseType: "free_text", required: true },
@@ -74,10 +74,10 @@ async function setUp(
   const recruitmentTask = await insertTask(testCommunity.id, branch.id, alice.id);
   await updateCommunity(alice, {
     recruitmentApplicationFormId: form.id,
-    recruitmentTaskId: recruitmentTask.id,
     recruitmentEvaluatorCount: 2,
     recruitmentDecisionRules: overrides.decisionRules ?? DEFAULT_RULES,
   });
+  await grantPermission(testCommunity.id, "recruitment", recruitmentTask.id);
 
   const [refetchedAlice] = await db.select().from(member).where(eq(member.id, alice.id));
   await claimTask(refetchedAlice, recruitmentTask.id);

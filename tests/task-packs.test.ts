@@ -28,7 +28,7 @@ import {
 } from "@/lib/task-packs";
 import { confirmPendingBranch, isAdmin, rejectPendingBranch } from "@/lib/settings";
 import { AppError, ConflictError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
@@ -389,10 +389,10 @@ describe("pending branch review", () => {
         effort: "owns_a_thing",
         effortMagnitude: { hours_per_week: 1 },
         openness: "community_endorsed",
-        tags: ["admin"],
         createdBy: alice.id,
       })
       .returning();
+    await grantPermission(testCommunity.id, "admin", adminsTask.id);
     await db.insert(taskAssignment).values({ taskId: adminsTask.id, memberId: alice.id });
     await db.update(community).set({ adminsEverClaimed: true }).where(eq(community.id, testCommunity.id));
 

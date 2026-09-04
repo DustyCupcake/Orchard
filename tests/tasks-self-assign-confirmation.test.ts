@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { task } from "@/db/schema";
 import { claimOrRequestToJoin, claimTask, suggestMemberForTask } from "@/lib/tasks";
 import { ConfirmationRequiredError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertTask(
   communityId: string,
@@ -35,9 +35,9 @@ describe("self-assign confirmation check", () => {
   it("requires confirmation when a branch coordination holder self-claims an unclaimed task", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
 
     const target = await insertTask(testCommunity.id, branch.id, alice.id);
@@ -49,9 +49,9 @@ describe("self-assign confirmation check", () => {
   it("succeeds once confirmed: true is passed", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
 
     const target = await insertTask(testCommunity.id, branch.id, alice.id);
@@ -62,9 +62,9 @@ describe("self-assign confirmation check", () => {
   it("requires confirmation for a flagged (non-ok attention) already-held task with room", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
 
     const target = await insertTask(testCommunity.id, branch.id, alice.id, { capacity: 2 });
@@ -87,9 +87,9 @@ describe("self-assign confirmation check", () => {
   it("does not require confirmation for a coordination holder claiming an ordinary, unflagged already-held task", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(alice, coordTask.id);
 
     const target = await insertTask(testCommunity.id, branch.id, alice.id, {

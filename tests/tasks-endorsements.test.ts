@@ -12,7 +12,7 @@ import {
   withdrawCandidacy,
 } from "@/lib/tasks";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -158,8 +158,8 @@ describe("endorseCandidacy", () => {
       .returning();
     const t = await insertCommunityEndorsedTask(testCommunity.id, branch.id, alice.id, {
       endorsementThreshold: 2,
-      tags: ["admin"],
     });
+    await grantPermission(testCommunity.id, "admin", t.id);
     const candidacy = await expressCandidacy(bob, t.id);
 
     const [before] = await db.select().from(community).where(eq(community.id, testCommunity.id));
@@ -309,8 +309,8 @@ describe("eager confirmation on a zero (or otherwise already-met) threshold — 
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     const t = await insertCommunityEndorsedTask(testCommunity.id, branch.id, alice.id, {
       endorsementThreshold: 0,
-      tags: ["admin"],
     });
+    await grantPermission(testCommunity.id, "admin", t.id);
 
     await expressCandidacy(bob, t.id);
 

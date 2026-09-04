@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { community, form, task, tier } from "@/db/schema";
+import { community, form, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
 import { recruitmentDecisionRulesSchema, requireValidDecisionRules } from "../recruitment/evaluations";
@@ -33,29 +33,18 @@ export const updateCommunityInput = z.object({
   cyclesEnabled: z.boolean().optional(),
   phasesEnabled: z.boolean().optional(),
   cycleInitiationTierId: z.string().uuid().nullable().optional(),
-  adminsTag: z.string().min(1).optional(),
-  coordinationTag: z.string().min(1).optional(),
   defaultCallHasAgenda: z.boolean().optional(),
   defaultCallNeedsSummary: z.boolean().optional(),
   defaultCallRequireRead: z.boolean().optional(),
-  // Null turns the Conflict management module off — see
-  // src/db/schema/community.ts's schema comment and src/lib/conflict.ts.
-  conflictTeamTaskId: z.string().uuid().nullable().optional(),
   conflictAckWindowHours: z.number().int().positive().optional(),
   modulesEnabled: z.array(z.string()).optional(),
-  // Null turns off the standing post-cycle feedback ask / clears its
-  // review-task authority — see src/db/schema/community.ts's schema
-  // comment and src/lib/forms.ts.
+  // Null turns off the standing post-cycle feedback ask — see
+  // src/db/schema/community.ts's schema comment and src/lib/forms.ts.
+  // Its own review-task authority is a PermissionGrant now (Phase 63)
+  // — see setPermissionGrantAction/addPermissionGrantAction/
+  // removePermissionGrantAction in src/app/(app)/settings/actions.ts,
+  // not this input.
   postCycleFeedbackFormId: z.string().uuid().nullable().optional(),
-  feedbackReviewTaskId: z.string().uuid().nullable().optional(),
-  // Whichever task reviews Event scheduling proposals — see
-  // src/db/schema/community.ts's schema comment and
-  // src/lib/event-scheduling.
-  eventSchedulingOwnerTaskId: z.string().uuid().nullable().optional(),
-  // Whichever task is "a recruitment-facing task" for Phases 32-35 —
-  // see src/db/schema/community.ts's schema comment and
-  // src/lib/recruitment.
-  recruitmentTaskId: z.string().uuid().nullable().optional(),
   // Null turns off application intake — /apply says so. Same non-FK
   // pointer reasoning as postCycleFeedbackFormId.
   recruitmentApplicationFormId: z.string().uuid().nullable().optional(),
@@ -66,10 +55,6 @@ export const updateCommunityInput = z.object({
   // Null clears it — "surfaced to whoever's about to send an actual
   // decline, never sent automatically."
   recruitmentRejectionTemplate: z.string().nullable().optional(),
-  // Whichever task reviews pending Placements and edits Zones — see
-  // src/db/schema/community.ts's schema comment and
-  // src/lib/spatial-planning.
-  spatialPlanningTaskId: z.string().uuid().nullable().optional(),
   // "Only offered if phases are on" (docs/spec.md's Configuration
   // table) — /settings only renders the checkbox when phasesEnabled is
   // already true, re-checked here too. See src/lib/onsite-mode.ts for
@@ -84,11 +69,6 @@ export const updateCommunityInput = z.object({
   engagementSoftFlagThreshold: z.number().int().positive().optional(),
   engagementPatternThreshold: z.number().int().positive().optional(),
   callSummaryReadWindowDays: z.number().int().positive().optional(),
-  // Whichever task's holder can send a community-wide announcement —
-  // see src/db/schema/community.ts's own comment and src/lib/messages.ts.
-  // Null clears it, same as every other "the task is the authority"
-  // pointer above.
-  announcementTaskId: z.string().uuid().nullable().optional(),
   // Community branding — see design_handoff_conventions/README.md. Null
   // clears back to the design tokens' own default accent (design tokens
   // fall back to the documented cobalt/plum pair when either is null).
@@ -136,26 +116,6 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
     }
   }
 
-  if (input.conflictTeamTaskId) {
-    const [taskRow] = await db
-      .select({ id: task.id })
-      .from(task)
-      .where(and(eq(task.id, input.conflictTeamTaskId), eq(task.communityId, actor.communityId)));
-    if (!taskRow) {
-      throw new NotFoundError("Task not found in your community");
-    }
-  }
-
-  if (input.feedbackReviewTaskId) {
-    const [taskRow] = await db
-      .select({ id: task.id })
-      .from(task)
-      .where(and(eq(task.id, input.feedbackReviewTaskId), eq(task.communityId, actor.communityId)));
-    if (!taskRow) {
-      throw new NotFoundError("Task not found in your community");
-    }
-  }
-
   if (input.postCycleFeedbackFormId) {
     const [formRow] = await db
       .select({ id: form.id })
@@ -163,26 +123,6 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       .where(and(eq(form.id, input.postCycleFeedbackFormId), eq(form.communityId, actor.communityId)));
     if (!formRow) {
       throw new NotFoundError("Form not found in your community");
-    }
-  }
-
-  if (input.eventSchedulingOwnerTaskId) {
-    const [taskRow] = await db
-      .select({ id: task.id })
-      .from(task)
-      .where(and(eq(task.id, input.eventSchedulingOwnerTaskId), eq(task.communityId, actor.communityId)));
-    if (!taskRow) {
-      throw new NotFoundError("Task not found in your community");
-    }
-  }
-
-  if (input.recruitmentTaskId) {
-    const [taskRow] = await db
-      .select({ id: task.id })
-      .from(task)
-      .where(and(eq(task.id, input.recruitmentTaskId), eq(task.communityId, actor.communityId)));
-    if (!taskRow) {
-      throw new NotFoundError("Task not found in your community");
     }
   }
 
@@ -200,26 +140,6 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
     requireValidDecisionRules(input.recruitmentDecisionRules);
   }
 
-  if (input.spatialPlanningTaskId) {
-    const [taskRow] = await db
-      .select({ id: task.id })
-      .from(task)
-      .where(and(eq(task.id, input.spatialPlanningTaskId), eq(task.communityId, actor.communityId)));
-    if (!taskRow) {
-      throw new NotFoundError("Task not found in your community");
-    }
-  }
-
-  if (input.announcementTaskId) {
-    const [taskRow] = await db
-      .select({ id: task.id })
-      .from(task)
-      .where(and(eq(task.id, input.announcementTaskId), eq(task.communityId, actor.communityId)));
-    if (!taskRow) {
-      throw new NotFoundError("Task not found in your community");
-    }
-  }
-
   const [updated] = await db
     .update(community)
     .set({
@@ -229,8 +149,6 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.cycleInitiationTierId !== undefined && {
         cycleInitiationTierId: input.cycleInitiationTierId,
       }),
-      ...(input.adminsTag !== undefined && { adminsTag: input.adminsTag }),
-      ...(input.coordinationTag !== undefined && { coordinationTag: input.coordinationTag }),
       ...(input.defaultCallHasAgenda !== undefined && { defaultCallHasAgenda: input.defaultCallHasAgenda }),
       ...(input.defaultCallNeedsSummary !== undefined && {
         defaultCallNeedsSummary: input.defaultCallNeedsSummary,
@@ -238,7 +156,6 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.defaultCallRequireRead !== undefined && {
         defaultCallRequireRead: input.defaultCallRequireRead,
       }),
-      ...(input.conflictTeamTaskId !== undefined && { conflictTeamTaskId: input.conflictTeamTaskId }),
       ...(input.conflictAckWindowHours !== undefined && {
         conflictAckWindowHours: input.conflictAckWindowHours,
       }),
@@ -246,11 +163,6 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.postCycleFeedbackFormId !== undefined && {
         postCycleFeedbackFormId: input.postCycleFeedbackFormId,
       }),
-      ...(input.feedbackReviewTaskId !== undefined && { feedbackReviewTaskId: input.feedbackReviewTaskId }),
-      ...(input.eventSchedulingOwnerTaskId !== undefined && {
-        eventSchedulingOwnerTaskId: input.eventSchedulingOwnerTaskId,
-      }),
-      ...(input.recruitmentTaskId !== undefined && { recruitmentTaskId: input.recruitmentTaskId }),
       ...(input.recruitmentApplicationFormId !== undefined && {
         recruitmentApplicationFormId: input.recruitmentApplicationFormId,
       }),
@@ -269,9 +181,6 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.recruitmentRejectionTemplate !== undefined && {
         recruitmentRejectionTemplate: input.recruitmentRejectionTemplate,
       }),
-      ...(input.spatialPlanningTaskId !== undefined && {
-        spatialPlanningTaskId: input.spatialPlanningTaskId,
-      }),
       ...(input.onsiteModeEnabled !== undefined && { onsiteModeEnabled: input.onsiteModeEnabled }),
       ...(input.taskNominationResponseDays !== undefined && {
         taskNominationResponseDays: input.taskNominationResponseDays,
@@ -285,7 +194,6 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.callSummaryReadWindowDays !== undefined && {
         callSummaryReadWindowDays: input.callSummaryReadWindowDays,
       }),
-      ...(input.announcementTaskId !== undefined && { announcementTaskId: input.announcementTaskId }),
       ...(input.accentPrimary !== undefined && { accentPrimary: input.accentPrimary }),
       ...(input.accentSecondary !== undefined && { accentSecondary: input.accentSecondary }),
       ...(input.logoUrl !== undefined && { logoUrl: input.logoUrl }),

@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -21,6 +21,7 @@ import { createPoll } from "../scheduling-polls";
 import { generateToken } from "../token";
 import { getCommunityRow, requireRecruitmentTaskHolder } from "./access";
 import { computeRecruitmentOutcome } from "./evaluations";
+import { listGrantingTaskIds } from "../permissions";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityRow = typeof communityTable.$inferSelect;
@@ -70,11 +71,12 @@ export function computeWiderDiscussionStatus(decision: RecruitmentDecisionRow): 
 // uses the filing evaluator directly, a real person taking a real
 // action.
 async function getRecruitmentTaskHolderMember(communityRow: CommunityRow): Promise<Member | null> {
-  if (!communityRow.recruitmentTaskId) return null;
+  const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "recruitment");
+  if (grantingTaskIds.length === 0) return null;
   const [holding] = await db
     .select({ memberId: taskAssignment.memberId })
     .from(taskAssignment)
-    .where(and(eq(taskAssignment.taskId, communityRow.recruitmentTaskId), eq(taskAssignment.isShadow, false)))
+    .where(and(inArray(taskAssignment.taskId, grantingTaskIds), eq(taskAssignment.isShadow, false)))
     .orderBy(taskAssignment.claimedAt)
     .limit(1);
   if (!holding) return null;
@@ -103,8 +105,9 @@ async function createIntroCallPoll(
   formResponseId: string,
   evaluatorIds: string[],
 ) {
-  if (!communityRow.recruitmentTaskId) return null;
-  const [recruitmentTaskRow] = await db.select().from(task).where(eq(task.id, communityRow.recruitmentTaskId));
+  const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "recruitment");
+  if (grantingTaskIds.length === 0) return null;
+  const [recruitmentTaskRow] = await db.select().from(task).where(inArray(task.id, grantingTaskIds));
   if (!recruitmentTaskRow) return null;
 
   const now = new Date();
@@ -216,8 +219,9 @@ async function maybeConvertApplicantToMember(
 // the suggestion entirely.
 async function maybeCreateAccompanimentTask(actor: Member, communityRow: CommunityRow, decision: RecruitmentDecisionRow) {
   if (decision.accompanimentTaskId) return null;
-  if (!communityRow.recruitmentTaskId) return null;
-  const [recruitmentTaskRow] = await db.select().from(task).where(eq(task.id, communityRow.recruitmentTaskId));
+  const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "recruitment");
+  if (grantingTaskIds.length === 0) return null;
+  const [recruitmentTaskRow] = await db.select().from(task).where(inArray(task.id, grantingTaskIds));
   if (!recruitmentTaskRow) return null;
 
   let suggestedMemberId: string | null = null;

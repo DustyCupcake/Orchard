@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, member, task, taskAssignment } from "@/db/schema";
+import { member, task, taskAssignment } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import {
   acknowledgeConflictReport,
@@ -16,7 +15,7 @@ import {
   resolveConflictReport,
 } from "@/lib/conflict";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertConflictTeamTask(communityId: string, branchId: string, createdBy: string) {
   const [row] = await db
@@ -45,10 +44,7 @@ async function setUpTeam() {
   await claimTask(alice, teamTask.id);
   await claimTask(bob, teamTask.id);
   // carol is a member but deliberately not on the team.
-  await db
-    .update(community)
-    .set({ conflictTeamTaskId: teamTask.id })
-    .where(eq(community.id, testCommunity.id));
+  await grantPermission(testCommunity.id, "conflict_team", teamTask.id);
 
   return { community: testCommunity, branch, alice, bob, carol, teamTask };
 }

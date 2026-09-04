@@ -1,6 +1,6 @@
 import { and, count, desc, eq, inArray, lt } from "drizzle-orm";
 import { db, type Tx } from "@/db";
-import { browseInterest, community, endorsement, member, task, taskAssignment } from "@/db/schema";
+import { browseInterest, community, endorsement, member, permissionGrant, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { getUnmetRequirements, describeRequirement } from "./requirements";
@@ -133,12 +133,26 @@ async function tryConfirmCandidacy(
   const [candidateMember] = await tx.select().from(member).where(eq(member.id, candidacy.memberId));
   await performClaimInTx(tx, candidateMember, current.id);
 
-  // Admins' gate latches permanently open once any task carrying the
-  // Community's admins tag is actually claimed — see
-  // src/lib/settings/admins.ts and community.ts's adminsEverClaimed.
+  // Admins' gate latches permanently open once any task with a real
+  // `admin`-module PermissionGrant row is actually claimed (docs/
+  // development-plan.md's Phase 63 — previously a Task.tags match
+  // against Community.adminsTag) — see src/lib/settings/admins.ts and
+  // community.ts's adminsEverClaimed.
   const [communityRow] = await tx.select().from(community).where(eq(community.id, current.communityId));
-  if (communityRow && !communityRow.adminsEverClaimed && current.tags.includes(communityRow.adminsTag)) {
-    await tx.update(community).set({ adminsEverClaimed: true }).where(eq(community.id, current.communityId));
+  if (communityRow && !communityRow.adminsEverClaimed) {
+    const [adminGrant] = await tx
+      .select({ id: permissionGrant.id })
+      .from(permissionGrant)
+      .where(
+        and(
+          eq(permissionGrant.communityId, current.communityId),
+          eq(permissionGrant.moduleKey, "admin"),
+          eq(permissionGrant.taskId, current.id),
+        ),
+      );
+    if (adminGrant) {
+      await tx.update(community).set({ adminsEverClaimed: true }).where(eq(community.id, current.communityId));
+    }
   }
 
   return { status: "confirmed" as const, candidacy: confirmed, endorsementCount };

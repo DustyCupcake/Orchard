@@ -1,20 +1,23 @@
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { community, conflictReport, conflictReportExclusion, member, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "./errors";
+import { listGrantingTaskIds } from "./permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
 // "The conflict team" isn't a dedicated relationship — it's whoever
 // currently holds (really holds — a shadow doesn't count, same as
-// everywhere else) Community.conflictTeamTaskId. See
+// everywhere else) the task with a real `conflict_team`-module
+// PermissionGrant row (docs/development-plan.md's Phase 63 — previously
+// Community.conflictTeamTaskId, a single scalar pointer). See
 // docs/spec.md's "The conflict team is just a task, reusing what
 // already exists."
 export async function isConflictTeamMemberId(communityId: string, memberId: string) {
-  const [communityRow] = await db.select().from(community).where(eq(community.id, communityId));
-  if (!communityRow?.conflictTeamTaskId) return false;
+  const grantingTaskIds = await listGrantingTaskIds(communityId, "conflict_team");
+  if (grantingTaskIds.length === 0) return false;
 
   const [holding] = await db
     .select({ taskId: taskAssignment.taskId })
@@ -22,7 +25,7 @@ export async function isConflictTeamMemberId(communityId: string, memberId: stri
     .innerJoin(task, eq(taskAssignment.taskId, task.id))
     .where(
       and(
-        eq(taskAssignment.taskId, communityRow.conflictTeamTaskId),
+        inArray(taskAssignment.taskId, grantingTaskIds),
         eq(taskAssignment.memberId, memberId),
         eq(taskAssignment.isShadow, false),
         eq(task.communityId, communityId),
@@ -45,8 +48,8 @@ export async function requireConflictTeamMember(actor: Member) {
 // picker — who's currently eligible to be excluded from a report at
 // all.
 export async function listConflictTeamMemberIds(communityId: string) {
-  const [communityRow] = await db.select().from(community).where(eq(community.id, communityId));
-  if (!communityRow?.conflictTeamTaskId) return [];
+  const grantingTaskIds = await listGrantingTaskIds(communityId, "conflict_team");
+  if (grantingTaskIds.length === 0) return [];
 
   const rows = await db
     .select({ memberId: taskAssignment.memberId })
@@ -54,7 +57,7 @@ export async function listConflictTeamMemberIds(communityId: string) {
     .innerJoin(task, eq(taskAssignment.taskId, task.id))
     .where(
       and(
-        eq(taskAssignment.taskId, communityRow.conflictTeamTaskId),
+        inArray(taskAssignment.taskId, grantingTaskIds),
         eq(taskAssignment.isShadow, false),
         eq(task.communityId, communityId),
       ),
@@ -73,8 +76,8 @@ export const fileConflictReportInput = z.object({
 export type FileConflictReportInput = z.infer<typeof fileConflictReportInput>;
 
 export async function fileConflictReport(actor: Member, input: FileConflictReportInput) {
-  const [communityRow] = await db.select().from(community).where(eq(community.id, actor.communityId));
-  if (!communityRow?.conflictTeamTaskId) {
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "conflict_team");
+  if (grantingTaskIds.length === 0) {
     throw new AppError("Conflict management isn't set up for this Community yet");
   }
 

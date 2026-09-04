@@ -27,7 +27,7 @@ import {
   type ScaleCalibration,
 } from "@/lib/spatial-planning";
 import { AppError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertSpatialPlanningTask(communityId: string, branchId: string, createdBy: string) {
   const [row] = await db
@@ -58,7 +58,7 @@ async function setUpModule() {
   await updateCommunity(alice, { modulesEnabled: ["spatial_planning"] });
   const holderTask = await insertSpatialPlanningTask(testCommunity.id, testBranch.id, alice.id);
   await claimTask(alice, holderTask.id);
-  await updateCommunity(alice, { spatialPlanningTaskId: holderTask.id });
+  await grantPermission(testCommunity.id, "spatial_planning", holderTask.id);
   const testCycle = await insertCycle(testCommunity.id, "Cycle A", new Date("2026-01-01"));
   const plotRow = await createPlot(alice, testCycle.id, {
     name: "Main site",

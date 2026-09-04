@@ -27,7 +27,7 @@ import {
 } from "@/lib/spatial-planning";
 import type { RectangleGeometry } from "@/lib/spatial-planning/geometry";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertSpatialPlanningTask(communityId: string, branchId: string, createdBy: string, title = "Lay out the Plot") {
   const [row] = await db
@@ -62,7 +62,7 @@ async function setUpModule() {
   await updateCommunity(alice, { cyclesEnabled: true, modulesEnabled: ["spatial_planning"] });
   const holderTask = await insertSpatialPlanningTask(testCommunity.id, testBranch.id, alice.id);
   await claimTask(alice, holderTask.id);
-  await updateCommunity(alice, { spatialPlanningTaskId: holderTask.id });
+  await grantPermission(testCommunity.id, "spatial_planning", holderTask.id);
   const testCycle = await insertCycle(testCommunity.id, "Cycle A", new Date("2026-01-01"));
   const plotRow = await createPlot(alice, testCycle.id, {
     name: "Main site",
@@ -600,7 +600,7 @@ describe("Cycle creation: full-Cycle clone with 'also clone spatial planning?'",
     await updateCommunity(alice, { cyclesEnabled: true, modulesEnabled: ["spatial_planning"] });
     const holderTask = await insertSpatialPlanningTask(testCommunity.id, testBranch.id, alice.id);
     await claimTask(alice, holderTask.id);
-    await updateCommunity(alice, { spatialPlanningTaskId: holderTask.id });
+    await grantPermission(testCommunity.id, "spatial_planning", holderTask.id);
     await insertCycle(testCommunity.id, "Cycle with no Plot", new Date("2026-01-01"));
 
     const newCycle = await createCycle(alice, {

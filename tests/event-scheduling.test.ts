@@ -17,7 +17,7 @@ import {
   updateEventProposal,
 } from "@/lib/event-scheduling";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertOwnerTask(communityId: string, branchId: string, createdBy: string) {
   const [row] = await db
@@ -48,7 +48,7 @@ async function setUpModule() {
   await updateCommunity(alice, { modulesEnabled: ["event_scheduling"] });
   const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
   await claimTask(alice, ownerTask.id);
-  await updateCommunity(alice, { eventSchedulingOwnerTaskId: ownerTask.id });
+  await grantPermission(alice.communityId, "event_scheduling_owner", ownerTask.id);
   return { ...fixtures, ownerTask };
 }
 

@@ -28,7 +28,7 @@ import {
 import type { RecruitmentDecisionRule } from "@/lib/recruitment";
 import { findOrCreateMemberByEmail } from "@/lib/member";
 import { confirmSlot, submitAvailability, submitAvailabilityAsApplicant } from "@/lib/scheduling-polls";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 // Phase 48's own resolved shape: a form whose fields are tagged as
 // the applicant's name/email, per src/lib/forms.ts's
@@ -83,11 +83,11 @@ async function setUp(
   const recruitmentTask = await insertTask(testCommunity.id, branch.id, alice.id);
   await updateCommunity(alice, {
     recruitmentApplicationFormId: form.id,
-    recruitmentTaskId: recruitmentTask.id,
     recruitmentEvaluatorCount: 2,
     recruitmentDecisionRules: overrides.decisionRules ?? PROCEED_RULES,
     ...(overrides.lapseThreshold !== undefined && { recruitmentSubscriptionLapseThreshold: overrides.lapseThreshold }),
   });
+  await grantPermission(testCommunity.id, "recruitment", recruitmentTask.id);
 
   const [refetchedAlice] = await db.select().from(member).where(eq(member.id, alice.id));
   await claimTask(refetchedAlice, recruitmentTask.id);

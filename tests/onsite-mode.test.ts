@@ -20,7 +20,7 @@ import { createEventProposal, confirmEventProposalSlot, publishEventSchedule } f
 import { createPlot, createZone, updateZone, deleteZone, createPlacement, updatePlacement } from "@/lib/spatial-planning";
 import { requireNotOnsiteLocked, requireNotOnsiteLockedForCommunity } from "@/lib/onsite-mode";
 import { AppError, ConflictError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertTask(communityId: string, branchId: string, createdBy: string) {
   const [row] = await db
@@ -180,7 +180,7 @@ describe("read-only-reference: publishing the Event schedule", () => {
     await updateCommunity(alice, { modulesEnabled: ["event_scheduling"] });
     const ownerTask = await insertTask(testCommunity.id, branch.id, alice.id);
     await claimTask(alice, ownerTask.id);
-    await updateCommunity(alice, { eventSchedulingOwnerTaskId: ownerTask.id });
+    await grantPermission(testCommunity.id, "event_scheduling_owner", ownerTask.id);
 
     const proposal = await createEventProposal(bob, {
       host: "Bob",
@@ -210,7 +210,7 @@ describe("read-only-reference: Spatial-planning Zone/Placement edits", () => {
     await updateCommunity(alice, { modulesEnabled: ["spatial_planning"] });
     const holderTask = await insertTask(testCommunity.id, branch.id, alice.id);
     await claimTask(alice, holderTask.id);
-    await updateCommunity(alice, { spatialPlanningTaskId: holderTask.id });
+    await grantPermission(testCommunity.id, "spatial_planning", holderTask.id);
     const [testCycle] = await db
       .insert(cycle)
       .values({ communityId: testCommunity.id, name: "Cycle A", status: "active", startedAt: new Date() })

@@ -18,7 +18,7 @@ import {
   submitInquiry,
 } from "@/lib/recruitment";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function enableRecruitment(communityId: string) {
   const [row] = await db.select().from(community).where(eq(community.id, communityId));
@@ -306,7 +306,7 @@ describe("isRecruitmentTaskHolder", () => {
   it("is true only for whoever currently holds the designated task, real claims only", async () => {
     const { community: testCommunity, alice, bob, branch } = await createFixtures();
     const t = await insertTask(testCommunity.id, branch.id, alice.id);
-    await updateCommunity(alice, { recruitmentTaskId: t.id });
+    await grantPermission(testCommunity.id, "recruitment", t.id);
     const [refetchedAlice] = await db.select().from(member).where(eq(member.id, alice.id));
     const [refetchedBob] = await db.select().from(member).where(eq(member.id, bob.id));
 
@@ -321,7 +321,7 @@ describe("isRecruitmentTaskHolder", () => {
   it("a shadow claim doesn't count as holding it", async () => {
     const { community: testCommunity, alice, bob, branch } = await createFixtures();
     const t = await insertTask(testCommunity.id, branch.id, alice.id, { capacity: 2 });
-    await updateCommunity(alice, { recruitmentTaskId: t.id });
+    await grantPermission(testCommunity.id, "recruitment", t.id);
     await claimTask(alice, t.id);
     await claimAsShadow(bob, t.id);
 
@@ -359,7 +359,7 @@ describe("Inquiry: submit/list/claim/resolve", () => {
     await expect(listInquiries(alice)).rejects.toThrow(ForbiddenError);
 
     const t = await insertTask(testCommunity.id, branch.id, alice.id);
-    await updateCommunity(alice, { recruitmentTaskId: t.id });
+    await grantPermission(testCommunity.id, "recruitment", t.id);
     const [refetchedAlice] = await db.select().from(member).where(eq(member.id, alice.id));
     await claimTask(refetchedAlice, t.id);
 
@@ -371,7 +371,7 @@ describe("Inquiry: submit/list/claim/resolve", () => {
     const { community: testCommunity, alice, branch } = await createFixtures();
     await enableRecruitment(testCommunity.id);
     const t = await insertTask(testCommunity.id, branch.id, alice.id);
-    await updateCommunity(alice, { recruitmentTaskId: t.id });
+    await grantPermission(testCommunity.id, "recruitment", t.id);
     const [refetchedAlice] = await db.select().from(member).where(eq(member.id, alice.id));
     await claimTask(refetchedAlice, t.id);
 
@@ -390,7 +390,7 @@ describe("Inquiry: submit/list/claim/resolve", () => {
     await expect(claimInquiry(alice, created.id)).rejects.toThrow(ForbiddenError);
 
     const t = await insertTask(testCommunity.id, branch.id, alice.id, { capacity: 2 });
-    await updateCommunity(alice, { recruitmentTaskId: t.id });
+    await grantPermission(testCommunity.id, "recruitment", t.id);
     const [refetchedAlice] = await db.select().from(member).where(eq(member.id, alice.id));
     const [refetchedBob] = await db.select().from(member).where(eq(member.id, bob.id));
     await claimTask(refetchedAlice, t.id);
@@ -408,7 +408,7 @@ describe("Inquiry: submit/list/claim/resolve", () => {
     const created = await submitInquiry(testCommunity.id, { message: "Hi!", contactInfo: "hi@example.com" });
 
     const t = await insertTask(testCommunity.id, branch.id, alice.id);
-    await updateCommunity(alice, { recruitmentTaskId: t.id });
+    await grantPermission(testCommunity.id, "recruitment", t.id);
     const [refetchedAlice] = await db.select().from(member).where(eq(member.id, alice.id));
     await claimTask(refetchedAlice, t.id);
 

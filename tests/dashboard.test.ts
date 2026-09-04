@@ -21,7 +21,7 @@ import { closeProposalsToVoting } from "@/lib/budget";
 import { createEventProposal } from "@/lib/event-scheduling";
 import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
 import { fileConflictReport } from "@/lib/conflict";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
@@ -228,9 +228,9 @@ describe("getCommunitySnapshot", () => {
     expect(snapshot.branchHealth.find((b) => b.id === branch.id)?.counts).toBeNull();
 
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
-      tags: ["coordination"],
       title: "Coordination",
     });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
     await claimTask(bob, coordTask.id);
 
     snapshot = await getCommunitySnapshot(bob);
@@ -379,7 +379,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     await updateCommunity(alice, { modulesEnabled: ["event_scheduling"] });
     const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Scheduling owner");
     await claimTask(alice, ownerTask.id);
-    await updateCommunity(alice, { eventSchedulingOwnerTaskId: ownerTask.id });
+    await grantPermission(alice.communityId, "event_scheduling_owner", ownerTask.id);
 
     const iso = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
     await createEventProposal(bob, {
@@ -443,9 +443,10 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     const { community: testCommunity, alice, bob, branch } = await createFixtures();
     const teamTask = await insertOwnerTask(testCommunity.id, branch.id, alice.id, "Conflict team");
     await claimTask(alice, teamTask.id);
+    await grantPermission(testCommunity.id, "conflict_team", teamTask.id);
     await db
       .update(community)
-      .set({ conflictTeamTaskId: teamTask.id, conflictAckWindowHours: 1 })
+      .set({ conflictAckWindowHours: 1 })
       .where(eq(community.id, testCommunity.id));
     await fileConflictReport(bob, {});
 
@@ -457,9 +458,10 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     const { community: testCommunity, alice, bob, branch } = await createFixtures();
     const teamTask = await insertOwnerTask(testCommunity.id, branch.id, alice.id, "Conflict team");
     await claimTask(alice, teamTask.id);
+    await grantPermission(testCommunity.id, "conflict_team", teamTask.id);
     await db
       .update(community)
-      .set({ conflictTeamTaskId: teamTask.id, conflictAckWindowHours: 1 })
+      .set({ conflictAckWindowHours: 1 })
       .where(eq(community.id, testCommunity.id));
     const stale = await fileConflictReport(bob, {});
     await db
@@ -478,12 +480,12 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
         communityId,
         branchId,
         title: "Coordination",
-        tags: ["coordination"],
         effort: "owns_a_thing",
         effortMagnitude: { hours_per_week: 2 },
         createdBy: actor.id,
       })
       .returning();
+    await grantPermission(communityId, "branch_coordination", coordTask.id);
     await claimTask(actor, coordTask.id);
   }
 

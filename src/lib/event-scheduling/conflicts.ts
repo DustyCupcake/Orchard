@@ -1,29 +1,22 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { community, eventProposal, task, taskAssignment } from "@/db/schema";
+import { eventProposal, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { ForbiddenError, NotFoundError } from "../errors";
+import { ForbiddenError } from "../errors";
+import { listGrantingTaskIds } from "../permissions";
 import { cycleScopeCondition } from "./crud";
 import type { EventSlot } from "./crud";
 
 type Member = typeof memberTable.$inferSelect;
 type EventProposalRow = typeof eventProposal.$inferSelect;
 
-async function getCommunityRow(communityId: string) {
-  const [row] = await db.select().from(community).where(eq(community.id, communityId));
-  if (!row) {
-    throw new NotFoundError("Community not found");
-  }
-  return row;
-}
-
 // "Whoever holds this task is the authority" — same access-follows-
 // the-task check Forms'/Budget's own isFeedbackReviewHolder/
 // isBudgetOwner establish, baked into the review/publish functions
 // themselves rather than gated by the caller.
 export async function isEventSchedulingOwner(actor: Member) {
-  const communityRow = await getCommunityRow(actor.communityId);
-  if (!communityRow.eventSchedulingOwnerTaskId) return false;
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "event_scheduling_owner");
+  if (grantingTaskIds.length === 0) return false;
 
   const [holding] = await db
     .select({ id: task.id })
@@ -31,7 +24,7 @@ export async function isEventSchedulingOwner(actor: Member) {
     .innerJoin(taskAssignment, eq(taskAssignment.taskId, task.id))
     .where(
       and(
-        eq(task.id, communityRow.eventSchedulingOwnerTaskId),
+        inArray(task.id, grantingTaskIds),
         eq(taskAssignment.memberId, actor.id),
         eq(taskAssignment.isShadow, false),
       ),
