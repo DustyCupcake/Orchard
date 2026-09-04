@@ -178,6 +178,39 @@ describe("task CRUD", () => {
     ).rejects.toThrow(AppError);
   });
 
+  it("accepts an endorsementThreshold of 0 as a deliberate choice, distinct from unset (Phase 62)", async () => {
+    const { branch: testBranch, alice } = await createFixtures();
+    const future = new Date(Date.now() + 86400000).toISOString();
+
+    const created = await createTask(alice, {
+      branchId: testBranch.id,
+      title: "Self-clearing task",
+      effort: "owns_a_thing",
+      effortMagnitude: { hours_per_week: 1 },
+      openness: "community_endorsed",
+      endorsementThreshold: 0,
+      browsePeriodEnd: future,
+    });
+    expect(created.endorsementThreshold).toBe(0);
+  });
+
+  it("rejects a negative endorsementThreshold", async () => {
+    const { branch: testBranch, alice } = await createFixtures();
+    const future = new Date(Date.now() + 86400000).toISOString();
+
+    await expect(
+      createTask(alice, {
+        branchId: testBranch.id,
+        title: "Admins",
+        effort: "owns_a_thing",
+        effortMagnitude: { hours_per_week: 2 },
+        openness: "community_endorsed",
+        endorsementThreshold: -1,
+        browsePeriodEnd: future,
+      }),
+    ).rejects.toThrow(AppError);
+  });
+
   it("rejects switching an existing task to community_endorsed without also setting the endorsement fields", async () => {
     const { branch: testBranch, alice } = await createFixtures();
     const created = await createTask(alice, {

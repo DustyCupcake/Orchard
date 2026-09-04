@@ -12,7 +12,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 **Task Packs** — save a cycle's task set (or a hand-picked subset) as a named, downloadable pack — phases, tasks, requirements, milestones, wiki seeds, and resources included — and import one into a new cycle in a different Community through a real branch-reconciliation review screen (an exact match, a flagged "similar match" suggestion for a close-but-not-quite name, remap, create new, or decline down to a per-task reassignment) plus a date preview, before anything commits. A Cycle type can suggest a default pack to quick-start from.
 
-**Community input & governance** — Assemblies for community-wide decisions (propose → agenda → notice → voting → closed, always time-computed), Input rounds for small task-specific questions bundled on a standing cadence, Profile questions (once-ever, per-cycle, or phase-scoped) with a capacity-aware Coordination view, and Admins/branch-coordination access gates that are themselves just claimable tasks, not hardcoded roles.
+**Community input & governance** — Assemblies for community-wide decisions (propose → agenda → notice → voting → closed, always time-computed), Input rounds for small task-specific questions bundled on a standing cadence, Profile questions (once-ever, per-cycle, or phase-scoped) with a capacity-aware Coordination view, and Admins/branch-coordination access gates that are themselves just claimable tasks, not hardcoded roles — a task's endorsement threshold can be set to zero for a role that should confirm the moment someone steps up, no endorsement required.
 
 **Documentation** — freestanding wiki pages (revision history, optional branch filing, FAQ-style unanswered/duplicate handling) alongside every task's own wiki notes, comments, and resource links.
 
@@ -36,7 +36,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 **Shifts / rota** — recurring, never-"done" work distinct from one-shot tasks: batch-generated occurrences, first-come sign-up, self-reported completion or coordinator-marked no-shows, and a one-click "rotate this task into a shift."
 
-**Recruitment** — public invite links and an inquiry inbox, an evaluated-admission funnel (configurable evaluator count and decision rules) that converts an accepted applicant into a real, loggable-in member, blind-availability intro-call scheduling for not-yet-members with an auto-lapsing availability subscription, and a live pipeline view of every candidate in flight.
+**Recruitment** — public invite links and an inquiry inbox, an evaluated-admission funnel (configurable evaluator count and decision rules) that converts an accepted applicant into a real, loggable-in member, blind-availability intro-call scheduling for not-yet-members with an auto-lapsing availability subscription, and a live pipeline view of every candidate in flight — alongside a separate door for an already-known roster: an admin can bulk-add a pasted or CSV-uploaded name/email list directly, after a review screen showing exactly who's new versus already a member, skipping the application funnel entirely for people already vouched for.
 
 **Spatial planning** — an SVG-based collaborative site editor (plots, zones, and to-scale placements — tents, vehicles, structures), vertex-level editing with live area/length labels, optional GPS geo-anchoring, GeoJSON/image export, and a propose→approve flow for shared or task-linked placements.
 

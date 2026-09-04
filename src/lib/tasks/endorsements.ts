@@ -59,7 +59,21 @@ export async function expressCandidacy(actor: Member, taskId: string) {
       .insert(browseInterest)
       .values({ taskId, memberId: actor.id })
       .returning();
-    return created;
+
+    // A candidacy whose threshold is already met the instant it's
+    // created (docs/development-plan.md's Phase 62 — most concretely,
+    // an endorsementThreshold of 0) confirms right away rather than
+    // sitting open until either a real endorsement or the browse
+    // window's own close-out (which would otherwise incorrectly mark
+    // it `failed`, per resolveBrowsePeriods below) — see
+    // tryConfirmCandidacy's own comment for why this check has to live
+    // in one shared place rather than just inside endorseCandidacy.
+    // Returns the plain candidacy row (unchanged public shape) with
+    // its `status` already reflecting the outcome, not the richer
+    // {status, candidacy, endorsementCount} wrapper endorseCandidacy
+    // returns — nothing calling expressCandidacy today needs the count.
+    const { candidacy } = await tryConfirmCandidacy(tx, current, created);
+    return candidacy;
   });
 }
 
@@ -76,6 +90,58 @@ async function requireOpenCandidacyForUpdate(tx: Tx, taskId: string, browseInter
     throw new ConflictError(`This candidacy is already ${candidacy.status}`);
   }
   return candidacy;
+}
+
+// The threshold-clearing check, shared by expressCandidacy (checked
+// once immediately, so an already-met threshold — endorsementThreshold
+// = 0 being the concrete case, docs/development-plan.md's Phase 62 —
+// confirms right away instead of waiting on an endorsement that may
+// never come) and endorseCandidacy (checked after each new
+// endorsement, exactly as before this phase). Previously this lived
+// only inside endorseCandidacy, which is exactly why a zero-threshold
+// candidacy used to just sit `open` until the browse window closed and
+// got marked `failed` by resolveBrowsePeriods — nothing ever evaluated
+// the check without a real endorsement triggering it.
+async function tryConfirmCandidacy(
+  tx: Tx,
+  current: Awaited<ReturnType<typeof loadTaskForUpdate>>,
+  candidacy: typeof browseInterest.$inferSelect,
+) {
+  const [{ value: endorsementCount }] = await tx
+    .select({ value: count() })
+    .from(endorsement)
+    .where(eq(endorsement.browseInterestId, candidacy.id));
+
+  const threshold = current.endorsementThreshold ?? Infinity;
+  const holderCount = await assignmentCount(tx, current.id);
+  const capacityAllows = current.capacity === null || holderCount < current.capacity;
+
+  if (endorsementCount < threshold || !capacityAllows) {
+    const [stillOpen] = await tx.select().from(browseInterest).where(eq(browseInterest.id, candidacy.id));
+    return { status: "open" as const, candidacy: stillOpen, endorsementCount };
+  }
+
+  const [confirmed] = await tx
+    .update(browseInterest)
+    .set({ status: "confirmed" })
+    .where(eq(browseInterest.id, candidacy.id))
+    .returning();
+
+  // performClaimInTx re-loads and re-locks the task row — fine within
+  // the same transaction, and it's what actually creates the
+  // TaskAssignment for the confirmed candidate.
+  const [candidateMember] = await tx.select().from(member).where(eq(member.id, candidacy.memberId));
+  await performClaimInTx(tx, candidateMember, current.id);
+
+  // Admins' gate latches permanently open once any task carrying the
+  // Community's admins tag is actually claimed — see
+  // src/lib/settings/admins.ts and community.ts's adminsEverClaimed.
+  const [communityRow] = await tx.select().from(community).where(eq(community.id, current.communityId));
+  if (communityRow && !communityRow.adminsEverClaimed && current.tags.includes(communityRow.adminsTag)) {
+    await tx.update(community).set({ adminsEverClaimed: true }).where(eq(community.id, current.communityId));
+  }
+
+  return { status: "confirmed" as const, candidacy: confirmed, endorsementCount };
 }
 
 export async function endorseCandidacy(actor: Member, taskId: string, browseInterestId: string) {
@@ -106,54 +172,7 @@ export async function endorseCandidacy(actor: Member, taskId: string, browseInte
 
     await tx.insert(endorsement).values({ browseInterestId, endorsedBy: actor.id });
 
-    const [{ value: endorsementCount }] = await tx
-      .select({ value: count() })
-      .from(endorsement)
-      .where(eq(endorsement.browseInterestId, browseInterestId));
-
-    const threshold = current.endorsementThreshold ?? Infinity;
-    const holderCount = await assignmentCount(tx, taskId);
-    const capacityAllows = current.capacity === null || holderCount < current.capacity;
-
-    if (endorsementCount < threshold || !capacityAllows) {
-      const [stillOpen] = await tx
-        .select()
-        .from(browseInterest)
-        .where(eq(browseInterest.id, browseInterestId));
-      return { status: "open" as const, candidacy: stillOpen, endorsementCount };
-    }
-
-    const [confirmed] = await tx
-      .update(browseInterest)
-      .set({ status: "confirmed" })
-      .where(eq(browseInterest.id, browseInterestId))
-      .returning();
-
-    // performClaimInTx re-loads and re-locks the task row — fine within
-    // the same transaction, and it's what actually creates the
-    // TaskAssignment for the confirmed candidate.
-    const [candidateMember] = await tx.select().from(member).where(eq(member.id, candidacy.memberId));
-    await performClaimInTx(tx, candidateMember, taskId);
-
-    // Admins' gate latches permanently open once any task carrying the
-    // Community's admins tag is actually claimed — see
-    // src/lib/settings/admins.ts and community.ts's adminsEverClaimed.
-    const [communityRow] = await tx
-      .select()
-      .from(community)
-      .where(eq(community.id, actor.communityId));
-    if (
-      communityRow &&
-      !communityRow.adminsEverClaimed &&
-      current.tags.includes(communityRow.adminsTag)
-    ) {
-      await tx
-        .update(community)
-        .set({ adminsEverClaimed: true })
-        .where(eq(community.id, actor.communityId));
-    }
-
-    return { status: "confirmed" as const, candidacy: confirmed, endorsementCount };
+    return tryConfirmCandidacy(tx, current, candidacy);
   });
 }
 

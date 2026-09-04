@@ -22,7 +22,7 @@ export const createTaskInput = z.object({
   openness: z
     .enum(["open", "request", "coordination_approved", "community_endorsed"])
     .optional(),
-  endorsementThreshold: z.number().int().positive().nullable().optional(),
+  endorsementThreshold: z.number().int().nonnegative().nullable().optional(),
   critical: z.boolean().optional(),
   browsePeriodEnd: z.string().datetime().nullable().optional(),
 });
@@ -40,14 +40,17 @@ export type UpdateTaskInput = z.infer<typeof updateTaskInput>;
 // merged with the update), not just what's in this one request, so
 // switching an existing task's openness to community_endorsed without
 // also setting these in the same call fails loudly instead of creating
-// a candidacy mechanism with nothing to gate.
+// a candidacy mechanism with nothing to gate. Zero is a real, distinct
+// choice from "unset" (docs/development-plan.md's Phase 62) — meaning
+// "no endorsement needed, confirms as soon as Requirements are met" —
+// so only a missing or negative value is rejected here.
 function requireEndorsementFields(openness: string, browsePeriodEnd: Date | null, endorsementThreshold: number | null) {
   if (openness !== "community_endorsed") return;
   if (!browsePeriodEnd) {
     throw new AppError("community_endorsed tasks need a browsePeriodEnd");
   }
-  if (!endorsementThreshold || endorsementThreshold < 1) {
-    throw new AppError("community_endorsed tasks need a positive endorsementThreshold");
+  if (endorsementThreshold === null || endorsementThreshold < 0) {
+    throw new AppError("community_endorsed tasks need a non-negative endorsementThreshold");
   }
 }
 

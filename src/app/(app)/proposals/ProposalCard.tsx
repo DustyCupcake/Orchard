@@ -109,8 +109,8 @@ export default function ProposalCard({
               <input
                 type="number"
                 name="endorsementThreshold"
-                placeholder="endorsement threshold"
-                min={1}
+                placeholder="endorsement threshold (0 = none needed)"
+                min={0}
                 className={`${INPUT} w-44`}
               />
               <input type="datetime-local" name="browsePeriodEnd" className={INPUT} />

@@ -262,6 +262,81 @@ describe("endorseCandidacy", () => {
   });
 });
 
+describe("eager confirmation on a zero (or otherwise already-met) threshold — Phase 62", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("confirms immediately and claims the task, no endorsement needed", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    const t = await insertCommunityEndorsedTask(testCommunity.id, branch.id, alice.id, {
+      endorsementThreshold: 0,
+    });
+
+    const candidacy = await expressCandidacy(bob, t.id);
+    expect(candidacy.status).toBe("confirmed");
+
+    const [assignment] = await db
+      .select()
+      .from(taskAssignment)
+      .where(eq(taskAssignment.memberId, bob.id));
+    expect(assignment).toBeDefined();
+
+    const [updatedTask] = await db.select().from(task).where(eq(task.id, t.id));
+    expect(updatedTask.status).toBe("claimed");
+  });
+
+  it("still respects capacity — stays open if the task is already full", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    const t = await insertCommunityEndorsedTask(testCommunity.id, branch.id, alice.id, {
+      endorsementThreshold: 0,
+      capacity: 1,
+    });
+    await db.insert(taskAssignment).values({ taskId: t.id, memberId: alice.id });
+    await db.update(task).set({ status: "claimed" }).where(eq(task.id, t.id));
+
+    const candidacy = await expressCandidacy(bob, t.id);
+    expect(candidacy.status).toBe("open");
+
+    const [stillPending] = await db
+      .select()
+      .from(taskAssignment)
+      .where(eq(taskAssignment.memberId, bob.id));
+    expect(stillPending).toBeUndefined();
+  });
+
+  it("latches Community.adminsEverClaimed immediately, same as a real endorsement clearing would", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    const t = await insertCommunityEndorsedTask(testCommunity.id, branch.id, alice.id, {
+      endorsementThreshold: 0,
+      tags: ["admin"],
+    });
+
+    await expressCandidacy(bob, t.id);
+
+    const [after] = await db.select().from(community).where(eq(community.id, testCommunity.id));
+    expect(after.adminsEverClaimed).toBe(true);
+  });
+
+  it("a confirmed-at-creation candidacy is left alone by resolveBrowsePeriods, never marked failed", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    const t = await insertCommunityEndorsedTask(testCommunity.id, branch.id, alice.id, {
+      endorsementThreshold: 0,
+      browsePeriodEnd: new Date(Date.now() + 100),
+    });
+
+    const candidacy = await expressCandidacy(bob, t.id);
+    expect(candidacy.status).toBe("confirmed");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const result = await resolveBrowsePeriods();
+    expect(result.failed).toBe(0);
+
+    const candidacies = await listCandidacies(alice, t.id);
+    expect(candidacies[0].status).toBe("confirmed");
+  });
+});
+
 describe("withdrawCandidacy", () => {
   beforeEach(async () => {
     await resetDatabase();
