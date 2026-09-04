@@ -42,7 +42,6 @@ export type NavGroup = {
 
 export const DASHBOARD_ITEM: NavItem = { key: "dashboard", label: "Dashboard", href: "/dashboard", icon: "home" };
 export const CALENDAR_ITEM: NavItem = { key: "calendar", label: "Calendar", href: "/calendar", icon: "calendar" };
-export const SETTINGS_ITEM: NavItem = { key: "settings", label: "Settings", href: "/settings", icon: "gear" };
 
 // Calendar is a single aggregating read view (Phase 44) — it has no
 // sub-pages of its own, unlike the groups below, so it sits at the top
@@ -92,6 +91,13 @@ export const NAV_GROUPS: NavGroup[] = [
       // not a separate destination. Cycle-scoped data (who's part of
       // it), as distinct from Calendar's when-things-happen dates.
       { key: "cycles", label: "Cycles", href: "/participation", icon: "cycle" },
+      // Community-wide config (branches, tiers, modules, ...) — moved
+      // out of its old fixed bottom-of-sidebar slot: that position
+      // reads as "your own stuff" (it sits right above the profile/
+      // logout block), which fits personal settings, not the rarely-
+      // touched admin config this actually is. Reachable here and as a
+      // button on /members (the Community hub) instead.
+      { key: "settings", label: "Settings", href: "/settings", icon: "gear" },
     ],
   },
   {
@@ -136,7 +142,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-export const ALL_ITEMS: NavItem[] = [DASHBOARD_ITEM, CALENDAR_ITEM, SETTINGS_ITEM, ...NAV_GROUPS.flatMap((g) => g.items)];
+export const ALL_ITEMS: NavItem[] = [DASHBOARD_ITEM, CALENDAR_ITEM, ...NAV_GROUPS.flatMap((g) => g.items)];
 
 export function isItemVisible(item: NavItem, ctx: NavContext): boolean {
   if (item.coordinatorOnly && !ctx.isCoordinator) return false;

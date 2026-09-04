@@ -10,7 +10,6 @@ import {
   CALENDAR_ITEM,
   DASHBOARD_ITEM,
   NAV_GROUPS,
-  SETTINGS_ITEM,
   isItemVisible,
   type NavGroup,
   type NavItem,
@@ -265,10 +264,6 @@ function SidebarNavList({
           )}
         </div>
       )}
-
-      <ul className="mt-auto space-y-0.5">
-        <NavLink item={SETTINGS_ITEM} collapsed={collapsed} active={isActive(SETTINGS_ITEM.href)} />
-      </ul>
     </nav>
   );
 }

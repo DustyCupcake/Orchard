@@ -19,6 +19,7 @@ const HUB_LINKS = [
   { href: "/assemblies", label: "Assemblies" },
   { href: "/documentation", label: "Documentation" },
   { href: "/participation", label: "Cycles" },
+  { href: "/settings", label: "Settings" },
 ] as const;
 
 // Core, not module-gated — every Community needs some version of a

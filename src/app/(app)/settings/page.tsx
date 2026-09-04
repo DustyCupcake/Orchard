@@ -1,4 +1,5 @@
 import { eq, inArray } from "drizzle-orm";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { task } from "@/db/schema";
@@ -13,6 +14,7 @@ import { listForms } from "@/lib/forms";
 import type { FormField } from "@/lib/forms";
 import { listConsentPurposes } from "@/lib/consent";
 import { ForbiddenError } from "@/lib/errors";
+import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import {
   archiveFormAction,
   archiveProfileQuestionAction,
@@ -35,10 +37,13 @@ import {
   unarchiveFormAction,
   unarchiveProfileQuestionAction,
   updateBranchAction,
-  updateCommunityAction,
+  updateCoordinationSettingsAction,
   updateCycleTypeAction,
   updateFormAction,
+  updateGeneralSettingsAction,
+  updateModulesSettingsAction,
   updateProfileQuestionAction,
+  updateRecruitmentSettingsAction,
   updateTierAction,
 } from "./actions";
 import { decodeBulkMemberState } from "./bulk-members-state";
@@ -47,17 +52,109 @@ import ProfileQuestionEditor from "./ProfileQuestionEditor";
 
 export const dynamic = "force-dynamic";
 
+const TABS = [
+  { key: "general", label: "General" },
+  { key: "coordination", label: "Coordination" },
+  { key: "modules", label: "Modules" },
+  { key: "recruitment", label: "Recruitment" },
+  { key: "branches", label: "Branches" },
+  { key: "cycles-tiers", label: "Cycles & Tiers" },
+  { key: "profile-privacy", label: "Profile & Privacy" },
+  { key: "forms", label: "Forms" },
+  { key: "members", label: "Members" },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
+const TAB_KEYS = TABS.map((t) => t.key) as readonly string[];
+
+function TabBar({ active }: { active: TabKey }) {
+  return (
+    <div className="flex flex-wrap gap-x-5 gap-y-1 border-b border-[var(--border)]">
+      {TABS.map((t) => (
+        <Link
+          key={t.key}
+          href={`/settings?tab=${t.key}`}
+          className={`border-b-2 pb-2.5 text-[13px] font-medium transition-colors ${
+            active === t.key
+              ? "border-[var(--accent-1)] text-[var(--accent-1)]"
+              : "border-transparent text-[var(--text-muted)] hover:text-[var(--text)]"
+          }`}
+        >
+          {t.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function FieldSet({ legend, children }: { legend: string; children: React.ReactNode }) {
+  return (
+    <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3.5">
+      <legend className="px-1 text-[12px] font-medium text-[var(--text-muted)]">{legend}</legend>
+      <div className="flex flex-col gap-3">{children}</div>
+    </fieldset>
+  );
+}
+
+function TextField({
+  label,
+  name,
+  defaultValue,
+  placeholder,
+  hint,
+  type = "text",
+  required,
+}: {
+  label: string;
+  name: string;
+  defaultValue?: string | number;
+  placeholder?: string;
+  hint?: React.ReactNode;
+  type?: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className={LABEL}>{label}</span>
+      <input type={type} name={name} defaultValue={defaultValue} placeholder={placeholder} required={required} className={INPUT} />
+      {hint && <span className="text-[12px] text-[var(--text-muted)]">{hint}</span>}
+    </label>
+  );
+}
+
+function CheckField({
+  label,
+  name,
+  value,
+  defaultChecked,
+}: {
+  label: string;
+  name: string;
+  // Only needed when several checkboxes share one name (e.g. Modules'
+  // modulesEnabled group) — formData.getAll(name) needs each box to
+  // carry its own distinct value, not the browser's "on" default every
+  // lone checkbox already gets correctly without this.
+  value?: string;
+  defaultChecked?: boolean;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+      <input type="checkbox" name={name} value={value} defaultChecked={defaultChecked} /> {label}
+    </label>
+  );
+}
+
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; bulkStage?: string; bulkState?: string; bulkAdded?: string }>;
+  searchParams: Promise<{ error?: string; bulkStage?: string; bulkState?: string; bulkAdded?: string; tab?: string }>;
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
   }
 
-  const { error, bulkStage, bulkState: bulkStateRaw, bulkAdded } = await searchParams;
+  const { error, bulkStage, bulkState: bulkStateRaw, bulkAdded, tab: tabRaw } = await searchParams;
+  const activeTab: TabKey = TAB_KEYS.includes(tabRaw ?? "") ? (tabRaw as TabKey) : "general";
   const bulkReview = bulkStage === "review" && bulkStateRaw ? decodeBulkMemberState(bulkStateRaw) : null;
 
   let authorized = true;
@@ -153,1321 +250,893 @@ export default async function SettingsPage({
 
   if (!authorized) {
     return (
-      <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-        <h1>Community settings</h1>
-        <p style={{ color: "crimson" }}>
-          Only a current holder of the &ldquo;{communityRow.adminsTag}&rdquo;-tagged Admins task
-          can view or change these — see its detail page to put yourself forward or endorse a
-          candidate.
-        </p>
+      <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
+        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Community settings</h1>
+        <div className="mt-4">
+          <Banner tone="danger">
+            Only a current holder of the &ldquo;{communityRow.adminsTag}&rdquo;-tagged Admins task
+            can view or change these — see its detail page to put yourself forward or endorse a
+            candidate.
+          </Banner>
+        </div>
       </main>
     );
   }
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <h1>Community settings</h1>
-      <p style={{ color: "#666" }}>
+    <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Community settings</h1>
+      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
         {communityRow.adminsEverClaimed
           ? "Editable by whoever currently holds the Admins task."
           : "No Admins task has ever been claimed in this Community yet, so any member can change these — including tagging a community_endorsed task with the Admins tag below to start gating this screen for real."}
       </p>
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
 
-      <section id="bulk-members" style={{ marginTop: "1.5rem" }}>
-        <h2>Bulk-add members</h2>
-        <p style={{ color: "#666", fontSize: "0.85rem" }}>
-          For an existing group&rsquo;s already-known roster — each person lands exactly where a
-          magic-link first login would, with no Recruitment application required. A public
-          invite link stays the right tool for anyone not already vouched for.
-        </p>
+      <div className="mt-6">
+        <TabBar active={activeTab} />
+      </div>
 
-        {bulkAdded !== undefined && (
-          <p style={{ color: "#2a7a2a" }}>
-            Added {bulkAdded} member{bulkAdded === "1" ? "" : "s"}.
-          </p>
+      <div className="mt-6">
+        {activeTab === "general" && (
+          <div className="flex flex-col gap-5">
+            <form action={updateGeneralSettingsAction} className="flex flex-col gap-4">
+              <TextField label="Name" name="name" defaultValue={communityRow.name} required />
+
+              <FieldSet legend="Branding">
+                <div className="flex flex-wrap items-end gap-4">
+                  <label className="flex flex-col gap-1">
+                    <span className={LABEL}>Accent 1 · primary</span>
+                    <input
+                      type="color"
+                      name="accentPrimary"
+                      defaultValue={communityRow.accentPrimary ?? "#3a6cd9"}
+                      className="h-9 w-9 cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-0.5"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className={LABEL}>Accent 2 · secondary</span>
+                    <input
+                      type="color"
+                      name="accentSecondary"
+                      defaultValue={communityRow.accentSecondary ?? "#8a3fa8"}
+                      className="h-9 w-9 cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] p-0.5"
+                    />
+                  </label>
+                  <label className="flex min-w-[12rem] flex-1 flex-col gap-1">
+                    <span className={LABEL}>Logo URL</span>
+                    <input type="text" name="logoUrl" defaultValue={communityRow.logoUrl ?? ""} placeholder="https://…" className={INPUT} />
+                  </label>
+                </div>
+                <span className="text-[12px] text-[var(--text-muted)]">
+                  The logo replaces the sidebar&rsquo;s text wordmark when set. Leave blank to show the community name instead.
+                </span>
+              </FieldSet>
+
+              <FieldSet legend="Single sign-on (OIDC)">
+                <div className="flex flex-wrap gap-3">
+                  <div className="min-w-[14rem] flex-1">
+                    <TextField label="Issuer URL" name="oidcIssuerUrl" defaultValue={communityRow.oidcIssuerUrl ?? ""} placeholder="https://your-instance.zitadel.cloud" />
+                  </div>
+                  <div className="min-w-[12rem] flex-1">
+                    <TextField label="Client ID" name="oidcClientId" defaultValue={communityRow.oidcClientId ?? ""} />
+                  </div>
+                  <div className="min-w-[12rem] flex-1">
+                    <TextField label="Required role" name="oidcRequiredRole" defaultValue={communityRow.oidcRequiredRole ?? ""} placeholder="orchard_user" />
+                  </div>
+                </div>
+                <span className="text-[12px] text-[var(--text-muted)]">
+                  A login without this Zitadel project role never creates an account, even for an otherwise-valid
+                  login. All three fields are required together — leave the issuer URL blank to keep OIDC off and
+                  magic-link-only. The client secret itself is set via this deployment&rsquo;s{" "}
+                  <code>OIDC_CLIENT_SECRET</code> environment variable, never here.
+                </span>
+              </FieldSet>
+
+              <CheckField label="Cycles on (multiple named production runs over time)" name="cyclesEnabled" defaultChecked={communityRow.cyclesEnabled} />
+              <CheckField label="Phases on (a cycle can define a named phase spine)" name="phasesEnabled" defaultChecked={communityRow.phasesEnabled} />
+              {communityRow.phasesEnabled && (
+                <CheckField
+                  label="On-site mode (while on, structural changes across settings, branches, tiers, cycle types, starting a new Cycle, Requirement changes, publishing the Event schedule, and Spatial-planning edits are all locked; everyday task/wiki/shift work stays live)"
+                  name="onsiteModeEnabled"
+                  defaultChecked={communityRow.onsiteModeEnabled}
+                />
+              )}
+
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Who may start a cycle</span>
+                <select name="cycleInitiationTierId" defaultValue={communityRow.cycleInitiationTierId ?? ""} className={INPUT}>
+                  <option value="">Any member</option>
+                  {tiers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} members only
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <TextField
+                label="Admins tag"
+                name="adminsTag"
+                defaultValue={communityRow.adminsTag}
+                required
+                hint='A community_endorsed task carrying this tag is "the" Admins task — whoever currently holds one gates this screen.'
+              />
+              <TextField
+                label="Coordination tag"
+                name="coordinationTag"
+                defaultValue={communityRow.coordinationTag}
+                required
+                hint="Whoever currently holds a task carrying this tag does that task's branch's coordination — waiving requirements, seeing escalations and talk-to-coordinator pings for that branch."
+              />
+
+              <FieldSet legend="Call defaults (a Branch's own default overrides these — see Branches tab)">
+                <CheckField label="Open agenda" name="defaultCallHasAgenda" defaultChecked={communityRow.defaultCallHasAgenda} />
+                <CheckField label="Expected summary" name="defaultCallNeedsSummary" defaultChecked={communityRow.defaultCallNeedsSummary} />
+                <CheckField label="Require read-confirmation" name="defaultCallRequireRead" defaultChecked={communityRow.defaultCallRequireRead} />
+              </FieldSet>
+
+              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                Save
+              </button>
+            </form>
+          </div>
         )}
 
-        {bulkReview ? (
-          <>
-            {bulkReview.newRows.length > 0 && (
-              <div style={{ marginTop: "0.75rem" }}>
-                <h3 style={{ fontSize: "0.95rem" }}>Will be created ({bulkReview.newRows.length})</h3>
-                <ul style={{ fontSize: "0.9rem" }}>
-                  {bulkReview.newRows.map((r) => (
-                    <li key={r.email}>
-                      {r.name} — {r.email}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {bulkReview.alreadyExistsRows.length > 0 && (
-              <div style={{ marginTop: "0.75rem" }}>
-                <h3 style={{ fontSize: "0.95rem", color: "#666" }}>
-                  Already a member, skipped ({bulkReview.alreadyExistsRows.length})
-                </h3>
-                <ul style={{ fontSize: "0.9rem", color: "#666" }}>
-                  {bulkReview.alreadyExistsRows.map((r) => (
-                    <li key={r.email}>
-                      {r.name} — {r.email}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {bulkReview.malformedLines.length > 0 && (
-              <div style={{ marginTop: "0.75rem" }}>
-                <h3 style={{ fontSize: "0.95rem", color: "crimson" }}>
-                  Couldn&rsquo;t parse, skipped ({bulkReview.malformedLines.length})
-                </h3>
-                <ul style={{ fontSize: "0.9rem", color: "crimson" }}>
-                  {bulkReview.malformedLines.map((line, i) => (
-                    <li key={i}>{line}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {bulkReview.newRows.length > 0 ? (
-              <form action={confirmBulkMemberImportAction} style={{ marginTop: "1rem" }}>
-                <input type="hidden" name="state" value={bulkStateRaw} />
-                <button type="submit" style={{ padding: "0.4rem 1rem" }}>
-                  Confirm — create {bulkReview.newRows.length} member{bulkReview.newRows.length === 1 ? "" : "s"}
-                </button>
-              </form>
-            ) : (
-              <p style={{ marginTop: "1rem", color: "#666" }}>Nothing new to create.</p>
-            )}
-            <p style={{ marginTop: "0.5rem" }}>
-              <a href="/settings#bulk-members">Start over</a>
-            </p>
-          </>
-        ) : (
-          <form
-            action={reviewBulkMemberImportAction}
-            encType="multipart/form-data"
-            style={{ marginTop: "0.75rem", display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 480 }}
-          >
-            <label>
-              Paste one per line — Name, email@example.com
-              <br />
-              <textarea name="pastedText" rows={6} style={{ padding: "0.4rem", width: "100%" }} />
-            </label>
-            <label>
-              Or upload a .csv with the same shape (no header row)
-              <br />
-              <input type="file" name="file" accept=".csv,text/csv,text/plain" />
-            </label>
-            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
-              Review
-            </button>
-          </form>
-        )}
-      </section>
-
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2>Community</h2>
-        <form
-          action={updateCommunityAction}
-          style={{ display: "flex", flexDirection: "column", gap: "0.75rem", maxWidth: 400 }}
-        >
-          <label>
-            Name
-            <br />
-            <input
-              type="text"
-              name="name"
-              defaultValue={communityRow.name}
-              required
-              style={{ padding: "0.4rem", width: "100%" }}
-            />
-          </label>
-
-          <fieldset
-            style={{
-              border: `1px solid var(--border)`,
-              borderRadius: "var(--radius-md)",
-              padding: "0.75rem",
-              display: "flex",
-              gap: "1.5rem",
-              flexWrap: "wrap",
-            }}
-          >
-            <legend style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Branding</legend>
-            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-              <span style={{ fontSize: "0.75rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
-                Accent 1 · primary
-              </span>
-              <input
-                type="color"
-                name="accentPrimary"
-                defaultValue={communityRow.accentPrimary ?? "#3a6cd9"}
-                style={{
-                  width: 36,
-                  height: 36,
-                  padding: 2,
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-sm)",
-                  background: "var(--surface)",
-                  cursor: "pointer",
-                }}
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-              <span style={{ fontSize: "0.75rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
-                Accent 2 · secondary
-              </span>
-              <input
-                type="color"
-                name="accentSecondary"
-                defaultValue={communityRow.accentSecondary ?? "#8a3fa8"}
-                style={{
-                  width: 36,
-                  height: 36,
-                  padding: 2,
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-sm)",
-                  background: "var(--surface)",
-                  cursor: "pointer",
-                }}
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, minWidth: "12rem" }}>
-              <span style={{ fontSize: "0.75rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
-                Logo URL
-              </span>
-              <input
-                type="text"
-                name="logoUrl"
-                defaultValue={communityRow.logoUrl ?? ""}
-                placeholder="https://…"
-                style={{
-                  padding: "0.4rem",
-                  font: "400 14px var(--font-body)",
-                  color: "var(--text)",
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-md)",
-                }}
-              />
-              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                A hosted image URL — replaces the sidebar&rsquo;s text wordmark when set. Leave blank
-                to show the community name instead.
-              </span>
-            </label>
-          </fieldset>
-
-          <fieldset
-            style={{
-              border: `1px solid var(--border)`,
-              borderRadius: "var(--radius-md)",
-              padding: "0.75rem",
-              display: "flex",
-              gap: "1rem",
-              flexWrap: "wrap",
-            }}
-          >
-            <legend style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-              Single sign-on (OIDC)
-            </legend>
-            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, minWidth: "14rem" }}>
-              <span style={{ fontSize: "0.75rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
-                Issuer URL
-              </span>
-              <input
-                type="text"
-                name="oidcIssuerUrl"
-                defaultValue={communityRow.oidcIssuerUrl ?? ""}
-                placeholder="https://your-instance.zitadel.cloud"
-                style={{
-                  padding: "0.4rem",
-                  font: "400 14px var(--font-body)",
-                  color: "var(--text)",
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-md)",
-                }}
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, minWidth: "12rem" }}>
-              <span style={{ fontSize: "0.75rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
-                Client ID
-              </span>
-              <input
-                type="text"
-                name="oidcClientId"
-                defaultValue={communityRow.oidcClientId ?? ""}
-                style={{
-                  padding: "0.4rem",
-                  font: "400 14px var(--font-body)",
-                  color: "var(--text)",
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-md)",
-                }}
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, minWidth: "12rem" }}>
-              <span style={{ fontSize: "0.75rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)" }}>
-                Required role
-              </span>
-              <input
-                type="text"
-                name="oidcRequiredRole"
-                defaultValue={communityRow.oidcRequiredRole ?? ""}
-                placeholder="orchard_user"
-                style={{
-                  padding: "0.4rem",
-                  font: "400 14px var(--font-body)",
-                  color: "var(--text)",
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-md)",
-                }}
-              />
-              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                A login without this Zitadel project role never creates an account, even for an
-                otherwise-valid login. All three fields are required together — leave the issuer URL
-                blank to keep OIDC off and magic-link-only. The client secret itself is set via this
-                deployment&rsquo;s <code>OIDC_CLIENT_SECRET</code> environment variable, never here.
-              </span>
-            </label>
-          </fieldset>
-
-          <label>
-            <input type="checkbox" name="cyclesEnabled" defaultChecked={communityRow.cyclesEnabled} />{" "}
-            Cycles on (multiple named production runs over time)
-          </label>
-
-          <label>
-            <input
-              type="checkbox"
-              name="phasesEnabled"
-              defaultChecked={communityRow.phasesEnabled}
-            />{" "}
-            Phases on (a cycle can define a named phase spine)
-          </label>
-
-          {communityRow.phasesEnabled && (
-            <label>
-              <input
-                type="checkbox"
-                name="onsiteModeEnabled"
-                defaultChecked={communityRow.onsiteModeEnabled}
-              />{" "}
-              On-site mode (while on, structural changes — this screen, branches, tiers, cycle
-              types, starting a new Cycle, Requirement changes, publishing the Event schedule, and
-              Spatial-planning edits — are all locked; everyday task/wiki/shift work stays live)
-            </label>
-          )}
-
-          <label>
-            Who may start a cycle
-            <br />
-            <select
-              name="cycleInitiationTierId"
-              defaultValue={communityRow.cycleInitiationTierId ?? ""}
-              style={{ padding: "0.4rem" }}
-            >
-              <option value="">Any member</option>
-              {tiers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} members only
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Admins tag
-            <br />
-            <input
-              type="text"
-              name="adminsTag"
-              defaultValue={communityRow.adminsTag}
-              required
-              style={{ padding: "0.4rem", width: "100%" }}
-            />
-            <br />
-            <span style={{ fontSize: "0.8rem", color: "#666" }}>
-              A community_endorsed task carrying this tag is &ldquo;the&rdquo; Admins task — whoever
-              currently holds one gates this screen.
-            </span>
-          </label>
-
-          <label>
-            Coordination tag
-            <br />
-            <input
-              type="text"
-              name="coordinationTag"
-              defaultValue={communityRow.coordinationTag}
-              required
-              style={{ padding: "0.4rem", width: "100%" }}
-            />
-            <br />
-            <span style={{ fontSize: "0.8rem", color: "#666" }}>
-              Whoever currently holds a task carrying this tag does that task&rsquo;s branch&rsquo;s
-              coordination — waiving requirements, seeing escalations and talk-to-coordinator pings
-              for that branch.
-            </span>
-          </label>
-
-          <fieldset>
-            <legend>Call defaults (a Branch&rsquo;s own default overrides these — see below)</legend>
-            <label style={{ display: "block" }}>
-              <input
-                type="checkbox"
-                name="defaultCallHasAgenda"
-                defaultChecked={communityRow.defaultCallHasAgenda}
-              />{" "}
-              Open agenda
-            </label>
-            <label style={{ display: "block" }}>
-              <input
-                type="checkbox"
-                name="defaultCallNeedsSummary"
-                defaultChecked={communityRow.defaultCallNeedsSummary}
-              />{" "}
-              Expected summary
-            </label>
-            <label style={{ display: "block" }}>
-              <input
-                type="checkbox"
-                name="defaultCallRequireRead"
-                defaultChecked={communityRow.defaultCallRequireRead}
-              />{" "}
-              Require read-confirmation
-            </label>
-          </fieldset>
-
-          <label>
-            Conflict team task ID (leave blank to keep Conflict management off)
-            <br />
-            <input
-              type="text"
+        {activeTab === "coordination" && (
+          <form action={updateCoordinationSettingsAction} className="flex flex-col gap-4">
+            <TextField
+              label="Conflict team task ID (leave blank to keep Conflict management off)"
               name="conflictTeamTaskId"
               defaultValue={communityRow.conflictTeamTaskId ?? ""}
               placeholder="paste the task's ID from its /tasks/… URL"
-              style={{ padding: "0.4rem", width: "100%" }}
+              hint={
+                conflictTeamTask
+                  ? `Currently: "${conflictTeamTask.title}" — whoever holds it is the conflict team.`
+                  : "A critical, multi-slot coordination task like any other — whoever holds it becomes the conflict team."
+              }
             />
-            <br />
-            <span style={{ fontSize: "0.8rem", color: "#666" }}>
-              {conflictTeamTask
-                ? `Currently: "${conflictTeamTask.title}" — whoever holds it is the conflict team.`
-                : "A critical, multi-slot coordination task like any other — whoever holds it becomes the conflict team."}
-            </span>
-          </label>
-
-          <label>
-            Acknowledgment window (hours)
-            <br />
-            <input
-              type="number"
-              name="conflictAckWindowHours"
-              min={1}
-              defaultValue={communityRow.conflictAckWindowHours}
-              style={{ padding: "0.4rem", width: "8rem" }}
-            />
-          </label>
-
-          <label>
-            Task nomination response window (days)
-            <br />
-            <span style={{ fontSize: "0.8rem", color: "#666" }}>
-              How long a nominated member has to accept, decline, or say not-now before it
-              auto-releases back to Unclaimed.
-            </span>
-            <br />
-            <input
-              type="number"
+            <div className="w-32">
+              <TextField label="Acknowledgment window (hours)" name="conflictAckWindowHours" type="number" defaultValue={communityRow.conflictAckWindowHours} />
+            </div>
+            <TextField
+              label="Task nomination response window (days)"
               name="taskNominationResponseDays"
-              min={1}
+              type="number"
               defaultValue={communityRow.taskNominationResponseDays}
-              style={{ padding: "0.4rem", width: "8rem" }}
+              hint="How long a nominated member has to accept, decline, or say not-now before it auto-releases back to Unclaimed."
             />
-          </label>
 
-          <fieldset>
-            <legend>Response tracking</legend>
-            <span style={{ fontSize: "0.8rem", color: "#666" }}>
-              How many still-open non-responses (an expired nomination, an ignored Waiting
-              nudge, an unread call summary) before a member&rsquo;s pattern shows as a soft
-              flag, then a real pattern — visible to coordination, never an automatic
-              consequence.
-            </span>
-            <br />
-            <label style={{ display: "inline-block", marginRight: "1rem" }}>
-              Soft flag at
-              <br />
-              <input
-                type="number"
-                name="engagementSoftFlagThreshold"
-                min={1}
-                defaultValue={communityRow.engagementSoftFlagThreshold}
-                style={{ padding: "0.4rem", width: "6rem" }}
-              />
-            </label>
-            <label style={{ display: "inline-block", marginRight: "1rem" }}>
-              Pattern at
-              <br />
-              <input
-                type="number"
-                name="engagementPatternThreshold"
-                min={1}
-                defaultValue={communityRow.engagementPatternThreshold}
-                style={{ padding: "0.4rem", width: "6rem" }}
-              />
-            </label>
-            <label style={{ display: "inline-block" }}>
-              Call summary read window (days)
-              <br />
-              <input
-                type="number"
-                name="callSummaryReadWindowDays"
-                min={1}
-                defaultValue={communityRow.callSummaryReadWindowDays}
-                style={{ padding: "0.4rem", width: "6rem" }}
-              />
-            </label>
-          </fieldset>
+            <FieldSet legend="Response tracking">
+              <p className="text-[12px] text-[var(--text-muted)]">
+                How many still-open non-responses (an expired nomination, an ignored Waiting nudge, an unread call
+                summary) before a member&rsquo;s pattern shows as a soft flag, then a real pattern — visible to
+                coordination, never an automatic consequence.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <div className="w-28">
+                  <TextField label="Soft flag at" name="engagementSoftFlagThreshold" type="number" defaultValue={communityRow.engagementSoftFlagThreshold} />
+                </div>
+                <div className="w-28">
+                  <TextField label="Pattern at" name="engagementPatternThreshold" type="number" defaultValue={communityRow.engagementPatternThreshold} />
+                </div>
+                <div className="w-40">
+                  <TextField label="Call summary read window (days)" name="callSummaryReadWindowDays" type="number" defaultValue={communityRow.callSummaryReadWindowDays} />
+                </div>
+              </div>
+            </FieldSet>
 
-          <fieldset>
-            <legend>Modules</legend>
-            {MODULE_DEFINITIONS.map((m) => (
-              <label key={m.key} style={{ display: "block" }}>
-                <input
-                  type="checkbox"
-                  name="modulesEnabled"
-                  value={m.key}
-                  defaultChecked={communityRow.modulesEnabled.includes(m.key)}
-                />{" "}
-                {m.label}
-              </label>
-            ))}
-          </fieldset>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+              Save
+            </button>
+          </form>
+        )}
 
-          <fieldset>
-            <legend>Post-cycle feedback</legend>
-            <label>
-              Feedback form
-              <br />
-              <select
-                name="postCycleFeedbackFormId"
-                defaultValue={communityRow.postCycleFeedbackFormId ?? ""}
-                style={{ padding: "0.4rem", width: "100%" }}
-              >
-                <option value="">— none configured —</option>
-                {forms
-                  .filter((f) => !f.archivedAt)
-                  .map((f) => (
+        {activeTab === "modules" && (
+          <form action={updateModulesSettingsAction} className="flex flex-col gap-4">
+            <FieldSet legend="Modules">
+              {MODULE_DEFINITIONS.map((m) => (
+                <CheckField key={m.key} label={m.label} name="modulesEnabled" value={m.key} defaultChecked={communityRow.modulesEnabled.includes(m.key)} />
+              ))}
+            </FieldSet>
+
+            <FieldSet legend="Post-cycle feedback">
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Feedback form</span>
+                <select name="postCycleFeedbackFormId" defaultValue={communityRow.postCycleFeedbackFormId ?? ""} className={INPUT}>
+                  <option value="">— none configured —</option>
+                  {forms.filter((f) => !f.archivedAt).map((f) => (
                     <option key={f.id} value={f.id}>
                       {f.title}
                     </option>
                   ))}
-              </select>
-              <br />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>
-                Define the form itself under Forms, below, then pick it here.
-              </span>
-            </label>
-
-            <label>
-              Review task ID
-              <br />
-              <input
-                type="text"
+                </select>
+                <span className="text-[12px] text-[var(--text-muted)]">Define the form itself under the Forms tab, then pick it here.</span>
+              </label>
+              <TextField
+                label="Review task ID"
                 name="feedbackReviewTaskId"
                 defaultValue={communityRow.feedbackReviewTaskId ?? ""}
                 placeholder="paste the task's ID from its /tasks/… URL"
-                style={{ padding: "0.4rem", width: "100%" }}
+                hint={
+                  feedbackReviewTask
+                    ? `Currently: "${feedbackReviewTask.title}" — whoever holds it sees responses.`
+                    : "Whoever holds this task sees feedback responses on /feedback."
+                }
               />
-              <br />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>
-                {feedbackReviewTask
-                  ? `Currently: "${feedbackReviewTask.title}" — whoever holds it sees responses.`
-                  : "Whoever holds this task sees feedback responses on /feedback."}
-              </span>
-            </label>
-          </fieldset>
+            </FieldSet>
 
-          <fieldset>
-            <legend>Event scheduling</legend>
-            <label>
-              Scheduling owner task ID (leave blank to keep Event scheduling review/publish off)
-              <br />
-              <input
-                type="text"
+            <FieldSet legend="Event scheduling">
+              <TextField
+                label="Scheduling owner task ID (leave blank to keep Event scheduling review/publish off)"
                 name="eventSchedulingOwnerTaskId"
                 defaultValue={communityRow.eventSchedulingOwnerTaskId ?? ""}
                 placeholder="paste the task's ID from its /tasks/… URL"
-                style={{ padding: "0.4rem", width: "100%" }}
+                hint={
+                  eventSchedulingOwnerTask
+                    ? `Currently: "${eventSchedulingOwnerTask.title}" — whoever holds it reviews proposals and publishes the schedule.`
+                    : "Members can still submit proposals without this set, but nobody can review, confirm, or publish until it is."
+                }
               />
-              <br />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>
-                {eventSchedulingOwnerTask
-                  ? `Currently: "${eventSchedulingOwnerTask.title}" — whoever holds it reviews proposals and publishes the schedule.`
-                  : "Members can still submit proposals without this set, but nobody can review, confirm, or publish until it is."}
-              </span>
-            </label>
-          </fieldset>
+            </FieldSet>
 
-          <fieldset>
-            <legend>Spatial planning</legend>
-            <label>
-              Spatial-planning task ID
-              <br />
-              <input
-                type="text"
+            <FieldSet legend="Spatial planning">
+              <TextField
+                label="Spatial-planning task ID"
                 name="spatialPlanningTaskId"
                 defaultValue={communityRow.spatialPlanningTaskId ?? ""}
                 placeholder="paste the task's ID from its /tasks/… URL"
-                style={{ padding: "0.4rem", width: "100%" }}
+                hint={
+                  spatialPlanningTask
+                    ? `Currently: "${spatialPlanningTask.title}" — whoever holds it can draw/edit Zones and review pending Placement changes.`
+                    : "Nobody can draw or edit Zones until this is set — see /spatial-planning."
+                }
               />
-              <br />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>
-                {spatialPlanningTask
-                  ? `Currently: "${spatialPlanningTask.title}" — whoever holds it can draw/edit Zones and review pending Placement changes.`
-                  : "Nobody can draw or edit Zones until this is set — see /spatial-planning."}
-              </span>
-            </label>
-          </fieldset>
+            </FieldSet>
 
-          <fieldset>
-            <legend>Outbound messages</legend>
-            <label>
-              Announcement task ID (leave blank to keep community-wide announcements off)
-              <br />
-              <input
-                type="text"
+            <FieldSet legend="Outbound messages">
+              <TextField
+                label="Announcement task ID (leave blank to keep community-wide announcements off)"
                 name="announcementTaskId"
                 defaultValue={communityRow.announcementTaskId ?? ""}
                 placeholder="paste the task's ID from its /tasks/… URL"
-                style={{ padding: "0.4rem", width: "100%" }}
+                hint={
+                  announcementTask
+                    ? `Currently: "${announcementTask.title}" — whoever holds it can send a community-wide announcement on /messages.`
+                    : "Targeted messages (branch/task-holders/arrival-window) work without this — it only gates community-wide announcements."
+                }
               />
-              <br />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>
-                {announcementTask
-                  ? `Currently: "${announcementTask.title}" — whoever holds it can send a community-wide announcement on /messages.`
-                  : "Targeted messages (branch/task-holders/arrival-window) work without this — it only gates community-wide announcements."}
-              </span>
-            </label>
-          </fieldset>
+            </FieldSet>
 
-          <fieldset>
-            <legend>Recruitment</legend>
-            <label>
-              Recruitment task ID
-              <br />
-              <input
-                type="text"
-                name="recruitmentTaskId"
-                defaultValue={communityRow.recruitmentTaskId ?? ""}
-                placeholder="paste the task's ID from its /tasks/… URL"
-                style={{ padding: "0.4rem", width: "100%" }}
-              />
-              <br />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>
-                {recruitmentTask
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+              Save
+            </button>
+          </form>
+        )}
+
+        {activeTab === "recruitment" && (
+          <form action={updateRecruitmentSettingsAction} className="flex flex-col gap-4">
+            <TextField
+              label="Recruitment task ID"
+              name="recruitmentTaskId"
+              defaultValue={communityRow.recruitmentTaskId ?? ""}
+              placeholder="paste the task's ID from its /tasks/… URL"
+              hint={
+                recruitmentTask
                   ? `Currently: "${recruitmentTask.title}" — whoever holds it sees the inquiry inbox and, once the module is on, the rest of Recruitment's holder-facing surface.`
-                  : "Invite links and inquiries still work without this set, but nobody sees the inquiry inbox until it is."}
-              </span>
-            </label>
-
-            <label>
-              Application form
-              <br />
-              <select
-                name="recruitmentApplicationFormId"
-                defaultValue={communityRow.recruitmentApplicationFormId ?? ""}
-                style={{ padding: "0.4rem", width: "100%" }}
-              >
+                  : "Invite links and inquiries still work without this set, but nobody sees the inquiry inbox until it is."
+              }
+            />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Application form</span>
+              <select name="recruitmentApplicationFormId" defaultValue={communityRow.recruitmentApplicationFormId ?? ""} className={INPUT}>
                 <option value="">— none configured —</option>
-                {forms
-                  .filter((f) => !f.archivedAt)
-                  .map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.title}
-                    </option>
-                  ))}
+                {forms.filter((f) => !f.archivedAt).map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.title}
+                  </option>
+                ))}
               </select>
-              <br />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>
-                Define the form itself under Forms, below, then pick it here — this is what
-                renders at the public /apply page.
+              <span className="text-[12px] text-[var(--text-muted)]">
+                Define the form itself under the Forms tab, then pick it here — this is what renders at the public /apply page.
               </span>
             </label>
-
-            <label>
-              Evaluators needed per application
-              <br />
-              <input
-                type="number"
-                name="recruitmentEvaluatorCount"
-                min={1}
-                defaultValue={communityRow.recruitmentEvaluatorCount}
-                style={{ padding: "0.4rem", width: "8rem" }}
-              />
-            </label>
-
-            <label>
-              Decision rules (JSON)
-              <br />
+            <div className="w-32">
+              <TextField label="Evaluators needed per application" name="recruitmentEvaluatorCount" type="number" defaultValue={communityRow.recruitmentEvaluatorCount} />
+            </div>
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Decision rules (JSON)</span>
               <textarea
                 name="recruitmentDecisionRulesRaw"
                 rows={6}
                 defaultValue={JSON.stringify(communityRow.recruitmentDecisionRules, null, 2)}
-                style={{ padding: "0.4rem", width: "100%", fontFamily: "monospace", fontSize: "0.85rem" }}
+                className={`${INPUT} font-mono`}
               />
-              <br />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+              <span className="text-[12px] text-[var(--text-muted)]">
                 An ordered list of <code>{"{conditions, outcome}"}</code> — first match wins. Example:{" "}
                 <code>{'[{"conditions":{"minCounts":{"proceed":2}},"outcome":"proceed"},{"conditions":{},"outcome":"wider_discussion"}]'}</code>{" "}
-                — the last rule must have empty conditions (the required fallback). <code>outcome</code> is{" "}
-                one of <code>proceed</code>/<code>wider_discussion</code>/<code>decline</code>.
+                — the last rule must have empty conditions (the required fallback). <code>outcome</code> is one of{" "}
+                <code>proceed</code>/<code>wider_discussion</code>/<code>decline</code>.
+              </span>
+            </label>
+            <div className="w-32">
+              <TextField label="Subscription auto-lapse threshold" name="recruitmentSubscriptionLapseThreshold" type="number" defaultValue={communityRow.recruitmentSubscriptionLapseThreshold} />
+            </div>
+            <TextField
+              label="Wider-discussion window (hours)"
+              name="recruitmentWiderDiscussionHours"
+              type="number"
+              defaultValue={communityRow.recruitmentWiderDiscussionHours}
+              hint="How long a wider_discussion outcome stays open for a subscribed member to raise an objection before auto-resolving."
+            />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Rejection template</span>
+              <textarea name="recruitmentRejectionTemplate" rows={4} defaultValue={communityRow.recruitmentRejectionTemplate ?? ""} className={INPUT} />
+              <span className="text-[12px] text-[var(--text-muted)]">
+                A starting point shown on /applications wherever a decline is about to be sent — never sent automatically.
               </span>
             </label>
 
-            <label>
-              Subscription auto-lapse threshold
-              <br />
-              <input
-                type="number"
-                name="recruitmentSubscriptionLapseThreshold"
-                min={1}
-                defaultValue={communityRow.recruitmentSubscriptionLapseThreshold}
-                style={{ padding: "0.4rem", width: "8rem" }}
-              />
-              <br />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>
-                Consecutive applications with no availability given before a subscription
-                auto-lapses. Not yet wired up to anything that increments it — a real gap, not a
-                bug, until a later phase defines what &ldquo;a subscriber&rsquo;s own availability&rdquo;
-                concretely means here.
-              </span>
-            </label>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+              Save
+            </button>
+          </form>
+        )}
 
-            <label>
-              Wider-discussion window (hours)
-              <br />
-              <input
-                type="number"
-                name="recruitmentWiderDiscussionHours"
-                min={1}
-                defaultValue={communityRow.recruitmentWiderDiscussionHours}
-                style={{ padding: "0.4rem", width: "8rem" }}
-              />
-              <br />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>
-                How long a wider_discussion outcome stays open for a subscribed member to raise an
-                objection before auto-resolving.
-              </span>
-            </label>
+        {activeTab === "branches" && (
+          <div className="flex flex-col gap-8">
+            {pendingBranches.length > 0 && (
+              <section>
+                <h2 className="text-[18px] font-semibold text-[var(--text)]">Pending branches</h2>
+                <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                  Created by a Task Pack import from someone who didn&rsquo;t hold Admins at the time. Tasks are
+                  already attached and claimable; confirming just locks the branch in, rejecting re-points them to a
+                  real branch instead.
+                </p>
+                <div className="mt-3 flex flex-col gap-2">
+                  {pendingBranches.map((b) => (
+                    <div key={b.id} className="rounded-[var(--radius-md)] p-3" style={{ background: "var(--warning-soft)", border: "1px solid var(--warning-border)" }}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[14px] font-medium text-[var(--text)]">{b.name}</span>
+                        <Tag tone="warning">pending</Tag>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <form action={confirmPendingBranchAction}>
+                          <input type="hidden" name="branchId" value={b.id} />
+                          <button type="submit" className={BUTTON_PRIMARY}>
+                            Confirm
+                          </button>
+                        </form>
+                        <form action={rejectPendingBranchAction} className="flex items-center gap-2">
+                          <input type="hidden" name="branchId" value={b.id} />
+                          <select name="reassignToBranchId" required defaultValue="" className={INPUT}>
+                            <option value="" disabled>
+                              Reject — reassign its tasks to…
+                            </option>
+                            {confirmedBranches.map((cb) => (
+                              <option key={cb.id} value={cb.id}>
+                                {cb.name}
+                              </option>
+                            ))}
+                          </select>
+                          <button type="submit" className={BUTTON_SECONDARY}>
+                            Reject
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
-            <label>
-              Rejection template
-              <br />
-              <textarea
-                name="recruitmentRejectionTemplate"
-                rows={4}
-                defaultValue={communityRow.recruitmentRejectionTemplate ?? ""}
-                style={{ padding: "0.4rem", width: "100%" }}
-              />
-              <br />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>
-                A starting point shown on /applications wherever a decline is about to be sent —
-                never sent automatically.
-              </span>
-            </label>
-          </fieldset>
+            <section>
+              <h2 className="text-[18px] font-semibold text-[var(--text)]">Branches</h2>
+              {confirmedBranches.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+              <div className="mt-3 flex flex-col gap-2">
+                {confirmedBranches.map((b) => (
+                  <div key={b.id} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
+                    <form action={updateBranchAction} className="flex flex-wrap items-center gap-2">
+                      <input type="hidden" name="branchId" value={b.id} />
+                      <input type="text" name="name" defaultValue={b.name} className={`${INPUT} w-32`} />
+                      <input type="text" name="description" defaultValue={b.description ?? ""} placeholder="description" className={`${INPUT} flex-1`} />
+                      {(
+                        [
+                          ["defaultCallHasAgenda", "Agenda", b.defaultCallHasAgenda],
+                          ["defaultCallNeedsSummary", "Summary", b.defaultCallNeedsSummary],
+                          ["defaultCallRequireRead", "Read-confirm", b.defaultCallRequireRead],
+                        ] as const
+                      ).map(([name, label, value]) => (
+                        <label key={name} className="flex items-center gap-1 text-[12px] text-[var(--text-muted)]">
+                          {label}
+                          <select name={name} defaultValue={value === null ? "inherit" : value ? "on" : "off"} className={INPUT}>
+                            <option value="inherit">Inherit</option>
+                            <option value="on">On</option>
+                            <option value="off">Off</option>
+                          </select>
+                        </label>
+                      ))}
+                      <button type="submit" className={BUTTON_PRIMARY}>
+                        Save
+                      </button>
+                    </form>
+                    <form action={deleteBranchAction} className="mt-2">
+                      <input type="hidden" name="branchId" value={b.id} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        Delete
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
 
-          <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
-            Save
-          </button>
-        </form>
-      </section>
+              <form action={createBranchAction} className="mt-3 flex flex-wrap gap-2">
+                <input type="text" name="name" required placeholder="New branch name" className={INPUT} />
+                <input type="text" name="description" placeholder="description (optional)" className={`${INPUT} flex-1`} />
+                <button type="submit" className={BUTTON_PRIMARY}>
+                  Add branch
+                </button>
+              </form>
+            </section>
+          </div>
+        )}
 
-      {pendingBranches.length > 0 && (
-        <section style={{ marginTop: "2rem" }}>
-          <h2>Pending branches</h2>
-          <p style={{ color: "#666", fontSize: "0.85rem" }}>
-            Created by a Task Pack import from someone who didn&rsquo;t hold Admins at the time —
-            see docs/spec.md&rsquo;s &ldquo;Create new branch&rdquo; needs its own check.&rdquo; Tasks are already
-            attached and claimable; confirming just locks the branch in, rejecting re-points them
-            to a real branch instead.
-          </p>
-          {pendingBranches.map((b) => (
-            <div
-              key={b.id}
-              style={{ border: "1px solid #f0c36d", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
-            >
-              <strong>{b.name}</strong>
-              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.4rem", alignItems: "center" }}>
-                <form action={confirmPendingBranchAction}>
-                  <input type="hidden" name="branchId" value={b.id} />
-                  <button type="submit">Confirm</button>
-                </form>
-                <form action={rejectPendingBranchAction} style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-                  <input type="hidden" name="branchId" value={b.id} />
-                  <select name="reassignToBranchId" required defaultValue="" style={{ padding: "0.3rem" }}>
-                    <option value="" disabled>
-                      Reject — reassign its tasks to…
+        {activeTab === "cycles-tiers" && (
+          <div className="flex flex-col gap-8">
+            <section>
+              <h2 className="text-[18px] font-semibold text-[var(--text)]">Cycle types</h2>
+              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                Optional labels for grouping Cycles (Season, Reunion, Workday) — mainly so a Tier&rsquo;s cycle-type-count
+                criterion can count occurrences of one kind of cycle. A Community that never uses this just leaves
+                every Cycle untyped.
+              </p>
+              {cycleTypes.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+              <div className="mt-3 flex flex-col gap-2">
+                {cycleTypes.map((ct) => (
+                  <div key={ct.id} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
+                    <form action={updateCycleTypeAction} className="flex flex-wrap items-center gap-2">
+                      <input type="hidden" name="cycleTypeId" value={ct.id} />
+                      <input type="text" name="name" defaultValue={ct.name} className={`${INPUT} flex-1`} />
+                      <select name="defaultSourceCycleId" defaultValue={ct.defaultSourceCycleId ?? ""} className={INPUT}>
+                        <option value="">No suggested starting cycle</option>
+                        {cyclesForPicker.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select name="defaultPackId" defaultValue={ct.defaultPackId ?? ""} className={INPUT}>
+                        <option value="">No suggested Task Pack</option>
+                        {taskPacks.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="submit" className={BUTTON_PRIMARY}>
+                        Save
+                      </button>
+                    </form>
+                    <form action={deleteCycleTypeAction} className="mt-2">
+                      <input type="hidden" name="cycleTypeId" value={ct.id} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        Delete
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+
+              <form action={createCycleTypeAction} className="mt-3 flex flex-wrap gap-2">
+                <input type="text" name="name" required placeholder="New cycle type (e.g. Season)" className={INPUT} />
+                <select name="defaultSourceCycleId" defaultValue="" className={INPUT}>
+                  <option value="">No suggested starting cycle</option>
+                  {cyclesForPicker.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
                     </option>
-                    {confirmedBranches.map((cb) => (
-                      <option key={cb.id} value={cb.id}>
-                        {cb.name}
+                  ))}
+                </select>
+                <select name="defaultPackId" defaultValue="" className={INPUT}>
+                  <option value="">No suggested Task Pack</option>
+                  {taskPacks.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit" className={BUTTON_PRIMARY}>
+                  Add cycle type
+                </button>
+              </form>
+            </section>
+
+            <section>
+              <h2 className="text-[18px] font-semibold text-[var(--text)]">Tiers</h2>
+              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                Manual assignment is set from a member&rsquo;s own profile page. Cycle-type count is computed live off
+                Participation. Tenure/completion/cohort aren&rsquo;t computed yet.
+              </p>
+              {tiers.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+              <div className="mt-3 flex flex-col gap-2">
+                {tiers.map((t) => {
+                  const config = t.criterionConfig as { cycleTypeId?: string; minCount?: number };
+                  return (
+                    <div key={t.id} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
+                      <form action={updateTierAction} className="flex flex-wrap items-center gap-2">
+                        <input type="hidden" name="tierId" value={t.id} />
+                        <input type="text" name="name" defaultValue={t.name} className={`${INPUT} flex-1`} />
+                        <Tag>{t.criterionType}</Tag>
+                        {t.criterionType === "cycle_type_count" && (
+                          <>
+                            <select name="cycleTypeId" defaultValue={config.cycleTypeId ?? ""} className={INPUT}>
+                              <option value="">Pick a cycle type</option>
+                              {cycleTypes.map((ct) => (
+                                <option key={ct.id} value={ct.id}>
+                                  {ct.name}
+                                </option>
+                              ))}
+                            </select>
+                            <input type="number" name="minCount" min={1} defaultValue={config.minCount ?? ""} placeholder="min count" className={`${INPUT} w-24`} />
+                          </>
+                        )}
+                        <button type="submit" className={BUTTON_PRIMARY}>
+                          Save
+                        </button>
+                      </form>
+                      <form action={deleteTierAction} className="mt-2">
+                        <input type="hidden" name="tierId" value={t.id} />
+                        <button type="submit" className={BUTTON_SECONDARY}>
+                          Delete
+                        </button>
+                      </form>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <form action={createTierAction} className="mt-3 flex flex-wrap gap-2">
+                <input type="text" name="name" required placeholder="New tier name" className={INPUT} />
+                <select name="criterionType" defaultValue="manual" className={INPUT}>
+                  <option value="manual">Manual</option>
+                  <option value="tenure">Tenure (not yet computed)</option>
+                  <option value="completion">Completion (not yet computed)</option>
+                  <option value="cohort">Cohort (not yet computed)</option>
+                  <option value="cycle_type_count">Cycle-type count (computed)</option>
+                </select>
+                <select name="cycleTypeId" defaultValue="" className={INPUT}>
+                  <option value="">Cycle type (if cycle-type count)</option>
+                  {cycleTypes.map((ct) => (
+                    <option key={ct.id} value={ct.id}>
+                      {ct.name}
+                    </option>
+                  ))}
+                </select>
+                <input type="number" name="minCount" min={1} placeholder="min count" className={`${INPUT} w-28`} />
+                <button type="submit" className={BUTTON_PRIMARY}>
+                  Add tier
+                </button>
+              </form>
+            </section>
+          </div>
+        )}
+
+        {activeTab === "profile-privacy" && (
+          <div className="flex flex-col gap-8">
+            <section>
+              <h2 className="text-[18px] font-semibold text-[var(--text)]">Profile questions</h2>
+              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                Standing facts about a member — once-ever (e.g. emergency contact), per-cycle, or tied to one phase
+                name (e.g. &ldquo;Availability &mdash; Build&rdquo;). A phase-scoped question with &ldquo;feeds
+                capacity signal&rdquo; on powers the Coordination view&rsquo;s fitted-ask flags and non-response list
+                for whichever cycle phase matches its name.
+              </p>
+              {profileQuestions.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+              <div className="mt-3 flex flex-col gap-2">
+                {profileQuestions.map((q) => (
+                  <div key={q.id} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3" style={{ opacity: q.archivedAt ? 0.6 : 1 }}>
+                    <form action={updateProfileQuestionAction} className="flex flex-col gap-2">
+                      <input type="hidden" name="questionId" value={q.id} />
+                      <span className="text-[12px] text-[var(--text-muted)]">
+                        {q.scope}
+                        {q.scope === "phase" ? ` (${q.phaseNameHint})` : ""} — scope is set at creation, not editable here.
+                      </span>
+                      <ProfileQuestionEditor
+                        initial={{ label: q.label, responseType: q.responseType, options: q.options, required: q.required }}
+                      />
+                      <div className="flex flex-wrap items-center gap-3">
+                        {q.scope === "phase" && (
+                          <CheckField label="feeds capacity signal" name="feedsCapacitySignal" defaultChecked={q.feedsCapacitySignal} />
+                        )}
+                        <CheckField label="surface during onboarding" name="onboardingSurface" defaultChecked={q.surfaces.includes("onboarding")} />
+                        <button type="submit" className={BUTTON_PRIMARY}>
+                          Save
+                        </button>
+                      </div>
+                    </form>
+                    <form action={q.archivedAt ? unarchiveProfileQuestionAction : archiveProfileQuestionAction} className="mt-2">
+                      <input type="hidden" name="questionId" value={q.id} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        {q.archivedAt ? "Unarchive" : "Archive"}
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+
+              <form action={createProfileQuestionAction} className="mt-3 flex max-w-[600px] flex-col gap-2">
+                <ProfileQuestionEditor initial={{ label: "", responseType: "free_text", options: [], required: false }} />
+                <select name="scope" defaultValue="once_ever" className={INPUT}>
+                  <option value="once_ever">Once ever</option>
+                  <option value="per_cycle">Per cycle</option>
+                  <option value="phase">Tied to one phase name</option>
+                </select>
+                <input type="text" name="phaseNameHint" placeholder="phase name (only if scope is 'phase'), e.g. Build" className={INPUT} />
+                <CheckField label="feeds capacity signal (phase-scoped only)" name="feedsCapacitySignal" />
+                <CheckField label="surface during onboarding" name="onboardingSurface" />
+                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                  Add profile question
+                </button>
+              </form>
+            </section>
+
+            <section>
+              <h2 className="text-[18px] font-semibold text-[var(--text)]">Sensitive data access</h2>
+              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                Purpose-bound, not role-bound: pick which task or tier unlocks each field for <em>other</em>{" "}
+                members&rsquo; values on <code>/sensitive-data</code>. A member can always see and edit their own
+                values regardless of these rules. Only takes effect once &ldquo;Sensitive data&rdquo; is checked
+                under the Modules tab.
+              </p>
+              {sensitiveFieldRules.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">No rules yet.</p>}
+              <div className="mt-3 flex flex-col gap-2">
+                {sensitiveFieldRules.map((r) => (
+                  <div key={r.id} className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
+                    <span className="flex-1 text-[13px] text-[var(--text)]">
+                      {SENSITIVE_FIELD_LABELS[r.fieldKey]} — unlocked by{" "}
+                      {r.unlockedByTaskId
+                        ? `holding "${ruleTaskNameById.get(r.unlockedByTaskId) ?? "—"}"`
+                        : `Tier "${tierNameById.get(r.unlockedByTierId!) ?? "—"}"`}
+                    </span>
+                    <form action={deleteSensitiveFieldAccessRuleAction}>
+                      <input type="hidden" name="ruleId" value={r.id} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        Delete
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+
+              <form action={createSensitiveFieldAccessRuleAction} className="mt-3 flex max-w-[420px] flex-col gap-2">
+                <select name="fieldKey" defaultValue={SENSITIVE_FIELD_KEYS[0]} className={INPUT}>
+                  {SENSITIVE_FIELD_KEYS.map((k) => (
+                    <option key={k} value={k}>
+                      {SENSITIVE_FIELD_LABELS[k]}
+                    </option>
+                  ))}
+                </select>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Unlock via a Tier</span>
+                  <select name="unlockedByTierId" defaultValue="" className={INPUT}>
+                    <option value="">— none —</option>
+                    {tiers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
                       </option>
                     ))}
                   </select>
-                  <button type="submit">Reject</button>
-                </form>
-              </div>
-            </div>
-          ))}
-        </section>
-      )}
+                </label>
+                <TextField label="Or unlock via a Task ID (pick exactly one of Tier/Task)" name="unlockedByTaskId" placeholder="paste the task's ID from its /tasks/… URL" />
+                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                  Add rule
+                </button>
+              </form>
+            </section>
 
-      <section style={{ marginTop: "2rem" }}>
-        <h2>Branches</h2>
-        {confirmedBranches.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
-        {confirmedBranches.map((b) => (
-          <div
-            key={b.id}
-            style={{
-              border: "1px solid #ccc",
-              borderRadius: 6,
-              padding: "0.6rem",
-              marginBottom: "0.5rem",
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <form
-              action={updateBranchAction}
-              style={{ display: "flex", gap: "0.5rem", flex: 1, flexWrap: "wrap", alignItems: "center" }}
-            >
-              <input type="hidden" name="branchId" value={b.id} />
-              <input
-                type="text"
-                name="name"
-                defaultValue={b.name}
-                style={{ padding: "0.3rem", width: "8rem" }}
-              />
-              <input
-                type="text"
-                name="description"
-                defaultValue={b.description ?? ""}
-                placeholder="description"
-                style={{ padding: "0.3rem", flex: 1 }}
-              />
-              {(
-                [
-                  ["defaultCallHasAgenda", "Agenda", b.defaultCallHasAgenda],
-                  ["defaultCallNeedsSummary", "Summary", b.defaultCallNeedsSummary],
-                  ["defaultCallRequireRead", "Read-confirm", b.defaultCallRequireRead],
-                ] as const
-              ).map(([name, label, value]) => (
-                <label key={name} style={{ fontSize: "0.8rem" }}>
-                  {label}
-                  <select
-                    name={name}
-                    defaultValue={value === null ? "inherit" : value ? "on" : "off"}
-                    style={{ marginLeft: "0.3rem", padding: "0.2rem" }}
-                  >
-                    <option value="inherit">Inherit</option>
-                    <option value="on">On</option>
-                    <option value="off">Off</option>
+            <section>
+              <h2 className="text-[18px] font-semibold text-[var(--text)]">Consent purposes</h2>
+              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                One row per distinct purpose needing a member&rsquo;s consent — ordinary/operational processing gets
+                no row here at all. Optionally pin a purpose to one Sensitive-data field: once set, that field only
+                populates or shows once the owning member has granted this purpose, and stops the moment they
+                withdraw it.
+              </p>
+              {consentPurposes.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">No purposes yet.</p>}
+              <div className="mt-3 flex flex-col gap-2">
+                {consentPurposes.map((p) => (
+                  <div key={p.id} className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
+                    <div className="flex-1">
+                      <span className="text-[13px] font-medium text-[var(--text)]">{p.label}</span>{" "}
+                      <code className="text-[12px] text-[var(--text-muted)]">{p.key}</code>
+                      {p.gatesSensitiveField && (
+                        <span className="text-[12px] text-[var(--text-muted)]"> — gates {SENSITIVE_FIELD_LABELS[p.gatesSensitiveField]}</span>
+                      )}
+                      {p.requiresExplicit && <span className="text-[12px] text-[var(--text-muted)]"> (explicit)</span>}
+                      <div className="text-[12px] text-[var(--text-muted)]">{p.noticeText}</div>
+                    </div>
+                    <form action={deleteConsentPurposeAction}>
+                      <input type="hidden" name="purposeId" value={p.id} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        Delete
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+
+              <form action={createConsentPurposeAction} className="mt-3 flex max-w-[420px] flex-col gap-2">
+                <input type="text" name="key" placeholder="key (e.g. sensitive_health)" required className={INPUT} />
+                <input type="text" name="label" placeholder="label" required className={INPUT} />
+                <textarea name="noticeText" placeholder="notice text shown to the member" required rows={2} className={INPUT} />
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Gates a Sensitive-data field (optional)</span>
+                  <select name="gatesSensitiveField" defaultValue="" className={INPUT}>
+                    <option value="">— none —</option>
+                    {SENSITIVE_FIELD_KEYS.map((k) => (
+                      <option key={k} value={k}>
+                        {SENSITIVE_FIELD_LABELS[k]}
+                      </option>
+                    ))}
                   </select>
                 </label>
-              ))}
-              <button type="submit">Save</button>
-            </form>
-            <form action={deleteBranchAction}>
-              <input type="hidden" name="branchId" value={b.id} />
-              <button type="submit">Delete</button>
-            </form>
+                <CheckField label="requires explicit consent (required if gating a field)" name="requiresExplicit" />
+                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                  Add purpose
+                </button>
+              </form>
+            </section>
           </div>
-        ))}
+        )}
 
-        <form action={createBranchAction} style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
-          <input type="text" name="name" required placeholder="New branch name" style={{ padding: "0.4rem" }} />
-          <input
-            type="text"
-            name="description"
-            placeholder="description (optional)"
-            style={{ padding: "0.4rem", flex: 1 }}
-          />
-          <button type="submit">Add branch</button>
-        </form>
-      </section>
-
-      <section style={{ marginTop: "2rem" }}>
-        <h2>Cycle types</h2>
-        <p style={{ color: "#666", fontSize: "0.85rem" }}>
-          Optional labels for grouping Cycles (Season, Reunion, Workday) — mainly so a Tier&rsquo;s
-          cycle-type-count criterion can count occurrences of one kind of cycle. A Community that
-          never uses this just leaves every Cycle untyped.
-        </p>
-        {cycleTypes.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
-        {cycleTypes.map((ct) => (
-          <div
-            key={ct.id}
-            style={{
-              border: "1px solid #ccc",
-              borderRadius: 6,
-              padding: "0.6rem",
-              marginBottom: "0.5rem",
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            <form action={updateCycleTypeAction} style={{ display: "flex", gap: "0.5rem", flex: 1, flexWrap: "wrap" }}>
-              <input type="hidden" name="cycleTypeId" value={ct.id} />
-              <input type="text" name="name" defaultValue={ct.name} style={{ padding: "0.3rem", flex: 1 }} />
-              <select name="defaultSourceCycleId" defaultValue={ct.defaultSourceCycleId ?? ""} style={{ padding: "0.3rem" }}>
-                <option value="">No suggested starting cycle</option>
-                {cyclesForPicker.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <select name="defaultPackId" defaultValue={ct.defaultPackId ?? ""} style={{ padding: "0.3rem" }}>
-                <option value="">No suggested Task Pack</option>
-                {taskPacks.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <button type="submit">Save</button>
-            </form>
-            <form action={deleteCycleTypeAction}>
-              <input type="hidden" name="cycleTypeId" value={ct.id} />
-              <button type="submit">Delete</button>
-            </form>
-          </div>
-        ))}
-
-        <form action={createCycleTypeAction} style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
-          <input type="text" name="name" required placeholder="New cycle type (e.g. Season)" style={{ padding: "0.4rem" }} />
-          <select name="defaultSourceCycleId" defaultValue="" style={{ padding: "0.4rem" }}>
-            <option value="">No suggested starting cycle</option>
-            {cyclesForPicker.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <select name="defaultPackId" defaultValue="" style={{ padding: "0.4rem" }}>
-            <option value="">No suggested Task Pack</option>
-            {taskPacks.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <button type="submit">Add cycle type</button>
-        </form>
-      </section>
-
-      <section style={{ marginTop: "2rem" }}>
-        <h2>Tiers</h2>
-        <p style={{ color: "#666", fontSize: "0.85rem" }}>
-          Manual assignment is set from a member&rsquo;s own profile page. Cycle-type count is
-          computed live off Participation — a member&rsquo;s tiers update automatically whenever
-          they declare their plans for a Cycle. Tenure/completion/cohort aren&rsquo;t computed yet.
-        </p>
-        {tiers.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
-        {tiers.map((t) => {
-          const config = t.criterionConfig as { cycleTypeId?: string; minCount?: number };
-          return (
-            <div
-              key={t.id}
-              style={{
-                border: "1px solid #ccc",
-                borderRadius: 6,
-                padding: "0.6rem",
-                marginBottom: "0.5rem",
-                display: "flex",
-                gap: "0.5rem",
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <form action={updateTierAction} style={{ display: "flex", gap: "0.5rem", flex: 1, flexWrap: "wrap" }}>
-                <input type="hidden" name="tierId" value={t.id} />
-                <input type="text" name="name" defaultValue={t.name} style={{ padding: "0.3rem", flex: 1 }} />
-                <span style={{ fontSize: "0.8rem", color: "#666", alignSelf: "center" }}>{t.criterionType}</span>
-                {t.criterionType === "cycle_type_count" && (
-                  <>
-                    <select
-                      name="cycleTypeId"
-                      defaultValue={config.cycleTypeId ?? ""}
-                      style={{ padding: "0.3rem" }}
-                    >
-                      <option value="">Pick a cycle type</option>
-                      {cycleTypes.map((ct) => (
-                        <option key={ct.id} value={ct.id}>
-                          {ct.name}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      name="minCount"
-                      min={1}
-                      defaultValue={config.minCount ?? ""}
-                      placeholder="min count"
-                      style={{ padding: "0.3rem", width: "6rem" }}
+        {activeTab === "forms" && (
+          <section>
+            <h2 className="text-[18px] font-semibold text-[var(--text)]">Forms</h2>
+            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              A community-defined set of fields collected together as one submission — infrastructure other things
+              lean on, starting with post-cycle feedback. Editing an existing form&rsquo;s fields never touches its
+              past responses — a response keeps whatever it recorded under a field&rsquo;s original key even if that
+              field is later renamed, retyped, or removed.
+            </p>
+            {forms.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+            <div className="mt-3 flex flex-col gap-2">
+              {forms.map((f) => (
+                <details key={f.id} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3" style={{ opacity: f.archivedAt ? 0.6 : 1 }}>
+                  <summary className="cursor-pointer text-[14px] font-medium text-[var(--text)]">
+                    {f.title}
+                    {f.allowAnonymous && <span className="ml-1 text-[12px] font-normal text-[var(--text-muted)]">· anonymous allowed</span>}
+                    <span className="ml-1 text-[12px] font-normal text-[var(--text-muted)]">
+                      — {(f.fields as { label: string }[]).map((field) => field.label).join(", ")}
+                    </span>
+                  </summary>
+                  <div className="mt-3">
+                    <FormBuilder
+                      action={updateFormAction}
+                      mode="edit"
+                      formId={f.id}
+                      initialTitle={f.title}
+                      initialDescription={f.description ?? ""}
+                      initialAllowAnonymous={f.allowAnonymous}
+                      initialFields={(f.fields as FormField[]).map((field) => ({
+                        key: field.key,
+                        label: field.label,
+                        responseType: field.responseType,
+                        options: field.options ?? [],
+                        required: field.required ?? false,
+                        isNameField: field.isNameField,
+                        isEmailField: field.isEmailField,
+                      }))}
+                      submitLabel="Save"
                     />
-                  </>
-                )}
-                <button type="submit">Save</button>
-              </form>
-              <form action={deleteTierAction}>
-                <input type="hidden" name="tierId" value={t.id} />
-                <button type="submit">Delete</button>
-              </form>
+                    <form action={f.archivedAt ? unarchiveFormAction : archiveFormAction} className="mt-2">
+                      <input type="hidden" name="formId" value={f.id} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        {f.archivedAt ? "Unarchive" : "Archive"}
+                      </button>
+                    </form>
+                  </div>
+                </details>
+              ))}
             </div>
-          );
-        })}
 
-        <form action={createTierAction} style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
-          <input type="text" name="name" required placeholder="New tier name" style={{ padding: "0.4rem" }} />
-          <select name="criterionType" defaultValue="manual" style={{ padding: "0.4rem" }}>
-            <option value="manual">Manual</option>
-            <option value="tenure">Tenure (not yet computed)</option>
-            <option value="completion">Completion (not yet computed)</option>
-            <option value="cohort">Cohort (not yet computed)</option>
-            <option value="cycle_type_count">Cycle-type count (computed)</option>
-          </select>
-          <select name="cycleTypeId" defaultValue="" style={{ padding: "0.4rem" }}>
-            <option value="">Cycle type (if cycle-type count)</option>
-            {cycleTypes.map((ct) => (
-              <option key={ct.id} value={ct.id}>
-                {ct.name}
-              </option>
-            ))}
-          </select>
-          <input type="number" name="minCount" min={1} placeholder="min count" style={{ padding: "0.4rem", width: "8rem" }} />
-          <button type="submit">Add tier</button>
-        </form>
-      </section>
-
-      <section style={{ marginTop: "2rem" }}>
-        <h2>Profile questions</h2>
-        <p style={{ color: "#666", fontSize: "0.85rem" }}>
-          Standing facts about a member — once-ever (e.g. emergency contact), per-cycle, or tied
-          to one phase name (e.g. &ldquo;Availability &mdash; Build&rdquo;). A phase-scoped
-          question with &ldquo;feeds capacity signal&rdquo; on powers the Coordination view&rsquo;s
-          fitted-ask flags and non-response list for whichever cycle phase matches its name.
-        </p>
-        {profileQuestions.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
-        {profileQuestions.map((q) => (
-          <div
-            key={q.id}
-            style={{
-              border: "1px solid #ccc",
-              borderRadius: 6,
-              padding: "0.6rem",
-              marginBottom: "0.5rem",
-              opacity: q.archivedAt ? 0.6 : 1,
-            }}
-          >
-            <form
-              action={updateProfileQuestionAction}
-              style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
-            >
-              <input type="hidden" name="questionId" value={q.id} />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>
-                {q.scope}
-                {q.scope === "phase" ? ` (${q.phaseNameHint})` : ""} — scope is set at creation, not
-                editable here.
-              </span>
-              <ProfileQuestionEditor
-                initial={{
-                  label: q.label,
-                  responseType: q.responseType,
-                  options: q.options,
-                  required: q.required,
-                }}
-              />
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
-                {q.scope === "phase" && (
-                  <label style={{ fontSize: "0.8rem" }}>
-                    <input
-                      type="checkbox"
-                      name="feedsCapacitySignal"
-                      defaultChecked={q.feedsCapacitySignal}
-                    />{" "}
-                    feeds capacity signal
-                  </label>
-                )}
-                <label style={{ fontSize: "0.8rem" }}>
-                  <input
-                    type="checkbox"
-                    name="onboardingSurface"
-                    defaultChecked={q.surfaces.includes("onboarding")}
-                  />{" "}
-                  surface during onboarding
-                </label>
-                <button type="submit">Save</button>
+            <div className="mt-4">
+              <h3 className="text-[15px] font-medium text-[var(--text)]">New form</h3>
+              <div className="mt-2">
+                <FormBuilder action={createFormAction} mode="create" initialTitle="" initialDescription="" initialAllowAnonymous={false} initialFields={[]} submitLabel="Create form" />
               </div>
-            </form>
-            <form action={q.archivedAt ? unarchiveProfileQuestionAction : archiveProfileQuestionAction} style={{ marginTop: "0.3rem" }}>
-              <input type="hidden" name="questionId" value={q.id} />
-              <button type="submit">{q.archivedAt ? "Unarchive" : "Archive"}</button>
-            </form>
-          </div>
-        ))}
-
-        <form
-          action={createProfileQuestionAction}
-          style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem", maxWidth: 600 }}
-        >
-          <ProfileQuestionEditor
-            initial={{ label: "", responseType: "free_text", options: [], required: false }}
-          />
-          <select name="scope" defaultValue="once_ever" style={{ padding: "0.4rem" }}>
-            <option value="once_ever">Once ever</option>
-            <option value="per_cycle">Per cycle</option>
-            <option value="phase">Tied to one phase name</option>
-          </select>
-          <input
-            type="text"
-            name="phaseNameHint"
-            placeholder="phase name (only if scope is 'phase'), e.g. Build"
-            style={{ padding: "0.4rem" }}
-          />
-          <label>
-            <input type="checkbox" name="feedsCapacitySignal" /> feeds capacity signal (phase-scoped
-            only)
-          </label>
-          <label>
-            <input type="checkbox" name="onboardingSurface" /> surface during onboarding
-          </label>
-          <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
-            Add profile question
-          </button>
-        </form>
-      </section>
-
-      <section style={{ marginTop: "2rem" }}>
-        <h2>Sensitive data access</h2>
-        <p style={{ color: "#666", fontSize: "0.85rem" }}>
-          Purpose-bound, not role-bound: pick which task or tier unlocks each field for{" "}
-          <em>other</em> members&rsquo; values on <code>/sensitive-data</code>. A member can always
-          see and edit their own values regardless of these rules. Only takes effect once
-          &ldquo;Sensitive data&rdquo; is checked under Modules above.
-        </p>
-        {sensitiveFieldRules.length === 0 && <p style={{ color: "#666" }}>No rules yet.</p>}
-        {sensitiveFieldRules.map((r) => (
-          <div
-            key={r.id}
-            style={{
-              border: "1px solid #ccc",
-              borderRadius: 6,
-              padding: "0.6rem",
-              marginBottom: "0.5rem",
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "center",
-            }}
-          >
-            <span style={{ flex: 1 }}>
-              {SENSITIVE_FIELD_LABELS[r.fieldKey]} — unlocked by{" "}
-              {r.unlockedByTaskId
-                ? `holding "${ruleTaskNameById.get(r.unlockedByTaskId) ?? "—"}"`
-                : `Tier "${tierNameById.get(r.unlockedByTierId!) ?? "—"}"`}
-            </span>
-            <form action={deleteSensitiveFieldAccessRuleAction}>
-              <input type="hidden" name="ruleId" value={r.id} />
-              <button type="submit">Delete</button>
-            </form>
-          </div>
-        ))}
-
-        <form
-          action={createSensitiveFieldAccessRuleAction}
-          style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem", maxWidth: 420 }}
-        >
-          <select name="fieldKey" defaultValue={SENSITIVE_FIELD_KEYS[0]} style={{ padding: "0.4rem" }}>
-            {SENSITIVE_FIELD_KEYS.map((k) => (
-              <option key={k} value={k}>
-                {SENSITIVE_FIELD_LABELS[k]}
-              </option>
-            ))}
-          </select>
-          <label style={{ fontSize: "0.85rem" }}>
-            Unlock via a Tier
-            <select name="unlockedByTierId" defaultValue="" style={{ padding: "0.4rem", width: "100%" }}>
-              <option value="">— none —</option>
-              {tiers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label style={{ fontSize: "0.85rem" }}>
-            Or unlock via a Task ID (pick exactly one of Tier/Task)
-            <input
-              type="text"
-              name="unlockedByTaskId"
-              placeholder="paste the task's ID from its /tasks/… URL"
-              style={{ padding: "0.4rem", width: "100%" }}
-            />
-          </label>
-          <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
-            Add rule
-          </button>
-        </form>
-      </section>
-
-      <section style={{ marginTop: "2rem" }}>
-        <h2>Consent purposes</h2>
-        <p style={{ color: "#666", fontSize: "0.85rem" }}>
-          One row per distinct purpose needing a member&rsquo;s consent — ordinary/operational
-          processing gets no row here at all. Optionally pin a purpose to one Sensitive-data field:
-          once set, that field only populates or shows once the owning member has granted this
-          purpose, and stops the moment they withdraw it.
-        </p>
-        {consentPurposes.length === 0 && <p style={{ color: "#666" }}>No purposes yet.</p>}
-        {consentPurposes.map((p) => (
-          <div
-            key={p.id}
-            style={{
-              border: "1px solid #ccc",
-              borderRadius: 6,
-              padding: "0.6rem",
-              marginBottom: "0.5rem",
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "center",
-            }}
-          >
-            <span style={{ flex: 1 }}>
-              <strong>{p.label}</strong> <code>{p.key}</code>
-              {p.gatesSensitiveField && (
-                <span style={{ color: "#666" }}> — gates {SENSITIVE_FIELD_LABELS[p.gatesSensitiveField]}</span>
-              )}
-              {p.requiresExplicit && <span style={{ color: "#666" }}> (explicit)</span>}
-              <br />
-              <span style={{ color: "#666", fontSize: "0.8rem" }}>{p.noticeText}</span>
-            </span>
-            <form action={deleteConsentPurposeAction}>
-              <input type="hidden" name="purposeId" value={p.id} />
-              <button type="submit">Delete</button>
-            </form>
-          </div>
-        ))}
-
-        <form
-          action={createConsentPurposeAction}
-          style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem", maxWidth: 420 }}
-        >
-          <input type="text" name="key" placeholder="key (e.g. sensitive_health)" required style={{ padding: "0.4rem" }} />
-          <input type="text" name="label" placeholder="label" required style={{ padding: "0.4rem" }} />
-          <textarea name="noticeText" placeholder="notice text shown to the member" required rows={2} style={{ padding: "0.4rem" }} />
-          <label style={{ fontSize: "0.85rem" }}>
-            Gates a Sensitive-data field (optional)
-            <select name="gatesSensitiveField" defaultValue="" style={{ padding: "0.4rem", width: "100%" }}>
-              <option value="">— none —</option>
-              {SENSITIVE_FIELD_KEYS.map((k) => (
-                <option key={k} value={k}>
-                  {SENSITIVE_FIELD_LABELS[k]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label style={{ fontSize: "0.85rem" }}>
-            <input type="checkbox" name="requiresExplicit" /> requires explicit consent (required if
-            gating a field)
-          </label>
-          <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
-            Add purpose
-          </button>
-        </form>
-      </section>
-
-      <section style={{ marginTop: "2rem" }}>
-        <h2>Forms</h2>
-        <p style={{ color: "#666", fontSize: "0.85rem" }}>
-          A community-defined set of fields collected together as one submission — infrastructure
-          other things lean on, starting with post-cycle feedback above. Editing an existing
-          form&rsquo;s fields never touches its past responses — a response keeps whatever it
-          recorded under a field&rsquo;s original key even if that field is later renamed, retyped,
-          or removed.
-        </p>
-        {forms.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
-        {forms.map((f) => (
-          <details
-            key={f.id}
-            style={{
-              border: "1px solid #ccc",
-              borderRadius: 6,
-              padding: "0.6rem",
-              marginBottom: "0.5rem",
-              opacity: f.archivedAt ? 0.6 : 1,
-            }}
-          >
-            <summary style={{ cursor: "pointer", fontWeight: 600 }}>
-              {f.title}
-              {f.allowAnonymous && (
-                <span style={{ fontWeight: 400, color: "#666", fontSize: "0.8rem" }}> · anonymous allowed</span>
-              )}
-              <span style={{ fontWeight: 400, color: "#666", fontSize: "0.8rem" }}>
-                {" "}
-                — {(f.fields as { label: string }[]).map((field) => field.label).join(", ")}
-              </span>
-            </summary>
-            <div style={{ marginTop: "0.6rem" }}>
-              <FormBuilder
-                action={updateFormAction}
-                mode="edit"
-                formId={f.id}
-                initialTitle={f.title}
-                initialDescription={f.description ?? ""}
-                initialAllowAnonymous={f.allowAnonymous}
-                initialFields={(f.fields as FormField[]).map((field) => ({
-                  key: field.key,
-                  label: field.label,
-                  responseType: field.responseType,
-                  options: field.options ?? [],
-                  required: field.required ?? false,
-                  isNameField: field.isNameField,
-                  isEmailField: field.isEmailField,
-                }))}
-                submitLabel="Save"
-              />
-              <form action={f.archivedAt ? unarchiveFormAction : archiveFormAction} style={{ marginTop: "0.5rem" }}>
-                <input type="hidden" name="formId" value={f.id} />
-                <button type="submit">{f.archivedAt ? "Unarchive" : "Archive"}</button>
-              </form>
             </div>
-          </details>
-        ))}
+          </section>
+        )}
 
-        <div style={{ marginTop: "0.75rem" }}>
-          <h3 style={{ fontSize: "0.95rem" }}>New form</h3>
-          <FormBuilder
-            action={createFormAction}
-            mode="create"
-            initialTitle=""
-            initialDescription=""
-            initialAllowAnonymous={false}
-            initialFields={[]}
-            submitLabel="Create form"
-          />
-        </div>
-      </section>
+        {activeTab === "members" && (
+          <section>
+            <h2 className="text-[18px] font-semibold text-[var(--text)]">Bulk-add members</h2>
+            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              For an existing group&rsquo;s already-known roster — each person lands exactly where a magic-link
+              first login would, with no Recruitment application required. A public invite link stays the right tool
+              for anyone not already vouched for.
+            </p>
+
+            {bulkAdded !== undefined && (
+              <div className="mt-3">
+                <Banner tone="success">
+                  Added {bulkAdded} member{bulkAdded === "1" ? "" : "s"}.
+                </Banner>
+              </div>
+            )}
+
+            {bulkReview ? (
+              <>
+                {bulkReview.newRows.length > 0 && (
+                  <div className="mt-4">
+                    <h3 className="text-[14px] font-medium text-[var(--text)]">Will be created ({bulkReview.newRows.length})</h3>
+                    <ul className="mt-1 text-[13px] text-[var(--text)]">
+                      {bulkReview.newRows.map((r) => (
+                        <li key={r.email}>
+                          {r.name} — {r.email}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {bulkReview.alreadyExistsRows.length > 0 && (
+                  <div className="mt-4">
+                    <h3 className="text-[14px] font-medium text-[var(--text-muted)]">
+                      Already a member, skipped ({bulkReview.alreadyExistsRows.length})
+                    </h3>
+                    <ul className="mt-1 text-[13px] text-[var(--text-muted)]">
+                      {bulkReview.alreadyExistsRows.map((r) => (
+                        <li key={r.email}>
+                          {r.name} — {r.email}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {bulkReview.malformedLines.length > 0 && (
+                  <div className="mt-4">
+                    <h3 className="text-[14px] font-medium text-[var(--danger)]">Couldn&rsquo;t parse, skipped ({bulkReview.malformedLines.length})</h3>
+                    <ul className="mt-1 text-[13px] text-[var(--danger)]">
+                      {bulkReview.malformedLines.map((line, i) => (
+                        <li key={i}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {bulkReview.newRows.length > 0 ? (
+                  <form action={confirmBulkMemberImportAction} className="mt-4">
+                    <input type="hidden" name="state" value={bulkStateRaw} />
+                    <button type="submit" className={BUTTON_PRIMARY}>
+                      Confirm — create {bulkReview.newRows.length} member{bulkReview.newRows.length === 1 ? "" : "s"}
+                    </button>
+                  </form>
+                ) : (
+                  <p className="mt-4 text-[13px] text-[var(--text-muted)]">Nothing new to create.</p>
+                )}
+                <Link href="/settings?tab=members" className="mt-2 inline-block text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+                  Start over
+                </Link>
+              </>
+            ) : (
+              <form action={reviewBulkMemberImportAction} encType="multipart/form-data" className="mt-3 flex max-w-[480px] flex-col gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Paste one per line — Name, email@example.com</span>
+                  <textarea name="pastedText" rows={6} className={INPUT} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Or upload a .csv with the same shape (no header row)</span>
+                  <input type="file" name="file" accept=".csv,text/csv,text/plain" />
+                </label>
+                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                  Review
+                </button>
+              </form>
+            )}
+          </section>
+        )}
+      </div>
     </main>
   );
 }

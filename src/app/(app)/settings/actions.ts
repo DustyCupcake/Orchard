@@ -83,12 +83,18 @@ function triState(value: FormDataEntryValue | null): boolean | null | undefined 
   return undefined;
 }
 
-function redirectWithError(err: unknown): never {
+// `tab` re-selects the same tab the erroring form was submitted from —
+// without it, an error would silently bounce back to the default tab,
+// losing whatever the admin was looking at. Each call site below hard-
+// codes its own tab name rather than reading a hidden form field, since
+// every action already belongs to exactly one tab statically.
+function redirectWithError(err: unknown, tab?: string): never {
+  const suffix = tab ? `&tab=${tab}` : "";
   if (err instanceof ZodError) {
-    redirect(`/settings?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
+    redirect(`/settings?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}${suffix}`);
   }
   if (err instanceof AppError) {
-    redirect(`/settings?error=${encodeURIComponent(err.message)}`);
+    redirect(`/settings?error=${encodeURIComponent(err.message)}${suffix}`);
   }
   throw err;
 }
@@ -104,7 +110,20 @@ async function requireMember() {
   return actor;
 }
 
-export async function updateCommunityAction(formData: FormData) {
+// Community settings used to be one form/one action covering every
+// field below across four now-separate tabs. Split into four scoped
+// actions (General/Coordination/Modules/Recruitment) so each tab's
+// form only ever submits, and only ever needs to know about, its own
+// fields — critically, submitting one tab can never blank out a
+// checkbox or list that belongs to a different tab's own form, since
+// updateCommunityInput's fields are all optional and each action here
+// only supplies its own subset (an omitted key, not a false/empty
+// value). updateCommunity()/updateCommunityInput themselves are
+// untouched — still one shared lib function and schema, since the
+// on-site-mode lock check inside updateCommunity() needs to keep
+// running for every one of these regardless of which tab triggered it.
+
+export async function updateGeneralSettingsAction(formData: FormData) {
   const actor = await requireMember();
 
   try {
@@ -119,30 +138,6 @@ export async function updateCommunityAction(formData: FormData) {
       defaultCallHasAgenda: formData.get("defaultCallHasAgenda") === "on",
       defaultCallNeedsSummary: formData.get("defaultCallNeedsSummary") === "on",
       defaultCallRequireRead: formData.get("defaultCallRequireRead") === "on",
-      conflictTeamTaskId: String(formData.get("conflictTeamTaskId") ?? "").trim() || null,
-      conflictAckWindowHours: Number(formData.get("conflictAckWindowHours") ?? NaN) || undefined,
-      taskNominationResponseDays:
-        Number(formData.get("taskNominationResponseDays") ?? NaN) || undefined,
-      engagementSoftFlagThreshold:
-        Number(formData.get("engagementSoftFlagThreshold") ?? NaN) || undefined,
-      engagementPatternThreshold:
-        Number(formData.get("engagementPatternThreshold") ?? NaN) || undefined,
-      callSummaryReadWindowDays:
-        Number(formData.get("callSummaryReadWindowDays") ?? NaN) || undefined,
-      modulesEnabled: formData.getAll("modulesEnabled").map(String),
-      postCycleFeedbackFormId: String(formData.get("postCycleFeedbackFormId") ?? "").trim() || null,
-      feedbackReviewTaskId: String(formData.get("feedbackReviewTaskId") ?? "").trim() || null,
-      eventSchedulingOwnerTaskId: String(formData.get("eventSchedulingOwnerTaskId") ?? "").trim() || null,
-      recruitmentTaskId: String(formData.get("recruitmentTaskId") ?? "").trim() || null,
-      recruitmentApplicationFormId: String(formData.get("recruitmentApplicationFormId") ?? "").trim() || null,
-      recruitmentEvaluatorCount: Number(formData.get("recruitmentEvaluatorCount") ?? NaN) || undefined,
-      recruitmentDecisionRules: parseDecisionRules(String(formData.get("recruitmentDecisionRulesRaw") ?? "")),
-      recruitmentSubscriptionLapseThreshold:
-        Number(formData.get("recruitmentSubscriptionLapseThreshold") ?? NaN) || undefined,
-      recruitmentWiderDiscussionHours: Number(formData.get("recruitmentWiderDiscussionHours") ?? NaN) || undefined,
-      recruitmentRejectionTemplate: String(formData.get("recruitmentRejectionTemplate") ?? "").trim() || null,
-      spatialPlanningTaskId: String(formData.get("spatialPlanningTaskId") ?? "").trim() || null,
-      announcementTaskId: String(formData.get("announcementTaskId") ?? "").trim() || null,
       onsiteModeEnabled: formData.get("onsiteModeEnabled") === "on",
       accentPrimary: String(formData.get("accentPrimary") ?? "").trim() || null,
       accentSecondary: String(formData.get("accentSecondary") ?? "").trim() || null,
@@ -153,7 +148,76 @@ export async function updateCommunityAction(formData: FormData) {
     });
     await updateCommunity(actor, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "general");
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function updateCoordinationSettingsAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    await requireAdmins(actor);
+    const input = updateCommunityInput.parse({
+      conflictTeamTaskId: String(formData.get("conflictTeamTaskId") ?? "").trim() || null,
+      conflictAckWindowHours: Number(formData.get("conflictAckWindowHours") ?? NaN) || undefined,
+      taskNominationResponseDays:
+        Number(formData.get("taskNominationResponseDays") ?? NaN) || undefined,
+      engagementSoftFlagThreshold:
+        Number(formData.get("engagementSoftFlagThreshold") ?? NaN) || undefined,
+      engagementPatternThreshold:
+        Number(formData.get("engagementPatternThreshold") ?? NaN) || undefined,
+      callSummaryReadWindowDays:
+        Number(formData.get("callSummaryReadWindowDays") ?? NaN) || undefined,
+    });
+    await updateCommunity(actor, input);
+  } catch (err) {
+    redirectWithError(err, "coordination");
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function updateModulesSettingsAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    await requireAdmins(actor);
+    const input = updateCommunityInput.parse({
+      modulesEnabled: formData.getAll("modulesEnabled").map(String),
+      postCycleFeedbackFormId: String(formData.get("postCycleFeedbackFormId") ?? "").trim() || null,
+      feedbackReviewTaskId: String(formData.get("feedbackReviewTaskId") ?? "").trim() || null,
+      eventSchedulingOwnerTaskId: String(formData.get("eventSchedulingOwnerTaskId") ?? "").trim() || null,
+      spatialPlanningTaskId: String(formData.get("spatialPlanningTaskId") ?? "").trim() || null,
+      announcementTaskId: String(formData.get("announcementTaskId") ?? "").trim() || null,
+    });
+    await updateCommunity(actor, input);
+  } catch (err) {
+    redirectWithError(err, "modules");
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function updateRecruitmentSettingsAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    await requireAdmins(actor);
+    const input = updateCommunityInput.parse({
+      recruitmentTaskId: String(formData.get("recruitmentTaskId") ?? "").trim() || null,
+      recruitmentApplicationFormId: String(formData.get("recruitmentApplicationFormId") ?? "").trim() || null,
+      recruitmentEvaluatorCount: Number(formData.get("recruitmentEvaluatorCount") ?? NaN) || undefined,
+      recruitmentDecisionRules: parseDecisionRules(String(formData.get("recruitmentDecisionRulesRaw") ?? "")),
+      recruitmentSubscriptionLapseThreshold:
+        Number(formData.get("recruitmentSubscriptionLapseThreshold") ?? NaN) || undefined,
+      recruitmentWiderDiscussionHours: Number(formData.get("recruitmentWiderDiscussionHours") ?? NaN) || undefined,
+      recruitmentRejectionTemplate: String(formData.get("recruitmentRejectionTemplate") ?? "").trim() || null,
+    });
+    await updateCommunity(actor, input);
+  } catch (err) {
+    redirectWithError(err, "recruitment");
   }
 
   revalidatePath("/settings");
@@ -170,7 +234,7 @@ export async function createBranchAction(formData: FormData) {
     });
     await createBranch(actor, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "branches");
   }
 
   revalidatePath("/settings");
@@ -191,7 +255,7 @@ export async function updateBranchAction(formData: FormData) {
     });
     await updateBranch(actor, branchId, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "branches");
   }
 
   revalidatePath("/settings");
@@ -205,7 +269,7 @@ export async function deleteBranchAction(formData: FormData) {
     await requireAdmins(actor);
     await deleteBranch(actor, branchId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "branches");
   }
 
   revalidatePath("/settings");
@@ -224,7 +288,7 @@ export async function confirmPendingBranchAction(formData: FormData) {
     await requireAdmins(actor);
     await confirmPendingBranch(actor, branchId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "branches");
   }
 
   revalidatePath("/settings");
@@ -239,7 +303,7 @@ export async function rejectPendingBranchAction(formData: FormData) {
     await requireAdmins(actor);
     await rejectPendingBranch(actor, branchId, reassignToBranchId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "branches");
   }
 
   revalidatePath("/settings");
@@ -267,7 +331,7 @@ export async function createTierAction(formData: FormData) {
     });
     await createTier(actor, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "cycles-tiers");
   }
 
   revalidatePath("/settings");
@@ -285,7 +349,7 @@ export async function updateTierAction(formData: FormData) {
     });
     await updateTier(actor, tierId, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "cycles-tiers");
   }
 
   revalidatePath("/settings");
@@ -299,7 +363,7 @@ export async function deleteTierAction(formData: FormData) {
     await requireAdmins(actor);
     await deleteTier(actor, tierId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "cycles-tiers");
   }
 
   revalidatePath("/settings");
@@ -319,7 +383,7 @@ export async function createCycleTypeAction(formData: FormData) {
     });
     await createCycleType(actor, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "cycles-tiers");
   }
 
   revalidatePath("/settings");
@@ -340,7 +404,7 @@ export async function updateCycleTypeAction(formData: FormData) {
     });
     await updateCycleType(actor, cycleTypeId, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "cycles-tiers");
   }
 
   revalidatePath("/settings");
@@ -354,7 +418,7 @@ export async function deleteCycleTypeAction(formData: FormData) {
     await requireAdmins(actor);
     await deleteCycleType(actor, cycleTypeId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "cycles-tiers");
   }
 
   revalidatePath("/settings");
@@ -384,7 +448,7 @@ export async function createProfileQuestionAction(formData: FormData) {
     });
     await createProfileQuestion(actor, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "profile-privacy");
   }
 
   revalidatePath("/settings");
@@ -407,7 +471,7 @@ export async function updateProfileQuestionAction(formData: FormData) {
     });
     await updateProfileQuestion(actor, questionId, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "profile-privacy");
   }
 
   revalidatePath("/settings");
@@ -421,7 +485,7 @@ export async function archiveProfileQuestionAction(formData: FormData) {
     await requireAdmins(actor);
     await archiveProfileQuestion(actor, questionId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "profile-privacy");
   }
 
   revalidatePath("/settings");
@@ -435,7 +499,7 @@ export async function unarchiveProfileQuestionAction(formData: FormData) {
     await requireAdmins(actor);
     await unarchiveProfileQuestion(actor, questionId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "profile-privacy");
   }
 
   revalidatePath("/settings");
@@ -453,7 +517,7 @@ export async function createSensitiveFieldAccessRuleAction(formData: FormData) {
     });
     await createSensitiveFieldAccessRule(actor, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "profile-privacy");
   }
 
   revalidatePath("/settings");
@@ -467,7 +531,7 @@ export async function deleteSensitiveFieldAccessRuleAction(formData: FormData) {
     await requireAdmins(actor);
     await deleteSensitiveFieldAccessRule(actor, ruleId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "profile-privacy");
   }
 
   revalidatePath("/settings");
@@ -486,7 +550,7 @@ export async function createFormAction(formData: FormData) {
     });
     await createForm(actor, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "forms");
   }
 
   revalidatePath("/settings");
@@ -508,7 +572,7 @@ export async function updateFormAction(formData: FormData) {
     });
     await updateForm(actor, formId, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "forms");
   }
 
   revalidatePath("/settings");
@@ -522,7 +586,7 @@ export async function archiveFormAction(formData: FormData) {
     await requireAdmins(actor);
     await archiveForm(actor, formId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "forms");
   }
 
   revalidatePath("/settings");
@@ -536,7 +600,7 @@ export async function unarchiveFormAction(formData: FormData) {
     await requireAdmins(actor);
     await unarchiveForm(actor, formId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "forms");
   }
 
   revalidatePath("/settings");
@@ -557,7 +621,7 @@ export async function createConsentPurposeAction(formData: FormData) {
     });
     await createConsentPurpose(actor, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "profile-privacy");
   }
 
   revalidatePath("/settings");
@@ -571,7 +635,7 @@ export async function deleteConsentPurposeAction(formData: FormData) {
     await requireAdmins(actor);
     await deleteConsentPurpose(actor, purposeId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "profile-privacy");
   }
 
   revalidatePath("/settings");
@@ -597,10 +661,10 @@ export async function reviewBulkMemberImportAction(formData: FormData) {
     const { newRows, alreadyExistsRows } = await previewBulkMemberImport(actor, rows);
     state = encodeBulkMemberState({ newRows, alreadyExistsRows, malformedLines });
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "members");
   }
 
-  redirect(`/settings?bulkStage=review&bulkState=${encodeURIComponent(state)}#bulk-members`);
+  redirect(`/settings?bulkStage=review&bulkState=${encodeURIComponent(state)}&tab=members`);
 }
 
 // Screen two's submit — only ever reached from the review screen
@@ -615,7 +679,7 @@ export async function confirmBulkMemberImportAction(formData: FormData) {
 
   const state = decodeBulkMemberState(stateRaw);
   if (!state) {
-    redirect(`/settings?error=${encodeURIComponent("That review session expired — start over")}#bulk-members`);
+    redirect(`/settings?error=${encodeURIComponent("That review session expired — start over")}&tab=members`);
   }
 
   let created: number;
@@ -623,9 +687,9 @@ export async function confirmBulkMemberImportAction(formData: FormData) {
     await requireAdmins(actor);
     ({ created } = await commitBulkMemberImport(actor, state.newRows));
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, "members");
   }
 
   revalidatePath("/settings");
-  redirect(`/settings?bulkAdded=${created}#bulk-members`);
+  redirect(`/settings?bulkAdded=${created}&tab=members`);
 }
