@@ -206,9 +206,12 @@ export default async function ImportTaskPackPage({
             branch, force a new one even where a match was found, or decline (you&rsquo;ll pick a
             real branch per task on the next screen instead).
           </p>
-          {branchSuggestions.map(({ hint, suggestedBranchId }) => (
+          {branchSuggestions.map(({ hint, suggestedBranchId, matchKind }) => (
             <label key={hint} style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.9rem" }}>
               &ldquo;{hint}&rdquo;
+              {matchKind === "similar" && (
+                <span style={{ color: "#a15c00" }}> — similar match, not exact: double-check before continuing</span>
+              )}
               <br />
               <select
                 name={`resolution__${hint}`}
@@ -220,6 +223,7 @@ export default async function ImportTaskPackPage({
                 {existingBranches.map((b) => (
                   <option key={b.id} value={b.id}>
                     Use existing: {b.name}
+                    {matchKind === "similar" && b.id === suggestedBranchId ? " (similar match)" : ""}
                   </option>
                 ))}
               </select>

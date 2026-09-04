@@ -295,7 +295,58 @@ describe("commitPackImport", () => {
   it("previewPackImportBranches suggests an exact case-insensitive match", async () => {
     const { branch, alice, pack } = await makeSourcePack();
     const suggestions = await previewPackImportBranches(alice, pack.id);
-    expect(suggestions).toEqual([{ hint: branch.name, suggestedBranchId: branch.id }]);
+    expect(suggestions).toEqual([{ hint: branch.name, suggestedBranchId: branch.id, matchKind: "exact" }]);
+  });
+
+  // docs/development-plan.md's Phase 59 — the near-match suggestion
+  // Phase 55's own review screen deliberately deferred ("Wood" vs.
+  // "Woods" instead of forcing "create new" on anything short of an
+  // exact name).
+  describe("Phase 59: near-match branch suggestions", () => {
+    it("suggests a similar existing branch when no exact match exists", async () => {
+      const { testCommunity, alice, pack } = await makeSourcePack();
+      // makeSourcePack's own task is on a branch named "Fruit" (see
+      // createFixtures) — renaming it here so the hint ("Fruit") no
+      // longer matches exactly, but a real "Fruits" branch is a
+      // genuine near-match.
+      await db.update(branchTable).set({ name: "Something else" }).where(eq(branchTable.communityId, testCommunity.id));
+      const [similarBranch] = await db
+        .insert(branchTable)
+        .values({ communityId: testCommunity.id, name: "Fruits" })
+        .returning();
+
+      const suggestions = await previewPackImportBranches(alice, pack.id);
+      expect(suggestions).toEqual([
+        { hint: "Fruit", suggestedBranchId: similarBranch.id, matchKind: "similar" },
+      ]);
+    });
+
+    it("suggests nothing when no existing branch comes close", async () => {
+      const { testCommunity, alice, pack } = await makeSourcePack();
+      await db.update(branchTable).set({ name: "Completely unrelated name" }).where(eq(branchTable.communityId, testCommunity.id));
+
+      const suggestions = await previewPackImportBranches(alice, pack.id);
+      expect(suggestions).toEqual([{ hint: "Fruit", suggestedBranchId: null, matchKind: "none" }]);
+    });
+
+    it("a near-match suggestion is still just a pre-fill — resolving to a different branch works fine", async () => {
+      const { testCommunity, alice, pack } = await makeSourcePack();
+      await db.update(branchTable).set({ name: "Something else" }).where(eq(branchTable.communityId, testCommunity.id));
+      await db.insert(branchTable).values({ communityId: testCommunity.id, name: "Fruits" });
+      const [chosenBranch] = await db
+        .insert(branchTable)
+        .values({ communityId: testCommunity.id, name: "Deliberately different pick" })
+        .returning();
+
+      const newCycle = await commitPackImport(alice, {
+        packId: pack.id,
+        cycleName: "2028 Season",
+        hintResolutions: { Fruit: { action: "use_existing", branchId: chosenBranch.id } },
+      });
+
+      const newTasks = await db.select().from(task).where(eq(task.cycleId, newCycle.id));
+      expect(newTasks[0].branchId).toBe(chosenBranch.id);
+    });
   });
 
   it("previewPackImportDates resolves the same recipe commitPackImport would apply, without creating anything", async () => {

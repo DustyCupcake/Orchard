@@ -14,6 +14,7 @@ import {
 import { recomputeBoundary, type StoredBoundary } from "../dates";
 import { isAdmin } from "../settings/admins";
 import { getTaskPack } from "./crud";
+import { findClosestNameMatch } from "./match-name";
 
 type Member = typeof memberTable.$inferSelect;
 type PackItemRow = Awaited<ReturnType<typeof getTaskPack>>["items"][number];
@@ -24,12 +25,17 @@ type PackPhaseRow = Awaited<ReturnType<typeof getTaskPack>>["phases"][number];
 // See docs/spec.md's "Pack import review": grouped by distinct hint
 // value, not by task — a 45-task/4-branch pack shows 4 rows. Each row
 // starts pre-filled with an exact, case-insensitive name match against
-// the destination's existing branches, or null (the review screen
-// itself pre-populates "create new" with the hint text when this comes
-// back null — nothing here needs to know that).
+// the destination's existing branches; failing that, a near-match
+// suggestion (docs/development-plan.md's Phase 59 — "Wood" vs.
+// "Woods"), clearly distinguished via matchKind so the review screen
+// can label it "similar match" rather than presenting it as if it
+// were exact; or null when nothing clears either bar (the review
+// screen itself pre-populates "create new" with the hint text when
+// this comes back null — nothing here needs to know that).
 export interface BranchHintSuggestion {
   hint: string;
   suggestedBranchId: string | null;
+  matchKind: "exact" | "similar" | "none";
 }
 
 export async function previewPackImportBranches(actor: Member, packId: string): Promise<BranchHintSuggestion[]> {
@@ -42,10 +48,21 @@ export async function previewPackImportBranches(actor: Member, packId: string): 
     .where(eq(branch.communityId, actor.communityId));
   const byLowerName = new Map(existingBranches.map((b) => [b.name.toLowerCase(), b.id]));
 
-  return distinctHints.map((hint) => ({
-    hint,
-    suggestedBranchId: byLowerName.get(hint.toLowerCase()) ?? null,
-  }));
+  return distinctHints.map((hint) => {
+    const exactId = byLowerName.get(hint.toLowerCase());
+    if (exactId) {
+      return { hint, suggestedBranchId: exactId, matchKind: "exact" as const };
+    }
+    // Still just a suggestion, never auto-applied — the review
+    // screen's own <select> pre-fills to this, but stays exactly as
+    // freely remappable/overridable to "create new" as an exact match
+    // already was.
+    const near = findClosestNameMatch(hint, existingBranches);
+    if (near) {
+      return { hint, suggestedBranchId: near.id, matchKind: "similar" as const };
+    }
+    return { hint, suggestedBranchId: null, matchKind: "none" as const };
+  });
 }
 
 // --- Date preview ---
