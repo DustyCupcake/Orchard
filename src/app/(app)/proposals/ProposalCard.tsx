@@ -15,11 +15,15 @@ type Proposal = {
 export default function ProposalCard({
   proposal,
   branches,
+  tiers,
+  communityTasks,
   submitterName,
   suggestedMemberName,
 }: {
   proposal: Proposal;
   branches: { id: string; name: string }[];
+  tiers: { id: string; name: string }[];
+  communityTasks: { id: string; title: string }[];
   submitterName: string;
   suggestedMemberName: string | null;
 }) {
@@ -112,6 +116,67 @@ export default function ProposalCard({
               <input type="datetime-local" name="browsePeriodEnd" className={INPUT} />
               <span className="text-[12px] text-[var(--text-muted)]">(if community-endorsed)</span>
             </div>
+
+            <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+              <legend className="px-1 text-[12px] text-[var(--text-muted)]">Requirement (optional)</legend>
+              <div className="flex flex-wrap items-center gap-2">
+                <select name="requirementType" defaultValue="" className={INPUT}>
+                  <option value="">No requirement</option>
+                  <option value="tier">Tier</option>
+                  <option value="language">Language</option>
+                  <option value="completed_task">Completed a specific task</option>
+                  <option value="custom">Custom flag</option>
+                </select>
+                <select name="requirementMode" defaultValue="individual_gate" className={INPUT}>
+                  <option value="individual_gate">Individual gate (blocks claiming)</option>
+                  <option value="group_coverage">Group coverage (flags, doesn&rsquo;t block)</option>
+                  <option value="soft_priority">Soft priority (surfacing only)</option>
+                </select>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <select name="requirementTierId" defaultValue="" className={INPUT}>
+                  <option value="">Tier…</option>
+                  {tiers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[12px] text-[var(--text-muted)]">(if type = tier)</span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input type="text" name="requirementLanguage" placeholder="language" className={INPUT} />
+                <span className="text-[12px] text-[var(--text-muted)]">(if type = language)</span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <select name="requirementCompletedTaskId" defaultValue="" className={INPUT}>
+                  <option value="">Task…</option>
+                  {communityTasks.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[12px] text-[var(--text-muted)]">(if type = completed task)</span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input type="text" name="requirementFlag" placeholder="custom flag" className={INPUT} />
+                <span className="text-[12px] text-[var(--text-muted)]">(if type = custom)</span>
+              </div>
+            </fieldset>
+
+            <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+              <legend className="px-1 text-[12px] text-[var(--text-muted)]">
+                Depends on (optional — ctrl/cmd-click to select more than one)
+              </legend>
+              <select name="dependsOnTaskIds" multiple className={`${INPUT} h-24`}>
+                {communityTasks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                  </option>
+                ))}
+              </select>
+            </fieldset>
 
             <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Activate onto the board

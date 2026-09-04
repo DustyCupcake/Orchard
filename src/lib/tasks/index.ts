@@ -1,6 +1,7 @@
 export * from "./crud";
 export * from "./lifecycle";
 export * from "./requirements";
+export * from "./dependencies";
 export * from "./notes";
 export * from "./milestones";
 export * from "./subtasks";

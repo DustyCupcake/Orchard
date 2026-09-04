@@ -5,6 +5,7 @@ import { member, task, taskProposal } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, NotFoundError } from "../errors";
 import { createTask, createTaskInput } from "../tasks/crud";
+import { addTaskDependency } from "../tasks/dependencies";
 import { claimTask } from "../tasks/lifecycle";
 import { createRequirement, createRequirementInput } from "../tasks/requirements";
 
@@ -82,6 +83,7 @@ export const activateProposalInput = createTaskInput
     title: z.string().min(1).optional(),
     description: z.string().optional(),
     requirements: z.array(createRequirementInput).optional(),
+    dependsOnTaskIds: z.array(z.string().uuid()).optional(),
   });
 export type ActivateProposalInput = z.infer<typeof activateProposalInput>;
 
@@ -135,6 +137,10 @@ export async function activateProposal(
 
   for (const req of input.requirements ?? []) {
     await createRequirement(actor, newTask.id, req);
+  }
+
+  for (const dependsOnTaskId of input.dependsOnTaskIds ?? []) {
+    await addTaskDependency(actor, newTask.id, dependsOnTaskId);
   }
 
   let autoClaimed = false;

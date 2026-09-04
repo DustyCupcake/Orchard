@@ -20,11 +20,13 @@ import {
   listRequirements,
   listSignals,
   listSubtasks,
+  listTaskDependencies,
   listTaskMilestones,
+  listTasks,
   tierNameLookup,
   describeRequirement,
 } from "@/lib/tasks";
-import { getCommunity, listBranches } from "@/lib/settings";
+import { getCommunity, listBranches, listTiers } from "@/lib/settings";
 import { getCycle } from "@/lib/cycles";
 import { isModuleEnabled } from "@/lib/modules";
 import { listTaskQuestions } from "@/lib/input-rounds";
@@ -36,7 +38,9 @@ import { Tag, type Tone, ATTENTION_TONE, Banner, BUTTON_PRIMARY, BUTTON_SECONDAR
 import {
   acceptJoinRequestAction,
   addCommentAction,
+  addDependencyAction,
   addMilestoneAction,
+  addRequirementAction,
   addResourceAction,
   claimAsShadowAction,
   confirmClaimAction,
@@ -45,11 +49,13 @@ import {
   createSignalAction,
   declineJoinRequestAction,
   deleteMilestoneAction,
+  deleteRequirementAction,
   editWikiAction,
   endorseCandidacyAction,
   expressCandidacyAction,
   flagForGroupAction,
   pingCoordinatorAction,
+  removeDependencyAction,
   resolvePingAction,
   resolveSignalAction,
   rotateIntoShiftAction,
@@ -58,6 +64,7 @@ import {
   stopShadowingAction,
   suggestSomeoneAction,
   updateMilestoneAction,
+  updateRequirementAction,
   waiveAndClaimAction,
   withdrawCandidacyAction,
   withdrawJoinRequestAction,
@@ -143,6 +150,9 @@ export default async function TaskDetailPage({
     milestones,
     cyclePhases,
     nominations,
+    dependencies,
+    tiers,
+    allCommunityTasks,
   ] = await Promise.all([
     db.select().from(branch).where(eq(branch.id, taskRow.branchId)).then((r) => r[0]),
     getTaskNotes(viewing, id),
@@ -166,7 +176,17 @@ export default async function TaskDetailPage({
       ? getCycle(viewing, taskRow.cycleId).then((c) => c.phases)
       : Promise.resolve([]),
     listNominationsForTask(viewing, id),
+    listTaskDependencies(viewing, id),
+    listTiers(viewing),
+    listTasks(viewing),
   ]);
+  const tierOptions = [...tierNames.entries()].map(([tId, name]) => ({ id: tId, name }));
+  const communityTasks = allCommunityTasks
+    .filter((t) => t.id !== taskRow.id)
+    .map((t) => ({ id: t.id, title: t.title }));
+  const dependencyOptions = communityTasks.filter(
+    (t) => !dependencies.some((d) => d.dependsOnTaskId === t.id),
+  );
   const groupCoverage = await getGroupCoverageStatus(db, id, requirements);
   const shiftsModuleOn = isModuleEnabled(communityRow, "shifts");
   const myEndorsements = isCommunityEndorsed
@@ -383,33 +403,189 @@ export default async function TaskDetailPage({
         </p>
       )}
 
-      {requirements.length > 0 && (
-        <ul className="mt-4 flex flex-col gap-0.5 text-[13px]">
+      <section className="mt-6">
+        <SectionHeading>Requirements</SectionHeading>
+        {requirements.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+        <ul className="mt-2 flex flex-col gap-2">
           {requirements.map((r) => {
-            if (r.mode === "group_coverage") {
-              const covered = groupCoverage.get(r.id) ?? false;
-              return (
-                <li key={r.id} style={{ color: covered ? "var(--success)" : "var(--warning)" }}>
-                  {describeRequirement(r, tierNames)} — {covered ? "covered" : "not yet covered"}
-                </li>
-              );
-            }
-            if (r.mode === "soft_priority") {
-              return (
-                <li key={r.id} className="text-[var(--text-muted)]">
-                  {describeRequirement(r, tierNames)} (preferred)
-                </li>
-              );
-            }
+            const covered = r.mode === "group_coverage" ? (groupCoverage.get(r.id) ?? false) : null;
+            const statusColor =
+              r.mode === "group_coverage"
+                ? covered
+                  ? "var(--success)"
+                  : "var(--warning)"
+                : r.mode === "soft_priority"
+                  ? "var(--text-muted)"
+                  : unmetIds.has(r.id)
+                    ? "var(--danger)"
+                    : "var(--success)";
+            const statusLabel =
+              r.mode === "group_coverage"
+                ? covered
+                  ? "covered"
+                  : "not yet covered"
+                : r.mode === "soft_priority"
+                  ? "preferred"
+                  : unmetIds.has(r.id)
+                    ? "not met"
+                    : "met";
+            const value = r.value as { tierId?: string; language?: string; taskId?: string; flag?: string };
             return (
-              <li key={r.id} style={{ color: unmetIds.has(r.id) ? "var(--danger)" : "var(--success)" }}>
-                {describeRequirement(r, tierNames)}
-                {unmetIds.has(r.id) ? " (not met)" : " (met)"}
+              <li key={r.id} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-2.5 text-[13px]">
+                <span style={{ color: statusColor }}>
+                  {describeRequirement(r, tierNames)} — {statusLabel}
+                </span>
+                <div className="mt-1.5 flex flex-wrap items-center gap-3">
+                  <details>
+                    <summary className="cursor-pointer text-[12px] text-[var(--accent-1)]">Edit</summary>
+                    <form action={updateRequirementAction} className="mt-2 flex flex-wrap items-center gap-2">
+                      <input type="hidden" name="taskId" value={taskRow.id} />
+                      <input type="hidden" name="requirementId" value={r.id} />
+                      <input type="hidden" name="requirementType" value={r.type} />
+                      {r.type === "tier" && (
+                        <select name="requirementTierId" defaultValue={value.tierId ?? ""} className={INPUT}>
+                          <option value="">Tier…</option>
+                          {tierOptions.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {r.type === "language" && (
+                        <input type="text" name="requirementLanguage" defaultValue={value.language ?? ""} className={INPUT} />
+                      )}
+                      {r.type === "completed_task" && (
+                        <select name="requirementCompletedTaskId" defaultValue={value.taskId ?? ""} className={INPUT}>
+                          <option value="">Task…</option>
+                          {communityTasks.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.title}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {r.type === "custom" && (
+                        <input type="text" name="requirementFlag" defaultValue={value.flag ?? ""} className={INPUT} />
+                      )}
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        Save
+                      </button>
+                    </form>
+                  </details>
+                  <form action={deleteRequirementAction}>
+                    <input type="hidden" name="taskId" value={taskRow.id} />
+                    <input type="hidden" name="requirementId" value={r.id} />
+                    <button type="submit" className={BUTTON_GHOST}>
+                      Remove
+                    </button>
+                  </form>
+                </div>
               </li>
             );
           })}
         </ul>
-      )}
+
+        <details className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+          <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Add a requirement</summary>
+          <form action={addRequirementAction} className="mt-3 flex max-w-[420px] flex-col gap-2">
+            <input type="hidden" name="taskId" value={taskRow.id} />
+            <div className="flex flex-wrap items-center gap-2">
+              <select name="requirementType" required defaultValue="" className={INPUT}>
+                <option value="" disabled>
+                  Type…
+                </option>
+                <option value="tier">Tier</option>
+                <option value="language">Language</option>
+                <option value="completed_task">Completed a specific task</option>
+                <option value="custom">Custom flag</option>
+              </select>
+              <select name="requirementMode" defaultValue="individual_gate" className={INPUT}>
+                <option value="individual_gate">Individual gate</option>
+                <option value="group_coverage">Group coverage</option>
+                <option value="soft_priority">Soft priority</option>
+              </select>
+            </div>
+            <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+              <select name="requirementTierId" defaultValue="" className={INPUT}>
+                <option value="">Tier…</option>
+                {tierOptions.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              (if type = tier)
+            </label>
+            <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+              <input type="text" name="requirementLanguage" placeholder="language" className={INPUT} />
+              (if type = language)
+            </label>
+            <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+              <select name="requirementCompletedTaskId" defaultValue="" className={INPUT}>
+                <option value="">Task…</option>
+                {communityTasks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                  </option>
+                ))}
+              </select>
+              (if type = completed task)
+            </label>
+            <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+              <input type="text" name="requirementFlag" placeholder="custom flag" className={INPUT} />
+              (if type = custom)
+            </label>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+              Add
+            </button>
+          </form>
+        </details>
+      </section>
+
+      <section className="mt-6">
+        <SectionHeading>Dependencies</SectionHeading>
+        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          This task can&rsquo;t be finished while any of these are still open.
+        </p>
+        {dependencies.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None.</p>}
+        <ul className="mt-2 flex flex-col gap-1.5">
+          {dependencies.map((d) => (
+            <li key={d.dependsOnTaskId} className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text)]">
+              <Link href={`/tasks/${d.dependsOnTaskId}`} className="font-medium text-[var(--accent-1)] hover:underline">
+                {d.title}
+              </Link>
+              <span className="text-[var(--text-muted)]">({d.status})</span>
+              <form action={removeDependencyAction}>
+                <input type="hidden" name="taskId" value={taskRow.id} />
+                <input type="hidden" name="dependsOnTaskId" value={d.dependsOnTaskId} />
+                <button type="submit" className={BUTTON_GHOST}>
+                  Remove
+                </button>
+              </form>
+            </li>
+          ))}
+        </ul>
+
+        {dependencyOptions.length > 0 && (
+          <details className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+            <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Add dependencies</summary>
+            <form action={addDependencyAction} className="mt-3 flex max-w-[420px] flex-col gap-2">
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <select name="dependsOnTaskIds" multiple className={`${INPUT} h-32`}>
+                {dependencyOptions.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                Add
+              </button>
+            </form>
+          </details>
+        )}
+      </section>
 
       {needsSelfAssignConfirmation && (
         <section className="mt-6 rounded-[var(--radius-md)] p-3.5" style={{ background: "var(--warning-soft)", border: "1px solid var(--warning-border)" }}>

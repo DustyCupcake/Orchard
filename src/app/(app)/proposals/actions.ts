@@ -52,6 +52,25 @@ export async function activateProposalAction(formData: FormData) {
   const endorsementThresholdRaw = String(formData.get("endorsementThreshold") ?? "");
   const browsePeriodEndRaw = String(formData.get("browsePeriodEnd") ?? "");
 
+  const requirementType = String(formData.get("requirementType") ?? "");
+  let requirements: { type: string; mode: string; value: Record<string, unknown> }[] | undefined;
+  if (requirementType) {
+    const requirementMode = String(formData.get("requirementMode") ?? "individual_gate");
+    const value: Record<string, unknown> =
+      requirementType === "tier"
+        ? { tierId: String(formData.get("requirementTierId") ?? "") }
+        : requirementType === "language"
+          ? { language: String(formData.get("requirementLanguage") ?? "") }
+          : requirementType === "completed_task"
+            ? { taskId: String(formData.get("requirementCompletedTaskId") ?? "") }
+            : { flag: String(formData.get("requirementFlag") ?? "") };
+    requirements = [{ type: requirementType, mode: requirementMode, value }];
+  }
+  const dependsOnTaskIds = formData
+    .getAll("dependsOnTaskIds")
+    .map(String)
+    .filter(Boolean);
+
   try {
     const input = activateProposalInput.parse({
       branchId: String(formData.get("branchId")),
@@ -65,6 +84,8 @@ export async function activateProposalAction(formData: FormData) {
       openness: String(formData.get("openness") ?? "request"),
       endorsementThreshold: endorsementThresholdRaw ? Number(endorsementThresholdRaw) : undefined,
       browsePeriodEnd: browsePeriodEndRaw ? new Date(browsePeriodEndRaw).toISOString() : undefined,
+      requirements,
+      dependsOnTaskIds: dependsOnTaskIds.length > 0 ? dependsOnTaskIds : undefined,
     });
     await activateProposal(actor, proposalId, input);
   } catch (err) {

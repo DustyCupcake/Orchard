@@ -11,15 +11,19 @@ import {
   addCommentInput,
   addResource,
   addResourceInput,
+  addTaskDependency,
   addWikiRevision,
   addWikiRevisionInput,
   claimAsShadow,
   claimOrRequestToJoin,
   confirmTaskMilestone,
+  createRequirement,
+  createRequirementInput,
   createSignal,
   createSignalInput,
   createTaskMilestone,
   declineJoinRequest,
+  deleteRequirement,
   deleteTaskMilestone,
   endorseCandidacy,
   expressCandidacy,
@@ -27,12 +31,15 @@ import {
   nominateForTaskInput,
   pingCoordinator,
   releaseTask,
+  removeTaskDependency,
   resolvePing,
   resolveSignal,
   setOutgoing,
   splitSubtask,
   splitSubtaskInput,
   suggestMemberForTask,
+  updateRequirement,
+  updateRequirementInput,
   updateTaskMilestone,
   waiveAndClaim,
   waiveAndClaimInput,
@@ -546,6 +553,108 @@ export async function createQuestionAction(formData: FormData) {
       priority: formData.get("priority") === "on",
     });
     await createQuestion(actor, taskId, input);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+// Shared by add/update — builds the one value key a given type actually
+// needs from whichever of the form's four (type-specific) fields was
+// filled in, matching createRequirementInput/updateRequirementInput's
+// own superRefine (see src/lib/tasks/requirements.ts).
+function requirementValueFromFormData(type: string, formData: FormData): Record<string, unknown> {
+  switch (type) {
+    case "tier":
+      return { tierId: String(formData.get("requirementTierId") ?? "") };
+    case "language":
+      return { language: String(formData.get("requirementLanguage") ?? "") };
+    case "completed_task":
+      return { taskId: String(formData.get("requirementCompletedTaskId") ?? "") };
+    default:
+      return { flag: String(formData.get("requirementFlag") ?? "") };
+  }
+}
+
+export async function addRequirementAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    const type = String(formData.get("requirementType") ?? "");
+    const mode = String(formData.get("requirementMode") ?? "individual_gate");
+    const input = createRequirementInput.parse({
+      type,
+      mode,
+      value: requirementValueFromFormData(type, formData),
+    });
+    await createRequirement(actor, taskId, input);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function updateRequirementAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const requirementId = String(formData.get("requirementId"));
+
+  try {
+    const type = String(formData.get("requirementType") ?? "");
+    const input = updateRequirementInput.parse({
+      value: requirementValueFromFormData(type, formData),
+    });
+    await updateRequirement(actor, taskId, requirementId, input);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function deleteRequirementAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const requirementId = String(formData.get("requirementId"));
+
+  try {
+    await deleteRequirement(actor, taskId, requirementId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function addDependencyAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const dependsOnTaskIds = formData
+    .getAll("dependsOnTaskIds")
+    .map(String)
+    .filter(Boolean);
+
+  try {
+    for (const dependsOnTaskId of dependsOnTaskIds) {
+      await addTaskDependency(actor, taskId, dependsOnTaskId);
+    }
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+}
+
+export async function removeDependencyAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const dependsOnTaskId = String(formData.get("dependsOnTaskId"));
+
+  try {
+    await removeTaskDependency(actor, taskId, dependsOnTaskId);
   } catch (err) {
     redirectWithError(taskId, err);
   }

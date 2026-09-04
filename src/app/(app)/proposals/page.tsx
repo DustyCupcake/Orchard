@@ -5,6 +5,8 @@ import { db } from "@/db";
 import { branch, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { listProposals } from "@/lib/proposals";
+import { listTasks } from "@/lib/tasks";
+import { listTiers } from "@/lib/settings";
 import { Banner } from "@/components/ui/kit";
 import ProposalCard from "./ProposalCard";
 
@@ -22,11 +24,14 @@ export default async function ProposalsPage({
 
   const { error, submitted, status } = await searchParams;
 
-  const [proposals, branches, members] = await Promise.all([
+  const [proposals, branches, members, tiers, communityTasksRaw] = await Promise.all([
     listProposals(viewing, { status }),
     db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
     db.select().from(member).where(eq(member.communityId, viewing.communityId)),
+    listTiers(viewing),
+    listTasks(viewing),
   ]);
+  const communityTasks = communityTasksRaw.map((t) => ({ id: t.id, title: t.title }));
 
   const memberNameById = new Map(members.map((m) => [m.id, m.name]));
 
@@ -53,6 +58,8 @@ export default async function ProposalsPage({
             key={p.id}
             proposal={p}
             branches={branches}
+            tiers={tiers}
+            communityTasks={communityTasks}
             submitterName={memberNameById.get(p.submittedBy) ?? "—"}
             suggestedMemberName={
               p.suggestedMemberId ? (memberNameById.get(p.suggestedMemberId) ?? "—") : null

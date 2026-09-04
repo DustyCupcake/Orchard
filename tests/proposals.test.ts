@@ -9,6 +9,7 @@ import {
   getProposal,
   listProposals,
 } from "@/lib/proposals";
+import { listTaskDependencies } from "@/lib/tasks";
 import { ConflictError, NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
@@ -135,6 +136,32 @@ describe("activating a proposal", () => {
 
     const rows = await db.select().from(task).where(eq(task.id, created.id));
     expect(rows).toHaveLength(1);
+  });
+
+  it("attaches Dependencies passed at activation time", async () => {
+    const { branch, alice, bob } = await createFixtures();
+    const [existingTask] = await db
+      .insert(task)
+      .values({
+        communityId: alice.communityId,
+        branchId: branch.id,
+        title: "Order the lumber",
+        effort: "one_off",
+        effortMagnitude: { duration: "few_hours" },
+        createdBy: alice.id,
+      })
+      .returning();
+    const proposal = await createProposal(bob, { title: "Build the frame" });
+
+    const { task: created } = await activateProposal(alice, proposal.id, {
+      branchId: branch.id,
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+      dependsOnTaskIds: [existingTask.id],
+    });
+
+    const deps = await listTaskDependencies(alice, created.id);
+    expect(deps.map((d) => d.dependsOnTaskId)).toEqual([existingTask.id]);
   });
 
   it("auto-claims for the proposer when wantsToClaim is set", async () => {
