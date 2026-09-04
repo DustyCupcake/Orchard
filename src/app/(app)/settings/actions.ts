@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import {
+  commitBulkMemberImport,
   confirmPendingBranch,
   createBranch,
   createBranchInput,
@@ -16,6 +17,8 @@ import {
   deleteBranch,
   deleteCycleType,
   deleteTier,
+  parseBulkMemberRows,
+  previewBulkMemberImport,
   rejectPendingBranch,
   requireAdmins,
   updateBranch,
@@ -27,6 +30,7 @@ import {
   updateTier,
   updateTierInput,
 } from "@/lib/settings";
+import { decodeBulkMemberState, encodeBulkMemberState } from "./bulk-members-state";
 import {
   archiveProfileQuestion,
   createProfileQuestion,
@@ -571,4 +575,57 @@ export async function deleteConsentPurposeAction(formData: FormData) {
   }
 
   revalidatePath("/settings");
+}
+
+// Screen one's submit for bulk-adding an existing group's roster
+// (docs/development-plan.md's Phase 61) — parses the pasted text or
+// uploaded file (a CSV's raw text is the identical "one row per line"
+// shape, so one parser covers both sources) and checks every row
+// against already-claimed emails, but creates nothing yet: "nothing
+// commits until the whole flow confirms," the same posture Task Pack
+// import's own review screen already established.
+export async function reviewBulkMemberImportAction(formData: FormData) {
+  const actor = await requireMember();
+  const file = formData.get("file");
+  const pastedText = String(formData.get("pastedText") ?? "");
+
+  let state: string;
+  try {
+    await requireAdmins(actor);
+    const raw = file instanceof File && file.size > 0 ? await file.text() : pastedText;
+    const { rows, malformedLines } = parseBulkMemberRows(raw);
+    const { newRows, alreadyExistsRows } = await previewBulkMemberImport(actor, rows);
+    state = encodeBulkMemberState({ newRows, alreadyExistsRows, malformedLines });
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  redirect(`/settings?bulkStage=review&bulkState=${encodeURIComponent(state)}#bulk-members`);
+}
+
+// Screen two's submit — only ever reached from the review screen
+// above, decoding exactly the rows it already showed rather than
+// re-parsing raw text a second time. Re-checks for an already-claimed
+// email again inside commitBulkMemberImport itself (defense in depth,
+// same as every other two-step confirm flow in this codebase) in case
+// something changed in the gap between review and confirm.
+export async function confirmBulkMemberImportAction(formData: FormData) {
+  const actor = await requireMember();
+  const stateRaw = String(formData.get("state") ?? "");
+
+  const state = decodeBulkMemberState(stateRaw);
+  if (!state) {
+    redirect(`/settings?error=${encodeURIComponent("That review session expired — start over")}#bulk-members`);
+  }
+
+  let created: number;
+  try {
+    await requireAdmins(actor);
+    ({ created } = await commitBulkMemberImport(actor, state.newRows));
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/settings");
+  redirect(`/settings?bulkAdded=${created}#bulk-members`);
 }

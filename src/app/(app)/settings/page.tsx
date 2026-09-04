@@ -16,6 +16,7 @@ import { ForbiddenError } from "@/lib/errors";
 import {
   archiveFormAction,
   archiveProfileQuestionAction,
+  confirmBulkMemberImportAction,
   confirmPendingBranchAction,
   createBranchAction,
   createConsentPurposeAction,
@@ -30,6 +31,7 @@ import {
   deleteSensitiveFieldAccessRuleAction,
   deleteTierAction,
   rejectPendingBranchAction,
+  reviewBulkMemberImportAction,
   unarchiveFormAction,
   unarchiveProfileQuestionAction,
   updateBranchAction,
@@ -39,6 +41,7 @@ import {
   updateProfileQuestionAction,
   updateTierAction,
 } from "./actions";
+import { decodeBulkMemberState } from "./bulk-members-state";
 import FormBuilder from "./FormBuilder";
 import ProfileQuestionEditor from "./ProfileQuestionEditor";
 
@@ -47,14 +50,15 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; bulkStage?: string; bulkState?: string; bulkAdded?: string }>;
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
   }
 
-  const { error } = await searchParams;
+  const { error, bulkStage, bulkState: bulkStateRaw, bulkAdded } = await searchParams;
+  const bulkReview = bulkStage === "review" && bulkStateRaw ? decodeBulkMemberState(bulkStateRaw) : null;
 
   let authorized = true;
   try {
@@ -170,6 +174,98 @@ export default async function SettingsPage({
       </p>
 
       {error && <p style={{ color: "crimson" }}>{error}</p>}
+
+      <section id="bulk-members" style={{ marginTop: "1.5rem" }}>
+        <h2>Bulk-add members</h2>
+        <p style={{ color: "#666", fontSize: "0.85rem" }}>
+          For an existing group&rsquo;s already-known roster — each person lands exactly where a
+          magic-link first login would, with no Recruitment application required. A public
+          invite link stays the right tool for anyone not already vouched for.
+        </p>
+
+        {bulkAdded !== undefined && (
+          <p style={{ color: "#2a7a2a" }}>
+            Added {bulkAdded} member{bulkAdded === "1" ? "" : "s"}.
+          </p>
+        )}
+
+        {bulkReview ? (
+          <>
+            {bulkReview.newRows.length > 0 && (
+              <div style={{ marginTop: "0.75rem" }}>
+                <h3 style={{ fontSize: "0.95rem" }}>Will be created ({bulkReview.newRows.length})</h3>
+                <ul style={{ fontSize: "0.9rem" }}>
+                  {bulkReview.newRows.map((r) => (
+                    <li key={r.email}>
+                      {r.name} — {r.email}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {bulkReview.alreadyExistsRows.length > 0 && (
+              <div style={{ marginTop: "0.75rem" }}>
+                <h3 style={{ fontSize: "0.95rem", color: "#666" }}>
+                  Already a member, skipped ({bulkReview.alreadyExistsRows.length})
+                </h3>
+                <ul style={{ fontSize: "0.9rem", color: "#666" }}>
+                  {bulkReview.alreadyExistsRows.map((r) => (
+                    <li key={r.email}>
+                      {r.name} — {r.email}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {bulkReview.malformedLines.length > 0 && (
+              <div style={{ marginTop: "0.75rem" }}>
+                <h3 style={{ fontSize: "0.95rem", color: "crimson" }}>
+                  Couldn&rsquo;t parse, skipped ({bulkReview.malformedLines.length})
+                </h3>
+                <ul style={{ fontSize: "0.9rem", color: "crimson" }}>
+                  {bulkReview.malformedLines.map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {bulkReview.newRows.length > 0 ? (
+              <form action={confirmBulkMemberImportAction} style={{ marginTop: "1rem" }}>
+                <input type="hidden" name="state" value={bulkStateRaw} />
+                <button type="submit" style={{ padding: "0.4rem 1rem" }}>
+                  Confirm — create {bulkReview.newRows.length} member{bulkReview.newRows.length === 1 ? "" : "s"}
+                </button>
+              </form>
+            ) : (
+              <p style={{ marginTop: "1rem", color: "#666" }}>Nothing new to create.</p>
+            )}
+            <p style={{ marginTop: "0.5rem" }}>
+              <a href="/settings#bulk-members">Start over</a>
+            </p>
+          </>
+        ) : (
+          <form
+            action={reviewBulkMemberImportAction}
+            encType="multipart/form-data"
+            style={{ marginTop: "0.75rem", display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 480 }}
+          >
+            <label>
+              Paste one per line — Name, email@example.com
+              <br />
+              <textarea name="pastedText" rows={6} style={{ padding: "0.4rem", width: "100%" }} />
+            </label>
+            <label>
+              Or upload a .csv with the same shape (no header row)
+              <br />
+              <input type="file" name="file" accept=".csv,text/csv,text/plain" />
+            </label>
+            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+              Review
+            </button>
+          </form>
+        )}
+      </section>
 
       <section style={{ marginTop: "1.5rem" }}>
         <h2>Community</h2>
