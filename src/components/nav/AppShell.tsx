@@ -168,17 +168,13 @@ function NavGroupBlock({
           </button>
         </div>
         {open && (
+          // No pin toggle here — these items are lightweight views into
+          // one domain, not individually meaningful destinations to
+          // pin (see nav-config.ts's NavGroup.headerIsLink); pinning
+          // stays a Modules-only affordance, below.
           <ul className="mt-0.5 space-y-0.5">
             {group.items.map((item) => (
-              <NavLink
-                key={item.key}
-                item={item}
-                collapsed={false}
-                showIcon={false}
-                active={isActive(item.href)}
-                pinned={manualPinnedKeys.includes(item.key)}
-                onTogglePin={onTogglePin ? () => onTogglePin(item.key) : undefined}
-              />
+              <NavLink key={item.key} item={item} collapsed={false} showIcon={false} active={isActive(item.href)} />
             ))}
           </ul>
         )}

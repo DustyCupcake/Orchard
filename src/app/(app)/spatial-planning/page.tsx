@@ -39,11 +39,11 @@ const SLEEP_ARRANGEMENTS = [
 ];
 
 // See docs/spec.md's "Spatial planning" and docs/development-plan.md's
-// Phase 36-37 — the base site (Plot), its organizational regions
-// (Zone), the things drawn on it (Placement, PlacementTemplate), and
-// the profile data that informs planning them (SpacePreference). The
-// propose→pending→approve editing-rights layer (Phase 38) isn't built
-// yet.
+// Phase 36-38 — the base site (Plot), its organizational regions
+// (Zone), the things drawn on it (Placement, PlacementTemplate), the
+// profile data that informs planning them (SpacePreference), and the
+// propose→pending→approve editing-rights layer (invites, revert
+// notices, isPlacementEditor below).
 export default async function SpatialPlanningPage({
   searchParams,
 }: {

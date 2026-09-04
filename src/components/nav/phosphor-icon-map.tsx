@@ -1,24 +1,27 @@
 import type { Icon as PhosphorIconType, IconWeight } from "@phosphor-icons/react";
 import {
-  ArrowsClockwise,
-  CalendarBlank,
-  CaretDown,
-  CaretLeft,
-  CaretRight,
-  CheckSquare,
-  Coin,
-  EnvelopeSimple,
-  GearSix,
-  House,
-  List,
-  MapTrifold,
-  PushPin,
-  ShieldCheck,
-  SignOut,
-  SquaresFour,
-  UserPlus,
-  Users,
-  X,
+  ArrowsClockwiseIcon,
+  CalendarBlankIcon,
+  CalendarHeartIcon,
+  CaretDownIcon,
+  CaretLeftIcon,
+  CaretRightIcon,
+  CheckSquareIcon,
+  ClipboardTextIcon,
+  EnvelopeSimpleIcon,
+  GearSixIcon,
+  HandshakeIcon,
+  HouseIcon,
+  ListIcon,
+  MapTrifoldIcon,
+  PiggyBankIcon,
+  PushPinIcon,
+  ShieldCheckIcon,
+  SignOutIcon,
+  SquaresFourIcon,
+  UserCirclePlusIcon,
+  UsersThreeIcon,
+  XIcon,
 } from "@phosphor-icons/react";
 
 // Maps the plain string keys used across nav-config.ts (kept as-is, so
@@ -28,25 +31,28 @@ import {
 // state (see design_handoff_conventions/README.md's Icons section),
 // weight="regular" (the default) for everything else.
 const PHOSPHOR_ICONS: Record<string, PhosphorIconType> = {
-  home: House,
-  check: CheckSquare,
-  calendar: CalendarBlank,
-  people: Users,
-  grid: SquaresFour,
-  budget: Coin,
-  map: MapTrifold,
-  recruitment: UserPlus,
-  shield: ShieldCheck,
-  gear: GearSix,
-  mail: EnvelopeSimple,
-  cycle: ArrowsClockwise,
-  chevronLeft: CaretLeft,
-  chevronRight: CaretRight,
-  chevronDown: CaretDown,
-  menu: List,
-  close: X,
-  pin: PushPin,
-  logout: SignOut,
+  home: HouseIcon,
+  check: CheckSquareIcon,
+  calendar: CalendarBlankIcon,
+  calendarHeart: CalendarHeartIcon,
+  clipboardText: ClipboardTextIcon,
+  people: UsersThreeIcon,
+  grid: SquaresFourIcon,
+  budget: PiggyBankIcon,
+  map: MapTrifoldIcon,
+  recruitment: UserCirclePlusIcon,
+  shield: ShieldCheckIcon,
+  handshake: HandshakeIcon,
+  gear: GearSixIcon,
+  mail: EnvelopeSimpleIcon,
+  cycle: ArrowsClockwiseIcon,
+  chevronLeft: CaretLeftIcon,
+  chevronRight: CaretRightIcon,
+  chevronDown: CaretDownIcon,
+  menu: ListIcon,
+  close: XIcon,
+  pin: PushPinIcon,
+  logout: SignOutIcon,
 };
 
 export function NavIcon({
@@ -60,6 +66,6 @@ export function NavIcon({
   size?: number;
   className?: string;
 }) {
-  const IconComponent = PHOSPHOR_ICONS[name] ?? SquaresFour;
+  const IconComponent = PHOSPHOR_ICONS[name] ?? SquaresFourIcon;
   return <IconComponent weight={weight} size={size} className={className} />;
 }

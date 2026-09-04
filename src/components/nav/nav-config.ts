@@ -120,7 +120,7 @@ export const NAV_GROUPS: NavGroup[] = [
         key: "conflict-reports",
         label: "Conflict reports",
         href: "/conflict-reports",
-        icon: "shield",
+        icon: "handshake",
         moduleKey: "conflictReports",
       },
       {
@@ -130,8 +130,8 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: "shield",
         moduleKey: "sensitiveData",
       },
-      { key: "schedule", label: "Event schedule", href: "/schedule", icon: "calendar", moduleKey: "eventScheduling" },
-      { key: "shifts", label: "Shifts", href: "/shifts", icon: "calendar", moduleKey: "shifts" },
+      { key: "schedule", label: "Event schedule", href: "/schedule", icon: "calendarHeart", moduleKey: "eventScheduling" },
+      { key: "shifts", label: "Shifts", href: "/shifts", icon: "clipboardText", moduleKey: "shifts" },
     ],
   },
 ];

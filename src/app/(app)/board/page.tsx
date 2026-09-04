@@ -168,8 +168,8 @@ export default async function BoardPage({
 
       {branches.length === 0 && (
         <p className="mt-6 text-[13px] text-[var(--text-muted)]">
-          No branches yet — this Community&rsquo;s branches (and its first tasks) still need to be
-          set up, which isn&rsquo;t built yet (that&rsquo;s Phase 9).
+          No branches yet — a current Admins holder can set up this Community&rsquo;s branches (and
+          its first tasks) from the Settings screen.
         </p>
       )}
 
