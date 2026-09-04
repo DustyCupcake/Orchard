@@ -94,18 +94,27 @@ Living checklist — update it in the same commit whenever a page/piece moves fr
 - ✅ Community branding: `community.accentPrimary`/`accentSecondary`/`logoUrl` columns + migration, settings-page color/URL inputs, dynamic `--accent-1`/`--accent-2` injected inline on `<html>` in the root layout (falls back to the documented cobalt/plum defaults when a community hasn't set its own). Logo is a plain hosted-image URL field — no upload/storage utility exists in this codebase, building one is still out of scope.
 - ✅ Personal theme preference: `data-theme="light"/"dark"` override on `<html>`, `localStorage`-only (no DB field — matches the README's own "skip unless cross-device sync matters"), a System/Light/Dark control on `/profile` (`ThemeToggle.tsx`), a blocking init script in the root layout to avoid a flash.
 
+**Shared UI kit** — `src/components/ui/kit.tsx`: `Tag`/`Tone`/`ATTENTION_TONE`, `Banner`, and `BUTTON_PRIMARY`/`BUTTON_SECONDARY`/`BUTTON_GHOST`/`BUTTON_DESTRUCTIVE`/`INPUT`/`SELECT`/`CARD`/`LABEL` class-string constants. Extracted once the same button/tag markup started repeating verbatim across dashboard/board/task pages — reach for these instead of re-typing the token classes on any new page.
+
+**Nav pattern — two styles, picked per group**: `NavGroup.headerIsLink` (`nav-config.ts`) decides which. `true` (Tasks, Community): the header becomes a real link (icon + label, styled like Dashboard/Calendar) to its "main view" — `NavGroup.href` when set (Tasks → `/board`, a genuine hub with its own button row), else its first item (Community → `/members`, no dedicated hub page exists) — with a separate chevron button just for expand/collapse, and sub-items render without icons (indented text only), since these items are lightweight views into one domain, not individually meaningful destinations to pin. Absent/`false` (Modules): the header stays a plain uppercase toggle-only label and every item keeps its own icon, since each one is a full, independently pinnable module — decided after the user pointed out the linked-header treatment didn't fit Modules once applied everywhere by default. See `AppShell.tsx`'s `NavGroupBlock`.
+
 **Restyled**
-- ✅ Sidebar / `AppShell.tsx` — nav rows, banners, icon-button chrome, mobile drawer, community name/logo slot.
+- ✅ Sidebar / `AppShell.tsx` — nav rows, banners, icon-button chrome, mobile drawer, community name/logo slot, the two-style group-header pattern above.
 - ✅ `/dashboard`
+- ✅ `/board` (+ `TaskCard.tsx`, `BranchFilter.tsx`, `TagFilter.tsx`) — "the main task view": a row of button-links to Propose/Proposals/My contribution/Input rounds (+ Coordination/Escalation for a coordination holder) sits right under the heading, the same destinations the sidebar's Tasks sub-list reaches. Kanban columns get uppercase muted headers with a count Tag; each TaskCard is a proper token-styled card with tone-colored attention/critical Tags and Claim/Release/Finish/etc. as real primary/secondary buttons.
+- ✅ `/propose`, `/proposals` (+ `ProposalCard.tsx`), `/contribution` (+ `[id]`, + `ContributionCategories.tsx`), `/coordination`, `/escalation`, `/scheduling-polls` (index), `/scheduling-polls/new`, `/input-rounds`
+- ✅ `/tasks/[id]` — the big one (~1300 lines: candidacy, coordination, subtasks, shadows, requirements, notes, milestones, questions, and more). A new "Schedule a poll" button in the top action row links to `/scheduling-polls/new?branchId=…&title=…` (pre-filling that task's branch and title) — offered on every task, not conditionally, since there's no field on Task to condition it on; say if you'd rather it were scoped tighter. `MilestoneDateFields` (the shared fieldset both the add- and edit-milestone forms use) restyled too.
+
+**Moved**: Scheduling polls is no longer a Tasks sub-nav item — it's about *when* things happen, not the task itself, so it's now a button on `/calendar` instead (which is otherwise still unrestyled — just that one button uses tokens).
 
 **Partially restyled** (new UI added this pass uses tokens; the rest of the page is still the old plain inline-styled markup)
 - 🟡 `/settings` — only the new Branding fieldset (accent colors, logo URL). Every other fieldset on this large page (branches, tiers, cycle types, modules, all the task-pointer fields, forms, consent purposes, ...) is untouched.
 - 🟡 `/profile` — only the new theme-toggle block. Everything else (profile fields, sensitive data, contact methods, consent) is untouched.
+- 🟡 `/calendar` — only the new "Scheduling polls" button. The month grid, upcoming list, event create/edit/invite forms are all still the pre-token Tailwind-utility styling from Phase 44 (not inline `system-ui` like most unrestyled pages, but not on the design tokens either).
 
 **Not yet restyled** (still plain inline-styled `system-ui` forms — pick these up next, page by page)
-- ⬜ Tasks group: `/board`, `/tasks/[id]`, `/propose`, `/proposals`, `/contribution` (+ `[id]`), `/coordination`, `/escalation`, `/scheduling-polls` (+ `[id]`/`new`), `/input-rounds`
+- ⬜ `/scheduling-polls/[id]`, `AvailabilityGrid.tsx` (the poll detail/voting flow — the index and the `/new` form are both done now; `AvailabilityGrid` is the one real client-side pointer-drag component in the app, so restyle its visuals carefully without touching its interaction logic)
 - ⬜ Community group: `/members` (+ `[id]`), `/messages`, `/assemblies` (+ `[id]`/`new`), `/documentation` (+ `[id]`/`new`), `/feedback`, `/participation`
 - ⬜ Modules group: `/budget`, `/spatial-planning`, `/recruitment`, `/conflict-reports`, `/sensitive-data`, `/schedule`, `/shifts`
-- ⬜ Top-level: `/calendar`
 - ⬜ Public/unauthenticated: `/login`, `/invite/[token]`, `/apply`, `/inquiry`, `/intro-call/[token]`
 - ⬜ `src/components/nav/Icon.tsx` retirement — swap every remaining call site to Phosphor once its page is restyled, then delete the file.

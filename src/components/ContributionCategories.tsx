@@ -15,7 +15,7 @@ export default function ContributionCategories({
   averages?: ContributionCategoryAverage[] | null;
 }) {
   if (categories.length === 0) {
-    return <p style={{ color: "#666" }}>No task assignments yet.</p>;
+    return <p className="text-[13px] text-[var(--text-muted)]">No task assignments yet.</p>;
   }
 
   const averageByName = new Map((averages ?? []).map((a) => [a.name, a] as const));
@@ -25,19 +25,16 @@ export default function ContributionCategories({
       {categories.map((cat) => {
         const avg = averageByName.get(cat.name);
         return (
-          <div
-            key={cat.name}
-            style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.75rem", marginBottom: "0.75rem" }}
-          >
-            <h3 style={{ marginTop: 0 }}>{cat.name}</h3>
-            <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+          <div key={cat.name} className="mb-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
+            <h3 className="text-[15px] font-semibold text-[var(--text)]">{cat.name}</h3>
+            <div className="mt-2 flex flex-wrap gap-6">
               {(["completed", "active", "future"] as const).map((key) => {
                 const bucket = cat[key];
                 const avgBucket = avg?.[key];
                 return (
                   <div key={key}>
-                    <strong>{BUCKET_LABELS[key]}</strong>
-                    <div style={{ fontSize: "0.85rem", color: "#666" }}>
+                    <div className="text-[13px] font-medium text-[var(--text)]">{BUCKET_LABELS[key]}</div>
+                    <div className="text-[12px] text-[var(--text-muted)]">
                       {bucket.count} task{bucket.count === 1 ? "" : "s"}
                       {bucket.hours > 0 ? ` · ${bucket.hours}h/week` : ""}
                       {avgBucket && (
@@ -49,12 +46,13 @@ export default function ContributionCategories({
                       )}
                     </div>
                     {bucket.tasks.length > 0 && (
-                      <details style={{ marginTop: "0.25rem" }}>
-                        <summary style={{ cursor: "pointer", fontSize: "0.8rem" }}>tasks</summary>
-                        <ul style={{ fontSize: "0.8rem", margin: "0.25rem 0 0", paddingLeft: "1.2rem" }}>
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-[12px] text-[var(--accent-1)]">tasks</summary>
+                        <ul className="mt-1 flex flex-col gap-0.5 text-[12px] text-[var(--text)]">
                           {bucket.tasks.map((t) => (
                             <li key={t.id}>
-                              {t.title} <span style={{ color: "#666" }}>
+                              {t.title}{" "}
+                              <span className="text-[var(--text-muted)]">
                                 ({t.branchName} · {effortSummary(t.effort, t.effortMagnitude)})
                               </span>
                             </li>
@@ -67,20 +65,20 @@ export default function ContributionCategories({
               })}
               {cat.shiftCompletions.count > 0 && (
                 <div>
-                  <strong>Shift completions</strong>
-                  <div style={{ fontSize: "0.85rem", color: "#666" }}>
+                  <div className="text-[13px] font-medium text-[var(--text)]">Shift completions</div>
+                  <div className="text-[12px] text-[var(--text-muted)]">
                     {cat.shiftCompletions.count} shift{cat.shiftCompletions.count === 1 ? "" : "s"}
                     {avg && avg.shiftCompletions.count > 0 && (
                       <span> (avg {formatAverage(avg.shiftCompletions.count)})</span>
                     )}
                   </div>
-                  <details style={{ marginTop: "0.25rem" }}>
-                    <summary style={{ cursor: "pointer", fontSize: "0.8rem" }}>shifts</summary>
-                    <ul style={{ fontSize: "0.8rem", margin: "0.25rem 0 0", paddingLeft: "1.2rem" }}>
+                  <details className="mt-1">
+                    <summary className="cursor-pointer text-[12px] text-[var(--accent-1)]">shifts</summary>
+                    <ul className="mt-1 flex flex-col gap-0.5 text-[12px] text-[var(--text)]">
                       {cat.shiftCompletions.completions.map((c) => (
                         <li key={c.id}>
                           {c.seriesTitle}{" "}
-                          <span style={{ color: "#666" }}>
+                          <span className="text-[var(--text-muted)]">
                             ({new Date(c.occurrenceStartsAt).toLocaleDateString()})
                           </span>
                         </li>

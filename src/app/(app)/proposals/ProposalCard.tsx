@@ -1,3 +1,4 @@
+import { Tag, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT } from "@/components/ui/kit";
 import { activateProposalAction, declineProposalAction } from "./actions";
 
 type Proposal = {
@@ -23,60 +24,38 @@ export default function ProposalCard({
   suggestedMemberName: string | null;
 }) {
   return (
-    <div
-      style={{
-        border: "1px solid #ccc",
-        borderRadius: 6,
-        padding: "0.75rem",
-        marginBottom: "0.75rem",
-      }}
-    >
-      <strong>{proposal.title}</strong>
-      <div style={{ fontSize: "0.85rem", color: "#666" }}>
-        Proposed by {submitterName} · {new Date(proposal.createdAt).toLocaleDateString()}
-        {proposal.status !== "pending" && ` · ${proposal.status}`}
+    <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[14px] font-semibold text-[var(--text)]">{proposal.title}</span>
+        {proposal.status !== "pending" && <Tag tone={proposal.status === "declined" ? "danger" : "success"}>{proposal.status}</Tag>}
       </div>
-      {proposal.description && <p style={{ fontSize: "0.9rem" }}>{proposal.description}</p>}
+      <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+        Proposed by {submitterName} · {new Date(proposal.createdAt).toLocaleDateString()}
+      </div>
+      {proposal.description && <p className="mt-1.5 text-[13px] text-[var(--text)]">{proposal.description}</p>}
       {proposal.wantsToClaim && (
-        <p style={{ fontSize: "0.85rem" }}>{submitterName} would like to claim this themselves.</p>
+        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">{submitterName} would like to claim this themselves.</p>
       )}
       {suggestedMemberName && (
-        <p style={{ fontSize: "0.85rem" }}>
+        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
           Suggested for: {suggestedMemberName}
           {proposal.suggestedMemberNote && ` — ${proposal.suggestedMemberNote}`}
         </p>
       )}
       {proposal.status === "declined" && proposal.declineReason && (
-        <p style={{ fontSize: "0.85rem", color: "#666" }}>Declined: {proposal.declineReason}</p>
+        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">Declined: {proposal.declineReason}</p>
       )}
 
       {proposal.status === "pending" && (
         <>
-          <form
-            action={activateProposalAction}
-            style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem" }}
-          >
+          <form action={activateProposalAction} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="proposalId" value={proposal.id} />
 
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <input
-                type="text"
-                name="title"
-                defaultValue={proposal.title}
-                placeholder="Title"
-                style={{ padding: "0.4rem", flex: 1 }}
-              />
-            </div>
-            <textarea
-              name="description"
-              defaultValue={proposal.description}
-              rows={2}
-              placeholder="Description"
-              style={{ padding: "0.4rem" }}
-            />
+            <input type="text" name="title" defaultValue={proposal.title} placeholder="Title" className={INPUT} />
+            <textarea name="description" defaultValue={proposal.description} rows={2} placeholder="Description" className={INPUT} />
 
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
-              <select name="branchId" required style={{ padding: "0.4rem" }}>
+            <div className="flex flex-wrap items-center gap-2">
+              <select name="branchId" required className={INPUT}>
                 <option value="">Branch…</option>
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>
@@ -85,55 +64,38 @@ export default function ProposalCard({
                 ))}
               </select>
 
-              <select name="effort" required defaultValue="one_off" style={{ padding: "0.4rem" }}>
+              <select name="effort" required defaultValue="one_off" className={INPUT}>
                 <option value="one_off">One-off</option>
                 <option value="ongoing">Ongoing</option>
                 <option value="owns_a_thing">Owns-a-thing</option>
               </select>
 
-              <select name="duration" defaultValue="few_hours" style={{ padding: "0.4rem" }}>
+              <select name="duration" defaultValue="few_hours" className={INPUT}>
                 <option value="under_hour">Under an hour</option>
                 <option value="few_hours">A few hours</option>
                 <option value="half_day">Half a day</option>
                 <option value="multi_day">Multi-day</option>
               </select>
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>(if one-off)</span>
+              <span className="text-[12px] text-[var(--text-muted)]">(if one-off)</span>
 
-              <input
-                type="number"
-                name="hoursPerWeek"
-                placeholder="hours/week"
-                min={0}
-                style={{ padding: "0.4rem", width: "8rem" }}
-              />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>(if ongoing/owns-a-thing)</span>
+              <input type="number" name="hoursPerWeek" placeholder="hours/week" min={0} className={`${INPUT} w-32`} />
+              <span className="text-[12px] text-[var(--text-muted)]">(if ongoing/owns-a-thing)</span>
             </div>
 
-            <input
-              type="text"
-              name="tags"
-              placeholder="tags (comma-separated)"
-              style={{ padding: "0.4rem" }}
-            />
+            <input type="text" name="tags" placeholder="tags (comma-separated)" className={INPUT} />
 
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-              <label>
-                Capacity:{" "}
-                <input
-                  type="number"
-                  name="capacity"
-                  placeholder="1"
-                  min={1}
-                  style={{ padding: "0.4rem", width: "5rem" }}
-                />
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+                Capacity:
+                <input type="number" name="capacity" placeholder="1" min={1} className={`${INPUT} w-20`} />
               </label>
-              <label>
+              <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
                 <input type="checkbox" name="critical" /> Critical
               </label>
             </div>
 
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
-              <select name="openness" defaultValue="request" style={{ padding: "0.4rem" }}>
+            <div className="flex flex-wrap items-center gap-2">
+              <select name="openness" defaultValue="request" className={INPUT}>
                 <option value="open">Open</option>
                 <option value="request">Request</option>
                 <option value="coordination_approved">Coordination-approved</option>
@@ -145,33 +107,23 @@ export default function ProposalCard({
                 name="endorsementThreshold"
                 placeholder="endorsement threshold"
                 min={1}
-                style={{ padding: "0.4rem", width: "10rem" }}
+                className={`${INPUT} w-44`}
               />
-              <input
-                type="datetime-local"
-                name="browsePeriodEnd"
-                style={{ padding: "0.4rem" }}
-              />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>(if community-endorsed)</span>
+              <input type="datetime-local" name="browsePeriodEnd" className={INPUT} />
+              <span className="text-[12px] text-[var(--text-muted)]">(if community-endorsed)</span>
             </div>
 
-            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Activate onto the board
             </button>
           </form>
 
-          <form
-            action={declineProposalAction}
-            style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}
-          >
+          <form action={declineProposalAction} className="mt-2 flex gap-2">
             <input type="hidden" name="proposalId" value={proposal.id} />
-            <input
-              type="text"
-              name="reason"
-              placeholder="reason (optional)"
-              style={{ padding: "0.4rem", flex: 1 }}
-            />
-            <button type="submit">Decline</button>
+            <input type="text" name="reason" placeholder="reason (optional)" className={`${INPUT} flex-1`} />
+            <button type="submit" className={BUTTON_SECONDARY}>
+              Decline
+            </button>
           </form>
         </>
       )}

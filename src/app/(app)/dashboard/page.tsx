@@ -6,6 +6,7 @@ import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
 import { listOutstandingQuestions } from "@/lib/profile-questions";
 import { listTaskFitSuggestions, ONBOARDING_CARDS } from "@/lib/onboarding";
 import { ATTENTION_STYLES } from "@/lib/format";
+import { Tag, type Tone, ATTENTION_TONE } from "@/components/ui/kit";
 import {
   completeOnboardingAction,
   respondToNominationAction,
@@ -13,28 +14,6 @@ import {
 } from "./actions";
 
 export const dynamic = "force-dynamic";
-
-type Tone = "neutral" | "accent" | "warning" | "danger" | "success";
-
-const TONE_CLASSES: Record<Tone, string> = {
-  neutral: "bg-[var(--neutral-100)] text-[var(--text-muted)]",
-  accent: "bg-[var(--accent-1-soft)] text-[var(--accent-1)]",
-  warning: "bg-[var(--warning-soft)] text-[var(--warning)] border border-[var(--warning-border)]",
-  danger: "bg-[var(--danger-soft)] text-[var(--danger)] border border-[var(--danger-border)]",
-  success: "bg-[var(--success-soft)] text-[var(--success)] border border-[var(--success-border)]",
-};
-
-function Tag({ tone = "neutral", children }: { tone?: Tone; children: React.ReactNode }) {
-  return (
-    <span
-      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-[var(--radius-sm)] px-2 py-0.5 text-[11px] font-medium tracking-wide ${TONE_CLASSES[tone]}`}
-    >
-      {children}
-    </span>
-  );
-}
-
-const ATTENTION_TONE: Record<string, Tone> = { soft: "warning", hard: "danger", escalated: "danger" };
 
 const HEALTH_STYLES: Record<string, { label: string; tone: Tone }> = {
   on_track: { label: "on track", tone: "success" },

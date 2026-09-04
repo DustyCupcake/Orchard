@@ -1,8 +1,10 @@
 import { eq } from "drizzle-orm";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
+import { BUTTON_SECONDARY } from "@/components/ui/kit";
 import {
   getCalendarEvent,
   listCalendarEventInvites,
@@ -139,6 +141,12 @@ export default async function CalendarPage({
       {deleted && <p className="mt-2 text-sm text-emerald-700">Event deleted.</p>}
       {invited && <p className="mt-2 text-sm text-emerald-700">Invites sent.</p>}
       {responded && <p className="mt-2 text-sm text-emerald-700">Your response is saved.</p>}
+
+      <div className="mt-4">
+        <Link href="/scheduling-polls" className={BUTTON_SECONDARY}>
+          Scheduling polls
+        </Link>
+      </div>
 
       <section className="mt-6">
         <div className="flex items-center justify-between">

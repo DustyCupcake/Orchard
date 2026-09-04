@@ -48,6 +48,7 @@ function NavLink({
   badge,
   pinned,
   onTogglePin,
+  showIcon = true,
 }: {
   item: NavItem;
   collapsed: boolean;
@@ -55,28 +56,33 @@ function NavLink({
   badge?: number;
   pinned?: boolean;
   onTogglePin?: () => void;
+  // false for a sub-item of a group whose own header already carries
+  // the icon (see NavGroupBlock) — the row just indents instead.
+  showIcon?: boolean;
 }) {
   return (
     <li className="group/navitem flex items-center">
       <Link
         href={item.href}
         title={collapsed ? item.label : undefined}
-        className={`flex flex-1 items-center gap-3 rounded-[var(--radius-sm)] px-2.5 py-2 text-[13px] transition-colors ${
-          collapsed ? "justify-center" : ""
+        className={`flex flex-1 items-center gap-3 rounded-[var(--radius-sm)] py-2 text-[13px] transition-colors ${
+          collapsed ? "justify-center px-2.5" : showIcon ? "px-2.5" : "pl-10 pr-2.5"
         } ${
           active
             ? "bg-[var(--accent-1-soft)] font-medium text-[var(--accent-1)]"
             : "text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
         }`}
       >
-        <span className="relative shrink-0">
-          <NavIcon name={item.icon} weight={active ? "fill" : "regular"} />
-          {Boolean(badge) && (
-            <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[10px] font-semibold leading-none text-white">
-              {badge}
-            </span>
-          )}
-        </span>
+        {showIcon && (
+          <span className="relative shrink-0">
+            <NavIcon name={item.icon} weight={active ? "fill" : "regular"} />
+            {Boolean(badge) && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[10px] font-semibold leading-none text-white">
+                {badge}
+              </span>
+            )}
+          </span>
+        )}
         {!collapsed && <span className="truncate">{item.label}</span>}
       </Link>
       {!collapsed && onTogglePin && (
@@ -112,13 +118,13 @@ function NavGroupBlock({
   onTogglePin?: (key: string) => void;
 }) {
   if (collapsed) {
-    const primary = group.items[0];
-    const groupActive = group.items.some((item) => isActive(item.href));
+    const primaryHref = group.href ?? group.items[0].href;
+    const groupActive = isActive(primaryHref) || group.items.some((item) => isActive(item.href));
     return (
       <ul className="space-y-0.5">
         <li>
           <Link
-            href={primary.href}
+            href={primaryHref}
             title={group.label}
             className={`flex items-center justify-center rounded-[var(--radius-sm)] px-2.5 py-2 text-[13px] transition-colors ${
               groupActive
@@ -133,6 +139,56 @@ function NavGroupBlock({
     );
   }
 
+  // Two header styles — see nav-config.ts's NavGroup.headerIsLink for
+  // which groups use which and why.
+  if (group.headerIsLink) {
+    const groupHref = group.href ?? group.items[0].href;
+    const groupActive = isActive(groupHref) || group.items.some((item) => isActive(item.href));
+    return (
+      <div>
+        <div className="flex items-center">
+          <Link
+            href={groupHref}
+            className={`flex flex-1 items-center gap-3 rounded-[var(--radius-sm)] px-2.5 py-2 text-[13px] transition-colors ${
+              groupActive
+                ? "bg-[var(--accent-1-soft)] font-medium text-[var(--accent-1)]"
+                : "text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
+            }`}
+          >
+            <NavIcon name={group.icon} weight={groupActive ? "fill" : "regular"} />
+            <span className="truncate">{group.label}</span>
+          </Link>
+          <button
+            onClick={onToggleOpen}
+            aria-expanded={open}
+            aria-label={open ? `Collapse ${group.label}` : `Expand ${group.label}`}
+            className="mr-1 shrink-0 rounded-[var(--radius-sm)] p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
+          >
+            <NavIcon name="chevronDown" size={12} className={`transition-transform ${open ? "" : "-rotate-90"}`} />
+          </button>
+        </div>
+        {open && (
+          <ul className="mt-0.5 space-y-0.5">
+            {group.items.map((item) => (
+              <NavLink
+                key={item.key}
+                item={item}
+                collapsed={false}
+                showIcon={false}
+                active={isActive(item.href)}
+                pinned={manualPinnedKeys.includes(item.key)}
+                onTogglePin={onTogglePin ? () => onTogglePin(item.key) : undefined}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  // Plain toggle-only label, items keep their own icon — for a group
+  // whose items are each a substantial, independently pinnable
+  // destination (Modules), not lightweight views into one domain.
   return (
     <div>
       <GroupLabel label={group.label} open={open} onToggle={onToggleOpen} />

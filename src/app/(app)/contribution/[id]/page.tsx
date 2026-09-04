@@ -4,6 +4,7 @@ import { getViewingContext } from "@/lib/view-as";
 import { getVisibleContribution } from "@/lib/contribution";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import ContributionCategories from "@/components/ContributionCategories";
+import { Banner } from "@/components/ui/kit";
 
 export const dynamic = "force-dynamic";
 
@@ -35,19 +36,21 @@ export default async function MemberContributionPage({
   }
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <p>
-        <Link href="/contribution" style={{ color: "inherit" }}>
-          ← Back to your contribution
-        </Link>
-      </p>
+    <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
+      <Link href="/contribution" className="text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+        ← Back to your contribution
+      </Link>
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
 
       {result && (
         <>
-          <h1>{result.memberName}&rsquo;s contribution</h1>
-          <ContributionCategories categories={result.categories} />
+          <h1 className="mt-4 text-[32px] font-semibold leading-tight text-[var(--text)]">
+            {result.memberName}&rsquo;s contribution
+          </h1>
+          <div className="mt-4">
+            <ContributionCategories categories={result.categories} />
+          </div>
         </>
       )}
     </main>

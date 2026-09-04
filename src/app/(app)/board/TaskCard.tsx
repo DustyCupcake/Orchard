@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { requirement as requirementTable } from "@/db/schema";
 import { describeRequirement } from "@/lib/tasks";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
+import { Tag, ATTENTION_TONE, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_GHOST, INPUT } from "@/components/ui/kit";
 import {
   claimAction,
   finishAction,
@@ -10,6 +11,12 @@ import {
   resumeAction,
   withdrawRequestAction,
 } from "./actions";
+
+const ATTENTION_BORDER_VAR: Record<string, string> = {
+  soft: "var(--warning)",
+  hard: "var(--danger)",
+  escalated: "var(--danger)",
+};
 
 type Assignment = { taskId: string; memberId: string; memberName: string; isShadow: boolean };
 type Requirement = typeof requirementTable.$inferSelect;
@@ -119,48 +126,44 @@ export default function TaskCard({
 
   return (
     <div
+      className="mb-3 rounded-[var(--radius-md)] border p-3"
       style={{
-        border: "1px solid #ccc",
-        borderLeft: attention ? `4px solid ${attention.borderColor}` : "1px solid #ccc",
-        borderRadius: 6,
-        padding: "0.75rem",
-        marginBottom: "0.75rem",
-        background: task.critical ? "#fff6f6" : "white",
+        borderColor: "var(--border)",
+        borderLeft: `3px solid ${attention ? ATTENTION_BORDER_VAR[task.attentionLevel] : "var(--border)"}`,
+        background: task.critical ? "var(--danger-soft)" : "var(--surface)",
       }}
     >
-      <strong>
-        <Link href={`/tasks/${task.id}`} style={{ color: "inherit" }}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Link href={`/tasks/${task.id}`} className="text-[14px] font-semibold text-[var(--text)] hover:text-[var(--accent-1)]">
           {task.title}
         </Link>
-      </strong>
-      {task.critical && <span style={{ color: "crimson" }}> · critical</span>}
-      {attention && (
-        <span style={{ color: attention.color, fontWeight: 600 }}> · ⚠ {attention.label}</span>
-      )}
-      <div style={{ fontSize: "0.85rem", color: "#666" }}>
+        {task.critical && <Tag tone="danger">critical</Tag>}
+        {attention && <Tag tone={ATTENTION_TONE[task.attentionLevel] ?? "neutral"}>{attention.label}</Tag>}
+      </div>
+      <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
         {branchName} · {effortSummary(task.effort, task.effortMagnitude)} · {realAssignments.length}
         {task.capacity !== null ? `/${task.capacity}` : ""} held
       </div>
-      {task.description && <p style={{ fontSize: "0.9rem" }}>{task.description}</p>}
+      {task.description && <p className="mt-1.5 text-[13px] text-[var(--text)]">{task.description}</p>}
       {realAssignments.length > 0 && (
-        <p style={{ fontSize: "0.85rem" }}>
+        <p className="mt-1.5 text-[12px] text-[var(--text)]">
           Held by: {realAssignments.map((a) => a.memberName).join(", ")}
         </p>
       )}
       {shadowAssignments.length > 0 && (
-        <p style={{ fontSize: "0.85rem", color: "#666" }}>
+        <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
           Shadowed by: {shadowAssignments.map((a) => a.memberName).join(", ")}
         </p>
       )}
       {task.status === "waiting" && (
-        <p style={{ fontSize: "0.85rem" }}>
+        <p className="mt-1.5 text-[12px] text-[var(--text)]">
           Next check-in: {task.nextCheckinAt ? new Date(task.nextCheckinAt).toLocaleDateString() : "—"}
           {task.waitingNote && ` — ${task.waitingNote}`}
         </p>
       )}
 
       {requirements.length > 0 && (
-        <ul style={{ fontSize: "0.8rem", margin: "0.4rem 0", paddingLeft: "1.1rem" }}>
+        <ul className="my-1.5 flex flex-col gap-0.5 text-[12px]">
           {requirements.map((r) => {
             // Three modes, three different lines — see docs/spec.md's
             // Requirement. individual_gate is a personal met/not-met
@@ -171,20 +174,20 @@ export default function TaskCard({
             if (r.mode === "group_coverage") {
               const covered = groupCoverage.get(r.id) ?? false;
               return (
-                <li key={r.id} style={{ color: covered ? "#2a7a2a" : "#a15c00" }}>
+                <li key={r.id} style={{ color: covered ? "var(--success)" : "var(--warning)" }}>
                   {describeRequirement(r, tierNames)} — {covered ? "covered" : "not yet covered"}
                 </li>
               );
             }
             if (r.mode === "soft_priority") {
               return (
-                <li key={r.id} style={{ color: "#666" }}>
+                <li key={r.id} className="text-[var(--text-muted)]">
                   {describeRequirement(r, tierNames)} (preferred)
                 </li>
               );
             }
             return (
-              <li key={r.id} style={{ color: unmetIds.has(r.id) ? "crimson" : "#2a7a2a" }}>
+              <li key={r.id} style={{ color: unmetIds.has(r.id) ? "var(--danger)" : "var(--success)" }}>
                 {describeRequirement(r, tierNames)}
                 {unmetIds.has(r.id) ? " (not met)" : " (met)"}
               </li>
@@ -193,49 +196,53 @@ export default function TaskCard({
         </ul>
       )}
 
-      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         {(canClaim || canRequest) && (
           <form action={claimAction}>
             <input type="hidden" name="taskId" value={task.id} />
-            <button type="submit">{canRequest ? "Request to join" : "Claim"}</button>
+            <button type="submit" className={BUTTON_PRIMARY}>
+              {canRequest ? "Request to join" : "Claim"}
+            </button>
           </form>
         )}
         {myPendingRequestId && (
           <>
-            <span style={{ fontSize: "0.85rem", color: "#666" }}>Request pending</span>
+            <span className="text-[12px] text-[var(--text-muted)]">Request pending</span>
             <form action={withdrawRequestAction}>
               <input type="hidden" name="taskId" value={task.id} />
               <input type="hidden" name="requestId" value={myPendingRequestId} />
-              <button type="submit">Withdraw</button>
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Withdraw
+              </button>
             </form>
           </>
         )}
         {blockedByRequirements && (
-          <span style={{ fontSize: "0.85rem", color: "crimson" }}>
-            Not eligible — see requirements above
-          </span>
+          <span className="text-[12px] text-[var(--danger)]">Not eligible — see requirements above</span>
         )}
         {needsConfirmationLink && (
-          <Link href={`/tasks/${task.id}`} style={{ fontSize: "0.85rem" }}>
+          <Link href={`/tasks/${task.id}`} className="text-[12px] font-medium text-[var(--accent-1)] hover:underline">
             {joiningRequiresRequest ? "Request to join" : "Claim"} (confirm on task page) →
           </Link>
         )}
         {isCommunityEndorsed && !holds && (
-          <Link href={`/tasks/${task.id}`} style={{ fontSize: "0.85rem" }}>
+          <Link href={`/tasks/${task.id}`} className="text-[12px] font-medium text-[var(--accent-1)] hover:underline">
             Put yourself forward or endorse a candidate →
           </Link>
         )}
         {canShadow && (
-          <Link href={`/tasks/${task.id}`} style={{ fontSize: "0.85rem" }}>
+          <Link href={`/tasks/${task.id}`} className="text-[12px] font-medium text-[var(--accent-1)] hover:underline">
             Shadow this task →
           </Link>
         )}
         {shadowing && (
           <>
-            <span style={{ fontSize: "0.85rem", color: "#666" }}>Shadowing</span>
+            <span className="text-[12px] text-[var(--text-muted)]">Shadowing</span>
             <form action={releaseAction}>
               <input type="hidden" name="taskId" value={task.id} />
-              <button type="submit">Stop shadowing</button>
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Stop shadowing
+              </button>
             </form>
           </>
         )}
@@ -244,11 +251,15 @@ export default function TaskCard({
           <>
             <form action={releaseAction}>
               <input type="hidden" name="taskId" value={task.id} />
-              <button type="submit">Release</button>
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Release
+              </button>
             </form>
             <form action={finishAction}>
               <input type="hidden" name="taskId" value={task.id} />
-              <button type="submit">Finish</button>
+              <button type="submit" className={BUTTON_PRIMARY}>
+                Finish
+              </button>
             </form>
           </>
         )}
@@ -257,30 +268,28 @@ export default function TaskCard({
           <>
             <form action={resumeAction}>
               <input type="hidden" name="taskId" value={task.id} />
-              <button type="submit">Resume</button>
+              <button type="submit" className={BUTTON_PRIMARY}>
+                Resume
+              </button>
             </form>
             <form action={releaseAction}>
               <input type="hidden" name="taskId" value={task.id} />
-              <button type="submit">Release</button>
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Release
+              </button>
             </form>
           </>
         )}
       </div>
 
       {task.status === "claimed" && holds && (
-        <form
-          action={parkAction}
-          style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.5rem" }}
-        >
+        <form action={parkAction} className="mt-2 flex items-center gap-2">
           <input type="hidden" name="taskId" value={task.id} />
-          <input type="date" name="nextCheckinAt" required style={{ padding: "0.25rem" }} />
-          <input
-            type="text"
-            name="waitingNote"
-            placeholder="waiting on…"
-            style={{ padding: "0.25rem", flex: 1 }}
-          />
-          <button type="submit">Park</button>
+          <input type="date" name="nextCheckinAt" required className={INPUT} />
+          <input type="text" name="waitingNote" placeholder="waiting on…" className={`${INPUT} flex-1`} />
+          <button type="submit" className={BUTTON_GHOST}>
+            Park
+          </button>
         </form>
       )}
     </div>

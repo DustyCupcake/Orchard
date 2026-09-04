@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { getContributionCommunityAverage, getOwnContribution, listVisibleContributors } from "@/lib/contribution";
 import ContributionCategories from "@/components/ContributionCategories";
+import { BUTTON_SECONDARY } from "@/components/ui/kit";
 import { setContributionVisibleAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -25,48 +26,48 @@ export default async function ContributionPage() {
   const others = visibleContributors.filter((m) => m.id !== viewing.id);
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <h1>Your contribution</h1>
-      <p style={{ color: "#666" }}>
+    <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Your contribution</h1>
+      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
         What you&rsquo;ve done, what you&rsquo;re carrying now, and what&rsquo;s coming — nothing
         entered by hand, all read off your task assignments.
       </p>
 
-      <form action={setContributionVisibleAction} style={{ marginBottom: "1.5rem" }}>
+      <form action={setContributionVisibleAction} className="mt-4 flex items-center gap-2">
         <input type="hidden" name="visible" value={(!viewing.contributionVisible).toString()} />
-        <button type="submit">
-          {viewing.contributionVisible
-            ? "Make this private again"
-            : "Share this with the rest of the community"}
+        <button type="submit" className={BUTTON_SECONDARY}>
+          {viewing.contributionVisible ? "Make this private again" : "Share this with the rest of the community"}
         </button>
         {viewing.contributionVisible && (
-          <span style={{ marginLeft: "0.5rem", fontSize: "0.85rem", color: "#666" }}>
-            Currently visible to others.
-          </span>
+          <span className="text-[12px] text-[var(--text-muted)]">Currently visible to others.</span>
         )}
       </form>
 
-      {communityAverage ? (
-        <p style={{ color: "#666", fontSize: "0.85rem" }}>
-          Each category also shows the average across this cycle&rsquo;s currently active members
-          (Participation &ldquo;coming&rdquo;) in parentheses.
-        </p>
-      ) : (
-        <p style={{ color: "#666", fontSize: "0.85rem" }}>
-          No community average yet — nobody&rsquo;s declared <Link href="/participation">Participation</Link>{" "}
-          &ldquo;coming&rdquo; for the current cycle.
-        </p>
-      )}
+      <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        {communityAverage
+          ? "Each category also shows the average across this cycle’s currently active members (Participation “coming”) in parentheses."
+          : (
+            <>
+              No community average yet — nobody&rsquo;s declared{" "}
+              <Link href="/participation" className="text-[var(--accent-1)] hover:underline">
+                Participation
+              </Link>{" "}
+              &ldquo;coming&rdquo; for the current cycle.
+            </>
+          )}
+      </p>
 
-      <ContributionCategories categories={categories} averages={communityAverage} />
+      <div className="mt-4">
+        <ContributionCategories categories={categories} averages={communityAverage} />
+      </div>
 
       {others.length > 0 && (
-        <section style={{ marginTop: "2rem" }}>
-          <h2>Shared by others</h2>
+        <section className="mt-8">
+          <h2 className="mb-3 text-[22px] font-semibold text-[var(--text)]">Shared by others</h2>
           <ul>
             {others.map((m) => (
-              <li key={m.id}>
-                <Link href={`/contribution/${m.id}`} style={{ color: "inherit" }}>
+              <li key={m.id} className="border-b border-[var(--border)] py-2 last:border-b-0">
+                <Link href={`/contribution/${m.id}`} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
                   {m.name}
                 </Link>
               </li>

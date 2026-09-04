@@ -18,6 +18,26 @@ export type NavGroup = {
   label: string;
   icon: string;
   items: NavItem[];
+  // Only meaningful when headerIsLink is true: names the group's "main
+  // view" explicitly (Tasks → /board, a genuine hub page with its own
+  // button row to the rest of the group). Falls back to the group's
+  // first item when headerIsLink is true but this is absent (Community
+  // → /members — no real hub page, just "whatever's first").
+  href?: string;
+  // Two distinct header styles, picked per group by what its items
+  // actually are — see AppShell.tsx's NavGroupBlock:
+  //  - true: items are lightweight views into one domain, not
+  //    individually meaningful destinations to pin — the header becomes
+  //    a real link (icon + label) with a separate chevron for expand/
+  //    collapse, and items lose their own icons (indented text only),
+  //    since the header's icon already stands for the whole category.
+  //    Tasks and Community use this.
+  //  - false/absent: items are substantial, independently pinnable
+  //    destinations (each a full module) — the header stays a plain
+  //    uppercase toggle-only label, and each item keeps its own icon so
+  //    it reads the same whether reached via this list or via a pin.
+  //    Modules uses this.
+  headerIsLink?: boolean;
 };
 
 export const DASHBOARD_ITEM: NavItem = { key: "dashboard", label: "Dashboard", href: "/dashboard", icon: "home" };
@@ -36,6 +56,11 @@ export const NAV_GROUPS: NavGroup[] = [
     key: "tasks",
     label: "Tasks",
     icon: "check",
+    // The board is "the main task view" — most of this group's other
+    // destinations are also reachable as buttons from there; this
+    // sub-list is the alternate way to get to them. See board/page.tsx.
+    href: "/board",
+    headerIsLink: true,
     items: [
       { key: "board", label: "Board", href: "/board", icon: "check" },
       { key: "propose", label: "Propose a task", href: "/propose", icon: "check" },
@@ -43,10 +68,10 @@ export const NAV_GROUPS: NavGroup[] = [
       { key: "contribution", label: "My contribution", href: "/contribution", icon: "check" },
       { key: "coordination", label: "Coordination", href: "/coordination", icon: "check", coordinatorOnly: true },
       { key: "escalation", label: "Escalation", href: "/escalation", icon: "check", coordinatorOnly: true },
-      // Core coordination mechanics, not calendar content — a poll
-      // spins up real tasks, an input round is questions posed against
-      // one.
-      { key: "scheduling-polls", label: "Scheduling polls", href: "/scheduling-polls", icon: "check" },
+      // An input round is questions posed against a task — a task-side
+      // mechanic, unlike Scheduling polls (moved to a button on
+      // /calendar instead: it's about when things happen, not the task
+      // itself).
       { key: "input-rounds", label: "Input rounds", href: "/input-rounds", icon: "check" },
     ],
   },
@@ -54,6 +79,7 @@ export const NAV_GROUPS: NavGroup[] = [
     key: "community",
     label: "Community",
     icon: "people",
+    headerIsLink: true,
     items: [
       { key: "members", label: "Members", href: "/members", icon: "people" },
       { key: "messages", label: "Messages", href: "/messages", icon: "mail" },

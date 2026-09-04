@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { SELECT } from "@/components/ui/kit";
 
 export default function BranchFilter({
   branches,
@@ -12,14 +13,15 @@ export default function BranchFilter({
   const router = useRouter();
 
   return (
-    <label>
-      Branch:{" "}
+    <label className="flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+      Branch
       <select
         defaultValue={selectedBranchId ?? ""}
         onChange={(e) => {
           const value = e.target.value;
           router.push(value ? `/board?branchId=${value}` : "/board");
         }}
+        className={SELECT}
       >
         <option value="">All branches</option>
         {branches.map((b) => (

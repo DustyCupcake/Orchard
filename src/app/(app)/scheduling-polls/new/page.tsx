@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { branch, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
+import { Banner, BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
 import { proposePollAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -10,14 +11,17 @@ export const dynamic = "force-dynamic";
 export default async function NewSchedulingPollPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; branchId?: string; title?: string }>;
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
   }
 
-  const { error } = await searchParams;
+  // Pre-filled when opened from a task's own "Schedule a poll" button
+  // (src/app/(app)/tasks/[id]/page.tsx) — a plain query-param default,
+  // same as everywhere else this codebase prefers a link over client JS.
+  const { error, branchId: presetBranchId, title: presetTitle } = await searchParams;
 
   const [branches, members] = await Promise.all([
     db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
@@ -28,26 +32,24 @@ export default async function NewSchedulingPollPage({
   const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 560 }}>
-      <h1>Open a scheduling poll</h1>
-      <p style={{ color: "#666" }}>
+    <main className="mx-auto max-w-[560px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Open a scheduling poll</h1>
+      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
         Members submit their own availability blind — you&rsquo;ll only see the aggregate overlap,
         never who submitted what, until you confirm a slot.
       </p>
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
 
-      <form action={proposePollAction} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <label>
-          Title
-          <br />
-          <input type="text" name="title" required style={{ padding: "0.5rem", width: "100%" }} />
+      <form action={proposePollAction} className="mt-6 flex flex-col gap-4">
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Title</span>
+          <input type="text" name="title" required defaultValue={presetTitle ?? ""} className={INPUT} />
         </label>
 
-        <label>
-          Branch
-          <br />
-          <select name="branchId" required style={{ padding: "0.5rem", width: "100%" }}>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Branch</span>
+          <select name="branchId" required defaultValue={presetBranchId ?? ""} className={INPUT}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -56,71 +58,74 @@ export default async function NewSchedulingPollPage({
           </select>
         </label>
 
-        <fieldset style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <legend>Resolution</legend>
-          <label>
+        <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+          <legend className="px-1 text-[12px] text-[var(--text-muted)]">Resolution</legend>
+          <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
             <input type="radio" name="resolutionMode" value="max_attendance" defaultChecked /> Maximize
             attendance above a threshold — open to whoever&rsquo;s relevant
           </label>
-          <label>
-            Minimum attendance to confirm a slot
-            <br />
-            <input type="number" name="minAttendance" min={1} defaultValue={1} style={{ padding: "0.4rem" }} />
+          <label className="mt-2 flex flex-col gap-1">
+            <span className={LABEL}>Minimum attendance to confirm a slot</span>
+            <input type="number" name="minAttendance" min={1} defaultValue={1} className={`${INPUT} w-24`} />
           </label>
 
-          <label>
+          <label className="mt-3 flex items-center gap-2 text-[13px] text-[var(--text)]">
             <input type="radio" name="resolutionMode" value="must_overlap" /> Must overlap specific people —
             a slot missing any of them isn&rsquo;t an option
           </label>
-          <div style={{ paddingLeft: "1.5rem" }}>
+          <div className="mt-1 flex flex-col gap-0.5 pl-6">
             {members.map((m) => (
-              <label key={m.id} style={{ display: "block", fontSize: "0.9rem" }}>
+              <label key={m.id} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
                 <input type="checkbox" name="requiredParticipantIds" value={m.id} /> {m.name}
               </label>
             ))}
           </div>
         </fieldset>
 
-        <label>
-          From
-          <br />
-          <input type="date" name="rangeStart" required defaultValue={today} style={{ padding: "0.5rem" }} />
-        </label>
-        <label>
-          To
-          <br />
-          <input type="date" name="rangeEnd" required defaultValue={nextWeek} style={{ padding: "0.5rem" }} />
-        </label>
+        <div className="flex gap-3">
+          <label className="flex flex-1 flex-col gap-1">
+            <span className={LABEL}>From</span>
+            <input type="date" name="rangeStart" required defaultValue={today} className={INPUT} />
+          </label>
+          <label className="flex flex-1 flex-col gap-1">
+            <span className={LABEL}>To</span>
+            <input type="date" name="rangeEnd" required defaultValue={nextWeek} className={INPUT} />
+          </label>
+        </div>
 
-        <fieldset style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <legend>Agenda &amp; summary (each falls back to this branch&rsquo;s, then the Community&rsquo;s, default)</legend>
-          <label>
-            Open agenda
-            <select name="hasAgenda" defaultValue="" style={{ marginLeft: "0.5rem", padding: "0.3rem" }}>
-              <option value="">Inherit default</option>
-              <option value="on">On</option>
-              <option value="off">Off</option>
-            </select>
-          </label>
-          <label>
-            Expected summary
-            <select name="needsSummary" defaultValue="" style={{ marginLeft: "0.5rem", padding: "0.3rem" }}>
-              <option value="">Inherit default</option>
-              <option value="on">On</option>
-              <option value="off">Off</option>
-            </select>
-          </label>
-          <label>
-            Require read-confirmation
-            <select name="requireRead" defaultValue="" style={{ marginLeft: "0.5rem", padding: "0.3rem" }}>
-              <option value="">Inherit default</option>
-              <option value="on">On</option>
-              <option value="off">Off</option>
-            </select>
-          </label>
+        <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+          <legend className="px-1 text-[12px] text-[var(--text-muted)]">
+            Agenda &amp; summary (each falls back to this branch&rsquo;s, then the Community&rsquo;s, default)
+          </legend>
+          <div className="flex flex-col gap-2">
+            <label className="flex items-center justify-between gap-2 text-[13px] text-[var(--text)]">
+              Open agenda
+              <select name="hasAgenda" defaultValue="" className={INPUT}>
+                <option value="">Inherit default</option>
+                <option value="on">On</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+            <label className="flex items-center justify-between gap-2 text-[13px] text-[var(--text)]">
+              Expected summary
+              <select name="needsSummary" defaultValue="" className={INPUT}>
+                <option value="">Inherit default</option>
+                <option value="on">On</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+            <label className="flex items-center justify-between gap-2 text-[13px] text-[var(--text)]">
+              Require read-confirmation
+              <select name="requireRead" defaultValue="" className={INPUT}>
+                <option value="">Inherit default</option>
+                <option value="on">On</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+          </div>
         </fieldset>
 
-        <button type="submit" style={{ padding: "0.5rem 1rem", width: "fit-content" }}>
+        <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
           Open poll
         </button>
       </form>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { SELECT } from "@/components/ui/kit";
 
 export default function TagFilter({
   tags,
@@ -14,8 +15,8 @@ export default function TagFilter({
   const router = useRouter();
 
   return (
-    <label>
-      Tag:{" "}
+    <label className="flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+      Tag
       <select
         defaultValue={selectedTag ?? ""}
         onChange={(e) => {
@@ -26,6 +27,7 @@ export default function TagFilter({
           const query = params.toString();
           router.push(query ? `/board?${query}` : "/board");
         }}
+        className={SELECT}
       >
         <option value="">All tags</option>
         {tags.map((t) => (
