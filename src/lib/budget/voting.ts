@@ -258,6 +258,27 @@ export async function confirmBudgetCycle(
   return updated;
 }
 
+// The current owner's small, deliberate confirmation (Phase 65) —
+// lets closeCycle (src/lib/cycles/lifecycle.ts) skip its own warning
+// when this cycle's budget is genuinely settled. Owner-gated, same
+// authority as everything else in this file. Requires `confirmed`
+// status first — marking a still-open-for-voting cycle "done" doesn't
+// mean anything yet.
+export async function markBudgetCycleDone(actor: Member, budgetCycleId: string) {
+  const cycleRow = await getBudgetCycle(actor, budgetCycleId);
+  await requireBudgetOwner(actor, cycleRow);
+  if (cycleRow.status !== "confirmed") {
+    throw new ConflictError("Confirm this budget cycle's funded set before marking it done");
+  }
+
+  const [updated] = await db
+    .update(budgetCycle)
+    .set({ ownerMarkedDoneAt: new Date() })
+    .where(eq(budgetCycle.id, budgetCycleId))
+    .returning();
+  return updated;
+}
+
 export interface BudgetNeedsAction {
   cycleId: string;
   cycleTitle: string;

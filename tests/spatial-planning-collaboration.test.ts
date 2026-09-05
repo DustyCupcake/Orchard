@@ -563,6 +563,7 @@ describe("Cycle creation: full-Cycle clone with 'also clone spatial planning?'",
       source: "clone_previous",
       name: "Next season",
       cloneSpatialPlan: true,
+      confirmed: true,
     });
 
     const newPlot = await getPlotForCycle(alice, newCycle.id);
@@ -588,7 +589,7 @@ describe("Cycle creation: full-Cycle clone with 'also clone spatial planning?'",
     // doesn't hold the Spatial-planning task.
     const cyclesBefore = (await db.select().from(cycle).where(eq(cycle.communityId, testCommunity.id))).length;
     await expect(
-      createCycle(bob, { source: "clone_previous", name: "Next season", cloneSpatialPlan: true }),
+      createCycle(bob, { source: "clone_previous", name: "Next season", cloneSpatialPlan: true, confirmed: true }),
     ).rejects.toThrow(ForbiddenError);
     const cyclesAfter = (await db.select().from(cycle).where(eq(cycle.communityId, testCommunity.id))).length;
     expect(cyclesAfter).toBe(cyclesBefore); // the whole transaction rolled back, no new Cycle either
@@ -607,6 +608,7 @@ describe("Cycle creation: full-Cycle clone with 'also clone spatial planning?'",
       source: "clone_previous",
       name: "Next season",
       cloneSpatialPlan: true,
+      confirmed: true,
     });
     expect(newCycle.id).toBeTruthy();
     expect(await getPlotForCycle(alice, newCycle.id)).toBeNull();
@@ -614,7 +616,7 @@ describe("Cycle creation: full-Cycle clone with 'also clone spatial planning?'",
 
   it("cloneSpatialPlan defaults to false when omitted", async () => {
     const { alice } = await setUpModule();
-    const newCycle = await createCycle(alice, { source: "clone_previous", name: "Next season" });
+    const newCycle = await createCycle(alice, { source: "clone_previous", name: "Next season", confirmed: true });
     expect(await getPlotForCycle(alice, newCycle.id)).toBeNull();
   });
 });

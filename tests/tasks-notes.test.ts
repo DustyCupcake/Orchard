@@ -169,7 +169,7 @@ describe("carrying forward through a Cycle clone", () => {
     await addWikiRevision(alice, t.id, { content: "First pass at the how-to." });
     await addWikiRevision(bob, t.id, { content: "Updated with the new supplier." });
 
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
 
     const clonedRevisions = await listWikiRevisions(alice, clonedTask.id);
@@ -191,7 +191,7 @@ describe("carrying forward through a Cycle clone", () => {
     await addResource(alice, t.id, { label: "Order form we used", url: "https://example.com/order-form" });
     await addResource(bob, t.id, { label: "Sign design", url: "https://example.com/sign", tag: "design asset" });
 
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
 
     const clonedResources = await listResources(alice, clonedTask.id);
@@ -208,7 +208,7 @@ describe("carrying forward through a Cycle clone", () => {
     const previous = await createCycle(alice, { source: "blank", name: "2026 Season" });
     await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: previous.id });
 
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
 
     const notes = await getTaskNotes(alice, clonedTask.id);

@@ -186,6 +186,7 @@ describe("getOwnContribution: categorization", () => {
       source: "blank",
       name: "Season 2",
       phases: [{ name: "Planning", order: 0, startDate: yesterday(), endDate: null }],
+      confirmed: true,
     });
     const [planning2] = await db.select().from(phase).where(eq(phase.cycleId, cyc2.id));
 

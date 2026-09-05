@@ -13,8 +13,7 @@ import {
 import type { member as memberTable, outboundMessage as outboundMessageTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "./errors";
 import { isCoordinationHolder, listCoordinationBranchIds } from "./coordination";
-import { requireCycleInitiationEligibility } from "./cycles";
-import { getCurrentCycle } from "./profile-questions";
+import { requireCycleInitiationEligibility, resolveViewScopeCycleForMember } from "./cycles";
 import { branchRosterMemberIds } from "./calendar-events";
 import { sendOutboundMessageEmail } from "./mailer";
 import { listGrantingTaskIds } from "./permissions";
@@ -186,10 +185,20 @@ async function resolveScopeForSend(
 
   if (input.scope === "arrival_window") {
     await requireCycleInitiationEligibility(actor);
-    const currentCycle = await getCurrentCycle(actor.communityId);
-    if (!currentCycle) {
-      throw new ConflictError("No current cycle to declare an arrival window against");
+    // "Composing that message is naturally done from the view of the
+    // cycle it's about" — docs/development-plan.md's Phase 65. Reads
+    // the sender's own current view-scope cycle (Member.lastViewedCycleId,
+    // falling back to the aggregate) rather than a bare community-wide
+    // heuristic.
+    const resolution = await resolveViewScopeCycleForMember(actor);
+    if (resolution.kind !== "resolved") {
+      throw new ConflictError(
+        resolution.kind === "ambiguous"
+          ? "Scoped to multiple active cycles — narrow the nav switcher to one cycle before declaring an arrival window"
+          : "No current cycle to declare an arrival window against",
+      );
     }
+    const currentCycle = resolution.cycle;
     if (input.end < input.start) {
       throw new ConflictError("End date must be on or after the start date");
     }

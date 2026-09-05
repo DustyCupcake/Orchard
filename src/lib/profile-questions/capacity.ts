@@ -24,23 +24,24 @@ export async function getCurrentCycle(communityId: string) {
 }
 
 // A resolved interpretation, not stated explicitly in spec: "current
-// phase" = the current cycle's earliest-ordered phase that hasn't
-// ended yet (no end date, or an end date still in the future). If every
-// phase has already ended (schedule slipped) or the cycle has no
-// phases, there's no current phase — degrades the same way a missing
-// cycle does, rather than guessing.
+// phase" = a cycle's earliest-ordered phase that hasn't ended yet (no
+// end date, or an end date still in the future). If every phase has
+// already ended (schedule slipped) or the cycle has no phases, there's
+// no current phase — degrades the same way a missing cycle does,
+// rather than guessing. Exported — src/lib/profile-questions/answers.ts
+// (Phase 65) reuses this exact "which phase is current" logic against
+// a cycle resolved a different way (the member's own declared cycle),
+// rather than re-deriving it.
+export async function phaseForCycle(cycleId: string): Promise<Phase | null> {
+  const phases = await db.select().from(phase).where(eq(phase.cycleId, cycleId)).orderBy(phase.order);
+  const now = new Date();
+  return phases.find((p) => !p.endDate || new Date(p.endDate) >= now) ?? null;
+}
+
 export async function getCurrentPhase(communityId: string): Promise<Phase | null> {
   const currentCycle = await getCurrentCycle(communityId);
   if (!currentCycle) return null;
-
-  const phases = await db
-    .select()
-    .from(phase)
-    .where(eq(phase.cycleId, currentCycle.id))
-    .orderBy(phase.order);
-
-  const now = new Date();
-  return phases.find((p) => !p.endDate || new Date(p.endDate) >= now) ?? null;
+  return phaseForCycle(currentCycle.id);
 }
 
 // The one real, concrete Coordination-mechanics consumer this phase

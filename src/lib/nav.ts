@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { task, taskAssignment } from "@/db/schema";
+import { cycle, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { getCommunity } from "./settings/community";
 import { isModuleEnabled } from "./modules";
@@ -15,6 +15,7 @@ import { listShiftSeries, isShiftCoordinator } from "./shifts/series";
 import { getPersonalFeed } from "./dashboard";
 import { getCurrentPhase } from "./profile-questions";
 import { getMyParticipation } from "./participation";
+import { canInitiateCycle, listOpenCycles, resolveDefaultScopeSegment } from "./cycles";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -126,6 +127,22 @@ export type NavContext = {
   // member would see it — this field is only here for the banner text
   // and the "End View-as" button.
   viewAs: { targetId: string; targetName: string } | null;
+  // The global cycle-switcher's own data (docs/development-plan.md's
+  // Phase 65) — CycleSwitcher.tsx renders from this directly rather
+  // than fetching anything itself.
+  cycleSwitcher: {
+    hasAnyOpenCycle: boolean;
+    openCycles: { id: string; name: string }[];
+    defaultScopeSegment: string;
+    // Only set when defaultScopeSegment is a specific cycle id, not
+    // "active" — that cycle might be closed (a valid, deliberate
+    // default per Phase 65), so its name can't always be found in
+    // openCycles above. Lets the switcher show a real name instead of
+    // a generic fallback for the common "my last-viewed selection is a
+    // now-closed cycle" case.
+    defaultScopeName: string | null;
+    canInitiateCycle: boolean;
+  };
 };
 
 // Computed once per request (in the (app) shell layout) and handed to
@@ -158,6 +175,9 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     isBudgetOwnerNow,
     isShiftCoordinatorNow,
     feed,
+    openCycles,
+    defaultScopeSegment,
+    canInitiate,
   ] = await Promise.all([
     isCoordinationHolder(actor, null),
     holdsGrantedTask(actor, "conflict_team"),
@@ -168,7 +188,15 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     visibleModules.budget ? isAnyBudgetOwner(actor) : Promise.resolve(false),
     visibleModules.shifts ? isAnyShiftCoordinator(actor) : Promise.resolve(false),
     getPersonalFeed(actor),
+    listOpenCycles(actor),
+    resolveDefaultScopeSegment(actor),
+    canInitiateCycle(actor),
   ]);
+
+  const defaultScopeName =
+    defaultScopeSegment === "active"
+      ? null
+      : ((await db.select({ name: cycle.name }).from(cycle).where(eq(cycle.id, defaultScopeSegment)))[0]?.name ?? null);
 
   const pinnedKeys: string[] = [];
   if (isCoordinator) pinnedKeys.push("coordination");
@@ -245,5 +273,12 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     manualPinnedKeys: actor.pinnedModuleKeys,
     onsiteModeEnabled: community.onsiteModeEnabled,
     viewAs: null,
+    cycleSwitcher: {
+      hasAnyOpenCycle: openCycles.length > 0,
+      openCycles: openCycles.map((c) => ({ id: c.id, name: c.name })),
+      defaultScopeSegment,
+      defaultScopeName,
+      canInitiateCycle: canInitiate,
+    },
   };
 }

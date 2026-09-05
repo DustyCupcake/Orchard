@@ -53,4 +53,12 @@ export const cycle = pgTable("cycle", {
   // in-memory and creates no real TaskPack row; set only when a cycle
   // is actually created by importing a saved TaskPack (Phase 55).
   sourcePackId: uuid("source_pack_id"),
+  // The real open/closed lifecycle (Phase 65) — distinct from `status`
+  // above, which already has its own unrelated "archived" value. A
+  // cycle stays fully open/writable past its own end_date until
+  // someone deliberately closes it; nothing auto-closes it. closedBy
+  // has no circular-import concern (member.ts doesn't import cycle.ts)
+  // so it's a normal FK. See src/lib/cycles/lifecycle.ts's closeCycle.
+  closedBy: uuid("closed_by").references(() => member.id),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
 });

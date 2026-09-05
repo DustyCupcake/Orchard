@@ -63,6 +63,12 @@ export const budgetCycle = pgTable("budget_cycle", {
     .notNull()
     .references(() => member.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // A small, deliberate confirmation from the current owner (Phase
+  // 65) — separate from `status` reaching `confirmed` above, since a
+  // cycle can be closed even after the funded set is decided. Lets
+  // closeCycle (src/lib/cycles/lifecycle.ts) skip its own warning. Set
+  // only by src/lib/budget/voting.ts's markBudgetCycleDone.
+  ownerMarkedDoneAt: timestamp("owner_marked_done_at", { withTimezone: true }),
 });
 
 // An itemized funding request against a BudgetCycle — any member,

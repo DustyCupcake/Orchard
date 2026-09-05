@@ -18,7 +18,9 @@ const cellStyle: CSSProperties = {
 // The voting/confirmed half of /budget — see docs/spec.md's Budget
 // ("Ranked-choice voting", "Confirmation", "Contributions") and
 // docs/development-plan.md's Phase 27. Rendered by page.tsx once a
-// cycle leaves `proposals_open`.
+// cycle leaves `proposals_open`. `cycleScope` (Phase 65) threads
+// through both forms below so their own redirects land back on the
+// exact scoped URL the page rendered from.
 export default function BudgetVotingSection({
   currentCycle,
   votingView,
@@ -27,6 +29,7 @@ export default function BudgetVotingSection({
   branchNameById,
   confirmedIds,
   myContributionSignal,
+  cycleScope,
 }: {
   currentCycle: BudgetCycleRow;
   votingView: VotingView;
@@ -35,6 +38,7 @@ export default function BudgetVotingSection({
   branchNameById: Map<string, string>;
   confirmedIds: Set<string>;
   myContributionSignal: number | null;
+  cycleScope: string;
 }) {
   const { ranked, fixedTotal, memberCount, voteCount, myVote } = votingView;
 
@@ -128,6 +132,7 @@ export default function BudgetVotingSection({
             style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 500 }}
           >
             <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
+            <input type="hidden" name="cycleScope" value={cycleScope} />
             {ballotOrder.map((r) => (
               <label
                 key={r.proposal.id}
@@ -180,6 +185,7 @@ export default function BudgetVotingSection({
             style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 500 }}
           >
             <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
+            <input type="hidden" name="cycleScope" value={cycleScope} />
             {ranked.map((r) => (
               <label key={r.proposal.id} style={{ display: "block" }}>
                 <input type="checkbox" name="confirmedProposalIds" value={r.proposal.id} />{" "}

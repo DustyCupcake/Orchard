@@ -426,7 +426,7 @@ describe("Cloning carries the recipe, not the date", () => {
       ],
     });
 
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     const clonedPhases = await db.select().from(phase).where(eq(phase.cycleId, cloned.id));
     expect(clonedPhases[0].startDateType).toBe("relative");
     expect(clonedPhases[0].startOffsetDays).toBe(30);
@@ -445,7 +445,7 @@ describe("Cloning carries the recipe, not the date", () => {
       phases: [{ name: "Build", order: 0, startDate: "2027-01-31" }],
     });
 
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     const clonedPhases = await db.select().from(phase).where(eq(phase.cycleId, cloned.id));
     expect(clonedPhases[0].startDateType).toBe("relative");
     expect(clonedPhases[0].startRelativeMode).toBe("offset");
@@ -468,7 +468,7 @@ describe("Cloning carries the recipe, not the date", () => {
       phases: [{ name: "Build", order: 0, startDate: "2027-01-31" }],
     });
 
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     const clonedPhases = await db.select().from(phase).where(eq(phase.cycleId, cloned.id));
     expect(clonedPhases[0].startDateType).toBe("absolute");
     expect(clonedPhases[0].startDate).toBeNull();

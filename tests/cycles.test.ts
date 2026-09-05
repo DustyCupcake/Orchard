@@ -2,9 +2,17 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community, cycle, member, requirement, task, taskDependency, taskMilestone, tier } from "@/db/schema";
-import { createCycle, getCycle, listCycles, previewClonePreviousCycle, updateCycleSettings } from "@/lib/cycles";
+import {
+  closeCycle,
+  createCycle,
+  getCycle,
+  listCycles,
+  previewClonePreviousCycle,
+  updateCycleSettings,
+  updatePhaseHighlight,
+} from "@/lib/cycles";
 import { claimAsShadow, claimTask, createRequirement, createTaskMilestone } from "@/lib/tasks";
-import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
+import { ConflictError, ConfirmationRequiredError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string, cycleInitiationTierId?: string) {
@@ -103,6 +111,41 @@ describe("cycle creation", () => {
   });
 });
 
+// docs/development-plan.md's Phase 65 — "starting a second Cycle while
+// one's already open now shows an explicit confirmation step naming
+// the cycle that's already open, rather than silently succeeding."
+describe("createCycle's already-open-cycle confirmation", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("rejects a second cycle while one's already open, naming it, unless confirmed", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    await createCycle(alice, { source: "blank", name: "2026 Season" });
+
+    await expect(createCycle(alice, { source: "blank", name: "2027 Season" })).rejects.toThrow(
+      ConfirmationRequiredError,
+    );
+    await expect(createCycle(alice, { source: "blank", name: "2027 Season" })).rejects.toThrow(
+      /2026 Season/,
+    );
+
+    const created = await createCycle(alice, { source: "blank", name: "2027 Season", confirmed: true });
+    expect(created.name).toBe("2027 Season");
+  });
+
+  it("never blocks the very first cycle, or a fresh one once the only open cycle has closed", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const first = await createCycle(alice, { source: "blank", name: "2026 Season" });
+
+    await closeCycle(alice, first.id);
+    const second = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    expect(second.name).toBe("2027 Season");
+  });
+});
+
 describe("cloning the previous cycle", () => {
   beforeEach(async () => {
     await resetDatabase();
@@ -161,7 +204,7 @@ describe("cloning the previous cycle", () => {
       dependsOnTaskId: standing.id,
     });
 
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     expect(cloned.sourceType).toBe("pack");
 
     const clonedWithPhases = await getCycle(alice, cloned.id);
@@ -203,7 +246,7 @@ describe("cloning the previous cycle", () => {
     await enableCycles(testCommunity.id);
 
     const older = await createCycle(alice, { source: "blank", name: "2025 Season" });
-    const newer = await createCycle(alice, { source: "blank", name: "2026 Season" });
+    const newer = await createCycle(alice, { source: "blank", name: "2026 Season", confirmed: true });
     // startedAt is set to `new Date()` on creation, close enough in time
     // that relying on clock granularity alone would be flaky — pin the
     // order explicitly instead.
@@ -225,7 +268,7 @@ describe("cloning the previous cycle", () => {
       title: "Only in the newer cycle",
     });
 
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
     expect(clonedTasks.map((t) => t.title)).toEqual(["Only in the newer cycle"]);
 
@@ -251,7 +294,7 @@ describe("cloning the previous cycle", () => {
     await claimAsShadow(bob, shadowed.id);
     await claimTask(alice, unshadowed.id);
 
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
 
     const clonedShadowed = clonedTasks.find((t) => t.title === "Water the trees")!;
@@ -278,7 +321,7 @@ describe("cloning the previous cycle", () => {
     await claimAsShadow(bob, t.id);
     await claimAsShadow(carol, t.id);
 
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
     expect(clonedTask.suggestedMemberId).toBe(bob.id);
   });
@@ -339,7 +382,7 @@ describe("previewClonePreviousCycle", () => {
 
     // The preview promises to match what a real clone + a real
     // updateCycleSettings call actually produces — prove it.
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     await updateCycleSettings(alice, cloned.id, { startDate: "2027-03-01", endDate: "2027-11-30" });
     const clonedWithPhases = await getCycle(alice, cloned.id);
     expect(clonedWithPhases.phases[0].startDate).toBe(preview?.phases[0].start);
@@ -369,5 +412,47 @@ describe("previewClonePreviousCycle", () => {
 
     const preview = await previewClonePreviousCycle(alice, "2027-01-01", "2027-12-31");
     expect(preview?.milestones).toHaveLength(0);
+  });
+});
+
+describe("updatePhaseHighlight", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("sets and clears a phase's highlighted module", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, {
+      source: "blank",
+      name: "2027 Season",
+      phases: [{ name: "Build", order: 0 }],
+    });
+    const withPhases = await getCycle(alice, cyc.id);
+    const buildPhase = withPhases.phases[0];
+
+    const updated = await updatePhaseHighlight(alice, buildPhase.id, "recruitment");
+    expect(updated.highlightModuleKey).toBe("recruitment");
+
+    const cleared = await updatePhaseHighlight(alice, buildPhase.id, null);
+    expect(cleared.highlightModuleKey).toBeNull();
+  });
+
+  // docs/development-plan.md's Phase 65 — "closing locks everything
+  // about that cycle, no exception," scoped to this phase's own owned
+  // functions.
+  it("rejects once the cycle is closed", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, {
+      source: "blank",
+      name: "2027 Season",
+      phases: [{ name: "Build", order: 0 }],
+    });
+    const withPhases = await getCycle(alice, cyc.id);
+    const buildPhase = withPhases.phases[0];
+    await closeCycle(alice, cyc.id);
+
+    await expect(updatePhaseHighlight(alice, buildPhase.id, "recruitment")).rejects.toThrow(ConflictError);
   });
 });

@@ -316,6 +316,13 @@
       "when": 1788532926908,
       "tag": "0044_phase_63_permission_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1788605146403,
+      "tag": "0045_phase_65_cycle_lifecycle",
+      "breakpoints": true
     }
   ]
 }

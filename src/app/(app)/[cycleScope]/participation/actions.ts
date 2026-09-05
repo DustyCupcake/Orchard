@@ -7,6 +7,7 @@ import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import { declareParticipation, declareParticipationInput } from "@/lib/participation";
 import {
+  closeCycle,
   createCycle,
   updateCycleSettings,
   updateCycleSettingsInput,
@@ -15,14 +16,20 @@ import {
 } from "@/lib/cycles";
 import type { DateBoundaryInput } from "@/lib/dates";
 import { exportCycleAsTaskPack } from "@/lib/task-packs";
-import { AppError } from "@/lib/errors";
+import { AppError, ConfirmationRequiredError } from "@/lib/errors";
 
-function redirectWithError(err: unknown): never {
+// Every form on this page carries a hidden `cycleScope` field so a
+// redirect after submitting lands back on the exact scoped URL it came
+// from (docs/development-plan.md's Phase 65) — never the bare
+// /participation, which could bounce through the redirect shim to a
+// *different* default scope than the one the member was just looking
+// at.
+function redirectWithError(cycleScope: string, err: unknown): never {
   if (err instanceof ZodError) {
-    redirect(`/participation?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
+    redirect(`/${cycleScope}/participation?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
   }
   if (err instanceof AppError) {
-    redirect(`/participation?error=${encodeURIComponent(err.message)}`);
+    redirect(`/${cycleScope}/participation?error=${encodeURIComponent(err.message)}`);
   }
   throw err;
 }
@@ -41,6 +48,7 @@ async function requireMember() {
 export async function declareParticipationAction(formData: FormData) {
   const actor = await requireMember();
   const cycleId = String(formData.get("cycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
 
   try {
     const input = declareParticipationInput.parse({
@@ -51,50 +59,58 @@ export async function declareParticipationAction(formData: FormData) {
     });
     await declareParticipation(actor, cycleId, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(cycleScope, err);
   }
 
-  revalidatePath("/participation");
-  redirect("/participation?declared=1");
+  revalidatePath(`/${cycleScope}/participation`);
+  redirect(`/${cycleScope}/participation?declared=1`);
 }
 
-// No form anywhere in this app ever called createCycle before this —
-// see docs/development-plan.md's Phase 44, which found that gap while
-// checking code before trusting the dev-plan's own "extends the
-// existing clone/import flow" framing (there was no flow to extend).
-// Cycle-initiation-eligibility-gated, enforced inside createCycle
-// itself. Dates for a fresh clone aren't set here — see this page's own
-// "Preview a clone" section below for why: the Cycle-settings form
-// right above this one already sets them post-creation, and doing it
-// there (not here) means a clone's dates always go through the exact
-// same recompute path an existing cycle's date edit does, not a second
-// one.
+// No form anywhere in this app ever called createCycle before Phase 44
+// — see this file's own long-standing comment history. Cycle-
+// initiation-eligibility-gated, enforced inside createCycle itself,
+// which also now (Phase 65) throws ConfirmationRequiredError when a
+// cycle is already open and `confirmed` wasn't passed — the page
+// itself pre-computes this (needsAlreadyOpenConfirmation) and shows a
+// real confirm banner, matching the same UX pattern
+// src/app/(app)/tasks/[id]/page.tsx's self-assign confirmation already
+// establishes; the thrown error here is only a defense-in-depth
+// backstop if the two ever drift. On success, redirects to the *newly
+// created* cycle's own scope — not wherever the form was submitted
+// from — so the admin lands directly on what they just made.
 export async function createCycleAction(formData: FormData) {
   const actor = await requireMember();
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
   const source = String(formData.get("source") ?? "blank");
   const name = String(formData.get("name") ?? "").trim();
   const cycleTypeId = String(formData.get("cycleTypeId") ?? "").trim() || null;
+  const confirmed = formData.get("confirmed") === "on";
 
+  let created;
   try {
     if (source === "clone_previous") {
-      await createCycle(actor, { source: "clone_previous", name, cycleTypeId });
+      created = await createCycle(actor, { source: "clone_previous", name, cycleTypeId, confirmed });
     } else {
       const startDate = String(formData.get("startDate") ?? "").trim() || null;
       const endDate = String(formData.get("endDate") ?? "").trim() || null;
-      await createCycle(actor, { source: "blank", name, cycleTypeId, startDate, endDate });
+      created = await createCycle(actor, { source: "blank", name, cycleTypeId, startDate, endDate, confirmed });
     }
   } catch (err) {
-    redirectWithError(err);
+    if (err instanceof ConfirmationRequiredError) {
+      redirect(`/${cycleScope}/participation?error=${encodeURIComponent(err.message)}`);
+    }
+    redirectWithError(cycleScope, err);
   }
 
-  revalidatePath("/participation");
-  redirect("/participation?cycleCreated=1");
+  revalidatePath(`/${cycleScope}/participation`);
+  redirect(`/${created.id}/participation?cycleCreated=1`);
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside updateCycleSettings.
 export async function updateCycleSettingsAction(formData: FormData) {
   const actor = await requireMember();
   const cycleId = String(formData.get("cycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
   const capacityRaw = String(formData.get("capacity") ?? "").trim();
   const windowRaw = String(formData.get("returningWindowClosesAt") ?? "").trim();
   const startDateRaw = String(formData.get("startDate") ?? "").trim();
@@ -109,11 +125,11 @@ export async function updateCycleSettingsAction(formData: FormData) {
     });
     await updateCycleSettings(actor, cycleId, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(cycleScope, err);
   }
 
-  revalidatePath("/participation");
-  redirect("/participation?settingsUpdated=1");
+  revalidatePath(`/${cycleScope}/participation`);
+  redirect(`/${cycleScope}/participation?settingsUpdated=1`);
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside
@@ -124,6 +140,7 @@ export async function updateCycleSettingsAction(formData: FormData) {
 export async function exportCycleAsTaskPackAction(formData: FormData) {
   const actor = await requireMember();
   const cycleId = String(formData.get("cycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
 
@@ -132,18 +149,19 @@ export async function exportCycleAsTaskPackAction(formData: FormData) {
     const created = await exportCycleAsTaskPack(actor, cycleId, { name, description });
     packId = created.id;
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(cycleScope, err);
   }
 
   redirect(`/task-packs?exported=${packId}`);
 }
 
 // Reads one boundary's worth of fields off the submitted form — see
-// src/app/participation/page.tsx's PhaseBoundaryFields, which renders
-// exactly this shape. A `targetDate` (the "drag it to a new date"
-// path) wins over a typed offsetDays/percent when both are present —
-// same precedence src/lib/dates/resolve.ts's dateBoundaryInput already
-// allows either way, but the form only ever sends one at a time.
+// src/app/(app)/[cycleScope]/participation/page.tsx's
+// PhaseBoundaryFields, which renders exactly this shape. A
+// `targetDate` (the "drag it to a new date" path) wins over a typed
+// offsetDays/percent when both are present — same precedence
+// src/lib/dates/resolve.ts's dateBoundaryInput already allows either
+// way, but the form only ever sends one at a time.
 function boundaryFromForm(formData: FormData, prefix: "start" | "end"): DateBoundaryInput {
   const mode = String(formData.get(`${prefix}Mode`) ?? "absolute");
   const targetDate = String(formData.get(`${prefix}TargetDate`) ?? "").trim();
@@ -169,6 +187,7 @@ function boundaryFromForm(formData: FormData, prefix: "start" | "end"): DateBoun
 export async function updatePhaseBoundaryAction(formData: FormData) {
   const actor = await requireMember();
   const phaseId = String(formData.get("phaseId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
 
   try {
     await updatePhaseBoundary(actor, phaseId, {
@@ -176,11 +195,11 @@ export async function updatePhaseBoundaryAction(formData: FormData) {
       end: boundaryFromForm(formData, "end"),
     });
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(cycleScope, err);
   }
 
-  revalidatePath("/participation");
-  redirect("/participation?phaseUpdated=1");
+  revalidatePath(`/${cycleScope}/participation`);
+  redirect(`/${cycleScope}/participation?phaseUpdated=1`);
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside updatePhaseHighlight
@@ -189,14 +208,41 @@ export async function updatePhaseBoundaryAction(formData: FormData) {
 export async function updatePhaseHighlightAction(formData: FormData) {
   const actor = await requireMember();
   const phaseId = String(formData.get("phaseId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
   const highlightModuleKey = String(formData.get("highlightModuleKey") ?? "").trim() || null;
 
   try {
     await updatePhaseHighlight(actor, phaseId, highlightModuleKey);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(cycleScope, err);
   }
 
-  revalidatePath("/participation");
-  redirect("/participation?highlightUpdated=1");
+  revalidatePath(`/${cycleScope}/participation`);
+  redirect(`/${cycleScope}/participation?highlightUpdated=1`);
+}
+
+// Admin-gated inside closeCycle itself (src/lib/cycles/lifecycle.ts —
+// docs/development-plan.md's Phase 65). The page pre-computes whether
+// the Budget-owner warning applies and requires a real checkbox before
+// this ever submits with overrideBudgetWarning=on, matching the
+// self-assign confirmation UX pattern elsewhere in this codebase — the
+// ConfirmationRequiredError catch below is only a defense-in-depth
+// backstop if the two ever drift.
+export async function closeCycleAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleId = String(formData.get("cycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+  const overrideBudgetWarning = formData.get("overrideBudgetWarning") === "on";
+
+  try {
+    await closeCycle(actor, cycleId, { overrideBudgetWarning });
+  } catch (err) {
+    if (err instanceof ConfirmationRequiredError) {
+      redirect(`/${cycleScope}/participation?error=${encodeURIComponent(err.message)}`);
+    }
+    redirectWithError(cycleScope, err);
+  }
+
+  revalidatePath(`/${cycleScope}/participation`);
+  redirect(`/${cycleScope}/participation?cycleClosed=1`);
 }

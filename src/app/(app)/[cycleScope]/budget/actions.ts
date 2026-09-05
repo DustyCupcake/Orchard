@@ -11,6 +11,7 @@ import {
   confirmBudgetCycleInput,
   createBudgetCycle,
   createBudgetCycleInput,
+  markBudgetCycleDone,
   submitBudgetProposal,
   submitBudgetProposalInput,
   submitBudgetVote,
@@ -37,12 +38,17 @@ function parseLineItems(raw: string) {
     });
 }
 
-function redirectWithError(err: unknown): never {
+// Every form on this page carries a hidden `cycleScope` field so a
+// redirect after submitting lands back on the exact scoped URL it came
+// from (docs/development-plan.md's Phase 65) — never the bare /budget,
+// which could bounce through the redirect shim to a *different*
+// default scope.
+function redirectWithError(cycleScope: string, err: unknown): never {
   if (err instanceof ZodError) {
-    redirect(`/budget?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
+    redirect(`/${cycleScope}/budget?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
   }
   if (err instanceof AppError) {
-    redirect(`/budget?error=${encodeURIComponent(err.message)}`);
+    redirect(`/${cycleScope}/budget?error=${encodeURIComponent(err.message)}`);
   }
   throw err;
 }
@@ -62,25 +68,33 @@ async function requireMember() {
   return actor;
 }
 
+// `cycleId` (Phase 65) is the real Cycle currently resolved on this
+// page — see ../budget/page.tsx's own resolveSingleCycleScope call —
+// null when Cycles aren't in play at all (this Community never turned
+// them on, or none are currently open), matching BudgetCycle.cycleId's
+// own "optional — set only when cycles are on" schema comment.
 export async function createBudgetCycleAction(formData: FormData) {
   const actor = await requireMember();
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
 
   try {
     await requireAdmins(actor);
     const deadlineRaw = String(formData.get("proposalDeadline") ?? "");
+    const cycleId = String(formData.get("cycleId") ?? "").trim() || null;
     const input = createBudgetCycleInput.parse({
       title: String(formData.get("title") ?? ""),
+      cycleId,
       fixedCosts: parseLineItems(String(formData.get("fixedCostsRaw") ?? "")),
       proposalDeadline: deadlineRaw ? new Date(deadlineRaw).toISOString() : "",
       ownerTaskId: String(formData.get("ownerTaskId") ?? "").trim(),
     });
     await createBudgetCycle(actor, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(cycleScope, err);
   }
 
-  revalidatePath("/budget");
-  redirect("/budget");
+  revalidatePath(`/${cycleScope}/budget`);
+  redirect(`/${cycleScope}/budget`);
 }
 
 // Open to any member — "any member submits an itemized proposal ...
@@ -88,6 +102,7 @@ export async function createBudgetCycleAction(formData: FormData) {
 export async function submitBudgetProposalAction(formData: FormData) {
   const actor = await requireMember();
   const budgetCycleId = String(formData.get("budgetCycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
 
   try {
     const input = submitBudgetProposalInput.parse({
@@ -98,17 +113,18 @@ export async function submitBudgetProposalAction(formData: FormData) {
     });
     await submitBudgetProposal(actor, budgetCycleId, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(cycleScope, err);
   }
 
-  revalidatePath("/budget");
-  redirect("/budget?submitted=1");
+  revalidatePath(`/${cycleScope}/budget`);
+  redirect(`/${cycleScope}/budget?submitted=1`);
 }
 
 // Submitter-only, enforced inside updateBudgetProposal.
 export async function updateBudgetProposalAction(formData: FormData) {
   const actor = await requireMember();
   const proposalId = String(formData.get("proposalId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
 
   try {
     const input = updateBudgetProposalInput.parse({
@@ -119,26 +135,27 @@ export async function updateBudgetProposalAction(formData: FormData) {
     });
     await updateBudgetProposal(actor, proposalId, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(cycleScope, err);
   }
 
-  revalidatePath("/budget");
-  redirect("/budget?updated=1");
+  revalidatePath(`/${cycleScope}/budget`);
+  redirect(`/${cycleScope}/budget?updated=1`);
 }
 
 // Owner-only, enforced inside closeProposalsToVoting.
 export async function closeProposalsToVotingAction(formData: FormData) {
   const actor = await requireMember();
   const budgetCycleId = String(formData.get("budgetCycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
 
   try {
     await closeProposalsToVoting(actor, budgetCycleId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(cycleScope, err);
   }
 
-  revalidatePath("/budget");
-  redirect("/budget?votingOpened=1");
+  revalidatePath(`/${cycleScope}/budget`);
+  redirect(`/${cycleScope}/budget?votingOpened=1`);
 }
 
 // A rank per proposal (via a <select> 1..N, no client JS drag-and-drop
@@ -149,6 +166,7 @@ export async function closeProposalsToVotingAction(formData: FormData) {
 export async function submitBudgetVoteAction(formData: FormData) {
   const actor = await requireMember();
   const budgetCycleId = String(formData.get("budgetCycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
 
   try {
     const proposalIds = formData.getAll("proposalId").map(String);
@@ -168,11 +186,11 @@ export async function submitBudgetVoteAction(formData: FormData) {
     });
     await submitBudgetVote(actor, budgetCycleId, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(cycleScope, err);
   }
 
-  revalidatePath("/budget");
-  redirect("/budget?voted=1");
+  revalidatePath(`/${cycleScope}/budget`);
+  redirect(`/${cycleScope}/budget?voted=1`);
 }
 
 // Owner-only, enforced inside confirmBudgetCycle — including the
@@ -181,6 +199,7 @@ export async function submitBudgetVoteAction(formData: FormData) {
 export async function confirmBudgetCycleAction(formData: FormData) {
   const actor = await requireMember();
   const budgetCycleId = String(formData.get("budgetCycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
 
   try {
     const input = confirmBudgetCycleInput.parse({
@@ -189,9 +208,27 @@ export async function confirmBudgetCycleAction(formData: FormData) {
     });
     await confirmBudgetCycle(actor, budgetCycleId, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(cycleScope, err);
   }
 
-  revalidatePath("/budget");
-  redirect("/budget?confirmed=1");
+  revalidatePath(`/${cycleScope}/budget`);
+  redirect(`/${cycleScope}/budget?confirmed=1`);
+}
+
+// The owner's own small confirmation (docs/development-plan.md's Phase
+// 65) — lets an Admin close this BudgetCycle's real Cycle without the
+// closeCycle warning. Owner-gated, enforced inside markBudgetCycleDone.
+export async function markBudgetCycleDoneAction(formData: FormData) {
+  const actor = await requireMember();
+  const budgetCycleId = String(formData.get("budgetCycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+
+  try {
+    await markBudgetCycleDone(actor, budgetCycleId);
+  } catch (err) {
+    redirectWithError(cycleScope, err);
+  }
+
+  revalidatePath(`/${cycleScope}/budget`);
+  redirect(`/${cycleScope}/budget?markedDone=1`);
 }

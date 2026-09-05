@@ -116,6 +116,7 @@ describe("resolving a milestone's date", () => {
       source: "blank",
       name: "Other Season",
       phases: [{ name: "Other phase", order: 0 }],
+      confirmed: true,
     });
     const otherPhase = (await getCycle(alice, otherCycle.id)).phases[0];
 
@@ -358,7 +359,7 @@ describe("carrying forward through a Cycle clone", () => {
       date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 2 },
     });
 
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "Next Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "Next Season", confirmed: true });
     const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
     expect(clonedTasks).toHaveLength(1);
     const clonedTaskId = clonedTasks[0].id;
@@ -384,7 +385,7 @@ describe("carrying forward through a Cycle clone", () => {
       date: { type: "absolute", date: "2027-01-15" },
     });
 
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "Next Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "Next Season", confirmed: true });
     const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
     const clonedMilestones = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, clonedTasks[0].id));
     expect(clonedMilestones).toHaveLength(0);
@@ -398,7 +399,7 @@ describe("carrying forward through a Cycle clone", () => {
       date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 1 },
     });
 
-    const cloned = await createCycle(alice, { source: "clone_previous", name: "Next Season" });
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "Next Season", confirmed: true });
     const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
     const clonedMilestones = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, clonedTasks[0].id));
     expect(clonedMilestones).toHaveLength(0);

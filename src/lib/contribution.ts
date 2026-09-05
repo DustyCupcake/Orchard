@@ -13,7 +13,7 @@ import {
   taskAssignment,
 } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { getCurrentCycle } from "./profile-questions";
+import { resolveViewScopeCycleForMember } from "./cycles";
 import { ForbiddenError, NotFoundError } from "./errors";
 
 type Member = typeof memberTable.$inferSelect;
@@ -268,12 +268,16 @@ export type ContributionCategoryAverage = {
 // here waiting on Participation to exist). Divided by every `coming`
 // member, not just those with an entry in a given category — a
 // category no one in the cycle has touched should pull the average
-// toward zero, not disappear from the denominator. Null when there's
-// no current cycle, or no one's declared `coming` yet for it — nothing
-// honest to average against.
+// toward zero, not disappear from the denominator. "The cycle" here is
+// the viewer's own current view-scope cycle (docs/development-plan.md's
+// Phase 65), not a bare community-wide heuristic. Null when there's no
+// resolved cycle (none open, or scoped to "all active" with 2+
+// candidates), or no one's declared `coming` yet for it — nothing
+// honest to average against either way.
 export async function getContributionCommunityAverage(actor: Member): Promise<ContributionCategoryAverage[] | null> {
-  const currentCycle = await getCurrentCycle(actor.communityId);
-  if (!currentCycle) return null;
+  const resolution = await resolveViewScopeCycleForMember(actor);
+  if (resolution.kind !== "resolved") return null;
+  const currentCycle = resolution.cycle;
 
   const comingRows = await db
     .select({ memberId: participation.memberId })

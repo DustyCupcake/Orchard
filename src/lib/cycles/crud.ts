@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db, type DbOrTx, type Tx } from "@/db";
 import {
@@ -15,11 +15,12 @@ import {
   taskWikiRevision,
 } from "@/db/schema";
 import type { member as memberTable, phase as phaseTable } from "@/db/schema";
-import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { AppError, ConflictError, ConfirmationRequiredError, ForbiddenError, NotFoundError } from "../errors";
 import { memberHasTier } from "../eligibility";
 import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
 import { cloneSpatialPlanIntoNewCycle } from "../spatial-planning";
 import { recomputeCalendarEventDatesForCycle } from "../calendar-events";
+import { requireCycleOpen } from "./lifecycle";
 import {
   dateBoundaryInput,
   deriveClonedBoundaryRecipe,
@@ -124,6 +125,10 @@ export const createCycleInput = z.discriminatedUnion("source", [
     // defines any Cycle type just leaves this unset forever.
     cycleTypeId: z.string().uuid().nullable().optional(),
     phases: z.array(phaseInput).optional(),
+    // "Starting a second Cycle while one's already open now shows an
+    // explicit confirmation step" — docs/development-plan.md's Phase
+    // 65. See createCycle below.
+    confirmed: z.boolean().optional(),
   }),
   z.object({
     source: z.literal("clone_previous"),
@@ -135,6 +140,7 @@ export const createCycleInput = z.discriminatedUnion("source", [
     // suggested_member_id carry-forward already established — see
     // cloneMostRecentCycle below.
     cloneSpatialPlan: z.boolean().optional(),
+    confirmed: z.boolean().optional(),
   }),
 ]);
 export type CreateCycleInput = z.infer<typeof createCycleInput>;
@@ -193,6 +199,28 @@ export async function createCycle(actor: Member, input: CreateCycleInput) {
   await requireCycleInitiationEligibility(actor);
   if (input.cycleTypeId) {
     await requireCycleTypeInCommunity(actor.communityId, input.cycleTypeId);
+  }
+
+  // "Starting a second Cycle while one's already open ... now shows an
+  // explicit confirmation step naming the cycle that's already open" —
+  // docs/development-plan.md's Phase 65. Reuses the exact same
+  // ConfirmationRequiredError flow tasks/join-requests.ts's self-assign
+  // check already established, rather than a new error type — the
+  // caller is expected to pre-compute this and show a real confirm
+  // banner (see src/app/(app)/tasks/[id]/page.tsx's
+  // needsSelfAssignConfirmation for the UX pattern).
+  if (!input.confirmed) {
+    const [openCycle] = await db
+      .select()
+      .from(cycle)
+      .where(and(eq(cycle.communityId, actor.communityId), isNull(cycle.closedAt)))
+      .orderBy(desc(cycle.startedAt))
+      .limit(1);
+    if (openCycle) {
+      throw new ConfirmationRequiredError(
+        `"${openCycle.name}" is already open — starting another cycle won't close it. Start anyway?`,
+      );
+    }
   }
 
   if (input.source === "clone_previous") {
@@ -705,6 +733,18 @@ export async function listCycles(actor: Member) {
     .orderBy(desc(cycle.startedAt));
 }
 
+// Every open (not yet closed) cycle in the community, regardless of
+// any member's own participation — the nav switcher's narrow-to-one
+// dropdown candidates, and Participation's own per-cycle sections
+// (docs/development-plan.md's Phase 65).
+export async function listOpenCycles(actor: Member) {
+  return db
+    .select()
+    .from(cycle)
+    .where(and(eq(cycle.communityId, actor.communityId), isNull(cycle.closedAt)))
+    .orderBy(desc(cycle.startedAt));
+}
+
 export interface PhaseFlags {
   orderInvalid: boolean;
   startDrifted: boolean;
@@ -768,6 +808,7 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
   if (!row) {
     throw new NotFoundError("Cycle not found");
   }
+  requireCycleOpen(row);
 
   const nextStartDate = input.startDate !== undefined ? input.startDate : row.startDate;
   const nextEndDate = input.endDate !== undefined ? input.endDate : row.endDate;
@@ -841,6 +882,7 @@ export async function updatePhaseBoundary(actor: Member, phaseId: string, input:
   if (!cycleRow || cycleRow.communityId !== actor.communityId) {
     throw new NotFoundError("Phase not found");
   }
+  requireCycleOpen(cycleRow);
 
   const nextStart = input.start
     ? toStoredBoundary(input.start, cycleRow.startDate, cycleRow.endDate)
@@ -886,6 +928,7 @@ export async function updatePhaseHighlight(actor: Member, phaseId: string, highl
   if (!cycleRow || cycleRow.communityId !== actor.communityId) {
     throw new NotFoundError("Phase not found");
   }
+  requireCycleOpen(cycleRow);
 
   const [updated] = await db
     .update(phase)

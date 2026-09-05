@@ -9,14 +9,17 @@ import {
   confirmBudgetCycle,
   createBudgetCycle,
   getBudgetCycle,
+  getBudgetCycleForCycle,
   getBudgetProposal,
   getBudgetVotingView,
   getCurrentBudgetCycle,
   listBudgetProposals,
+  markBudgetCycleDone,
   submitBudgetProposal,
   submitBudgetVote,
   updateBudgetProposal,
 } from "@/lib/budget";
+import { createCycle } from "@/lib/cycles";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
@@ -459,5 +462,86 @@ describe("Confirmation", () => {
     await expect(
       confirmBudgetCycle(alice, cycle.id, { confirmedProposalIds: [p1.id, p1.id] }),
     ).rejects.toThrow(AppError);
+  });
+});
+
+// docs/development-plan.md's Phase 65 — the owner's own small
+// confirmation that lets closeCycle skip its warning.
+describe("markBudgetCycleDone", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  async function setUpConfirmedCycle() {
+    const fixtures = await createFixtures();
+    const { alice, bob, branch: testBranch } = fixtures;
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    await claimTask(alice, ownerTask.id);
+    const cycle = await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: inOneWeek(),
+      ownerTaskId: ownerTask.id,
+    });
+    const p1 = await submitBudgetProposal(bob, cycle.id, {
+      title: "P1",
+      lineItems: [{ label: "X", amount: 100 }],
+    });
+    await closeProposalsToVoting(alice, cycle.id);
+    await submitBudgetVote(alice, cycle.id, { rankedProposalIds: [p1.id] });
+    await confirmBudgetCycle(alice, cycle.id, { confirmedProposalIds: [p1.id] });
+    return { ...fixtures, cycle };
+  }
+
+  it("owner-gated", async () => {
+    const { bob, cycle } = await setUpConfirmedCycle();
+    await expect(markBudgetCycleDone(bob, cycle.id)).rejects.toThrow(ForbiddenError);
+  });
+
+  it("requires the cycle to already be confirmed", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    await claimTask(alice, ownerTask.id);
+    const cycle = await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: inOneWeek(),
+      ownerTaskId: ownerTask.id,
+    });
+    await expect(markBudgetCycleDone(alice, cycle.id)).rejects.toThrow(ConflictError);
+  });
+
+  it("sets ownerMarkedDoneAt once confirmed", async () => {
+    const { alice, cycle } = await setUpConfirmedCycle();
+    expect(cycle.ownerMarkedDoneAt).toBeNull();
+
+    const marked = await markBudgetCycleDone(alice, cycle.id);
+    expect(marked.ownerMarkedDoneAt).not.toBeNull();
+
+    const refetched = await getBudgetCycle(alice, cycle.id);
+    expect(refetched.ownerMarkedDoneAt).not.toBeNull();
+  });
+});
+
+describe("getBudgetCycleForCycle", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("finds the BudgetCycle tied to a specific real Cycle, ignoring ones tied to another or none", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const realCycle = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    const untied = await createBudgetCycle(alice, {
+      title: "Untied budget",
+      proposalDeadline: inOneWeek(),
+      ownerTaskId: ownerTask.id,
+    });
+    expect(await getBudgetCycleForCycle(alice, realCycle.id)).toBeNull();
+
+    await db.update(budgetCycle).set({ cycleId: realCycle.id }).where(eq(budgetCycle.id, untied.id));
+    const found = await getBudgetCycleForCycle(alice, realCycle.id);
+    expect(found?.id).toBe(untied.id);
   });
 });

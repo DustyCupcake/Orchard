@@ -4,7 +4,8 @@ import { db } from "@/db";
 import { profileAnswer, profileQuestion } from "@/db/schema";
 import type { member as memberTable, profileQuestion as profileQuestionTable } from "@/db/schema";
 import { ConflictError, NotFoundError } from "../errors";
-import { getCurrentCycle, getCurrentPhase } from "./capacity";
+import { phaseForCycle } from "./capacity";
+import { getMemberDeclaredCycleId } from "../participation";
 
 type Member = typeof memberTable.$inferSelect;
 type ProfileQuestion = typeof profileQuestionTable.$inferSelect;
@@ -43,17 +44,21 @@ function validateValue(question: ProfileQuestion, value: unknown) {
 }
 
 // Which cycle a per_cycle/phase answer stamps against — null for
-// once_ever (see profile-question.ts's schema comment). Throws if a
-// per_cycle/phase question is answered with no current cycle to stamp
-// it against; in practice this shouldn't happen since such a question
-// wouldn't have appeared in listOutstandingQuestions() either.
-async function resolveCycleId(question: ProfileQuestion, communityId: string): Promise<string | null> {
+// once_ever (see profile-question.ts's schema comment). The member's
+// own declared cycle (docs/development-plan.md's Phase 65), not
+// whichever cycle the nav's view-scope switcher happens to be on right
+// now — glancing at a different cycle in the nav should never change
+// what a member's own answer stamps against. Throws if a per_cycle/
+// phase question is answered with no such cycle to stamp it against;
+// in practice this shouldn't happen since such a question wouldn't
+// have appeared in listOutstandingQuestions() either.
+async function resolveCycleId(actor: Member, question: ProfileQuestion): Promise<string | null> {
   if (question.scope === "once_ever") return null;
-  const currentCycle = await getCurrentCycle(communityId);
-  if (!currentCycle) {
+  const cycleId = await getMemberDeclaredCycleId(actor);
+  if (!cycleId) {
     throw new ConflictError("No current cycle to answer this against");
   }
-  return currentCycle.id;
+  return cycleId;
 }
 
 export async function answerProfileQuestion(
@@ -70,7 +75,7 @@ export async function answerProfileQuestion(
   }
 
   const value = input.status === "answered" ? validateValue(question, input.value) : null;
-  const cycleId = await resolveCycleId(question, actor.communityId);
+  const cycleId = await resolveCycleId(actor, question);
 
   const [existing] = await db
     .select()
@@ -136,8 +141,12 @@ export async function listOutstandingQuestions(
     ? allQuestions.filter((q) => q.surfaces.includes(options.surface!))
     : allQuestions;
 
-  const currentCycle = await getCurrentCycle(actor.communityId);
-  const currentPhase = await getCurrentPhase(actor.communityId);
+  // The member's own declared cycle (Phase 65) — not the nav's
+  // view-scope switcher — so glancing at a different cycle never hides
+  // a member's own real outstanding questions. See resolveCycleId
+  // above for the identical reasoning on the write side.
+  const declaredCycleId = await getMemberDeclaredCycleId(actor);
+  const currentPhase = declaredCycleId ? await phaseForCycle(declaredCycleId) : null;
 
   const outstanding: OutstandingQuestion[] = [];
   for (const q of questions) {
@@ -145,13 +154,13 @@ export async function listOutstandingQuestions(
     if (q.scope === "once_ever") {
       cycleId = null;
     } else if (q.scope === "per_cycle") {
-      if (!currentCycle) continue;
-      cycleId = currentCycle.id;
+      if (!declaredCycleId) continue;
+      cycleId = declaredCycleId;
     } else {
       // phase
-      if (!currentCycle || !currentPhase) continue;
+      if (!declaredCycleId || !currentPhase) continue;
       if (q.phaseNameHint?.toLowerCase() !== currentPhase.name.toLowerCase()) continue;
-      cycleId = currentCycle.id;
+      cycleId = declaredCycleId;
     }
 
     const [existing] = await db

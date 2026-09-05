@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Eye, Warning } from "@phosphor-icons/react";
 import { NavIcon } from "./phosphor-icon-map";
+import CycleSwitcher from "./CycleSwitcher";
 import {
   ALL_ITEMS,
   CALENDAR_ITEM,
@@ -430,14 +431,33 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 
+  // The cycle-switcher's own current scope, read straight out of the
+  // URL when actually on a moved cycle-scoped page (docs/development-
+  // plan.md's Phase 65 — /participation, /budget) — authoritative
+  // display truth there, since the (app) layout sits above the
+  // [cycleScope] segment and has no server-side way to see it.
+  // Everywhere else falls back to ctx.cycleSwitcher.defaultScopeSegment
+  // (server-resolved from Member.lastViewedCycleId).
+  const cycleScopeMatch = /^\/([^/]+)\/(participation|budget)(?:\/|$)/.exec(pathname);
+  const urlScope = cycleScopeMatch?.[1] ?? null;
+  const cycleSubPath: "participation" | "budget" = cycleScopeMatch?.[2] === "budget" ? "budget" : "participation";
+
+  // Budget is the one single-owner-per-cycle module this phase touches
+  // (docs/development-plan.md's Phase 65 — Event scheduling/Spatial
+  // planning ownership is Phase 68's job) — hidden entirely with no
+  // cycle open at all to be scoped to, rather than a generic
+  // moduleKey-style visibility rule on nav-config.ts's own NavItem
+  // shape, since this is the only item this narrow.
+  const isCycleGated = (item: NavItem) => item.key !== "budget" || ctx.cycleSwitcher.hasAnyOpenCycle;
+
   const pinnedItems = ctx.pinnedKeys
     .map((key) => ALL_ITEMS.find((item) => item.key === key))
     .filter((item): item is NavItem => item !== undefined)
-    .filter((item) => isItemVisible(item, ctx));
+    .filter((item) => isItemVisible(item, ctx) && isCycleGated(item));
 
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => isItemVisible(item, ctx)),
+    items: group.items.filter((item) => isItemVisible(item, ctx) && isCycleGated(item)),
   })).filter((group) => group.items.length > 0);
 
   const navListProps = {
@@ -479,6 +499,7 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
               communityLogoUrl={ctx.communityLogoUrl}
               onCloseMobile={() => setMobileOpen(false)}
             />
+            <CycleSwitcher ctx={ctx.cycleSwitcher} urlScope={urlScope} subPath={cycleSubPath} collapsed={false} />
             <SidebarNavList collapsed={false} {...navListProps} />
             <UserBlock memberName={ctx.memberName} collapsed={false} />
           </div>
@@ -498,6 +519,7 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
           communityLogoUrl={ctx.communityLogoUrl}
           onToggleCollapsed={() => setCollapsed((v) => !v)}
         />
+        <CycleSwitcher ctx={ctx.cycleSwitcher} urlScope={urlScope} subPath={cycleSubPath} collapsed={collapsed} />
         <SidebarNavList collapsed={collapsed} {...navListProps} />
         <UserBlock memberName={ctx.memberName} collapsed={collapsed} />
       </div>

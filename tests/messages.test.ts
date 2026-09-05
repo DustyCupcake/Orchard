@@ -54,6 +54,15 @@ async function giveEmail(memberId: string, email: string) {
   await db.insert(memberIdentity).values({ memberId, provider: "magic_link", loginEmail: email });
 }
 
+// Also sets alice's own lastViewedCycleId to this cycle — a real
+// composer's nav switcher would already be pointed at whichever cycle
+// they're sending an arrival-window message "about" (docs/development-
+// plan.md's Phase 65's own reasoning for this swap), so this simulates
+// that rather than requiring alice to also have declared her own
+// Participation on it just to compose a message. Mutates
+// fixtures.alice in place (every call site reads that property, never
+// a destructured local) so the updated row is what sendOutboundMessage
+// actually receives.
 async function makeCurrentCycle(fixtures: Fixtures, overrides: Partial<typeof cycle.$inferInsert> = {}) {
   const [row] = await db
     .insert(cycle)
@@ -65,6 +74,12 @@ async function makeCurrentCycle(fixtures: Fixtures, overrides: Partial<typeof cy
       ...overrides,
     })
     .returning();
+  const [refetchedAlice] = await db
+    .update(member)
+    .set({ lastViewedCycleId: row.id })
+    .where(eq(member.id, fixtures.alice.id))
+    .returning();
+  fixtures.alice = refetchedAlice;
   return row;
 }
 

@@ -62,4 +62,15 @@ export const member = pgTable("member", {
   // "never blocks access behind a required flow" posture this codebase
   // takes everywhere else. Gates Dashboard's onboarding panel only.
   hasCompletedOnboarding: boolean("has_completed_onboarding").notNull().default(false),
+  // The nav switcher's persisted selection (Phase 65) — null means the
+  // aggregate "all active cycles" default. Plain uuid, NOT a real FK:
+  // cycle.ts already imports member.ts (for started_by/closed_by), so
+  // member.ts importing cycle.ts back would be a genuine circular
+  // import between schema files — same non-FK, "earlier file holds the
+  // plain column" pattern joined_via_invite_id above already
+  // establishes. Validated at the application layer (setViewScopeAction
+  // only, src/app/(app)/nav-actions.ts); a stale/foreign id just falls
+  // back to the aggregate default at read time — see
+  // src/lib/cycles/view-scope.ts.
+  lastViewedCycleId: uuid("last_viewed_cycle_id"),
 });

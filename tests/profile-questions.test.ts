@@ -345,7 +345,7 @@ describe("current cycle/phase resolution", () => {
 
     await enableCycles(testCommunity.id);
     await createCycle(alice, { source: "blank", name: "Old" });
-    const newer = await createCycle(alice, { source: "clone_previous", name: "New" });
+    const newer = await createCycle(alice, { source: "clone_previous", name: "New", confirmed: true });
 
     const current = await getCurrentCycle(testCommunity.id);
     expect(current?.id).toBe(newer.id);

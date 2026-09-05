@@ -103,6 +103,7 @@ describe("Tagging a Cycle with a type at creation", () => {
       source: "clone_previous",
       name: "2027 Reunion",
       cycleTypeId: reunion.id,
+      confirmed: true,
     });
     expect(cloned.cycleTypeId).toBe(reunion.id);
   });
@@ -204,9 +205,9 @@ describe("computeCycleTypeCount", () => {
     const reunion = await createCycleType(alice, { name: "Reunion" });
 
     const season1 = await createCycle(alice, { source: "blank", name: "S1", cycleTypeId: season.id });
-    const season2 = await createCycle(alice, { source: "blank", name: "S2", cycleTypeId: season.id });
-    const reunion1 = await createCycle(alice, { source: "blank", name: "R1", cycleTypeId: reunion.id });
-    const untyped = await createCycle(alice, { source: "blank", name: "U1" });
+    const season2 = await createCycle(alice, { source: "blank", name: "S2", cycleTypeId: season.id, confirmed: true });
+    const reunion1 = await createCycle(alice, { source: "blank", name: "R1", cycleTypeId: reunion.id, confirmed: true });
+    const untyped = await createCycle(alice, { source: "blank", name: "U1", confirmed: true });
 
     await declareParticipation(alice, season1.id, { status: "coming" });
     await declareParticipation(alice, season2.id, { status: "maybe" }); // doesn't count
@@ -240,7 +241,7 @@ describe("syncComputedTiers, triggered from declareParticipation", () => {
     await db.update(member).set({ tierIds: [manual.id] }).where(eq(member.id, alice.id));
 
     const season1 = await createCycle(alice, { source: "blank", name: "S1", cycleTypeId: season.id });
-    const season2 = await createCycle(alice, { source: "blank", name: "S2", cycleTypeId: season.id });
+    const season2 = await createCycle(alice, { source: "blank", name: "S2", cycleTypeId: season.id, confirmed: true });
 
     await declareParticipation(alice, season1.id, { status: "coming" });
     let [row] = await db.select().from(member).where(eq(member.id, alice.id));
@@ -262,7 +263,7 @@ describe("syncComputedTiers, triggered from declareParticipation", () => {
     });
 
     const season1 = await createCycle(alice, { source: "blank", name: "S1", cycleTypeId: season.id });
-    const season2 = await createCycle(alice, { source: "blank", name: "S2", cycleTypeId: season.id });
+    const season2 = await createCycle(alice, { source: "blank", name: "S2", cycleTypeId: season.id, confirmed: true });
     await declareParticipation(alice, season1.id, { status: "coming" });
     await declareParticipation(alice, season2.id, { status: "coming" });
 

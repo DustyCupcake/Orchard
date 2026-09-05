@@ -102,3 +102,18 @@ export async function getBudgetCycle(actor: Member, budgetCycleId: string) {
   }
   return row;
 }
+
+// Unlike getCurrentBudgetCycle above (community-wide, cycle-agnostic —
+// still used as-is by callers like src/lib/nav.ts's isAnyBudgetOwner),
+// this scopes to one specific real Cycle — what a cycle-scoped /budget
+// page (docs/development-plan.md's Phase 65) and closeCycle's own
+// owner-warning check both need.
+export async function getBudgetCycleForCycle(actor: Member, cycleId: string) {
+  const [row] = await db
+    .select()
+    .from(budgetCycle)
+    .where(and(eq(budgetCycle.communityId, actor.communityId), eq(budgetCycle.cycleId, cycleId)))
+    .orderBy(desc(budgetCycle.createdAt))
+    .limit(1);
+  return row ?? null;
+}

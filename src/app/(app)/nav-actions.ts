@@ -1,9 +1,9 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { member } from "@/db/schema";
+import { cycle, member } from "@/db/schema";
 import { requireMember } from "@/lib/api";
 import { assertNotViewingAs, deactivateViewAs } from "@/lib/view-as";
 
@@ -37,5 +37,37 @@ export async function toggleFavoriteNavItem(itemKey: string) {
 export async function endViewAsAction() {
   const actor = await requireMember();
   await deactivateViewAs(actor);
+  revalidatePath("/", "layout");
+}
+
+// The global cycle-switcher's own write (docs/development-plan.md's
+// Phase 65) — called directly from CycleSwitcher.tsx, same "client
+// component calls a Server Action with no <form>" pattern
+// toggleFavoriteNavItem above already uses. Deliberately the ONLY
+// place Member.lastViewedCycleId ever changes — never a passive side
+// effect of visiting a /{cycleId}/... URL directly (a bookmark, a
+// shared link), so a member's last-viewed selection only ever moves
+// when they actually use the switcher. "active" (the aggregate
+// default) clears it back to null. A non-"active" scope that doesn't
+// resolve to a real open-or-closed cycle in this member's own
+// community is silently ignored — the same "validated at the
+// application layer" posture this column's own non-FK schema comment
+// promises, not surfaced as an error over what's just a nav
+// convenience.
+export async function setViewScopeAction(scope: string) {
+  const actor = await requireMember();
+  await assertNotViewingAs();
+
+  let cycleId: string | null = null;
+  if (scope !== "active") {
+    const [row] = await db
+      .select({ id: cycle.id })
+      .from(cycle)
+      .where(and(eq(cycle.id, scope), eq(cycle.communityId, actor.communityId)));
+    if (!row) return;
+    cycleId = row.id;
+  }
+
+  await db.update(member).set({ lastViewedCycleId: cycleId }).where(eq(member.id, actor.id));
   revalidatePath("/", "layout");
 }

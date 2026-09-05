@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, member, tier } from "@/db/schema";
-import { createCycle, getCycle, updateCycleSettings } from "@/lib/cycles";
-import { declareParticipation, getCycleParticipationSummary, getMyParticipation } from "@/lib/participation";
+import { community, cycle, member, tier } from "@/db/schema";
+import { closeCycle, createCycle, getCycle, updateCycleSettings } from "@/lib/cycles";
+import {
+  declareParticipation,
+  getCycleParticipationSummary,
+  getMemberDeclaredCycleId,
+  getMyParticipation,
+  listComingCycleIds,
+} from "@/lib/participation";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
@@ -226,5 +232,108 @@ describe("updateCycleSettings", () => {
     await expect(updateCycleSettings(alice, "00000000-0000-0000-0000-000000000000", { capacity: 10 })).rejects.toThrow(
       ConflictError,
     );
+  });
+
+  // docs/development-plan.md's Phase 65 — "closing locks everything
+  // about that cycle, no exception," scoped to this phase's own owned
+  // functions.
+  it("rejects once the cycle is closed", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    await closeCycle(alice, cyc.id);
+
+    await expect(updateCycleSettings(alice, cyc.id, { capacity: 10 })).rejects.toThrow(ConflictError);
+  });
+});
+
+describe("declareParticipation rejects a closed cycle", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("rejects declaring once the cycle is closed", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    await closeCycle(alice, cyc.id);
+
+    await expect(declareParticipation(alice, cyc.id, { status: "coming" })).rejects.toThrow(ConflictError);
+  });
+});
+
+describe("listComingCycleIds", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("returns every open cycle this member declared coming for, excluding maybe/not_coming and closed cycles", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const coming = await createCycle(alice, { source: "blank", name: "Coming" });
+    const maybe = await createCycle(alice, { source: "blank", name: "Maybe", confirmed: true });
+    const closed = await createCycle(alice, { source: "blank", name: "Closed", confirmed: true });
+
+    await declareParticipation(alice, coming.id, { status: "coming" });
+    await declareParticipation(alice, maybe.id, { status: "maybe" });
+    await declareParticipation(alice, closed.id, { status: "coming" });
+    await closeCycle(alice, closed.id);
+
+    expect(await listComingCycleIds(alice)).toEqual([coming.id]);
+  });
+
+  it("is empty for a member who hasn't declared coming on anything", async () => {
+    const { alice } = await createFixtures();
+    expect(await listComingCycleIds(alice)).toEqual([]);
+  });
+});
+
+describe("getMemberDeclaredCycleId", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("resolves to the member's own most-recently-started declared cycle, excluding 'unknown' and closed cycles", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const older = await createCycle(alice, { source: "blank", name: "Older" });
+    const newer = await createCycle(alice, { source: "blank", name: "Newer", confirmed: true });
+    await db.update(cycle).set({ startedAt: new Date("2025-01-01T00:00:00Z") }).where(eq(cycle.id, older.id));
+    await db.update(cycle).set({ startedAt: new Date("2026-01-01T00:00:00Z") }).where(eq(cycle.id, newer.id));
+
+    await declareParticipation(alice, older.id, { status: "maybe" });
+    await declareParticipation(alice, newer.id, { status: "coming" });
+
+    expect(await getMemberDeclaredCycleId(alice)).toBe(newer.id);
+  });
+
+  it("falls back to the community's single open cycle when this member has declared on nothing", async () => {
+    const { community: testCommunity, alice, bob } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    await declareParticipation(bob, cyc.id, { status: "coming" });
+
+    expect(await getMemberDeclaredCycleId(alice)).toBe(cyc.id);
+  });
+
+  it("resolves to nothing when the member hasn't declared and there are zero or 2+ open cycles", async () => {
+    const { alice } = await createFixtures();
+    expect(await getMemberDeclaredCycleId(alice)).toBeNull();
+
+    const { community: testCommunity, alice: bobsAlice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    await createCycle(bobsAlice, { source: "blank", name: "First" });
+    await createCycle(bobsAlice, { source: "blank", name: "Second", confirmed: true });
+    expect(await getMemberDeclaredCycleId(bobsAlice)).toBeNull();
+  });
+
+  it("a real declaration on a specific cycle wins even with 2+ open cycles", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const first = await createCycle(alice, { source: "blank", name: "First" });
+    await createCycle(alice, { source: "blank", name: "Second", confirmed: true });
+    await declareParticipation(alice, first.id, { status: "coming" });
+
+    expect(await getMemberDeclaredCycleId(alice)).toBe(first.id);
   });
 });
