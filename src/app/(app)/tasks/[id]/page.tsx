@@ -35,8 +35,10 @@ import {
   PERMISSION_MODULE_LABELS,
   type PermissionModuleKey,
 } from "@/lib/permissions";
-import { getCycle } from "@/lib/cycles";
+import { getCycle, resolveCrossCycleContext, scopeLabel } from "@/lib/cycles";
 import { isModuleEnabled } from "@/lib/modules";
+import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
+import CopyLinkButton from "@/components/CopyLinkButton";
 import { listTaskQuestions } from "@/lib/input-rounds";
 import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
 import { getAccompaniedMemberId } from "@/lib/recruitment";
@@ -126,7 +128,7 @@ export default async function TaskDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; scope?: string }>;
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
@@ -134,7 +136,7 @@ export default async function TaskDetailPage({
   }
 
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, scope: scopeParam } = await searchParams;
 
   const taskRow = await getTask(viewing, id);
   const isCommunityEndorsed = taskRow.openness === "community_endorsed";
@@ -157,7 +159,7 @@ export default async function TaskDetailPage({
     questions,
     communityRow,
     milestones,
-    cyclePhases,
+    taskCycle,
     nominations,
     dependencies,
     tiers,
@@ -181,14 +183,15 @@ export default async function TaskDetailPage({
     listTaskQuestions(viewing, id),
     getCommunity(viewing),
     listTaskMilestones(viewing, id),
-    taskRow.cycleId
-      ? getCycle(viewing, taskRow.cycleId).then((c) => c.phases)
-      : Promise.resolve([]),
+    taskRow.cycleId ? getCycle(viewing, taskRow.cycleId) : Promise.resolve(null),
     listNominationsForTask(viewing, id),
     listTaskDependencies(viewing, id),
     listTiers(viewing),
     listTasks(viewing),
   ]);
+  const cyclePhases = taskCycle?.phases ?? [];
+  const crossCycle = await resolveCrossCycleContext(viewing, taskCycle, scopeParam ?? null);
+  const taskPath = `/tasks/${taskRow.id}`;
   const tierOptions = [...tierNames.entries()].map(([tId, name]) => ({ id: tId, name }));
   const communityTasks = allCommunityTasks
     .filter((t) => t.id !== taskRow.id)
@@ -334,6 +337,38 @@ export default async function TaskDetailPage({
 
       {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
 
+      {crossCycle.linkedScope && (
+        <div className="mt-4">
+          <Banner tone="warning">
+            <p>
+              This link was shared while scoped to <strong>{scopeLabel(crossCycle.linkedScope.scope)}</strong> —
+              your own current view is <strong>{scopeLabel(crossCycle.activeScope)}</strong>.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <form action={switchToLinkedScopeAction}>
+                <input type="hidden" name="scope" value={crossCycle.linkedScope.segment} />
+                <input type="hidden" name="returnTo" value={taskPath} />
+                <button type="submit" className={BUTTON_PRIMARY}>
+                  Switch my view to match
+                </button>
+              </form>
+              <Link href={taskPath} className={BUTTON_SECONDARY}>
+                Stay on my view
+              </Link>
+            </div>
+          </Banner>
+        </div>
+      )}
+
+      {crossCycle.mismatchedObjectCycle && (
+        <div className="mt-4">
+          <Banner tone="warning">
+            This task belongs to <strong>{crossCycle.mismatchedObjectCycle.name}</strong>, outside your current
+            view (<strong>{scopeLabel(crossCycle.activeScope)}</strong>).
+          </Banner>
+        </div>
+      )}
+
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">{taskRow.title}</h1>
         {taskRow.critical && <Tag tone="danger">critical</Tag>}
@@ -343,6 +378,13 @@ export default async function TaskDetailPage({
         {branchRow?.name ?? "—"} · {effortSummary(taskRow.effort, taskRow.effortMagnitude)} ·{" "}
         {taskRow.status} · {realAssignments.length}
         {taskRow.capacity !== null ? `/${taskRow.capacity}` : ""} held
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <CopyLinkButton path={taskPath} label="Copy link" />
+        <CopyLinkButton
+          path={`${taskPath}?scope=${crossCycle.activeScopeSegment}`}
+          label={`Copy link (${scopeLabel(crossCycle.activeScope)} view)`}
+        />
       </div>
       {parentTask && (
         <p className="mt-1 text-[13px] text-[var(--text-muted)]">
