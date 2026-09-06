@@ -14,8 +14,8 @@ import { taskEffortEnum, taskOpennessEnum } from "./task";
 // communityId is NOT NULL, unlike spec's own "nullable — null for a
 // pack authored for cross-community sharing" framing: this codebase
 // has explicitly decided against multi-tenancy (one deployment hosts
-// exactly one Community — see docs/development-plan.md's "Beyond
-// Phase 59"), so every pack row that exists in a given database
+// exactly one Community — see docs/roadmap.md), so every pack row
+// that exists in a given database
 // already belongs to the one Community that database hosts. Cross-
 // community sharing still works exactly as spec describes — a pack
 // round-trips as a downloaded/uploaded JSON file, "link, don't host,"

@@ -53,7 +53,7 @@ export async function listComments(actor: Member, taskId: string) {
   return db.select().from(taskComment).where(eq(taskComment.taskId, taskId)).orderBy(taskComment.createdAt);
 }
 
-// Resources — links only, no native file storage (see docs/architecture.md).
+// Resources — links only, no native file storage (see CONTRIBUTING.md's "Architecture" section).
 export const addResourceInput = z.object({
   label: z.string().min(1),
   url: z.string().url(),

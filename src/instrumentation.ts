@@ -18,7 +18,7 @@ export async function register() {
   const { resolveTaskNominationDeadlines } = await import("@/lib/tasks");
   const { logCallSummaryUnreadEngagementEvents } = await import("@/lib/engagement");
 
-  // "polled every few minutes" per docs/architecture.md.
+  // "polled every few minutes" — see CONTRIBUTING.md's "Architecture" section.
   registerJob("attention-level", "*/5 * * * *", recomputeAttentionLevels);
   // Fails any candidacy that never cleared its endorsement threshold
   // before its task's browse window closed — see endorsements.ts.

@@ -13,9 +13,9 @@
 #   4. ufw firewall — allow only SSH, 80, 443 (matches Orchard's Caddy setup)
 #   5. unattended-upgrades for OS security patches
 #   6. fail2ban for SSH brute-force protection
-#   7. swapfile + vm.swappiness — architecture.md calls for this on a
-#      small VPS; deploy.sh's own Docker/Postgres memory tuning assumes
-#      it's there
+#   7. swapfile + vm.swappiness — CONTRIBUTING.md's "Architecture"
+#      section calls for this on a small VPS; deploy.sh's own
+#      Docker/Postgres memory tuning assumes it's there
 #
 # Deliberately does NOT install Docker or clone the app — that's
 # deploy.sh's job, run afterward as the new admin user (via sudo).
@@ -388,7 +388,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# 7. Swap — architecture.md's own memory-budget notes call for this on a
+# 7. Swap — CONTRIBUTING.md's own memory-budget notes call for this on a
 #    1-2GB VPS, cheap insurance against an OOM kill taking the whole stack
 #    down (Postgres + the Next.js app in one container each).
 # ---------------------------------------------------------------------------

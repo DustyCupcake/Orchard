@@ -1,8 +1,9 @@
 import cron from "node-cron";
 
-// The general "scheduler + due-item polling" infrastructure per
-// docs/architecture.md — a lightweight in-process node-cron, not a
-// queue system (single community's worth of activity, not SaaS scale).
+// The general "scheduler + due-item polling" infrastructure (see
+// CONTRIBUTING.md's "Architecture" section) — a lightweight in-process
+// node-cron, not a queue system (single community's worth of activity,
+// not SaaS scale).
 // The attention-level job (Phase 10) is the first thing registered here;
 // later scheduled work (Input round cutoffs, Assembly phase transitions,
 // browse-period resolution, invite expiry, ...) should reuse this rather

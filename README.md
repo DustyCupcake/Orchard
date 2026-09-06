@@ -50,13 +50,15 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 **Support & View-as** — a claimable Support task (same pattern as Admins/branch coordination) unlocks a strict read-only "view exactly as this member would see it" mode for troubleshooting, with every write disabled and every activation logged — including the one hard exception spec calls for: viewing as a recused conflict-team member never bypasses their own exclusion.
 
-Built incrementally, one phase at a time — see [`CHANGELOG.md`](CHANGELOG.md) for the full build history and [`docs/development-plan.md`](docs/development-plan.md) for what's scoped next.
+Built incrementally, one phase at a time — see [`CHANGELOG.md`](CHANGELOG.md) for the full build history and [`docs/roadmap.md`](docs/roadmap.md) for what's deliberately not built yet.
 
 ## Documentation
 
 - **[`docs/overview.md`](docs/overview.md)** — plain-language introduction: what Orchard is, how it feels to use, no technical detail. Start here if you're deciding whether this is useful to you or your community.
-- **[`docs/spec.md`](docs/spec.md)** — the full technical specification: data model, mechanisms, module design, open engineering questions. Start here if you're building it or evaluating it as an engineer.
-- **[`CHANGELOG.md`](CHANGELOG.md)** — phase-by-phase build history, one entry per shipped phase.
+- **[`docs/spec.md`](docs/spec.md)** — the full technical specification: data model, mechanisms, module design, resolved design decisions. Start here if you're building it or evaluating it as an engineer.
+- **[`CHANGELOG.md`](CHANGELOG.md)** — phase-by-phase build history, one entry per shipped phase. Every phase through Phase 69 (the full original build plan) is complete.
+- **[`docs/roadmap.md`](docs/roadmap.md)** — what's deliberately not built yet, and why.
+- **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — local setup, testing/verification workflow, and code conventions for anyone picking up work on this repo.
 
 ## Deploying
 
@@ -90,6 +92,8 @@ The lifecycle/CRUD test suite runs against a real Postgres (no mocks — see `te
 DATABASE_URL=postgres://orchard:test@localhost:5432/orchard SESSION_SECRET=test npm test
 ```
 
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full local setup and manual-verification workflow.
+
 ## Who this is for
 
 Built first for Peach Please's own use — recruitment, running a season, coordinating a camp at a burn. The engine underneath isn't camp-specific: branches, tiers, cycles, and every module are community-configured rather than hardcoded, so the same tool should work for a housing cooperative, a mutual aid group, a software project, or any other group organizing itself around shared, claimable work. Other communities are welcome to use it, fork it, and adapt it to their own shape.
@@ -100,4 +104,4 @@ Built first for Peach Please's own use — recruitment, running a season, coordi
 
 ## Contributing
 
-No code yet, so no contribution process yet either. If you want to weigh in on the design — whether you're evaluating this for your own community or just have opinions — open an issue.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, testing conventions, and code style. If you want to weigh in on the design instead — whether you're evaluating this for your own community or just have opinions — open an issue; [`docs/roadmap.md`](docs/roadmap.md) is the place to check what's already been considered.

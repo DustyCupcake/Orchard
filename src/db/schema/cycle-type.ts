@@ -15,10 +15,10 @@ export const cycleType = pgTable("cycle_type", {
     .references(() => community.id),
   name: text("name").notNull(),
   // Spec's own data model calls this `default_pack_id → TaskPack` — a
-  // "suggested starting pack" nudge, never enforced. No TaskPack table
-  // exists yet (see docs/development-plan.md's "Beyond Phase 45" — Task
-  // packs as a portable, cross-community mechanism are still unbuilt);
-  // Phase 6's own clone-previous-cycle flow is explicitly "conceptually
+  // "suggested starting pack" nudge, never enforced. Predates the real
+  // TaskPack table below (Phase 55) — when this field was first added,
+  // no portable, cross-community pack mechanism existed yet, so
+  // Phase 6's own clone-previous-cycle flow was explicitly "conceptually
   // the same mechanism as importing a pack" until a real one exists, so
   // this points at a specific Cycle instead, whose task set stands in
   // as "the pack" for now. Deliberately non-FK, validated only at the

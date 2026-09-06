@@ -30,7 +30,7 @@ export const taskWikiRevision = pgTable("task_wiki_revision", {
 });
 
 // Links out to wherever the actual file/page already lives — no native
-// file storage for task resources (see docs/architecture.md).
+// file storage for task resources (see CONTRIBUTING.md's "Architecture" section).
 export const taskResource = pgTable("task_resource", {
   id: uuid("id").primaryKey().defaultRandom(),
   taskId: uuid("task_id")

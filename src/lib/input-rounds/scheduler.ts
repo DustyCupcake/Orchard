@@ -14,7 +14,8 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 // immediately.
 //
 // Idempotent and safe to run on any cadence (registered at */5 * * * *
-// like every other job here, per docs/architecture.md): if the job
+// like every other job here — see CONTRIBUTING.md's "Architecture"
+// section): if the job
 // hasn't ticked in a while, the while-loop below catches the clock up
 // to the future without creating more than one round for whatever's
 // currently queued — there's nothing to split across the skipped
