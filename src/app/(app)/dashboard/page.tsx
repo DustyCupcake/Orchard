@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { CheckCircle, Tree, Users, ChartLineUp, Warning } from "@phosphor-icons/react/dist/ssr";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
+import { resolveDefaultScopeSegment, resolveViewScopeFromSegment } from "@/lib/cycles";
 import { listOutstandingQuestions } from "@/lib/profile-questions";
 import { listTaskFitSuggestions, ONBOARDING_CARDS } from "@/lib/onboarding";
 import { ATTENTION_STYLES } from "@/lib/format";
@@ -151,16 +152,51 @@ function OnboardingQuestionForm({
   );
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ memberCount?: string }>;
+}) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
   }
 
+  const { memberCount } = await searchParams;
+
+  // The same off-URL nav-switcher resolution the Board (Phase 67) and
+  // Spatial planning/Schedule (Phase 68) already read, since Dashboard
+  // isn't itself under /[cycleScope]/. Drives Branch health's cycle
+  // scoping and the "this cycle" option of the community-overview
+  // toggle below — see docs/development-plan.md's Phase 69.
+  const activeScopeSegment = await resolveDefaultScopeSegment(viewing);
+  const activeScope = await resolveViewScopeFromSegment(viewing, activeScopeSegment);
+  const scopeCycleIds = activeScope
+    ? activeScope.kind === "aggregate"
+      ? activeScope.cycles.map((c) => c.id)
+      : [activeScope.cycle.id]
+    : [];
+  const singleScopeCycle = activeScope?.kind === "single" ? activeScope.cycle : null;
+
   const [feed, snapshot] = await Promise.all([
     getPersonalFeed(viewing),
-    getCommunitySnapshot(viewing),
+    getCommunitySnapshot(viewing, { cycleIds: scopeCycleIds, singleCycleId: singleScopeCycle?.id ?? null }),
   ]);
+
+  // "This cycle" is only ever a real option once the switcher actually
+  // resolves to one specific cycle — default to it then (closest to
+  // this page's old single-cycle-only behavior), otherwise there's
+  // nothing to default to but "general".
+  const memberCountView: "general" | "cycle" =
+    memberCount === "general" || memberCount === "cycle"
+      ? memberCount
+      : singleScopeCycle
+        ? "cycle"
+        : "general";
+  const showingThisCycle = memberCountView === "cycle" && snapshot.activeMemberCount.thisCycle !== null;
+  const displayedMemberCount = showingThisCycle
+    ? snapshot.activeMemberCount.thisCycle
+    : snapshot.activeMemberCount.general;
 
   // Member onboarding & first session (docs/development-plan.md's
   // Phase 56) — a nudge, never a gate, so this panel only ever renders
@@ -592,11 +628,40 @@ export default async function DashboardPage() {
           for what you&rsquo;ve done, or opt in to share it.
         </p>
 
-        {snapshot.activeMemberCount !== null && (
-          <p className="mb-4 text-[14px] text-[var(--text)]">
-            <strong className="font-semibold">{snapshot.activeMemberCount}</strong> member
-            {snapshot.activeMemberCount === 1 ? "" : "s"} coming this cycle
-          </p>
+        {displayedMemberCount !== null && (
+          <div className="mb-4">
+            <p className="text-[14px] text-[var(--text)]">
+              <strong className="font-semibold">{displayedMemberCount}</strong> member
+              {displayedMemberCount === 1 ? "" : "s"} coming
+              {showingThisCycle
+                ? ` this cycle${singleScopeCycle ? ` (${singleScopeCycle.name})` : ""}`
+                : " across every open cycle"}
+            </p>
+            {snapshot.activeMemberCount.thisCycle !== null && (
+              <div className="mt-1 flex gap-3">
+                <Link
+                  href="/dashboard?memberCount=cycle"
+                  className={
+                    showingThisCycle
+                      ? "text-[13px] font-medium text-[var(--accent-1)]"
+                      : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"
+                  }
+                >
+                  This cycle
+                </Link>
+                <Link
+                  href="/dashboard?memberCount=general"
+                  className={
+                    !showingThisCycle
+                      ? "text-[13px] font-medium text-[var(--accent-1)]"
+                      : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"
+                  }
+                >
+                  All open cycles
+                </Link>
+              </div>
+            )}
+          </div>
         )}
 
         {snapshot.tierCounts.length > 0 && (

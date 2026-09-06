@@ -13,7 +13,7 @@ import {
 } from "@/db/schema";
 import { claimTask, claimOrRequestToJoin, nominateForTask, parkTask, resolveTaskNominationDeadlines } from "@/lib/tasks";
 import { createTier, updateCommunity } from "@/lib/settings";
-import { createCycle } from "@/lib/cycles";
+import { closeCycle, createCycle } from "@/lib/cycles";
 import { declareParticipation } from "@/lib/participation";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
 import { createBudgetCycle, submitBudgetVote } from "@/lib/budget";
@@ -238,21 +238,98 @@ describe("getCommunitySnapshot", () => {
     expect(health.counts).toEqual({ soft: 0, hard: 1, escalated: 0 });
   });
 
-  it("active member count is null when there's no current cycle at all", async () => {
+  // docs/development-plan.md's Phase 69: the flat single-cycle count
+  // this section used to show became a general/this-cycle split, since
+  // there's no honest single answer once more than one cycle can be
+  // open at once.
+  it("active member count is null (both fields) when this Community has no Participation concept at all", async () => {
     const { alice } = await createFixtures();
     const snapshot = await getCommunitySnapshot(alice);
-    expect(snapshot.activeMemberCount).toBeNull();
+    expect(snapshot.activeMemberCount).toEqual({ general: null, thisCycle: null });
   });
 
-  it("active member count reads Participation 'coming' for the most recent cycle only", async () => {
+  it("general active member count is a real zero (not null) once cycles are on but none are currently open", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const snapshot = await getCommunitySnapshot(alice);
+    expect(snapshot.activeMemberCount).toEqual({ general: 0, thisCycle: null });
+  });
+
+  it("general active member count unions distinct members declared coming across every currently-open cycle", async () => {
     const { community: testCommunity, alice, bob } = await createFixtures();
     await enableCycles(testCommunity.id);
-    const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
-    await declareParticipation(alice, cyc.id, { status: "coming" });
-    await declareParticipation(bob, cyc.id, { status: "maybe" });
+    const cycA = await createCycle(alice, { source: "blank", name: "Cycle A" });
+    const cycB = await createCycle(alice, { source: "blank", name: "Cycle B", confirmed: true });
+    await declareParticipation(alice, cycA.id, { status: "coming" });
+    await declareParticipation(bob, cycA.id, { status: "maybe" });
+    await declareParticipation(bob, cycB.id, { status: "coming" });
 
     const snapshot = await getCommunitySnapshot(alice);
-    expect(snapshot.activeMemberCount).toBe(1);
+    expect(snapshot.activeMemberCount.general).toBe(2);
+    expect(snapshot.activeMemberCount.thisCycle).toBeNull();
+  });
+
+  it("general active member count excludes a closed cycle's declarations", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "Old season" });
+    await declareParticipation(alice, cyc.id, { status: "coming" });
+    await closeCycle(alice, cyc.id);
+
+    const snapshot = await getCommunitySnapshot(alice);
+    expect(snapshot.activeMemberCount.general).toBe(0);
+  });
+
+  it("this-cycle active member count is scoped to the resolved single cycle only, distinct from general's union", async () => {
+    const { community: testCommunity, alice, bob } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cycA = await createCycle(alice, { source: "blank", name: "Cycle A" });
+    const cycB = await createCycle(alice, { source: "blank", name: "Cycle B", confirmed: true });
+    await declareParticipation(alice, cycA.id, { status: "coming" });
+    await declareParticipation(bob, cycB.id, { status: "coming" });
+
+    const snapshot = await getCommunitySnapshot(alice, { cycleIds: [cycA.id], singleCycleId: cycA.id });
+    expect(snapshot.activeMemberCount.thisCycle).toBe(1);
+    expect(snapshot.activeMemberCount.general).toBe(2);
+  });
+
+  it("branch health reflects only the active view-scope cycle's own tasks, plus cycle-less tasks, not another open cycle's", async () => {
+    const { community: testCommunity, alice, branch } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cycA = await createCycle(alice, { source: "blank", name: "Cycle A" });
+    const cycB = await createCycle(alice, { source: "blank", name: "Cycle B", confirmed: true });
+    await insertTask(alice.communityId, branch.id, alice.id, {
+      attentionLevel: "hard",
+      cycleId: cycA.id,
+      title: "Cycle A task",
+    });
+    await insertTask(alice.communityId, branch.id, alice.id, {
+      attentionLevel: "escalated",
+      cycleId: cycB.id,
+      title: "Cycle B task",
+    });
+    await insertTask(alice.communityId, branch.id, alice.id, {
+      attentionLevel: "soft",
+      title: "Cycle-less task",
+    });
+
+    const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, { title: "Coordination" });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
+    await claimTask(alice, coordTask.id);
+
+    const scopedToA = await getCommunitySnapshot(alice, { cycleIds: [cycA.id], singleCycleId: cycA.id });
+    expect(scopedToA.branchHealth.find((b) => b.id === branch.id)?.counts).toEqual({
+      soft: 1,
+      hard: 1,
+      escalated: 0,
+    });
+
+    const scopedToB = await getCommunitySnapshot(alice, { cycleIds: [cycB.id], singleCycleId: cycB.id });
+    expect(scopedToB.branchHealth.find((b) => b.id === branch.id)?.counts).toEqual({
+      soft: 1,
+      hard: 0,
+      escalated: 1,
+    });
   });
 });
 

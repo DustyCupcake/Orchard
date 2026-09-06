@@ -1,9 +1,9 @@
 import { cache } from "react";
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { db } from "@/db";
 import { branch, member, participation, task, taskAssignment, taskJoinRequest } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { getCurrentCycle } from "./profile-questions";
+import { listOpenCycles } from "./cycles";
 import { isCoordinationHolder } from "./coordination";
 import { getCompositionBreakdown } from "./composition";
 import { listMyCalendarEventInvites } from "./calendar-events";
@@ -202,30 +202,86 @@ function deriveBranchHealthStatus(counts: { soft: number; hard: number; escalate
   return "on_track";
 }
 
+// The nav switcher's own resolved state (docs/development-plan.md's
+// Phase 65/67), as the page already computes it for Board — passed in
+// rather than re-resolved here, same "page resolves nav scope, lib
+// computes data against the given ids" split Board's own
+// listTasksWithAssignments call already establishes. cycleIds is every
+// cycle the active view scope covers (one for a narrowed single cycle,
+// several for the switcher's aggregate state, none for a Community with
+// cycles off); singleCycleId is only set once the switcher is genuinely
+// narrowed to one specific cycle — that's what makes "this cycle"
+// meaningful below. Defaults to "no cycle scope at all" for callers that
+// don't have a nav switcher to read (this file's own tests exercising
+// tier/branch composition, none of which are cycle-scoped anyway).
+export type DashboardViewScope = { cycleIds: string[]; singleCycleId: string | null };
+const NO_VIEW_SCOPE: DashboardViewScope = { cycleIds: [], singleCycleId: null };
+
 // The always-visible Community snapshot panel — aggregate, anonymized,
 // never broken out by individual. The community-average-contribution
 // line is Phase 23/`/contribution`'s own TODO to close, not this
 // panel's — see src/lib/contribution.ts's getContributionCommunityAverage.
-export async function getCommunitySnapshot(actor: Member) {
-  const [composition, activeTasks, isCoordHolder, currentCycle] = await Promise.all([
+export async function getCommunitySnapshot(actor: Member, viewScope: DashboardViewScope = NO_VIEW_SCOPE) {
+  const communityRow = await getCommunityRow(actor.communityId);
+
+  // Branch health (docs/development-plan.md's Phase 69) reads the same
+  // cycle-scoped-plus-cycle-less shape Board's own cycleScope filter
+  // established in Phase 67 — every task in the active view scope's own
+  // cycle(s), plus cycle-less tasks (which aren't scoped to any
+  // particular cycle, so always count). No general/this-cycle toggle
+  // here, unlike activeMemberCount below — Branch health is this-cycle
+  // (or this-aggregate-scope) only.
+  const [composition, activeTasks, isCoordHolder, openCycles] = await Promise.all([
     getCompositionBreakdown(actor),
     db
       .select({ branchId: task.branchId, attentionLevel: task.attentionLevel })
       .from(task)
-      .where(and(eq(task.communityId, actor.communityId), ne(task.status, "done"))),
+      .where(
+        and(
+          eq(task.communityId, actor.communityId),
+          ne(task.status, "done"),
+          viewScope.cycleIds.length > 0
+            ? or(inArray(task.cycleId, viewScope.cycleIds), isNull(task.cycleId))
+            : isNull(task.cycleId),
+        ),
+      ),
     isCoordinationHolder(actor, null),
-    getCurrentCycle(actor.communityId),
+    communityRow.cyclesEnabled ? listOpenCycles(actor) : Promise.resolve([]),
   ]);
 
-  // Null (not zero) when there's no current cycle at all — a community
-  // with cycles off, or none created yet, has no Participation concept
-  // to count, which is a real, honest state, not zero people coming.
-  const activeMemberCount = currentCycle
+  // "General" — the union of distinct members declared Participation
+  // `coming` across every currently-open cycle, available regardless of
+  // the nav switcher's own state. Null (not zero) only when this
+  // Community has no Participation concept at all (cycles off); once
+  // cycles are on, zero currently-open cycles is a real, honest zero.
+  const generalActiveMemberCount = !communityRow.cyclesEnabled
+    ? null
+    : openCycles.length === 0
+      ? 0
+      : (
+          await db
+            .selectDistinct({ memberId: participation.memberId })
+            .from(participation)
+            .where(
+              and(
+                inArray(
+                  participation.cycleId,
+                  openCycles.map((c) => c.id),
+                ),
+                eq(participation.status, "coming"),
+              ),
+            )
+        ).length;
+
+  // "This cycle" — only meaningful once the switcher is narrowed to one
+  // specific cycle; simply unavailable (null, not guessed) while it's in
+  // its "all active cycles" aggregate state.
+  const thisCycleActiveMemberCount = viewScope.singleCycleId
     ? (
         await db
           .select({ memberId: participation.memberId })
           .from(participation)
-          .where(and(eq(participation.cycleId, currentCycle.id), eq(participation.status, "coming")))
+          .where(and(eq(participation.cycleId, viewScope.singleCycleId), eq(participation.status, "coming")))
       ).length
     : null;
 
@@ -253,5 +309,10 @@ export async function getCommunitySnapshot(actor: Member) {
     };
   });
 
-  return { tierCounts: composition.tierCounts, branchSpread: composition.branchSpread, branchHealth, activeMemberCount };
+  return {
+    tierCounts: composition.tierCounts,
+    branchSpread: composition.branchSpread,
+    branchHealth,
+    activeMemberCount: { general: generalActiveMemberCount, thisCycle: thisCycleActiveMemberCount },
+  };
 }

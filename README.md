@@ -24,7 +24,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 **Contribution tracking** — a member's own completed/active/future picture across tasks and shifts, categorized by Phase, with an opt-in community-visible share and cycle-wide averages.
 
-**Dashboard** — a personalized feed (pending join requests, upcoming check-ins, flagged tasks, pending invites, and needs-action items for whoever owns Budget/Event scheduling/Shifts/Conflict management) plus a community snapshot (tier composition, branch spread, per-branch health) and, for a member who hasn't finished or skipped it, an onboarding panel.
+**Dashboard** — a personalized feed (pending join requests, upcoming check-ins, flagged tasks, pending invites, and needs-action items for whoever owns Budget/Event scheduling/Shifts/Conflict management), always cross-cycle regardless of the nav switcher's scope, plus a community snapshot (tier composition, branch spread, and per-branch health genuinely scoped to the active view-scope cycle) with a general/this-cycle toggle on the active-member count — the union across every currently-open cycle, or just the one the switcher is narrowed to — and, for a member who hasn't finished or skipped it, an onboarding panel.
 
 **Member onboarding** — a first-session nudge, never a gate: a handful of static orientation cards, any onboarding-tagged Profile questions still unanswered, and 2-3 open tasks tag-matched to the member's own strengths with a link out to the full board — the same tag-overlap heuristic that surfaces a "you might also like" strip once a task is marked done.
 
