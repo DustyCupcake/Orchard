@@ -6,8 +6,14 @@ import { branch, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { listProposals } from "@/lib/proposals";
 import { listTasks } from "@/lib/tasks";
-import { isAdmin, listTiers } from "@/lib/settings";
-import { allowsMultipleGrants, listGrantsWithTaskInfo, type PermissionModuleKey } from "@/lib/permissions";
+import { getCommunity, isAdmin, listTiers } from "@/lib/settings";
+import {
+  allowsMultipleGrants,
+  CYCLE_SCOPED_MODULES,
+  listGrantsWithTaskInfo,
+  type PermissionModuleKey,
+} from "@/lib/permissions";
+import { resolveDefaultScopeSegment, resolveViewScopeFromSegment, listCycles } from "@/lib/cycles";
 import { Banner } from "@/components/ui/kit";
 import ProposalCard from "./ProposalCard";
 
@@ -26,28 +32,45 @@ export default async function ProposalsPage({
   const { error, submitted, status } = await searchParams;
 
   const canGrantPermissions = await isAdmin(viewing);
-  const [proposals, branches, members, tiers, communityTasksRaw, communityGrants] = await Promise.all([
+  const [proposals, branches, members, tiers, communityTasksRaw, communityGrants, grantCycles] = await Promise.all([
     listProposals(viewing, { status }),
     db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
     db.select().from(member).where(eq(member.communityId, viewing.communityId)),
     listTiers(viewing),
     listTasks(viewing),
     canGrantPermissions ? listGrantsWithTaskInfo(viewing.communityId) : Promise.resolve([]),
+    canGrantPermissions ? listCycles(viewing) : Promise.resolve([]),
   ]);
   const communityTasks = communityTasksRaw.map((t) => ({ id: t.id, title: t.title }));
 
   const memberNameById = new Map(members.map((m) => [m.id, m.name]));
+
+  // The activation form's shared cycle-select default (docs/
+  // development-plan.md's Phase 68) — the viewer's own resolved active
+  // scope, when it's a specific cycle; mirrors the task detail page's
+  // identical default exactly.
+  const communityRow = await getCommunity(viewing);
+  const defaultGrantCycleId = canGrantPermissions
+    ? await (async () => {
+        const segment = await resolveDefaultScopeSegment(viewing);
+        const scope = await resolveViewScopeFromSegment(viewing, segment);
+        return scope?.kind === "single" ? scope.cycle.id : null;
+      })()
+    : null;
 
   // A brand-new proposal task can't already hold anything itself, so
   // "granted elsewhere" here just means "granted at all" — every
   // single-cardinality module with an existing grantee gets the same
   // "checking this moves it here" warning the settings panel and the
   // task detail view both show (docs/development-plan.md's Phase 64).
+  // For the two cycle-scoped modules, only a grant matching the form's
+  // own default cycle counts as a conflict — a grant on a different
+  // cycle isn't one.
   const elsewhereHolderByModule: Partial<Record<PermissionModuleKey, string>> = {};
   for (const g of communityGrants) {
-    if (!allowsMultipleGrants(g.moduleKey)) {
-      elsewhereHolderByModule[g.moduleKey] = g.title;
-    }
+    if (allowsMultipleGrants(g.moduleKey)) continue;
+    if (CYCLE_SCOPED_MODULES.has(g.moduleKey) && g.cycleId !== defaultGrantCycleId) continue;
+    elsewhereHolderByModule[g.moduleKey] = g.title;
   }
 
   return (
@@ -81,6 +104,9 @@ export default async function ProposalsPage({
             }
             canGrantPermissions={canGrantPermissions}
             elsewhereHolderByModule={elsewhereHolderByModule}
+            cyclesEnabled={communityRow.cyclesEnabled}
+            grantCycles={grantCycles}
+            defaultGrantCycleId={defaultGrantCycleId}
           />
         ))}
       </div>

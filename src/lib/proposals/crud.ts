@@ -9,7 +9,13 @@ import { addTaskDependency } from "../tasks/dependencies";
 import { claimTask } from "../tasks/lifecycle";
 import { createRequirement, createRequirementInput } from "../tasks/requirements";
 import { isAdmin } from "../settings/admins";
-import { addPermissionGrant, allowsMultipleGrants, PERMISSION_MODULE_KEYS, setPermissionGrant } from "../permissions";
+import {
+  addPermissionGrant,
+  allowsMultipleGrants,
+  CYCLE_SCOPED_MODULES,
+  PERMISSION_MODULE_KEYS,
+  setPermissionGrant,
+} from "../permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -87,6 +93,10 @@ export const activateProposalInput = createTaskInput
     requirements: z.array(createRequirementInput).optional(),
     dependsOnTaskIds: z.array(z.string().uuid()).optional(),
     grantModuleKeys: z.array(z.enum(PERMISSION_MODULE_KEYS)).optional(),
+    // The one shared cycle-select (docs/development-plan.md's Phase
+    // 68) — applies only to whichever of event_scheduling_owner/
+    // spatial_planning are present in grantModuleKeys.
+    grantCycleId: z.string().uuid().nullable().optional(),
   });
 export type ActivateProposalInput = z.infer<typeof activateProposalInput>;
 
@@ -161,6 +171,8 @@ export async function activateProposal(
     for (const moduleKey of input.grantModuleKeys) {
       if (allowsMultipleGrants(moduleKey)) {
         await addPermissionGrant(actor.communityId, moduleKey, newTask.id);
+      } else if (CYCLE_SCOPED_MODULES.has(moduleKey)) {
+        await setPermissionGrant(actor.communityId, moduleKey, newTask.id, input.grantCycleId ?? null);
       } else {
         await setPermissionGrant(actor.communityId, moduleKey, newTask.id);
       }

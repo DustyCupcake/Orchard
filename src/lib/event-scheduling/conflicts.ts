@@ -13,9 +13,15 @@ type EventProposalRow = typeof eventProposal.$inferSelect;
 // "Whoever holds this task is the authority" — same access-follows-
 // the-task check Forms'/Budget's own isFeedbackReviewHolder/
 // isBudgetOwner establish, baked into the review/publish functions
-// themselves rather than gated by the caller.
-export async function isEventSchedulingOwner(actor: Member) {
-  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "event_scheduling_owner");
+// themselves rather than gated by the caller. `cycleId` (docs/
+// development-plan.md's Phase 68) follows listGrantingTaskIds' own
+// undefined/null/string convention: omitted means "owns *any* cycle's
+// programme" (nav/dashboard visibility, matching isAnyBudgetOwner's
+// identical role); a real id or null checks only that specific cycle's
+// grant, required by every function acting on one particular proposal
+// or review/publish batch below.
+export async function isEventSchedulingOwner(actor: Member, cycleId?: string | null) {
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "event_scheduling_owner", cycleId);
   if (grantingTaskIds.length === 0) return false;
 
   const [holding] = await db
@@ -32,8 +38,8 @@ export async function isEventSchedulingOwner(actor: Member) {
   return Boolean(holding);
 }
 
-export async function requireEventSchedulingOwner(actor: Member) {
-  if (!(await isEventSchedulingOwner(actor))) {
+export async function requireEventSchedulingOwner(actor: Member, cycleId?: string | null) {
+  if (!(await isEventSchedulingOwner(actor, cycleId))) {
     throw new ForbiddenError("Only the current scheduling-owner task holder can do this");
   }
 }

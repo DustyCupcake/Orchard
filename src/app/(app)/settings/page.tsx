@@ -7,6 +7,7 @@ import { getViewingContext } from "@/lib/view-as";
 import { getCommunity, listBranches, listCycleTypes, listPendingBranches, listTiers, requireAdmins } from "@/lib/settings";
 import {
   allowsMultipleGrants,
+  CYCLE_SCOPED_MODULES,
   listGrantsWithTaskInfo,
   PERMISSION_MODULE_KEYS,
   PERMISSION_MODULE_HINTS,
@@ -154,11 +155,16 @@ function TextField({
 function GrantField({
   moduleKey,
   grants,
+  cyclesEnabled,
+  cycles,
 }: {
   moduleKey: PermissionModuleKey;
-  grants: { taskId: string; title: string; branchName: string }[];
+  grants: { taskId: string; title: string; branchName: string; cycleId: string | null; cycleName: string | null }[];
+  cyclesEnabled: boolean;
+  cycles: { id: string; name: string }[];
 }) {
   const multi = allowsMultipleGrants(moduleKey);
+  const cycleScoped = cyclesEnabled && CYCLE_SCOPED_MODULES.has(moduleKey);
   return (
     <FieldSet legend={PERMISSION_MODULE_LABELS[moduleKey]}>
       <p className="text-[12px] text-[var(--text-muted)]">{PERMISSION_MODULE_HINTS[moduleKey]}</p>
@@ -166,11 +172,13 @@ function GrantField({
       {grants.length > 0 && (
         <ul className="flex flex-col gap-1.5">
           {grants.map((g) => (
-            <li key={g.taskId} className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text)]">
+            <li key={`${g.taskId}-${g.cycleId ?? ""}`} className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text)]">
               {g.title} — {g.branchName}
+              {cycleScoped && <span className="text-[var(--text-muted)]"> — {g.cycleName ?? "community-wide"}</span>}
               <form action={removePermissionGrantAction}>
                 <input type="hidden" name="moduleKey" value={moduleKey} />
                 <input type="hidden" name="taskId" value={g.taskId} />
+                <input type="hidden" name="cycleId" value={g.cycleId ?? ""} />
                 <input type="hidden" name="tab" value="permissions" />
                 <button type="submit" className={BUTTON_SECONDARY}>
                   Remove
@@ -182,7 +190,9 @@ function GrantField({
       )}
       {!multi && grants.length > 0 && (
         <p className="text-[12px] text-[var(--text-muted)]">
-          Only one task can hold this — adding another below moves it here instead of alongside it.
+          {cycleScoped
+            ? "Only one task can hold this per cycle — adding another for the same cycle moves it here instead of alongside it."
+            : "Only one task can hold this — adding another below moves it here instead of alongside it."}
         </p>
       )}
       <form
@@ -198,6 +208,16 @@ function GrantField({
           placeholder="search by task title…"
           className={`${INPUT} min-w-[18rem] flex-1`}
         />
+        {cycleScoped && (
+          <select name="cycleId" defaultValue="" className={INPUT}>
+            <option value="">Community-wide (no cycle)</option>
+            {cycles.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        )}
         <button type="submit" className={BUTTON_SECONDARY}>
           {multi ? "Add" : grants.length > 0 ? "Replace" : "Grant"}
         </button>
@@ -266,11 +286,21 @@ export default async function SettingsPage({
   // module in JS, rather than nine separate lookups. Branch name is
   // resolved from the branch list this page already has in hand
   // (branchNameById, above) rather than joined a second time.
+  const cycleNameById = new Map(cyclesForPicker.map((c) => [c.id, c.name]));
   const allGrants = await listGrantsWithTaskInfo(communityRow.id);
-  const grantsByModule = new Map<PermissionModuleKey, { taskId: string; title: string; branchName: string }[]>();
+  const grantsByModule = new Map<
+    PermissionModuleKey,
+    { taskId: string; title: string; branchName: string; cycleId: string | null; cycleName: string | null }[]
+  >();
   for (const g of allGrants) {
     const list = grantsByModule.get(g.moduleKey) ?? [];
-    list.push({ taskId: g.taskId, title: g.title, branchName: branchNameById.get(g.branchId) ?? "—" });
+    list.push({
+      taskId: g.taskId,
+      title: g.title,
+      branchName: branchNameById.get(g.branchId) ?? "—",
+      cycleId: g.cycleId,
+      cycleName: g.cycleId ? (cycleNameById.get(g.cycleId) ?? "—") : null,
+    });
     grantsByModule.set(g.moduleKey, list);
   }
   const grantsFor = (moduleKey: PermissionModuleKey) => grantsByModule.get(moduleKey) ?? [];
@@ -425,7 +455,13 @@ export default async function SettingsPage({
               ))}
             </datalist>
             {PERMISSION_MODULE_KEYS.map((moduleKey) => (
-              <GrantField key={moduleKey} moduleKey={moduleKey} grants={grantsFor(moduleKey)} />
+              <GrantField
+                key={moduleKey}
+                moduleKey={moduleKey}
+                grants={grantsFor(moduleKey)}
+                cyclesEnabled={communityRow.cyclesEnabled}
+                cycles={cyclesForPicker}
+              />
             ))}
           </div>
         )}

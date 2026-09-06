@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { permissionGrant, task } from "@/db/schema";
 import { NotFoundError } from "./errors";
@@ -66,20 +66,35 @@ export function allowsMultipleGrants(moduleKey: PermissionModuleKey): boolean {
   return MULTI_CARDINALITY_MODULES.has(moduleKey);
 }
 
+// The only two modules whose grant can be scoped to a real Cycle
+// (docs/development-plan.md's Phase 68) — every other module always
+// passes cycleId=null. Shared by the settings panel, the task detail
+// view, and proposal activation, so the three surfaces never drift on
+// which modules get the extra cycle-picker.
+export const CYCLE_SCOPED_MODULES = new Set<PermissionModuleKey>(["event_scheduling_owner", "spatial_planning"]);
+
 // Which task(s) currently grant this module for a Community — the one
 // thing every one of the nine old fields/tags actually meant, and the
 // one thing every enforcement check below reads instead of a Community
-// column or a Task.tags match now. cycleId stays unfiltered (and
-// always null in every row today) — see permission-grant.ts's own
-// comment on why that column exists but isn't used yet.
+// column or a Task.tags match now. `cycleId` (docs/development-plan.md's
+// Phase 68) follows the same undefined/null/string convention
+// src/lib/event-scheduling/crud.ts's cycleScopeCondition already
+// established: omitted means "every grant for this module, in any
+// cycle or community-wide" — every one of the seven modules Phase 68
+// doesn't touch calls this with no third argument, so their behavior
+// is bit-for-bit unchanged. `null` or a real id filters to exactly
+// that cycle's grant(s) — only event_scheduling_owner/spatial_planning
+// ever pass this.
 export async function listGrantingTaskIds(
   communityId: string,
   moduleKey: PermissionModuleKey,
+  cycleId?: string | null,
 ): Promise<string[]> {
-  const rows = await db
-    .select({ taskId: permissionGrant.taskId })
-    .from(permissionGrant)
-    .where(and(eq(permissionGrant.communityId, communityId), eq(permissionGrant.moduleKey, moduleKey)));
+  const conditions = [eq(permissionGrant.communityId, communityId), eq(permissionGrant.moduleKey, moduleKey)];
+  if (cycleId !== undefined) {
+    conditions.push(cycleId === null ? isNull(permissionGrant.cycleId) : eq(permissionGrant.cycleId, cycleId));
+  }
+  const rows = await db.select({ taskId: permissionGrant.taskId }).from(permissionGrant).where(and(...conditions));
   return rows.map((r) => r.taskId);
 }
 
@@ -105,6 +120,7 @@ export async function listGrantsWithTaskInfo(communityId: string) {
       taskId: permissionGrant.taskId,
       title: task.title,
       branchId: task.branchId,
+      cycleId: permissionGrant.cycleId,
     })
     .from(permissionGrant)
     .innerJoin(task, eq(task.id, permissionGrant.taskId))
@@ -125,6 +141,36 @@ export async function listModuleKeysGrantedByTask(
   return new Set(rows.map((r) => r.moduleKey));
 }
 
+// Every module a specific task currently grants, mapped to *every*
+// cycle it grants that module for (docs/development-plan.md's Phase
+// 68) — an array, not a single value, since a task can now hold the
+// same module for more than one cycle simultaneously (see the
+// "coexist as two separate rows" note on setPermissionGrant). Backs
+// the task-detail/proposal-activation checkbox diffing for
+// event_scheduling_owner/spatial_planning specifically: a checkbox's
+// current state for the form's selected cycle is
+// `(scopes[moduleKey] ?? []).includes(selectedCycleId)`, never a plain
+// equality check, or a second concurrent cycle's own grant on the same
+// task would go undetected. A flat Set (listModuleKeysGrantedByTask,
+// above — left untouched, still exactly what the other seven modules
+// need) can't represent this at all.
+export async function listGrantedCycleScopesForTask(
+  communityId: string,
+  taskId: string,
+): Promise<Partial<Record<PermissionModuleKey, (string | null)[]>>> {
+  const rows = await db
+    .select({ moduleKey: permissionGrant.moduleKey, cycleId: permissionGrant.cycleId })
+    .from(permissionGrant)
+    .where(and(eq(permissionGrant.communityId, communityId), eq(permissionGrant.taskId, taskId)));
+  const result: Partial<Record<PermissionModuleKey, (string | null)[]>> = {};
+  for (const r of rows) {
+    const list = result[r.moduleKey] ?? [];
+    list.push(r.cycleId);
+    result[r.moduleKey] = list;
+  }
+  return result;
+}
+
 // Defense in depth, not just a UI-layer check — the same "the lib
 // function re-validates, it doesn't just trust whatever the caller
 // already checked" posture this codebase's other write paths already
@@ -143,24 +189,35 @@ async function requireTaskInCommunity(communityId: string, taskId: string) {
 }
 
 // Single-cardinality modules only — replaces whatever task currently
-// grants this module with a new one (or clears it, when taskId is
-// null), matching the old single-pointer-column's exact "set this
-// field" semantics. Never call this for a multi-cardinality module
+// grants this module *for this cycle* with a new one (or clears it,
+// when taskId is null), matching the old single-pointer-column's exact
+// "set this field" semantics, now scoped per cycle (docs/development-
+// plan.md's Phase 68) rather than community-wide. `cycleId` defaults
+// to null so every existing call site (the seven modules this phase
+// doesn't touch) keeps its exact prior behavior — deleting only the
+// community-wide grant, never touching a different cycle's row, since
+// there's never been more than one row per module for those seven.
+// Only event_scheduling_owner/spatial_planning ever pass a real
+// cycleId, letting cycle A's owner and cycle B's owner coexist as two
+// separate rows instead of the second write wiping out the first.
+// Never call this for a multi-cardinality module
 // (admin/branch_coordination/support) — it would silently drop every
 // other task already granting it; use addPermissionGrant instead.
 export async function setPermissionGrant(
   communityId: string,
   moduleKey: PermissionModuleKey,
   taskId: string | null,
+  cycleId: string | null = null,
 ): Promise<void> {
   if (taskId) {
     await requireTaskInCommunity(communityId, taskId);
   }
+  const cycleCondition = cycleId === null ? isNull(permissionGrant.cycleId) : eq(permissionGrant.cycleId, cycleId);
   await db
     .delete(permissionGrant)
-    .where(and(eq(permissionGrant.communityId, communityId), eq(permissionGrant.moduleKey, moduleKey)));
+    .where(and(eq(permissionGrant.communityId, communityId), eq(permissionGrant.moduleKey, moduleKey), cycleCondition));
   if (taskId) {
-    await db.insert(permissionGrant).values({ communityId, moduleKey, taskId });
+    await db.insert(permissionGrant).values({ communityId, moduleKey, taskId, cycleId });
   }
 }
 
@@ -192,7 +249,9 @@ export async function removePermissionGrant(
   communityId: string,
   moduleKey: PermissionModuleKey,
   taskId: string,
+  cycleId: string | null = null,
 ): Promise<void> {
+  const cycleCondition = cycleId === null ? isNull(permissionGrant.cycleId) : eq(permissionGrant.cycleId, cycleId);
   await db
     .delete(permissionGrant)
     .where(
@@ -200,6 +259,7 @@ export async function removePermissionGrant(
         eq(permissionGrant.communityId, communityId),
         eq(permissionGrant.moduleKey, moduleKey),
         eq(permissionGrant.taskId, taskId),
+        cycleCondition,
       ),
     );
 }

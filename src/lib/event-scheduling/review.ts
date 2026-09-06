@@ -13,7 +13,7 @@ type Member = typeof memberTable.$inferSelect;
 // proposals ... on owner review" (spec), so the review list never
 // shows a stale flag left over from before a host fixed their slots.
 export async function listEventProposalsForReview(actor: Member, cycleId?: string | null) {
-  await requireEventSchedulingOwner(actor);
+  await requireEventSchedulingOwner(actor, cycleId);
   await recomputeEventConflicts(actor, cycleId);
 
   const conditions = [
@@ -46,8 +46,8 @@ export async function confirmEventProposalSlot(
   proposalId: string,
   input: ConfirmEventProposalSlotInput,
 ) {
-  await requireEventSchedulingOwner(actor);
   const proposal = await getEventProposal(actor, proposalId);
+  await requireEventSchedulingOwner(actor, proposal.cycleId);
   if (proposal.publishedAt) {
     throw new ConflictError("This proposal has already been published");
   }
@@ -64,8 +64,8 @@ export async function confirmEventProposalSlot(
 }
 
 export async function declineEventProposal(actor: Member, proposalId: string) {
-  await requireEventSchedulingOwner(actor);
   const proposal = await getEventProposal(actor, proposalId);
+  await requireEventSchedulingOwner(actor, proposal.cycleId);
   if (proposal.publishedAt) {
     throw new ConflictError("This proposal has already been published");
   }
@@ -82,8 +82,8 @@ export async function declineEventProposal(actor: Member, proposalId: string) {
 // nudge, no dedup guard (matches coordinatorPing's own precedent of
 // allowing repeat pings without one).
 export async function pingConflictHost(actor: Member, proposalId: string) {
-  await requireEventSchedulingOwner(actor);
   const proposal = await getEventProposal(actor, proposalId);
+  await requireEventSchedulingOwner(actor, proposal.cycleId);
   if (proposal.status !== "conflict") {
     throw new ConflictError("This proposal isn't currently flagged as conflicting");
   }

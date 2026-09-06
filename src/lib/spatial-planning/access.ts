@@ -14,11 +14,20 @@ type Member = typeof memberTable.$inferSelect;
 // plan.md's Phase 63 — previously Community.spatialPlanningTaskId, a
 // single scalar pointer). Used to gate Zone edits and pending-Placement
 // review (see docs/spec.md's "Whoever holds a Spatial planning task
-// reviews pending changes"). Callers still pass their already-fetched
-// communityRow — only its `.id` matters now — so no call site needed
-// to change.
-export async function isSpatialPlanningHolder(actor: Member, communityRow: { id: string }) {
-  const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "spatial_planning");
+// reviews pending changes"). `cycleId` (Phase 68) follows
+// listGrantingTaskIds' own undefined/null/string convention: omitted
+// means "holds it for *any* cycle" (nav/dashboard visibility, and every
+// genuinely cycle-agnostic write below — the shape-template library,
+// space preferences); a real id or null checks only that specific
+// cycle's grant, which every write touching one particular Plot must
+// use — a cycle-A owner must not be able to edit cycle B's Plot just
+// because that's a call site that forgot to pass one.
+export async function isSpatialPlanningHolder(
+  actor: Member,
+  communityRow: { id: string },
+  cycleId?: string | null,
+) {
+  const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "spatial_planning", cycleId);
   if (grantingTaskIds.length === 0) return false;
   const [holding] = await db
     .select({ id: task.id })
@@ -34,8 +43,12 @@ export async function isSpatialPlanningHolder(actor: Member, communityRow: { id:
   return Boolean(holding);
 }
 
-export async function requireSpatialPlanningHolder(actor: Member, communityRow: { id: string }) {
-  if (!(await isSpatialPlanningHolder(actor, communityRow))) {
+export async function requireSpatialPlanningHolder(
+  actor: Member,
+  communityRow: { id: string },
+  cycleId?: string | null,
+) {
+  if (!(await isSpatialPlanningHolder(actor, communityRow, cycleId))) {
     throw new ForbiddenError("Only the current Spatial-planning task holder can do this");
   }
 }

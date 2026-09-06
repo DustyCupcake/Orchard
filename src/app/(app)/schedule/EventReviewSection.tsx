@@ -37,9 +37,16 @@ const STATUS_LABEL: Record<string, string> = {
 export default function EventReviewSection({
   proposals,
   memberNameById,
+  cycleId,
 }: {
   proposals: EventProposalRow[];
   memberNameById: Map<string, string>;
+  // The resolved single-cycle scope this review batch is for (docs/
+  // development-plan.md's Phase 68) — publishEventScheduleAction needs
+  // it explicitly since publishing is a batch operation with no single
+  // proposal row of its own to derive a cycle from, unlike confirm/
+  // decline/ping, which resolve ownership from the proposal they act on.
+  cycleId: string | null;
 }) {
   const unresolved = proposals.filter(
     (p) => !p.publishedAt && (p.status === "proposed" || p.status === "conflict"),
@@ -138,6 +145,7 @@ export default function EventReviewSection({
       })}
 
       <form action={publishEventScheduleAction} style={{ marginTop: "1rem" }}>
+        <input type="hidden" name="cycleId" value={cycleId ?? ""} />
         <button type="submit" style={{ padding: "0.4rem 1rem" }}>
           Publish schedule
         </button>

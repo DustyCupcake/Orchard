@@ -106,7 +106,7 @@ export async function createPlot(actor: Member, cycleId: string | null, rawInput
   // established for exactly this class of gap.
   const input = createPlotInput.parse(rawInput);
   const communityRow = await requireSpatialPlanningEnabled(actor);
-  await requireSpatialPlanningHolder(actor, communityRow);
+  await requireSpatialPlanningHolder(actor, communityRow, cycleId);
   await requireCycleInCommunity(actor.communityId, cycleId);
 
   const existing = await getPlotForCycle(actor, cycleId);
@@ -132,8 +132,8 @@ export async function createPlot(actor: Member, cycleId: string | null, rawInput
 export async function updatePlot(actor: Member, plotId: string, rawInput: UpdatePlotInput) {
   const input = updatePlotInput.parse(rawInput);
   const communityRow = await requireSpatialPlanningEnabled(actor);
-  await requireSpatialPlanningHolder(actor, communityRow);
-  await getPlot(actor, plotId); // 404s if not in this community
+  const plotRow = await getPlot(actor, plotId); // 404s if not in this community
+  await requireSpatialPlanningHolder(actor, communityRow, plotRow.cycleId);
 
   const [updated] = await db
     .update(plot)
@@ -195,7 +195,10 @@ export async function listCyclesWithPlot(actor: Member, excludeCycleId: string) 
 // the same operation there).
 export async function clonePlotFromCycle(actor: Member, targetCycleId: string, sourceCycleId: string) {
   const communityRow = await requireSpatialPlanningEnabled(actor);
-  await requireSpatialPlanningHolder(actor, communityRow);
+  // Checked against the Plot being *created* (targetCycleId), not the
+  // source — Phase 68's per-cycle ownership means the authority to add
+  // a Plot to a cycle is that cycle's own owner grant.
+  await requireSpatialPlanningHolder(actor, communityRow, targetCycleId);
   await requireCycleInCommunity(actor.communityId, targetCycleId);
 
   const existing = await getPlotForCycle(actor, targetCycleId);
@@ -298,7 +301,13 @@ export async function cloneSpatialPlanIntoNewCycle(
 ) {
   const communityRow = await getCommunityRow(actor.communityId);
   if (!isModuleEnabled(communityRow, "spatial_planning")) return;
-  await requireSpatialPlanningHolder(actor, communityRow);
+  // Resolved interpretation (Phase 68): checked against previousCycleId
+  // (the plan being cloned *from*), not newCycleId — a brand-new cycle
+  // can't yet have its own owner grant to check against ("a fresh cycle
+  // starts with neither until someone builds one," same as Budget), so
+  // the only coherent authority here is "you're recognized as the
+  // owner of the plan you're about to copy forward."
+  await requireSpatialPlanningHolder(actor, communityRow, previousCycleId);
 
   const [sourcePlot] = await tx
     .select()

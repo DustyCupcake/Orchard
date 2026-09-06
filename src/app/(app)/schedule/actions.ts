@@ -63,7 +63,9 @@ export async function submitEventProposalAction(formData: FormData) {
   const actor = await requireMember();
 
   try {
+    const cycleIdRaw = String(formData.get("cycleId") ?? "").trim();
     const input = createEventProposalInput.parse({
+      cycleId: cycleIdRaw || null,
       host: String(formData.get("host") ?? "").trim(),
       title: String(formData.get("title") ?? "").trim(),
       description: String(formData.get("description") ?? "").trim() || undefined,
@@ -154,14 +156,16 @@ export async function pingConflictHostAction(formData: FormData) {
   redirect("/schedule?pinged=1");
 }
 
-// Owner-only, enforced inside publishEventSchedule. Takes no fields of
-// its own — bound to a plain <form action={...}> with nothing but a
-// submit button.
-export async function publishEventScheduleAction() {
+// Owner-only, enforced inside publishEventSchedule against the given
+// cycleId (docs/development-plan.md's Phase 68) — a hidden field on
+// EventReviewSection.tsx's form carries the review batch's resolved
+// cycle, since publishing has no single proposal row to derive it from.
+export async function publishEventScheduleAction(formData: FormData) {
   const actor = await requireMember();
+  const cycleIdRaw = String(formData.get("cycleId") ?? "").trim();
 
   try {
-    await publishEventSchedule(actor, undefined);
+    await publishEventSchedule(actor, cycleIdRaw || null);
   } catch (err) {
     redirectWithError(err);
   }

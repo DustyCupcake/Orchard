@@ -27,7 +27,8 @@ import {
   type ScaleCalibration,
 } from "@/lib/spatial-planning";
 import { AppError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { setPermissionGrant } from "@/lib/permissions";
+import { createFixtures, resetDatabase } from "./helpers";
 
 async function insertSpatialPlanningTask(communityId: string, branchId: string, createdBy: string) {
   const [row] = await db
@@ -52,14 +53,17 @@ async function insertCycle(communityId: string, name: string, startedAt: Date) {
   return row;
 }
 
+// docs/development-plan.md's Phase 68 — spatial_planning ownership is
+// now per-cycle, so the grant is scoped to testCycle specifically
+// (created first, so there's a real cycle to scope it to).
 async function setUpModule() {
   const fixtures = await createFixtures();
   const { alice, branch: testBranch, community: testCommunity } = fixtures;
   await updateCommunity(alice, { modulesEnabled: ["spatial_planning"] });
   const holderTask = await insertSpatialPlanningTask(testCommunity.id, testBranch.id, alice.id);
   await claimTask(alice, holderTask.id);
-  await grantPermission(testCommunity.id, "spatial_planning", holderTask.id);
   const testCycle = await insertCycle(testCommunity.id, "Cycle A", new Date("2026-01-01"));
+  await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, testCycle.id);
   const plotRow = await createPlot(alice, testCycle.id, {
     name: "Main site",
     scaleCalibration: { pointA: { x: 0, y: 0 }, pointB: { x: 10, y: 0 }, realWorldDistanceMeters: 5 },
@@ -333,6 +337,7 @@ describe("Cloning Placements across Cycles", () => {
     });
 
     const targetCycle = await insertCycle(testCommunity.id, "Cycle B", new Date("2026-06-01"));
+    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, targetCycle.id);
     const clonedPlot = await clonePlotFromCycle(alice, targetCycle.id, sourceCycle.id);
 
     const clonedPlacements = await listPlacements(alice, clonedPlot.id);

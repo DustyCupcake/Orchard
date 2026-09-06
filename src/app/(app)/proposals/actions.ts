@@ -74,6 +74,7 @@ export async function activateProposalAction(formData: FormData) {
     .getAll("grantModuleKeys")
     .map(String)
     .filter(Boolean);
+  const grantCycleIdRaw = String(formData.get("grantCycleId") ?? "").trim();
 
   try {
     const input = activateProposalInput.parse({
@@ -91,6 +92,7 @@ export async function activateProposalAction(formData: FormData) {
       requirements,
       dependsOnTaskIds: dependsOnTaskIds.length > 0 ? dependsOnTaskIds : undefined,
       grantModuleKeys: grantModuleKeys.length > 0 ? grantModuleKeys : undefined,
+      grantCycleId: grantCycleIdRaw || null,
     });
     await activateProposal(actor, proposalId, input);
   } catch (err) {

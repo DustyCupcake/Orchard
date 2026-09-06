@@ -6,7 +6,8 @@ import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import { listGrantingTaskIds } from "@/lib/permissions";
-import { getCurrentCycle } from "@/lib/profile-questions";
+import { resolveDefaultScopeSegment, resolveSingleCycleScope } from "@/lib/cycles";
+import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import {
   getMySpacePreference,
   getPlotForCycle,
@@ -58,10 +59,46 @@ export default async function SpatialPlanningPage({
   const { error } = await searchParams;
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "spatial_planning");
-  const spatialPlanningGrantingTaskIds = await listGrantingTaskIds(communityRow.id, "spatial_planning");
 
-  const currentCycle = moduleOn ? await getCurrentCycle(viewing.communityId) : null;
+  // Which cycle's Plot to show — the same off-URL resolution the board
+  // and task detail page already read (docs/development-plan.md's
+  // Phase 68), replacing the old community-wide getCurrentCycle()
+  // heuristic. "ambiguous" (the switcher's aggregate state genuinely
+  // covers 2+ open cycles this member is coming to) renders a real
+  // "which cycle?" prompt rather than guessing, mirroring Budget's own
+  // [cycleScope]/budget/page.tsx prompt shape — reusing its own
+  // switchToLinkedScopeAction (Phase 66) to actually narrow the
+  // switcher, since this page isn't itself under /[cycleScope]/.
+  const scopeSegment = await resolveDefaultScopeSegment(viewing);
+  const resolution = moduleOn ? await resolveSingleCycleScope(viewing, scopeSegment) : ({ kind: "none" } as const);
+
+  if (moduleOn && resolution.kind === "ambiguous") {
+    return (
+      <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 1100 }}>
+        <h1>Spatial planning</h1>
+        <p style={{ color: "#666" }}>Scoped to multiple active cycles — pick one to see its layout:</p>
+        <ul>
+          {resolution.candidates.map((c) => (
+            <li key={c.id}>
+              <form action={switchToLinkedScopeAction} style={{ display: "inline" }}>
+                <input type="hidden" name="scope" value={c.id} />
+                <input type="hidden" name="returnTo" value="/spatial-planning" />
+                <button
+                  type="submit"
+                  style={{ padding: 0, border: "none", background: "none", color: "#0645ad", textDecoration: "underline", cursor: "pointer" }}
+                >
+                  {c.name}
+                </button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      </main>
+    );
+  }
+  const currentCycle = resolution.kind === "resolved" ? resolution.cycle : null;
   const cycleId = currentCycle?.id ?? null;
+  const spatialPlanningGrantingTaskIds = await listGrantingTaskIds(communityRow.id, "spatial_planning", cycleId);
 
   const plotRow = moduleOn ? await getPlotForCycle(viewing, cycleId) : null;
   const [zones, placements, templates, canEdit, cloneCandidates, communityMembers, mySpacePreference] =
@@ -69,7 +106,7 @@ export default async function SpatialPlanningPage({
       plotRow ? listZones(viewing, plotRow.id) : Promise.resolve([]),
       plotRow ? listPlacements(viewing, plotRow.id) : Promise.resolve([]),
       moduleOn ? listPlacementTemplates(viewing) : Promise.resolve([]),
-      moduleOn ? isSpatialPlanningHolder(viewing, communityRow) : Promise.resolve(false),
+      moduleOn ? isSpatialPlanningHolder(viewing, communityRow, cycleId) : Promise.resolve(false),
       // Cloning needs a real Cycle to clone *from* and *into* — nothing to
       // offer for a Community that never turned Cycles on, or once this
       // Cycle already has its own Plot.

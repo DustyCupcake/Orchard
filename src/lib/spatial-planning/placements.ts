@@ -134,16 +134,19 @@ export async function listPlacements(actor: Member, plotId: string) {
   return db.select().from(placement).where(eq(placement.plotId, plotId)).orderBy(placement.createdAt);
 }
 
+// Also returns the owning Plot's cycleId (Phase 68) — every caller
+// gating a write on this Placement checks ownership against that
+// specific cycle, not "any cycle."
 export async function getPlacement(actor: Member, placementId: string) {
   const [row] = await db
-    .select({ placement, communityId: plot.communityId })
+    .select({ placement, communityId: plot.communityId, cycleId: plot.cycleId })
     .from(placement)
     .innerJoin(plot, eq(plot.id, placement.plotId))
     .where(and(eq(placement.id, placementId), eq(plot.communityId, actor.communityId)));
   if (!row) {
     throw new NotFoundError("Placement not found");
   }
-  return row.placement;
+  return { ...row.placement, cycleId: row.cycleId };
 }
 
 export async function listPlacementMembers(actor: Member, placementId: string) {
@@ -162,8 +165,8 @@ export async function createPlacement(actor: Member, plotId: string, rawInput: C
   const input = createPlacementInput.parse(rawInput);
   const communityRow = await getCommunityRow(actor.communityId);
   requireNotOnsiteLocked(communityRow);
-  await requireSpatialPlanningHolder(actor, communityRow);
-  await getPlot(actor, plotId); // 404s if not in this community
+  const plotRow = await getPlot(actor, plotId); // 404s if not in this community
+  await requireSpatialPlanningHolder(actor, communityRow, plotRow.cycleId);
   const geometry = parsePlacementGeometry(input.shapeType, input.geometry);
 
   if (input.zoneId) await requireZoneOnPlot(plotId, input.zoneId);
@@ -194,8 +197,8 @@ export async function updatePlacement(actor: Member, placementId: string, rawInp
   const input = updatePlacementInput.parse(rawInput);
   const communityRow = await getCommunityRow(actor.communityId);
   requireNotOnsiteLocked(communityRow);
-  await requireSpatialPlanningHolder(actor, communityRow);
   const existing = await getPlacement(actor, placementId); // 404s if not in this community
+  await requireSpatialPlanningHolder(actor, communityRow, existing.cycleId);
 
   const shapeType = input.shapeType ?? existing.shapeType;
   const geometry =
@@ -226,8 +229,8 @@ export async function updatePlacement(actor: Member, placementId: string, rawInp
 export async function deletePlacement(actor: Member, placementId: string) {
   const communityRow = await getCommunityRow(actor.communityId);
   requireNotOnsiteLocked(communityRow);
-  await requireSpatialPlanningHolder(actor, communityRow);
-  await getPlacement(actor, placementId); // 404s if not in this community
+  const existing = await getPlacement(actor, placementId); // 404s if not in this community
+  await requireSpatialPlanningHolder(actor, communityRow, existing.cycleId);
 
   await db.transaction(async (tx) => {
     await tx.delete(placementMember).where(eq(placementMember.placementId, placementId));
@@ -254,7 +257,7 @@ export async function proposePlacementMove(actor: Member, placementId: string, r
   const existing = await getPlacement(actor, placementId); // 404s if not in this community
   const geometry = parsePlacementGeometry(existing.shapeType, input.geometry);
 
-  if (await isSpatialPlanningHolder(actor, communityRow)) {
+  if (await isSpatialPlanningHolder(actor, communityRow, existing.cycleId)) {
     const [updated] = await db
       .update(placement)
       .set({ geometry, updatedAt: new Date() })
@@ -291,8 +294,8 @@ export async function proposePlacementMove(actor: Member, placementId: string, r
 export async function approvePendingPlacement(actor: Member, placementId: string) {
   const communityRow = await getCommunityRow(actor.communityId);
   requireNotOnsiteLocked(communityRow);
-  await requireSpatialPlanningHolder(actor, communityRow);
   const existing = await getPlacement(actor, placementId);
+  await requireSpatialPlanningHolder(actor, communityRow, existing.cycleId);
   if (existing.status !== "pending") {
     throw new ConflictError("This Placement has no pending change to approve");
   }
@@ -312,8 +315,8 @@ export async function approvePendingPlacement(actor: Member, placementId: string
 export async function revertPendingPlacement(actor: Member, placementId: string, note?: string | null) {
   const communityRow = await getCommunityRow(actor.communityId);
   requireNotOnsiteLocked(communityRow);
-  await requireSpatialPlanningHolder(actor, communityRow);
   const existing = await getPlacement(actor, placementId);
+  await requireSpatialPlanningHolder(actor, communityRow, existing.cycleId);
   if (existing.status !== "pending" || !existing.pendingByMemberId || existing.pendingPrevGeometry == null) {
     throw new ConflictError("This Placement has no pending change to revert");
   }
@@ -364,9 +367,12 @@ export async function listPendingPlacementReviews(actor: Member) {
 // or drop names freely," generalized to whoever currently has editing
 // rights once self-service editing exists, not just the original
 // creator (docs/spec.md's Shared placements).
-async function requireCanManagePlacementMembers(actor: Member, placementRow: { id: string; linkedTaskId: string | null }) {
+async function requireCanManagePlacementMembers(
+  actor: Member,
+  placementRow: { id: string; linkedTaskId: string | null; cycleId: string | null },
+) {
   const communityRow = await getCommunityRow(actor.communityId);
-  if (await isSpatialPlanningHolder(actor, communityRow)) return;
+  if (await isSpatialPlanningHolder(actor, communityRow, placementRow.cycleId)) return;
   if (await isPlacementEditor(actor, placementRow)) return;
   throw new ForbiddenError("You don't have edit rights on this Placement");
 }

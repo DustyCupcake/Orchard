@@ -30,16 +30,19 @@ export async function listZones(actor: Member, plotId: string) {
   return db.select().from(zone).where(eq(zone.plotId, plotId)).orderBy(zone.createdAt);
 }
 
+// Also returns the owning Plot's cycleId (Phase 68) — every caller
+// needing to gate a write on this Zone checks ownership against that
+// specific cycle, not "any cycle."
 export async function getZone(actor: Member, zoneId: string) {
   const [row] = await db
-    .select({ zone: zone, communityId: plot.communityId })
+    .select({ zone: zone, communityId: plot.communityId, cycleId: plot.cycleId })
     .from(zone)
     .innerJoin(plot, eq(plot.id, zone.plotId))
     .where(and(eq(zone.id, zoneId), eq(plot.communityId, actor.communityId)));
   if (!row) {
     throw new NotFoundError("Zone not found");
   }
-  return row.zone;
+  return { ...row.zone, cycleId: row.cycleId };
 }
 
 // Holder-gated — Zones are "edited directly by whoever holds the
@@ -51,8 +54,8 @@ export async function createZone(actor: Member, plotId: string, rawInput: Create
   const input = createZoneInput.parse(rawInput);
   const communityRow = await getCommunityRow(actor.communityId);
   requireNotOnsiteLocked(communityRow);
-  await requireSpatialPlanningHolder(actor, communityRow);
-  await getPlot(actor, plotId); // 404s if not in this community
+  const plotRow = await getPlot(actor, plotId); // 404s if not in this community
+  await requireSpatialPlanningHolder(actor, communityRow, plotRow.cycleId);
 
   const [created] = await db
     .insert(zone)
@@ -71,8 +74,8 @@ export async function updateZone(actor: Member, zoneId: string, rawInput: Update
   const input = updateZoneInput.parse(rawInput);
   const communityRow = await getCommunityRow(actor.communityId);
   requireNotOnsiteLocked(communityRow);
-  await requireSpatialPlanningHolder(actor, communityRow);
-  await getZone(actor, zoneId); // 404s if not in this community
+  const existing = await getZone(actor, zoneId); // 404s if not in this community
+  await requireSpatialPlanningHolder(actor, communityRow, existing.cycleId);
 
   const [updated] = await db
     .update(zone)
@@ -91,8 +94,8 @@ export async function updateZone(actor: Member, zoneId: string, rawInput: Update
 export async function deleteZone(actor: Member, zoneId: string) {
   const communityRow = await getCommunityRow(actor.communityId);
   requireNotOnsiteLocked(communityRow);
-  await requireSpatialPlanningHolder(actor, communityRow);
-  await getZone(actor, zoneId); // 404s if not in this community
+  const existing = await getZone(actor, zoneId); // 404s if not in this community
+  await requireSpatialPlanningHolder(actor, communityRow, existing.cycleId);
 
   await db.delete(zone).where(eq(zone.id, zoneId));
 }

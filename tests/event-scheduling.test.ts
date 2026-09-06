@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { cycle, task } from "@/db/schema";
+import { community, cycle, task } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { updateCommunity } from "@/lib/settings";
+import { createCycle } from "@/lib/cycles";
+import { setPermissionGrant } from "@/lib/permissions";
 import {
   confirmEventProposalSlot,
   createEventProposal,
@@ -19,13 +22,17 @@ import {
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
-async function insertOwnerTask(communityId: string, branchId: string, createdBy: string) {
+async function enableCycles(communityId: string) {
+  await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
+}
+
+async function insertOwnerTask(communityId: string, branchId: string, createdBy: string, title = "Scheduling owner") {
   const [row] = await db
     .insert(task)
     .values({
       communityId,
       branchId,
-      title: "Scheduling owner",
+      title,
       effort: "owns_a_thing",
       effortMagnitude: { hours_per_week: 2 },
       createdBy,
@@ -451,5 +458,98 @@ describe("Publication", () => {
 
     const { bob: strangerBob } = await createFixtures();
     expect(await listPublishedSchedule(strangerBob)).toHaveLength(0);
+  });
+});
+
+// docs/development-plan.md's Phase 68 — event_scheduling_owner
+// ownership becomes genuinely per-cycle: two concurrently-open cycles
+// each get their own independent owner grant, and one cycle's owner
+// has no authority over the other's proposals/schedule.
+describe("cycle-scoped ownership (Phase 68)", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  async function setUpTwoCycles() {
+    const fixtures = await createFixtures();
+    const { alice, bob, branch: testBranch, community: testCommunity } = fixtures;
+    await updateCommunity(alice, { modulesEnabled: ["event_scheduling"] });
+    await enableCycles(testCommunity.id);
+    const cycleA = await createCycle(alice, { source: "blank", name: "A" });
+    const cycleB = await createCycle(alice, { source: "blank", name: "B", confirmed: true });
+    const ownerA = await insertOwnerTask(testCommunity.id, testBranch.id, alice.id, "Owner A");
+    await claimTask(alice, ownerA.id);
+    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", ownerA.id, cycleA.id);
+    const ownerB = await insertOwnerTask(testCommunity.id, testBranch.id, bob.id, "Owner B");
+    await claimTask(bob, ownerB.id);
+    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", ownerB.id, cycleB.id);
+    return { ...fixtures, cycleA, cycleB };
+  }
+
+  it("confirmEventProposalSlot rejects cycle A's owner acting on cycle B's proposal, accepts cycle B's own owner", async () => {
+    const { alice, bob, cycleB } = await setUpTwoCycles();
+    const proposal = await createEventProposal(bob, {
+      cycleId: cycleB.id,
+      host: "Bob",
+      title: "B session",
+      durationMinutes: 60,
+      preferredSlots: [slot(24, 25)],
+    });
+
+    await expect(confirmEventProposalSlot(alice, proposal.id, slot(24, 25))).rejects.toThrow(ForbiddenError);
+    const confirmed = await confirmEventProposalSlot(bob, proposal.id, slot(24, 25));
+    expect(confirmed.status).toBe("confirmed");
+  });
+
+  it("publishEventSchedule scoped to one cycle doesn't require, or touch, the other cycle's owner/proposals", async () => {
+    const { alice, bob, cycleA, cycleB } = await setUpTwoCycles();
+    const proposalA = await createEventProposal(alice, {
+      cycleId: cycleA.id,
+      host: "Alice",
+      title: "A session",
+      durationMinutes: 60,
+      preferredSlots: [slot(24, 25)],
+    });
+    const proposalB = await createEventProposal(bob, {
+      cycleId: cycleB.id,
+      host: "Bob",
+      title: "B session",
+      durationMinutes: 60,
+      preferredSlots: [slot(24, 25)],
+    });
+    await confirmEventProposalSlot(alice, proposalA.id, slot(24, 25));
+    await confirmEventProposalSlot(bob, proposalB.id, slot(24, 25));
+
+    await expect(publishEventSchedule(bob, cycleA.id)).rejects.toThrow(ForbiddenError);
+    const result = await publishEventSchedule(alice, cycleA.id);
+    expect(result.publishedCount).toBe(1);
+
+    const publishedForA = await listPublishedSchedule(alice, cycleA.id);
+    expect(publishedForA.map((p) => p.id)).toEqual([proposalA.id]);
+    const publishedForB = await listPublishedSchedule(bob, cycleB.id);
+    expect(publishedForB).toHaveLength(0); // cycle B's own proposal is untouched, still unpublished
+    void proposalB;
+  });
+
+  it("listEventProposalsForReview(actor, cycleId) requires that specific cycle's owner and only returns that cycle's proposals", async () => {
+    const { alice, bob, cycleA, cycleB } = await setUpTwoCycles();
+    await createEventProposal(alice, {
+      cycleId: cycleA.id,
+      host: "Alice",
+      title: "A session",
+      durationMinutes: 60,
+      preferredSlots: [slot(24, 25)],
+    });
+    await createEventProposal(bob, {
+      cycleId: cycleB.id,
+      host: "Bob",
+      title: "B session",
+      durationMinutes: 60,
+      preferredSlots: [slot(24, 25)],
+    });
+
+    await expect(listEventProposalsForReview(bob, cycleA.id)).rejects.toThrow(ForbiddenError);
+    const forA = await listEventProposalsForReview(alice, cycleA.id);
+    expect(forA.map((p) => p.title)).toEqual(["A session"]);
   });
 });

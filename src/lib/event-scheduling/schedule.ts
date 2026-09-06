@@ -17,7 +17,7 @@ type Member = typeof memberTable.$inferSelect;
 // event-scheduling.ts's schema comment).
 export async function publishEventSchedule(actor: Member, cycleId?: string | null) {
   await requireNotOnsiteLockedForCommunity(actor.communityId);
-  await requireEventSchedulingOwner(actor);
+  await requireEventSchedulingOwner(actor, cycleId);
 
   const conditions = [
     eq(eventProposal.communityId, actor.communityId),

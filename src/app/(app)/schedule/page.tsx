@@ -13,6 +13,8 @@ import {
   listPublishedSchedule,
 } from "@/lib/event-scheduling";
 import type { EventSlot } from "@/lib/event-scheduling";
+import { resolveDefaultScopeSegment, resolveSingleCycleScope } from "@/lib/cycles";
+import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import { submitEventProposalAction, updateEventProposalAction } from "./actions";
 import EventReviewSection from "./EventReviewSection";
 
@@ -58,12 +60,45 @@ export default async function SchedulePage({
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "event_scheduling");
 
-  const isOwner = moduleOn ? await isEventSchedulingOwner(viewing) : false;
+  // Which cycle's programme to show — the same off-URL resolution the
+  // board/task detail page/Spatial planning already read (docs/
+  // development-plan.md's Phase 68), replacing the old "no cycle
+  // filter at all, every cycle's proposals mixed together" behavior.
+  const scopeSegment = await resolveDefaultScopeSegment(viewing);
+  const resolution = moduleOn ? await resolveSingleCycleScope(viewing, scopeSegment) : ({ kind: "none" } as const);
+
+  if (moduleOn && resolution.kind === "ambiguous") {
+    return (
+      <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 760 }}>
+        <h1>Schedule</h1>
+        <p style={{ color: "#666" }}>Scoped to multiple active cycles — pick one to see its programme:</p>
+        <ul>
+          {resolution.candidates.map((c) => (
+            <li key={c.id}>
+              <form action={switchToLinkedScopeAction} style={{ display: "inline" }}>
+                <input type="hidden" name="scope" value={c.id} />
+                <input type="hidden" name="returnTo" value="/schedule" />
+                <button
+                  type="submit"
+                  style={{ padding: 0, border: "none", background: "none", color: "#0645ad", textDecoration: "underline", cursor: "pointer" }}
+                >
+                  {c.name}
+                </button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      </main>
+    );
+  }
+  const cycleId = resolution.kind === "resolved" ? resolution.cycle.id : null;
+
+  const isOwner = moduleOn ? await isEventSchedulingOwner(viewing, cycleId) : false;
 
   const [myProposals, publishedSchedule, reviewProposals] = await Promise.all([
-    moduleOn ? listMyEventProposals(viewing) : Promise.resolve([]),
-    moduleOn ? listPublishedSchedule(viewing) : Promise.resolve([]),
-    moduleOn && isOwner ? listEventProposalsForReview(viewing) : Promise.resolve([]),
+    moduleOn ? listMyEventProposals(viewing, cycleId) : Promise.resolve([]),
+    moduleOn ? listPublishedSchedule(viewing, cycleId) : Promise.resolve([]),
+    moduleOn && isOwner ? listEventProposalsForReview(viewing, cycleId) : Promise.resolve([]),
   ]);
 
   const myPingsByProposalId = new Map(
@@ -226,6 +261,7 @@ export default async function SchedulePage({
               action={submitEventProposalAction}
               style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 500 }}
             >
+              <input type="hidden" name="cycleId" value={cycleId ?? ""} />
               <label>
                 Host
                 <br />
@@ -275,7 +311,7 @@ export default async function SchedulePage({
           </section>
 
           {isOwner && (
-            <EventReviewSection proposals={reviewProposals} memberNameById={memberNameById} />
+            <EventReviewSection proposals={reviewProposals} memberNameById={memberNameById} cycleId={cycleId} />
           )}
         </>
       )}

@@ -250,6 +250,7 @@ export async function setPermissionGrantAction(formData: FormData) {
   const actor = await requireMember();
   const moduleKeyRaw = String(formData.get("moduleKey") ?? "");
   const taskIdRaw = String(formData.get("taskId") ?? "").trim();
+  const cycleId = String(formData.get("cycleId") ?? "").trim() || null;
   const tab = String(formData.get("tab") ?? "") || undefined;
 
   try {
@@ -258,9 +259,9 @@ export async function setPermissionGrantAction(formData: FormData) {
     if (taskIdRaw) {
       const { taskId } = permissionGrantFields.parse({ moduleKey, taskId: taskIdRaw });
       await requireTaskInActorCommunity(taskId, actor.communityId);
-      await setPermissionGrant(actor.communityId, moduleKey, taskId);
+      await setPermissionGrant(actor.communityId, moduleKey, taskId, cycleId);
     } else {
-      await setPermissionGrant(actor.communityId, moduleKey, null);
+      await setPermissionGrant(actor.communityId, moduleKey, null, cycleId);
     }
   } catch (err) {
     redirectWithError(err, tab);
@@ -297,6 +298,7 @@ export async function addPermissionGrantAction(formData: FormData) {
 export async function removePermissionGrantAction(formData: FormData) {
   const actor = await requireMember();
   const tab = String(formData.get("tab") ?? "") || undefined;
+  const cycleId = String(formData.get("cycleId") ?? "").trim() || null;
 
   try {
     await requireAdmins(actor);
@@ -304,7 +306,7 @@ export async function removePermissionGrantAction(formData: FormData) {
       moduleKey: String(formData.get("moduleKey") ?? ""),
       taskId: String(formData.get("taskId") ?? ""),
     });
-    await removePermissionGrant(actor.communityId, moduleKey, taskId);
+    await removePermissionGrant(actor.communityId, moduleKey, taskId, cycleId);
   } catch (err) {
     redirectWithError(err, tab);
   }

@@ -53,6 +53,8 @@ import { requireAdmins } from "@/lib/settings";
 import {
   addPermissionGrant,
   allowsMultipleGrants,
+  CYCLE_SCOPED_MODULES,
+  listGrantedCycleScopesForTask,
   listModuleKeysGrantedByTask,
   PERMISSION_MODULE_KEYS,
   removePermissionGrant,
@@ -687,12 +689,27 @@ export async function updateTaskPermissionGrantsAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
   const selectedModuleKeys = new Set(formData.getAll("moduleKeys").map(String));
+  // The one shared cycle-select (docs/development-plan.md's Phase 68)
+  // applying to whichever of event_scheduling_owner/spatial_planning
+  // get checked in this same submission — see the task detail page's
+  // own comment on why one shared select, not one per module.
+  const grantCycleId = String(formData.get("grantCycleId") ?? "").trim() || null;
 
   try {
     await requireAdmins(actor);
     const currentModuleKeys = await listModuleKeysGrantedByTask(actor.communityId, taskId);
+    const currentCycleScopes = await listGrantedCycleScopesForTask(actor.communityId, taskId);
     for (const moduleKey of PERMISSION_MODULE_KEYS) {
       const selected = selectedModuleKeys.has(moduleKey);
+      if (CYCLE_SCOPED_MODULES.has(moduleKey)) {
+        const grantedForThisCycle = (currentCycleScopes[moduleKey] ?? []).includes(grantCycleId);
+        if (selected && !grantedForThisCycle) {
+          await setPermissionGrant(actor.communityId, moduleKey, taskId, grantCycleId);
+        } else if (!selected && grantedForThisCycle) {
+          await setPermissionGrant(actor.communityId, moduleKey, null, grantCycleId);
+        }
+        continue;
+      }
       const current = currentModuleKeys.has(moduleKey);
       if (selected && !current) {
         if (allowsMultipleGrants(moduleKey)) {

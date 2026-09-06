@@ -22,6 +22,9 @@ export default function ProposalCard({
   suggestedMemberName,
   canGrantPermissions,
   elsewhereHolderByModule,
+  cyclesEnabled,
+  grantCycles,
+  defaultGrantCycleId,
 }: {
   proposal: Proposal;
   branches: { id: string; name: string }[];
@@ -31,6 +34,9 @@ export default function ProposalCard({
   suggestedMemberName: string | null;
   canGrantPermissions: boolean;
   elsewhereHolderByModule: Partial<Record<PermissionModuleKey, string>>;
+  cyclesEnabled: boolean;
+  grantCycles: { id: string; name: string }[];
+  defaultGrantCycleId: string | null;
 }) {
   return (
     <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
@@ -188,6 +194,19 @@ export default function ProposalCard({
                 <legend className="px-1 text-[12px] text-[var(--text-muted)]">
                   Permissions granted by this task (optional)
                 </legend>
+                {cyclesEnabled && (
+                  <label className="mb-2 flex flex-col gap-1 text-[12px] text-[var(--text-muted)]">
+                    Cycle (applies to Event scheduling owner / Spatial planning only, below)
+                    <select name="grantCycleId" defaultValue={defaultGrantCycleId ?? ""} className={INPUT}>
+                      <option value="">Community-wide (no cycle)</option>
+                      {grantCycles.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <div className="flex flex-col gap-1">
                   {PERMISSION_MODULE_KEYS.map((moduleKey) => (
                     <div key={moduleKey}>

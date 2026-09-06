@@ -32,13 +32,13 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 **Budget** — fixed costs plus itemized member proposals, ranked-choice (Borda-style) voting with cost-per-member and a running total, and an owner confirmation step that requires a rationale only when it deviates from the ranked order.
 
-**Event scheduling** — an internal programme where any member proposes slots, conflicts are recomputed automatically on review, and a designated owner mediates and publishes.
+**Event scheduling** — an internal programme where any member proposes slots, conflicts are recomputed automatically on review, and a designated owner mediates and publishes — genuinely independent per concurrently-open cycle, same as Budget, right down to its own owner grant.
 
 **Shifts / rota** — recurring, never-"done" work distinct from one-shot tasks: batch-generated occurrences, first-come sign-up, self-reported completion or coordinator-marked no-shows, and a one-click "rotate this task into a shift."
 
 **Recruitment** — public invite links and an inquiry inbox, an evaluated-admission funnel (configurable evaluator count and decision rules) that converts an accepted applicant into a real, loggable-in member, blind-availability intro-call scheduling for not-yet-members with an auto-lapsing availability subscription, and a live pipeline view of every candidate in flight — alongside a separate door for an already-known roster: an admin can bulk-add a pasted or CSV-uploaded name/email list directly, after a review screen showing exactly who's new versus already a member, skipping the application funnel entirely for people already vouched for.
 
-**Spatial planning** — an SVG-based collaborative site editor (plots, zones, and to-scale placements — tents, vehicles, structures), vertex-level editing with live area/length labels, optional GPS geo-anchoring, GeoJSON/image export, and a propose→approve flow for shared or task-linked placements.
+**Spatial planning** — an SVG-based collaborative site editor (plots, zones, and to-scale placements — tents, vehicles, structures), vertex-level editing with live area/length labels, optional GPS geo-anchoring, GeoJSON/image export, and a propose→approve flow for shared or task-linked placements — its own owner grant and full layout are independent per concurrently-open cycle, same as Budget and Event scheduling.
 
 **Calendar & scheduling** — click-and-drag blind-availability scheduling polls, task milestones, freestanding personal/shared calendar events with fan-out invites, and a unified Calendar view (a month grid plus an upcoming list) reading every dated thing in the app as its own layer — Phase/Cycle boundaries, milestones, events, Input round cutoffs, Assembly windows, resolved polls, the published programme, your own upcoming shifts, the current Budget cycle's deadline, and an opt-in birthday — plus a real date preview (calendar or list) before cloning a Cycle commits to anything.
 

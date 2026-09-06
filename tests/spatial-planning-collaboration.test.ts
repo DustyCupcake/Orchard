@@ -27,7 +27,8 @@ import {
 } from "@/lib/spatial-planning";
 import type { RectangleGeometry } from "@/lib/spatial-planning/geometry";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { removePermissionGrant, setPermissionGrant } from "@/lib/permissions";
+import { createFixtures, resetDatabase } from "./helpers";
 
 async function insertSpatialPlanningTask(communityId: string, branchId: string, createdBy: string, title = "Lay out the Plot") {
   const [row] = await db
@@ -56,14 +57,17 @@ const rectangleGeometry: RectangleGeometry = { x: 50, y: 50, width: 10, height: 
 const movedGeometry: RectangleGeometry = { x: 60, y: 60, width: 10, height: 4, rotation: 0 };
 const movedAgainGeometry: RectangleGeometry = { x: 70, y: 70, width: 10, height: 4, rotation: 0 };
 
+// docs/development-plan.md's Phase 68 — spatial_planning ownership is
+// now per-cycle, so the grant is scoped to testCycle specifically
+// (created first, so there's a real cycle to scope it to).
 async function setUpModule() {
   const fixtures = await createFixtures();
   const { alice, branch: testBranch, community: testCommunity } = fixtures;
   await updateCommunity(alice, { cyclesEnabled: true, modulesEnabled: ["spatial_planning"] });
   const holderTask = await insertSpatialPlanningTask(testCommunity.id, testBranch.id, alice.id);
   await claimTask(alice, holderTask.id);
-  await grantPermission(testCommunity.id, "spatial_planning", holderTask.id);
   const testCycle = await insertCycle(testCommunity.id, "Cycle A", new Date("2026-01-01"));
+  await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, testCycle.id);
   const plotRow = await createPlot(alice, testCycle.id, {
     name: "Main site",
     scaleCalibration: { pointA: { x: 0, y: 0 }, pointB: { x: 10, y: 0 }, realWorldDistanceMeters: 5 },
@@ -595,14 +599,41 @@ describe("Cycle creation: full-Cycle clone with 'also clone spatial planning?'",
     expect(cyclesAfter).toBe(cyclesBefore); // the whole transaction rolled back, no new Cycle either
   });
 
+  // docs/development-plan.md's Phase 68 — holding spatial_planning for
+  // *some* cycle isn't enough; cloning checks specifically against the
+  // cycle being cloned *from* (see plots.ts's cloneSpatialPlanIntoNewCycle).
+  it("rejects cloneSpatialPlan when the actor holds spatial_planning for a different cycle, not the one being cloned from", async () => {
+    const fixtures = await createFixtures();
+    const { alice, branch: testBranch, community: testCommunity } = fixtures;
+    await updateCommunity(alice, { cyclesEnabled: true, modulesEnabled: ["spatial_planning"] });
+    const sourceCycle = await insertCycle(testCommunity.id, "Source cycle", new Date("2026-01-01"));
+    const otherCycle = await insertCycle(testCommunity.id, "Other cycle", new Date("2025-01-01"));
+    const holderTask = await insertSpatialPlanningTask(testCommunity.id, testBranch.id, alice.id);
+    await claimTask(alice, holderTask.id);
+    // Legitimately owns the source cycle's Plot at creation time...
+    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, sourceCycle.id);
+    await createPlot(alice, sourceCycle.id, { name: "Source site" });
+    // ...but by the time cloning happens, only holds a *different*
+    // cycle's grant — not the one being cloned from.
+    await removePermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, sourceCycle.id);
+    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, otherCycle.id);
+
+    const cyclesBefore = (await db.select().from(cycle).where(eq(cycle.communityId, testCommunity.id))).length;
+    await expect(
+      createCycle(alice, { source: "clone_previous", name: "Next season", cloneSpatialPlan: true, confirmed: true }),
+    ).rejects.toThrow(ForbiddenError);
+    const cyclesAfter = (await db.select().from(cycle).where(eq(cycle.communityId, testCommunity.id))).length;
+    expect(cyclesAfter).toBe(cyclesBefore);
+  });
+
   it("silently skips when the source Cycle has no Plot, still creating the Cycle", async () => {
     const fixtures = await createFixtures();
     const { alice, branch: testBranch, community: testCommunity } = fixtures;
     await updateCommunity(alice, { cyclesEnabled: true, modulesEnabled: ["spatial_planning"] });
     const holderTask = await insertSpatialPlanningTask(testCommunity.id, testBranch.id, alice.id);
     await claimTask(alice, holderTask.id);
-    await grantPermission(testCommunity.id, "spatial_planning", holderTask.id);
-    await insertCycle(testCommunity.id, "Cycle with no Plot", new Date("2026-01-01"));
+    const noPlotCycle = await insertCycle(testCommunity.id, "Cycle with no Plot", new Date("2026-01-01"));
+    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, noPlotCycle.id);
 
     const newCycle = await createCycle(alice, {
       source: "clone_previous",
