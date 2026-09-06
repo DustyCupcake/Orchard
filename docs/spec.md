@@ -1,12 +1,83 @@
 # 🌳 Orchard — Platform Spec (v0.4)
 
-*A general-purpose engine for task-based, distributed-effort coordination. Not tied to any one project. Peach Please is the reference implementation this was extracted from — see [Relationship to Peach Please](#-relationship-to-peach-please) at the end.*
+*A general-purpose engine for task-based, distributed-effort coordination. Not tied to any one project. Peach Please is the reference implementation this was extracted from — see [Relationship to Peach Please](#relationship-to-peach-please) at the end.*
 
 *This document is meant to move toward buildable work. Where a decision genuinely needs to be made before code gets written, it's called out explicitly rather than left implicit.*
 
 ---
 
-## 🌱 Why this exists
+## Contents
+
+- [🌱 Why this exists](#why-this-exists)
+- [🍑 Core concepts](#core-concepts)
+  - [Community](#community)
+  - [Task](#task)
+  - [Proposing tasks](#proposing-tasks)
+  - [Effort magnitude](#effort-magnitude)
+  - [Task milestones](#task-milestones)
+  - [Freestanding events](#freestanding-events)
+  - [Multi-slot & collaborative tasks](#multi-slot--collaborative-tasks)
+  - [Subtasks](#subtasks)
+  - [Shadow slots & succession](#shadow-slots--succession)
+  - [Browse mode](#browse-mode)
+  - [Task openness](#task-openness)
+  - [Endorsement-gated tasks](#endorsement-gated-tasks)
+  - [Branch](#branch)
+  - [Cycle (optional)](#cycle-optional)
+  - [Concurrent cycles & view scope](#concurrent-cycles--view-scope)
+  - [Member + Tier](#member--tier)
+  - [Authentication](#authentication)
+  - [Requirement](#requirement)
+  - [Task Pack](#task-pack)
+  - [Pack import review](#pack-import-review)
+- [⚙️ Configuration model (what an install defines)](#configuration-model-what-an-install-defines)
+  - [Module rollout: off / testing / on](#module-rollout-off--testing--on)
+- [🔑 Community settings & Admins](#community-settings--admins)
+  - [Admins](#admins)
+  - [Two tiers of setting, not one](#two-tiers-of-setting-not-one)
+- [🗂️ Data model](#data-model)
+- [🔄 Lifecycle & attention (unchanged mechanics, generalized)](#lifecycle--attention-unchanged-mechanics-generalized)
+  - [Coordination mechanics (core, not a module)](#coordination-mechanics-core-not-a-module)
+  - [Input rounds (core, not a module)](#input-rounds-core-not-a-module)
+  - [Scheduling polls (core, not a module)](#scheduling-polls-core-not-a-module)
+- [👁️ Views](#views)
+- [📝 Task notes: wiki, comments & resources](#task-notes-wiki-comments--resources)
+- [📋 Optional modules](#optional-modules)
+  - [Recruitment](#recruitment)
+  - [Budget](#budget)
+  - [Event scheduling](#event-scheduling)
+  - [Spatial planning](#spatial-planning)
+  - [Conflict management](#conflict-management)
+  - [Profile questions](#profile-questions)
+  - [Forms](#forms)
+  - [Documentation](#documentation)
+  - [Assemblies](#assemblies)
+  - [Sensitive data](#sensitive-data)
+  - [Data governance](#data-governance)
+  - [Shifts / rota](#shifts--rota)
+- [🌟 Member onboarding & first session](#member-onboarding--first-session)
+  - [Member contact preferences & emergency access](#member-contact-preferences--emergency-access)
+- [🧭 Dashboard](#dashboard)
+  - [Community snapshot](#community-snapshot)
+- [📱 Interface: mobile & web](#interface-mobile--web)
+- [🔔 Notifications & communications](#notifications--communications)
+  - [Task assignment notification](#task-assignment-notification)
+  - [Response tracking](#response-tracking)
+  - [Outbound communications](#outbound-communications)
+- [👁️ Transparency & access](#transparency--access)
+  - [View-as (support)](#view-as-support)
+- [📈 Contribution tracking](#contribution-tracking)
+- [🎯 MVP scope](#mvp-scope)
+- [🏗️ Suggested architecture](#suggested-architecture)
+  - [Backups: full state, not just the database](#backups-full-state-not-just-the-database)
+- [🛠️ Build order](#build-order)
+- [🍑 Relationship to Peach Please](#relationship-to-peach-please)
+  - [Other target communities](#other-target-communities)
+- [❓ Open questions](#open-questions)
+
+---
+
+## <a id="why-this-exists"></a>🌱 Why this exists
 
 Any group of people building something together through voluntary, distributed effort hits the same handful of problems, regardless of what they're building:
 
@@ -27,13 +98,13 @@ This holds for a burn camp. It also holds for a housing cooperative, a community
 
 ---
 
-## 🍑 Core concepts
+## <a id="core-concepts"></a>🍑 Core concepts
 
-### Community
+### <a id="community"></a>Community
 
-One deployed instance of Orchard, configured for one group. Everything below — branches, tiers, phases, tasks — belongs to a Community. This is a first-class entity from the start, even in a single-community deployment, so the hosting model (see [Architecture](#-suggested-architecture)) doesn't have to be decided before the data model is.
+One deployed instance of Orchard, configured for one group. Everything below — branches, tiers, phases, tasks — belongs to a Community. This is a first-class entity from the start, even in a single-community deployment, so the hosting model (see [Architecture](#suggested-architecture)) doesn't have to be decided before the data model is.
 
-### Task
+### <a id="task"></a>Task
 
 The atomic unit of work. Same shape as before, generalized, now including mechanisms that were designed in the Peach Please spec but compressed out of the first draft of this document:
 
@@ -59,11 +130,11 @@ The atomic unit of work. Same shape as before, generalized, now including mechan
 
 Tasks are written as outcomes, not procedures — this stays true regardless of domain. "Get the deposit dispute letter reviewed and sent" is a task; a checklist of how is not.
 
-### Proposing tasks
+### <a id="proposing-tasks"></a>Proposing tasks
 
 Anyone can propose a task with just a title and rough description — no need to know its branch, tags, or criticality up front. Two optional fields keep it moving: a **"I'd like to claim this"** checkbox (activates and assigns in one step), and an **"I'd suggest this person"** field with an optional note (surfaces a task that fits someone without assigning it unilaterally). Whoever does branch coordination fills in the missing metadata and activates it. A proposal that sits unreviewed too long flags in the coordination queue the same way an unclaimed task does.
 
-### Effort magnitude
+### <a id="effort-magnitude"></a>Effort magnitude
 
 Effort (One-off · Ongoing · Owns-a-thing) describes a task's *shape*, not its *size* — "write a rejection template" and "plan build week in detail" are both One-off, but one's an afternoon and the other's a multi-week effort. Task count alone can't tell someone's real load apart from someone else's, and neither can Effort on its own. Effort magnitude adds the missing size, in whichever unit actually fits the shape:
 
@@ -75,7 +146,7 @@ Same precedent as Capacity (people needed): owner-estimated, revisable at any ti
 
 **How this feeds weekly load.** A currently Claimed (not yet Done) task counts its Effort magnitude fully toward the current week's load: Ongoing/Owns-a-thing at their hours/week rate for as long as they're held, One-off as a flat one-time addition of its duration bucket for each week it's Claimed, rather than spread across a longer window. The moment a task is marked Done, it drops out of current load and becomes historical instead — counted in **Contribution tracking** (below) against the week it was actually marked Done, not the week it was claimed or started.
 
-### Task milestones
+### <a id="task-milestones"></a>Task milestones
 
 Effort magnitude answers "how big." Milestones answer "when" — and a task can have several of those, each meaning something different: a due date, a deadline for a related decision, the date something ordered is supposed to arrive, a deposit due date. Rather than a fixed `due_date` field, a task carries zero or more **TaskMilestone** rows, each with a community-member-chosen **label** — same "no fixed category list" precedent as Resource tags or Requirement's `custom` type.
 
@@ -102,7 +173,7 @@ A phase-anchored milestone's Phase defaults to the task's own, but can point els
 
 *A light future hook, not designed here: `next_checkin_at` already drives the Waiting nudge (see Lifecycle & attention) — an upcoming milestone is an obvious second trigger for the same machinery, left for later.*
 
-### Freestanding events
+### <a id="freestanding-events"></a>Freestanding events
 
 Task milestones cover "this specific task has a date." Not everything does — "applications close," "venue balance due," "the potluck" don't obviously belong to one task, and forcing a date onto the nearest task just to give it a calendar home is the wrong shape. A **CalendarEvent** covers this, reusing the exact date shape from Task milestones above rather than inventing a third mechanism.
 
@@ -116,17 +187,17 @@ Sharing it is a real invitation to each person, the same shape already used for 
 
 Access: any member can create their own event and invite whoever they want to it — no approval step anywhere in this flow. What matters isn't friction, it's *who decides* — every invitee decides for themselves, rather than one person with standing deciding on behalf of a whole Branch or Community.
 
-### Multi-slot & collaborative tasks
+### <a id="multi-slot--collaborative-tasks"></a>Multi-slot & collaborative tasks
 
 Tasks with capacity > 1 stay open to additional claims until every slot fills. One slot can optionally be flagged as the **coordination slot** — keeping the group aligned, not a rank and not a blocker: if nobody claims it, the group self-organizes, and if the task stalls, coordination can see that on the dashboard. An existing owner can also **nominate a specific person** for an open slot — a peer-initiated fitted ask, the same mechanism coordination uses, just triggered by a collaborator instead. Coordination tasks themselves are multi-slot by default, with no rank between co-holders — a lightweight community "thumbs up" (not a vote) can help surface good fits during a browse period, but the bar to join stays low.
 
 A task can also carry a different kind of extra slot — a **shadow** — aimed at building competence rather than sharing this cycle's load. See Shadow slots & succession, below.
 
-### Subtasks
+### <a id="subtasks"></a>Subtasks
 
 Any task owner can break off a piece of their task as its own card. This does two things: lets someone who's claimed more than they can handle hand off a specific piece without releasing the whole task, and makes the structure of complex work visible. A subtask left unclaimed by its creator is a concrete, grabbable signal that they need help — more specific than releasing the whole task, more honest than quietly struggling. It's the structural equivalent of the "talk to my coordinator" button.
 
-### Shadow slots & succession
+### <a id="shadow-slots--succession"></a>Shadow slots & succession
 
 A task can carry, in addition to its ordinary slots, a **shadow** slot — someone joining specifically to learn how the task is done, not to carry equal weight this time. A shadow claim is exempt from the task's `individual_gate` Requirements by design (that exemption is what makes it shadowing rather than just an easier version of the real thing), doesn't count toward the task's capacity, and doesn't get relied on to cover a `group_coverage` need — the point is building toward being able to do those things, not already doing them.
 
@@ -141,7 +212,7 @@ An owner can set either, both, or neither. Setting **outgoing** triggers the sam
 
 **Resolving eligibility over time.** A `completed_task` Requirement is satisfied by having held *or* shadowed the referenced task — the platform doesn't distinguish which, since both represent having actually seen it done. Whether someone needs a full hold or a shadow to move on to something else is a judgment call left to whichever later Requirement actually specifies it, not something this mechanism tries to adjudicate on its own.
 
-### Browse mode
+### <a id="browse-mode"></a>Browse mode
 
 High-stakes or skill-specific tasks can get a browse period on creation — a window before claiming opens where the task is visible and people express interest, without turning it into an election.
 
@@ -149,11 +220,11 @@ High-stakes or skill-specific tasks can get a browse period on creation — a wi
 - **Multiple people, multi-slot task** → everyone auto-claims a slot, up to capacity.
 - **Multiple people, single-slot task** → a short resolution window opens. Both parties are notified and can see each other's profile and contact details for exactly this purpose — have a conversation and figure it out. The options on the table: one retracts (no acknowledgment needed), both agree to open a second slot, one proposes the other join as a **shadow** instead of a co-equal claim (see Shadow slots & succession), both agree to **split** the task into two subtasks instead of contesting one, or — if the window lapses with no movement — branch coordination facilitates. If one party has already held or shadowed this task before and the other hasn't, that history is shown as a factor to weigh, not an automatic tiebreak. The platform never picks a winner, and a genuine impasse between two people who won't budge is a human problem, not a case worth engineering a system resolution for.
 
-### Task openness
+### <a id="task-openness"></a>Task openness
 
 Set on creation, adjustable by the owner: **Open** (anyone eligible joins freely), **Request** (default — join requests go to the owner to accept or decline), **Coordination-approved** (new joiners need branch-coordination sign-off, for tasks with sensitive-access implications), or **Community-endorsed** (claiming requires gathering a threshold number of endorsements from other members before the claim confirms — see Endorsement-gated tasks, below).
 
-### Endorsement-gated tasks
+### <a id="endorsement-gated-tasks"></a>Endorsement-gated tasks
 
 Some tasks carry enough trust or consequence that a personal eligibility check (Requirement) isn't really the question — the community itself should have a say in who takes them on, not just whether they're qualified on paper. **Community-endorsed** openness is built for exactly this, and it's meant to generalize beyond the one case that motivated it (see Community settings & Admins, below) to any task a Community decides deserves the same treatment.
 
@@ -162,7 +233,7 @@ Some tasks carry enough trust or consequence that a personal eligibility check (
 - **Threshold is per-task**, set the same way a browse period already is — a fixed number, or (for a task tied to a cycle-relative population, like Admins below) a share of some reference group. Communities will want to tune this by feel; it's not something worth hardcoding here.
 - **Not the same lever as a Requirement.** A `tier` Requirement checks whether someone's personally eligible to even try; Community-endorsement checks whether enough of the community actually wants them holding it once they have. The two compose normally — a task can require Tier "Experienced" *and* be Community-endorsed, same as any Requirement stacks with any openness setting.
 
-### Branch
+### <a id="branch"></a>Branch
 
 A category of work. In the reference implementation these were Seed / Fruit / Blossom / Wood. A Community defines its own set at setup — a housing coop might use Finance / Maintenance / Governance / Community; a software project might use Backend / Design / Docs / Ops. Branch coordination is placement, not doing: the coordinator's product is *matched tasks*, not completed ones.
 
@@ -175,7 +246,7 @@ A category of work. In the reference implementation these were Seed / Fruit / Bl
 
 Emergent membership skips all of this by design — no roster means no expected attendance, which is the right choice for a community where branch identity really is just "the kind of tasks you tend to do." Peach Please's own original design leaned hard toward explicit, given how much of the above was already built out around it.
 
-### Cycle (optional)
+### <a id="cycle-optional"></a>Cycle (optional)
 
 A discrete run of production, generalized from what the reference implementation calls a "season" — the word doesn't travel well, since the same community might run a full annual cycle, a lighter mini-cycle for a reunion weekend or a fundraiser, or a one-off cycle for attending a different event entirely, all with the same members and branches but a different task set and timeline. Phases belong to a Cycle, not directly to the Community, since different cycles can genuinely need different phase spines — a fundraiser doesn't need a Build phase the way a full event does.
 
@@ -208,7 +279,7 @@ Where this meets Recruitment (only relevant if that module is on): a Cycle can d
 
 **Closing a Cycle.** A Cycle stays fully open — writable, live — past its own `end_date` until someone with the standing to start one deliberately closes it; nothing about reaching the end date auto-closes anything. Closing locks it: read-only from that point on, no exception, the same finality as marking a task done. It's a one-way door by design (reaching a closed Cycle afterward is meant to be a normal, unremarkable act of looking at history, not something that needs undoing), so it warns rather than blocks when Budget still has an unfinished process tied to that Cycle, giving the person closing it a chance to either wrap that up first or consciously override.
 
-### Concurrent cycles & view scope
+### <a id="concurrent-cycles--view-scope"></a>Concurrent cycles & view scope
 
 Nothing about Cycle above assumes only one is ever open at a time, and a Community running, say, a full Season while also standing up a smaller Reunion weekend needs both genuinely open and fully usable at once — not one blocking the other, and not one silently borrowing the other's data. Getting that right without every module separately reinventing "which Cycle am I looking at" needs one shared idea underneath all of them: a member's **view scope**.
 
@@ -224,7 +295,7 @@ Different mechanics genuinely need different shapes of this, and which shape app
 
 **Following a link to something scoped to a different Cycle than the viewer's current view surfaces a plain, honest banner naming both** — never a silent render as if it belonged to the viewer's own scope, and never an automatic switch either. This is the same posture as everything else in this spec that touches shared, possibly-surprising state: say what's true, let the person decide what to do about it.
 
-### Member + Tier
+### <a id="member--tier"></a>Member + Tier
 
 A Member belongs to exactly one Community. **Tier** replaces the old hardcoded "experienced Peach" boolean. A Tier is a named eligibility level with a *criterion* the Community chooses at setup:
 
@@ -236,7 +307,7 @@ A Member belongs to exactly one Community. **Tier** replaces the old hardcoded "
 
 A Community can define as many tiers as it wants, or none — a group with fully flat membership just skips this.
 
-### Authentication
+### <a id="authentication"></a>Authentication
 
 Provider-pluggable per Community, not one fixed method — a Community with no SSO of its own gets the magic-link flow as a complete, first-class path, not a consolation fallback.
 
@@ -245,7 +316,7 @@ Provider-pluggable per Community, not one fixed method — a Community with no S
   - **Account creation is role-gated, not automatic on a successful login.** Zitadel is shared infrastructure across more than Orchard (Nextcloud, mail, and whatever else sits behind The Pit's IdP), so a valid login on its own doesn't prove someone should have an Orchard account. Provisioning only fires when the token carries a role scoped to Orchard's own project in Zitadel — no role, no account, even for someone who's a legitimate org member elsewhere.
   - **Identity is keyed on the OIDC `sub` claim, never on email.** `sub` is the durable link between a Zitadel identity and an Orchard Member; once it's set, a login always resolves to the same Member no matter what email comes back in the token. On every SSO login, if the IdP's email differs from what Orchard has on file, Orchard updates its own copy to match — email is free to drift upstream (someone changes it in Zitadel), the identity link doesn't.
 
-### Requirement
+### <a id="requirement"></a>Requirement
 
 An eligibility predicate attached to a task. Generalized from the old fixed strings (`experienced peach · speaks [language] · has completed [task] · any member`) into a typed predicate:
 
@@ -268,7 +339,7 @@ The same typed-predicate mechanism gates cycle initiation, not just task claims 
 
 **Waiving an `individual_gate` requirement.** Sometimes the eligible pool exists on paper but nobody in it is willing to step up right now, and the honest choice is between the task not getting done and someone doing it anyway. See **Coordination mechanics**, below, for how that's handled as a deliberate, visible act rather than a silent bypass.
 
-### Task Pack
+### <a id="task-pack"></a>Task Pack
 
 A portable, importable bundle of tasks — the answer to "most tasks are specific to the community, but some starting point helps." A pack is content, not structure, with one deliberate exception: it doesn't define Branches or Tiers — those are Community-level, standing structure that outlives any one cycle, so a pack only ever targets branch *names*, matched (or manually remapped) into whatever branches the importing Community has. Phase is different in kind. Phase is Cycle-scoped, recreated fresh per cycle rather than persisting like Branch does, so when a pack creates a brand-new cycle there's usually nothing pre-existing to match a phase hint against at all — the pack has to actually define the spine, not just reference it. A pack has:
 
@@ -281,7 +352,7 @@ Packs are symmetric — a Community can export its own board (or a subset of it,
 
 **Import, two paths.** Creating a *new* cycle from a pack (the common case, including clone-previous-cycle) applies the pack's `PackPhase` list directly as that cycle's Phase rows, in order, dates left blank — each task's `phase_ref` then resolves with certainty to the Phase it points at, no matching involved. Importing a pack's tasks into a cycle that *already has* its own phase spine (built by hand, then a starter task set imported into it after) is the one case where a real boundary exists between the pack's phase content and something it didn't create — there, `PackPhase.name` is matched-or-remapped against the destination's existing Phase names, the same way branch names already are. See **Pack import review**, below, for how a human confirms both kinds of matching before anything commits.
 
-### Pack import review
+### <a id="pack-import-review"></a>Pack import review
 
 Not previously specified in any concrete form — "matched or remapped against real branches on import" described the *what*, not the screen behind it. One generic review screen covers both name-matching cases (branch, always; phase, only in the secondary merge-into-existing-cycle case above), reconciling the pack's names against what the destination already has:
 
@@ -301,7 +372,7 @@ Rather than a new gate-check flow, this reuses the pattern Spatial planning alre
 
 ---
 
-## ⚙️ Configuration model (what an install defines)
+## <a id="configuration-model-what-an-install-defines"></a>⚙️ Configuration model (what an install defines)
 
 This is the layer that used to be implicit (baked into "we are a camp at a burn") and now has to be explicit, set once at Community creation:
 
@@ -320,7 +391,7 @@ This is the layer that used to be implicit (baked into "we are a camp at a burn"
 
 Branches and tiers should stay editable after launch — communities will add one. Membership model and phase-spine-on/off should be locked behind a real confirmation, since changing either after task/member data exists is a migration, not a settings toggle.
 
-### Module rollout: off / testing / on
+### <a id="module-rollout-off--testing--on"></a>Module rollout: off / testing / on
 
 Turning on a new optional module doesn't have to mean flipping it live to the whole Community all at once, but it also shouldn't default to needing a leadership tier to gatekeep it — that's the trap CampTool's officer-only "preview" state falls into, and it's specifically the kind of assumption Orchard is trying not to bake in. Each module carries one of three states:
 
@@ -334,11 +405,11 @@ A Community that genuinely wants a smaller group to shake a module out before wi
 
 ---
 
-## 🔑 Community settings & Admins
+## <a id="community-settings--admins"></a>🔑 Community settings & Admins
 
 Distinct from a member's own profile settings (contact preferences, tags, notification prefs — always self-service, no gate at all), **community settings** are the Configuration model above: branches, tiers, cycle/phase structure, module states, cadence defaults, and anything else that shapes how the whole Community runs. Access to that screen can't default to a hardcoded admin concept any more than anything else here does — that would quietly reintroduce the permanent-officer-class pattern the CampTool comparison flagged as specifically the thing to avoid. It has to be built from the same primitives as everywhere else.
 
-### Admins
+### <a id="admins"></a>Admins
 
 **Admins** is the task that gates the community settings screen — a real task on the board, held and released the same way any other task is, not a rank or a title. It's the flagship use of **Community-endorsed** openness (see Endorsement-gated tasks, above): during a cycle's early kickoff rounds, alongside Round 0/1's other critical coordination tasks, anyone eligible can express interest in becoming an Admin, and their candidacy needs to clear an endorsement threshold from the wider membership before it confirms.
 
@@ -348,7 +419,7 @@ A few things make this specific instance of the mechanic work the way it needs t
 - **Resets whenever a cycle's task set actually includes it — nothing more special than that.** There's no separate flag deciding whether a given cycle "counts" for Admins; it's just whichever cycles happen to include an Admins task in their pack, the same as any other critical task. A cycle built by cloning the previous one, or from a pack that carries Admins forward, gets a fresh instance and opens fresh candidacy in Round 0/1 — endorsements don't carry over, so someone who held it last cycle starts from zero and has to clear the threshold again, the same live vote of confidence anyone else faces. A lighter cycle assembled from a pack that never included Admins in the first place simply doesn't touch it — there's no new instance to contest, so whoever holds the most recent existing one keeps holding it, undisturbed. This composes cleanly with Cycle type (see Cycle, above) without needing to reference it directly: a Community can keep Admins in its Season pack and out of its Reunion pack, so a reunion weekend never forces a pointless re-election, without a rule anywhere that has to say so explicitly.
 - **Runs on the same Requirement mechanism as everything else.** A Community can (and probably should) stack a `tier` Requirement on top of the endorsement gate — e.g. Tier "Experienced" — so the pool of people who can even attempt a candidacy is bounded by ordinary Requirement logic; the endorsement gate then decides who the community actually wants from within that pool.
 
-### Two tiers of setting, not one
+### <a id="two-tiers-of-setting-not-one"></a>Two tiers of setting, not one
 
 Not every setting an Admin can touch carries the same weight, and treating them identically is exactly where the risk shows up: a cycle's worth of Admins is a legitimate stand-in for "who runs this cycle," but it's not automatically a legitimate stand-in for "what the whole standing Community wants" — especially in a thin cycle where Admins might be two or three people out of a much larger year-round membership.
 
@@ -360,7 +431,7 @@ Not every setting an Admin can touch carries the same weight, and treating them 
 
 ---
 
-## 🗂️ Data model
+## <a id="data-model"></a>🗂️ Data model
 
 This is the concrete shape to build against. Field names are suggestions, not gospel — the goal is to pin down entities and relationships so backend work can start.
 
@@ -834,7 +905,7 @@ Reuses Spatial planning's propose→pending→approve/revert pattern: the task's
 | item.resources                                                                    | json array, nullable | `[{label, url, tag}]` carried wholesale from the source task's resource list on import            |
 | item.milestones                                                                   | json array, nullable | `[{label, anchor_type, offset_days or percent, phase_ref}]` — only relative milestones carry forward; absolute ones don't survive export (see Task Pack, above) |
 
-This is deliberately close to a straight relational schema — it maps onto Postgres tables with minimal translation, which matters for the [build order](#-build-order) below.
+This is deliberately close to a straight relational schema — it maps onto Postgres tables with minimal translation, which matters for the [build order](#build-order) below.
 
 **Module entities** (only relevant if the corresponding module is enabled — grouped here rather than interleaved above, since they're opt-in surface, not core):
 
@@ -901,7 +972,7 @@ This is deliberately close to a straight relational schema — it maps onto Post
 
 ---
 
-## 🔄 Lifecycle & attention (unchanged mechanics, generalized)
+## <a id="lifecycle--attention-unchanged-mechanics-generalized"></a>🔄 Lifecycle & attention (unchanged mechanics, generalized)
 
 The lifecycle and trigger logic from the original design carries over unmodified — it was never camp-specific:
 
@@ -915,9 +986,9 @@ Attention level is computed from three simultaneous triggers: phase-based (only 
 
 **Owner-set nudges** — when a task moves to Waiting, the owner sets a next check-in date and a short "waiting on…" note. On that date, the owner gets a nudge with four options: update progress (resets the clock), mark done, re-snooze with a reason, or release. Ignoring the nudge past a grace period re-flags the task — the system is forgiving of a missed check-in, not indifferent to it.
 
-### Coordination mechanics (core, not a module)
+### <a id="coordination-mechanics-core-not-a-module"></a>Coordination mechanics (core, not a module)
 
-These aren't optional — they're how branch coordination actually functions day to day, and none of them are domain-specific. They were fully designed in the original spec and are worth restating in full rather than compressed away, even though they land in the second build slice rather than the bare MVP (see [MVP scope](#-mvp-scope)):
+These aren't optional — they're how branch coordination actually functions day to day, and none of them are domain-specific. They were fully designed in the original spec and are worth restating in full rather than compressed away, even though they land in the second build slice rather than the bare MVP (see [MVP scope](#mvp-scope)):
 
 - **Talk to my coordinator** — any task owner can trigger a conversation with their branch coordinator via one button, no categorization required up front. It notifies the coordinator ("[Member] would like to talk about [task]") and the actual conversation happens through whatever channel the community already uses — this is a routing mechanic, not a chat system.
 - **Coordinator-initiated check-in** — the same low-friction channel works the other way: a coordinator can propose a co-owner they see as a fit, or just check in if a task looks like it's getting heavy, without waiting to be asked.
@@ -932,7 +1003,7 @@ These aren't optional — they're how branch coordination actually functions day
 - **Waiving a requirement, deliberately.** Whoever holds branch coordination for the task (or the task's own coordination slot, if it has one) can waive an `individual_gate` Requirement (see Requirement) for one specific claim, when nobody who meets it is willing to step up. Scoped to that one claim, not a permanent change to the task — the bar stays real everywhere else. Requires a short reason ("nobody Tier-eligible was willing, waiving for now") and leaves a standing, visible flag on the task afterward, the same open-by-default treatment as everything else here — never a quiet exception buried in a log. This is a different thing from shadowing, which bypasses `individual_gate` automatically by design (see Shadow slots & succession) — the waiver is for the higher-stakes case of a full, unsupervised claim outside the normal bar, which is exactly the case that needs a human decision and a visible trail.
 - **One-click action emails** — nudges should be actionable without opening the platform at all. A nudge email carries the question and the answers as buttons — *"Any update on [task]?" [ Done ] [ Still on it ] [ I need help ] [ Hand it back ]* — context-aware to the task's current status, with snooze options as presets (3 days / 7 days / 14 days), never a free-entry field. One tap resolves it, no login required. This is what keeps coordination overhead from outgrowing the work itself.
 
-### Input rounds (core, not a module)
+### <a id="input-rounds-core-not-a-module"></a>Input rounds (core, not a module)
 
 Everything above assumes the task owner has real authority over how their task gets done — that's a deliberate, load-bearing principle, not an oversight. But unqualified owner authority and community voice can pull against each other, and the platform needs an answer for that tension rather than silently picking a side.
 
@@ -947,12 +1018,12 @@ The first pass at this used an open-ended comment thread per task, and it was wr
 - **No formal "closing rationale" requirement this time**, unlike the first draft of this mechanism (which borrowed Budget's published-rationale pattern). If the asker is the task owner, which is the common case, the answers just directly inform what they were already deciding — there's no separate audience to report back to. If someone other than the owner asked, it's on them to bring the results to the owner's attention; the platform doesn't force a formal response step for something this lightweight. If a real, contested decision does surface through this — which does happen, it's just the less common case — a normal task comment or wiki update is enough to record what got decided and why, without a bespoke field for it.
 - **The honest trade-off, and a deliberate boundary, not a gap:** batching means nothing here gets answered faster than the cadence allows, even something genuinely urgent — and that's intentional. Input rounds are deliberately scoped to task-execution questions — organizational weight, the accumulating small stuff people can answer on their own schedule. A one-on-one urgent need still goes through "talk to my coordinator." A genuinely time-sensitive *community-wide* decision — a barrio's placement on the larger event map, say — isn't actually a task-execution question at all, and gets its own mechanism built for that shape rather than being squeezed into this one: see **Assemblies**, below. A round with nothing queued in it just doesn't fire; there's no obligation to manufacture a weekly ping out of nothing.
 
-### Scheduling polls (core, not a module)
+### <a id="scheduling-polls-core-not-a-module"></a>Scheduling polls (core, not a module)
 
 A different problem from everything above — not "what does the community think," but "when can enough of the right people actually meet." This was described inline under Recruitment's intro calls in earlier drafts, with a note that it'd be reused elsewhere, but never actually built as its own thing. It needs to be: branch calls and calls among people working on related tasks are exactly the same shape of problem, not a special case of recruitment.
 
 - **Blind submission.** Whoever's organizing opens a poll; members submit their own availability without seeing anyone else's first, so they give honest windows rather than anchoring to what's already shown. The organizer (or anyone checking in on it) only sees the aggregate overlap, not individual raw submissions, until a slot is confirmed.
-- **Availability input is a drag-select grid, not a typed-in range.** Members paint the windows they're free directly on a day-by-time grid — click-and-drag on desktop, touch-and-drag on mobile, the same interaction LettuceMeet and its predecessors popularized — rather than entering time ranges by hand. This is a UI decision, not a schema one: painted windows land in `entry.available_slots` the same as any other submitted window, and a member can reopen the grid to adjust their own entry, which `entry.updated_at` already anticipates. Timezones render per viewer rather than in whatever zone the organizer happened to set the poll up in. Worth building in rather than linking out to an external tool for the same reason Resources stayed links-only for files but not for this: the required-participant/threshold resolution logic is Orchard-specific and has to exist regardless, so the aggregate, the confirmation, and the calendar invites all need to live in one place rather than round-tripping through a site that doesn't know about any of that. The one thing this doesn't get for free from the reference tool: LettuceMeet's grid fills in live as people submit, which is the opposite of blind submission — see [Open questions](#-open-questions) below.
+- **Availability input is a drag-select grid, not a typed-in range.** Members paint the windows they're free directly on a day-by-time grid — click-and-drag on desktop, touch-and-drag on mobile, the same interaction LettuceMeet and its predecessors popularized — rather than entering time ranges by hand. This is a UI decision, not a schema one: painted windows land in `entry.available_slots` the same as any other submitted window, and a member can reopen the grid to adjust their own entry, which `entry.updated_at` already anticipates. Timezones render per viewer rather than in whatever zone the organizer happened to set the poll up in. Worth building in rather than linking out to an external tool for the same reason Resources stayed links-only for files but not for this: the required-participant/threshold resolution logic is Orchard-specific and has to exist regardless, so the aggregate, the confirmation, and the calendar invites all need to live in one place rather than round-tripping through a site that doesn't know about any of that. The one thing this doesn't get for free from the reference tool: LettuceMeet's grid fills in live as people submit, which is the opposite of blind submission — see [Open questions](#open-questions) below.
 - **Two ways to resolve it, because the two real use cases genuinely need different logic:**
   - **Must-overlap-specific-people** — a fixed list of required participants; only slots where all of them are free count at all. This is recruitment's intro call (applicant plus both evaluators) — a slot missing one of them isn't a worse option, it's not an option.
   - **Maximize attendance above a threshold** — nobody's individually required, but the organizer can set a floor ("don't confirm below 4 people") so a slot doesn't lock in with barely anyone able to make it. This is the branch-call and task-related-call case: open to whoever's relevant, resolved by best overlap rather than requiring specific names.
@@ -972,7 +1043,7 @@ A different problem from everything above — not "what does the community think
 
 ---
 
-## 👁️ Views
+## <a id="views"></a>👁️ Views
 
 Same "one database, many lenses" principle: group by status → kanban; sort by phase/deadline → schedule (only if phases enabled); group by branch → coordinator coverage; filter by tags → "what fits me." None of this is domain-specific.
 
@@ -980,7 +1051,7 @@ Same "one database, many lenses" principle: group by status → kanban; sort by 
 
 ---
 
-## 📝 Task notes: wiki, comments & resources
+## <a id="task-notes-wiki-comments--resources"></a>📝 Task notes: wiki, comments & resources
 
 The task description stays goal-oriented — that principle doesn't change, and it's important enough to the whole project that it's worth protecting deliberately rather than letting it erode. But how people actually did a thing is real, useful information, and pretending otherwise just pushes it into side channels where it's harder to find, not less needed. The fix isn't a separate documentation system to go dig through — it's making optional, clearly-labeled notes visible right on the task itself, without ever touching the description field that defines the goal.
 
@@ -1002,11 +1073,11 @@ No special access model needed beyond ordinary task-board visibility — none of
 
 ---
 
-## 📋 Optional modules
+## <a id="optional-modules"></a>📋 Optional modules
 
 Everything past the core task/member/branch engine and coordination mechanics is opt-in per Community, since each one is real backend surface (extra tables, extra access rules, sometimes extra compliance burden). These were compressed too far in the first draft of this doc — the mechanisms below are real, previously-designed detail, generalized rather than dropped. A community turns a module on or off (or through the testing state above); it doesn't get a lesser version of the mechanism if it turns one on.
 
-### Recruitment
+### <a id="recruitment"></a>Recruitment
 
 Handles bringing new members in where that's a distinct, evaluated process rather than an open door.
 
@@ -1033,7 +1104,7 @@ The pipeline view is also where the "needs action" signal lives, surfaced on the
 
 **Scope note — this status feed only covers the evaluated-admission path**, deliberately. Two related things stay separate rather than folding in: (a) a member's own **onboarding/task status** once accepted (do they have tasks, have they completed onboarding steps) is a different lens on a different population, covered under Member onboarding and the Dashboard below; (b) anything that's genuinely task-scoped rather than recruitment-scoped — whether someone's ticket is purchased, whether their tent has been placed on the Plot — is real status too, but it belongs to whoever holds *that* task (the Spatial planning holder cares whether a placement is confirmed; a member checks their own ticket status themselves), not to the recruitment pipeline. Recruitment shouldn't grow into a general-purpose "everything about this person" dashboard; each task-holder's view surfaces the state that's actually relevant to the task they hold, per **Access follows the task** (see Transparency & access).
 
-### Budget
+### <a id="budget"></a>Budget
 
 Handles collective financial decisions where the community pools and allocates money.
 
@@ -1043,7 +1114,7 @@ Handles collective financial decisions where the community pools and allocates m
 - **Confirmation** — the budget owner takes the ranked results, fixed costs, contribution signals, and current financial picture, and produces a final budget. Ranked choice sets priorities, not a binding yes/no per item — the final call is human, with a published rationale for any deviation from the ranked order.
 - **Contributions** — the sliding-scale ask happens with real numbers once the budget is confirmed, against what members already signaled they'd give.
 
-### Event scheduling
+### <a id="event-scheduling"></a>Event scheduling
 
 Handles a community's own internal programme — sessions, activities, workshops, whatever the community runs for itself or its guests. Fully independent per Cycle — its own owner task, its own proposals, its own published programme (see Concurrent cycles & view scope, above) — the same as Budget.
 
@@ -1052,7 +1123,7 @@ Handles a community's own internal programme — sessions, activities, workshops
 - **Publication** — once conflicts resolve, proposals lock and the schedule publishes, readable by all members.
 - **Export profiles** — a community can define an export target (character caps, duration multiples, field limits, whatever a downstream platform requires) that's visible to hosts *during* proposal entry, not discovered as a rejection afterward. This generalizes the original spec's one-off "Elsewhere export" into something any community with a similar downstream constraint can configure for itself.
 
-### Spatial planning
+### <a id="spatial-planning"></a>Spatial planning
 
 Handles physical layout planning for a venue or site — generalized from barrio/camp layout, but not specific to camping: a housing coop planning room and furniture layout, or any community planning a physical space, fits the same shape. Fully independent per Cycle, same as Budget and Event scheduling above — its own owner task and its own layout (see Concurrent cycles & view scope, above; see also Cloning across cycles, below, for how a new Cycle's layout actually gets populated). Deliberately **not** tied to any one venue's real-world geometry: there's no built-in address system or automatic geometry calculation for a specific event (the reference research into CampTool's Black Rock City radial-lot math was a useful look at how deep that kind of thing can go, but it's the wrong shape for a general engine) — a Plot's shape and size always comes from what the Community actually provides for its own site, either an imported image/vector or hand-drawn, calibrated to real-world scale. That's a deliberate trade against automatic per-event geometry: less turnkey for a Black-Rock-City-specific deployment, far more broadly usable everywhere else.
 
@@ -1097,7 +1168,7 @@ A tent or vehicle two or more people actually occupy together is one Placement, 
 - **Accepting promotes an invited Member to confirmed**, at which point they're a full co-owner under the propose → pending → approve/revert flow above — able to move the shared Placement themselves from then on, and notified the same as any other linked Member whenever it changes. **Declining** just drops them from the Placement — wrong tent, plans changed, no explanation required.
 - **Invites and responses are notified**, the same as anything else here that expects a person to act — an invited Member is told they've been named on a Placement and asked to confirm or decline; nobody is silently made a co-owner of something they haven't agreed to, and nobody who invited someone is left wondering whether it landed.
 
-### Conflict management
+### <a id="conflict-management"></a>Conflict management
 
 Promoted out of `[Later]` — the case for treating this as a human problem outside the platform's scope stops holding up once the whole point of the platform is to stop institutional knowledge and unnoticed strain from depending on one person's after-the-fact check-in calls to surface at all. It's still optional per Community (a very small, very high-trust group may genuinely not need a formal process), but it earns the same design weight as Recruitment or Budget rather than a thin, deferred afterthought.
 
@@ -1112,7 +1183,7 @@ Promoted out of `[Later]` — the case for treating this as a human problem outs
 
 Post-cycle feedback doesn't need its own module — it's just a Form (see **Forms**, below) used for a survey after a cycle wraps, reviewed by an ongoing "review responses" task. The one thing worth keeping from treating it separately: the hand-off from a feedback response to an actual conflict report should stay explicit and human-mediated, never automatic — a reviewer reaches out to the person first, and only with their buy-in does it become a real ConflictReport, which can then keep a quiet pointer back to the response it grew out of.
 
-### Profile questions
+### <a id="profile-questions"></a>Profile questions
 
 A shared mechanism, not a module — the answer to standing facts about a person that shouldn't be pinned to whichever flow happened to ask first. A regular Form (see **Forms**, below) is right for a genuinely one-off, all-at-once bundle like a post-cycle feedback survey. It's the wrong shape for things like an emergency contact, pronouns, or "how are you arriving" — facts that get asked at one moment (an application, an onboarding step) but conceptually belong to the person, not to that moment, and that a rigid form bundle makes awkward in three specific ways: no notion of *when* a question should even be asked (an application form and a closer-to-the-event logistics form differ only by when they're sent, which today means maintaining two separate forms by hand); no way for some fields to stop being asked once they're known while others in the same bundle keep needing a fresh answer every cycle; and no way for the same question to show up in more than one context without duplicating its definition.
 
@@ -1127,7 +1198,7 @@ A shared mechanism, not a module — the answer to standing facts about a person
 
 **Who hasn't answered is a separate, always-visible signal.** `capacity_visibility` governs the *value* of an Availability answer — it was never meant to hide the plainer fact of whether one exists yet. A member with no real answer for the current phase (no ProfileAnswer row at all, or a `deferred` one — both mean "no usable number from them yet," and neither needs a new field to distinguish for this purpose) shows up on the Coordination view's non-response list regardless of their `capacity_visibility` setting, the same way a poll's non-respondents are already visible before anyone sees a submitted slot (see Scheduling polls). This is what lets coordination have an actual conversation about a real gap instead of it sitting unnoticed as a blank field — see Coordination mechanics: Availability non-response, below.
 
-### Forms
+### <a id="forms"></a>Forms
 
 A shared mechanism, not a module a Community turns on independently — it's infrastructure other modules lean on, the same way Requirement is. A **Form** is a community-defined set of fields with a stated purpose; a **FormResponse** is one submission, optionally anonymous. Recruitment's application intake is a Form; a post-cycle feedback survey is a Form. The mechanism doesn't care which — what differs between uses is only which task reviews the responses and what happens next.
 
@@ -1135,7 +1206,7 @@ A shared mechanism, not a module a Community turns on independently — it's inf
 
 Not everything with fields becomes a Form, either: Event proposals stay their own dedicated entity rather than folding in here, because the platform actually reasons about specific fields on a proposal (slot conflicts, duration) — a Form's fields are opaque to the platform, read only by whoever's reviewing. That's the test for whether something belongs in Forms or needs its own shape: does the platform need to act on the specific fields, or does a human just need to read them?
 
-### Documentation
+### <a id="documentation"></a>Documentation
 
 **Defaults on**, unlike every other module in this section — the founding problem this whole platform exists to solve includes institutional knowledge evaporating when someone steps back, and this module is a direct answer to that, on the same footing as Task notes rather than a nice-to-have a community has to remember to turn on. A community can still switch it off if it genuinely wants everything task-scoped, same as any other module.
 
@@ -1146,7 +1217,7 @@ Handles knowledge that doesn't have a natural home on any single task: general r
 - **Resolving as a duplicate.** Sometimes the honest answer is "this already exists" — resolving a pending question doesn't have to mean writing content at all. Pointing it at an existing page (`duplicate_of_page_id`) counts as resolving it: the question stays findable, but drops out of the main browse index as its own entry and instead shows up on the canonical page as "also asked as…" — useful curation signal in its own right, since a question that keeps getting re-asked and redirected to the same page usually means that page isn't titled or tagged well enough for people to find on their own.
 - **The index over task wikis is a view, not new storage** — for every Task, its current wiki revision, grouped however's useful (by branch to start; by tag or by cycle are cheap to add once the browse UI exists), the same "one database, many lenses" principle everything else here already leans on. This is what lets someone browse "how do we do things around here" without drilling into individual task cards, without duplicating any content that already lives on a task.
 
-### Assemblies
+### <a id="assemblies"></a>Assemblies
 
 Handles the gap Input rounds deliberately doesn't cover: community-wide decisions, not task-execution questions — everything from a genuinely urgent one-off ("where is the barrio going on the map") to slower, more deliberate structural questions (should a Tier's criteria change, should a new Branch exist). Reuses the same **Question**/**QuestionResponse** shape Input rounds already uses — a question, answered free-text or closed-choice — inside a different container, because the lifecycle here is genuinely different, not just the content.
 
@@ -1156,17 +1227,17 @@ Handles the gap Input rounds deliberately doesn't cover: community-wide decision
 - **No built-in urgent notification, on purpose.** An Assembly is just a page with a link, the same as anything else here. Getting the word out fast for something time-sensitive is a human pasting that link into whatever channel the community already uses for urgent things — the same boundary Input rounds draws, applied consistently rather than as a one-off exception.
 - **Budget keeps its own voting mechanism**, rather than folding into this — ranked-choice against itemized costs and running totals is a genuinely different computation than a simple tally, the same reasoning that keeps Event proposals out of Forms.
 
-### Sensitive data
+### <a id="sensitive-data"></a>Sensitive data
 
 Health, allergies, orientation, emergency contacts. GDPR Art. 9 handling if enabled. Off by default. Field-level access is purpose-bound rather than role-bound — a Community defines which task or tier unlocks which field (e.g. only whoever holds the catering coordination task sees allergy data; only the designated safety contact sees health conditions), consistent with the "access follows the task" principle below. Turning a given field on for a member requires an active, non-withdrawn `ConsentRecord` against the matching `ConsentPurpose` (see *Member contact & privacy*, below, in the data model) before the field is populated or made visible to anyone — access stays purpose-bound on top of that, not instead of it, and withdrawing consent has to actually revoke access, not just flag it.
 
-### Data governance
+### <a id="data-governance"></a>Data governance
 
 Decisions that change *what* data gets collected, *why*, who it's shared with, or how long it's kept are purpose/means decisions in the GDPR sense — they belong to the Community's collective decision-making (the board, or an Assembly for anything bigger), not to whoever currently holds the sysadmin task. Routine operation of infrastructure already decided — patching, backups, restores, credential rotation — stays ordinary task implementation and isn't gated behind governance process. The line is whether a change alters what the Community does with data, or just how reliably it keeps doing what's already been decided.
 
 A board-seat handoff (the association's own governance, outside this platform) has a real-world act behind it beyond anything Orchard tracks — a legal officer declaration has to be filed externally. A board-seat task's in-app claim should be understood as tracking and facilitating that, with the Assembly mechanism (results advisory, never auto-applied — see Assemblies, above) as the natural way to run the actual vote, not as something that completes the legal change by itself.
 
-### Shifts / rota
+### <a id="shifts--rota"></a>Shifts / rota
 
 Recurring, never-"done" work distinct from tasks. Relevant to physical events and standing operational duties; irrelevant to, say, a software project.
 
@@ -1179,7 +1250,7 @@ Optional (per Community, off by default except where noted): recruitment, budget
 
 ---
 
-## 🌟 Member onboarding & first session
+## <a id="member-onboarding--first-session"></a>🌟 Member onboarding & first session
 
 Separate from Recruitment's application/evaluation flow (getting someone in) — this is what a newly-accepted member actually experiences the first time they open the platform, and it's not domain-specific:
 
@@ -1191,7 +1262,7 @@ Separate from Recruitment's application/evaluation flow (getting someone in) —
 
 The goal, regardless of domain: a new member's first session should end with at least one task claimed, not just toured.
 
-### Member contact preferences & emergency access
+### <a id="member-contact-preferences--emergency-access"></a>Member contact preferences & emergency access
 
 Each contact method a member adds (email, phone, chat handle, whatever the Community uses) carries its own visibility setting, member-controlled: **everyone in the community**, **people I share a task or group with**, or **emergency only**.
 
@@ -1201,7 +1272,7 @@ Each contact method a member adds (email, phone, chat handle, whatever the Commu
 
 ---
 
-## 🧭 Dashboard
+## <a id="dashboard"></a>🧭 Dashboard
 
 A member's home view, generalized from the season-aware onboarding idea explored in the CampTool comparison: **what shows up here is computed from a member's actual current state — the tasks they hold, the tasks they coordinate, where they are in recruitment if relevant — never a separately-maintained to-do list that can drift from reality.** The same underlying principle as the Recruitment pipeline's computed status, applied to the member's whole view rather than just one module:
 
@@ -1213,7 +1284,7 @@ A member's home view, generalized from the season-aware onboarding idea explored
 
 This isn't a new subsystem — it's a view that reads from the state other mechanics already produce (TaskAssignment, the Recruitment pipeline's computed status, onboarding progress, pending Spatial-planning approvals) and surfaces whatever's currently relevant to the specific person looking at it. What's relevant differs by what someone holds, consistent with **Access follows the task**: a recruiter's action items aren't a member's, and a Spatial-planning holder's pending-approvals queue isn't visible to someone who doesn't hold that task.
 
-### Community snapshot
+### <a id="community-snapshot"></a>Community snapshot
 
 Separate from the personalized feed above, the Dashboard also carries a small, always-visible panel about the community as a whole — aggregate, anonymized, never broken out by individual: active member count (Participation `coming`), composition by whatever the Community tracks (Tier/experience distribution, pronouns, Branch spread), and the community-average contribution figures from **Contribution tracking**, below. This is the concrete content behind what **Transparency & access** already calls "aggregate community progress," visible to all members by default the same as the rest of that view. Individual numbers stay out of this panel entirely, including for members who've opted their own contribution picture visible — that's a Contribution-tracking-page thing, not a leaderboard on the Dashboard.
 
@@ -1228,7 +1299,7 @@ This stays a read of existing Task attention-level state, same as the rest of th
 
 ---
 
-## 📱 Interface: mobile & web
+## <a id="interface-mobile--web"></a>📱 Interface: mobile & web
 
 None of this is settled UI — no screens are actually designed yet — but it's the frame the mechanics above should hang on, and the two surfaces genuinely need different things rather than one layout awkwardly serving both.
 
@@ -1239,17 +1310,17 @@ None of this is settled UI — no screens are actually designed yet — but it's
 
 ---
 
-## 🔔 Notifications & communications
+## <a id="notifications--communications"></a>🔔 Notifications & communications
 
-### Task assignment notification
+### <a id="task-assignment-notification"></a>Task assignment notification
 
 When a coordinator hands someone a task directly (rather than the person claiming it themselves), they get: *"[Coordinator] thinks this is a fit for you: [task]. A yes, no, or not-now are all fine — reply within [N days]."* A reminder goes out partway through the window; no response by the deadline auto-releases the task back to Unclaimed, notifies the coordinator, and logs the non-response.
 
-### Response tracking
+### <a id="response-tracking"></a>Response tracking
 
 Non-responses log against a member's engagement record, visible to coordination: one is just noted, a couple becomes a soft flag suggesting a different approach, three or more surfaces as a pattern worth a human conversation — never an automatic sanction. The pattern resets once the person responds and re-engages.
 
-### Outbound communications
+### <a id="outbound-communications"></a>Outbound communications
 
 Three tiers, increasingly gated:
 
@@ -1261,7 +1332,7 @@ Delivery respects each member's stated contact preference. Any bridge to an exte
 
 ---
 
-## 👁️ Transparency & access
+## <a id="transparency--access"></a>👁️ Transparency & access
 
 **Default: open.** The task board, schedule, owners, flags, and aggregate community progress are visible to all members unless a specific field has a reason to be restricted.
 
@@ -1277,7 +1348,7 @@ Delivery respects each member's stated contact preference. Any bridge to an exte
 
 **Private by default, explicit opt-in to share:** another member's engagement/contribution record, financial contributions, sensitive-data-module fields, conflict reports (reporter + non-recused conflict team only).
 
-### View-as (support)
+### <a id="view-as-support"></a>View-as (support)
 
 Troubleshooting "why can't this member see X" or "what does the board actually look like from here" doesn't require anyone to *act* as another member — only to see what they see. **View-as** is a capability unlocked the same way any other sensitive capability here is: by holding a **Support** task (claimable like any other — no special standing role attached to it, consistent with access-follows-the-task rather than access-follows-rank). Whoever holds it can switch their own view to render exactly as a chosen member would see the platform. It's a strict read-only render — never an ability to take actions on that member's behalf (claim a task, submit a form, cast a vote) while viewing as them, only to look. Every activation is logged, the same as Emergency access above.
 
@@ -1285,7 +1356,7 @@ Troubleshooting "why can't this member see X" or "what does the board actually l
 
 ---
 
-## 📈 Contribution tracking
+## <a id="contribution-tracking"></a>📈 Contribution tracking
 
 Participation happens in different forms across the life of a cycle — planning, build, live operation, wind-down, or whatever categories fit the Community's own work — and these aren't equivalent, so they shouldn't collapse into one number. Each member sees their own picture broken down by Community-defined contribution category, computed from three things rather than one: **completed** task assignments and shift completions (what they've actually done, attributed to the week/period a task was actually marked Done, not when it was claimed or started), **active** task assignments (what they're currently carrying, using each task's Effort magnitude), and **future signed-up** tasks (Browse-period claims and later-phase tasks already assigned to them but not yet started). Nothing here is separately entered — it's read off Task/TaskAssignment state that already exists, the same "don't keep a second number in sync by hand" principle as everywhere else in this spec.
 
@@ -1295,7 +1366,7 @@ The framing stays personal and non-punitive throughout: someone who contributed 
 
 ---
 
-## 🎯 MVP scope
+## <a id="mvp-scope"></a>🎯 MVP scope
 
 The smallest version worth building — usable by Peach Please *and* at least one differently-shaped community, to prove the generalization actually holds.
 
@@ -1335,7 +1406,7 @@ This scope is deliberately close to what Phase 2 ("Orchard MVP") already describ
 
 ---
 
-## 🏗️ Suggested architecture
+## <a id="suggested-architecture"></a>🏗️ Suggested architecture
 
 *This section predates the actual build and stays as written for that history — several choices below were still open when it was written (Prisma vs. Drizzle, a tRPC layer, Nginx/PM2 hosting) and were decided differently once building actually started. See `CONTRIBUTING.md`'s own "Architecture" section for the real, as-built stack and deployment shape.*
 
@@ -1348,13 +1419,13 @@ Given your existing production experience (Next.js/Nginx/PM2/Let's Encrypt deplo
 - **Auth:** Email magic-link to start — no password storage, low complexity, fine for a trusted-community tool. **Decided: needs to be provider-pluggable from day one**, not magic-link-only baked in — Nextcloud SSO and id.thep.it both need to slot in later without a rewrite. Use an auth library that treats magic-link as one provider among several (Auth.js/NextAuth, or Lucia with an OIDC plugin) rather than hand-rolled email-token logic. Both Nextcloud and id.thep.it most likely expose standard OAuth2/OIDC — worth confirming the exact endpoints before wiring the second provider up, but no architectural surprise expected.
 - **Hosting:** Same pattern as existing deployments (Nginx + PM2 + Let's Encrypt) if self-hosting per Community; or a single managed deployment if the multi-tenant fork above goes that direction.
 
-### Backups: full state, not just the database
+### <a id="backups-full-state-not-just-the-database"></a>Backups: full state, not just the database
 
 A backup is only real if a restore from it actually gets the Community back to where it was — so the export has to cover everything that isn't reproducible from the database alone, not just a Postgres dump. Concretely: the DB snapshot, plus anything stored outside it (exported Plot images, any file that ever ends up in native storage if that gets added later per the Task notes discussion above), bundled together with a manifest describing what's in the archive and what, if anything, is missing or known-inconsistent. A "backup" that quietly omits a whole category of state — leaving someone to discover that only at restore time — is worse than an honest partial export that says so upfront. This should be a real requirement checked at build time (does the export cover everything the app can currently store), not an assumption that holds until the day something new gets added to the schema and nobody remembers to add it to the backup path too.
 
 ---
 
-## 🛠️ Build order
+## <a id="build-order"></a>🛠️ Build order
 
 Concrete enough to start coding against:
 
@@ -1373,7 +1444,7 @@ Everything else in the full spec (automated kickoff sequencing, browse mode, mod
 
 ---
 
-## 🍑 Relationship to Peach Please
+## <a id="relationship-to-peach-please"></a>🍑 Relationship to Peach Please
 
 Peach Please becomes the first *configured* Community on this engine, not a special case in the code:
 
@@ -1387,7 +1458,7 @@ Peach Please becomes the first *configured* Community on this engine, not a spec
 
 Everything currently in the original spec's Modules, Onboarding & engagement flow, and Privacy & data sections is real, valuable design work — it doesn't get discarded, it becomes **Peach Please's own configuration plus its first task pack**, once the generic engine above exists to configure. Its task *content* isn't pre-loaded from a finished pack, though — it gets entered directly as the tool comes into real use, growing alongside the tool itself rather than ahead of it.
 
-### Other target communities
+### <a id="other-target-communities"></a>Other target communities
 
 Peach Please is first and gets the deepest integration (all modules enabled). Beyond that, the near-term targets are:
 
@@ -1398,7 +1469,7 @@ Worth noting: at least a couple of other barrio leads are independently building
 
 ---
 
-## ❓ Open questions
+## <a id="open-questions"></a>❓ Open questions
 
  1. ~~**Confirm the actual SSO protocol** Nextcloud and id.thep.it expose before wiring up the second/third auth provider.~~ **Resolved:** Peach Please runs Zitadel, which is OIDC — see Authentication above. Not blocking for v1 either way (magic-link only), but the second-provider step now has a confirmed target rather than an assumption to verify.
  2. **Whether/when to loop in the other barrio leads** building parallel tools — purely a timing and relationship question, not a design one.
