@@ -33,6 +33,7 @@ type Task = {
   waitingNote: string | null;
   critical: boolean;
   attentionLevel: string;
+  cycleId: string | null;
 };
 
 export default function TaskCard({
@@ -139,6 +140,10 @@ export default function TaskCard({
         </Link>
         {task.critical && <Tag tone="danger">critical</Tag>}
         {attention && <Tag tone={ATTENTION_TONE[task.attentionLevel] ?? "neutral"}>{attention.label}</Tag>}
+        {/* Evergreen work, or anything predating cycles — shows in every
+            scope by design (docs/development-plan.md's Phase 67), just
+            visibly marked as not belonging to any one cycle. */}
+        {task.cycleId === null && <Tag>not cycle-scoped</Tag>}
       </div>
       <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
         {branchName} · {effortSummary(task.effort, task.effortMagnitude)} · {realAssignments.length}

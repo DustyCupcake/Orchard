@@ -23,7 +23,12 @@ export default function CycleSwitcher({
 }: {
   ctx: NavContext["cycleSwitcher"];
   urlScope: string | null;
-  subPath: "participation" | "budget";
+  // null on any page that isn't itself URL-scoped (the board, dashboard,
+  // task detail, ...) — docs/development-plan.md's Phase 67 is the
+  // first consumer of the switcher outside Participation/Budget, and
+  // those pages have nowhere scope-specific to navigate to on
+  // selection; selectScope below just refreshes them in place instead.
+  subPath: "participation" | "budget" | null;
   collapsed: boolean;
 }) {
   const router = useRouter();
@@ -48,7 +53,11 @@ export default function CycleSwitcher({
   async function selectScope(scope: string) {
     setOpen(false);
     await setViewScopeAction(scope);
-    router.push(`/${scope}/${subPath}`);
+    if (subPath) {
+      router.push(`/${scope}/${subPath}`);
+    } else {
+      router.refresh();
+    }
   }
 
   const currentLabel =

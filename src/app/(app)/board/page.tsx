@@ -11,8 +11,7 @@ import {
   tierNameLookup,
 } from "@/lib/tasks";
 import { listCoordinationBranchIds, isCoordinationHolder } from "@/lib/coordination";
-import { canInitiateCycle } from "@/lib/cycles";
-import { getCurrentCycle } from "@/lib/profile-questions";
+import { canInitiateCycle, resolveDefaultScopeSegment, resolveViewScopeFromSegment } from "@/lib/cycles";
 import { listTaskFitSuggestions } from "@/lib/onboarding";
 import BranchFilter from "./BranchFilter";
 import TagFilter from "./TagFilter";
@@ -53,6 +52,7 @@ export default async function BoardPage({
     error?: string;
     notice?: string;
     done?: string;
+    hideCycleless?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
@@ -60,7 +60,8 @@ export default async function BoardPage({
     redirect("/login");
   }
 
-  const { branchId, tag, fit, error, notice, done } = await searchParams;
+  const { branchId, tag, fit, error, notice, done, hideCycleless } = await searchParams;
+  const hidingCycleless = hideCycleless === "1";
   // "A Done confirmation gains a 'you might also like' strip" — see
   // docs/development-plan.md's Phase 56 and src/lib/onboarding.ts's
   // listTaskFitSuggestions, the exact same tag-overlap heuristic
@@ -69,35 +70,66 @@ export default async function BoardPage({
   const relatedToFinished = done ? await listTaskFitSuggestions(viewing, { excludeTaskId: done, limit: 3 }) : [];
   const sortByFit = fit === "1";
 
-  const [branches, tasks, tierNames, myPendingRequests, allTags, coordinationBranchIds, canExport, currentCycle, isCoordinator] =
+  // The board's own cycle scope (docs/development-plan.md's Phase 67)
+  // — the same off-URL resolution Messages/Contribution/the task
+  // detail page already read, since the board isn't itself under
+  // /[cycleScope]/. "active" resolves to every cycle the member is
+  // actually coming to (the switcher's own aggregate definition);
+  // narrowed to one specific — open or closed — cycle when the
+  // switcher is pointed at it.
+  const activeScopeSegment = await resolveDefaultScopeSegment(viewing);
+  const activeScope = await resolveViewScopeFromSegment(viewing, activeScopeSegment);
+  const scopeCycleIds = activeScope
+    ? activeScope.kind === "aggregate"
+      ? activeScope.cycles.map((c) => c.id)
+      : [activeScope.cycle.id]
+    : [];
+
+  const [branches, tasks, tierNames, myPendingRequests, allTags, coordinationBranchIds, canExport, isCoordinator] =
     await Promise.all([
       db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
-      listTasksWithAssignments(viewing, { branchId, tag, sortByFit }),
+      listTasksWithAssignments(viewing, {
+        branchId,
+        tag,
+        sortByFit,
+        cycleScope: { cycleIds: scopeCycleIds, hideCycleless: hidingCycleless },
+      }),
       tierNameLookup(viewing.communityId),
       listMyPendingJoinRequests(viewing),
       listDistinctTags(viewing),
       listCoordinationBranchIds(viewing),
       canInitiateCycle(viewing),
-      getCurrentCycle(viewing.communityId),
       isCoordinationHolder(viewing, null),
     ]);
-  // Export only ever targets the current cycle — same "the current
-  // one" scoping /participation's own whole-cycle export uses — so a
-  // selected task belonging to a different (or no) cycle is silently
-  // excluded server-side rather than guessed at here.
-  const exportableInView = currentCycle ? tasks.filter((t) => t.cycleId === currentCycle.id) : [];
+  // Export only ever targets one real cycle — same "the current one"
+  // scoping /participation's own whole-cycle export always used, now
+  // reading the switcher's own resolved single-cycle state instead of
+  // getCurrentCycle()'s old community-wide heuristic. Unavailable
+  // (not guessed at) while the switcher is narrowed to the multi-cycle
+  // aggregate — the same "ambiguous, ask, don't guess" posture Phase
+  // 65 already established for Budget/Event scheduling/Spatial
+  // planning.
+  const exportCycle = activeScope?.kind === "single" ? activeScope.cycle : null;
+  const exportableInView = exportCycle ? tasks.filter((t) => t.cycleId === exportCycle.id) : [];
 
-  // Preserves the other filters while toggling fit — a plain link,
-  // same "no client JS needed for something a link can do" posture as
-  // everywhere else this codebase avoids it.
-  const fitToggleHref = (() => {
+  // Shared query-preserving link builder for the fit/cycle-less
+  // toggles below — a plain link, same "no client JS needed for
+  // something a link can do" posture as everywhere else this codebase
+  // avoids it. Each toggle only overrides its own param, carrying the
+  // other two through unchanged.
+  function boardHref(overrides: { fit?: boolean; hideCycleless?: boolean }) {
     const params = new URLSearchParams();
     if (branchId) params.set("branchId", branchId);
     if (tag) params.set("tag", tag);
-    if (!sortByFit) params.set("fit", "1");
+    const nextFit = overrides.fit ?? sortByFit;
+    const nextHideCycleless = overrides.hideCycleless ?? hidingCycleless;
+    if (nextFit) params.set("fit", "1");
+    if (nextHideCycleless) params.set("hideCycleless", "1");
     const query = params.toString();
     return query ? `/board?${query}` : "/board";
-  })();
+  }
+  const fitToggleHref = boardHref({ fit: !sortByFit });
+  const cyclelessToggleHref = boardHref({ hideCycleless: !hidingCycleless });
 
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
 
@@ -163,6 +195,12 @@ export default async function BoardPage({
           >
             {sortByFit ? "✓ Sorted by what fits me" : "Sort by what fits me"}
           </Link>
+          <Link
+            href={cyclelessToggleHref}
+            className={hidingCycleless ? "text-[13px] font-medium text-[var(--accent-1)]" : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"}
+          >
+            {hidingCycleless ? "✓ Hiding not-cycle-scoped tasks" : "Hide not-cycle-scoped tasks"}
+          </Link>
         </div>
       )}
 
@@ -192,13 +230,21 @@ export default async function BoardPage({
         </details>
       )}
 
-      {canExport && exportableInView.length > 0 && (
+      {canExport && !exportCycle && (
+        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+          Narrow the cycle switcher to one specific cycle to export a Task Pack — exporting
+          doesn&rsquo;t guess which cycle you mean while it&rsquo;s scoped to &ldquo;All active
+          cycles&rdquo;.
+        </p>
+      )}
+
+      {canExport && exportCycle && exportableInView.length > 0 && (
         <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
           <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
             Export selected as a Task Pack ({exportableInView.length} in this view)
           </summary>
           <form action={exportSelectedTasksAsPackAction} className="mt-3 flex max-w-[420px] flex-col gap-2">
-            <input type="hidden" name="cycleId" value={currentCycle!.id} />
+            <input type="hidden" name="cycleId" value={exportCycle.id} />
             <label className="flex flex-col gap-1 text-[13px] text-[var(--text-muted)]">
               Pack name
               <input

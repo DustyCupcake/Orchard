@@ -440,7 +440,14 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
   // (server-resolved from Member.lastViewedCycleId).
   const cycleScopeMatch = /^\/([^/]+)\/(participation|budget)(?:\/|$)/.exec(pathname);
   const urlScope = cycleScopeMatch?.[1] ?? null;
-  const cycleSubPath: "participation" | "budget" = cycleScopeMatch?.[2] === "budget" ? "budget" : "participation";
+  // null everywhere except the two pages actually under [cycleScope] —
+  // see CycleSwitcher.tsx's own comment on why that matters for
+  // selectScope's navigate-vs-refresh choice.
+  const cycleSubPath: "participation" | "budget" | null = cycleScopeMatch
+    ? cycleScopeMatch[2] === "budget"
+      ? "budget"
+      : "participation"
+    : null;
 
   // Budget is the one single-owner-per-cycle module this phase touches
   // (docs/development-plan.md's Phase 65 — Event scheduling/Spatial

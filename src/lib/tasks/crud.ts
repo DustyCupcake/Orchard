@@ -1,4 +1,4 @@
-import { and, arrayContains, eq, inArray, or } from "drizzle-orm";
+import { and, arrayContains, eq, inArray, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { branch, member, requirement, task, taskAssignment, taskDependency } from "@/db/schema";
@@ -108,9 +108,18 @@ export async function createTask(
   return created;
 }
 
+// The board's own cycle-scope filter (docs/development-plan.md's
+// Phase 67) — a richer alternative to the plain `cycleId` exact-match
+// filter above, since the board needs to match *several* cycles at
+// once (the switcher's aggregate state) and always union in cycle-less
+// tasks unless explicitly hidden. Kept distinct from `cycleId` rather
+// than folding into it, since that one's exact-match semantics are
+// still exactly what a future single-cycle-only caller would want.
+export type CycleScopeFilter = { cycleIds: string[]; hideCycleless?: boolean };
+
 export async function listTasks(
   actor: Member,
-  filters: { branchId?: string; status?: string; cycleId?: string; tag?: string } = {},
+  filters: { branchId?: string; status?: string; cycleId?: string; tag?: string; cycleScope?: CycleScopeFilter } = {},
 ) {
   const conditions = [eq(task.communityId, actor.communityId)];
   if (filters.branchId) conditions.push(eq(task.branchId, filters.branchId));
@@ -123,6 +132,17 @@ export async function listTasks(
   // Task.tags as the clustering mechanism rather than inventing a new
   // TaskCluster entity — a "cluster" is just "every task carrying this tag."
   if (filters.tag) conditions.push(arrayContains(task.tags, [filters.tag]));
+  if (filters.cycleScope) {
+    const { cycleIds, hideCycleless } = filters.cycleScope;
+    const scopeParts = [];
+    if (cycleIds.length > 0) scopeParts.push(inArray(task.cycleId, cycleIds));
+    if (!hideCycleless) scopeParts.push(isNull(task.cycleId));
+    // Both empty (no cycles in scope, and cycle-less hidden too) means
+    // nothing can match — an early return rather than an empty OR,
+    // which drizzle-orm doesn't accept.
+    if (scopeParts.length === 0) return [];
+    conditions.push(or(...scopeParts)!);
+  }
 
   return db
     .select()
@@ -151,7 +171,14 @@ export async function listDistinctTags(actor: Member) {
 // computed unconditionally, same as unmetRequirements already is.
 export async function listTasksWithAssignments(
   actor: Member,
-  filters: { branchId?: string; status?: string; cycleId?: string; tag?: string; sortByFit?: boolean } = {},
+  filters: {
+    branchId?: string;
+    status?: string;
+    cycleId?: string;
+    tag?: string;
+    sortByFit?: boolean;
+    cycleScope?: CycleScopeFilter;
+  } = {},
 ) {
   const tasks = await listTasks(actor, filters);
   if (tasks.length === 0) {
