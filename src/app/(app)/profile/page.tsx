@@ -9,6 +9,7 @@ import { isModuleEnabled } from "@/lib/modules";
 import { SENSITIVE_FIELD_LABELS, SensitiveFieldKey } from "@/lib/sensitive-data";
 import { CONTACT_METHOD_VISIBILITIES, listOwnContactMethods } from "@/lib/contact-methods";
 import { getGatingPurposesForCommunity, hasActiveConsent, listMyConsentStatus } from "@/lib/consent";
+import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL } from "@/components/ui/kit";
 import ThemeToggle from "./ThemeToggle";
 import {
   createContactMethodAction,
@@ -28,6 +29,10 @@ const CONTACT_VISIBILITY_LABELS: Record<(typeof CONTACT_METHOD_VISIBILITIES)[num
 };
 
 export const dynamic = "force-dynamic";
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+}
 
 // Phase 46: an inline consent prompt shown only when a field has a
 // configured gating purpose (src/lib/consent.ts's
@@ -50,18 +55,9 @@ function ConsentCheckbox({
   const purpose = gatingPurposes.get(fieldKey);
   if (!purpose || active) return null;
   return (
-    <div
-      style={{
-        background: "#fafafa",
-        border: "1px solid #ddd",
-        borderRadius: 6,
-        padding: "0.5rem",
-        fontSize: "0.8rem",
-        marginTop: "0.25rem",
-      }}
-    >
-      <p style={{ margin: "0 0 0.4rem" }}>{purpose.noticeText}</p>
-      <label>
+    <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-2.5 text-[13px]">
+      <p className="text-[var(--text)]">{purpose.noticeText}</p>
+      <label className="mt-1.5 flex items-center gap-2 text-[var(--text)]">
         <input type="checkbox" name={`consent_${formKey}`} /> I consent to &ldquo;{purpose.label}&rdquo;
       </label>
     </div>
@@ -84,40 +80,27 @@ function QuestionForm({
   defaultCapacityVisibility?: "flag_only" | "open";
 }) {
   return (
-    <form
-      action={submitProfileAnswerAction}
-      style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}
-    >
+    <form action={submitProfileAnswerAction} className="mt-2 flex flex-col gap-2">
       <input type="hidden" name="questionId" value={questionId} />
       {responseType === "free_text" && (
-        <input
-          type="text"
-          name="value"
-          defaultValue={typeof defaultValue === "string" ? defaultValue : ""}
-          style={{ padding: "0.4rem" }}
-        />
+        <input type="text" name="value" defaultValue={typeof defaultValue === "string" ? defaultValue : ""} className={INPUT} />
       )}
       {responseType === "date" && (
-        <input
-          type="date"
-          name="value"
-          defaultValue={typeof defaultValue === "string" ? defaultValue : ""}
-          style={{ padding: "0.4rem" }}
-        />
+        <input type="date" name="value" defaultValue={typeof defaultValue === "string" ? defaultValue : ""} className={`${INPUT} w-fit`} />
       )}
       {responseType === "single_choice" && (
-        <div>
+        <div className="flex flex-col gap-1">
           {options.map((o) => (
-            <label key={o} style={{ display: "block" }}>
+            <label key={o} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
               <input type="radio" name="value" value={o} defaultChecked={defaultValue === o} /> {o}
             </label>
           ))}
         </div>
       )}
       {responseType === "multi_choice" && (
-        <div>
+        <div className="flex flex-col gap-1">
           {options.map((o) => (
-            <label key={o} style={{ display: "block" }}>
+            <label key={o} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
               <input
                 type="checkbox"
                 name="value_multi"
@@ -130,23 +113,19 @@ function QuestionForm({
         </div>
       )}
       {feedsCapacitySignal && (
-        <label style={{ fontSize: "0.8rem" }}>
+        <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
           Visible to coordinators as
-          <select
-            name="capacityVisibility"
-            defaultValue={defaultCapacityVisibility ?? "flag_only"}
-            style={{ marginLeft: "0.4rem", padding: "0.2rem" }}
-          >
+          <select name="capacityVisibility" defaultValue={defaultCapacityVisibility ?? "flag_only"} className={`${INPUT} py-1`}>
             <option value="flag_only">a coarse flag only</option>
             <option value="open">the exact number</option>
           </select>
         </label>
       )}
-      <div style={{ display: "flex", gap: "0.5rem" }}>
-        <button type="submit" name="status" value="answered" style={{ padding: "0.3rem 0.8rem" }}>
+      <div className="flex gap-2">
+        <button type="submit" name="status" value="answered" className={BUTTON_PRIMARY}>
           Save
         </button>
-        <button type="submit" name="status" value="deferred" style={{ padding: "0.3rem 0.8rem" }}>
+        <button type="submit" name="status" value="deferred" className={BUTTON_SECONDARY}>
           I don&rsquo;t know yet
         </button>
       </div>
@@ -194,157 +173,136 @@ export default async function ProfilePage({
   }
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 480 }}>
-      <h1>Your profile</h1>
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+    <main className="mx-auto max-w-[480px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Your profile</h1>
+      {error && (
+        <div className="mt-4">
+          <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
 
-      <section style={{ marginTop: "0.5rem", marginBottom: "1.5rem" }}>
-        <p style={{ margin: "0 0 0.5rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+      <section className="mt-4">
+        <p className="mb-2 text-[13px] text-[var(--text-muted)]">
           Theme — yours alone, not a community setting. Defaults to your device.
         </p>
         <ThemeToggle />
       </section>
 
-      <form action={updateProfile} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <label>
-          Name
-          <br />
-          <input
-            type="text"
-            name="name"
-            defaultValue={viewing.name}
-            required
-            style={{ padding: "0.5rem", width: "100%" }}
-          />
+      <form action={updateProfile} className="mt-6 flex flex-col gap-3">
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Name</span>
+          <input type="text" name="name" defaultValue={viewing.name} required className={INPUT} />
         </label>
 
-        <label>
-          Tags (comma-separated)
-          <br />
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Tags (comma-separated)</span>
           <input
             type="text"
             name="tags"
             defaultValue={viewing.tags.join(", ")}
             placeholder="carpentry, spanish, night-owl"
-            style={{ padding: "0.5rem", width: "100%" }}
+            className={INPUT}
           />
         </label>
 
         {manualTiers.length > 0 && (
-          <fieldset>
-            <legend>Tiers (manual assignment)</legend>
-            {manualTiers.map((t) => (
-              <label key={t.id} style={{ display: "block" }}>
-                <input
-                  type="checkbox"
-                  name="tierIds"
-                  value={t.id}
-                  defaultChecked={viewing.tierIds.includes(t.id)}
-                />{" "}
-                {t.name}
-              </label>
-            ))}
+          <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+            <legend className="px-1 text-[12px] text-[var(--text-muted)]">Tiers (manual assignment)</legend>
+            <div className="flex flex-col gap-1">
+              {manualTiers.map((t) => (
+                <label key={t.id} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                  <input type="checkbox" name="tierIds" value={t.id} defaultChecked={viewing.tierIds.includes(t.id)} />
+                  {t.name}
+                </label>
+              ))}
+            </div>
           </fieldset>
         )}
 
-        <label>
-          <input
-            type="checkbox"
-            name="emailNotificationsEnabled"
-            defaultChecked={viewing.emailNotificationsEnabled}
-          />{" "}
-          Email me targeted messages and announcements
-        </label>
+        <CheckField
+          label="Email me targeted messages and announcements"
+          name="emailNotificationsEnabled"
+          defaultChecked={viewing.emailNotificationsEnabled}
+        />
 
-        <button type="submit" style={{ padding: "0.5rem 1rem", width: "fit-content" }}>
+        <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
           Save
         </button>
       </form>
 
       {cycleTypeProgress.length > 0 && (
-        <section style={{ marginTop: "1.5rem" }}>
-          <h2>Cycle-type progress</h2>
-          <p style={{ color: "#666", fontSize: "0.85rem" }}>
+        <section className="mt-8">
+          <SectionHeading>Cycle-type progress</SectionHeading>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             Computed live off your declared Participation — see /participation.
           </p>
-          {cycleTypeProgress.map((p) => (
-            <p key={p.tierId} style={{ color: p.held ? "#2a7a2a" : "#666" }}>
-              {p.tierName} ({p.cycleTypeName}): {p.count}/{p.minCount} {p.held ? "— earned" : ""}
-            </p>
-          ))}
+          <div className="mt-2 flex flex-col gap-0.5">
+            {cycleTypeProgress.map((p) => (
+              <p key={p.tierId} className={`text-[13px] ${p.held ? "text-[var(--success)]" : "text-[var(--text-muted)]"}`}>
+                {p.tierName} ({p.cycleTypeName}): {p.count}/{p.minCount} {p.held ? "— earned" : ""}
+              </p>
+            ))}
+          </div>
         </section>
       )}
 
       {outstanding.length > 0 && (
-        <section style={{ marginTop: "2rem" }}>
-          <h2>Questions for you</h2>
-          {outstanding.map(({ question, existingAnswer }) => (
-            <div
-              key={question.id}
-              style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
-            >
-              <strong>
-                {question.label}
-                {question.required ? " *" : ""}
-              </strong>
-              {existingAnswer?.status === "deferred" && (
-                <p style={{ color: "#666", fontSize: "0.8rem", margin: "0.2rem 0" }}>
-                  You said you didn&rsquo;t know yet.
+        <section className="mt-8">
+          <SectionHeading>Questions for you</SectionHeading>
+          <div className="mt-2 flex flex-col gap-2">
+            {outstanding.map(({ question, existingAnswer }) => (
+              <div key={question.id} className={CARD}>
+                <p className="text-[14px] font-medium text-[var(--text)]">
+                  {question.label}
+                  {question.required ? " *" : ""}
                 </p>
-              )}
-              <QuestionForm
-                questionId={question.id}
-                responseType={question.responseType}
-                options={question.options}
-                feedsCapacitySignal={question.feedsCapacitySignal}
-              />
-            </div>
-          ))}
+                {existingAnswer?.status === "deferred" && (
+                  <p className="mt-1 text-[12px] text-[var(--text-muted)]">You said you didn&rsquo;t know yet.</p>
+                )}
+                <QuestionForm
+                  questionId={question.id}
+                  responseType={question.responseType}
+                  options={question.options}
+                  feedsCapacitySignal={question.feedsCapacitySignal}
+                />
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
       {onceEverAnswers.length > 0 && (
-        <section style={{ marginTop: "2rem" }}>
-          <h2>Your answers</h2>
-          {onceEverAnswers.map(({ question, answer }) => (
-            <div
-              key={question.id}
-              style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
-            >
-              <strong>{question.label}</strong>
-              <QuestionForm
-                questionId={question.id}
-                responseType={question.responseType}
-                options={question.options}
-                feedsCapacitySignal={question.feedsCapacitySignal}
-                defaultValue={answer.value}
-                defaultCapacityVisibility={answer.capacityVisibility}
-              />
-            </div>
-          ))}
+        <section className="mt-8">
+          <SectionHeading>Your answers</SectionHeading>
+          <div className="mt-2 flex flex-col gap-2">
+            {onceEverAnswers.map(({ question, answer }) => (
+              <div key={question.id} className={CARD}>
+                <p className="text-[14px] font-medium text-[var(--text)]">{question.label}</p>
+                <QuestionForm
+                  questionId={question.id}
+                  responseType={question.responseType}
+                  options={question.options}
+                  feedsCapacitySignal={question.feedsCapacitySignal}
+                  defaultValue={answer.value}
+                  defaultCapacityVisibility={answer.capacityVisibility}
+                />
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
       {sensitiveDataOn && (
-        <section style={{ marginTop: "2rem" }}>
-          <h2>Sensitive data</h2>
-          <p style={{ color: "#666", fontSize: "0.85rem" }}>
+        <section className="mt-8">
+          <SectionHeading>Sensitive data</SectionHeading>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             Always yours to see and edit. Only visible to others via a task or tier your Community
-            has explicitly set to unlock a given field — see <code>/sensitive-data</code>.
+            has explicitly set to unlock a given field — see <code className="font-mono">/sensitive-data</code>.
           </p>
-          <form
-            action={updateSensitiveDataAction}
-            style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
-          >
-            <label>
-              {SENSITIVE_FIELD_LABELS.health_conditions}
-              <br />
-              <textarea
-                name="healthConditions"
-                rows={2}
-                defaultValue={viewing.healthConditions ?? ""}
-                style={{ padding: "0.5rem", width: "100%" }}
-              />
+          <form action={updateSensitiveDataAction} className="mt-3 flex flex-col gap-3">
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>{SENSITIVE_FIELD_LABELS.health_conditions}</span>
+              <textarea name="healthConditions" rows={2} defaultValue={viewing.healthConditions ?? ""} className={INPUT} />
             </label>
             <ConsentCheckbox
               fieldKey="health_conditions"
@@ -352,15 +310,9 @@ export default async function ProfilePage({
               gatingPurposes={gatingPurposes}
               active={fieldConsentActive.get("health_conditions") ?? false}
             />
-            <label>
-              {SENSITIVE_FIELD_LABELS.allergies}
-              <br />
-              <textarea
-                name="allergies"
-                rows={2}
-                defaultValue={viewing.allergies ?? ""}
-                style={{ padding: "0.5rem", width: "100%" }}
-              />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>{SENSITIVE_FIELD_LABELS.allergies}</span>
+              <textarea name="allergies" rows={2} defaultValue={viewing.allergies ?? ""} className={INPUT} />
             </label>
             <ConsentCheckbox
               fieldKey="allergies"
@@ -368,15 +320,9 @@ export default async function ProfilePage({
               gatingPurposes={gatingPurposes}
               active={fieldConsentActive.get("allergies") ?? false}
             />
-            <label>
-              {SENSITIVE_FIELD_LABELS.emergency_contact}
-              <br />
-              <input
-                type="text"
-                name="emergencyContact"
-                defaultValue={viewing.emergencyContact ?? ""}
-                style={{ padding: "0.5rem", width: "100%" }}
-              />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>{SENSITIVE_FIELD_LABELS.emergency_contact}</span>
+              <input type="text" name="emergencyContact" defaultValue={viewing.emergencyContact ?? ""} className={INPUT} />
             </label>
             <ConsentCheckbox
               fieldKey="emergency_contact"
@@ -384,15 +330,9 @@ export default async function ProfilePage({
               gatingPurposes={gatingPurposes}
               active={fieldConsentActive.get("emergency_contact") ?? false}
             />
-            <label>
-              {SENSITIVE_FIELD_LABELS.orientation}
-              <br />
-              <input
-                type="text"
-                name="orientation"
-                defaultValue={viewing.orientation ?? ""}
-                style={{ padding: "0.5rem", width: "100%" }}
-              />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>{SENSITIVE_FIELD_LABELS.orientation}</span>
+              <input type="text" name="orientation" defaultValue={viewing.orientation ?? ""} className={INPUT} />
             </label>
             <ConsentCheckbox
               fieldKey="orientation"
@@ -400,112 +340,105 @@ export default async function ProfilePage({
               gatingPurposes={gatingPurposes}
               active={fieldConsentActive.get("orientation") ?? false}
             />
-            <button type="submit" style={{ padding: "0.5rem 1rem", width: "fit-content" }}>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Save
             </button>
           </form>
         </section>
       )}
 
-      <section style={{ marginTop: "2rem" }}>
-        <h2>Contact methods</h2>
-        <p style={{ color: "#666", fontSize: "0.85rem" }}>
+      <section className="mt-8">
+        <SectionHeading>Contact methods</SectionHeading>
+        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
           You control who sees each one. &ldquo;Emergency only&rdquo; means any member can activate
           Emergency access to reveal it when needed — both of you get notified, and every activation
-          is logged. See <code>/members</code> for other members&rsquo; visible methods.
+          is logged. See <code className="font-mono">/members</code> for other members&rsquo; visible methods.
         </p>
-        {ownContactMethods.length === 0 && <p style={{ color: "#666" }}>No contact methods yet.</p>}
-        {ownContactMethods.map((m) => (
-          <div
-            key={m.id}
-            style={{
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "center",
-              border: "1px solid #ccc",
-              borderRadius: 6,
-              padding: "0.5rem",
-              marginBottom: "0.5rem",
-              flexWrap: "wrap",
-            }}
-          >
-            <form action={updateContactMethodAction} style={{ display: "flex", gap: "0.5rem", flex: 1, flexWrap: "wrap" }}>
-              <input type="hidden" name="id" value={m.id} />
-              <input type="text" name="type" defaultValue={m.type} style={{ padding: "0.3rem", width: 100 }} />
-              <input
-                type="text"
-                name="value"
-                defaultValue={m.value}
-                style={{ padding: "0.3rem", flex: 1, minWidth: 160 }}
-              />
-              <select name="visibility" defaultValue={m.visibility} style={{ padding: "0.3rem" }}>
-                {CONTACT_METHOD_VISIBILITIES.map((v) => (
-                  <option key={v} value={v}>
-                    {CONTACT_VISIBILITY_LABELS[v]}
-                  </option>
-                ))}
-              </select>
-              <button type="submit">Save</button>
-            </form>
-            <form action={deleteContactMethodAction}>
-              <input type="hidden" name="id" value={m.id} />
-              <button type="submit">Delete</button>
-            </form>
-          </div>
-        ))}
+        {ownContactMethods.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">No contact methods yet.</p>}
+        <div className="mt-2 flex flex-col gap-2">
+          {ownContactMethods.map((m) => (
+            <div key={m.id} className={`flex flex-wrap items-center gap-2 ${CARD}`}>
+              <form action={updateContactMethodAction} className="flex flex-1 flex-wrap items-center gap-2">
+                <input type="hidden" name="id" value={m.id} />
+                <input type="text" name="type" defaultValue={m.type} className={`${INPUT} w-24`} />
+                <input type="text" name="value" defaultValue={m.value} className={`${INPUT} min-w-[160px] flex-1`} />
+                <select name="visibility" defaultValue={m.visibility} className={INPUT}>
+                  {CONTACT_METHOD_VISIBILITIES.map((v) => (
+                    <option key={v} value={v}>
+                      {CONTACT_VISIBILITY_LABELS[v]}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit" className={BUTTON_SECONDARY}>
+                  Save
+                </button>
+              </form>
+              <form action={deleteContactMethodAction}>
+                <input type="hidden" name="id" value={m.id} />
+                <button type="submit" className={BUTTON_GHOST}>
+                  Delete
+                </button>
+              </form>
+            </div>
+          ))}
+        </div>
 
-        <form
-          action={createContactMethodAction}
-          style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.75rem", flexWrap: "wrap" }}
-        >
-          <input type="text" name="type" placeholder="email, phone, telegram…" required style={{ padding: "0.3rem", width: 140 }} />
-          <input type="text" name="value" placeholder="value" required style={{ padding: "0.3rem", flex: 1, minWidth: 160 }} />
-          <select name="visibility" defaultValue="everyone" style={{ padding: "0.3rem" }}>
+        <form action={createContactMethodAction} className="mt-3 flex flex-wrap items-center gap-2">
+          <input type="text" name="type" placeholder="email, phone, telegram…" required className={`${INPUT} w-36`} />
+          <input type="text" name="value" placeholder="value" required className={`${INPUT} min-w-[160px] flex-1`} />
+          <select name="visibility" defaultValue="everyone" className={INPUT}>
             {CONTACT_METHOD_VISIBILITIES.map((v) => (
               <option key={v} value={v}>
                 {CONTACT_VISIBILITY_LABELS[v]}
               </option>
             ))}
           </select>
-          <button type="submit">Add</button>
+          <button type="submit" className={BUTTON_PRIMARY}>
+            Add
+          </button>
         </form>
       </section>
 
       {myConsentStatus.length > 0 && (
-        <section style={{ marginTop: "2rem" }}>
-          <h2>Your consent</h2>
-          <p style={{ color: "#666", fontSize: "0.85rem" }}>
+        <section className="mt-8">
+          <SectionHeading>Your consent</SectionHeading>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             Every purpose your Community has defined, and whether you currently have it active.
             Withdrawing takes effect immediately — anything it gates stops showing right away.
           </p>
-          {myConsentStatus.map(({ purpose, active, grantedAt }) => (
-            <div
-              key={purpose.id}
-              style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
-            >
-              <strong>{purpose.label}</strong>
-              {purpose.gatesSensitiveField && (
-                <span style={{ color: "#666" }}> — gates {SENSITIVE_FIELD_LABELS[purpose.gatesSensitiveField]}</span>
-              )}
-              <p style={{ color: "#666", fontSize: "0.8rem", margin: "0.3rem 0" }}>{purpose.noticeText}</p>
-              {active ? (
-                <>
-                  <span style={{ color: "#2a7a2a", fontSize: "0.85rem" }}>
-                    Active{grantedAt ? ` since ${new Date(grantedAt).toLocaleDateString()}` : ""}
-                  </span>
-                  <form action={withdrawConsentAction} style={{ display: "inline", marginLeft: "0.5rem" }}>
+          <div className="mt-2 flex flex-col gap-2">
+            {myConsentStatus.map(({ purpose, active, grantedAt }) => (
+              <div key={purpose.id} className={CARD}>
+                <p className="text-[14px] font-medium text-[var(--text)]">
+                  {purpose.label}
+                  {purpose.gatesSensitiveField && (
+                    <span className="font-normal text-[var(--text-muted)]"> — gates {SENSITIVE_FIELD_LABELS[purpose.gatesSensitiveField]}</span>
+                  )}
+                </p>
+                <p className="mt-1 text-[12px] text-[var(--text-muted)]">{purpose.noticeText}</p>
+                {active ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-[13px] text-[var(--success)]">
+                      Active{grantedAt ? ` since ${new Date(grantedAt).toLocaleDateString()}` : ""}
+                    </span>
+                    <form action={withdrawConsentAction}>
+                      <input type="hidden" name="purposeId" value={purpose.id} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        Withdraw
+                      </button>
+                    </form>
+                  </div>
+                ) : (
+                  <form action={grantConsentAction} className="mt-2">
                     <input type="hidden" name="purposeId" value={purpose.id} />
-                    <button type="submit">Withdraw</button>
+                    <button type="submit" className={BUTTON_PRIMARY}>
+                      Grant consent
+                    </button>
                   </form>
-                </>
-              ) : (
-                <form action={grantConsentAction}>
-                  <input type="hidden" name="purposeId" value={purpose.id} />
-                  <button type="submit">Grant consent</button>
-                </form>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            ))}
+          </div>
         </section>
       )}
     </main>

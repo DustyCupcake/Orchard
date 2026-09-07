@@ -2,6 +2,7 @@ import { getOrCreateCommunity } from "@/lib/community";
 import { getRecruitmentApplicationFormPublic } from "@/lib/recruitment";
 import type { FormField } from "@/lib/forms";
 import FieldPreview from "@/components/FieldPreview";
+import { Banner, BUTTON_PRIMARY } from "@/components/ui/kit";
 import { submitApplicationAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -25,22 +26,25 @@ export default async function ApplyPage({
   const fields = (form?.fields as FormField[] | undefined) ?? [];
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <h1>Apply to join</h1>
+    <main className="mx-auto max-w-[640px] px-6 py-16">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Apply to join</h1>
 
       {!form ? (
-        <p style={{ color: "#666" }}>Not accepting applications right now.</p>
+        <p className="mt-4 text-[13px] text-[var(--text-muted)]">Not accepting applications right now.</p>
       ) : submitted ? (
-        <p style={{ color: "#2a7a2a" }}>Thanks — your application was submitted.</p>
+        <div className="mt-4">
+          <Banner tone="success">Thanks — your application was submitted.</Banner>
+        </div>
       ) : (
         <>
-          {form.description && <p style={{ color: "#666" }}>{form.description}</p>}
-          {error && <p style={{ color: "crimson" }}>{error}</p>}
+          {form.description && <p className="mt-2 text-[13px] text-[var(--text-muted)]">{form.description}</p>}
+          {error && (
+            <div className="mt-4">
+              <Banner tone="danger">{error}</Banner>
+            </div>
+          )}
 
-          <form
-            action={submitApplicationAction}
-            style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
-          >
+          <form action={submitApplicationAction} className="mt-6 flex flex-col gap-4">
             {invite && <input type="hidden" name="inviteToken" value={invite} />}
             {fields.map((f) => (
               <FieldPreview
@@ -50,7 +54,7 @@ export default async function ApplyPage({
               />
             ))}
 
-            <button type="submit" style={{ padding: "0.5rem 1rem", width: "fit-content" }}>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Submit application
             </button>
           </form>

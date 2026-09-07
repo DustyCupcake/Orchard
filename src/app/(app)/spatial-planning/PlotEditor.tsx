@@ -22,6 +22,7 @@ import {
   plotToGeoJSONFeatureCollection,
   zoneToGeoJSONFeature,
 } from "@/lib/spatial-planning/export";
+import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT, LABEL, Tag } from "@/components/ui/kit";
 
 // The Plot's own local coordinate space IS the SVG viewBox, 1:1 — the
 // simplest possible mapping (no separate pan/zoom/pixel-to-unit layer
@@ -72,7 +73,14 @@ type MemberOption = { id: string; name: string };
 
 // The rendered color for every category a Placement can have — see
 // src/db/schema/spatial-planning.ts's schema comment: "rendered color
-// follows category, no separate stored color field."
+// follows category, no separate stored color field." Fixed, deliberate
+// hues, not design-token-driven: unlike the app chrome, this is the
+// canvas's own semantic color language (tent vs. vehicle vs. structure
+// at a glance), which a per-community accent color would only muddy —
+// same reasoning the canvas's paper background and every other
+// on-canvas drawing color below is left alone by this pass; only the
+// surrounding page chrome (buttons, fields, panels, list rows) moved
+// onto design_handoff_conventions/README.md's tokens.
 const PLACEMENT_CATEGORY_COLOR: Record<string, string> = {
   tent: "#4488cc",
   vehicle: "#cc8844",
@@ -772,60 +780,55 @@ export default function PlotEditor({
 
   if (!plotRow) {
     return (
-      <section style={{ marginTop: "1rem" }}>
-        {cycleName && <p style={{ color: "#666" }}>Planning for: {cycleName}</p>}
+      <section className="mt-4">
+        {cycleName && <p className="text-[13px] text-[var(--text-muted)]">Planning for: {cycleName}</p>}
         {!canEdit ? (
-          <p style={{ color: "#666" }}>No Plot yet for this Cycle.</p>
+          <p className="text-[13px] text-[var(--text-muted)]">No Plot yet for this Cycle.</p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: 480 }}>
-            <p>No Plot yet for this Cycle — start one:</p>
-            {error && <p style={{ color: "crimson" }}>{error}</p>}
-            <label>
-              Name
-              <br />
+          <div className="flex max-w-[480px] flex-col gap-4">
+            <p className="text-[13px] text-[var(--text)]">No Plot yet for this Cycle — start one:</p>
+            {error && <Banner tone="danger">{error}</Banner>}
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Name</span>
               <input
                 type="text"
                 value={newPlotName}
                 onChange={(e) => setNewPlotName(e.target.value)}
                 placeholder="Main site"
-                style={{ padding: "0.4rem", width: "100%" }}
+                className={INPUT}
               />
             </label>
 
-            <fieldset>
-              <legend>Import a base image</legend>
-              <input type="file" accept="image/*" disabled={creating} onChange={handleImageUpload} />
+            <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+              <legend className="px-1 text-[12px] text-[var(--text-muted)]">Import a base image</legend>
+              <input type="file" accept="image/*" disabled={creating} onChange={handleImageUpload} className="text-[13px] text-[var(--text)]" />
             </fieldset>
 
-            <fieldset>
-              <legend>Import a vector/GeoJSON boundary</legend>
+            <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+              <legend className="px-1 text-[12px] text-[var(--text-muted)]">Import a vector/GeoJSON boundary</legend>
               <textarea
                 rows={4}
                 value={vectorText}
                 onChange={(e) => setVectorText(e.target.value)}
                 placeholder="Paste a GeoJSON Feature or FeatureCollection"
-                style={{ padding: "0.4rem", width: "100%" }}
+                className={INPUT}
               />
-              <button type="button" disabled={creating || !vectorText} onClick={handleVectorImport}>
+              <button type="button" disabled={creating || !vectorText} onClick={handleVectorImport} className={`${BUTTON_SECONDARY} mt-2`}>
                 Import
               </button>
             </fieldset>
 
-            <fieldset>
-              <legend>Or draw from scratch</legend>
-              <button type="button" disabled={creating} onClick={() => createPlot({})}>
+            <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+              <legend className="px-1 text-[12px] text-[var(--text-muted)]">Or draw from scratch</legend>
+              <button type="button" disabled={creating} onClick={() => createPlot({})} className={BUTTON_SECONDARY}>
                 Start blank
               </button>
             </fieldset>
 
             {cloneCandidates.length > 0 && (
-              <fieldset>
-                <legend>Or clone a previous Cycle&rsquo;s Plot</legend>
-                <select
-                  value={cloneSourceCycleId}
-                  onChange={(e) => setCloneSourceCycleId(e.target.value)}
-                  style={{ padding: "0.4rem", width: "100%" }}
-                >
+              <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+                <legend className="px-1 text-[12px] text-[var(--text-muted)]">Or clone a previous Cycle&rsquo;s Plot</legend>
+                <select value={cloneSourceCycleId} onChange={(e) => setCloneSourceCycleId(e.target.value)} className={INPUT}>
                   <option value="">— choose a Cycle —</option>
                   {cloneCandidates.map((c) => (
                     <option key={c.cycleId} value={c.cycleId}>
@@ -833,7 +836,7 @@ export default function PlotEditor({
                     </option>
                   ))}
                 </select>
-                <button type="button" disabled={creating || !cloneSourceCycleId} onClick={handleCloneCreate}>
+                <button type="button" disabled={creating || !cloneSourceCycleId} onClick={handleCloneCreate} className={`${BUTTON_SECONDARY} mt-2`}>
                   Clone
                 </button>
               </fieldset>
@@ -867,20 +870,29 @@ export default function PlotEditor({
       : null;
 
   return (
-    <section style={{ marginTop: "1rem", display: "flex", gap: "1.5rem" }}>
+    <section className="mt-4 flex flex-wrap gap-6">
       <div>
-        {error && <p style={{ color: "crimson" }}>{error}</p>}
-        <p style={{ color: "#666", fontSize: "0.85rem" }}>
+        {error && (
+          <div className="mb-2">
+            <Banner tone="danger">{error}</Banner>
+          </div>
+        )}
+        <p className="text-[13px] text-[var(--text-muted)]">
           {plotRow.name}
           {cycleName && ` · ${cycleName}`}
           {!plotRow.scaleCalibration && " · not calibrated yet"}
           {isGeoAnchored(plotRow.scaleCalibration) && " · geo-anchored"}
         </p>
 
+        {/* The canvas itself keeps its own fixed "paper" surface and
+            drawing colors (category hues, calibration/vertex/selection
+            markers) regardless of app theme or community accent — see
+            PLACEMENT_CATEGORY_COLOR's own comment above for why. */}
         <svg
           ref={svgRef}
           viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
           style={{ width: "100%", maxWidth: 800, border: "1px solid #ccc", background: "#f7f7f5", touchAction: "none" }}
+          className="mt-2 rounded-[var(--radius-md)]"
           onClick={
             mode === "calibrate"
               ? onCalibrateClick
@@ -1126,68 +1138,64 @@ export default function PlotEditor({
         </svg>
 
         {mode === "calibrate" && (
-          <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.4rem", maxWidth: 400 }}>
-            <p style={{ fontSize: "0.85rem", color: "#666" }}>
+          <div className="mt-2 flex max-w-[400px] flex-col gap-2">
+            <p className="text-[13px] text-[var(--text-muted)]">
               Click two points on the plan ({calPoints.length}/2 placed).
             </p>
             {calPoints.length === 2 && (
               <>
-                <label>
-                  <input type="checkbox" checked={calUseGps} onChange={(e) => setCalUseGps(e.target.checked)} />{" "}
+                <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                  <input type="checkbox" checked={calUseGps} onChange={(e) => setCalUseGps(e.target.checked)} />
                   Use GPS coordinates instead of a distance (geo-anchors this Plot)
                 </label>
                 {!calUseGps ? (
-                  <label>
-                    Real-world distance between A and B (meters)
-                    <br />
-                    <input
-                      type="number"
-                      value={calDistance}
-                      onChange={(e) => setCalDistance(e.target.value)}
-                      style={{ padding: "0.4rem", width: "100%" }}
-                    />
+                  <label className="flex flex-col gap-1">
+                    <span className={LABEL}>Real-world distance between A and B (meters)</span>
+                    <input type="number" value={calDistance} onChange={(e) => setCalDistance(e.target.value)} className={INPUT} />
                   </label>
                 ) : (
                   <>
-                    <label>
-                      Point A lat/lng
-                      <br />
-                      <input
-                        type="text"
-                        placeholder="lat"
-                        value={calLatLng.latA}
-                        onChange={(e) => setCalLatLng({ ...calLatLng, latA: e.target.value })}
-                        style={{ padding: "0.4rem", width: "48%", marginRight: "2%" }}
-                      />
-                      <input
-                        type="text"
-                        placeholder="lng"
-                        value={calLatLng.lngA}
-                        onChange={(e) => setCalLatLng({ ...calLatLng, lngA: e.target.value })}
-                        style={{ padding: "0.4rem", width: "48%" }}
-                      />
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>Point A lat/lng</span>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="lat"
+                          value={calLatLng.latA}
+                          onChange={(e) => setCalLatLng({ ...calLatLng, latA: e.target.value })}
+                          className={`${INPUT} w-1/2`}
+                        />
+                        <input
+                          type="text"
+                          placeholder="lng"
+                          value={calLatLng.lngA}
+                          onChange={(e) => setCalLatLng({ ...calLatLng, lngA: e.target.value })}
+                          className={`${INPUT} w-1/2`}
+                        />
+                      </div>
                     </label>
-                    <label>
-                      Point B lat/lng
-                      <br />
-                      <input
-                        type="text"
-                        placeholder="lat"
-                        value={calLatLng.latB}
-                        onChange={(e) => setCalLatLng({ ...calLatLng, latB: e.target.value })}
-                        style={{ padding: "0.4rem", width: "48%", marginRight: "2%" }}
-                      />
-                      <input
-                        type="text"
-                        placeholder="lng"
-                        value={calLatLng.lngB}
-                        onChange={(e) => setCalLatLng({ ...calLatLng, lngB: e.target.value })}
-                        style={{ padding: "0.4rem", width: "48%" }}
-                      />
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>Point B lat/lng</span>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="lat"
+                          value={calLatLng.latB}
+                          onChange={(e) => setCalLatLng({ ...calLatLng, latB: e.target.value })}
+                          className={`${INPUT} w-1/2`}
+                        />
+                        <input
+                          type="text"
+                          placeholder="lng"
+                          value={calLatLng.lngB}
+                          onChange={(e) => setCalLatLng({ ...calLatLng, lngB: e.target.value })}
+                          className={`${INPUT} w-1/2`}
+                        />
+                      </div>
                     </label>
                   </>
                 )}
-                <button type="button" onClick={saveCalibration}>
+                <button type="button" onClick={saveCalibration} className={`${BUTTON_PRIMARY} w-fit`}>
                   Save calibration
                 </button>
               </>
@@ -1198,6 +1206,7 @@ export default function PlotEditor({
                 setMode("view");
                 setCalPoints([]);
               }}
+              className={`${BUTTON_SECONDARY} w-fit`}
             >
               Cancel
             </button>
@@ -1205,8 +1214,8 @@ export default function PlotEditor({
         )}
 
         {mode === "draw-zone" && (
-          <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.4rem", maxWidth: 400 }}>
-            <p style={{ fontSize: "0.85rem", color: "#666" }}>
+          <div className="mt-2 flex max-w-[400px] flex-col gap-2">
+            <p className="text-[13px] text-[var(--text-muted)]">
               Click to add points ({drawPoints.length} so far). Needs at least 3.
             </p>
             <input
@@ -1214,25 +1223,27 @@ export default function PlotEditor({
               placeholder="Name"
               value={newZoneFields.name}
               onChange={(e) => setNewZoneFields({ ...newZoneFields, name: e.target.value })}
-              style={{ padding: "0.4rem" }}
+              className={INPUT}
             />
             <input
               type="text"
               placeholder="Category (e.g. kitchen, quiet zone)"
               value={newZoneFields.category}
               onChange={(e) => setNewZoneFields({ ...newZoneFields, category: e.target.value })}
-              style={{ padding: "0.4rem" }}
+              className={INPUT}
             />
             <input
               type="color"
               value={newZoneFields.color}
               onChange={(e) => setNewZoneFields({ ...newZoneFields, color: e.target.value })}
+              className="h-8 w-16"
             />
-            <div style={{ display: "flex", gap: "0.5rem" }}>
+            <div className="flex gap-2">
               <button
                 type="button"
                 disabled={drawPoints.length < 3 || !newZoneFields.name || !newZoneFields.category}
                 onClick={saveNewZone}
+                className={BUTTON_PRIMARY}
               >
                 Save Zone
               </button>
@@ -1242,11 +1253,12 @@ export default function PlotEditor({
                   setMode("view");
                   setDrawPoints([]);
                 }}
+                className={BUTTON_SECONDARY}
               >
                 Cancel
               </button>
               {drawPoints.length > 0 && (
-                <button type="button" onClick={() => setDrawPoints(drawPoints.slice(0, -1))}>
+                <button type="button" onClick={() => setDrawPoints(drawPoints.slice(0, -1))} className={BUTTON_SECONDARY}>
                   Undo last point
                 </button>
               )}
@@ -1255,8 +1267,8 @@ export default function PlotEditor({
         )}
 
         {mode === "edit-zone" && (
-          <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
-            <button type="button" onClick={saveEditedZone}>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={saveEditedZone} className={BUTTON_PRIMARY}>
               Save
             </button>
             <button
@@ -1265,31 +1277,27 @@ export default function PlotEditor({
                 setMode("view");
                 setSelectedVertex(null);
               }}
+              className={BUTTON_SECONDARY}
             >
               Cancel
             </button>
-            <button type="button" disabled={selectedVertex === null || editPoints.length <= 3} onClick={deleteSelectedVertex}>
+            <button type="button" disabled={selectedVertex === null || editPoints.length <= 3} onClick={deleteSelectedVertex} className={BUTTON_SECONDARY}>
               Delete selected point
             </button>
-            <span style={{ fontSize: "0.8rem", color: "#666" }}>
+            <span className="text-[12px] text-[var(--text-muted)]">
               Drag a point to move it, click a small circle on an edge to add a point there.
             </span>
           </div>
         )}
 
         {(mode === "draw-placement" || mode === "edit-placement") && (
-          <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column", gap: "0.4rem", maxWidth: 420 }}>
+          <div className="mt-2 flex max-w-[420px] flex-col gap-2">
             {mode === "draw-placement" && !draftGeometry && draftPoints.length === 0 && (
               <>
                 {templates.length > 0 && (
-                  <label>
-                    Start from a saved shape
-                    <br />
-                    <select
-                      value={templateId}
-                      onChange={(e) => applyTemplateSelection(e.target.value)}
-                      style={{ padding: "0.4rem", width: "100%" }}
-                    >
+                  <label className="flex flex-col gap-1">
+                    <span className={LABEL}>Start from a saved shape</span>
+                    <select value={templateId} onChange={(e) => applyTemplateSelection(e.target.value)} className={INPUT}>
                       <option value="">— none —</option>
                       {templates.map((t) => (
                         <option key={t.id} value={t.id}>
@@ -1299,14 +1307,9 @@ export default function PlotEditor({
                     </select>
                   </label>
                 )}
-                <label>
-                  Shape
-                  <br />
-                  <select
-                    value={draftShapeType}
-                    onChange={(e) => setDraftShapeType(e.target.value as PlacementShapeType)}
-                    style={{ padding: "0.4rem", width: "100%" }}
-                  >
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Shape</span>
+                  <select value={draftShapeType} onChange={(e) => setDraftShapeType(e.target.value as PlacementShapeType)} className={INPUT}>
                     <option value="rectangle">Rectangle (tent, vehicle, structure footprint)</option>
                     <option value="circle">Circle</option>
                     <option value="polygon">Polygon (drawn by hand)</option>
@@ -1314,48 +1317,45 @@ export default function PlotEditor({
                   </select>
                 </label>
                 {draftShapeType === "rectangle" && (
-                  <div style={{ display: "flex", gap: "0.5rem" }}>
-                    <label>
-                      Width ({plotRow.scaleCalibration ? "m" : "units"})
-                      <br />
+                  <div className="flex gap-2">
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>Width ({plotRow.scaleCalibration ? "m" : "units"})</span>
                       <input
                         type="number"
                         value={dimensionsInput.width}
                         onChange={(e) => setDimensionsInput({ ...dimensionsInput, width: e.target.value })}
-                        style={{ padding: "0.4rem", width: "6rem" }}
+                        className={`${INPUT} w-24`}
                       />
                     </label>
-                    <label>
-                      Height ({plotRow.scaleCalibration ? "m" : "units"})
-                      <br />
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>Height ({plotRow.scaleCalibration ? "m" : "units"})</span>
                       <input
                         type="number"
                         value={dimensionsInput.height}
                         onChange={(e) => setDimensionsInput({ ...dimensionsInput, height: e.target.value })}
-                        style={{ padding: "0.4rem", width: "6rem" }}
+                        className={`${INPUT} w-24`}
                       />
                     </label>
                   </div>
                 )}
                 {draftShapeType === "circle" && (
-                  <label>
-                    Radius ({plotRow.scaleCalibration ? "m" : "units"})
-                    <br />
+                  <label className="flex flex-col gap-1">
+                    <span className={LABEL}>Radius ({plotRow.scaleCalibration ? "m" : "units"})</span>
                     <input
                       type="number"
                       value={dimensionsInput.radius}
                       onChange={(e) => setDimensionsInput({ ...dimensionsInput, radius: e.target.value })}
-                      style={{ padding: "0.4rem", width: "6rem" }}
+                      className={`${INPUT} w-24`}
                     />
                   </label>
                 )}
                 {(draftShapeType === "rectangle" || draftShapeType === "circle") && (
-                  <button type="button" onClick={placeDraftShape}>
+                  <button type="button" onClick={placeDraftShape} className={`${BUTTON_SECONDARY} w-fit`}>
                     Place on the plan
                   </button>
                 )}
                 {(draftShapeType === "polygon" || draftShapeType === "line") && (
-                  <p style={{ fontSize: "0.85rem", color: "#666" }}>
+                  <p className="text-[13px] text-[var(--text-muted)]">
                     Click on the plan to add points ({draftPoints.length} so far,{" "}
                     {draftShapeType === "polygon" ? "at least 3" : "at least 2"} needed).
                   </p>
@@ -1366,12 +1366,12 @@ export default function PlotEditor({
             {(draftGeometry || draftPoints.length > 0) && (
               <>
                 {(draftShapeType === "rectangle" || draftShapeType === "circle") && (
-                  <p style={{ fontSize: "0.8rem", color: "#666" }}>
+                  <p className="text-[12px] text-[var(--text-muted)]">
                     Drag the shape to reposition it{draftShapeType === "rectangle" && "; drag the small handle to rotate it"}.
                   </p>
                 )}
                 {selfServiceMode && (
-                  <p style={{ fontSize: "0.85rem", color: "#666" }}>
+                  <p className="text-[13px] text-[var(--text-muted)]">
                     Moving &ldquo;{placementFields.label}&rdquo; — this will apply immediately but flag it
                     pending until the Spatial-planning holder reviews it.
                   </p>
@@ -1383,12 +1383,12 @@ export default function PlotEditor({
                       placeholder="Label"
                       value={placementFields.label}
                       onChange={(e) => setPlacementFields({ ...placementFields, label: e.target.value })}
-                      style={{ padding: "0.4rem" }}
+                      className={INPUT}
                     />
                     <select
                       value={placementFields.category}
                       onChange={(e) => setPlacementFields({ ...placementFields, category: e.target.value })}
-                      style={{ padding: "0.4rem" }}
+                      className={INPUT}
                     >
                       {PLACEMENT_CATEGORIES.map((c) => (
                         <option key={c.value} value={c.value}>
@@ -1396,46 +1396,48 @@ export default function PlotEditor({
                         </option>
                       ))}
                     </select>
-                    <label>
-                      Linked Task ID (optional)
-                      <br />
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>Linked Task ID (optional)</span>
                       <input
                         type="text"
                         placeholder="paste the task's ID from its /tasks/… URL"
                         value={placementFields.linkedTaskId}
                         onChange={(e) => setPlacementFields({ ...placementFields, linkedTaskId: e.target.value })}
-                        style={{ padding: "0.4rem", width: "100%" }}
+                        className={INPUT}
                       />
                     </label>
                     {communityMembers.length > 0 && (
-                      <fieldset>
-                        <legend>Linked Members</legend>
-                        {communityMembers.map((m) => (
-                          <label key={m.id} style={{ display: "block", fontSize: "0.85rem" }}>
-                            <input
-                              type="checkbox"
-                              checked={placementFields.memberIds.includes(m.id)}
-                              onChange={() =>
-                                setPlacementFields((f) => ({
-                                  ...f,
-                                  memberIds: f.memberIds.includes(m.id)
-                                    ? f.memberIds.filter((id) => id !== m.id)
-                                    : [...f.memberIds, m.id],
-                                }))
-                              }
-                            />{" "}
-                            {m.name}
-                          </label>
-                        ))}
+                      <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+                        <legend className="px-1 text-[12px] text-[var(--text-muted)]">Linked Members</legend>
+                        <div className="flex flex-col gap-1">
+                          {communityMembers.map((m) => (
+                            <label key={m.id} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                              <input
+                                type="checkbox"
+                                checked={placementFields.memberIds.includes(m.id)}
+                                onChange={() =>
+                                  setPlacementFields((f) => ({
+                                    ...f,
+                                    memberIds: f.memberIds.includes(m.id)
+                                      ? f.memberIds.filter((id) => id !== m.id)
+                                      : [...f.memberIds, m.id],
+                                  }))
+                                }
+                              />
+                              {m.name}
+                            </label>
+                          ))}
+                        </div>
                       </fieldset>
                     )}
                   </>
                 )}
-                <div style={{ display: "flex", gap: "0.5rem" }}>
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     disabled={!placementFields.label}
                     onClick={mode === "draw-placement" ? saveNewPlacement : saveEditedPlacement}
+                    className={BUTTON_PRIMARY}
                   >
                     {selfServiceMode ? "Save move" : "Save Placement"}
                   </button>
@@ -1448,11 +1450,12 @@ export default function PlotEditor({
                       setSelectedPlacementId(null);
                       setSelfServiceMode(false);
                     }}
+                    className={BUTTON_SECONDARY}
                   >
                     Cancel
                   </button>
                   {draftPoints.length > 0 && (
-                    <button type="button" onClick={() => setDraftPoints(draftPoints.slice(0, -1))}>
+                    <button type="button" onClick={() => setDraftPoints(draftPoints.slice(0, -1))} className={BUTTON_SECONDARY}>
                       Undo last point
                     </button>
                   )}
@@ -1463,40 +1466,40 @@ export default function PlotEditor({
         )}
 
         {mode === "view" && (
-          <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <div className="mt-3 flex flex-wrap gap-2">
             {canEdit && (
-              <button type="button" onClick={() => setMode("calibrate")}>
+              <button type="button" onClick={() => setMode("calibrate")} className={BUTTON_SECONDARY}>
                 {plotRow.scaleCalibration ? "Recalibrate" : "Calibrate scale"}
               </button>
             )}
             {canEdit && (
-              <button type="button" disabled={!plotRow.scaleCalibration && false} onClick={() => setMode("draw-zone")}>
+              <button type="button" disabled={!plotRow.scaleCalibration && false} onClick={() => setMode("draw-zone")} className={BUTTON_SECONDARY}>
                 Add Zone
               </button>
             )}
             {canEdit && (
-              <button type="button" onClick={startNewPlacement}>
+              <button type="button" onClick={startNewPlacement} className={BUTTON_SECONDARY}>
                 Add Placement
               </button>
             )}
-            <button type="button" onClick={exportImage}>
+            <button type="button" onClick={exportImage} className={BUTTON_SECONDARY}>
               Export as image
             </button>
-            <button type="button" onClick={() => exportGeoJSON("plot")}>
+            <button type="button" onClick={() => exportGeoJSON("plot")} className={BUTTON_SECONDARY}>
               Export whole Plot as GeoJSON
             </button>
             {selectedZone && (
-              <button type="button" onClick={() => exportGeoJSON("zone")}>
+              <button type="button" onClick={() => exportGeoJSON("zone")} className={BUTTON_SECONDARY}>
                 Export &ldquo;{selectedZone.name}&rdquo; as GeoJSON
               </button>
             )}
             {selectedPlacement && (
-              <button type="button" onClick={() => exportGeoJSON("placement")}>
+              <button type="button" onClick={() => exportGeoJSON("placement")} className={BUTTON_SECONDARY}>
                 Export &ldquo;{selectedPlacement.label}&rdquo; as GeoJSON
               </button>
             )}
             {selectedPlacement && canEdit && (
-              <button type="button" onClick={() => saveCurrentAsTemplate(selectedPlacement.id)}>
+              <button type="button" onClick={() => saveCurrentAsTemplate(selectedPlacement.id)} className={BUTTON_SECONDARY}>
                 Save shape as template
               </button>
             )}
@@ -1504,158 +1507,151 @@ export default function PlotEditor({
         )}
       </div>
 
-      <div style={{ minWidth: 220 }}>
+      <div className="min-w-[220px]">
         {categories.length > 0 && (
-          <fieldset style={{ marginBottom: "1rem" }}>
-            <legend>Layers</legend>
-            {categories.map((c) => (
-              <label key={c} style={{ display: "block", fontSize: "0.85rem" }}>
-                <input
-                  type="checkbox"
-                  checked={!hiddenCategories.has(c)}
-                  onChange={() =>
-                    setHiddenCategories((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(c)) next.delete(c);
-                      else next.add(c);
-                      return next;
-                    })
-                  }
-                />{" "}
-                {c}
-              </label>
-            ))}
+          <fieldset className="mb-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+            <legend className="px-1 text-[12px] text-[var(--text-muted)]">Layers</legend>
+            <div className="flex flex-col gap-1">
+              {categories.map((c) => (
+                <label key={c} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                  <input
+                    type="checkbox"
+                    checked={!hiddenCategories.has(c)}
+                    onChange={() =>
+                      setHiddenCategories((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(c)) next.delete(c);
+                        else next.add(c);
+                        return next;
+                      })
+                    }
+                  />
+                  {c}
+                </label>
+              ))}
+            </div>
           </fieldset>
         )}
 
-        <h3 style={{ fontSize: "1rem" }}>Zones</h3>
-        {zones.length === 0 && <p style={{ color: "#666", fontSize: "0.85rem" }}>None yet.</p>}
-        {zones.map((z) => (
-          <div
-            key={z.id}
-            style={{
-              padding: "0.4rem",
-              marginBottom: "0.3rem",
-              border: z.id === selectedZoneId ? "2px solid #333" : "1px solid #ddd",
-              fontSize: "0.85rem",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-              <span style={{ width: 10, height: 10, background: z.color, display: "inline-block" }} />
-              <strong>{z.name}</strong>
-              <span style={{ color: "#666" }}>({z.category})</span>
-            </div>
-            {plotRow.scaleCalibration && (
-              <div style={{ color: "#666" }}>
-                {Math.round(polygonAreaSqm(z.polygon, plotRow.scaleCalibration)).toLocaleString()} m²
+        <h3 className="text-[15px] font-medium text-[var(--text)]">Zones</h3>
+        {zones.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+        <div className="mt-1 flex flex-col gap-1.5">
+          {zones.map((z) => (
+            <div
+              key={z.id}
+              className={`rounded-[var(--radius-md)] border p-2 text-[13px] ${z.id === selectedZoneId ? "border-[var(--accent-1)]" : "border-[var(--border)]"}`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="inline-block h-2.5 w-2.5 shrink-0" style={{ background: z.color }} />
+                <span className="font-medium text-[var(--text)]">{z.name}</span>
+                <span className="text-[var(--text-muted)]">({z.category})</span>
               </div>
-            )}
-            {canEdit && mode === "view" && (
-              <div style={{ marginTop: "0.2rem", display: "flex", gap: "0.4rem" }}>
-                <button type="button" onClick={() => startEditingZone(z)}>
-                  Edit
-                </button>
-                <button type="button" onClick={() => deleteZone(z.id)}>
-                  Delete
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
-
-        <h3 style={{ fontSize: "1rem", marginTop: "1rem" }}>Placements</h3>
-        {placements.length === 0 && <p style={{ color: "#666", fontSize: "0.85rem" }}>None yet.</p>}
-        {placements.map((p) => (
-          <div
-            key={p.id}
-            style={{
-              padding: "0.4rem",
-              marginBottom: "0.3rem",
-              border: p.id === selectedPlacementId ? "2px solid #333" : "1px solid #ddd",
-              fontSize: "0.85rem",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-              <span
-                style={{
-                  width: 10,
-                  height: 10,
-                  background: PLACEMENT_CATEGORY_COLOR[p.category] ?? PLACEMENT_CATEGORY_COLOR.generic,
-                  display: "inline-block",
-                }}
-              />
-              <strong>{p.label}</strong>
-              <span style={{ color: "#666" }}>
-                ({p.category} · {p.shapeType})
-              </span>
-              {p.status === "pending" && <span style={{ color: "#cc6600" }}>⚠ pending review</span>}
-            </div>
-            {plotRow.scaleCalibration && (
-              <div style={{ color: "#666" }}>
-                {Math.round(placementAreaSqm(p.shapeType, p.geometry, plotRow.scaleCalibration)).toLocaleString()} m²
-              </div>
-            )}
-            {mode === "view" && (
-              <div style={{ marginTop: "0.2rem", display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
-                {canEdit && (
-                  <>
-                    <button type="button" onClick={() => startEditingPlacement(p)}>
-                      Edit
-                    </button>
-                    <button type="button" onClick={() => deletePlacementHandler(p.id)}>
-                      Delete
-                    </button>
-                    {p.status === "pending" && (
-                      <>
-                        <button type="button" onClick={() => approvePlacementHandler(p.id)}>
-                          Approve
-                        </button>
-                        <button type="button" onClick={() => revertPlacementHandler(p.id)}>
-                          Revert
-                        </button>
-                      </>
-                    )}
-                  </>
-                )}
-                {!canEdit && myEditablePlacementIds.includes(p.id) && (
-                  <button type="button" onClick={() => startEditingPlacement(p, true)}>
-                    Move
+              {plotRow.scaleCalibration && (
+                <div className="mt-0.5 text-[var(--text-muted)]">
+                  {Math.round(polygonAreaSqm(z.polygon, plotRow.scaleCalibration)).toLocaleString()} m²
+                </div>
+              )}
+              {canEdit && mode === "view" && (
+                <div className="mt-1.5 flex gap-1.5">
+                  <button type="button" onClick={() => startEditingZone(z)} className={BUTTON_SECONDARY}>
+                    Edit
                   </button>
-                )}
-                {(canEdit || myEditablePlacementIds.includes(p.id)) && communityMembers.length > 0 && (
-                  <span style={{ display: "inline-flex", gap: "0.3rem", alignItems: "center" }}>
-                    <select
-                      value={selectedPlacementId === p.id ? inviteMemberId : ""}
-                      onChange={(e) => {
-                        setSelectedPlacementId(p.id);
-                        setInviteMemberId(e.target.value);
-                      }}
-                      style={{ padding: "0.2rem" }}
-                    >
-                      <option value="">— invite someone —</option>
-                      {communityMembers.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={selectedPlacementId !== p.id || !inviteMemberId}
-                      onClick={async () => {
-                        await invitePlacementMemberHandler(p.id, inviteMemberId);
-                        setInviteMemberId("");
-                        setSelectedPlacementId(null);
-                      }}
-                    >
-                      Invite
-                    </button>
-                  </span>
-                )}
+                  <button type="button" onClick={() => deleteZone(z.id)} className={BUTTON_SECONDARY}>
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <h3 className="mt-4 text-[15px] font-medium text-[var(--text)]">Placements</h3>
+        {placements.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+        <div className="mt-1 flex flex-col gap-1.5">
+          {placements.map((p) => (
+            <div
+              key={p.id}
+              className={`rounded-[var(--radius-md)] border p-2 text-[13px] ${p.id === selectedPlacementId ? "border-[var(--accent-1)]" : "border-[var(--border)]"}`}
+            >
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span
+                  className="inline-block h-2.5 w-2.5 shrink-0"
+                  style={{ background: PLACEMENT_CATEGORY_COLOR[p.category] ?? PLACEMENT_CATEGORY_COLOR.generic }}
+                />
+                <span className="font-medium text-[var(--text)]">{p.label}</span>
+                <span className="text-[var(--text-muted)]">
+                  ({p.category} · {p.shapeType})
+                </span>
+                {p.status === "pending" && <Tag tone="warning">pending review</Tag>}
               </div>
-            )}
-          </div>
-        ))}
+              {plotRow.scaleCalibration && (
+                <div className="mt-0.5 text-[var(--text-muted)]">
+                  {Math.round(placementAreaSqm(p.shapeType, p.geometry, plotRow.scaleCalibration)).toLocaleString()} m²
+                </div>
+              )}
+              {mode === "view" && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  {canEdit && (
+                    <>
+                      <button type="button" onClick={() => startEditingPlacement(p)} className={BUTTON_SECONDARY}>
+                        Edit
+                      </button>
+                      <button type="button" onClick={() => deletePlacementHandler(p.id)} className={BUTTON_SECONDARY}>
+                        Delete
+                      </button>
+                      {p.status === "pending" && (
+                        <>
+                          <button type="button" onClick={() => approvePlacementHandler(p.id)} className={BUTTON_PRIMARY}>
+                            Approve
+                          </button>
+                          <button type="button" onClick={() => revertPlacementHandler(p.id)} className={BUTTON_SECONDARY}>
+                            Revert
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
+                  {!canEdit && myEditablePlacementIds.includes(p.id) && (
+                    <button type="button" onClick={() => startEditingPlacement(p, true)} className={BUTTON_SECONDARY}>
+                      Move
+                    </button>
+                  )}
+                  {(canEdit || myEditablePlacementIds.includes(p.id)) && communityMembers.length > 0 && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <select
+                        value={selectedPlacementId === p.id ? inviteMemberId : ""}
+                        onChange={(e) => {
+                          setSelectedPlacementId(p.id);
+                          setInviteMemberId(e.target.value);
+                        }}
+                        className={`${INPUT} py-1`}
+                      >
+                        <option value="">— invite someone —</option>
+                        {communityMembers.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={selectedPlacementId !== p.id || !inviteMemberId}
+                        onClick={async () => {
+                          await invitePlacementMemberHandler(p.id, inviteMemberId);
+                          setInviteMemberId("");
+                          setSelectedPlacementId(null);
+                        }}
+                        className={BUTTON_SECONDARY}
+                      >
+                        Invite
+                      </button>
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );

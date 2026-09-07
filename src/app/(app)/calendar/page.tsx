@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react/dist/ssr";
 import { db } from "@/db";
 import { member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
-import { BUTTON_SECONDARY } from "@/components/ui/kit";
+import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag, TONE_CLASSES, type Tone } from "@/components/ui/kit";
 import {
   getCalendarEvent,
   listCalendarEventInvites,
@@ -49,23 +50,31 @@ const KIND_LABEL: Record<CalendarEntry["kind"], string> = {
   budget_deadline: "Budget",
 };
 
-const KIND_CLASS: Record<CalendarEntry["kind"], string> = {
-  phase_start: "bg-emerald-100 text-emerald-800",
-  phase_end: "bg-emerald-100 text-emerald-800",
-  milestone: "bg-blue-100 text-blue-800",
-  calendar_event: "bg-purple-100 text-purple-800",
-  input_round_cutoff: "bg-amber-100 text-amber-800",
-  assembly_agenda_ends: "bg-neutral-200 text-neutral-700",
-  assembly_notice_ends: "bg-neutral-200 text-neutral-700",
-  assembly_voting_ends: "bg-neutral-200 text-neutral-700",
-  poll_confirmed: "bg-teal-100 text-teal-800",
-  event_confirmed: "bg-indigo-100 text-indigo-800",
-  birthday: "bg-pink-100 text-pink-800",
-  shift_occurrence: "bg-orange-100 text-orange-800",
-  budget_deadline: "bg-rose-100 text-rose-800",
+// Collapsed onto the shared 6-tone Tag palette (see kit.tsx) rather
+// than a bespoke color per kind — enough kinds share a tone that this
+// still reads as "settled/confirmed" vs. "deadline" vs. "personal" at
+// a glance, and KIND_LABEL/the entry's own link carry the specifics.
+const KIND_TONE: Record<CalendarEntry["kind"], Tone> = {
+  phase_start: "success",
+  phase_end: "success",
+  poll_confirmed: "success",
+  milestone: "accent",
+  event_confirmed: "accent",
+  calendar_event: "accent2",
+  birthday: "accent2",
+  input_round_cutoff: "warning",
+  budget_deadline: "warning",
+  assembly_agenda_ends: "neutral",
+  assembly_notice_ends: "neutral",
+  assembly_voting_ends: "neutral",
+  shift_occurrence: "neutral",
 };
 
 const WEEKDAY_LABEL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+}
 
 // The Calendar view's payoff — one Community-wide read layer over every
 // dated thing that already exists across the app, plus (folded in from
@@ -127,20 +136,20 @@ export default async function CalendarPage({
   );
 
   return (
-    <main className="mx-auto max-w-4xl p-8 font-sans">
-      <h1 className="text-2xl font-semibold text-neutral-900">Calendar</h1>
-      <p className="mt-1 text-sm text-neutral-500">
+    <main className="mx-auto max-w-4xl px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Calendar</h1>
+      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
         {view.currentCycle ? `Current cycle: ${view.currentCycle.name}. ` : ""}
         Phase boundaries, your task milestones, your calendar events, and every other module
         deadline in one place — a read layer only, nothing here changes what any of those pages do.
       </p>
 
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-      {created && <p className="mt-2 text-sm text-emerald-700">Event created.</p>}
-      {updated && <p className="mt-2 text-sm text-emerald-700">Event updated.</p>}
-      {deleted && <p className="mt-2 text-sm text-emerald-700">Event deleted.</p>}
-      {invited && <p className="mt-2 text-sm text-emerald-700">Invites sent.</p>}
-      {responded && <p className="mt-2 text-sm text-emerald-700">Your response is saved.</p>}
+      {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
+      {created && <div className="mt-4"><Banner tone="success">Event created.</Banner></div>}
+      {updated && <div className="mt-4"><Banner tone="success">Event updated.</Banner></div>}
+      {deleted && <div className="mt-4"><Banner tone="success">Event deleted.</Banner></div>}
+      {invited && <div className="mt-4"><Banner tone="success">Invites sent.</Banner></div>}
+      {responded && <div className="mt-4"><Banner tone="success">Your response is saved.</Banner></div>}
 
       <div className="mt-4">
         <Link href="/scheduling-polls" className={BUTTON_SECONDARY}>
@@ -150,22 +159,31 @@ export default async function CalendarPage({
 
       <section className="mt-6">
         <div className="flex items-center justify-between">
-          <a href={`/calendar?month=${monthParam(prev.year, prev.month)}`} className="text-sm text-neutral-600 hover:text-neutral-900">
-            ← {MONTH_LABEL[(prev.month - 1 + 12) % 12]}
-          </a>
-          <h2 className="text-base font-semibold text-neutral-800">
+          <Link
+            href={`/calendar?month=${monthParam(prev.year, prev.month)}`}
+            className="flex items-center gap-1 text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"
+          >
+            <CaretLeftIcon size={14} /> {MONTH_LABEL[(prev.month - 1 + 12) % 12]}
+          </Link>
+          <h2 className="text-[16px] font-semibold text-[var(--text)]">
             {MONTH_LABEL[monthNum - 1]} {year}
           </h2>
-          <a href={`/calendar?month=${monthParam(next.year, next.month)}`} className="text-sm text-neutral-600 hover:text-neutral-900">
-            {MONTH_LABEL[(next.month - 1 + 12) % 12]} →
-          </a>
+          <Link
+            href={`/calendar?month=${monthParam(next.year, next.month)}`}
+            className="flex items-center gap-1 text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"
+          >
+            {MONTH_LABEL[(next.month - 1 + 12) % 12]} <CaretRightIcon size={14} />
+          </Link>
         </div>
 
-        <table className="mt-3 w-full table-fixed border-collapse text-xs">
+        <table className="mt-3 w-full table-fixed border-collapse text-[12px]">
           <thead>
             <tr>
               {WEEKDAY_LABEL.map((w) => (
-                <th key={w} className="border border-neutral-200 bg-neutral-50 p-1 text-neutral-500">
+                <th
+                  key={w}
+                  className="border border-[var(--border)] bg-[var(--surface-sunken)] p-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]"
+                >
                   {w}
                 </th>
               ))}
@@ -179,22 +197,22 @@ export default async function CalendarPage({
                   return (
                     <td
                       key={day.date}
-                      className={`h-24 align-top border border-neutral-200 p-1 ${day.inMonth ? "" : "bg-neutral-50 text-neutral-400"} ${day.isToday ? "ring-2 ring-inset ring-blue-400" : ""}`}
+                      className={`h-24 border border-[var(--border)] p-1 align-top ${day.inMonth ? "bg-[var(--surface)]" : "bg-[var(--surface-sunken)] text-[var(--text-muted)]"} ${day.isToday ? "ring-2 ring-inset ring-[var(--accent-1)]" : ""}`}
                     >
-                      <div className="text-[11px] text-neutral-500">{Number(day.date.slice(8, 10))}</div>
+                      <div className="text-[11px] text-[var(--text-muted)]">{Number(day.date.slice(8, 10))}</div>
                       <div className="mt-0.5 flex flex-col gap-0.5">
                         {dayEntries.slice(0, 3).map((e, i) => (
                           <a
                             key={i}
                             href={e.href}
-                            className={`truncate rounded px-1 py-0.5 text-[10px] leading-tight ${KIND_CLASS[e.kind]}`}
+                            className={`truncate rounded-[var(--radius-sm)] px-1 py-0.5 text-[10px] leading-tight ${TONE_CLASSES[KIND_TONE[e.kind]]}`}
                             title={e.label}
                           >
                             {e.label}
                           </a>
                         ))}
                         {dayEntries.length > 3 && (
-                          <span className="text-[10px] text-neutral-400">+{dayEntries.length - 3} more</span>
+                          <span className="text-[10px] text-[var(--text-muted)]">+{dayEntries.length - 3} more</span>
                         )}
                       </div>
                     </td>
@@ -206,18 +224,21 @@ export default async function CalendarPage({
         </table>
       </section>
 
-      <section className="mt-6">
-        <h2 className="text-base font-semibold text-neutral-800">Upcoming</h2>
-        {upcoming.length === 0 && <p className="mt-1 text-sm text-neutral-500">Nothing dated ahead right now.</p>}
-        <ul className="mt-2 space-y-1">
+      <section className="mt-8">
+        <SectionHeading>Upcoming</SectionHeading>
+        {upcoming.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">Nothing dated ahead right now.</p>}
+        <ul className="mt-2">
           {upcoming.map((e, i) => (
-            <li key={i} className="flex items-center gap-2 text-sm">
-              <span className="w-24 shrink-0 text-neutral-500">{e.date}</span>
-              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${KIND_CLASS[e.kind]}`}>{KIND_LABEL[e.kind]}</span>
-              <a href={e.href} className="text-neutral-800 hover:underline">
+            <li
+              key={i}
+              className="flex items-center gap-3 border-b border-[var(--border)] py-2 text-[13px] last:border-b-0"
+            >
+              <span className="w-24 shrink-0 text-[var(--text-muted)]">{e.date}</span>
+              <span className="shrink-0"><Tag tone={KIND_TONE[e.kind]}>{KIND_LABEL[e.kind]}</Tag></span>
+              <a href={e.href} className="min-w-0 truncate text-[var(--text)] hover:text-[var(--accent-1)]">
                 {e.label}
               </a>
-              {e.drifted && <span className="text-[10px] text-amber-700">drifted</span>}
+              {e.drifted && <span className="shrink-0 text-[11px] text-[var(--warning)]">drifted</span>}
             </li>
           ))}
         </ul>
@@ -225,23 +246,23 @@ export default async function CalendarPage({
 
       {myInvites.length > 0 && (
         <section className="mt-8">
-          <h2 className="text-base font-semibold text-neutral-800">Invites waiting on you</h2>
+          <SectionHeading>Invites waiting on you</SectionHeading>
           {myInvites.map((i) => (
-            <div key={i.eventId} className="mt-2 rounded-md border border-neutral-300 p-3">
-              <strong>{i.eventTitle}</strong>{" "}
-              <span className="text-sm text-neutral-500">
-                — invited by {i.invitedByName}, {new Date(i.invitedAt).toLocaleDateString()}
-              </span>
-              <div className="mt-2 flex gap-2">
+            <div key={i.eventId} className={`mt-3 ${CARD}`}>
+              <p className="text-[14px] font-medium text-[var(--text)]">{i.eventTitle}</p>
+              <p className="mt-0.5 text-[13px] text-[var(--text-muted)]">
+                Invited by {i.invitedByName}, {new Date(i.invitedAt).toLocaleDateString()}
+              </p>
+              <div className="mt-3 flex gap-2">
                 <form action={acceptInviteAction}>
                   <input type="hidden" name="eventId" value={i.eventId} />
-                  <button type="submit" className="rounded-md bg-neutral-800 px-3 py-1 text-sm text-white">
+                  <button type="submit" className={BUTTON_PRIMARY}>
                     Accept
                   </button>
                 </form>
                 <form action={declineInviteAction}>
                   <input type="hidden" name="eventId" value={i.eventId} />
-                  <button type="submit" className="rounded-md border border-neutral-300 px-3 py-1 text-sm">
+                  <button type="submit" className={BUTTON_SECONDARY}>
                     Decline
                   </button>
                 </form>
@@ -252,65 +273,83 @@ export default async function CalendarPage({
       )}
 
       <section className="mt-8">
-        <h2 className="text-base font-semibold text-neutral-800">Your events</h2>
-        {myOwnEvents.length === 0 && <p className="mt-1 text-sm text-neutral-500">None yet.</p>}
+        <SectionHeading>Your events</SectionHeading>
+        {myOwnEvents.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
         {myOwnEvents.map((e) => {
           const eventInvites = inviteListsByEventId.get(e.id) ?? [];
           return (
-            <div key={e.id} className="mt-3 rounded-md border border-neutral-300 p-3">
-              <strong>{e.title}</strong> <span className="text-sm text-neutral-500">({SHARE_LABEL[e.shareTarget]})</span>
-              <div className="text-sm text-neutral-500">
-                {e.date ?? "unresolved"}
-                {e.drifted && <span className="text-amber-700"> · drifted from its anchor</span>}
+            <div key={e.id} className={`mt-3 ${CARD}`}>
+              <div className="flex items-baseline gap-2">
+                <p className="text-[14px] font-medium text-[var(--text)]">{e.title}</p>
+                <Tag>{SHARE_LABEL[e.shareTarget]}</Tag>
               </div>
-              {e.description && <p className="mt-1">{e.description}</p>}
+              <p className="mt-0.5 text-[13px] text-[var(--text-muted)]">
+                {e.date ?? "unresolved"}
+                {e.drifted && <span className="text-[var(--warning)]"> · drifted from its anchor</span>}
+              </p>
+              {e.description && <p className="mt-2 text-[13px] text-[var(--text)]">{e.description}</p>}
 
               {eventInvites.length > 0 && (
-                <p className="mt-1 text-xs text-neutral-500">
+                <p className="mt-2 text-[12px] text-[var(--text-muted)]">
                   Invited: {eventInvites.map((i) => `${i.memberName} (${i.invite.status})`).join(", ")}
                 </p>
               )}
 
               <details className="mt-2">
-                <summary className="cursor-pointer text-sm">Edit</summary>
+                <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Edit</summary>
                 <form action={updateCalendarEventAction} className="mt-2 flex max-w-md flex-col gap-2">
                   <input type="hidden" name="eventId" value={e.id} />
-                  <input type="text" name="title" required defaultValue={e.title} className="rounded border border-neutral-300 p-2" />
-                  <textarea name="description" rows={2} defaultValue={e.description ?? ""} className="rounded border border-neutral-300 p-2" />
-                  <select name="cycleId" defaultValue={e.cycleId ?? ""} className="rounded border border-neutral-300 p-2">
-                    <option value="">Cycle-independent</option>
-                    {cycles.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="flex flex-col gap-1">
+                    <span className={LABEL}>Title</span>
+                    <input type="text" name="title" required defaultValue={e.title} className={INPUT} />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className={LABEL}>Description</span>
+                    <textarea name="description" rows={2} defaultValue={e.description ?? ""} className={INPUT} />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className={LABEL}>Cycle</span>
+                    <select name="cycleId" defaultValue={e.cycleId ?? ""} className={INPUT}>
+                      <option value="">Cycle-independent</option>
+                      {cycles.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <EventDateFields event={e} />
-                  <select name="shareTarget" defaultValue={e.shareTarget} className="rounded border border-neutral-300 p-2">
-                    <option value="personal">Personal (just you)</option>
-                    <option value="branch">Shared with a Branch</option>
-                    <option value="community">Shared with the whole Community</option>
-                  </select>
-                  <select name="sharedBranchId" defaultValue={e.sharedBranchId ?? ""} className="rounded border border-neutral-300 p-2">
-                    <option value="">— pick a Branch if shareTarget is Branch —</option>
-                    {branches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button type="submit" className="w-fit rounded-md bg-neutral-800 px-3 py-1 text-sm text-white">
+                  <label className="flex flex-col gap-1">
+                    <span className={LABEL}>Share with</span>
+                    <select name="shareTarget" defaultValue={e.shareTarget} className={INPUT}>
+                      <option value="personal">Personal (just you)</option>
+                      <option value="branch">Shared with a Branch</option>
+                      <option value="community">Shared with the whole Community</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className={LABEL}>Branch (used when share target is Branch)</span>
+                    <select name="sharedBranchId" defaultValue={e.sharedBranchId ?? ""} className={INPUT}>
+                      <option value="">— pick a Branch if shareTarget is Branch —</option>
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                     Save
                   </button>
                 </form>
               </details>
 
               <details className="mt-2">
-                <summary className="cursor-pointer text-sm">Invite people</summary>
+                <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Invite people</summary>
                 <div className="mt-2 flex flex-col gap-2">
                   <form action={inviteMemberAction} className="flex gap-2">
                     <input type="hidden" name="eventId" value={e.id} />
-                    <select name="memberId" required className="rounded border border-neutral-300 p-1.5 text-sm">
+                    <select name="memberId" required className={INPUT}>
                       <option value="">Pick a member</option>
                       {communityMembers
                         .filter((m) => m.id !== viewing.id)
@@ -320,13 +359,13 @@ export default async function CalendarPage({
                           </option>
                         ))}
                     </select>
-                    <button type="submit" className="rounded-md border border-neutral-300 px-2 py-1 text-sm">
+                    <button type="submit" className={BUTTON_SECONDARY}>
                       Invite
                     </button>
                   </form>
                   <form action={inviteBranchAction} className="flex gap-2">
                     <input type="hidden" name="eventId" value={e.id} />
-                    <select name="branchId" required className="rounded border border-neutral-300 p-1.5 text-sm">
+                    <select name="branchId" required className={INPUT}>
                       <option value="">Pick a Branch</option>
                       {branches.map((b) => (
                         <option key={b.id} value={b.id}>
@@ -334,13 +373,13 @@ export default async function CalendarPage({
                         </option>
                       ))}
                     </select>
-                    <button type="submit" className="rounded-md border border-neutral-300 px-2 py-1 text-sm">
+                    <button type="submit" className={BUTTON_SECONDARY}>
                       Invite Branch&rsquo;s current roster
                     </button>
                   </form>
                   <form action={inviteCommunityAction}>
                     <input type="hidden" name="eventId" value={e.id} />
-                    <button type="submit" className="rounded-md border border-neutral-300 px-2 py-1 text-sm">
+                    <button type="submit" className={BUTTON_SECONDARY}>
                       Invite the whole Community
                     </button>
                   </form>
@@ -349,7 +388,7 @@ export default async function CalendarPage({
 
               <form action={deleteCalendarEventAction} className="mt-2">
                 <input type="hidden" name="eventId" value={e.id} />
-                <button type="submit" className="text-sm text-red-600 hover:underline">
+                <button type="submit" className={BUTTON_GHOST}>
                   Delete
                 </button>
               </form>
@@ -360,43 +399,61 @@ export default async function CalendarPage({
 
       {acceptedEvents.length > 0 && (
         <section className="mt-8">
-          <h2 className="text-base font-semibold text-neutral-800">On your calendar</h2>
-          {acceptedEvents.map((e) => (
-            <div key={e.id} className="mt-1 text-sm">
-              <strong>{e.title}</strong> <span className="text-neutral-500">— {e.date ?? "unresolved"}</span>
-            </div>
-          ))}
+          <SectionHeading>On your calendar</SectionHeading>
+          <ul className="mt-2">
+            {acceptedEvents.map((e) => (
+              <li key={e.id} className="border-b border-[var(--border)] py-2 text-[13px] last:border-b-0">
+                <span className="font-medium text-[var(--text)]">{e.title}</span>{" "}
+                <span className="text-[var(--text-muted)]">— {e.date ?? "unresolved"}</span>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
       <section className="mt-8">
-        <h2 className="text-base font-semibold text-neutral-800">Create an event</h2>
-        <form action={createCalendarEventAction} className="mt-2 flex max-w-md flex-col gap-2">
-          <input type="text" name="title" required placeholder="Title" className="rounded border border-neutral-300 p-2" />
-          <textarea name="description" rows={2} placeholder="Description (optional)" className="rounded border border-neutral-300 p-2" />
-          <select name="cycleId" defaultValue="" className="rounded border border-neutral-300 p-2">
-            <option value="">Cycle-independent</option>
-            {cycles.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+        <SectionHeading>Create an event</SectionHeading>
+        <form action={createCalendarEventAction} className={`mt-3 flex max-w-md flex-col gap-2 ${CARD}`}>
+          <label className="flex flex-col gap-1">
+            <span className={LABEL}>Title</span>
+            <input type="text" name="title" required placeholder="Title" className={INPUT} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className={LABEL}>Description (optional)</span>
+            <textarea name="description" rows={2} placeholder="Description (optional)" className={INPUT} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className={LABEL}>Cycle</span>
+            <select name="cycleId" defaultValue="" className={INPUT}>
+              <option value="">Cycle-independent</option>
+              {cycles.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <EventDateFields />
-          <select name="shareTarget" defaultValue="personal" className="rounded border border-neutral-300 p-2">
-            <option value="personal">Personal (just you)</option>
-            <option value="branch">Shared with a Branch</option>
-            <option value="community">Shared with the whole Community</option>
-          </select>
-          <select name="sharedBranchId" defaultValue="" className="rounded border border-neutral-300 p-2">
-            <option value="">— pick a Branch if shareTarget is Branch —</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          <button type="submit" className="w-fit rounded-md bg-neutral-800 px-3 py-1 text-sm text-white">
+          <label className="flex flex-col gap-1">
+            <span className={LABEL}>Share with</span>
+            <select name="shareTarget" defaultValue="personal" className={INPUT}>
+              <option value="personal">Personal (just you)</option>
+              <option value="branch">Shared with a Branch</option>
+              <option value="community">Shared with the whole Community</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className={LABEL}>Branch (used when share target is Branch)</span>
+            <select name="sharedBranchId" defaultValue="" className={INPUT}>
+              <option value="">— pick a Branch if shareTarget is Branch —</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
             Create
           </button>
         </form>
@@ -415,56 +472,58 @@ function EventDateFields({ event }: { event?: EventRow }) {
   const mode = !event || event.dateType === "absolute" ? "absolute" : `relative_${event.relativeMode}`;
 
   return (
-    <fieldset className="rounded border border-neutral-200 p-2">
-      <legend className="px-1 text-xs text-neutral-500">When</legend>
-      <label className="block text-sm">
-        Mode
-        <select name="dateMode" defaultValue={mode} className="mt-1 w-full rounded border border-neutral-300 p-2">
-          <option value="absolute">Absolute date</option>
-          <option value="relative_offset">Relative — offset (days from the Cycle&rsquo;s start/end)</option>
-          <option value="relative_percent">Relative — percent (between the Cycle&rsquo;s start and end)</option>
-        </select>
-      </label>
-      <label className="mt-2 block text-sm">
-        Absolute date (used when mode is Absolute)
-        <input
-          type="date"
-          name="absoluteDate"
-          defaultValue={event?.dateType === "absolute" ? (event.date ?? "") : ""}
-          className="mt-1 w-full rounded border border-neutral-300 p-2"
-        />
-      </label>
-      <label className="mt-2 block text-sm">
-        Anchor (used when mode is relative offset)
-        <select name="anchor" defaultValue={event?.anchorType ?? "cycle_start"} className="mt-1 w-full rounded border border-neutral-300 p-2">
-          <option value="cycle_start">Cycle start</option>
-          <option value="cycle_end">Cycle end</option>
-        </select>
-      </label>
-      <label className="mt-2 block text-sm">
-        Offset days (used when mode is relative offset, and no target date is given below)
-        <input
-          type="number"
-          name="offsetDays"
-          defaultValue={event?.relativeMode === "offset" ? (event.offsetDays ?? "") : ""}
-          className="mt-1 w-full rounded border border-neutral-300 p-2"
-        />
-      </label>
-      <label className="mt-2 block text-sm">
-        Percent 0-100 (used when mode is relative percent, and no target date is given below)
-        <input
-          type="number"
-          min={0}
-          max={100}
-          name="percent"
-          defaultValue={event?.relativeMode === "percent" ? (event.percent ?? "") : ""}
-          className="mt-1 w-full rounded border border-neutral-300 p-2"
-        />
-      </label>
-      <label className="mt-2 block text-sm">
-        Or drag to this target date (recomputes and persists the offset/percent above)
-        <input type="date" name="targetDate" className="mt-1 w-full rounded border border-neutral-300 p-2" />
-      </label>
+    <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+      <legend className="px-1 text-[12px] text-[var(--text-muted)]">When</legend>
+      <div className="flex flex-col gap-2">
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Mode</span>
+          <select name="dateMode" defaultValue={mode} className={INPUT}>
+            <option value="absolute">Absolute date</option>
+            <option value="relative_offset">Relative — offset (days from the Cycle&rsquo;s start/end)</option>
+            <option value="relative_percent">Relative — percent (between the Cycle&rsquo;s start and end)</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Absolute date (used when mode is Absolute)</span>
+          <input
+            type="date"
+            name="absoluteDate"
+            defaultValue={event?.dateType === "absolute" ? (event.date ?? "") : ""}
+            className={INPUT}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Anchor (used when mode is relative offset)</span>
+          <select name="anchor" defaultValue={event?.anchorType ?? "cycle_start"} className={INPUT}>
+            <option value="cycle_start">Cycle start</option>
+            <option value="cycle_end">Cycle end</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Offset days (used when mode is relative offset, and no target date is given below)</span>
+          <input
+            type="number"
+            name="offsetDays"
+            defaultValue={event?.relativeMode === "offset" ? (event.offsetDays ?? "") : ""}
+            className={INPUT}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Percent 0-100 (used when mode is relative percent, and no target date is given below)</span>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            name="percent"
+            defaultValue={event?.relativeMode === "percent" ? (event.percent ?? "") : ""}
+            className={INPUT}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Or drag to this target date (recomputes and persists the offset/percent above)</span>
+          <input type="date" name="targetDate" className={INPUT} />
+        </label>
+      </div>
     </fieldset>
   );
 }

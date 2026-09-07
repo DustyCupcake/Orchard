@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import {
@@ -15,6 +16,7 @@ import { listTaskPacks } from "@/lib/task-packs";
 import { HIGHLIGHTABLE_MODULES } from "@/lib/nav";
 import { ClonePreviewGrid, ClonePreviewList } from "@/components/ClonePreview";
 import type { member as memberTable } from "@/db/schema";
+import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import {
   closeCycleAction,
   createCycleAction,
@@ -43,6 +45,10 @@ const STATUS_LABEL: Record<string, string> = {
 function toDatetimeLocal(date: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 // "Who's actually planning to be there, and how much room is left" —
@@ -107,19 +113,47 @@ export default async function ParticipationPage({
   const cyclesToRender: Cycle[] = scope.kind === "aggregate" ? allCycles.filter((c) => !c.closedAt) : [scope.cycle];
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <h1>Participation</h1>
+    <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Participation</h1>
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
-      {declared && <p style={{ color: "#2a7a2a" }}>Your participation is saved.</p>}
-      {settingsUpdated && <p style={{ color: "#2a7a2a" }}>Cycle settings updated.</p>}
-      {phaseUpdated && <p style={{ color: "#2a7a2a" }}>Phase dates updated.</p>}
-      {highlightUpdated && <p style={{ color: "#2a7a2a" }}>Phase highlight updated.</p>}
-      {cycleCreated && <p style={{ color: "#2a7a2a" }}>Cycle created — set its dates below, if you know them yet.</p>}
-      {cycleClosed && <p style={{ color: "#2a7a2a" }}>Cycle closed.</p>}
+      {error && (
+        <div className="mt-4">
+          <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
+      {declared && (
+        <div className="mt-4">
+          <Banner tone="success">Your participation is saved.</Banner>
+        </div>
+      )}
+      {settingsUpdated && (
+        <div className="mt-4">
+          <Banner tone="success">Cycle settings updated.</Banner>
+        </div>
+      )}
+      {phaseUpdated && (
+        <div className="mt-4">
+          <Banner tone="success">Phase dates updated.</Banner>
+        </div>
+      )}
+      {highlightUpdated && (
+        <div className="mt-4">
+          <Banner tone="success">Phase highlight updated.</Banner>
+        </div>
+      )}
+      {cycleCreated && (
+        <div className="mt-4">
+          <Banner tone="success">Cycle created — set its dates below, if you know them yet.</Banner>
+        </div>
+      )}
+      {cycleClosed && (
+        <div className="mt-4">
+          <Banner tone="success">Cycle closed.</Banner>
+        </div>
+      )}
 
       {cyclesToRender.length === 0 ? (
-        <p style={{ color: "#666" }}>
+        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
           No open cycle yet — there&rsquo;s nothing to declare participation against until one
           exists.
         </p>
@@ -193,18 +227,21 @@ async function StartNewCycleSection({
   const typesWithDefaultPack = cycleTypes.filter((t) => t.defaultPackId && packNameById.has(t.defaultPackId));
 
   return (
-    <section style={{ marginTop: "2rem", borderTop: "1px solid #ddd", paddingTop: "1.5rem" }}>
-      <h2>Start a new cycle</h2>
+    <section className="mt-8 border-t border-[var(--border)] pt-6">
+      <SectionHeading>Start a new cycle</SectionHeading>
 
       {typesWithDefaultPack.length > 0 && (
-        <div style={{ border: "1px solid #ddd", borderRadius: 6, padding: "1rem", marginBottom: "1rem" }}>
-          <h3 style={{ marginTop: 0, fontSize: "0.95rem" }}>Quick-start from a Cycle type&rsquo;s default pack</h3>
-          <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+        <div className={`mt-4 ${CARD}`}>
+          <h3 className="text-[15px] font-medium text-[var(--text)]">Quick-start from a Cycle type&rsquo;s default pack</h3>
+          <ul className="mt-2 flex flex-col gap-1 text-[13px]">
             {typesWithDefaultPack.map((t) => (
               <li key={t.id}>
-                <a href={`/task-packs/import/${t.defaultPackId}?cycleTypeId=${t.id}&cycleName=${encodeURIComponent(t.name)}`}>
+                <Link
+                  href={`/task-packs/import/${t.defaultPackId}?cycleTypeId=${t.id}&cycleName=${encodeURIComponent(t.name)}`}
+                  className="text-[var(--accent-1)] hover:underline"
+                >
                   Start a new {t.name} cycle from &ldquo;{packNameById.get(t.defaultPackId!)}&rdquo;
-                </a>
+                </Link>
               </li>
             ))}
           </ul>
@@ -212,34 +249,31 @@ async function StartNewCycleSection({
       )}
 
       {hasPreviousCycle && (
-        <div style={{ border: "1px solid #ddd", borderRadius: 6, padding: "1rem", marginBottom: "1rem" }}>
-          <h3 style={{ marginTop: 0, fontSize: "0.95rem" }}>Preview a clone</h3>
-          <p style={{ color: "#666", fontSize: "0.85rem" }}>
+        <div className={`mt-4 ${CARD}`}>
+          <h3 className="text-[15px] font-medium text-[var(--text)]">Preview a clone</h3>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             See what cloning the most recent cycle would resolve to against a hypothetical
             start/end, before committing to anything. Reuses the exact same recompute the real
             Cycle-settings form above uses, so this always matches what actually lands once you
             create the clone and set its dates for real.
           </p>
-          <form method="get" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "flex-end" }}>
-            <label style={{ fontSize: "0.85rem" }}>
-              Hypothetical start
-              <br />
-              <input type="date" name="previewStart" defaultValue={previewStart ?? ""} style={{ padding: "0.4rem" }} />
+          <form method="get" className="mt-3 flex flex-wrap items-end gap-2">
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Hypothetical start</span>
+              <input type="date" name="previewStart" defaultValue={previewStart ?? ""} className={INPUT} />
             </label>
-            <label style={{ fontSize: "0.85rem" }}>
-              Hypothetical end
-              <br />
-              <input type="date" name="previewEnd" defaultValue={previewEnd ?? ""} style={{ padding: "0.4rem" }} />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Hypothetical end</span>
+              <input type="date" name="previewEnd" defaultValue={previewEnd ?? ""} className={INPUT} />
             </label>
-            <label style={{ fontSize: "0.85rem" }}>
-              View
-              <br />
-              <select name="previewView" defaultValue={previewView} style={{ padding: "0.4rem" }}>
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>View</span>
+              <select name="previewView" defaultValue={previewView} className={INPUT}>
                 <option value="grid">Calendar</option>
                 <option value="list">List</option>
               </select>
             </label>
-            <button type="submit" style={{ padding: "0.4rem 1rem" }}>
+            <button type="submit" className={BUTTON_SECONDARY}>
               Preview
             </button>
           </form>
@@ -250,35 +284,30 @@ async function StartNewCycleSection({
       )}
 
       {openCycleName && (
-        <p style={{ color: "#b8860b" }}>
-          &ldquo;{openCycleName}&rdquo; is already open — starting another cycle won&rsquo;t close
-          it.
-        </p>
+        <div className="mt-4">
+          <Banner tone="warning">
+            &ldquo;{openCycleName}&rdquo; is already open — starting another cycle won&rsquo;t close it.
+          </Banner>
+        </div>
       )}
 
-      <form
-        action={createCycleAction}
-        style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 400 }}
-      >
+      <form action={createCycleAction} className="mt-4 flex max-w-[400px] flex-col gap-2">
         <input type="hidden" name="cycleScope" value={cycleScope} />
-        <label>
-          Name
-          <br />
-          <input type="text" name="name" required style={{ padding: "0.4rem", width: "100%" }} />
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Name</span>
+          <input type="text" name="name" required className={INPUT} />
         </label>
-        <label>
-          Source
-          <br />
-          <select name="source" defaultValue={hasPreviousCycle ? "clone_previous" : "blank"} style={{ padding: "0.4rem", width: "100%" }}>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Source</span>
+          <select name="source" defaultValue={hasPreviousCycle ? "clone_previous" : "blank"} className={INPUT}>
             <option value="blank">Blank</option>
             {hasPreviousCycle && <option value="clone_previous">Clone the most recent cycle</option>}
           </select>
         </label>
         {cycleTypes.length > 0 && (
-          <label>
-            Cycle type (optional)
-            <br />
-            <select name="cycleTypeId" defaultValue="" style={{ padding: "0.4rem", width: "100%" }}>
+          <label className="flex flex-col gap-1">
+            <span className={LABEL}>Cycle type (optional)</span>
+            <select name="cycleTypeId" defaultValue="" className={INPUT}>
               <option value="">No cycle type</option>
               {cycleTypes.map((t) => (
                 <option key={t.id} value={t.id}>
@@ -288,16 +317,12 @@ async function StartNewCycleSection({
             </select>
           </label>
         )}
-        <p style={{ color: "#666", fontSize: "0.8rem", margin: 0 }}>
+        <p className="text-[12px] text-[var(--text-muted)]">
           A clone&rsquo;s own start/end aren&rsquo;t set here — use the Cycle settings form above once
           it exists.
         </p>
-        {openCycleName && (
-          <label style={{ fontSize: "0.85rem" }}>
-            <input type="checkbox" name="confirmed" required /> I understand — start anyway
-          </label>
-        )}
-        <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+        {openCycleName && <CheckField label="I understand — start anyway" name="confirmed" />}
+        <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
           Create
         </button>
       </form>
@@ -339,12 +364,12 @@ async function ParticipationForCycle({
 
   return (
     <>
-      <section id="cycle-settings" style={{ marginTop: "1rem" }}>
-        <h2>
-          {cycleName}
-          {closed && <span style={{ color: "#b8860b", fontSize: "0.9rem", fontWeight: 400 }}> — closed, read-only</span>}
-        </h2>
-        <p style={{ color: "#666" }}>
+      <section id="cycle-settings" className="mt-6">
+        <div className="flex items-center gap-2">
+          <SectionHeading>{cycleName}</SectionHeading>
+          {closed && <Tag>closed, read-only</Tag>}
+        </div>
+        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
           {summary.capacity === null ? (
             "No capacity cap set — unlimited."
           ) : (
@@ -357,7 +382,7 @@ async function ParticipationForCycle({
           )}
         </p>
         {summary.returningWindowClosesAt && (
-          <p style={{ color: summary.returningWindowOpen ? "#2a7a2a" : "#666" }}>
+          <p className={`mt-1 text-[13px] ${summary.returningWindowOpen ? "text-[var(--success)]" : "text-[var(--text-muted)]"}`}>
             Returning-priority window {summary.returningWindowOpen ? "open" : "closed"} — closes{" "}
             {new Date(summary.returningWindowClosesAt).toLocaleString()}.
           </p>
@@ -365,18 +390,14 @@ async function ParticipationForCycle({
       </section>
 
       {!closed && (
-        <section style={{ marginTop: "1.5rem" }}>
-          <h2>Your plans</h2>
-          <form
-            action={declareParticipationAction}
-            style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 400 }}
-          >
+        <section className="mt-6">
+          <SectionHeading>Your plans</SectionHeading>
+          <form action={declareParticipationAction} className="mt-3 flex max-w-[400px] flex-col gap-2">
             <input type="hidden" name="cycleId" value={cycleId} />
             <input type="hidden" name="cycleScope" value={cycleScope} />
-            <label>
-              Status
-              <br />
-              <select name="status" defaultValue={mine.status} style={{ padding: "0.4rem", width: "100%" }}>
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Status</span>
+              <select name="status" defaultValue={mine.status} className={INPUT}>
                 {Object.entries(STATUS_LABEL).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
@@ -384,32 +405,19 @@ async function ParticipationForCycle({
                 ))}
               </select>
             </label>
-            <label>
-              Arrival date (optional)
-              <br />
-              <input
-                type="date"
-                name="arrivalDate"
-                defaultValue={mine.arrivalDate ?? ""}
-                style={{ padding: "0.4rem" }}
-              />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Arrival date (optional)</span>
+              <input type="date" name="arrivalDate" defaultValue={mine.arrivalDate ?? ""} className={`${INPUT} w-fit`} />
             </label>
-            <label>
-              Departure date (optional)
-              <br />
-              <input
-                type="date"
-                name="departureDate"
-                defaultValue={mine.departureDate ?? ""}
-                style={{ padding: "0.4rem" }}
-              />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Departure date (optional)</span>
+              <input type="date" name="departureDate" defaultValue={mine.departureDate ?? ""} className={`${INPUT} w-fit`} />
             </label>
-            <label>
-              Note (optional)
-              <br />
-              <textarea name="note" rows={2} defaultValue={mine.note ?? ""} style={{ padding: "0.4rem", width: "100%" }} />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Note (optional)</span>
+              <textarea name="note" rows={2} defaultValue={mine.note ?? ""} className={INPUT} />
             </label>
-            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Save
             </button>
           </form>
@@ -417,62 +425,39 @@ async function ParticipationForCycle({
       )}
 
       {canConfigure && !closed && (
-        <section style={{ marginTop: "1.5rem" }}>
-          <h2>Cycle settings</h2>
-          <p style={{ color: "#666", fontSize: "0.85rem" }}>
+        <section className="mt-6">
+          <SectionHeading>Cycle settings</SectionHeading>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             Visible to you because you can start a cycle for this Community — the same authority
             configures its capacity and returning-priority window.
           </p>
-          <form
-            action={updateCycleSettingsAction}
-            style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 400 }}
-          >
+          <form action={updateCycleSettingsAction} className="mt-3 flex max-w-[400px] flex-col gap-2">
             <input type="hidden" name="cycleId" value={cycleId} />
             <input type="hidden" name="cycleScope" value={cycleScope} />
-            <label>
-              Capacity (optional — blank = unlimited)
-              <br />
-              <input
-                type="number"
-                name="capacity"
-                min={1}
-                defaultValue={summary.capacity ?? ""}
-                style={{ padding: "0.4rem" }}
-              />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Capacity (optional — blank = unlimited)</span>
+              <input type="number" name="capacity" min={1} defaultValue={summary.capacity ?? ""} className={`${INPUT} w-fit`} />
             </label>
-            <label>
-              Start date (optional)
-              <br />
-              <input
-                type="date"
-                name="startDate"
-                defaultValue={withPhases?.startDate ?? ""}
-                style={{ padding: "0.4rem" }}
-              />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Start date (optional)</span>
+              <input type="date" name="startDate" defaultValue={withPhases?.startDate ?? ""} className={`${INPUT} w-fit`} />
             </label>
-            <label>
-              End date (optional)
-              <br />
-              <input
-                type="date"
-                name="endDate"
-                defaultValue={withPhases?.endDate ?? ""}
-                style={{ padding: "0.4rem" }}
-              />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>End date (optional)</span>
+              <input type="date" name="endDate" defaultValue={withPhases?.endDate ?? ""} className={`${INPUT} w-fit`} />
             </label>
-            <label>
-              Returning-priority window closes at (optional)
-              <br />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Returning-priority window closes at (optional)</span>
               <input
                 type="datetime-local"
                 name="returningWindowClosesAt"
                 defaultValue={
                   summary.returningWindowClosesAt ? toDatetimeLocal(new Date(summary.returningWindowClosesAt)) : ""
                 }
-                style={{ padding: "0.4rem" }}
+                className={`${INPUT} w-fit`}
               />
             </label>
-            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Save settings
             </button>
           </form>
@@ -484,30 +469,28 @@ async function ParticipationForCycle({
       )}
 
       {canConfigure && (
-        <section style={{ marginTop: "1.5rem" }}>
-          <h2>Export as a Task Pack</h2>
-          <p style={{ color: "#666", fontSize: "0.85rem" }}>
+        <section className="mt-6">
+          <SectionHeading>Export as a Task Pack</SectionHeading>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             Save this cycle&rsquo;s full task set (or a hand-picked subset, from the board&rsquo;s own
-            bulk selection) as a named, downloadable pack — see <a href="/task-packs">Task Packs</a>{" "}
+            bulk selection) as a named, downloadable pack — see{" "}
+            <Link href="/task-packs" className="text-[var(--accent-1)] hover:underline">
+              Task Packs
+            </Link>{" "}
             to manage what&rsquo;s saved, share one as a file, or import one into a new cycle.
           </p>
-          <form
-            action={exportCycleAsTaskPackAction}
-            style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 400 }}
-          >
+          <form action={exportCycleAsTaskPackAction} className="mt-3 flex max-w-[400px] flex-col gap-2">
             <input type="hidden" name="cycleId" value={cycleId} />
             <input type="hidden" name="cycleScope" value={cycleScope} />
-            <label>
-              Pack name
-              <br />
-              <input type="text" name="name" required defaultValue={cycleName} style={{ padding: "0.4rem", width: "100%" }} />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Pack name</span>
+              <input type="text" name="name" required defaultValue={cycleName} className={INPUT} />
             </label>
-            <label>
-              Description (optional)
-              <br />
-              <textarea name="description" rows={2} style={{ padding: "0.4rem", width: "100%" }} />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Description (optional)</span>
+              <textarea name="description" rows={2} className={INPUT} />
             </label>
-            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Export whole cycle
             </button>
           </form>
@@ -515,26 +498,24 @@ async function ParticipationForCycle({
       )}
 
       {isAdminNow && !closed && (
-        <section style={{ marginTop: "1.5rem", borderTop: "1px solid #ddd", paddingTop: "1rem" }}>
-          <h2>Close this cycle</h2>
-          <p style={{ color: "#666", fontSize: "0.85rem" }}>
+        <section className="mt-6 border-t border-[var(--border)] pt-6">
+          <SectionHeading>Close this cycle</SectionHeading>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             Locks everything about this cycle — no exception. Reaching a closed cycle afterward is
             a normal, read-only state, not an error.
           </p>
           {needsBudgetDoneWarning && (
-            <p style={{ color: "#b8860b" }}>
-              The current Budget owner hasn&rsquo;t marked &ldquo;{budgetCycleRow!.title}&rdquo; done yet.
-            </p>
+            <div className="mt-3">
+              <Banner tone="warning">
+                The current Budget owner hasn&rsquo;t marked &ldquo;{budgetCycleRow!.title}&rdquo; done yet.
+              </Banner>
+            </div>
           )}
-          <form action={closeCycleAction} style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <form action={closeCycleAction} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="cycleId" value={cycleId} />
             <input type="hidden" name="cycleScope" value={cycleScope} />
-            {needsBudgetDoneWarning && (
-              <label style={{ fontSize: "0.85rem" }}>
-                <input type="checkbox" name="overrideBudgetWarning" required /> Close anyway
-              </label>
-            )}
-            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+            {needsBudgetDoneWarning && <CheckField label="Close anyway" name="overrideBudgetWarning" />}
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Close cycle
             </button>
           </form>
@@ -569,81 +550,67 @@ function describeBoundary(prefix: "Start" | "End", p: PhaseRow, dateType: string
 // clone) — this is purely for editing an existing phase's dates.
 function PhaseDatesSection({ phases, cycleScope }: { phases: PhaseRow[]; cycleScope: string }) {
   return (
-    <section style={{ marginTop: "1.5rem" }}>
-      <h2>Phase dates</h2>
-      <p style={{ color: "#666", fontSize: "0.85rem" }}>
+    <section className="mt-6">
+      <SectionHeading>Phase dates</SectionHeading>
+      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
         Each boundary is either an absolute date or relative to the cycle&rsquo;s own start/end —
         type a new offset/percent directly, or pick a target date to drag it there (either way,
         what&rsquo;s persisted is the recomputed offset/percent, never a bare date).
       </p>
-      {phases.map((p) => (
-        <div
-          key={p.id}
-          style={{ border: "1px solid #ddd", borderRadius: 4, padding: "1rem", marginTop: "1rem", maxWidth: 500 }}
-        >
-          <h3 style={{ margin: 0 }}>{p.name}</h3>
-          <p style={{ color: "#666", fontSize: "0.85rem", margin: "0.25rem 0" }}>
-            Start: {p.startDate ?? "unresolved"} — {describeBoundary("Start", p, p.startDateType, p.startRelativeMode)}
-            <br />
-            End: {p.endDate ?? "unresolved"} — {describeBoundary("End", p, p.endDateType, p.endRelativeMode)}
-          </p>
-          {p.flags.orderInvalid && (
-            <p style={{ color: "crimson", fontSize: "0.85rem" }}>
-              This phase&rsquo;s end resolves before its own start.
-            </p>
-          )}
-          {p.flags.startDrifted && (
-            <p style={{ color: "#b8860b", fontSize: "0.85rem" }}>
-              Start was set relative to {p.startOffsetAnchor ? ANCHOR_LABEL[p.startOffsetAnchor] : "?"}, but it&rsquo;s
-              now closer to the other boundary.
-            </p>
-          )}
-          {p.flags.endDrifted && (
-            <p style={{ color: "#b8860b", fontSize: "0.85rem" }}>
-              End was set relative to {p.endOffsetAnchor ? ANCHOR_LABEL[p.endOffsetAnchor] : "?"}, but it&rsquo;s now
-              closer to the other boundary.
-            </p>
-          )}
-          <form
-            action={updatePhaseBoundaryAction}
-            style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}
-          >
-            <input type="hidden" name="phaseId" value={p.id} />
-            <input type="hidden" name="cycleScope" value={cycleScope} />
-            <PhaseBoundaryFields prefix="start" p={p} />
-            <PhaseBoundaryFields prefix="end" p={p} />
-            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
-              Save dates
-            </button>
-          </form>
-          <form
-            action={updatePhaseHighlightAction}
-            style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.75rem" }}
-          >
-            <input type="hidden" name="phaseId" value={p.id} />
-            <input type="hidden" name="cycleScope" value={cycleScope} />
-            <label style={{ fontSize: "0.85rem" }}>
-              Pin a module for everyone coming while this phase is current
+      <div className="mt-3 flex flex-col gap-3">
+        {phases.map((p) => (
+          <div key={p.id} className={`max-w-[500px] ${CARD}`}>
+            <h3 className="text-[15px] font-medium text-[var(--text)]">{p.name}</h3>
+            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              Start: {p.startDate ?? "unresolved"} — {describeBoundary("Start", p, p.startDateType, p.startRelativeMode)}
               <br />
-              <select
-                name="highlightModuleKey"
-                defaultValue={p.highlightModuleKey ?? ""}
-                style={{ padding: "0.4rem" }}
-              >
-                <option value="">None</option>
-                {HIGHLIGHTABLE_MODULES.map((m) => (
-                  <option key={m.key} value={m.key}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="submit" style={{ padding: "0.4rem 1rem", height: "fit-content" }}>
-              Save
-            </button>
-          </form>
-        </div>
-      ))}
+              End: {p.endDate ?? "unresolved"} — {describeBoundary("End", p, p.endDateType, p.endRelativeMode)}
+            </p>
+            {p.flags.orderInvalid && (
+              <p className="mt-1 text-[13px] text-[var(--danger)]">This phase&rsquo;s end resolves before its own start.</p>
+            )}
+            {p.flags.startDrifted && (
+              <p className="mt-1 text-[13px] text-[var(--warning)]">
+                Start was set relative to {p.startOffsetAnchor ? ANCHOR_LABEL[p.startOffsetAnchor] : "?"}, but it&rsquo;s
+                now closer to the other boundary.
+              </p>
+            )}
+            {p.flags.endDrifted && (
+              <p className="mt-1 text-[13px] text-[var(--warning)]">
+                End was set relative to {p.endOffsetAnchor ? ANCHOR_LABEL[p.endOffsetAnchor] : "?"}, but it&rsquo;s now
+                closer to the other boundary.
+              </p>
+            )}
+            <form action={updatePhaseBoundaryAction} className="mt-3 flex flex-col gap-2">
+              <input type="hidden" name="phaseId" value={p.id} />
+              <input type="hidden" name="cycleScope" value={cycleScope} />
+              <PhaseBoundaryFields prefix="start" p={p} />
+              <PhaseBoundaryFields prefix="end" p={p} />
+              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                Save dates
+              </button>
+            </form>
+            <form action={updatePhaseHighlightAction} className="mt-3 flex items-end gap-2">
+              <input type="hidden" name="phaseId" value={p.id} />
+              <input type="hidden" name="cycleScope" value={cycleScope} />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Pin a module for everyone coming while this phase is current</span>
+                <select name="highlightModuleKey" defaultValue={p.highlightModuleKey ?? ""} className={INPUT}>
+                  <option value="">None</option>
+                  {HIGHLIGHTABLE_MODULES.map((m) => (
+                    <option key={m.key} value={m.key}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Save
+              </button>
+            </form>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -658,62 +625,58 @@ function PhaseBoundaryFields({ prefix, p }: { prefix: "start" | "end"; p: PhaseR
   const mode = dateType === "relative" ? `relative_${relativeMode}` : "absolute";
 
   return (
-    <fieldset style={{ border: "1px solid #eee", borderRadius: 4, padding: "0.5rem" }}>
-      <legend style={{ fontSize: "0.85rem", textTransform: "capitalize" }}>{prefix}</legend>
-      <label>
-        Mode
-        <br />
-        <select name={`${prefix}Mode`} defaultValue={mode} style={{ padding: "0.4rem", width: "100%" }}>
-          <option value="absolute">Absolute date</option>
-          <option value="relative_offset">Relative — offset (days from an anchor)</option>
-          <option value="relative_percent">Relative — percent (between start and end)</option>
-        </select>
-      </label>
-      <label>
-        Absolute date (used when mode is Absolute)
-        <br />
-        <input
-          type="date"
-          name={`${prefix}AbsoluteDate`}
-          defaultValue={dateType === "absolute" ? (absoluteDate ?? "") : ""}
-          style={{ padding: "0.4rem" }}
-        />
-      </label>
-      <label>
-        Anchor (used when mode is offset)
-        <br />
-        <select name={`${prefix}Anchor`} defaultValue={anchor ?? "cycle_start"} style={{ padding: "0.4rem" }}>
-          <option value="cycle_start">Cycle start</option>
-          <option value="cycle_end">Cycle end</option>
-        </select>
-      </label>
-      <label>
-        Offset days (used when mode is offset, and no target date is given below)
-        <br />
-        <input
-          type="number"
-          name={`${prefix}OffsetDays`}
-          defaultValue={relativeMode === "offset" ? (offsetDays ?? "") : ""}
-          style={{ padding: "0.4rem" }}
-        />
-      </label>
-      <label>
-        Percent 0-100 (used when mode is percent, and no target date is given below)
-        <br />
-        <input
-          type="number"
-          min={0}
-          max={100}
-          name={`${prefix}Percent`}
-          defaultValue={relativeMode === "percent" ? (percent ?? "") : ""}
-          style={{ padding: "0.4rem" }}
-        />
-      </label>
-      <label>
-        Or drag to this target date (recomputes and persists the offset/percent above)
-        <br />
-        <input type="date" name={`${prefix}TargetDate`} style={{ padding: "0.4rem" }} />
-      </label>
+    <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+      <legend className="px-1 text-[12px] capitalize text-[var(--text-muted)]">{prefix}</legend>
+      <div className="flex flex-col gap-2">
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Mode</span>
+          <select name={`${prefix}Mode`} defaultValue={mode} className={INPUT}>
+            <option value="absolute">Absolute date</option>
+            <option value="relative_offset">Relative — offset (days from an anchor)</option>
+            <option value="relative_percent">Relative — percent (between start and end)</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Absolute date (used when mode is Absolute)</span>
+          <input
+            type="date"
+            name={`${prefix}AbsoluteDate`}
+            defaultValue={dateType === "absolute" ? (absoluteDate ?? "") : ""}
+            className={INPUT}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Anchor (used when mode is offset)</span>
+          <select name={`${prefix}Anchor`} defaultValue={anchor ?? "cycle_start"} className={INPUT}>
+            <option value="cycle_start">Cycle start</option>
+            <option value="cycle_end">Cycle end</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Offset days (used when mode is offset, and no target date is given below)</span>
+          <input
+            type="number"
+            name={`${prefix}OffsetDays`}
+            defaultValue={relativeMode === "offset" ? (offsetDays ?? "") : ""}
+            className={INPUT}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Percent 0-100 (used when mode is percent, and no target date is given below)</span>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            name={`${prefix}Percent`}
+            defaultValue={relativeMode === "percent" ? (percent ?? "") : ""}
+            className={INPUT}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Or drag to this target date (recomputes and persists the offset/percent above)</span>
+          <input type="date" name={`${prefix}TargetDate`} className={INPUT} />
+        </label>
+      </div>
     </fieldset>
   );
 }

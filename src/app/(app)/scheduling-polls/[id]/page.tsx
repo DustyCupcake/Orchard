@@ -13,6 +13,7 @@ import {
   listAttendance,
   listSummaryReads,
 } from "@/lib/scheduling-polls";
+import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT } from "@/components/ui/kit";
 import AvailabilityGrid from "../AvailabilityGrid";
 import {
   addAgendaItemAction,
@@ -24,6 +25,10 @@ import {
 } from "./actions";
 
 export const dynamic = "force-dynamic";
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+}
 
 export default async function SchedulingPollDetailPage({
   params,
@@ -63,53 +68,63 @@ export default async function SchedulingPollDetailPage({
   const qualifyingSlots = aggregate.slots.filter((s) => s.qualifies);
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 700 }}>
-      <h1>{poll.title}</h1>
-      <p style={{ color: "#666" }}>
+    <main className="mx-auto max-w-[700px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">{poll.title}</h1>
+      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
         {branchRow?.name} · organized by {memberNameById.get(poll.organizedBy) ?? "—"} ·{" "}
         {poll.resolutionMode === "must_overlap"
           ? `must overlap: ${poll.requiredParticipantIds.map((id) => memberNameById.get(id) ?? "—").join(", ")}`
           : `needs ${poll.minAttendance ?? 1}+ people`}
       </p>
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {error && (
+        <div className="mt-4">
+          <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
 
       {isConfirmed ? (
-        <section style={{ marginTop: "1rem" }}>
-          <h2>Confirmed</h2>
-          <p>
+        <section className="mt-6">
+          <SectionHeading>Confirmed</SectionHeading>
+          <p className="mt-2 text-[14px] text-[var(--text)]">
             {new Date(poll.confirmedSlotStart!).toLocaleString()} –{" "}
             {new Date(poll.confirmedSlotEnd!).toLocaleTimeString()}
           </p>
-          <p>
-            <a href={`/api/scheduling-polls/${poll.id}/invite`} style={{ color: "inherit" }}>
+          <p className="mt-1 text-[13px]">
+            <a href={`/api/scheduling-polls/${poll.id}/invite`} className="text-[var(--accent-1)] hover:underline">
               Download calendar invite (.ics) →
             </a>
           </p>
-          <p style={{ fontSize: "0.85rem", color: "#666" }}>
+          <p className="mt-2 text-[13px] text-[var(--text-muted)]">
             Confirmed as available: {confirmedAttendees.map((m) => m.name).join(", ") || "—"}
           </p>
 
-          <h3 style={{ marginTop: "1rem" }}>Attendance</h3>
-          {confirmedAttendees.length === 0 && <p style={{ color: "#666" }}>Nobody to mark yet.</p>}
+          <h3 className="mt-4 text-[15px] font-medium text-[var(--text)]">Attendance</h3>
+          {confirmedAttendees.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">Nobody to mark yet.</p>}
           {confirmedAttendees.map((m) => (
-            <div key={m.id} style={{ marginBottom: "0.3rem", fontSize: "0.9rem" }}>
-              {m.name}{" "}
+            <div key={m.id} className="mt-2 flex items-center gap-2 text-[13px] text-[var(--text)]">
+              {m.name}
               {attendanceByMember.has(m.id) ? (
-                <span>({attendanceByMember.get(m.id) ? "attended" : "did not attend"})</span>
+                <span className="text-[var(--text-muted)]">
+                  ({attendanceByMember.get(m.id) ? "attended" : "did not attend"})
+                </span>
               ) : (
                 <>
-                  <form action={recordAttendanceAction} style={{ display: "inline" }}>
+                  <form action={recordAttendanceAction}>
                     <input type="hidden" name="pollId" value={poll.id} />
                     <input type="hidden" name="memberId" value={m.id} />
                     <input type="hidden" name="attended" value="true" />
-                    <button type="submit">Attended</button>
-                  </form>{" "}
-                  <form action={recordAttendanceAction} style={{ display: "inline" }}>
+                    <button type="submit" className={BUTTON_SECONDARY}>
+                      Attended
+                    </button>
+                  </form>
+                  <form action={recordAttendanceAction}>
                     <input type="hidden" name="pollId" value={poll.id} />
                     <input type="hidden" name="memberId" value={m.id} />
                     <input type="hidden" name="attended" value="false" />
-                    <button type="submit">Didn&rsquo;t attend</button>
+                    <button type="submit" className={BUTTON_SECONDARY}>
+                      Didn&rsquo;t attend
+                    </button>
                   </form>
                 </>
               )}
@@ -118,91 +133,107 @@ export default async function SchedulingPollDetailPage({
         </section>
       ) : (
         <>
-          <section style={{ marginTop: "1rem" }}>
-            <h2>Your availability</h2>
-            <AvailabilityGrid
-              pollId={poll.id}
-              rangeStart={poll.rangeStart}
-              rangeEnd={poll.rangeEnd}
-              initialSelected={myAvailability}
-              readOnly={Boolean(viewAs)}
-            />
+          <section className="mt-6">
+            <SectionHeading>Your availability</SectionHeading>
+            <div className="mt-3">
+              <AvailabilityGrid
+                pollId={poll.id}
+                rangeStart={poll.rangeStart}
+                rangeEnd={poll.rangeEnd}
+                initialSelected={myAvailability}
+                readOnly={Boolean(viewAs)}
+              />
+            </div>
           </section>
 
-          <section style={{ marginTop: "1.5rem" }}>
-            <h2>Aggregate</h2>
-            <p style={{ fontSize: "0.85rem", color: "#666" }}>
+          <section className="mt-8">
+            <SectionHeading>Aggregate</SectionHeading>
+            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
               {aggregate.submittedCount} member(s) have submitted. Only the overlap shows — never who
               submitted what.
             </p>
-            {qualifyingSlots.length === 0 && <p style={{ color: "#666" }}>No slot qualifies yet.</p>}
-            {qualifyingSlots.map((s) => (
-              <div key={s.slot} style={{ marginBottom: "0.3rem", fontSize: "0.9rem" }}>
-                {new Date(s.slot).toLocaleString()} — {s.count} available
-                {isOrganizer && (
-                  <form action={confirmSlotAction} style={{ display: "inline", marginLeft: "0.5rem" }}>
-                    <input type="hidden" name="pollId" value={poll.id} />
-                    <input type="hidden" name="slot" value={s.slot} />
-                    <button type="submit">Confirm this slot</button>
-                  </form>
-                )}
-              </div>
-            ))}
+            {qualifyingSlots.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">No slot qualifies yet.</p>}
+            <div className="mt-2 flex flex-col gap-2">
+              {qualifyingSlots.map((s) => (
+                <div key={s.slot} className="flex items-center gap-3 text-[13px] text-[var(--text)]">
+                  <span>
+                    {new Date(s.slot).toLocaleString()} — {s.count} available
+                  </span>
+                  {isOrganizer && (
+                    <form action={confirmSlotAction}>
+                      <input type="hidden" name="pollId" value={poll.id} />
+                      <input type="hidden" name="slot" value={s.slot} />
+                      <button type="submit" className={BUTTON_PRIMARY}>
+                        Confirm this slot
+                      </button>
+                    </form>
+                  )}
+                </div>
+              ))}
+            </div>
           </section>
         </>
       )}
 
       {poll.hasAgenda && (
-        <section style={{ marginTop: "1.5rem" }}>
-          <h2>Agenda</h2>
-          {agendaItems.length === 0 && <p style={{ color: "#666" }}>Nothing on the agenda yet.</p>}
-          <ul>
+        <section className="mt-8">
+          <SectionHeading>Agenda</SectionHeading>
+          {agendaItems.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">Nothing on the agenda yet.</p>}
+          <ul className="mt-2 flex flex-col gap-1">
             {agendaItems.map((i) => (
-              <li key={i.id}>{i.text}</li>
+              <li key={i.id} className="text-[13px] text-[var(--text)]">
+                {i.text}
+              </li>
             ))}
           </ul>
-          <form action={addAgendaItemAction} style={{ display: "flex", gap: "0.5rem" }}>
+          <form action={addAgendaItemAction} className="mt-3 flex gap-2">
             <input type="hidden" name="pollId" value={poll.id} />
-            <input type="text" name="text" required placeholder="Add an agenda item" style={{ padding: "0.4rem", flex: 1 }} />
-            <button type="submit">Add</button>
+            <input type="text" name="text" required placeholder="Add an agenda item" className={`${INPUT} flex-1`} />
+            <button type="submit" className={BUTTON_SECONDARY}>
+              Add
+            </button>
           </form>
         </section>
       )}
 
       {poll.needsSummary && (
-        <section style={{ marginTop: "1.5rem" }}>
-          <h2>Summary</h2>
+        <section className="mt-8">
+          <SectionHeading>Summary</SectionHeading>
           {summary?.publishedAt ? (
             <>
-              <p style={{ whiteSpace: "pre-wrap" }}>{summary.body}</p>
-              <p style={{ fontSize: "0.8rem", color: "#666" }}>
+              <p className="mt-2 whitespace-pre-wrap text-[13px] text-[var(--text)]">{summary.body}</p>
+              <p className="mt-2 text-[12px] text-[var(--text-muted)]">
                 Published {new Date(summary.publishedAt).toLocaleString()}
                 {poll.requireRead && ` · read by ${summaryReads.length} member(s)`}
               </p>
               {poll.requireRead && !iReadSummary && (
-                <form action={markSummaryReadAction}>
+                <form action={markSummaryReadAction} className="mt-2">
                   <input type="hidden" name="pollId" value={poll.id} />
                   <input type="hidden" name="summaryId" value={summary.id} />
-                  <button type="submit">Mark as read</button>
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Mark as read
+                  </button>
                 </form>
               )}
             </>
           ) : (
-            <>
-              <form action={saveSummaryAction} style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div className={`mt-3 ${CARD}`}>
+              <form action={saveSummaryAction} className="flex flex-col gap-2">
                 <input type="hidden" name="pollId" value={poll.id} />
-                <textarea name="body" rows={4} defaultValue={summary?.body ?? ""} style={{ padding: "0.5rem" }} />
-                <button type="submit" style={{ width: "fit-content", padding: "0.4rem 0.8rem" }}>
+                <textarea name="body" rows={4} defaultValue={summary?.body ?? ""} className={INPUT} />
+                <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
                   Save draft
                 </button>
               </form>
               {summary && (
-                <form action={publishSummaryAction} style={{ marginTop: "0.5rem" }}>
+                <form action={publishSummaryAction} className="mt-2">
                   <input type="hidden" name="pollId" value={poll.id} />
-                  <button type="submit">Publish</button>
+                  <button type="submit" className={BUTTON_PRIMARY}>
+                    Publish
+                  </button>
                 </form>
               )}
-            </>
+            </div>
           )}
         </section>
       )}

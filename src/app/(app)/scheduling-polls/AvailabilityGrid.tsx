@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { BUTTON_PRIMARY } from "@/components/ui/kit";
 
 // A day-by-time paint grid — see docs/spec.md's "Availability input is
 // a drag-select grid, not a typed-in range." Each cell represents one
@@ -108,20 +109,13 @@ export default function AvailabilityGrid({
 
   return (
     <div onPointerUp={() => (dragging.current = false)} onPointerLeave={() => (dragging.current = false)}>
-      <div style={{ display: "flex", overflowX: "auto", border: "1px solid #ccc", userSelect: "none" }}>
-        <div style={{ display: "flex", flexDirection: "column", flexShrink: 0 }}>
-          <div style={{ height: 32 }} />
+      <div className="flex select-none overflow-x-auto rounded-[var(--radius-md)] border border-[var(--border)]">
+        <div className="flex shrink-0 flex-col">
+          <div className="h-8" />
           {Array.from({ length: ROW_COUNT }).map((_, rowIdx) => (
             <div
               key={rowIdx}
-              style={{
-                height: 18,
-                fontSize: "0.7rem",
-                color: "#666",
-                paddingRight: 4,
-                textAlign: "right",
-                visibility: rowIdx % ROWS_PER_HOUR === 0 ? "visible" : "hidden",
-              }}
+              className={`h-[18px] pr-1 text-right text-[11px] text-[var(--text-muted)] ${rowIdx % ROWS_PER_HOUR === 0 ? "visible" : "invisible"}`}
             >
               {cellDate(days[0] ?? new Date(), rowIdx).toLocaleTimeString(undefined, {
                 hour: "numeric",
@@ -131,8 +125,8 @@ export default function AvailabilityGrid({
           ))}
         </div>
         {days.map((day) => (
-          <div key={day.toISOString()} style={{ display: "flex", flexDirection: "column", width: 64, flexShrink: 0 }}>
-            <div style={{ height: 32, fontSize: "0.75rem", textAlign: "center" }}>
+          <div key={day.toISOString()} className="flex w-16 shrink-0 flex-col">
+            <div className="h-8 text-center text-[12px] text-[var(--text-muted)]">
               {day.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
             </div>
             {Array.from({ length: ROW_COUNT }).map((_, rowIdx) => {
@@ -143,13 +137,7 @@ export default function AvailabilityGrid({
                   key={iso}
                   onPointerDown={(e) => onDown(e, iso)}
                   onPointerEnter={() => onEnter(iso)}
-                  style={{
-                    height: 18,
-                    borderTop: rowIdx % ROWS_PER_HOUR === 0 ? "1px solid #ddd" : "1px solid #eee",
-                    borderLeft: "1px solid #eee",
-                    background: isSelected ? "#2a7a2a" : "#fff",
-                    cursor: readOnly ? "default" : "pointer",
-                  }}
+                  className={`h-[18px] border-l border-t ${rowIdx % ROWS_PER_HOUR === 0 ? "border-t-[var(--border)]" : "border-t-[var(--surface-sunken)]"} border-l-[var(--surface-sunken)] ${isSelected ? "bg-[var(--accent-1)]" : "bg-[var(--surface)]"} ${readOnly ? "cursor-default" : "cursor-pointer"}`}
                 />
               );
             })}
@@ -158,12 +146,12 @@ export default function AvailabilityGrid({
       </div>
 
       {!readOnly && (
-        <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          <button type="button" onClick={save} disabled={saving} style={{ padding: "0.4rem 0.8rem" }}>
+        <div className="mt-2 flex items-center gap-2">
+          <button type="button" onClick={save} disabled={saving} className={BUTTON_PRIMARY}>
             {saving ? "Saving…" : "Save my availability"}
           </button>
-          {saved && <span style={{ color: "#2a7a2a", fontSize: "0.85rem" }}>Saved.</span>}
-          <span style={{ color: "#666", fontSize: "0.8rem" }}>
+          {saved && <span className="text-[13px] text-[var(--success)]">Saved.</span>}
+          <span className="text-[12px] text-[var(--text-muted)]">
             Click, or click-and-drag, to paint the windows you&rsquo;re free. Shown in your own local time.
           </span>
         </div>

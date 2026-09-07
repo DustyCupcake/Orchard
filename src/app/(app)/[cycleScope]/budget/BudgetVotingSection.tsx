@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
 import type { getBudgetVotingView } from "@/lib/budget";
 import { confirmBudgetCycleAction, submitBudgetVoteAction } from "./actions";
 
@@ -9,11 +9,8 @@ function formatAmount(n: number) {
   return n.toLocaleString();
 }
 
-const cellStyle: CSSProperties = {
-  textAlign: "left",
-  borderBottom: "1px solid #ccc",
-  padding: "0.4rem",
-};
+const TH = "border-b border-[var(--border)] px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]";
+const TD = "border-b border-[var(--border)] px-2 py-2 text-[var(--text)]";
 
 // The voting/confirmed half of /budget — see docs/spec.md's Budget
 // ("Ranked-choice voting", "Confirmation", "Contributions") and
@@ -54,53 +51,51 @@ export default function BudgetVotingSection({
 
   return (
     <>
-      <h3>
+      <h3 className="mt-6 text-[15px] font-medium text-[var(--text)]">
         {currentCycle.status === "confirmed" ? "Results" : "Voting"} — {voteCount} of {memberCount}{" "}
         members have voted
       </h3>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.9rem" }}>
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr>
-              <th style={cellStyle}>Rank</th>
-              <th style={cellStyle}>Proposal</th>
-              <th style={cellStyle}>Submitted by</th>
-              <th style={cellStyle}>Total</th>
-              <th style={cellStyle}>Cost/member</th>
-              <th style={cellStyle}>Running total</th>
-              {currentCycle.status === "confirmed" && <th style={cellStyle}>Funded</th>}
+              <th className={TH}>Rank</th>
+              <th className={TH}>Proposal</th>
+              <th className={TH}>Submitted by</th>
+              <th className={TH}>Total</th>
+              <th className={TH}>Cost/member</th>
+              <th className={TH}>Running total</th>
+              {currentCycle.status === "confirmed" && <th className={TH}>Funded</th>}
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td style={cellStyle} colSpan={5}>
+            <tr className="hover:bg-[var(--surface-sunken)]">
+              <td className={TD} colSpan={5}>
                 Fixed costs
               </td>
-              <td style={cellStyle}>{formatAmount(fixedTotal)}</td>
-              {currentCycle.status === "confirmed" && <td style={cellStyle}>—</td>}
+              <td className={TD}>{formatAmount(fixedTotal)}</td>
+              {currentCycle.status === "confirmed" && <td className={TD}>—</td>}
             </tr>
             {ranked.length === 0 && (
-              <tr>
-                <td style={cellStyle} colSpan={currentCycle.status === "confirmed" ? 7 : 6}>
+              <tr className="hover:bg-[var(--surface-sunken)]">
+                <td className={TD} colSpan={currentCycle.status === "confirmed" ? 7 : 6}>
                   No proposals were submitted for this cycle.
                 </td>
               </tr>
             )}
             {ranked.map((r) => (
-              <tr key={r.proposal.id}>
-                <td style={cellStyle}>{r.rank}</td>
-                <td style={cellStyle}>
+              <tr key={r.proposal.id} className="hover:bg-[var(--surface-sunken)]">
+                <td className={TD}>{r.rank}</td>
+                <td className={TD}>
                   {r.proposal.title}
                   {r.proposal.branchId && <> · {branchNameById.get(r.proposal.branchId) ?? "—"}</>}
                 </td>
-                <td style={cellStyle}>{memberNameById.get(r.proposal.submittedBy) ?? "—"}</td>
-                <td style={cellStyle}>{formatAmount(r.proposal.totalAmount)}</td>
-                <td style={cellStyle}>
-                  {r.costPerMember !== null ? formatAmount(Math.round(r.costPerMember)) : "—"}
-                </td>
-                <td style={cellStyle}>{formatAmount(r.runningTotal)}</td>
+                <td className={TD}>{memberNameById.get(r.proposal.submittedBy) ?? "—"}</td>
+                <td className={TD}>{formatAmount(r.proposal.totalAmount)}</td>
+                <td className={TD}>{r.costPerMember !== null ? formatAmount(Math.round(r.costPerMember)) : "—"}</td>
+                <td className={TD}>{formatAmount(r.runningTotal)}</td>
                 {currentCycle.status === "confirmed" && (
-                  <td style={cellStyle}>{confirmedIds.has(r.proposal.id) ? "Yes" : "No"}</td>
+                  <td className={TD}>{confirmedIds.has(r.proposal.id) ? "Yes" : "No"}</td>
                 )}
               </tr>
             ))}
@@ -109,45 +104,36 @@ export default function BudgetVotingSection({
       </div>
 
       {currentCycle.status === "confirmed" && (
-        <>
+        <div className="mt-3 text-[13px] text-[var(--text)]">
           {currentCycle.confirmationRationale && (
-            <p style={{ color: "#666" }}>
-              <strong>Confirmation rationale:</strong> {currentCycle.confirmationRationale}
+            <p className="text-[var(--text-muted)]">
+              <span className="font-medium text-[var(--text)]">Confirmation rationale:</span> {currentCycle.confirmationRationale}
             </p>
           )}
-          <p>
-            <strong>Your contribution ask:</strong>{" "}
+          <p className="mt-1">
+            <span className="font-medium">Your contribution ask:</span>{" "}
             {myContributionSignal !== null
               ? formatAmount(myContributionSignal)
               : "you didn't signal an amount when you voted"}
           </p>
-        </>
+        </div>
       )}
 
       {currentCycle.status === "voting" && ballotOrder.length > 0 && (
         <>
-          <h3>Your ranking{myVote ? " (currently submitted — resubmitting replaces it)" : ""}</h3>
-          <form
-            action={submitBudgetVoteAction}
-            style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 500 }}
-          >
+          <h3 className="mt-6 text-[15px] font-medium text-[var(--text)]">
+            Your ranking{myVote ? " (currently submitted — resubmitting replaces it)" : ""}
+          </h3>
+          <form action={submitBudgetVoteAction} className="mt-2 flex max-w-[500px] flex-col gap-2">
             <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
             <input type="hidden" name="cycleScope" value={cycleScope} />
             {ballotOrder.map((r) => (
-              <label
-                key={r.proposal.id}
-                style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "center" }}
-              >
+              <label key={r.proposal.id} className="flex items-center justify-between gap-2 text-[13px] text-[var(--text)]">
                 <span>
                   {r.proposal.title} ({formatAmount(r.proposal.totalAmount)})
                 </span>
                 <input type="hidden" name="proposalId" value={r.proposal.id} />
-                <select
-                  name={`rank_${r.proposal.id}`}
-                  defaultValue={myRankByProposalId.get(r.proposal.id) ?? ""}
-                  required
-                  style={{ padding: "0.3rem" }}
-                >
+                <select name={`rank_${r.proposal.id}`} defaultValue={myRankByProposalId.get(r.proposal.id) ?? ""} required className={`${INPUT} w-fit`}>
                   <option value="" disabled>
                     rank
                   </option>
@@ -159,18 +145,11 @@ export default function BudgetVotingSection({
                 </select>
               </label>
             ))}
-            <label>
-              How much would you contribute this year? (optional)
-              <br />
-              <input
-                type="number"
-                name="contributionSignal"
-                min={0}
-                defaultValue={myVote?.contributionSignal ?? ""}
-                style={{ padding: "0.4rem" }}
-              />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>How much would you contribute this year? (optional)</span>
+              <input type="number" name="contributionSignal" min={0} defaultValue={myVote?.contributionSignal ?? ""} className={`${INPUT} w-fit`} />
             </label>
-            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               {myVote ? "Update vote" : "Submit vote"}
             </button>
           </form>
@@ -179,25 +158,21 @@ export default function BudgetVotingSection({
 
       {currentCycle.status === "voting" && isOwner && (
         <>
-          <h3>Confirm budget</h3>
-          <form
-            action={confirmBudgetCycleAction}
-            style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 500 }}
-          >
+          <h3 className="mt-6 text-[15px] font-medium text-[var(--text)]">Confirm budget</h3>
+          <form action={confirmBudgetCycleAction} className="mt-2 flex max-w-[500px] flex-col gap-2">
             <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
             <input type="hidden" name="cycleScope" value={cycleScope} />
             {ranked.map((r) => (
-              <label key={r.proposal.id} style={{ display: "block" }}>
-                <input type="checkbox" name="confirmedProposalIds" value={r.proposal.id} />{" "}
+              <label key={r.proposal.id} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                <input type="checkbox" name="confirmedProposalIds" value={r.proposal.id} />
                 {r.proposal.title} ({formatAmount(r.proposal.totalAmount)})
               </label>
             ))}
-            <label>
-              Rationale — required only if the funded set above differs from the ranked order
-              <br />
-              <textarea name="confirmationRationale" rows={2} style={{ padding: "0.4rem", width: "100%" }} />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Rationale — required only if the funded set above differs from the ranked order</span>
+              <textarea name="confirmationRationale" rows={2} className={INPUT} />
             </label>
-            <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Confirm budget
             </button>
           </form>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { BUTTON_PRIMARY, INPUT } from "@/components/ui/kit";
 
 export default function LoginForm() {
   const [email, setEmail] = useState("");
@@ -28,25 +29,27 @@ export default function LoginForm() {
   }
 
   if (status === "sent") {
-    return <p>Check your email for a login link — it works once and expires in 15 minutes.</p>;
+    return (
+      <p className="text-[13px] text-[var(--success)]">
+        Check your email for a login link — it works once and expires in 15 minutes.
+      </p>
+    );
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: "flex", gap: "0.5rem" }}>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row">
       <input
         type="email"
         required
         placeholder="you@example.com"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        style={{ padding: "0.5rem", flex: 1 }}
+        className={`${INPUT} flex-1`}
       />
-      <button type="submit" disabled={status === "submitting"} style={{ padding: "0.5rem 1rem" }}>
+      <button type="submit" disabled={status === "submitting"} className={BUTTON_PRIMARY}>
         {status === "submitting" ? "Sending…" : "Send login link"}
       </button>
-      {status === "error" && (
-        <p style={{ color: "crimson" }}>Something went wrong — try again.</p>
-      )}
+      {status === "error" && <p className="text-[13px] text-[var(--danger)] sm:self-center">Something went wrong — try again.</p>}
     </form>
   );
 }

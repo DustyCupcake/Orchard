@@ -42,24 +42,24 @@ export function ClonePreviewGrid({ preview }: { preview: ClonePreview }) {
   const months = monthsSpanned([...entriesByDate.keys()]);
   if (months.length === 0) {
     return (
-      <p style={{ color: "#666", fontSize: "0.85rem", marginTop: "0.5rem" }}>
+      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
         Nothing resolves yet — give both a hypothetical start and end above.
       </p>
     );
   }
 
   return (
-    <div style={{ marginTop: "0.75rem" }}>
+    <div className="mt-3">
       {months.map(({ year, month }) => (
-        <div key={`${year}-${month}`} style={{ marginBottom: "1rem" }}>
-          <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "#444" }}>
+        <div key={`${year}-${month}`} className="mb-4">
+          <div className="text-[12px] font-semibold text-[var(--text)]">
             {MONTH_LABEL[month - 1]} {year}
           </div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.7rem", marginTop: "0.25rem" }}>
+          <table className="mt-1 w-full table-fixed border-collapse text-[11px]">
             <thead>
               <tr>
                 {WEEKDAY_LABEL.map((w) => (
-                  <th key={w} style={{ border: "1px solid #eee", padding: "2px", color: "#888" }}>
+                  <th key={w} className="border border-[var(--border)] p-0.5 text-[var(--text-muted)]">
                     {w}
                   </th>
                 ))}
@@ -71,17 +71,11 @@ export function ClonePreviewGrid({ preview }: { preview: ClonePreview }) {
                   {week.map((day) => (
                     <td
                       key={day.date}
-                      style={{
-                        border: "1px solid #eee",
-                        padding: "2px",
-                        verticalAlign: "top",
-                        height: "3rem",
-                        color: day.inMonth ? "inherit" : "#ccc",
-                      }}
+                      className={`h-12 border border-[var(--border)] p-0.5 align-top ${day.inMonth ? "text-[var(--text)]" : "text-[var(--text-muted)]"}`}
                     >
                       <div>{Number(day.date.slice(8, 10))}</div>
                       {(entriesByDate.get(day.date) ?? []).slice(0, 2).map((label, i) => (
-                        <div key={i} style={{ color: "#2a5a9a", fontSize: "0.6rem" }}>
+                        <div key={i} className="text-[10px] text-[var(--accent-1)]">
                           {label}
                         </div>
                       ))}
@@ -101,17 +95,17 @@ export function ClonePreviewGrid({ preview }: { preview: ClonePreview }) {
 export function ClonePreviewList({ preview }: { preview: ClonePreview }) {
   const cycleAnchored = preview.milestones.filter((m) => !m.phaseName);
   return (
-    <div style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
+    <div className="mt-3 text-[13px]">
       {preview.phases.length === 0 && cycleAnchored.length === 0 && (
-        <p style={{ color: "#666" }}>Nothing to carry forward — the source cycle has no phases or milestones.</p>
+        <p className="text-[var(--text-muted)]">Nothing to carry forward — the source cycle has no phases or milestones.</p>
       )}
       {preview.phases.map((p) => (
-        <div key={p.name} style={{ marginBottom: "0.5rem" }}>
-          <strong>{p.name}</strong>
-          <div style={{ color: "#666" }}>
+        <div key={p.name} className="mb-2">
+          <p className="font-medium text-[var(--text)]">{p.name}</p>
+          <p className="text-[var(--text-muted)]">
             Start: {p.start ?? "unresolved"} · End: {p.end ?? "unresolved"}
-          </div>
-          <ul style={{ margin: "0.25rem 0 0 1.25rem" }}>
+          </p>
+          <ul className="ml-5 mt-1 list-disc text-[var(--text)]">
             {preview.milestones
               .filter((m) => m.phaseName === p.name)
               .map((m, i) => (
@@ -124,8 +118,8 @@ export function ClonePreviewList({ preview }: { preview: ClonePreview }) {
       ))}
       {cycleAnchored.length > 0 && (
         <div>
-          <strong>Cycle-anchored</strong>
-          <ul style={{ margin: "0.25rem 0 0 1.25rem" }}>
+          <p className="font-medium text-[var(--text)]">Cycle-anchored</p>
+          <ul className="ml-5 mt-1 list-disc text-[var(--text)]">
             {cycleAnchored.map((m, i) => (
               <li key={i}>
                 {m.label} ({m.taskTitle}) — {m.date ?? "unresolved"}

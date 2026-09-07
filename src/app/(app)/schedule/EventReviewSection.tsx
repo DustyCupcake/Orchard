@@ -1,5 +1,7 @@
 import type { eventProposal as eventProposalTable } from "@/db/schema";
 import type { EventSlot } from "@/lib/event-scheduling";
+import { BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, Tag } from "@/components/ui/kit";
+import { STATUS_LABEL, STATUS_TONE } from "./status";
 import {
   confirmEventProposalAction,
   declineEventProposalAction,
@@ -20,13 +22,6 @@ function toDatetimeLocal(iso: string) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-
-const STATUS_LABEL: Record<string, string> = {
-  proposed: "Proposed",
-  conflict: "Conflict",
-  confirmed: "Confirmed",
-  declined: "Declined",
-};
 
 // The scheduling-owner's review view — see docs/spec.md's "Event
 // scheduling" ("the task owner reviews proposals and flags slot
@@ -53,104 +48,103 @@ export default function EventReviewSection({
   );
 
   return (
-    <section style={{ marginTop: "2rem", borderTop: "1px solid #ccc", paddingTop: "1rem" }}>
-      <h2>Review (scheduling owner)</h2>
-      {proposals.length === 0 && <p style={{ color: "#666" }}>No proposals yet.</p>}
-      {proposals.map((p) => {
-        const canAct = !p.publishedAt && p.status !== "declined";
-        const confirmedSlot = p.confirmedSlot as EventSlot | null;
-        const preferredSlots = p.preferredSlots as EventSlot[];
-        return (
-          <div
-            key={p.id}
-            style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.6rem" }}
-          >
-            <p style={{ margin: 0, fontSize: "0.8rem", color: "#666" }}>
-              {STATUS_LABEL[p.status] ?? p.status} · {memberNameById.get(p.submittedBy) ?? "—"}
-              {p.publishedAt && " · published"}
-            </p>
-            <strong>{p.title}</strong> — hosted by {p.host}
-            {p.description && <p style={{ margin: "0.2rem 0" }}>{p.description}</p>}
-            <p style={{ margin: "0.2rem 0", fontSize: "0.85rem", color: "#666" }}>
-              {p.durationMinutes} min{p.spaceNeeds && <> · {p.spaceNeeds}</>}
-            </p>
-            <ul style={{ margin: "0.3rem 0 0", fontSize: "0.85rem" }}>
-              {preferredSlots.map((s, i) => (
-                <li key={i}>{formatSlot(s)}</li>
-              ))}
-            </ul>
-            {confirmedSlot && (
-              <p style={{ margin: "0.3rem 0 0", fontSize: "0.85rem" }}>
-                Confirmed: {formatSlot(confirmedSlot)}
+    <section className="mt-8 border-t border-[var(--border)] pt-6">
+      <h2 className="text-[22px] font-semibold text-[var(--text)]">Review (scheduling owner)</h2>
+      {proposals.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">No proposals yet.</p>}
+      <div className="mt-3 flex flex-col gap-3">
+        {proposals.map((p) => {
+          const canAct = !p.publishedAt && p.status !== "declined";
+          const confirmedSlot = p.confirmedSlot as EventSlot | null;
+          const preferredSlots = p.preferredSlots as EventSlot[];
+          return (
+            <div key={p.id} className={CARD}>
+              <div className="flex items-center gap-2">
+                <Tag tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status] ?? p.status}</Tag>
+                <span className="text-[12px] text-[var(--text-muted)]">
+                  {memberNameById.get(p.submittedBy) ?? "—"}
+                  {p.publishedAt && " · published"}
+                </span>
+              </div>
+              <p className="mt-1.5 text-[14px] font-medium text-[var(--text)]">
+                {p.title} <span className="font-normal text-[var(--text-muted)]">— hosted by {p.host}</span>
               </p>
-            )}
+              {p.description && <p className="mt-1 text-[13px] text-[var(--text)]">{p.description}</p>}
+              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                {p.durationMinutes} min{p.spaceNeeds && <> · {p.spaceNeeds}</>}
+              </p>
+              <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text-muted)]">
+                {preferredSlots.map((s, i) => (
+                  <li key={i}>{formatSlot(s)}</li>
+                ))}
+              </ul>
+              {confirmedSlot && (
+                <p className="mt-1.5 text-[13px] text-[var(--text)]">Confirmed: {formatSlot(confirmedSlot)}</p>
+              )}
 
-            {canAct && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", marginTop: "0.5rem" }}>
-                <form
-                  action={confirmEventProposalAction}
-                  style={{ display: "flex", gap: "0.3rem", alignItems: "center" }}
-                >
-                  <input type="hidden" name="proposalId" value={p.id} />
-                  <input
-                    type="datetime-local"
-                    name="startsAt"
-                    defaultValue={
-                      confirmedSlot
-                        ? toDatetimeLocal(confirmedSlot.startsAt)
-                        : preferredSlots[0]
-                          ? toDatetimeLocal(preferredSlots[0].startsAt)
-                          : undefined
-                    }
-                    required
-                    style={{ padding: "0.3rem" }}
-                  />
-                  <input
-                    type="datetime-local"
-                    name="endsAt"
-                    defaultValue={
-                      confirmedSlot
-                        ? toDatetimeLocal(confirmedSlot.endsAt)
-                        : preferredSlots[0]
-                          ? toDatetimeLocal(preferredSlots[0].endsAt)
-                          : undefined
-                    }
-                    required
-                    style={{ padding: "0.3rem" }}
-                  />
-                  <button type="submit" style={{ padding: "0.3rem 0.6rem" }}>
-                    Confirm slot
-                  </button>
-                </form>
-
-                <form action={declineEventProposalAction}>
-                  <input type="hidden" name="proposalId" value={p.id} />
-                  <button type="submit" style={{ padding: "0.3rem 0.6rem" }}>
-                    Decline
-                  </button>
-                </form>
-
-                {p.status === "conflict" && (
-                  <form action={pingConflictHostAction}>
+              {canAct && (
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <form action={confirmEventProposalAction} className="flex items-center gap-1.5">
                     <input type="hidden" name="proposalId" value={p.id} />
-                    <button type="submit" style={{ padding: "0.3rem 0.6rem" }}>
-                      Ping host
+                    <input
+                      type="datetime-local"
+                      name="startsAt"
+                      defaultValue={
+                        confirmedSlot
+                          ? toDatetimeLocal(confirmedSlot.startsAt)
+                          : preferredSlots[0]
+                            ? toDatetimeLocal(preferredSlots[0].startsAt)
+                            : undefined
+                      }
+                      required
+                      className={INPUT}
+                    />
+                    <input
+                      type="datetime-local"
+                      name="endsAt"
+                      defaultValue={
+                        confirmedSlot
+                          ? toDatetimeLocal(confirmedSlot.endsAt)
+                          : preferredSlots[0]
+                            ? toDatetimeLocal(preferredSlots[0].endsAt)
+                            : undefined
+                      }
+                      required
+                      className={INPUT}
+                    />
+                    <button type="submit" className={BUTTON_PRIMARY}>
+                      Confirm slot
                     </button>
                   </form>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
 
-      <form action={publishEventScheduleAction} style={{ marginTop: "1rem" }}>
+                  <form action={declineEventProposalAction}>
+                    <input type="hidden" name="proposalId" value={p.id} />
+                    <button type="submit" className={BUTTON_SECONDARY}>
+                      Decline
+                    </button>
+                  </form>
+
+                  {p.status === "conflict" && (
+                    <form action={pingConflictHostAction}>
+                      <input type="hidden" name="proposalId" value={p.id} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        Ping host
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <form action={publishEventScheduleAction} className="mt-4">
         <input type="hidden" name="cycleId" value={cycleId ?? ""} />
-        <button type="submit" style={{ padding: "0.4rem 1rem" }}>
+        <button type="submit" className={BUTTON_PRIMARY}>
           Publish schedule
         </button>
         {unresolved.length > 0 && (
-          <p style={{ fontSize: "0.8rem", color: "#666", marginTop: "0.3rem" }}>
+          <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
             {unresolved.length} proposal(s) still need a confirmed slot or a decline first.
           </p>
         )}

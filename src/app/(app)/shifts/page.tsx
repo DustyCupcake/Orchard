@@ -13,6 +13,7 @@ import {
   listShiftSeries,
   listUpcomingShiftOccurrences,
 } from "@/lib/shifts";
+import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import {
   createShiftSeriesAction,
   markShiftSignupCompletedAction,
@@ -25,6 +26,10 @@ export const dynamic = "force-dynamic";
 
 function formatRange(startsAt: Date | string, endsAt: Date | string) {
   return `${new Date(startsAt).toLocaleString()} – ${new Date(endsAt).toLocaleTimeString()}`;
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 // See docs/spec.md's "Shifts / rota" and docs/development-plan.md's
@@ -118,11 +123,11 @@ export default async function ShiftsPage({
       : new Map<string, string>();
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 760 }}>
-      <h1>Shifts</h1>
+    <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Shifts</h1>
 
       {!moduleOn && (
-        <p style={{ color: "#666" }}>
+        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
           Not turned on for this Community yet — a current Admins holder can enable it under
           Modules on the Settings screen.
         </p>
@@ -130,104 +135,135 @@ export default async function ShiftsPage({
 
       {moduleOn && (
         <>
-          {error && <p style={{ color: "crimson" }}>{error}</p>}
-          {seriesCreated && <p style={{ color: "#2a7a2a" }}>Series created.</p>}
-          {signedUp && <p style={{ color: "#2a7a2a" }}>You&rsquo;re signed up.</p>}
-          {withdrawn && <p style={{ color: "#2a7a2a" }}>Withdrawn.</p>}
-          {occurrencesGenerated && <p style={{ color: "#2a7a2a" }}>Occurrences generated.</p>}
-          {archived && <p style={{ color: "#2a7a2a" }}>Series archived.</p>}
-          {unarchived && <p style={{ color: "#2a7a2a" }}>Series unarchived.</p>}
-          {markedCompleted && <p style={{ color: "#2a7a2a" }}>Marked completed.</p>}
-          {markedNoShow && <p style={{ color: "#2a7a2a" }}>Marked no-show.</p>}
+          {error && (
+            <div className="mt-4">
+              <Banner tone="danger">{error}</Banner>
+            </div>
+          )}
+          {seriesCreated && (
+            <div className="mt-4">
+              <Banner tone="success">Series created.</Banner>
+            </div>
+          )}
+          {signedUp && (
+            <div className="mt-4">
+              <Banner tone="success">You&rsquo;re signed up.</Banner>
+            </div>
+          )}
+          {withdrawn && (
+            <div className="mt-4">
+              <Banner tone="success">Withdrawn.</Banner>
+            </div>
+          )}
+          {occurrencesGenerated && (
+            <div className="mt-4">
+              <Banner tone="success">Occurrences generated.</Banner>
+            </div>
+          )}
+          {archived && (
+            <div className="mt-4">
+              <Banner tone="success">Series archived.</Banner>
+            </div>
+          )}
+          {unarchived && (
+            <div className="mt-4">
+              <Banner tone="success">Series unarchived.</Banner>
+            </div>
+          )}
+          {markedCompleted && (
+            <div className="mt-4">
+              <Banner tone="success">Marked completed.</Banner>
+            </div>
+          )}
+          {markedNoShow && (
+            <div className="mt-4">
+              <Banner tone="success">Marked no-show.</Banner>
+            </div>
+          )}
 
-          <section style={{ marginTop: "1rem" }}>
-            <h2>Upcoming shifts</h2>
-            {upcoming.length === 0 && <p style={{ color: "#666" }}>None scheduled.</p>}
-            {upcoming.map(({ occurrence, series }) => {
-              const capacity = effectiveCapacity(occurrence, series);
-              const count = countByOccurrenceId.get(occurrence.id) ?? 0;
-              const full = count >= capacity;
-              const iAmSignedUp = mySignedUpOccurrenceIds.has(occurrence.id);
-              return (
-                <div
-                  key={occurrence.id}
-                  style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
-                >
-                  <strong>{series.title}</strong>
-                  {series.branchId && <> · {branchNameById.get(series.branchId) ?? "—"}</>}
-                  <p style={{ margin: "0.2rem 0", fontSize: "0.85rem", color: "#666" }}>
-                    {formatRange(occurrence.startsAt, occurrence.endsAt)}
-                  </p>
-                  {series.description && <p style={{ margin: "0.2rem 0" }}>{series.description}</p>}
-                  <p style={{ margin: "0.2rem 0", fontSize: "0.85rem" }}>
-                    {count}/{capacity} signed up{full && !iAmSignedUp && " · full"}
-                  </p>
-                  {iAmSignedUp ? (
-                    <form action={withdrawFromShiftAction}>
-                      <input type="hidden" name="occurrenceId" value={occurrence.id} />
-                      <button type="submit" style={{ padding: "0.3rem 0.6rem" }}>
-                        Withdraw
-                      </button>
-                    </form>
-                  ) : (
-                    <form action={signUpForShiftAction}>
-                      <input type="hidden" name="occurrenceId" value={occurrence.id} />
-                      <button type="submit" disabled={full} style={{ padding: "0.3rem 0.6rem" }}>
-                        Sign up
-                      </button>
-                    </form>
-                  )}
-                </div>
-              );
-            })}
+          <section className="mt-6">
+            <SectionHeading>Upcoming shifts</SectionHeading>
+            {upcoming.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None scheduled.</p>}
+            <div className="mt-3 flex flex-col gap-2">
+              {upcoming.map(({ occurrence, series }) => {
+                const capacity = effectiveCapacity(occurrence, series);
+                const count = countByOccurrenceId.get(occurrence.id) ?? 0;
+                const full = count >= capacity;
+                const iAmSignedUp = mySignedUpOccurrenceIds.has(occurrence.id);
+                return (
+                  <div key={occurrence.id} className={CARD}>
+                    <p className="text-[14px] font-medium text-[var(--text)]">
+                      {series.title}
+                      {series.branchId && (
+                        <span className="font-normal text-[var(--text-muted)]"> · {branchNameById.get(series.branchId) ?? "—"}</span>
+                      )}
+                    </p>
+                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">{formatRange(occurrence.startsAt, occurrence.endsAt)}</p>
+                    {series.description && <p className="mt-1 text-[13px] text-[var(--text)]">{series.description}</p>}
+                    <p className="mt-1.5 flex items-center gap-2 text-[13px] text-[var(--text)]">
+                      {count}/{capacity} signed up
+                      {full && !iAmSignedUp && <Tag tone="warning">full</Tag>}
+                    </p>
+                    <div className="mt-2">
+                      {iAmSignedUp ? (
+                        <form action={withdrawFromShiftAction}>
+                          <input type="hidden" name="occurrenceId" value={occurrence.id} />
+                          <button type="submit" className={BUTTON_SECONDARY}>
+                            Withdraw
+                          </button>
+                        </form>
+                      ) : (
+                        <form action={signUpForShiftAction}>
+                          <input type="hidden" name="occurrenceId" value={occurrence.id} />
+                          <button type="submit" disabled={full} className={BUTTON_PRIMARY}>
+                            Sign up
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </section>
 
           {myPastPendingSignups.length > 0 && (
-            <section style={{ marginTop: "2rem" }}>
-              <h2>My past shifts</h2>
-              <p style={{ color: "#666", fontSize: "0.85rem" }}>
+            <section className="mt-8">
+              <SectionHeading>My past shifts</SectionHeading>
+              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
                 Self-reported — mark a shift completed once it&rsquo;s actually happened.
               </p>
-              {myPastPendingSignups.map(({ signup, occurrence, series }) => (
-                <div
-                  key={signup.id}
-                  style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
-                >
-                  <strong>{series.title}</strong>
-                  <p style={{ margin: "0.2rem 0", fontSize: "0.85rem", color: "#666" }}>
-                    {formatRange(occurrence.startsAt, occurrence.endsAt)}
-                  </p>
-                  <form action={markShiftSignupCompletedAction}>
-                    <input type="hidden" name="signupId" value={signup.id} />
-                    <button type="submit" style={{ padding: "0.3rem 0.6rem" }}>
-                      Mark completed
-                    </button>
-                  </form>
-                </div>
-              ))}
+              <div className="mt-3 flex flex-col gap-2">
+                {myPastPendingSignups.map(({ signup, occurrence, series }) => (
+                  <div key={signup.id} className={CARD}>
+                    <p className="text-[14px] font-medium text-[var(--text)]">{series.title}</p>
+                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">{formatRange(occurrence.startsAt, occurrence.endsAt)}</p>
+                    <form action={markShiftSignupCompletedAction} className="mt-2">
+                      <input type="hidden" name="signupId" value={signup.id} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        Mark completed
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
             </section>
           )}
 
-          <section style={{ marginTop: "2rem" }}>
-            <h2>Create a shift series</h2>
-            <form
-              action={createShiftSeriesAction}
-              style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 500 }}
-            >
-              <label>
-                Title
-                <br />
-                <input type="text" name="title" required style={{ padding: "0.4rem", width: "100%" }} />
+          <section className="mt-8">
+            <SectionHeading>Create a shift series</SectionHeading>
+            <form action={createShiftSeriesAction} className="mt-3 flex max-w-[500px] flex-col gap-2">
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Title</span>
+                <input type="text" name="title" required className={INPUT} />
               </label>
-              <label>
-                Description
-                <br />
-                <textarea name="description" rows={2} style={{ padding: "0.4rem", width: "100%" }} />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Description</span>
+                <textarea name="description" rows={2} className={INPUT} />
               </label>
-              <label>
-                Branch (optional)
-                <br />
-                <select name="branchId" defaultValue="" style={{ padding: "0.4rem", width: "100%" }}>
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Branch (optional)</span>
+                <select name="branchId" defaultValue="" className={INPUT}>
                   <option value="">No branch</option>
                   {branches.map((b) => (
                     <option key={b.id} value={b.id}>
@@ -236,33 +272,19 @@ export default async function ShiftsPage({
                   ))}
                 </select>
               </label>
-              <label>
-                Default capacity per occurrence
-                <br />
-                <input
-                  type="number"
-                  name="defaultCapacity"
-                  min={1}
-                  required
-                  style={{ padding: "0.4rem" }}
-                />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Default capacity per occurrence</span>
+                <input type="number" name="defaultCapacity" min={1} required className={`${INPUT} w-fit`} />
               </label>
-              <label>
-                Rotated from an existing task? (optional)
-                <br />
-                <input
-                  type="text"
-                  name="sourceTaskId"
-                  placeholder="paste the task's ID from its /tasks/… URL"
-                  style={{ padding: "0.4rem", width: "100%" }}
-                />
-                <br />
-                <span style={{ fontSize: "0.8rem", color: "#666" }}>
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Rotated from an existing task? (optional)</span>
+                <input type="text" name="sourceTaskId" placeholder="paste the task's ID from its /tasks/… URL" className={INPUT} />
+                <span className="text-[12px] text-[var(--text-muted)]">
                   If set, whoever currently holds that task can also manage this series, alongside
                   you as its creator.
                 </span>
               </label>
-              <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                 Create series
               </button>
             </form>

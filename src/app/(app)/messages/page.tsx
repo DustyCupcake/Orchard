@@ -7,6 +7,7 @@ import {
   listMyHeldTasksForMessaging,
   listOutboundMessagesVisibleTo,
 } from "@/lib/messages";
+import { Banner, BUTTON_PRIMARY, CARD, INPUT, LABEL } from "@/components/ui/kit";
 import { sendMessageAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,10 @@ function describeScope(scope: string, scopeRef: unknown): string {
     return `${SCOPE_LABEL[scope]}: ${ref.start ?? "?"} – ${ref.end ?? "?"}`;
   }
   return SCOPE_LABEL[scope] ?? scope;
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 export default async function MessagesPage({
@@ -47,30 +52,34 @@ export default async function MessagesPage({
   ]);
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <h1>Messages</h1>
-      <p style={{ color: "#666", fontSize: "0.85rem" }}>
+    <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Messages</h1>
+      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
         Every send is logged below — an announcement&rsquo;s log is visible to everyone; a targeted
         message&rsquo;s log is visible only to you and whoever it went to. Delivery follows each
         member&rsquo;s own email preference (see /profile).
       </p>
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {error && (
+        <div className="mt-4">
+          <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
 
       {coordinatedBranches.length > 0 && (
-        <section style={{ marginTop: "1.5rem" }}>
-          <h2>Message a branch you coordinate</h2>
-          <form action={sendMessageAction} style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <section className="mt-6">
+          <SectionHeading>Message a branch you coordinate</SectionHeading>
+          <form action={sendMessageAction} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="scope" value="branch" />
-            <select name="branchId" required style={{ padding: "0.4rem" }}>
+            <select name="branchId" required className={INPUT}>
               {coordinatedBranches.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
               ))}
             </select>
-            <input type="text" name="subject" placeholder="Subject" required style={{ padding: "0.4rem" }} />
-            <textarea name="body" placeholder="Message" required rows={3} style={{ padding: "0.4rem" }} />
-            <button type="submit" style={{ padding: "0.4rem 0.8rem", width: "fit-content" }}>
+            <input type="text" name="subject" placeholder="Subject" required className={INPUT} />
+            <textarea name="body" placeholder="Message" required rows={3} className={INPUT} />
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Send to branch
             </button>
           </form>
@@ -78,20 +87,20 @@ export default async function MessagesPage({
       )}
 
       {heldTasks.length > 0 && (
-        <section style={{ marginTop: "1.5rem" }}>
-          <h2>Message everyone holding a task with you</h2>
-          <form action={sendMessageAction} style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <section className="mt-6">
+          <SectionHeading>Message everyone holding a task with you</SectionHeading>
+          <form action={sendMessageAction} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="scope" value="task_holders" />
-            <select name="taskId" required style={{ padding: "0.4rem" }}>
+            <select name="taskId" required className={INPUT}>
               {heldTasks.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.title}
                 </option>
               ))}
             </select>
-            <input type="text" name="subject" placeholder="Subject" required style={{ padding: "0.4rem" }} />
-            <textarea name="body" placeholder="Message" required rows={3} style={{ padding: "0.4rem" }} />
-            <button type="submit" style={{ padding: "0.4rem 0.8rem", width: "fit-content" }}>
+            <input type="text" name="subject" placeholder="Subject" required className={INPUT} />
+            <textarea name="body" placeholder="Message" required rows={3} className={INPUT} />
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Send to co-holders
             </button>
           </form>
@@ -99,23 +108,25 @@ export default async function MessagesPage({
       )}
 
       {canArrivalWindow && (
-        <section style={{ marginTop: "1.5rem" }}>
-          <h2>Message people arriving in a window</h2>
-          <p style={{ color: "#666", fontSize: "0.8rem" }}>
+        <section className="mt-6">
+          <SectionHeading>Message people arriving in a window</SectionHeading>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             Goes to everyone marked coming/maybe for the current cycle whose declared arrival date
             falls in this range.
           </p>
-          <form action={sendMessageAction} style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <form action={sendMessageAction} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="scope" value="arrival_window" />
-            <label style={{ fontSize: "0.85rem" }}>
-              From <input type="date" name="start" required style={{ padding: "0.3rem" }} />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>From</span>
+              <input type="date" name="start" required className={`${INPUT} w-fit`} />
             </label>
-            <label style={{ fontSize: "0.85rem" }}>
-              To <input type="date" name="end" required style={{ padding: "0.3rem" }} />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>To</span>
+              <input type="date" name="end" required className={`${INPUT} w-fit`} />
             </label>
-            <input type="text" name="subject" placeholder="Subject" required style={{ padding: "0.4rem" }} />
-            <textarea name="body" placeholder="Message" required rows={3} style={{ padding: "0.4rem" }} />
-            <button type="submit" style={{ padding: "0.4rem 0.8rem", width: "fit-content" }}>
+            <input type="text" name="subject" placeholder="Subject" required className={INPUT} />
+            <textarea name="body" placeholder="Message" required rows={3} className={INPUT} />
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Send to arrivals
             </button>
           </form>
@@ -123,14 +134,14 @@ export default async function MessagesPage({
       )}
 
       {canAnnounce && (
-        <section style={{ marginTop: "1.5rem" }}>
-          <h2>Send a community-wide announcement</h2>
-          <p style={{ color: "#666", fontSize: "0.8rem" }}>Goes to every member in the community.</p>
-          <form action={sendMessageAction} style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <section className="mt-6">
+          <SectionHeading>Send a community-wide announcement</SectionHeading>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">Goes to every member in the community.</p>
+          <form action={sendMessageAction} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="scope" value="community" />
-            <input type="text" name="subject" placeholder="Subject" required style={{ padding: "0.4rem" }} />
-            <textarea name="body" placeholder="Message" required rows={3} style={{ padding: "0.4rem" }} />
-            <button type="submit" style={{ padding: "0.4rem 0.8rem", width: "fit-content" }}>
+            <input type="text" name="subject" placeholder="Subject" required className={INPUT} />
+            <textarea name="body" placeholder="Message" required rows={3} className={INPUT} />
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Send announcement
             </button>
           </form>
@@ -138,28 +149,26 @@ export default async function MessagesPage({
       )}
 
       {coordinatedBranches.length === 0 && heldTasks.length === 0 && !canArrivalWindow && !canAnnounce && (
-        <p style={{ color: "#666", marginTop: "1.5rem" }}>
+        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
           You don&rsquo;t currently have access to send anything — coordinate a branch, hold a task
           with a co-holder, be eligible to start a cycle, or hold the announcement task.
         </p>
       )}
 
-      <section style={{ marginTop: "2rem" }}>
-        <h2>Sent messages</h2>
-        {sentMessages.length === 0 && <p style={{ color: "#666" }}>Nothing sent yet.</p>}
-        {sentMessages.map((m) => (
-          <div
-            key={m.id}
-            style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
-          >
-            <strong>{m.subject}</strong>
-            <span style={{ color: "#666", fontSize: "0.8rem" }}>
-              {" "}
-              — {describeScope(m.scope, m.scopeRef)} — {new Date(m.sentAt).toLocaleString()}
-            </span>
-            <p style={{ margin: "0.4rem 0 0", whiteSpace: "pre-wrap" }}>{m.body}</p>
-          </div>
-        ))}
+      <section className="mt-8">
+        <SectionHeading>Sent messages</SectionHeading>
+        {sentMessages.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nothing sent yet.</p>}
+        <div className="mt-3 flex flex-col gap-2">
+          {sentMessages.map((m) => (
+            <div key={m.id} className={CARD}>
+              <p className="text-[14px] font-medium text-[var(--text)]">{m.subject}</p>
+              <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+                {describeScope(m.scope, m.scopeRef)} — {new Date(m.sentAt).toLocaleString()}
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-[13px] text-[var(--text)]">{m.body}</p>
+            </div>
+          ))}
+        </div>
       </section>
     </main>
   );

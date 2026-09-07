@@ -3,8 +3,13 @@ import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { listWikiPages, listTaskWikiIndex } from "@/lib/wiki-pages";
 import { listBranches } from "@/lib/settings";
+import { BUTTON_PRIMARY, Tag } from "@/components/ui/kit";
 
 export const dynamic = "force-dynamic";
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+}
 
 export default async function DocumentationPage() {
   const { real, viewing } = await getViewingContext();
@@ -32,33 +37,37 @@ export default async function DocumentationPage() {
   }));
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 720 }}>
-      <h1>Documentation</h1>
-      <p style={{ color: "#666" }}>
+    <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Documentation</h1>
+      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
         General reference, platform how-to, camp policy or lore, and FAQs that don&rsquo;t belong
         to any single task — plus a browsable index of every task&rsquo;s own wiki content below.
       </p>
 
-      <p>
-        <Link href="/documentation/new" style={{ color: "inherit" }}>
-          + New page
+      <div className="mt-4">
+        <Link href="/documentation/new" className={BUTTON_PRIMARY}>
+          New page
         </Link>
-      </p>
+      </div>
 
-      {branchGroups.length === 0 && <p style={{ color: "#666" }}>No pages yet.</p>}
+      {branchGroups.length === 0 && <p className="mt-6 text-[13px] text-[var(--text-muted)]">No pages yet.</p>}
 
       {branchGroups.map((group) => (
-        <section key={group.key} style={{ marginTop: "1.5rem" }}>
-          <h2>{group.name}</h2>
-          <ul>
+        <section key={group.key} className="mt-6">
+          <SectionHeading>{group.name}</SectionHeading>
+          <ul className="mt-2 flex flex-col gap-1.5">
             {group.pages.map((p) => (
-              <li key={p.id}>
-                <Link href={`/documentation/${p.id}`} style={{ color: "inherit" }}>
+              <li key={p.id} className="text-[13px]">
+                <Link href={`/documentation/${p.id}`} className="font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
                   {p.title}
                 </Link>
-                {p.questionPending && <span style={{ color: "#a15c00" }}> · unanswered</span>}
+                {p.questionPending && (
+                  <span className="ml-1.5">
+                    <Tag tone="warning">unanswered</Tag>
+                  </span>
+                )}
                 {p.latestRevision && (
-                  <span style={{ color: "#666", fontSize: "0.85rem" }}>
+                  <span className="text-[var(--text-muted)]">
                     {" "}
                     — {p.latestRevision.content.slice(0, 80)}
                     {p.latestRevision.content.length > 80 ? "…" : ""}
@@ -70,26 +79,26 @@ export default async function DocumentationPage() {
         </section>
       ))}
 
-      <hr style={{ margin: "2.5rem 0" }} />
+      <hr className="my-10 border-[var(--border)]" />
 
-      <h2>Task wiki index</h2>
-      <p style={{ color: "#666", fontSize: "0.9rem" }}>
+      <SectionHeading>Task wiki index</SectionHeading>
+      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
         A read-only view over every task&rsquo;s current wiki summary — nothing new stored here,
         just a way to browse by branch instead of digging into individual task cards.
       </p>
 
-      {taskWikiGroups.length === 0 && <p style={{ color: "#666" }}>No task wikis written up yet.</p>}
+      {taskWikiGroups.length === 0 && <p className="mt-3 text-[13px] text-[var(--text-muted)]">No task wikis written up yet.</p>}
 
       {taskWikiGroups.map((group) => (
-        <section key={group.branchId} style={{ marginTop: "1rem" }}>
-          <h3>{group.branchName}</h3>
-          <ul>
+        <section key={group.branchId} className="mt-4">
+          <h3 className="text-[15px] font-medium text-[var(--text)]">{group.branchName}</h3>
+          <ul className="mt-1.5 flex flex-col gap-1">
             {group.entries.map((e) => (
-              <li key={e.taskId}>
-                <Link href={`/tasks/${e.taskId}`} style={{ color: "inherit" }}>
+              <li key={e.taskId} className="text-[13px]">
+                <Link href={`/tasks/${e.taskId}`} className="font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
                   {e.taskTitle}
                 </Link>
-                <span style={{ color: "#666", fontSize: "0.85rem" }}>
+                <span className="text-[var(--text-muted)]">
                   {" "}
                   — {e.content.slice(0, 80)}
                   {e.content.length > 80 ? "…" : ""} (by {e.editedByName})

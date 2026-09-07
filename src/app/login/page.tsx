@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getOrCreateCommunity } from "@/lib/community";
 import { isOidcConfigured } from "@/lib/oidc";
+import { Banner, BUTTON_SECONDARY } from "@/components/ui/kit";
 import LoginForm from "./LoginForm";
 
 export const dynamic = "force-dynamic";
@@ -26,20 +27,33 @@ export default async function LoginPage({
   const oidcOn = isOidcConfigured(community);
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 480 }}>
-      <h1>Log in to Orchard</h1>
+    <main className="mx-auto max-w-[480px] px-6 py-16">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Log in to Orchard</h1>
+
       {error && ERROR_MESSAGES[error] && (
-        <p style={{ color: "crimson" }}>{ERROR_MESSAGES[error]}</p>
+        <div className="mt-4">
+          <Banner tone="danger">{ERROR_MESSAGES[error]}</Banner>
+        </div>
       )}
-      <LoginForm />
+
+      <div className="mt-6">
+        <LoginForm />
+      </div>
+
       {oidcOn && (
-        <p style={{ marginTop: "1rem" }}>
-          <a href="/api/auth/oidc/login">Sign in with Zitadel</a>
-        </p>
+        <div className="mt-4">
+          <a href="/api/auth/oidc/login" className={BUTTON_SECONDARY}>
+            Sign in with Zitadel
+          </a>
+        </div>
       )}
+
       {error === "no_account" && (
-        <p style={{ marginTop: "1rem", fontSize: "0.9rem" }}>
-          <Link href="/inquiry">Send us a message</Link> and someone will get back to you.
+        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+          <Link href="/inquiry" className="text-[var(--accent-1)] hover:underline">
+            Send us a message
+          </Link>{" "}
+          and someone will get back to you.
         </p>
       )}
     </main>

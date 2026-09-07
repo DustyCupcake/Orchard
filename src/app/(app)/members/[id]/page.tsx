@@ -6,6 +6,7 @@ import { emergencyAccessLog, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getVisibleContactMethods, listEmergencyOnlyContactMethods } from "@/lib/contact-methods";
 import { getMostRecentActivation } from "@/lib/emergency-access";
+import { Banner, BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
 import { activateEmergencyAccessAction, addEmergencyAccessExplanationAction } from "./actions";
 
 type EmergencyAccessLogRow = typeof emergencyAccessLog.$inferSelect;
@@ -43,13 +44,13 @@ export default async function MemberPage({
 
   if (!target || target.communityId !== viewing.communityId) {
     return (
-      <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 480 }}>
-        <p>
-          <Link href="/members" style={{ color: "inherit" }}>
-            ← Back to members
-          </Link>
-        </p>
-        <p style={{ color: "crimson" }}>Member not found.</p>
+      <main className="mx-auto max-w-[480px] px-6 py-10 md:px-12 md:py-14">
+        <Link href="/members" className="text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+          ← Back to members
+        </Link>
+        <div className="mt-4">
+          <Banner tone="danger">Member not found.</Banner>
+        </div>
       </main>
     );
   }
@@ -72,86 +73,76 @@ export default async function MemberPage({
   }
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 480 }}>
-      <p>
-        <Link href="/members" style={{ color: "inherit" }}>
-          ← Back to members
-        </Link>
-      </p>
-      <h1>{target.name}</h1>
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+    <main className="mx-auto max-w-[480px] px-6 py-10 md:px-12 md:py-14">
+      <Link href="/members" className="text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+        ← Back to members
+      </Link>
+      <h1 className="mt-2 text-[32px] font-semibold leading-tight text-[var(--text)]">{target.name}</h1>
+      {error && (
+        <div className="mt-4">
+          <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
 
-      <section style={{ marginTop: "1rem" }}>
-        <h2>Contact methods</h2>
+      <section className="mt-6">
+        <h2 className="text-[22px] font-semibold text-[var(--text)]">Contact methods</h2>
         {visibleMethods.length === 0 && (
-          <p style={{ color: "#666" }}>Nothing visible to you right now.</p>
+          <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nothing visible to you right now.</p>
         )}
-        <ul>
+        <ul className="mt-2 flex flex-col gap-1">
           {visibleMethods.map((m) => (
-            <li key={m.id}>
+            <li key={m.id} className="text-[13px] text-[var(--text)]">
               {m.type}: {m.value}
             </li>
           ))}
         </ul>
       </section>
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2>Emergency access</h2>
-        <p style={{ color: "#666", fontSize: "0.85rem" }}>
+      <section className="mt-6">
+        <h2 className="text-[22px] font-semibold text-[var(--text)]">Emergency access</h2>
+        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
           Any member can activate this to reveal {target.name}&rsquo;s emergency-only contact info
           when it&rsquo;s genuinely needed. Both of you are notified, and every activation is
-          logged — see your <Link href="/dashboard">Dashboard</Link> for recent activity.
+          logged — see your <Link href="/dashboard" className="text-[var(--accent-1)] hover:underline">Dashboard</Link> for recent activity.
         </p>
 
         {recentLog && (
-          <div
-            style={{
-              border: "1px solid #2a7a2a",
-              borderRadius: 6,
-              padding: "0.6rem",
-              marginBottom: "0.75rem",
-            }}
-          >
-            <strong>Revealed just now:</strong>
-            {revealedMethods.length === 0 ? (
-              <p style={{ color: "#666" }}>{target.name} hasn&rsquo;t set any emergency-only method.</p>
-            ) : (
-              <ul>
-                {revealedMethods.map((m) => (
-                  <li key={m.id}>
-                    {m.type}: {m.value}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <form action={addEmergencyAccessExplanationAction} style={{ marginTop: "0.5rem" }}>
-              <input type="hidden" name="targetMemberId" value={target.id} />
-              <input type="hidden" name="logId" value={recentLog.id} />
-              <label style={{ display: "block", fontSize: "0.8rem" }}>
-                Explanation (can be added or edited any time)
-                <br />
-                <input
-                  type="text"
-                  name="explanation"
-                  defaultValue={recentLog.explanation ?? ""}
-                  style={{ padding: "0.4rem", width: "100%" }}
-                />
-              </label>
-              <button type="submit" style={{ marginTop: "0.4rem" }}>
-                Save explanation
-              </button>
-            </form>
+          <div className="mt-3">
+            <Banner tone="success">
+              <p className="font-medium">Revealed just now:</p>
+              {revealedMethods.length === 0 ? (
+                <p className="mt-1 opacity-80">{target.name} hasn&rsquo;t set any emergency-only method.</p>
+              ) : (
+                <ul className="mt-1 flex flex-col gap-1">
+                  {revealedMethods.map((m) => (
+                    <li key={m.id}>
+                      {m.type}: {m.value}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <form action={addEmergencyAccessExplanationAction} className="mt-2">
+                <input type="hidden" name="targetMemberId" value={target.id} />
+                <input type="hidden" name="logId" value={recentLog.id} />
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Explanation (can be added or edited any time)</span>
+                  <input type="text" name="explanation" defaultValue={recentLog.explanation ?? ""} className={INPUT} />
+                </label>
+                <button type="submit" className={`${BUTTON_PRIMARY} mt-2 w-fit`}>
+                  Save explanation
+                </button>
+              </form>
+            </Banner>
           </div>
         )}
 
-        <form action={activateEmergencyAccessAction}>
+        <form action={activateEmergencyAccessAction} className="mt-3 flex flex-col gap-2">
           <input type="hidden" name="targetMemberId" value={target.id} />
-          <label style={{ display: "block", fontSize: "0.85rem" }}>
-            Why (optional — can be added after the fact instead)
-            <br />
-            <input type="text" name="explanation" style={{ padding: "0.4rem", width: "100%" }} />
+          <label className="flex flex-col gap-1">
+            <span className={LABEL}>Why (optional — can be added after the fact instead)</span>
+            <input type="text" name="explanation" className={INPUT} />
           </label>
-          <button type="submit" style={{ marginTop: "0.5rem" }}>
+          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
             Activate emergency access
           </button>
         </form>

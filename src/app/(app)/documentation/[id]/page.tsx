@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { branch, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getWikiPage, listWikiPages } from "@/lib/wiki-pages";
+import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, Tag } from "@/components/ui/kit";
 import { editWikiPageAction, markDuplicateAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -35,47 +36,46 @@ export default async function WikiPageDetail({
   const duplicateCandidates = otherPages.filter((p) => p.id !== page.id);
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <p>
-        <Link href="/documentation" style={{ color: "inherit" }}>
-          ← Back to Documentation
-        </Link>
-      </p>
+    <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
+      <Link href="/documentation" className="text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+        ← Back to Documentation
+      </Link>
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {error && (
+        <div className="mt-4">
+          <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
 
-      <h1>
+      <h1 className="mt-2 flex items-center gap-2 text-[32px] font-semibold leading-tight text-[var(--text)]">
         {page.title}
-        {page.questionPending && <span style={{ color: "#a15c00" }}> · unanswered</span>}
+        {page.questionPending && <Tag tone="warning">unanswered</Tag>}
       </h1>
-      <div style={{ fontSize: "0.9rem", color: "#666" }}>{branchRow?.name ?? "General"}</div>
+      <p className="mt-1 text-[13px] text-[var(--text-muted)]">{branchRow?.name ?? "General"}</p>
 
       {alsoAskedAs.length > 0 && (
-        <p style={{ fontSize: "0.85rem", color: "#666" }}>
+        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
           Also asked as: {alsoAskedAs.map((p) => p.title).join(", ")}
         </p>
       )}
 
-      <section style={{ marginTop: "1.5rem" }}>
+      <section className="mt-6">
         {currentContent ? (
-          <div style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.75rem" }}>
-            <p style={{ whiteSpace: "pre-wrap" }}>{currentContent}</p>
-            <p style={{ fontSize: "0.8rem", color: "#666" }}>
+          <div className={CARD}>
+            <p className="whitespace-pre-wrap text-[13px] text-[var(--text)]">{currentContent}</p>
+            <p className="mt-2 text-[12px] text-[var(--text-muted)]">
               Last edited by {memberNameById.get(revisions[0].editedBy) ?? "—"} on{" "}
               {new Date(revisions[0].editedAt).toLocaleString()}
             </p>
           </div>
         ) : (
-          <p style={{ color: "#666" }}>
+          <p className="text-[13px] text-[var(--text-muted)]">
             No answer yet — be the first to write one up, or mark this as a duplicate of an
             existing page below.
           </p>
         )}
 
-        <form
-          action={editWikiPageAction}
-          style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem" }}
-        >
+        <form action={editWikiPageAction} className="mt-3 flex flex-col gap-2">
           <input type="hidden" name="pageId" value={page.id} />
           <textarea
             name="content"
@@ -83,19 +83,19 @@ export default async function WikiPageDetail({
             required
             defaultValue={currentContent ?? ""}
             placeholder={page.questionPending ? "Write the answer…" : "Edit the page…"}
-            style={{ padding: "0.5rem" }}
+            className={INPUT}
           />
-          <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
             {page.questionPending ? "Post answer" : "Save edit"}
           </button>
         </form>
 
         {revisions.length > 1 && (
-          <details style={{ marginTop: "0.5rem" }}>
-            <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
               Revision history ({revisions.length})
             </summary>
-            <ul style={{ fontSize: "0.8rem" }}>
+            <ul className="mt-2 flex flex-col gap-1 text-[12px] text-[var(--text-muted)]">
               {revisions.slice(1).map((rev) => (
                 <li key={rev.id}>
                   {memberNameById.get(rev.editedBy) ?? "—"} —{" "}
@@ -108,16 +108,13 @@ export default async function WikiPageDetail({
       </section>
 
       {page.questionPending && duplicateCandidates.length > 0 && (
-        <details style={{ marginTop: "1.5rem" }}>
-          <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>
+        <details className="mt-6">
+          <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
             This already exists elsewhere — mark as a duplicate
           </summary>
-          <form
-            action={markDuplicateAction}
-            style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}
-          >
+          <form action={markDuplicateAction} className="mt-2 flex gap-2">
             <input type="hidden" name="pageId" value={page.id} />
-            <select name="duplicateOfPageId" required defaultValue="" style={{ padding: "0.4rem" }}>
+            <select name="duplicateOfPageId" required defaultValue="" className={INPUT}>
               <option value="" disabled>
                 Which page already answers this?
               </option>
@@ -127,7 +124,9 @@ export default async function WikiPageDetail({
                 </option>
               ))}
             </select>
-            <button type="submit">Mark as duplicate</button>
+            <button type="submit" className={BUTTON_SECONDARY}>
+              Mark as duplicate
+            </button>
           </form>
         </details>
       )}

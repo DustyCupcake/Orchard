@@ -1,3 +1,5 @@
+import { INPUT } from "@/components/ui/kit";
+
 // The one real render path for "what does answering this field look
 // like" — shared by /apply, /feedback (real, submittable renders) and
 // the settings Form/ProfileQuestion builders' own live preview
@@ -26,31 +28,32 @@ export default function FieldPreview({
   disabled?: boolean;
 }) {
   return (
-    <label>
-      {field.label || <span style={{ color: "#999" }}>(untitled field)</span>}
-      {field.required ? " *" : ""}
-      <br />
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[13px] font-medium text-[var(--text)]">
+        {field.label || <span className="text-[var(--text-muted)]">(untitled field)</span>}
+        {field.required ? " *" : ""}
+      </span>
       {field.responseType === "free_text" && (
-        <textarea name={name} required={field.required} disabled={disabled} rows={3} style={{ padding: "0.5rem", width: "100%" }} />
+        <textarea name={name} required={field.required} disabled={disabled} rows={3} className={INPUT} />
       )}
       {field.responseType === "date" && (
-        <input type="date" name={name} required={field.required} disabled={disabled} style={{ padding: "0.5rem" }} />
+        <input type="date" name={name} required={field.required} disabled={disabled} className={`${INPUT} w-fit`} />
       )}
       {field.responseType === "single_choice" && (
-        <div>
-          {field.options.length === 0 && <span style={{ color: "#999", fontWeight: 400 }}>(no options yet)</span>}
+        <div className="flex flex-col gap-1">
+          {field.options.length === 0 && <span className="text-[13px] text-[var(--text-muted)]">(no options yet)</span>}
           {field.options.map((o, i) => (
-            <label key={`${o}-${i}`} style={{ display: "block", fontWeight: 400 }}>
+            <label key={`${o}-${i}`} className="flex items-center gap-2 text-[13px] font-normal text-[var(--text)]">
               <input type="radio" name={name} value={o} required={field.required} disabled={disabled} /> {o}
             </label>
           ))}
         </div>
       )}
       {field.responseType === "multi_choice" && (
-        <div>
-          {field.options.length === 0 && <span style={{ color: "#999", fontWeight: 400 }}>(no options yet)</span>}
+        <div className="flex flex-col gap-1">
+          {field.options.length === 0 && <span className="text-[13px] text-[var(--text-muted)]">(no options yet)</span>}
           {field.options.map((o, i) => (
-            <label key={`${o}-${i}`} style={{ display: "block", fontWeight: 400 }}>
+            <label key={`${o}-${i}`} className="flex items-center gap-2 text-[13px] font-normal text-[var(--text)]">
               <input type="checkbox" name={name} value={o} disabled={disabled} /> {o}
             </label>
           ))}

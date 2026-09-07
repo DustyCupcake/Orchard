@@ -21,6 +21,7 @@ import {
   listSpacePreferences,
   listZones,
 } from "@/lib/spatial-planning";
+import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT, LABEL } from "@/components/ui/kit";
 import PlotEditor from "./PlotEditor";
 import {
   acceptPlacementInviteAction,
@@ -39,6 +40,10 @@ const SLEEP_ARRANGEMENTS = [
   { value: "shared_vehicle", label: "Shared vehicle" },
   { value: "other", label: "Other" },
 ];
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+}
 
 // See docs/spec.md's "Spatial planning" and docs/development-plan.md's
 // Phase 36-38 — the base site (Plot), its organizational regions
@@ -74,25 +79,20 @@ export default async function SpatialPlanningPage({
 
   if (moduleOn && resolution.kind === "ambiguous") {
     return (
-      <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 1100 }}>
-        <h1>Spatial planning</h1>
-        <p style={{ color: "#666" }}>Scoped to multiple active cycles — pick one to see its layout:</p>
-        <ul>
+      <main className="mx-auto max-w-[1100px] px-6 py-10 md:px-12 md:py-14">
+        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Spatial planning</h1>
+        <p className="mt-2 text-[13px] text-[var(--text-muted)]">Scoped to multiple active cycles — pick one to see its layout:</p>
+        <div className="mt-4 flex flex-wrap gap-2">
           {resolution.candidates.map((c) => (
-            <li key={c.id}>
-              <form action={switchToLinkedScopeAction} style={{ display: "inline" }}>
-                <input type="hidden" name="scope" value={c.id} />
-                <input type="hidden" name="returnTo" value="/spatial-planning" />
-                <button
-                  type="submit"
-                  style={{ padding: 0, border: "none", background: "none", color: "#0645ad", textDecoration: "underline", cursor: "pointer" }}
-                >
-                  {c.name}
-                </button>
-              </form>
-            </li>
+            <form key={c.id} action={switchToLinkedScopeAction}>
+              <input type="hidden" name="scope" value={c.id} />
+              <input type="hidden" name="returnTo" value="/spatial-planning" />
+              <button type="submit" className={BUTTON_SECONDARY}>
+                {c.name}
+              </button>
+            </form>
           ))}
-        </ul>
+        </div>
       </main>
     );
   }
@@ -140,105 +140,113 @@ export default async function SpatialPlanningPage({
     : [[], []];
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 1100 }}>
-      <h1>Spatial planning</h1>
+    <main className="mx-auto max-w-[1100px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Spatial planning</h1>
 
       {!moduleOn && (
-        <p style={{ color: "#666" }}>
+        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
           Not turned on for this Community yet — a current Admins holder can enable it under
           Modules on the Settings screen.
         </p>
       )}
 
       {moduleOn && spatialPlanningGrantingTaskIds.length === 0 && (
-        <p style={{ color: "#666" }}>
+        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
           No Spatial-planning task designated yet — anyone can view once a Plot exists, but nobody
           can draw or edit until a current Admins holder sets one under Settings.
         </p>
       )}
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {error && (
+        <div className="mt-4">
+          <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
 
       {moduleOn && (
-        <PlotEditor
-          cycleId={cycleId}
-          cycleName={currentCycle?.name ?? null}
-          plot={
-            plotRow && {
-              ...plotRow,
-              scaleCalibration: plotRow.scaleCalibration as ScaleCalibration | null,
+        <div className="mt-6">
+          <PlotEditor
+            cycleId={cycleId}
+            cycleName={currentCycle?.name ?? null}
+            plot={
+              plotRow && {
+                ...plotRow,
+                scaleCalibration: plotRow.scaleCalibration as ScaleCalibration | null,
+              }
             }
-          }
-          initialZones={zones.map((z) => ({ ...z, polygon: z.polygon as Point[] }))}
-          initialPlacements={placements.map((p) => ({ ...p, geometry: p.geometry as PlacementGeometry }))}
-          initialTemplates={templates.map((t) => ({ ...t, geometry: t.geometry as PlacementGeometry }))}
-          communityMembers={communityMembers}
-          canEdit={canEdit}
-          myEditablePlacementIds={myEditablePlacementIds}
-          cloneCandidates={cloneCandidates.map((c) => ({
-            cycleId: c.cycleId!,
-            cycleName: c.cycleName,
-          }))}
-        />
+            initialZones={zones.map((z) => ({ ...z, polygon: z.polygon as Point[] }))}
+            initialPlacements={placements.map((p) => ({ ...p, geometry: p.geometry as PlacementGeometry }))}
+            initialTemplates={templates.map((t) => ({ ...t, geometry: t.geometry as PlacementGeometry }))}
+            communityMembers={communityMembers}
+            canEdit={canEdit}
+            myEditablePlacementIds={myEditablePlacementIds}
+            cloneCandidates={cloneCandidates.map((c) => ({
+              cycleId: c.cycleId!,
+              cycleName: c.cycleName,
+            }))}
+          />
+        </div>
       )}
 
       {moduleOn && (myPlacementInvites.length > 0 || myRevertNotices.length > 0) && (
-        <section style={{ marginTop: "1.5rem", maxWidth: 500 }}>
+        <section className="mt-6 max-w-[500px]">
           {myPlacementInvites.length > 0 && (
             <>
-              <h2>Placement invites</h2>
-              {myPlacementInvites.map((invite) => (
-                <div key={invite.placementId} style={{ marginBottom: "0.5rem", fontSize: "0.9rem" }}>
-                  <strong>{invite.invitedByName}</strong> named you on &ldquo;{invite.placementLabel}&rdquo;.
-                  <form action={acceptPlacementInviteAction} style={{ display: "inline", marginLeft: "0.5rem" }}>
-                    <input type="hidden" name="placementId" value={invite.placementId} />
-                    <button type="submit">Accept</button>
-                  </form>
-                  <form action={declinePlacementInviteAction} style={{ display: "inline", marginLeft: "0.3rem" }}>
-                    <input type="hidden" name="placementId" value={invite.placementId} />
-                    <button type="submit">Decline</button>
-                  </form>
-                </div>
-              ))}
+              <SectionHeading>Placement invites</SectionHeading>
+              <div className="mt-2 flex flex-col gap-2">
+                {myPlacementInvites.map((invite) => (
+                  <div key={invite.placementId} className="text-[13px] text-[var(--text)]">
+                    <span className="font-medium">{invite.invitedByName}</span> named you on &ldquo;{invite.placementLabel}&rdquo;.
+                    <form action={acceptPlacementInviteAction} className="ml-2 inline">
+                      <input type="hidden" name="placementId" value={invite.placementId} />
+                      <button type="submit" className={BUTTON_PRIMARY}>
+                        Accept
+                      </button>
+                    </form>{" "}
+                    <form action={declinePlacementInviteAction} className="inline">
+                      <input type="hidden" name="placementId" value={invite.placementId} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        Decline
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
             </>
           )}
 
           {myRevertNotices.length > 0 && (
-            <>
-              <h2>Reverted edits</h2>
-              {myRevertNotices.map((n) => (
-                <div key={n.notice.id} style={{ marginBottom: "0.5rem", fontSize: "0.9rem" }}>
-                  <strong>{n.revertedByName}</strong> reverted your change to &ldquo;{n.placementLabel}&rdquo;
-                  {n.notice.note && <> — {n.notice.note}</>}.
-                  <form action={acknowledgeRevertNoticeAction} style={{ display: "inline", marginLeft: "0.5rem" }}>
-                    <input type="hidden" name="noticeId" value={n.notice.id} />
-                    <button type="submit">OK</button>
-                  </form>
-                </div>
-              ))}
-            </>
+            <div className="mt-4">
+              <SectionHeading>Reverted edits</SectionHeading>
+              <div className="mt-2 flex flex-col gap-2">
+                {myRevertNotices.map((n) => (
+                  <div key={n.notice.id} className="text-[13px] text-[var(--text)]">
+                    <span className="font-medium">{n.revertedByName}</span> reverted your change to &ldquo;{n.placementLabel}&rdquo;
+                    {n.notice.note && <> — {n.notice.note}</>}.
+                    <form action={acknowledgeRevertNoticeAction} className="ml-2 inline">
+                      <input type="hidden" name="noticeId" value={n.notice.id} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        OK
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </section>
       )}
 
       {moduleOn && (
-        <section style={{ marginTop: "2rem", maxWidth: 500 }}>
-          <h2>Your Space preferences</h2>
-          <p style={{ fontSize: "0.85rem", color: "#666" }}>
+        <section className="mt-8 max-w-[500px]">
+          <SectionHeading>Your Space preferences</SectionHeading>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             Feeds the layout conversation — informs sizing and grouping, never auto-places you.
           </p>
-          <form
-            action={upsertSpacePreferenceAction}
-            style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}
-          >
-            <label>
-              Sleep/space arrangement
-              <br />
-              <select
-                name="sleepArrangement"
-                defaultValue={mySpacePreference?.sleepArrangement ?? "solo_tent"}
-                style={{ padding: "0.4rem", width: "100%" }}
-              >
+          <form action={upsertSpacePreferenceAction} className="mt-3 flex flex-col gap-2">
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Sleep/space arrangement</span>
+              <select name="sleepArrangement" defaultValue={mySpacePreference?.sleepArrangement ?? "solo_tent"} className={INPUT}>
                 {SLEEP_ARRANGEMENTS.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
@@ -247,102 +255,76 @@ export default async function SpatialPlanningPage({
               </select>
             </label>
 
-            <div style={{ display: "flex", gap: "0.5rem" }}>
-              <label>
-                Vehicle length (m)
-                <br />
+            <div className="flex gap-2">
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Vehicle length (m)</span>
                 <input
                   type="number"
                   name="vehicleLength"
-                  defaultValue={
-                    (mySpacePreference?.vehicleDimensions as { length: number } | null)?.length ?? ""
-                  }
-                  style={{ padding: "0.4rem", width: "6rem" }}
+                  defaultValue={(mySpacePreference?.vehicleDimensions as { length: number } | null)?.length ?? ""}
+                  className={`${INPUT} w-24`}
                 />
               </label>
-              <label>
-                Width (m)
-                <br />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Width (m)</span>
                 <input
                   type="number"
                   name="vehicleWidth"
-                  defaultValue={
-                    (mySpacePreference?.vehicleDimensions as { width: number } | null)?.width ?? ""
-                  }
-                  style={{ padding: "0.4rem", width: "6rem" }}
+                  defaultValue={(mySpacePreference?.vehicleDimensions as { width: number } | null)?.width ?? ""}
+                  className={`${INPUT} w-24`}
                 />
               </label>
-              <label>
-                Height (m)
-                <br />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Height (m)</span>
                 <input
                   type="number"
                   name="vehicleHeight"
-                  defaultValue={
-                    (mySpacePreference?.vehicleDimensions as { height: number } | null)?.height ?? ""
-                  }
-                  style={{ padding: "0.4rem", width: "6rem" }}
+                  defaultValue={(mySpacePreference?.vehicleDimensions as { height: number } | null)?.height ?? ""}
+                  className={`${INPUT} w-24`}
                 />
               </label>
             </div>
 
-            <label>
-              Prefer to be placed near (comma-separated Member IDs)
-              <br />
-              <input
-                type="text"
-                name="groupWith"
-                defaultValue={mySpacePreference?.groupWith?.join(", ") ?? ""}
-                style={{ padding: "0.4rem", width: "100%" }}
-              />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Prefer to be placed near (comma-separated Member IDs)</span>
+              <input type="text" name="groupWith" defaultValue={mySpacePreference?.groupWith?.join(", ") ?? ""} className={INPUT} />
             </label>
 
-            <label>
-              Sharing this space with (comma-separated Member IDs)
-              <br />
-              <input
-                type="text"
-                name="sharingWith"
-                defaultValue={mySpacePreference?.sharingWith?.join(", ") ?? ""}
-                style={{ padding: "0.4rem", width: "100%" }}
-              />
-              <br />
-              <span style={{ fontSize: "0.8rem", color: "#666" }}>
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Sharing this space with (comma-separated Member IDs)</span>
+              <input type="text" name="sharingWith" defaultValue={mySpacePreference?.sharingWith?.join(", ") ?? ""} className={INPUT} />
+              <span className="text-[12px] text-[var(--text-muted)]">
                 A different question from proximity above — who you expect to actually occupy the
                 same tent/vehicle with.
               </span>
             </label>
 
-            <label>
-              Accessibility notes
-              <br />
-              <textarea
-                name="accessibilityNotes"
-                rows={2}
-                defaultValue={mySpacePreference?.accessibilityNotes ?? ""}
-                style={{ padding: "0.4rem", width: "100%" }}
-              />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Accessibility notes</span>
+              <textarea name="accessibilityNotes" rows={2} defaultValue={mySpacePreference?.accessibilityNotes ?? ""} className={INPUT} />
             </label>
 
-            <button type="submit" style={{ width: "fit-content", padding: "0.4rem 0.8rem" }}>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Save
             </button>
           </form>
 
           {canEdit && (
-            <div style={{ marginTop: "1.5rem" }}>
-              <h3 style={{ fontSize: "1rem" }}>Everyone&rsquo;s Space preferences</h3>
+            <div className="mt-6">
+              <h3 className="text-[15px] font-medium text-[var(--text)]">Everyone&rsquo;s Space preferences</h3>
               {everyonesSpacePreferences.length === 0 && (
-                <p style={{ color: "#666", fontSize: "0.85rem" }}>Nobody has set theirs yet.</p>
+                <p className="mt-1 text-[13px] text-[var(--text-muted)]">Nobody has set theirs yet.</p>
               )}
-              {everyonesSpacePreferences.map((row) => (
-                <div key={row.preference.memberId} style={{ fontSize: "0.85rem", marginBottom: "0.4rem" }}>
-                  <strong>{memberNameById.get(row.preference.memberId) ?? row.memberName}</strong>
-                  {" — "}
-                  {SLEEP_ARRANGEMENTS.find((o) => o.value === row.preference.sleepArrangement)?.label}
-                  {row.preference.accessibilityNotes && ` · ${row.preference.accessibilityNotes}`}
-                </div>
-              ))}
+              <div className="mt-1 flex flex-col gap-1">
+                {everyonesSpacePreferences.map((row) => (
+                  <p key={row.preference.memberId} className="text-[13px] text-[var(--text)]">
+                    <span className="font-medium">{memberNameById.get(row.preference.memberId) ?? row.memberName}</span>
+                    {" — "}
+                    {SLEEP_ARRANGEMENTS.find((o) => o.value === row.preference.sleepArrangement)?.label}
+                    {row.preference.accessibilityNotes && ` · ${row.preference.accessibilityNotes}`}
+                  </p>
+                ))}
+              </div>
             </div>
           )}
         </section>

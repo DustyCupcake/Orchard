@@ -1,4 +1,5 @@
 import type { shiftOccurrence as shiftOccurrenceTable, shiftSeries as shiftSeriesTable, shiftSignup as shiftSignupTable } from "@/db/schema";
+import { BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import {
   archiveShiftSeriesAction,
   generateOccurrencesAction,
@@ -29,135 +30,130 @@ export default function MySeriesSection({
   memberNameById: Map<string, string>;
 }) {
   return (
-    <section style={{ marginTop: "2rem", borderTop: "1px solid #ccc", paddingTop: "1rem" }}>
-      <h2>My series</h2>
-      {series.map(({ series: s, occurrences, signups }) => {
-        const signupsByOccurrence = new Map<string, ShiftSignupRow[]>();
-        for (const sg of signups) {
-          const list = signupsByOccurrence.get(sg.occurrenceId) ?? [];
-          list.push(sg);
-          signupsByOccurrence.set(sg.occurrenceId, list);
-        }
+    <section className="mt-8 border-t border-[var(--border)] pt-6">
+      <h2 className="text-[22px] font-semibold text-[var(--text)]">My series</h2>
+      <div className="mt-3 flex flex-col gap-4">
+        {series.map(({ series: s, occurrences, signups }) => {
+          const signupsByOccurrence = new Map<string, ShiftSignupRow[]>();
+          for (const sg of signups) {
+            const list = signupsByOccurrence.get(sg.occurrenceId) ?? [];
+            list.push(sg);
+            signupsByOccurrence.set(sg.occurrenceId, list);
+          }
 
-        return (
-          <div
-            key={s.id}
-            style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "1rem" }}
-          >
-            <p style={{ margin: 0, fontSize: "0.8rem", color: "#666" }}>
-              {s.archivedAt ? "Archived" : "Active"} · default capacity {s.defaultCapacity}
-            </p>
-            <strong>{s.title}</strong>
-            {s.description && <p style={{ margin: "0.2rem 0" }}>{s.description}</p>}
-
-            <form action={s.archivedAt ? unarchiveShiftSeriesAction : archiveShiftSeriesAction} style={{ marginTop: "0.4rem" }}>
-              <input type="hidden" name="seriesId" value={s.id} />
-              <button type="submit" style={{ padding: "0.3rem 0.6rem" }}>
-                {s.archivedAt ? "Unarchive" : "Archive"}
-              </button>
-            </form>
-
-            <h4 style={{ marginBottom: "0.3rem" }}>Occurrences</h4>
-            {occurrences.length === 0 && <p style={{ color: "#666", fontSize: "0.85rem" }}>None yet.</p>}
-            {occurrences.map((o) => {
-              const roster = signupsByOccurrence.get(o.id) ?? [];
-              const ended = new Date(o.endsAt) <= new Date();
-              return (
-                <div key={o.id} style={{ fontSize: "0.85rem", marginBottom: "0.4rem" }}>
-                  <strong>{formatRange(o.startsAt, o.endsAt)}</strong> — capacity{" "}
-                  {o.capacity ?? s.defaultCapacity} — {roster.length} signed up
-                  {roster.length > 0 && (
-                    <ul style={{ margin: "0.2rem 0 0" }}>
-                      {roster.map((sg) => (
-                        <li key={sg.id}>
-                          {memberNameById.get(sg.memberId) ?? "—"} ({sg.status})
-                          {ended && sg.status === "signed_up" && (
-                            <form action={markShiftSignupNoShowAction} style={{ display: "inline", marginLeft: "0.5rem" }}>
-                              <input type="hidden" name="signupId" value={sg.id} />
-                              <button type="submit" style={{ padding: "0.1rem 0.4rem", fontSize: "0.8rem" }}>
-                                Mark no-show
-                              </button>
-                            </form>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
-
-            <details style={{ marginTop: "0.6rem" }}>
-              <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>Generate occurrences</summary>
-
-              <div style={{ marginTop: "0.5rem" }}>
-                <h5 style={{ margin: "0 0 0.3rem" }}>Weekly pattern</h5>
-                <form
-                  action={generateOccurrencesAction}
-                  style={{ display: "flex", flexDirection: "column", gap: "0.4rem", maxWidth: 400 }}
-                >
-                  <input type="hidden" name="seriesId" value={s.id} />
-                  <input type="hidden" name="mode" value="weekly" />
-                  <label style={{ fontSize: "0.85rem" }}>
-                    From
-                    <input type="date" name="startDate" required style={{ padding: "0.3rem", marginLeft: "0.4rem" }} />
-                  </label>
-                  <label style={{ fontSize: "0.85rem" }}>
-                    To
-                    <input type="date" name="endDate" required style={{ padding: "0.3rem", marginLeft: "0.4rem" }} />
-                  </label>
-                  <div style={{ fontSize: "0.85rem" }}>
-                    {DAY_LABELS.map((label, i) => (
-                      <label key={i} style={{ marginRight: "0.6rem" }}>
-                        <input type="checkbox" name="daysOfWeek" value={i} /> {label}
-                      </label>
-                    ))}
-                  </div>
-                  <label style={{ fontSize: "0.85rem" }}>
-                    Start time
-                    <input type="time" name="startTime" required style={{ padding: "0.3rem", marginLeft: "0.4rem" }} />
-                  </label>
-                  <label style={{ fontSize: "0.85rem" }}>
-                    Duration (minutes)
-                    <input
-                      type="number"
-                      name="durationMinutes"
-                      min={1}
-                      required
-                      style={{ padding: "0.3rem", marginLeft: "0.4rem", width: "6rem" }}
-                    />
-                  </label>
-                  <button type="submit" style={{ padding: "0.3rem 0.6rem", width: "fit-content" }}>
-                    Generate
-                  </button>
-                </form>
-
-                <h5 style={{ margin: "0.8rem 0 0.3rem" }}>Explicit list</h5>
-                <form
-                  action={generateOccurrencesAction}
-                  style={{ display: "flex", flexDirection: "column", gap: "0.4rem", maxWidth: 400 }}
-                >
-                  <input type="hidden" name="seriesId" value={s.id} />
-                  <input type="hidden" name="mode" value="explicit" />
-                  <label style={{ fontSize: "0.85rem" }}>
-                    One per line, <code>startsAt|endsAt</code>
-                    <br />
-                    <textarea
-                      name="slotsRaw"
-                      rows={3}
-                      placeholder={"2026-09-10T14:00|2026-09-10T15:00"}
-                      style={{ padding: "0.4rem", width: "100%", fontFamily: "monospace" }}
-                    />
-                  </label>
-                  <button type="submit" style={{ padding: "0.3rem 0.6rem", width: "fit-content" }}>
-                    Generate
-                  </button>
-                </form>
+          return (
+            <div key={s.id} className={CARD}>
+              <div className="flex items-center gap-2">
+                <Tag tone={s.archivedAt ? "neutral" : "success"}>{s.archivedAt ? "Archived" : "Active"}</Tag>
+                <span className="text-[12px] text-[var(--text-muted)]">default capacity {s.defaultCapacity}</span>
               </div>
-            </details>
-          </div>
-        );
-      })}
+              <p className="mt-1.5 text-[14px] font-medium text-[var(--text)]">{s.title}</p>
+              {s.description && <p className="mt-1 text-[13px] text-[var(--text)]">{s.description}</p>}
+
+              <form action={s.archivedAt ? unarchiveShiftSeriesAction : archiveShiftSeriesAction} className="mt-2">
+                <input type="hidden" name="seriesId" value={s.id} />
+                <button type="submit" className={BUTTON_SECONDARY}>
+                  {s.archivedAt ? "Unarchive" : "Archive"}
+                </button>
+              </form>
+
+              <h4 className="mt-4 text-[13px] font-medium text-[var(--text)]">Occurrences</h4>
+              {occurrences.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+              <div className="mt-1.5 flex flex-col gap-2">
+                {occurrences.map((o) => {
+                  const roster = signupsByOccurrence.get(o.id) ?? [];
+                  const ended = new Date(o.endsAt) <= new Date();
+                  return (
+                    <div key={o.id} className="text-[13px] text-[var(--text)]">
+                      <span className="font-medium">{formatRange(o.startsAt, o.endsAt)}</span>{" "}
+                      <span className="text-[var(--text-muted)]">
+                        — capacity {o.capacity ?? s.defaultCapacity} — {roster.length} signed up
+                      </span>
+                      {roster.length > 0 && (
+                        <ul className="mt-1 flex flex-col gap-0.5">
+                          {roster.map((sg) => (
+                            <li key={sg.id} className="flex items-center gap-2 text-[var(--text-muted)]">
+                              {memberNameById.get(sg.memberId) ?? "—"} ({sg.status})
+                              {ended && sg.status === "signed_up" && (
+                                <form action={markShiftSignupNoShowAction}>
+                                  <input type="hidden" name="signupId" value={sg.id} />
+                                  <button type="submit" className={BUTTON_SECONDARY}>
+                                    Mark no-show
+                                  </button>
+                                </form>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <details className="mt-3">
+                <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Generate occurrences</summary>
+
+                <div className="mt-3 flex flex-col gap-4">
+                  <div>
+                    <h5 className="text-[12px] font-medium text-[var(--text-muted)]">Weekly pattern</h5>
+                    <form action={generateOccurrencesAction} className="mt-1.5 flex max-w-[400px] flex-col gap-2">
+                      <input type="hidden" name="seriesId" value={s.id} />
+                      <input type="hidden" name="mode" value="weekly" />
+                      <label className="flex flex-col gap-1">
+                        <span className={LABEL}>From</span>
+                        <input type="date" name="startDate" required className={INPUT} />
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span className={LABEL}>To</span>
+                        <input type="date" name="endDate" required className={INPUT} />
+                      </label>
+                      <div className="flex flex-wrap gap-3 text-[13px] text-[var(--text)]">
+                        {DAY_LABELS.map((label, i) => (
+                          <label key={i} className="flex items-center gap-1">
+                            <input type="checkbox" name="daysOfWeek" value={i} /> {label}
+                          </label>
+                        ))}
+                      </div>
+                      <label className="flex flex-col gap-1">
+                        <span className={LABEL}>Start time</span>
+                        <input type="time" name="startTime" required className={`${INPUT} w-fit`} />
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span className={LABEL}>Duration (minutes)</span>
+                        <input type="number" name="durationMinutes" min={1} required className={`${INPUT} w-fit`} />
+                      </label>
+                      <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                        Generate
+                      </button>
+                    </form>
+                  </div>
+
+                  <div>
+                    <h5 className="text-[12px] font-medium text-[var(--text-muted)]">Explicit list</h5>
+                    <form action={generateOccurrencesAction} className="mt-1.5 flex max-w-[400px] flex-col gap-2">
+                      <input type="hidden" name="seriesId" value={s.id} />
+                      <input type="hidden" name="mode" value="explicit" />
+                      <label className="flex flex-col gap-1">
+                        <span className={LABEL}>One per line, startsAt|endsAt</span>
+                        <textarea
+                          name="slotsRaw"
+                          rows={3}
+                          placeholder={"2026-09-10T14:00|2026-09-10T15:00"}
+                          className={`${INPUT} font-mono`}
+                        />
+                      </label>
+                      <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                        Generate
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </details>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

@@ -7,7 +7,10 @@ import type { ReactNode } from "react";
 
 export type Tone = "neutral" | "accent" | "accent2" | "warning" | "danger" | "success";
 
-const TONE_CLASSES: Record<Tone, string> = {
+// Exported (not just used by Tag) so a page needing its own compact,
+// non-Tag-shaped chips — e.g. the calendar's day-grid entries, too
+// small for Tag's own padding — can still match its exact tone colors.
+export const TONE_CLASSES: Record<Tone, string> = {
   neutral: "bg-[var(--neutral-100)] text-[var(--text-muted)]",
   accent: "bg-[var(--accent-1-soft)] text-[var(--accent-1)]",
   accent2: "bg-[var(--accent-2-soft)] text-[var(--accent-2)]",

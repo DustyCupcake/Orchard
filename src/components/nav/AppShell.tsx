@@ -60,17 +60,27 @@ function NavLink({
   // the icon (see NavGroupBlock) — the row just indents instead.
   showIcon?: boolean;
 }) {
+  // The active/hover treatment lives on the <li> itself, not the
+  // <Link>, so it paints the row's full width — including the pin
+  // button's own slot — rather than stopping short of it. The pin
+  // button keeps its own explicit muted color (overriding what it'd
+  // otherwise inherit from an active li) and its own hover background,
+  // so hovering it still reads as its own separate interaction area on
+  // top of the row's color, not as a dead patch where the row color
+  // stops.
   return (
-    <li className="group/navitem flex items-center">
+    <li
+      className={`group/navitem flex items-center rounded-[var(--radius-sm)] transition-colors ${
+        active
+          ? "bg-[var(--accent-1-soft)] font-medium text-[var(--accent-1)]"
+          : "text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
+      }`}
+    >
       <Link
         href={item.href}
         title={collapsed ? item.label : undefined}
-        className={`flex flex-1 items-center gap-3 rounded-[var(--radius-sm)] py-2 text-[13px] transition-colors ${
+        className={`flex flex-1 items-center gap-3 py-2 text-[13px] ${
           collapsed ? "justify-center px-2.5" : showIcon ? "px-2.5" : "pl-10 pr-2.5"
-        } ${
-          active
-            ? "bg-[var(--accent-1-soft)] font-medium text-[var(--accent-1)]"
-            : "text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
         }`}
       >
         {showIcon && (
@@ -89,7 +99,7 @@ function NavLink({
         <button
           onClick={onTogglePin}
           title={pinned ? "Unpin" : "Pin to top"}
-          className={`mr-1 shrink-0 rounded-[var(--radius-sm)] p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)] ${
+          className={`mr-1 shrink-0 rounded-[var(--radius-sm)] p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-sunken)] hover:text-[var(--text)] ${
             pinned ? "opacity-100" : "opacity-0 group-hover/navitem:opacity-100"
           }`}
         >
@@ -146,15 +156,18 @@ function NavGroupBlock({
     const groupActive = isActive(groupHref) || group.items.some((item) => isActive(item.href));
     return (
       <div>
-        <div className="flex items-center">
-          <Link
-            href={groupHref}
-            className={`flex flex-1 items-center gap-3 rounded-[var(--radius-sm)] px-2.5 py-2 text-[13px] transition-colors ${
-              groupActive
-                ? "bg-[var(--accent-1-soft)] font-medium text-[var(--accent-1)]"
-                : "text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
-            }`}
-          >
+        {/* Active/hover coloring lives on this wrapping div, not the
+            Link, so it spans the full row including the chevron
+            button's own slot — see NavLink's identical fix/comment
+            above. */}
+        <div
+          className={`flex items-center rounded-[var(--radius-sm)] transition-colors ${
+            groupActive
+              ? "bg-[var(--accent-1-soft)] font-medium text-[var(--accent-1)]"
+              : "text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
+          }`}
+        >
+          <Link href={groupHref} className="flex flex-1 items-center gap-3 px-2.5 py-2 text-[13px]">
             <NavIcon name={group.icon} weight={groupActive ? "fill" : "regular"} />
             <span className="truncate">{group.label}</span>
           </Link>
@@ -162,7 +175,7 @@ function NavGroupBlock({
             onClick={onToggleOpen}
             aria-expanded={open}
             aria-label={open ? `Collapse ${group.label}` : `Expand ${group.label}`}
-            className="mr-1 shrink-0 rounded-[var(--radius-sm)] p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
+            className="mr-1 shrink-0 rounded-[var(--radius-sm)] p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
           >
             <NavIcon name="chevronDown" size={12} className={`transition-transform ${open ? "" : "-rotate-90"}`} />
           </button>
@@ -227,6 +240,29 @@ function SidebarNavList({
   manualPinnedKeys: string[];
   onTogglePin?: (key: string) => void;
 }) {
+  // Pinned items are drawn only from Modules (pinning is a Modules-only
+  // affordance — see nav-config.ts's NavGroup.headerIsLink comment), so
+  // "Pinned for you" renders right above the Modules group itself
+  // rather than after every group — the curated shortcut sits next to
+  // the thing it's a shortcut into, not buried below it.
+  const modulesGroup = visibleGroups.find((g) => g.key === "modules");
+  const otherGroups = visibleGroups.filter((g) => g.key !== "modules");
+
+  function renderGroup(group: NavGroup) {
+    return (
+      <NavGroupBlock
+        key={group.key}
+        group={group}
+        collapsed={collapsed}
+        isActive={isActive}
+        open={!closedGroups.has(group.key)}
+        onToggleOpen={() => onToggleGroup(group.key)}
+        manualPinnedKeys={manualPinnedKeys}
+        onTogglePin={onTogglePin}
+      />
+    );
+  }
+
   return (
     <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-2 py-3">
       <ul className="space-y-0.5">
@@ -234,18 +270,7 @@ function SidebarNavList({
         <NavLink item={CALENDAR_ITEM} collapsed={collapsed} active={isActive(CALENDAR_ITEM.href)} />
       </ul>
 
-      {visibleGroups.map((group) => (
-        <NavGroupBlock
-          key={group.key}
-          group={group}
-          collapsed={collapsed}
-          isActive={isActive}
-          open={!closedGroups.has(group.key)}
-          onToggleOpen={() => onToggleGroup(group.key)}
-          manualPinnedKeys={manualPinnedKeys}
-          onTogglePin={onTogglePin}
-        />
-      ))}
+      {otherGroups.map(renderGroup)}
 
       {pinnedItems.length > 0 && (
         <div>
@@ -265,6 +290,8 @@ function SidebarNavList({
           )}
         </div>
       )}
+
+      {modulesGroup && renderGroup(modulesGroup)}
     </nav>
   );
 }

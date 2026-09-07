@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member, task } from "@/db/schema";
@@ -9,6 +10,7 @@ import { getBudgetVotingView, getCurrentBudgetCycle, isBudgetOwner, listBudgetPr
 import type { BudgetLineItem } from "@/lib/budget";
 import { resolveSingleCycleScope } from "@/lib/cycles";
 import { ForbiddenError } from "@/lib/errors";
+import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag, type Tone } from "@/components/ui/kit";
 import {
   closeProposalsToVotingAction,
   createBudgetCycleAction,
@@ -33,6 +35,16 @@ const STATUS_LABEL: Record<string, string> = {
   voting: "Voting",
   confirmed: "Confirmed",
 };
+
+const STATUS_TONE: Record<string, Tone> = {
+  proposals_open: "neutral",
+  voting: "warning",
+  confirmed: "success",
+};
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+}
 
 // See docs/spec.md's Budget and docs/development-plan.md's Phases
 // 26-27: fixed costs & proposals while `proposals_open`, ranked-choice
@@ -91,16 +103,16 @@ export default async function BudgetPage({
 
   if (moduleOn && resolution.kind === "ambiguous") {
     return (
-      <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 720 }}>
-        <h1>Budget</h1>
-        <p style={{ color: "#666" }}>Scoped to multiple active cycles — pick one to see its budget:</p>
-        <ul>
+      <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
+        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Budget</h1>
+        <p className="mt-2 text-[13px] text-[var(--text-muted)]">Scoped to multiple active cycles — pick one to see its budget:</p>
+        <div className="mt-4 flex flex-wrap gap-2">
           {resolution.candidates.map((c) => (
-            <li key={c.id}>
-              <a href={`/${c.id}/budget`}>{c.name}</a>
-            </li>
+            <Link key={c.id} href={`/${c.id}/budget`} className={BUTTON_SECONDARY}>
+              {c.name}
+            </Link>
           ))}
-        </ul>
+        </div>
       </main>
     );
   }
@@ -145,11 +157,11 @@ export default async function BudgetPage({
     votingView?.myVote?.contributionSignal !== undefined ? votingView?.myVote?.contributionSignal : null;
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 720 }}>
-      <h1>Budget</h1>
+    <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Budget</h1>
 
       {!moduleOn && (
-        <p style={{ color: "#666" }}>
+        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
           Not turned on for this Community yet — a current Admins holder can enable it under
           Modules on the Settings screen.
         </p>
@@ -157,45 +169,79 @@ export default async function BudgetPage({
 
       {moduleOn && (
         <>
-          {error && <p style={{ color: "crimson" }}>{error}</p>}
-          {submitted && <p style={{ color: "#2a7a2a" }}>Proposal submitted.</p>}
-          {updated && <p style={{ color: "#2a7a2a" }}>Proposal updated.</p>}
-          {votingOpened && <p style={{ color: "#2a7a2a" }}>Proposals closed — voting is open.</p>}
-          {voted && <p style={{ color: "#2a7a2a" }}>Your vote was recorded.</p>}
-          {confirmed && <p style={{ color: "#2a7a2a" }}>Budget confirmed.</p>}
-          {markedDone && <p style={{ color: "#2a7a2a" }}>Marked done — closing this cycle won&rsquo;t warn about Budget.</p>}
+          {error && (
+            <div className="mt-4">
+              <Banner tone="danger">{error}</Banner>
+            </div>
+          )}
+          {submitted && (
+            <div className="mt-4">
+              <Banner tone="success">Proposal submitted.</Banner>
+            </div>
+          )}
+          {updated && (
+            <div className="mt-4">
+              <Banner tone="success">Proposal updated.</Banner>
+            </div>
+          )}
+          {votingOpened && (
+            <div className="mt-4">
+              <Banner tone="success">Proposals closed — voting is open.</Banner>
+            </div>
+          )}
+          {voted && (
+            <div className="mt-4">
+              <Banner tone="success">Your vote was recorded.</Banner>
+            </div>
+          )}
+          {confirmed && (
+            <div className="mt-4">
+              <Banner tone="success">Budget confirmed.</Banner>
+            </div>
+          )}
+          {markedDone && (
+            <div className="mt-4">
+              <Banner tone="success">Marked done — closing this cycle won&rsquo;t warn about Budget.</Banner>
+            </div>
+          )}
 
           {currentCycle && (
-            <section style={{ marginTop: "1rem" }}>
-              <h2>{currentCycle.title}</h2>
-              <p style={{ color: "#666" }}>
-                {STATUS_LABEL[currentCycle.status] ?? currentCycle.status} · proposal deadline{" "}
-                {new Date(currentCycle.proposalDeadline).toLocaleString()}
+            <section className="mt-6">
+              <div className="flex items-center gap-2">
+                <SectionHeading>{currentCycle.title}</SectionHeading>
+                <Tag tone={STATUS_TONE[currentCycle.status]}>{STATUS_LABEL[currentCycle.status] ?? currentCycle.status}</Tag>
+              </div>
+              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                Proposal deadline {new Date(currentCycle.proposalDeadline).toLocaleString()}
                 <br />
                 Owner task: {ownerTask ? `"${ownerTask.title}"` : "—"} — whoever holds it is the
                 budget owner.
               </p>
 
               {isOwner && currentCycle.status === "confirmed" && (
-                <p style={{ color: currentCycle.ownerMarkedDoneAt ? "#2a7a2a" : "#666" }}>
+                <div className="mt-2">
                   {currentCycle.ownerMarkedDoneAt ? (
-                    "Marked done — closing this cycle's Cycle won't warn about Budget."
+                    <p className="text-[13px] text-[var(--success)]">
+                      Marked done — closing this cycle&rsquo;s Cycle won&rsquo;t warn about Budget.
+                    </p>
                   ) : (
-                    <form action={markBudgetCycleDoneAction} style={{ display: "inline" }}>
+                    <form action={markBudgetCycleDoneAction}>
                       <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
                       <input type="hidden" name="cycleScope" value={cycleScope} />
-                      <button type="submit" style={{ padding: "0.3rem 0.8rem" }}>
+                      <button type="submit" className={BUTTON_SECONDARY}>
                         Mark this budget done
                       </button>
                     </form>
                   )}
-                </p>
+                </div>
               )}
 
-              <h3>Fixed costs {fixedCosts.length > 0 && <>({formatAmount(fixedTotal)} total)</>}</h3>
-              {fixedCosts.length === 0 && <p style={{ color: "#666" }}>None entered.</p>}
+              <h3 className="mt-4 text-[15px] font-medium text-[var(--text)]">
+                Fixed costs {fixedCosts.length > 0 && <>({formatAmount(fixedTotal)} total)</>}
+              </h3>
+              {fixedCosts.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None entered.</p>}
               {fixedCosts.length > 0 && (
-                <ul>
+                <ul className="mt-1 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
                   {fixedCosts.map((c, i) => (
                     <li key={i}>
                       {c.label}: {formatAmount(c.amount)}
@@ -205,146 +251,115 @@ export default async function BudgetPage({
               )}
 
               {currentCycle.status === "proposals_open" && (
-              <>
-              <h3>
-                Proposals ({proposals.length}
-                {proposals.length > 0 && <>, {formatAmount(proposalsTotal)} total</>})
-              </h3>
-              {proposals.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
-              {proposals.map((p) => {
-                const items = p.lineItems as BudgetLineItem[];
-                const mine = p.submittedBy === viewing.id;
-                return (
-                  <div
-                    key={p.id}
-                    style={{
-                      border: "1px solid #ccc",
-                      borderRadius: 6,
-                      padding: "0.6rem",
-                      marginBottom: "0.6rem",
-                    }}
-                  >
-                    <p style={{ margin: 0, fontSize: "0.8rem", color: "#666" }}>
-                      {memberNameById.get(p.submittedBy) ?? "—"}
-                      {p.branchId && <> · {branchNameById.get(p.branchId) ?? "—"}</>} ·{" "}
-                      {formatAmount(p.totalAmount)} total
-                    </p>
-                    <strong>{p.title}</strong>
-                    {p.description && <p style={{ margin: "0.2rem 0" }}>{p.description}</p>}
-                    <ul style={{ margin: "0.3rem 0 0" }}>
-                      {items.map((it, i) => (
-                        <li key={i}>
-                          {it.label}: {formatAmount(it.amount)}
-                        </li>
-                      ))}
-                    </ul>
-
-                    {mine && currentCycle.status === "proposals_open" && (
-                      <details style={{ marginTop: "0.5rem" }}>
-                        <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>Edit</summary>
-                        <form
-                          action={updateBudgetProposalAction}
-                          style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginTop: "0.4rem" }}
-                        >
-                          <input type="hidden" name="proposalId" value={p.id} />
-                          <input type="hidden" name="cycleScope" value={cycleScope} />
-                          <input
-                            type="text"
-                            name="title"
-                            defaultValue={p.title}
-                            required
-                            style={{ padding: "0.4rem" }}
-                          />
-                          <textarea
-                            name="description"
-                            defaultValue={p.description ?? ""}
-                            rows={2}
-                            style={{ padding: "0.4rem" }}
-                          />
-                          <select
-                            name="branchId"
-                            defaultValue={p.branchId ?? ""}
-                            style={{ padding: "0.4rem" }}
-                          >
-                            <option value="">No branch</option>
-                            {branches.map((b) => (
-                              <option key={b.id} value={b.id}>
-                                {b.name}
-                              </option>
+                <>
+                  <h3 className="mt-6 text-[15px] font-medium text-[var(--text)]">
+                    Proposals ({proposals.length}
+                    {proposals.length > 0 && <>, {formatAmount(proposalsTotal)} total</>})
+                  </h3>
+                  {proposals.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+                  <div className="mt-2 flex flex-col gap-2">
+                    {proposals.map((p) => {
+                      const items = p.lineItems as BudgetLineItem[];
+                      const mine = p.submittedBy === viewing.id;
+                      return (
+                        <div key={p.id} className={CARD}>
+                          <p className="text-[12px] text-[var(--text-muted)]">
+                            {memberNameById.get(p.submittedBy) ?? "—"}
+                            {p.branchId && <> · {branchNameById.get(p.branchId) ?? "—"}</>} ·{" "}
+                            {formatAmount(p.totalAmount)} total
+                          </p>
+                          <p className="mt-1 text-[14px] font-medium text-[var(--text)]">{p.title}</p>
+                          {p.description && <p className="mt-1 text-[13px] text-[var(--text)]">{p.description}</p>}
+                          <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text-muted)]">
+                            {items.map((it, i) => (
+                              <li key={i}>
+                                {it.label}: {formatAmount(it.amount)}
+                              </li>
                             ))}
-                          </select>
-                          <textarea
-                            name="lineItemsRaw"
-                            defaultValue={formatLineItems(items)}
-                            rows={3}
-                            placeholder="label|amount, one per line"
-                            style={{ padding: "0.4rem", fontFamily: "monospace" }}
-                          />
-                          <button type="submit" style={{ padding: "0.3rem 0.8rem", width: "fit-content" }}>
-                            Save changes
-                          </button>
-                        </form>
-                      </details>
-                    )}
+                          </ul>
+
+                          {mine && currentCycle.status === "proposals_open" && (
+                            <details className="mt-2">
+                              <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Edit</summary>
+                              <form action={updateBudgetProposalAction} className="mt-2 flex flex-col gap-2">
+                                <input type="hidden" name="proposalId" value={p.id} />
+                                <input type="hidden" name="cycleScope" value={cycleScope} />
+                                <input type="text" name="title" defaultValue={p.title} required className={INPUT} />
+                                <textarea name="description" defaultValue={p.description ?? ""} rows={2} className={INPUT} />
+                                <select name="branchId" defaultValue={p.branchId ?? ""} className={INPUT}>
+                                  <option value="">No branch</option>
+                                  {branches.map((b) => (
+                                    <option key={b.id} value={b.id}>
+                                      {b.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <textarea
+                                  name="lineItemsRaw"
+                                  defaultValue={formatLineItems(items)}
+                                  rows={3}
+                                  placeholder="label|amount, one per line"
+                                  className={`${INPUT} font-mono`}
+                                />
+                                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                                  Save changes
+                                </button>
+                              </form>
+                            </details>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
 
-              <h3>Submit a proposal</h3>
-              <form
-                action={submitBudgetProposalAction}
-                style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 500 }}
-              >
-                <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
-                <input type="hidden" name="cycleScope" value={cycleScope} />
-                <label>
-                  Title
-                  <br />
-                  <input type="text" name="title" required style={{ padding: "0.4rem", width: "100%" }} />
-                </label>
-                <label>
-                  Description
-                  <br />
-                  <textarea name="description" rows={2} style={{ padding: "0.4rem", width: "100%" }} />
-                </label>
-                <label>
-                  Branch (optional)
-                  <br />
-                  <select name="branchId" defaultValue="" style={{ padding: "0.4rem", width: "100%" }}>
-                    <option value="">No branch</option>
-                    {branches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Line items — one per line, <code>label|amount</code>
-                  <br />
-                  <textarea
-                    name="lineItemsRaw"
-                    rows={4}
-                    required
-                    placeholder={"Portable toilets|450\nSignage|120"}
-                    style={{ padding: "0.4rem", width: "100%", fontFamily: "monospace" }}
-                  />
-                </label>
-                <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
-                  Submit proposal
-                </button>
-              </form>
+                  <h3 className="mt-6 text-[15px] font-medium text-[var(--text)]">Submit a proposal</h3>
+                  <form action={submitBudgetProposalAction} className="mt-2 flex max-w-[500px] flex-col gap-2">
+                    <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
+                    <input type="hidden" name="cycleScope" value={cycleScope} />
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>Title</span>
+                      <input type="text" name="title" required className={INPUT} />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>Description</span>
+                      <textarea name="description" rows={2} className={INPUT} />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>Branch (optional)</span>
+                      <select name="branchId" defaultValue="" className={INPUT}>
+                        <option value="">No branch</option>
+                        {branches.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>Line items — one per line, label|amount</span>
+                      <textarea
+                        name="lineItemsRaw"
+                        rows={4}
+                        required
+                        placeholder={"Portable toilets|450\nSignage|120"}
+                        className={`${INPUT} font-mono`}
+                      />
+                    </label>
+                    <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                      Submit proposal
+                    </button>
+                  </form>
 
-              {isOwner && (
-                <form action={closeProposalsToVotingAction} style={{ marginTop: "1.5rem" }}>
-                  <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
-                  <input type="hidden" name="cycleScope" value={cycleScope} />
-                  <button type="submit" style={{ padding: "0.4rem 1rem" }}>
-                    Close proposals — open voting
-                  </button>
-                </form>
-              )}
-              </>
+                  {isOwner && (
+                    <form action={closeProposalsToVotingAction} className="mt-6">
+                      <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
+                      <input type="hidden" name="cycleScope" value={cycleScope} />
+                      <button type="submit" className={BUTTON_PRIMARY}>
+                        Close proposals — open voting
+                      </button>
+                    </form>
+                  )}
+                </>
               )}
 
               {currentCycle.status !== "proposals_open" && votingView && (
@@ -363,55 +378,34 @@ export default async function BudgetPage({
           )}
 
           {isAdminNow && canStartNewCycle && (
-            <section style={{ marginTop: "2rem", borderTop: "1px solid #ccc", paddingTop: "1rem" }}>
-              <h2>Start a new budget cycle</h2>
-              <form
-                action={createBudgetCycleAction}
-                style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 500 }}
-              >
+            <section className="mt-8 border-t border-[var(--border)] pt-6">
+              <SectionHeading>Start a new budget cycle</SectionHeading>
+              <form action={createBudgetCycleAction} className="mt-3 flex max-w-[500px] flex-col gap-2">
                 <input type="hidden" name="cycleScope" value={cycleScope} />
                 <input type="hidden" name="cycleId" value={resolvedCycleId ?? ""} />
-                <label>
-                  Title
-                  <br />
-                  <input type="text" name="title" required style={{ padding: "0.4rem", width: "100%" }} />
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Title</span>
+                  <input type="text" name="title" required className={INPUT} />
                 </label>
-                <label>
-                  Fixed costs — one per line, <code>label|amount</code> (optional)
-                  <br />
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Fixed costs — one per line, label|amount (optional)</span>
                   <textarea
                     name="fixedCostsRaw"
                     rows={3}
                     placeholder={"Site fee|2000\nContingency|500"}
-                    style={{ padding: "0.4rem", width: "100%", fontFamily: "monospace" }}
+                    className={`${INPUT} font-mono`}
                   />
                 </label>
-                <label>
-                  Proposal deadline
-                  <br />
-                  <input
-                    type="datetime-local"
-                    name="proposalDeadline"
-                    required
-                    style={{ padding: "0.4rem" }}
-                  />
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Proposal deadline</span>
+                  <input type="datetime-local" name="proposalDeadline" required className={`${INPUT} w-fit`} />
                 </label>
-                <label>
-                  Owner task ID
-                  <br />
-                  <input
-                    type="text"
-                    name="ownerTaskId"
-                    required
-                    placeholder="paste the task's ID from its /tasks/… URL"
-                    style={{ padding: "0.4rem", width: "100%" }}
-                  />
-                  <br />
-                  <span style={{ fontSize: "0.8rem", color: "#666" }}>
-                    Whoever holds this task is the budget owner.
-                  </span>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Owner task ID</span>
+                  <input type="text" name="ownerTaskId" required placeholder="paste the task's ID from its /tasks/… URL" className={INPUT} />
+                  <span className="text-[12px] text-[var(--text-muted)]">Whoever holds this task is the budget owner.</span>
                 </label>
-                <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                   Start cycle
                 </button>
               </form>

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { listBranches } from "@/lib/settings";
+import { Banner, BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
 import { createWikiPageAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -19,29 +20,28 @@ export default async function NewWikiPagePage({
   const branches = await listBranches(viewing);
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 520 }}>
-      <h1>New page</h1>
-      <p style={{ color: "#666" }}>
+    <main className="mx-auto max-w-[520px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">New page</h1>
+      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
         Leave the content blank to post it as an open question instead — it&rsquo;ll sit flagged
         as unanswered until someone fills one in.
       </p>
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {error && (
+        <div className="mt-4">
+          <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
 
-      <form
-        action={createWikiPageAction}
-        style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
-      >
-        <label>
-          Title (or the question, if you don&rsquo;t have an answer yet)
-          <br />
-          <input type="text" name="title" required style={{ padding: "0.5rem", width: "100%" }} />
+      <form action={createWikiPageAction} className="mt-6 flex flex-col gap-3">
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Title (or the question, if you don&rsquo;t have an answer yet)</span>
+          <input type="text" name="title" required className={INPUT} />
         </label>
 
-        <label>
-          Branch (optional — leave unset for general/platform knowledge)
-          <br />
-          <select name="branchId" defaultValue="" style={{ padding: "0.5rem", width: "100%" }}>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Branch (optional — leave unset for general/platform knowledge)</span>
+          <select name="branchId" defaultValue="" className={INPUT}>
             <option value="">General</option>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
@@ -51,13 +51,12 @@ export default async function NewWikiPagePage({
           </select>
         </label>
 
-        <label>
-          Content (optional)
-          <br />
-          <textarea name="content" rows={6} style={{ padding: "0.5rem", width: "100%" }} />
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Content (optional)</span>
+          <textarea name="content" rows={6} className={INPUT} />
         </label>
 
-        <button type="submit" style={{ padding: "0.5rem 1rem", width: "fit-content" }}>
+        <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
           Create page
         </button>
       </form>

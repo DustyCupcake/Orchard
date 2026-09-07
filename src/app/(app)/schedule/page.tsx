@@ -15,8 +15,10 @@ import {
 import type { EventSlot } from "@/lib/event-scheduling";
 import { resolveDefaultScopeSegment, resolveSingleCycleScope } from "@/lib/cycles";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
+import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import { submitEventProposalAction, updateEventProposalAction } from "./actions";
 import EventReviewSection from "./EventReviewSection";
+import { STATUS_LABEL, STATUS_TONE } from "./status";
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +30,9 @@ function formatSlotsRaw(slots: EventSlot[]) {
   return slots.map((s) => `${s.startsAt}|${s.endsAt}`).join("\n");
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  proposed: "Proposed",
-  conflict: "Conflict — needs a different slot or the owner's mediation",
-  confirmed: "Confirmed",
-  declined: "Declined",
-};
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+}
 
 // See docs/spec.md's "Event scheduling" and docs/development-plan.md's
 // Phase 28.
@@ -69,25 +68,22 @@ export default async function SchedulePage({
 
   if (moduleOn && resolution.kind === "ambiguous") {
     return (
-      <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 760 }}>
-        <h1>Schedule</h1>
-        <p style={{ color: "#666" }}>Scoped to multiple active cycles — pick one to see its programme:</p>
-        <ul>
+      <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
+        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Schedule</h1>
+        <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+          Scoped to multiple active cycles — pick one to see its programme:
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
           {resolution.candidates.map((c) => (
-            <li key={c.id}>
-              <form action={switchToLinkedScopeAction} style={{ display: "inline" }}>
-                <input type="hidden" name="scope" value={c.id} />
-                <input type="hidden" name="returnTo" value="/schedule" />
-                <button
-                  type="submit"
-                  style={{ padding: 0, border: "none", background: "none", color: "#0645ad", textDecoration: "underline", cursor: "pointer" }}
-                >
-                  {c.name}
-                </button>
-              </form>
-            </li>
+            <form key={c.id} action={switchToLinkedScopeAction}>
+              <input type="hidden" name="scope" value={c.id} />
+              <input type="hidden" name="returnTo" value="/schedule" />
+              <button type="submit" className={BUTTON_SECONDARY}>
+                {c.name}
+              </button>
+            </form>
           ))}
-        </ul>
+        </div>
       </main>
     );
   }
@@ -120,11 +116,11 @@ export default async function SchedulePage({
       : new Map<string, string>();
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 760 }}>
-      <h1>Schedule</h1>
+    <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Schedule</h1>
 
       {!moduleOn && (
-        <p style={{ color: "#666" }}>
+        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
           Not turned on for this Community yet — a current Admins holder can enable it under
           Modules on the Settings screen.
         </p>
@@ -132,179 +128,187 @@ export default async function SchedulePage({
 
       {moduleOn && (
         <>
-          {error && <p style={{ color: "crimson" }}>{error}</p>}
-          {submitted && <p style={{ color: "#2a7a2a" }}>Proposal submitted.</p>}
-          {updated && <p style={{ color: "#2a7a2a" }}>Proposal updated.</p>}
-          {confirmed && <p style={{ color: "#2a7a2a" }}>Slot confirmed.</p>}
-          {declined && <p style={{ color: "#2a7a2a" }}>Proposal declined.</p>}
-          {pinged && <p style={{ color: "#2a7a2a" }}>Host pinged.</p>}
-          {published && <p style={{ color: "#2a7a2a" }}>Schedule published.</p>}
+          {error && (
+            <div className="mt-4">
+              <Banner tone="danger">{error}</Banner>
+            </div>
+          )}
+          {submitted && (
+            <div className="mt-4">
+              <Banner tone="success">Proposal submitted.</Banner>
+            </div>
+          )}
+          {updated && (
+            <div className="mt-4">
+              <Banner tone="success">Proposal updated.</Banner>
+            </div>
+          )}
+          {confirmed && (
+            <div className="mt-4">
+              <Banner tone="success">Slot confirmed.</Banner>
+            </div>
+          )}
+          {declined && (
+            <div className="mt-4">
+              <Banner tone="success">Proposal declined.</Banner>
+            </div>
+          )}
+          {pinged && (
+            <div className="mt-4">
+              <Banner tone="success">Host pinged.</Banner>
+            </div>
+          )}
+          {published && (
+            <div className="mt-4">
+              <Banner tone="success">Schedule published.</Banner>
+            </div>
+          )}
 
-          <section style={{ marginTop: "1rem" }}>
-            <h2>Published schedule</h2>
+          <section className="mt-6">
+            <SectionHeading>Published schedule</SectionHeading>
             {publishedSchedule.filter((p) => p.status === "confirmed").length === 0 && (
-              <p style={{ color: "#666" }}>Nothing published yet.</p>
+              <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nothing published yet.</p>
             )}
-            {publishedSchedule
-              .filter((p) => p.status === "confirmed")
-              .map((p) => {
+            <div className="mt-3 flex flex-col gap-2">
+              {publishedSchedule
+                .filter((p) => p.status === "confirmed")
+                .map((p) => {
+                  const confirmedSlot = p.confirmedSlot as EventSlot | null;
+                  return (
+                    <div key={p.id} className={CARD}>
+                      <p className="text-[14px] font-medium text-[var(--text)]">
+                        {p.title} <span className="font-normal text-[var(--text-muted)]">— hosted by {p.host}</span>
+                      </p>
+                      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                        {confirmedSlot && formatSlot(confirmedSlot)}
+                        {p.spaceNeeds && <> · {p.spaceNeeds}</>}
+                      </p>
+                      {p.description && <p className="mt-1 text-[13px] text-[var(--text)]">{p.description}</p>}
+                    </div>
+                  );
+                })}
+            </div>
+          </section>
+
+          <section className="mt-8">
+            <SectionHeading>My proposals</SectionHeading>
+            {myProposals.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+            <div className="mt-3 flex flex-col gap-3">
+              {myProposals.map((p) => {
+                const editable = !p.publishedAt && (p.status === "proposed" || p.status === "conflict");
+                const pings = myPingsByProposalId.get(p.id) ?? [];
                 const confirmedSlot = p.confirmedSlot as EventSlot | null;
                 return (
-                  <div
-                    key={p.id}
-                    style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
-                  >
-                    <strong>{p.title}</strong> — hosted by {p.host}
-                    <p style={{ margin: "0.2rem 0", color: "#666", fontSize: "0.85rem" }}>
-                      {confirmedSlot && formatSlot(confirmedSlot)}
-                      {p.spaceNeeds && <> · {p.spaceNeeds}</>}
+                  <div key={p.id} className={CARD}>
+                    <Tag tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status] ?? p.status}</Tag>
+                    <p className="mt-1.5 text-[14px] font-medium text-[var(--text)]">
+                      {p.title} <span className="font-normal text-[var(--text-muted)]">— hosted by {p.host}</span>
                     </p>
-                    {p.description && <p style={{ margin: "0.2rem 0" }}>{p.description}</p>}
+                    {p.description && <p className="mt-1 text-[13px] text-[var(--text)]">{p.description}</p>}
+                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                      {p.durationMinutes} min{p.spaceNeeds && <> · {p.spaceNeeds}</>}
+                    </p>
+                    <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text-muted)]">
+                      {(p.preferredSlots as EventSlot[]).map((s, i) => (
+                        <li key={i}>{formatSlot(s)}</li>
+                      ))}
+                    </ul>
+                    {confirmedSlot && (
+                      <p className="mt-1.5 text-[13px] text-[var(--text)]">Confirmed: {formatSlot(confirmedSlot)}</p>
+                    )}
+                    {pings.length > 0 && (
+                      <p className="mt-1.5 text-[13px] text-[var(--warning)]">
+                        The scheduling owner has flagged this conflict {pings.length} time(s) — propose a
+                        different slot, or reach out to sort it out directly.
+                      </p>
+                    )}
+
+                    {editable && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Edit</summary>
+                        <form action={updateEventProposalAction} className="mt-2 flex max-w-md flex-col gap-2">
+                          <input type="hidden" name="proposalId" value={p.id} />
+                          <label className="flex flex-col gap-1">
+                            <span className={LABEL}>Host</span>
+                            <input type="text" name="host" defaultValue={p.host} required className={INPUT} />
+                          </label>
+                          <label className="flex flex-col gap-1">
+                            <span className={LABEL}>Title</span>
+                            <input type="text" name="title" defaultValue={p.title} required className={INPUT} />
+                          </label>
+                          <label className="flex flex-col gap-1">
+                            <span className={LABEL}>Description</span>
+                            <textarea name="description" defaultValue={p.description ?? ""} rows={2} className={INPUT} />
+                          </label>
+                          <label className="flex flex-col gap-1">
+                            <span className={LABEL}>Duration (minutes)</span>
+                            <input
+                              type="number"
+                              name="durationMinutes"
+                              defaultValue={p.durationMinutes}
+                              min={1}
+                              required
+                              className={INPUT}
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1">
+                            <span className={LABEL}>Space needed (optional)</span>
+                            <input type="text" name="spaceNeeds" defaultValue={p.spaceNeeds ?? ""} className={INPUT} />
+                          </label>
+                          <label className="flex flex-col gap-1">
+                            <span className={LABEL}>Preferred slots — one per line, startsAt|endsAt</span>
+                            <textarea
+                              name="preferredSlotsRaw"
+                              defaultValue={formatSlotsRaw(p.preferredSlots as EventSlot[])}
+                              rows={3}
+                              className={`${INPUT} font-mono`}
+                            />
+                          </label>
+                          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                            Save changes
+                          </button>
+                        </form>
+                      </details>
+                    )}
                   </div>
                 );
               })}
-          </section>
+            </div>
 
-          <section style={{ marginTop: "2rem" }}>
-            <h2>My proposals</h2>
-            {myProposals.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
-            {myProposals.map((p) => {
-              const editable = !p.publishedAt && (p.status === "proposed" || p.status === "conflict");
-              const pings = myPingsByProposalId.get(p.id) ?? [];
-              const confirmedSlot = p.confirmedSlot as EventSlot | null;
-              return (
-                <div
-                  key={p.id}
-                  style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.6rem" }}
-                >
-                  <p style={{ margin: 0, fontSize: "0.8rem", color: "#666" }}>
-                    {STATUS_LABEL[p.status] ?? p.status}
-                  </p>
-                  <strong>{p.title}</strong> — hosted by {p.host}
-                  {p.description && <p style={{ margin: "0.2rem 0" }}>{p.description}</p>}
-                  <p style={{ margin: "0.2rem 0", fontSize: "0.85rem", color: "#666" }}>
-                    {p.durationMinutes} min{p.spaceNeeds && <> · {p.spaceNeeds}</>}
-                  </p>
-                  <ul style={{ margin: "0.3rem 0 0", fontSize: "0.85rem" }}>
-                    {(p.preferredSlots as EventSlot[]).map((s, i) => (
-                      <li key={i}>{formatSlot(s)}</li>
-                    ))}
-                  </ul>
-                  {confirmedSlot && (
-                    <p style={{ margin: "0.3rem 0 0", fontSize: "0.85rem" }}>
-                      Confirmed: {formatSlot(confirmedSlot)}
-                    </p>
-                  )}
-                  {pings.length > 0 && (
-                    <p style={{ margin: "0.3rem 0 0", color: "#a15c00", fontSize: "0.85rem" }}>
-                      The scheduling owner has flagged this conflict {pings.length} time(s) — propose a
-                      different slot, or reach out to sort it out directly.
-                    </p>
-                  )}
-
-                  {editable && (
-                    <details style={{ marginTop: "0.5rem" }}>
-                      <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>Edit</summary>
-                      <form
-                        action={updateEventProposalAction}
-                        style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginTop: "0.4rem" }}
-                      >
-                        <input type="hidden" name="proposalId" value={p.id} />
-                        <input type="text" name="host" defaultValue={p.host} required style={{ padding: "0.4rem" }} />
-                        <input
-                          type="text"
-                          name="title"
-                          defaultValue={p.title}
-                          required
-                          style={{ padding: "0.4rem" }}
-                        />
-                        <textarea
-                          name="description"
-                          defaultValue={p.description ?? ""}
-                          rows={2}
-                          style={{ padding: "0.4rem" }}
-                        />
-                        <input
-                          type="number"
-                          name="durationMinutes"
-                          defaultValue={p.durationMinutes}
-                          min={1}
-                          required
-                          style={{ padding: "0.4rem" }}
-                        />
-                        <input
-                          type="text"
-                          name="spaceNeeds"
-                          defaultValue={p.spaceNeeds ?? ""}
-                          placeholder="space needed (optional)"
-                          style={{ padding: "0.4rem" }}
-                        />
-                        <textarea
-                          name="preferredSlotsRaw"
-                          defaultValue={formatSlotsRaw(p.preferredSlots as EventSlot[])}
-                          rows={3}
-                          placeholder="startsAt|endsAt, one per line"
-                          style={{ padding: "0.4rem", fontFamily: "monospace" }}
-                        />
-                        <button type="submit" style={{ padding: "0.3rem 0.8rem", width: "fit-content" }}>
-                          Save changes
-                        </button>
-                      </form>
-                    </details>
-                  )}
-                </div>
-              );
-            })}
-
-            <h3>Submit a proposal</h3>
-            <form
-              action={submitEventProposalAction}
-              style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 500 }}
-            >
+            <h3 className="mt-6 text-[15px] font-medium text-[var(--text)]">Submit a proposal</h3>
+            <form action={submitEventProposalAction} className="mt-2 flex max-w-[500px] flex-col gap-2">
               <input type="hidden" name="cycleId" value={cycleId ?? ""} />
-              <label>
-                Host
-                <br />
-                <input type="text" name="host" required style={{ padding: "0.4rem", width: "100%" }} />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Host</span>
+                <input type="text" name="host" required className={INPUT} />
               </label>
-              <label>
-                Title
-                <br />
-                <input type="text" name="title" required style={{ padding: "0.4rem", width: "100%" }} />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Title</span>
+                <input type="text" name="title" required className={INPUT} />
               </label>
-              <label>
-                Description
-                <br />
-                <textarea name="description" rows={2} style={{ padding: "0.4rem", width: "100%" }} />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Description</span>
+                <textarea name="description" rows={2} className={INPUT} />
               </label>
-              <label>
-                Duration (minutes)
-                <br />
-                <input
-                  type="number"
-                  name="durationMinutes"
-                  min={1}
-                  required
-                  style={{ padding: "0.4rem" }}
-                />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Duration (minutes)</span>
+                <input type="number" name="durationMinutes" min={1} required className={`${INPUT} w-fit`} />
               </label>
-              <label>
-                Space needed (optional)
-                <br />
-                <input type="text" name="spaceNeeds" style={{ padding: "0.4rem", width: "100%" }} />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Space needed (optional)</span>
+                <input type="text" name="spaceNeeds" className={INPUT} />
               </label>
-              <label>
-                Preferred slots — one per line, <code>startsAt|endsAt</code>
-                <br />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Preferred slots — one per line, startsAt|endsAt</span>
                 <textarea
                   name="preferredSlotsRaw"
                   rows={4}
                   required
                   placeholder={"2026-09-10T14:00|2026-09-10T15:30\n2026-09-11T09:00|2026-09-11T10:30"}
-                  style={{ padding: "0.4rem", width: "100%", fontFamily: "monospace" }}
+                  className={`${INPUT} font-mono`}
                 />
               </label>
-              <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                 Submit proposal
               </button>
             </form>
