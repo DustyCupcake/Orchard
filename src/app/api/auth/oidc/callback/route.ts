@@ -38,7 +38,16 @@ export async function GET(request: NextRequest) {
       pkceCodeVerifier: flow.codeVerifier,
     });
   } catch (err) {
-    console.error("[auth/oidc/callback] OIDC login failed:", err);
+    // openid-client's own error classes (e.g. a token endpoint's error
+    // response body) carry the real `error`/`error_description` as
+    // plain enumerable properties that a bare `console.error(err)`
+    // doesn't surface — log those explicitly so a real IdP's rejection
+    // reason is visible in server logs instead of just a generic
+    // "server responded with an error" stack.
+    console.error(
+      "[auth/oidc/callback] OIDC login failed:",
+      err instanceof Error ? { message: err.message, ...err, cause: err.cause } : err,
+    );
     return NextResponse.redirect(new URL("/login?error=oidc_error", appUrl));
   }
 
