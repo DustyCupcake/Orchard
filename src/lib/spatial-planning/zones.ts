@@ -1,9 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { plot, zone } from "@/db/schema";
+import { placement, plot, zone } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { NotFoundError } from "../errors";
+import { ConflictError, NotFoundError } from "../errors";
 import { requireNotOnsiteLocked } from "../onsite-mode";
 import { requireSpatialPlanningHolder, getCommunityRow } from "./access";
 import { getPlot } from "./plots";
@@ -91,11 +91,27 @@ export async function updateZone(actor: Member, zoneId: string, rawInput: Update
   return updated;
 }
 
+// Zone is "purely organizational" (docs/spec.md's Spatial planning) —
+// a Placement's zoneId just categorizes it, it doesn't own it — so a
+// Zone still in use blocks the delete with a clear ConflictError
+// rather than orphaning those Placements or letting the FK violation
+// surface as a raw 500. Same pre-check-then-ConflictError shape as
+// deleteTask/deleteTier elsewhere in this codebase.
 export async function deleteZone(actor: Member, zoneId: string) {
   const communityRow = await getCommunityRow(actor.communityId);
   requireNotOnsiteLocked(communityRow);
   const existing = await getZone(actor, zoneId); // 404s if not in this community
   await requireSpatialPlanningHolder(actor, communityRow, existing.cycleId);
+
+  const placedIn = await db
+    .select({ id: placement.id })
+    .from(placement)
+    .where(eq(placement.zoneId, zoneId));
+  if (placedIn.length > 0) {
+    throw new ConflictError(
+      `${placedIn.length} placement(s) still assigned to this zone — unassign or delete them first`,
+    );
+  }
 
   await db.delete(zone).where(eq(zone.id, zoneId));
 }

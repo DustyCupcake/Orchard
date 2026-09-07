@@ -292,6 +292,27 @@ describe("Zone", () => {
     await deleteZone(alice, created.id);
     expect(await listZones(alice, plotRow.id)).toHaveLength(0);
   });
+
+  it("refuses to delete a Zone a Placement is still assigned to", async () => {
+    const { alice, cycle: testCycle } = await setUpModule();
+    const plotRow = await createPlot(alice, testCycle.id, { name: "Main site" });
+    const zoneRow = await createZone(alice, plotRow.id, {
+      name: "Kitchen",
+      category: "kitchen",
+      polygon: squarePolygon,
+      color: "#f00",
+    });
+    await createPlacement(alice, plotRow.id, {
+      zoneId: zoneRow.id,
+      shapeType: "rectangle",
+      geometry: { x: 1, y: 1, width: 2, height: 2, rotation: 0 },
+      label: "Stove",
+      category: "structure",
+    });
+
+    await expect(deleteZone(alice, zoneRow.id)).rejects.toThrow(ConflictError);
+    expect(await listZones(alice, plotRow.id)).toHaveLength(1);
+  });
 });
 
 // docs/development-plan.md's Phase 68 — spatial_planning ownership
