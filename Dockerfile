@@ -22,6 +22,12 @@ FROM base AS typecheck
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Same fix as the builder stage below: Node sizes its default heap off
+# physical RAM only, and on a small VPS that default is small enough that
+# even bare `tsc` (no bundling, just this repo's own type-checking) OOMs
+# without it — this isn't about needing extra headroom for a heavier step.
+ARG BUILD_MAX_OLD_SPACE_MB=1536
+ENV NODE_OPTIONS=--max-old-space-size=${BUILD_MAX_OLD_SPACE_MB}
 RUN npx tsc --noEmit
 
 # ---- build ----
