@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     // "server responded with an error" stack.
     console.error(
       "[auth/oidc/callback] OIDC login failed:",
-      err instanceof Error ? { message: err.message, ...err, cause: err.cause } : err,
+      err instanceof Error ? Object.assign({ message: err.message, cause: err.cause }, err) : err,
     );
     return NextResponse.redirect(new URL("/login?error=oidc_error", appUrl));
   }

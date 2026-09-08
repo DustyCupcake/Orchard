@@ -12,6 +12,18 @@ COPY package.json package-lock.json* ./
 # package*.json are byte-identical to a previous build anyway.
 RUN --mount=type=cache,target=/root/.npm npm ci
 
+# ---- typecheck ----
+# Reuses deps' node_modules and just runs tsc — no bundling, minification,
+# or page-data collection, so it fails on a type error in seconds/minutes
+# instead of the ~15min it'd take to hit the same error inside `next
+# build`'s own type-checking step below. scripts/rebuild.sh runs this
+# stage on its own ahead of the real image build, as a fast pre-check.
+FROM base AS typecheck
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npx tsc --noEmit
+
 # ---- build ----
 FROM base AS builder
 WORKDIR /app
