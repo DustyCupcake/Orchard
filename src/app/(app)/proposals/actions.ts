@@ -75,10 +75,14 @@ export async function activateProposalAction(formData: FormData) {
     .map(String)
     .filter(Boolean);
   const grantCycleIdRaw = String(formData.get("grantCycleId") ?? "").trim();
+  const cycleIdRaw = String(formData.get("cycleId") ?? "").trim();
+  const dueDateRaw = String(formData.get("dueDate") ?? "").trim();
 
   try {
     const input = activateProposalInput.parse({
       branchId: String(formData.get("branchId")),
+      cycleId: cycleIdRaw || null,
+      dueDate: dueDateRaw || undefined,
       effort,
       effortMagnitude,
       capacity: capacityRaw ? Number(capacityRaw) : undefined,

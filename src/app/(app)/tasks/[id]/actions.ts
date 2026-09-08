@@ -40,6 +40,7 @@ import {
   suggestMemberForTask,
   updateRequirement,
   updateRequirementInput,
+  updateTask,
   updateTaskMilestone,
   waiveAndClaim,
   waiveAndClaimInput,
@@ -130,6 +131,29 @@ export async function addResourceAction(formData: FormData) {
   }
 
   revalidatePath(`/tasks/${taskId}`);
+}
+
+// The only place a task's own cycleId is ever set after creation — see
+// the "Change cycle" disclosure below the header meta line. Open to
+// any member, same as Requirements/Dependencies editing on this page
+// (updateTask's own REST route already permits this to any community
+// member; this just gives it a real form). Activating a proposal onto
+// the board (src/app/(app)/proposals/actions.ts's activateProposalAction)
+// is the other, more common way a task gets a cycleId — this covers
+// fixing it afterward, or a task that was never given one.
+export async function updateTaskCycleAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const cycleIdRaw = String(formData.get("cycleId") ?? "").trim();
+
+  try {
+    await updateTask(actor, taskId, { cycleId: cycleIdRaw || null });
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
 }
 
 // Reads one milestone's date fields off the submitted form — see

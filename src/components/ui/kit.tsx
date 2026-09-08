@@ -60,6 +60,12 @@ export const BUTTON_GHOST =
   "rounded-[var(--radius-md)] bg-transparent px-2.5 py-1.5 text-[13px] font-medium text-[var(--accent-1)] hover:bg-[var(--accent-1-softer)] disabled:opacity-45 disabled:cursor-not-allowed";
 export const BUTTON_DESTRUCTIVE =
   "rounded-[var(--radius-md)] bg-[var(--danger)] px-3.5 py-1.5 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-45 disabled:cursor-not-allowed";
+// 36x36, icon only — see design_handoff_conventions/README.md's Buttons
+// entry. Works on both <button> and <summary> (a zero-JS disclosure
+// toggle); callers using <summary> should also add
+// "list-none [&::-webkit-details-marker]:hidden" to drop the native marker.
+export const BUTTON_ICON =
+  "inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-transparent text-[var(--text-muted)] hover:bg-[var(--neutral-100)] hover:text-[var(--text)] disabled:opacity-45 disabled:cursor-not-allowed";
 
 // Extracted once a third page (Phase 64's task/proposal Permissions
 // checkboxes) needed the identical "checkbox + inline label" markup

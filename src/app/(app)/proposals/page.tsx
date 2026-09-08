@@ -32,14 +32,17 @@ export default async function ProposalsPage({
   const { error, submitted, status } = await searchParams;
 
   const canGrantPermissions = await isAdmin(viewing);
-  const [proposals, branches, members, tiers, communityTasksRaw, communityGrants, grantCycles] = await Promise.all([
+  const [proposals, branches, members, tiers, communityTasksRaw, communityGrants, cycles] = await Promise.all([
     listProposals(viewing, { status }),
     db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
     db.select().from(member).where(eq(member.communityId, viewing.communityId)),
     listTiers(viewing),
     listTasks(viewing),
     canGrantPermissions ? listGrantsWithTaskInfo(viewing.communityId) : Promise.resolve([]),
-    canGrantPermissions ? listCycles(viewing) : Promise.resolve([]),
+    // Ungated by canGrantPermissions — every member activating a
+    // proposal picks the new task's own cycle (below), not just an
+    // admin granting permissions on it.
+    listCycles(viewing),
   ]);
   const communityTasks = communityTasksRaw.map((t) => ({ id: t.id, title: t.title }));
 
@@ -48,15 +51,14 @@ export default async function ProposalsPage({
   // The activation form's shared cycle-select default (docs/
   // development-plan.md's Phase 68) — the viewer's own resolved active
   // scope, when it's a specific cycle; mirrors the task detail page's
-  // identical default exactly.
+  // identical default exactly. Also now the default for the new task's
+  // own cycleId field, not just the permissions grant's cycle scope.
   const communityRow = await getCommunity(viewing);
-  const defaultGrantCycleId = canGrantPermissions
-    ? await (async () => {
-        const segment = await resolveDefaultScopeSegment(viewing);
-        const scope = await resolveViewScopeFromSegment(viewing, segment);
-        return scope?.kind === "single" ? scope.cycle.id : null;
-      })()
-    : null;
+  const defaultCycleId = await (async () => {
+    const segment = await resolveDefaultScopeSegment(viewing);
+    const scope = await resolveViewScopeFromSegment(viewing, segment);
+    return scope?.kind === "single" ? scope.cycle.id : null;
+  })();
 
   // A brand-new proposal task can't already hold anything itself, so
   // "granted elsewhere" here just means "granted at all" — every
@@ -69,7 +71,7 @@ export default async function ProposalsPage({
   const elsewhereHolderByModule: Partial<Record<PermissionModuleKey, string>> = {};
   for (const g of communityGrants) {
     if (allowsMultipleGrants(g.moduleKey)) continue;
-    if (CYCLE_SCOPED_MODULES.has(g.moduleKey) && g.cycleId !== defaultGrantCycleId) continue;
+    if (CYCLE_SCOPED_MODULES.has(g.moduleKey) && g.cycleId !== defaultCycleId) continue;
     elsewhereHolderByModule[g.moduleKey] = g.title;
   }
 
@@ -105,8 +107,8 @@ export default async function ProposalsPage({
             canGrantPermissions={canGrantPermissions}
             elsewhereHolderByModule={elsewhereHolderByModule}
             cyclesEnabled={communityRow.cyclesEnabled}
-            grantCycles={grantCycles}
-            defaultGrantCycleId={defaultGrantCycleId}
+            cycles={cycles}
+            defaultCycleId={defaultCycleId}
           />
         ))}
       </div>

@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { budgetCycle, budgetVote, member, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import { getBudgetCycle, getCurrentBudgetCycle } from "./cycles";
+import { getBudgetCycle, getCurrentBudgetCycle, lineItemInput } from "./cycles";
 import type { BudgetLineItem } from "./cycles";
 import { listBudgetProposals } from "./proposals";
 
@@ -55,6 +55,40 @@ export async function closeProposalsToVoting(actor: Member, budgetCycleId: strin
   const [updated] = await db
     .update(budgetCycle)
     .set({ status: "voting" })
+    .where(eq(budgetCycle.id, budgetCycleId))
+    .returning();
+  return updated;
+}
+
+export const updateBudgetCycleInput = z.object({
+  title: z.string().min(1).optional(),
+  fixedCosts: z.array(lineItemInput).optional(),
+  proposalDeadline: z.string().datetime().optional(),
+});
+export type UpdateBudgetCycleInput = z.infer<typeof updateBudgetCycleInput>;
+
+// Lets the owner correct a title/fixed-costs/deadline mistake —
+// including a proposalDeadline auto-filled as a placeholder when this
+// cycle was started via startBudgetCycleForNewCycle's opt-in
+// convenience — without having to get it exactly right up front. Only
+// while proposals_open: once voting has opened, the proposal set (and
+// by extension the deadline that closed it) is settled history, the
+// same "locks, no further edits" posture proposals.ts's
+// requireProposalsOpen already applies to individual proposals.
+export async function updateBudgetCycle(actor: Member, budgetCycleId: string, input: UpdateBudgetCycleInput) {
+  const cycleRow = await getBudgetCycle(actor, budgetCycleId);
+  await requireBudgetOwner(actor, cycleRow);
+  if (cycleRow.status !== "proposals_open") {
+    throw new ConflictError("This budget cycle's proposal window has already closed");
+  }
+
+  const [updated] = await db
+    .update(budgetCycle)
+    .set({
+      ...(input.title !== undefined && { title: input.title }),
+      ...(input.fixedCosts !== undefined && { fixedCosts: input.fixedCosts }),
+      ...(input.proposalDeadline !== undefined && { proposalDeadline: new Date(input.proposalDeadline) }),
+    })
     .where(eq(budgetCycle.id, budgetCycleId))
     .returning();
   return updated;

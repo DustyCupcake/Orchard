@@ -7,6 +7,7 @@ import { ConflictError, NotFoundError } from "../errors";
 import { createTask, createTaskInput } from "../tasks/crud";
 import { addTaskDependency } from "../tasks/dependencies";
 import { claimTask } from "../tasks/lifecycle";
+import { createTaskMilestone } from "../tasks/milestones";
 import { createRequirement, createRequirementInput } from "../tasks/requirements";
 import { isAdmin } from "../settings/admins";
 import {
@@ -25,6 +26,19 @@ export const createProposalInput = z.object({
   wantsToClaim: z.boolean().optional(),
   suggestedMemberId: z.string().uuid().nullable().optional(),
   suggestedMemberNote: z.string().nullable().optional(),
+  // Everything below is optional, offered by /propose's own collapsed
+  // "Add more, if you know it" section — a proposer's suggestion, not a
+  // commitment. Activation (see activateProposalInput below) still
+  // reviews and can freely override every one of these; nothing here
+  // bypasses that review.
+  suggestedBranchId: z.string().uuid().nullable().optional(),
+  suggestedCycleId: z.string().uuid().nullable().optional(),
+  suggestedEffort: z.enum(["one_off", "ongoing", "owns_a_thing"]).nullable().optional(),
+  suggestedEffortMagnitude: z.record(z.string(), z.unknown()).nullable().optional(),
+  suggestedTags: z.array(z.string()).nullable().optional(),
+  suggestedCapacity: z.number().int().positive().nullable().optional(),
+  suggestedCritical: z.boolean().nullable().optional(),
+  suggestedDueDate: z.string().min(1).nullable().optional(),
 });
 export type CreateProposalInput = z.infer<typeof createProposalInput>;
 
@@ -49,6 +63,14 @@ export async function createProposal(actor: Member, input: CreateProposalInput) 
       wantsToClaim: input.wantsToClaim ?? false,
       suggestedMemberId: input.suggestedMemberId ?? null,
       suggestedMemberNote: input.suggestedMemberNote ?? null,
+      suggestedBranchId: input.suggestedBranchId ?? null,
+      suggestedCycleId: input.suggestedCycleId ?? null,
+      suggestedEffort: input.suggestedEffort ?? null,
+      suggestedEffortMagnitude: input.suggestedEffortMagnitude ?? null,
+      suggestedTags: input.suggestedTags ?? null,
+      suggestedCapacity: input.suggestedCapacity ?? null,
+      suggestedCritical: input.suggestedCritical ?? null,
+      suggestedDueDate: input.suggestedDueDate ?? null,
     })
     .returning();
 
@@ -97,6 +119,9 @@ export const activateProposalInput = createTaskInput
     // 68) — applies only to whichever of event_scheduling_owner/
     // spatial_planning are present in grantModuleKeys.
     grantCycleId: z.string().uuid().nullable().optional(),
+    // Optional — becomes a single confirmed Task Milestone (see below)
+    // right after the new task exists, not a real Task field itself.
+    dueDate: z.string().min(1).optional(),
   });
 export type ActivateProposalInput = z.infer<typeof activateProposalInput>;
 
@@ -177,6 +202,18 @@ export async function activateProposal(
         await setPermissionGrant(actor.communityId, moduleKey, newTask.id);
       }
     }
+  }
+
+  // Placed before the auto-claim below, deliberately — createTaskMilestone
+  // auto-confirms a milestone when the task has no holder yet, so doing
+  // this first means the milestone always lands "confirmed" regardless
+  // of who's activating, rather than "pending" on a holder who may not
+  // exist yet if wantsToClaim ran first.
+  if (input.dueDate) {
+    await createTaskMilestone(actor, newTask.id, {
+      label: "Due date",
+      date: { type: "absolute", date: input.dueDate },
+    });
   }
 
   let autoClaimed = false;

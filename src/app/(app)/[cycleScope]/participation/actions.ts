@@ -6,7 +6,9 @@ import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import { declareParticipation, declareParticipationInput } from "@/lib/participation";
+import { startBudgetCycleForNewCycle } from "@/lib/budget";
 import {
+  addPhase,
   closeCycle,
   createCycle,
   updateCycleSettings,
@@ -85,6 +87,7 @@ export async function createCycleAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const cycleTypeId = String(formData.get("cycleTypeId") ?? "").trim() || null;
   const confirmed = formData.get("confirmed") === "on";
+  const startBudget = formData.get("startBudget") === "on";
 
   let created;
   try {
@@ -102,8 +105,22 @@ export async function createCycleAction(formData: FormData) {
     redirectWithError(cycleScope, err);
   }
 
+  // Best-effort and opt-in only (the checkbox above) — a Budget hiccup
+  // here (e.g. the carried-forward owner task got deleted since) never
+  // means the Cycle itself failed to start; see
+  // src/lib/budget/cycles.ts's startBudgetCycleForNewCycle.
+  let budgetStarted = false;
+  if (startBudget) {
+    try {
+      budgetStarted = Boolean(await startBudgetCycleForNewCycle(actor, created));
+    } catch {
+      budgetStarted = false;
+    }
+  }
+
   revalidatePath(`/${cycleScope}/participation`);
-  redirect(`/${created.id}/participation?cycleCreated=1`);
+  const budgetFlag = startBudget && !budgetStarted ? "&budgetNotStarted=1" : "";
+  redirect(`/${created.id}/participation?cycleCreated=1${budgetFlag}`);
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside updateCycleSettings.
@@ -200,6 +217,30 @@ export async function updatePhaseBoundaryAction(formData: FormData) {
 
   revalidatePath(`/${cycleScope}/participation`);
   redirect(`/${cycleScope}/participation?phaseUpdated=1`);
+}
+
+// Cycle-initiation-eligibility-gated, enforced inside addPhase — same
+// authority as everything else on this page. `order` isn't read from
+// formData at all — addPhase always appends.
+export async function addPhaseAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleId = String(formData.get("cycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+  const name = String(formData.get("name") ?? "").trim();
+
+  try {
+    if (!name) throw new AppError("A phase needs a name");
+    await addPhase(actor, cycleId, {
+      name,
+      start: boundaryFromForm(formData, "start"),
+      end: boundaryFromForm(formData, "end"),
+    });
+  } catch (err) {
+    redirectWithError(cycleScope, err);
+  }
+
+  revalidatePath(`/${cycleScope}/participation`);
+  redirect(`/${cycleScope}/participation?phaseAdded=1`);
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside updatePhaseHighlight

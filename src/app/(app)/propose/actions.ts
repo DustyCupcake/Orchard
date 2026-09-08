@@ -27,6 +27,25 @@ export async function submitProposal(formData: FormData) {
 
   const suggestedMemberId = String(formData.get("suggestedMemberId") ?? "") || null;
 
+  const suggestedBranchId = String(formData.get("branchId") ?? "").trim() || null;
+  const suggestedCycleId = String(formData.get("cycleId") ?? "").trim() || null;
+  const effortRaw = String(formData.get("effort") ?? "").trim();
+  const suggestedEffort = effortRaw || null;
+  let suggestedEffortMagnitude: Record<string, unknown> | null = null;
+  if (effortRaw) {
+    const duration = String(formData.get("duration") ?? "");
+    const hoursPerWeekRaw = String(formData.get("hoursPerWeek") ?? "");
+    suggestedEffortMagnitude =
+      effortRaw === "one_off" ? { duration: duration || "few_hours" } : { hours_per_week: Number(hoursPerWeekRaw) || 1 };
+  }
+  const suggestedTagsRaw = String(formData.get("tags") ?? "");
+  const suggestedTags = suggestedTagsRaw
+    ? suggestedTagsRaw.split(",").map((t) => t.trim()).filter(Boolean)
+    : null;
+  const suggestedCapacityRaw = String(formData.get("capacity") ?? "").trim();
+  const suggestedCritical = formData.get("critical") === "on";
+  const suggestedDueDate = String(formData.get("dueDate") ?? "").trim() || null;
+
   try {
     await createProposal(actor, {
       title,
@@ -34,6 +53,14 @@ export async function submitProposal(formData: FormData) {
       wantsToClaim: formData.get("wantsToClaim") === "on",
       suggestedMemberId,
       suggestedMemberNote: String(formData.get("suggestedMemberNote") ?? "") || null,
+      suggestedBranchId,
+      suggestedCycleId,
+      suggestedEffort: suggestedEffort as "one_off" | "ongoing" | "owns_a_thing" | null,
+      suggestedEffortMagnitude,
+      suggestedTags,
+      suggestedCapacity: suggestedCapacityRaw ? Number(suggestedCapacityRaw) : null,
+      suggestedCritical,
+      suggestedDueDate,
     });
   } catch (err) {
     if (err instanceof AppError) {

@@ -16,6 +16,7 @@ import {
   createBudgetCycleAction,
   markBudgetCycleDoneAction,
   submitBudgetProposalAction,
+  updateBudgetCycleAction,
   updateBudgetProposalAction,
 } from "./actions";
 import BudgetVotingSection from "./BudgetVotingSection";
@@ -28,6 +29,14 @@ function formatAmount(n: number) {
 
 function formatLineItems(items: BudgetLineItem[]) {
   return items.map((i) => `${i.label}|${i.amount}`).join("\n");
+}
+
+// datetime-local wants "YYYY-MM-DDTHH:mm" in local time, not a full ISO
+// string with a timezone offset — same helper .../participation/page.tsx
+// already uses for its own datetime-local field.
+function toDatetimeLocal(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -64,6 +73,7 @@ export default async function BudgetPage({
     error?: string;
     submitted?: string;
     updated?: string;
+    cycleUpdated?: string;
     votingOpened?: string;
     voted?: string;
     confirmed?: string;
@@ -76,7 +86,7 @@ export default async function BudgetPage({
   }
 
   const { cycleScope } = await params;
-  const { error, submitted, updated, votingOpened, voted, confirmed, markedDone } = await searchParams;
+  const { error, submitted, updated, cycleUpdated, votingOpened, voted, confirmed, markedDone } = await searchParams;
 
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "budget");
@@ -184,6 +194,11 @@ export default async function BudgetPage({
               <Banner tone="success">Proposal updated.</Banner>
             </div>
           )}
+          {cycleUpdated && (
+            <div className="mt-4">
+              <Banner tone="success">Budget cycle updated.</Banner>
+            </div>
+          )}
           {votingOpened && (
             <div className="mt-4">
               <Banner tone="success">Proposals closed — voting is open.</Banner>
@@ -217,6 +232,43 @@ export default async function BudgetPage({
                 Owner task: {ownerTask ? `"${ownerTask.title}"` : "—"} — whoever holds it is the
                 budget owner.
               </p>
+
+              {isOwner && currentCycle.status === "proposals_open" && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
+                    Edit title / fixed costs / deadline
+                  </summary>
+                  <form action={updateBudgetCycleAction} className="mt-2 flex max-w-[500px] flex-col gap-2">
+                    <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
+                    <input type="hidden" name="cycleScope" value={cycleScope} />
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>Title</span>
+                      <input type="text" name="title" defaultValue={currentCycle.title} className={INPUT} />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>Fixed costs — one per line, label|amount</span>
+                      <textarea
+                        name="fixedCostsRaw"
+                        defaultValue={formatLineItems(fixedCosts)}
+                        rows={3}
+                        className={`${INPUT} font-mono`}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>Proposal deadline</span>
+                      <input
+                        type="datetime-local"
+                        name="proposalDeadline"
+                        defaultValue={toDatetimeLocal(new Date(currentCycle.proposalDeadline))}
+                        className={`${INPUT} w-fit`}
+                      />
+                    </label>
+                    <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
+                      Save changes
+                    </button>
+                  </form>
+                </details>
+              )}
 
               {isOwner && currentCycle.status === "confirmed" && (
                 <div className="mt-2">
@@ -402,8 +454,20 @@ export default async function BudgetPage({
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className={LABEL}>Owner task ID</span>
-                  <input type="text" name="ownerTaskId" required placeholder="paste the task's ID from its /tasks/… URL" className={INPUT} />
-                  <span className="text-[12px] text-[var(--text-muted)]">Whoever holds this task is the budget owner.</span>
+                  <input
+                    type="text"
+                    name="ownerTaskId"
+                    required
+                    defaultValue={currentCycle?.ownerTaskId ?? ""}
+                    placeholder="paste the task's ID from its /tasks/… URL"
+                    className={INPUT}
+                  />
+                  <span className="text-[12px] text-[var(--text-muted)]">
+                    Whoever holds this task is the budget owner.
+                    {ownerTask && (
+                      <> Pre-filled from the last cycle&rsquo;s owner task (&ldquo;{ownerTask.title}&rdquo;) — change it if that&rsquo;s not right this time.</>
+                    )}
+                  </span>
                 </label>
                 <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                   Start cycle

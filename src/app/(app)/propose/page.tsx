@@ -1,8 +1,11 @@
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { member } from "@/db/schema";
+import { branch, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
+import { getCommunity } from "@/lib/settings";
+import { listCycles } from "@/lib/cycles";
+import EffortFields from "@/components/EffortFields";
 import { Banner, BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
 import { submitProposal } from "./actions";
 
@@ -20,10 +23,12 @@ export default async function ProposePage({
 
   const { error } = await searchParams;
 
-  const communityMembers = await db
-    .select()
-    .from(member)
-    .where(eq(member.communityId, viewing.communityId));
+  const [communityMembers, branches, cycles, communityRow] = await Promise.all([
+    db.select().from(member).where(eq(member.communityId, viewing.communityId)),
+    db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
+    listCycles(viewing),
+    getCommunity(viewing),
+  ]);
 
   return (
     <main className="mx-auto max-w-[520px] px-6 py-10 md:px-12 md:py-14">
@@ -67,6 +72,53 @@ export default async function ProposePage({
             className={`${INPUT} mt-2 w-full`}
           />
         </fieldset>
+
+        <details className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+          <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Add more, if you know it (optional)</summary>
+          <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+            Still just a suggestion — whoever reviews this can change any of it before activating.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <select name="branchId" defaultValue="" className={INPUT}>
+              <option value="">Branch…</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+
+            {communityRow.cyclesEnabled && (
+              <select name="cycleId" defaultValue="" className={INPUT}>
+                <option value="">No cycle (unscoped)</option>
+                {cycles.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <EffortFields />
+          </div>
+
+          <input type="text" name="tags" placeholder="tags (comma-separated)" className={`${INPUT} mt-2 w-full`} />
+
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+              Capacity:
+              <input type="number" name="capacity" placeholder="1" min={1} className={`${INPUT} w-20`} />
+            </label>
+            <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+              <input type="checkbox" name="critical" /> Critical
+            </label>
+          </div>
+
+          <label className="mt-2 flex flex-col gap-1">
+            <span className={LABEL}>Due date</span>
+            <input type="date" name="dueDate" className={`${INPUT} w-fit`} />
+          </label>
+        </details>
 
         <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
           Submit proposal

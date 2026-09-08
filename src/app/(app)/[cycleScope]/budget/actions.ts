@@ -16,6 +16,8 @@ import {
   submitBudgetProposalInput,
   submitBudgetVote,
   submitBudgetVoteInput,
+  updateBudgetCycle,
+  updateBudgetCycleInput,
   updateBudgetProposal,
   updateBudgetProposalInput,
 } from "@/lib/budget";
@@ -95,6 +97,37 @@ export async function createBudgetCycleAction(formData: FormData) {
 
   revalidatePath(`/${cycleScope}/budget`);
   redirect(`/${cycleScope}/budget`);
+}
+
+// Owner-only, enforced inside updateBudgetCycle — lets the title/fixed
+// costs/deadline be corrected after creation (including a deadline
+// that was only ever a placeholder, e.g. one set by
+// startBudgetCycleForNewCycle's opt-in auto-start). Fields are left
+// out of the update entirely, not overwritten with empty values, when
+// their raw input is blank — same "only touch what was actually sent"
+// posture updateBudgetProposalAction/updateCycleSettingsAction below
+// already take.
+export async function updateBudgetCycleAction(formData: FormData) {
+  const actor = await requireMember();
+  const budgetCycleId = String(formData.get("budgetCycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+
+  try {
+    const titleRaw = String(formData.get("title") ?? "").trim();
+    const deadlineRaw = String(formData.get("proposalDeadline") ?? "").trim();
+    const fixedCostsRaw = String(formData.get("fixedCostsRaw") ?? "");
+    const input = updateBudgetCycleInput.parse({
+      title: titleRaw || undefined,
+      fixedCosts: fixedCostsRaw.trim() ? parseLineItems(fixedCostsRaw) : undefined,
+      proposalDeadline: deadlineRaw ? new Date(deadlineRaw).toISOString() : undefined,
+    });
+    await updateBudgetCycle(actor, budgetCycleId, input);
+  } catch (err) {
+    redirectWithError(cycleScope, err);
+  }
+
+  revalidatePath(`/${cycleScope}/budget`);
+  redirect(`/${cycleScope}/budget?cycleUpdated=1`);
 }
 
 // Open to any member — "any member submits an itemized proposal ...

@@ -15,8 +15,10 @@ import {
   getCurrentBudgetCycle,
   listBudgetProposals,
   markBudgetCycleDone,
+  startBudgetCycleForNewCycle,
   submitBudgetProposal,
   submitBudgetVote,
+  updateBudgetCycle,
   updateBudgetProposal,
 } from "@/lib/budget";
 import { createCycle } from "@/lib/cycles";
@@ -520,6 +522,104 @@ describe("markBudgetCycleDone", () => {
 
     const refetched = await getBudgetCycle(alice, cycle.id);
     expect(refetched.ownerMarkedDoneAt).not.toBeNull();
+  });
+});
+
+describe("updateBudgetCycle", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("owner-gated, and only while proposals_open", async () => {
+    const { alice, bob, cycle } = await setUpVotingCycle();
+
+    await expect(
+      updateBudgetCycle(bob, cycle.id, { title: "Hijacked" }),
+    ).rejects.toThrow(ForbiddenError);
+
+    await closeProposalsToVoting(alice, cycle.id);
+    await expect(
+      updateBudgetCycle(alice, cycle.id, { title: "Too late" }),
+    ).rejects.toThrow(ConflictError);
+  });
+
+  it("only touches fields actually sent, leaving the rest as-is", async () => {
+    const { alice, cycle } = await setUpVotingCycle();
+
+    const updated = await updateBudgetCycle(alice, cycle.id, { title: "Renamed budget" });
+    expect(updated.title).toBe("Renamed budget");
+    expect(updated.fixedCosts).toEqual(cycle.fixedCosts);
+    expect(new Date(updated.proposalDeadline).getTime()).toBe(new Date(cycle.proposalDeadline).getTime());
+
+    const newDeadline = inOneWeek();
+    const updated2 = await updateBudgetCycle(alice, cycle.id, {
+      fixedCosts: [{ label: "Revised", amount: 999 }],
+      proposalDeadline: newDeadline,
+    });
+    expect(updated2.title).toBe("Renamed budget");
+    expect(updated2.fixedCosts).toEqual([{ label: "Revised", amount: 999 }]);
+    expect(new Date(updated2.proposalDeadline).toISOString()).toBe(newDeadline);
+  });
+});
+
+describe("startBudgetCycleForNewCycle", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("returns null — nothing to carry an owner task forward from yet", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const newCycle = await createCycle(alice, { source: "blank", name: "First season" });
+
+    expect(await startBudgetCycleForNewCycle(alice, newCycle)).toBeNull();
+    expect(await getCurrentBudgetCycle(alice)).toBeNull();
+  });
+
+  it("returns null — the community's last BudgetCycle is still active", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    await createBudgetCycle(alice, {
+      title: "Still open",
+      proposalDeadline: inOneWeek(),
+      ownerTaskId: ownerTask.id,
+    });
+    const newCycle = await createCycle(alice, { source: "blank", name: "Next season" });
+
+    expect(await startBudgetCycleForNewCycle(alice, newCycle)).toBeNull();
+  });
+
+  it("carries the previous cycle's ownerTaskId and fixedCosts forward, linked to the new Cycle", async () => {
+    const { alice, bob, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    await claimTask(alice, ownerTask.id);
+    const previous = await createBudgetCycle(alice, {
+      title: "Last season's budget",
+      fixedCosts: [{ label: "Site fee", amount: 2000 }],
+      proposalDeadline: inOneWeek(),
+      ownerTaskId: ownerTask.id,
+    });
+    const p1 = await submitBudgetProposal(bob, previous.id, {
+      title: "P1",
+      lineItems: [{ label: "X", amount: 100 }],
+    });
+    await closeProposalsToVoting(alice, previous.id);
+    await submitBudgetVote(alice, previous.id, { rankedProposalIds: [p1.id] });
+    await confirmBudgetCycle(alice, previous.id, { confirmedProposalIds: [p1.id] });
+
+    const newCycle = await createCycle(alice, { source: "blank", name: "Next season" });
+    const started = await startBudgetCycleForNewCycle(alice, newCycle);
+    expect(started).not.toBeNull();
+    expect(started!.cycleId).toBe(newCycle.id);
+    expect(started!.title).toBe("Next season Budget");
+    expect(started!.ownerTaskId).toBe(ownerTask.id);
+    expect(started!.fixedCosts).toEqual([{ label: "Site fee", amount: 2000 }]);
+    expect(started!.status).toBe("proposals_open");
+
+    const linked = await getBudgetCycleForCycle(alice, newCycle.id);
+    expect(linked?.id).toBe(started!.id);
   });
 });
 

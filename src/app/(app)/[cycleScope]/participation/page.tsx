@@ -8,7 +8,7 @@ import {
   previewClonePreviousCycle,
   resolveViewScopeFromSegment,
 } from "@/lib/cycles";
-import { getBudgetCycleForCycle } from "@/lib/budget";
+import { getBudgetCycleForCycle, getCurrentBudgetCycle } from "@/lib/budget";
 import { getCycleParticipationSummary, getMyParticipation } from "@/lib/participation";
 import { getCommunity, isAdmin, listCycleTypes } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
@@ -18,6 +18,7 @@ import { ClonePreviewGrid, ClonePreviewList } from "@/components/ClonePreview";
 import type { member as memberTable } from "@/db/schema";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import {
+  addPhaseAction,
   closeCycleAction,
   createCycleAction,
   declareParticipationAction,
@@ -71,8 +72,10 @@ export default async function ParticipationPage({
     declared?: string;
     settingsUpdated?: string;
     phaseUpdated?: string;
+    phaseAdded?: string;
     highlightUpdated?: string;
     cycleCreated?: string;
+    budgetNotStarted?: string;
     cycleClosed?: string;
     previewStart?: string;
     previewEnd?: string;
@@ -90,8 +93,10 @@ export default async function ParticipationPage({
     declared,
     settingsUpdated,
     phaseUpdated,
+    phaseAdded,
     highlightUpdated,
     cycleCreated,
+    budgetNotStarted,
     cycleClosed,
     previewStart,
     previewEnd,
@@ -136,6 +141,11 @@ export default async function ParticipationPage({
           <Banner tone="success">Phase dates updated.</Banner>
         </div>
       )}
+      {phaseAdded && (
+        <div className="mt-4">
+          <Banner tone="success">Phase added.</Banner>
+        </div>
+      )}
       {highlightUpdated && (
         <div className="mt-4">
           <Banner tone="success">Phase highlight updated.</Banner>
@@ -144,6 +154,14 @@ export default async function ParticipationPage({
       {cycleCreated && (
         <div className="mt-4">
           <Banner tone="success">Cycle created — set its dates below, if you know them yet.</Banner>
+        </div>
+      )}
+      {budgetNotStarted && (
+        <div className="mt-4">
+          <Banner tone="warning">
+            Couldn&rsquo;t auto-start this cycle&rsquo;s Budget (the carried-forward owner task may no
+            longer exist) — start one by hand from /budget.
+          </Banner>
         </div>
       )}
       {cycleClosed && (
@@ -211,14 +229,24 @@ async function StartNewCycleSection({
   previewEnd?: string;
   previewView: "grid" | "list";
 }) {
-  const [cycleTypes, packs, preview] = await Promise.all([
+  const [cycleTypes, packs, preview, communityRow, previousBudgetCycle] = await Promise.all([
     listCycleTypes(viewing),
     listTaskPacks(viewing),
     hasPreviousCycle && (previewStart || previewEnd)
       ? previewClonePreviousCycle(viewing, previewStart || null, previewEnd || null)
       : Promise.resolve(null),
+    getCommunity(viewing),
+    getCurrentBudgetCycle(viewing),
   ]);
   const packNameById = new Map(packs.map((p) => [p.id, p.name]));
+  // Only offer the auto-start checkbox when startBudgetCycleForNewCycle
+  // (src/lib/budget/cycles.ts) would actually succeed — Budget on, and
+  // a previous BudgetCycle to carry the owner task forward from that
+  // isn't itself still active. Otherwise this Community's very first
+  // Budget cycle still has to be started by hand from /budget, same as
+  // always — there's no owner task to guess at yet.
+  const canAutoStartBudget =
+    isModuleEnabled(communityRow, "budget") && previousBudgetCycle?.status === "confirmed";
   // "Correctly pre-selects that pack when starting a new Cycle of that
   // type" — see docs/development-plan.md's Phase 55 Done-when. No
   // client JS to pre-fill one <select> from another's chosen value, so
@@ -321,6 +349,13 @@ async function StartNewCycleSection({
           A clone&rsquo;s own start/end aren&rsquo;t set here — use the Cycle settings form above once
           it exists.
         </p>
+        {canAutoStartBudget && (
+          <CheckField
+            label={`Also start a Budget cycle for this Cycle (owner task carried forward from "${previousBudgetCycle!.title}")`}
+            name="startBudget"
+            defaultChecked
+          />
+        )}
         {openCycleName && <CheckField label="I understand — start anyway" name="confirmed" />}
         <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
           Create
@@ -464,8 +499,8 @@ async function ParticipationForCycle({
         </section>
       )}
 
-      {withPhases && withPhases.phases.length > 0 && !closed && (
-        <PhaseDatesSection phases={withPhases.phases} cycleScope={cycleScope} />
+      {withPhases && !closed && (
+        <PhaseDatesSection phases={withPhases.phases} cycleId={cycleId} cycleScope={cycleScope} />
       )}
 
       {canConfigure && (
@@ -545,10 +580,10 @@ function describeBoundary(prefix: "Start" | "End", p: PhaseRow, dateType: string
 }
 
 // See docs/development-plan.md's Phase 39 — a phase spine an existing
-// Cycle's own dates resolve against. No add/rename/reorder here (phases
-// are still only created at Cycle-creation time, or carried through a
-// clone) — this is purely for editing an existing phase's dates.
-function PhaseDatesSection({ phases, cycleScope }: { phases: PhaseRow[]; cycleScope: string }) {
+// Cycle's own dates resolve against. No rename/reorder here (phases,
+// once added, keep whatever name/order they were given) — this is for
+// editing an existing phase's dates plus (below) adding a new one.
+function PhaseDatesSection({ phases, cycleId, cycleScope }: { phases: PhaseRow[]; cycleId: string; cycleScope: string }) {
   return (
     <section className="mt-6">
       <SectionHeading>Phase dates</SectionHeading>
@@ -557,6 +592,7 @@ function PhaseDatesSection({ phases, cycleScope }: { phases: PhaseRow[]; cycleSc
         type a new offset/percent directly, or pick a target date to drag it there (either way,
         what&rsquo;s persisted is the recomputed offset/percent, never a bare date).
       </p>
+      {phases.length === 0 && <p className="mt-3 text-[13px] text-[var(--text-muted)]">None yet.</p>}
       <div className="mt-3 flex flex-col gap-3">
         {phases.map((p) => (
           <div key={p.id} className={`max-w-[500px] ${CARD}`}>
@@ -611,17 +647,38 @@ function PhaseDatesSection({ phases, cycleScope }: { phases: PhaseRow[]; cycleSc
           </div>
         ))}
       </div>
+
+      <details className="mt-4 max-w-[500px] rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+        <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Add a phase</summary>
+        <form action={addPhaseAction} className="mt-3 flex flex-col gap-2">
+          <input type="hidden" name="cycleId" value={cycleId} />
+          <input type="hidden" name="cycleScope" value={cycleScope} />
+          <label className="flex flex-col gap-1">
+            <span className={LABEL}>Name</span>
+            <input type="text" name="name" required className={INPUT} />
+          </label>
+          <PhaseBoundaryFields prefix="start" />
+          <PhaseBoundaryFields prefix="end" />
+          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+            Add
+          </button>
+        </form>
+      </details>
     </section>
   );
 }
 
-function PhaseBoundaryFields({ prefix, p }: { prefix: "start" | "end"; p: PhaseRow }) {
-  const dateType = prefix === "start" ? p.startDateType : p.endDateType;
-  const relativeMode = prefix === "start" ? p.startRelativeMode : p.endRelativeMode;
-  const anchor = prefix === "start" ? p.startOffsetAnchor : p.endOffsetAnchor;
-  const offsetDays = prefix === "start" ? p.startOffsetDays : p.endOffsetDays;
-  const percent = prefix === "start" ? p.startPercent : p.endPercent;
-  const absoluteDate = prefix === "start" ? p.startDate : p.endDate;
+// `p` is omitted entirely for the "Add a phase" form below (a brand-new
+// phase has no existing row to default from) — mirrors how
+// tasks/[id]/page.tsx's MilestoneDateFields handles its own optional
+// `milestone` prop for the identical add-vs-edit dual use.
+function PhaseBoundaryFields({ prefix, p }: { prefix: "start" | "end"; p?: PhaseRow }) {
+  const dateType = prefix === "start" ? p?.startDateType : p?.endDateType;
+  const relativeMode = prefix === "start" ? p?.startRelativeMode : p?.endRelativeMode;
+  const anchor = prefix === "start" ? p?.startOffsetAnchor : p?.endOffsetAnchor;
+  const offsetDays = prefix === "start" ? p?.startOffsetDays : p?.endOffsetDays;
+  const percent = prefix === "start" ? p?.startPercent : p?.endPercent;
+  const absoluteDate = prefix === "start" ? p?.startDate : p?.endDate;
   const mode = dateType === "relative" ? `relative_${relativeMode}` : "absolute";
 
   return (

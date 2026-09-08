@@ -1108,11 +1108,12 @@ The pipeline view is also where the "needs action" signal lives, surfaced on the
 
 Handles collective financial decisions where the community pools and allocates money.
 
-- **Fixed costs** — entered by the budget task owner before proposals open: the non-negotiable floor (infrastructure, contingency, any locked commitments).
+- **Fixed costs** — entered by the budget task owner before proposals open: the non-negotiable floor (infrastructure, contingency, any locked commitments). Editable by the owner at any point before proposals close, alongside the title and the submission deadline itself — none of the three need to be exactly right at creation time.
 - **Proposals** — any member submits an itemized proposal (cost breakdown, description, which branch/phase it relates to) before a submission deadline, closed before voting opens.
 - **Ranked-choice voting** — the voting view shows each proposal's total and itemized cost, cost-per-member, a running total if everything above a given rank were funded, and a "how much would you contribute this year?" question feeding contribution planning.
 - **Confirmation** — the budget owner takes the ranked results, fixed costs, contribution signals, and current financial picture, and produces a final budget. Ranked choice sets priorities, not a binding yes/no per item — the final call is human, with a published rationale for any deviation from the ranked order.
 - **Contributions** — the sliding-scale ask happens with real numbers once the budget is confirmed, against what members already signaled they'd give.
+- **Starting one alongside a Cycle** — a brand-new Cycle still starts with no Budget process of its own by default (see Concurrent cycles & view scope), but whoever starts the Cycle can, in that same step, opt in to also starting its Budget: a real, visible checkbox on the create-Cycle form, never automatic on its own. Doing so carries the previous BudgetCycle's owner task and fixed costs forward as a starting point — a nudge, not an inheritance of authority (the owner task still has to be claimed, exactly as any other task), and both remain freely editable afterward. Only offered when there's a previous, already-confirmed BudgetCycle to carry an owner task forward from — a Community's very first Budget cycle is always started by hand, since there's nothing yet to suggest one from.
 
 ### <a id="event-scheduling"></a>Event scheduling
 

@@ -41,12 +41,14 @@ import { getCycle, listCycles, resolveCrossCycleContext, scopeLabel } from "@/li
 import { isModuleEnabled } from "@/lib/modules";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import CopyLinkButton from "@/components/CopyLinkButton";
+import EffortFields from "@/components/EffortFields";
 import { listTaskQuestions } from "@/lib/input-rounds";
 import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
 import { getAccompaniedMemberId } from "@/lib/recruitment";
 import { computeEngagementPattern } from "@/lib/engagement";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
-import { Tag, type Tone, ATTENTION_TONE, Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_GHOST, CheckField, INPUT, LABEL } from "@/components/ui/kit";
+import { FlagIcon, QuestionIcon } from "@phosphor-icons/react/dist/ssr";
+import { Tag, type Tone, ATTENTION_TONE, Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_GHOST, BUTTON_ICON, CheckField, INPUT, LABEL } from "@/components/ui/kit";
 import {
   acceptJoinRequestAction,
   addCommentAction,
@@ -77,6 +79,7 @@ import {
   suggestSomeoneAction,
   updateMilestoneAction,
   updateRequirementAction,
+  updateTaskCycleAction,
   updateTaskPermissionGrantsAction,
   waiveAndClaimAction,
   withdrawCandidacyAction,
@@ -123,6 +126,37 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
+// Same zero-JS "?tab= + plain <Link> bar" pattern settings/page.tsx's
+// TabBar established — no client component needed since every tab's
+// content is just conditionally rendered server-side off searchParams.
+const TABS = [
+  { key: "requirements", label: "Requirements & Dependencies" },
+  { key: "notes", label: "Notes" },
+  { key: "milestones", label: "Milestones" },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
+const TAB_KEYS = TABS.map((t) => t.key) as readonly string[];
+
+function TabBar({ active, taskPath, scopeParam }: { active: TabKey; taskPath: string; scopeParam?: string }) {
+  return (
+    <div className="flex flex-wrap gap-x-5 gap-y-1 border-b border-[var(--border)]">
+      {TABS.map((t) => (
+        <Link
+          key={t.key}
+          href={`${taskPath}?tab=${t.key}${scopeParam ? `&scope=${scopeParam}` : ""}`}
+          className={`border-b-2 pb-2.5 text-[13px] font-medium transition-colors ${
+            active === t.key
+              ? "border-[var(--accent-1)] text-[var(--accent-1)]"
+              : "border-transparent text-[var(--text-muted)] hover:text-[var(--text)]"
+          }`}
+        >
+          {t.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function TaskDetailPage({
@@ -130,7 +164,7 @@ export default async function TaskDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; scope?: string }>;
+  searchParams: Promise<{ error?: string; scope?: string; tab?: string }>;
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
@@ -138,7 +172,8 @@ export default async function TaskDetailPage({
   }
 
   const { id } = await params;
-  const { error, scope: scopeParam } = await searchParams;
+  const { error, scope: scopeParam, tab: tabRaw } = await searchParams;
+  const activeTab: TabKey = TAB_KEYS.includes(tabRaw ?? "") ? (tabRaw as TabKey) : "requirements";
 
   const taskRow = await getTask(viewing, id);
   const isCommunityEndorsed = taskRow.openness === "community_endorsed";
@@ -199,6 +234,14 @@ export default async function TaskDetailPage({
   const dependencyOptions = communityTasks.filter(
     (t) => !dependencies.some((d) => d.dependsOnTaskId === t.id),
   );
+
+  // For the "Change cycle" control below — open to any member (same
+  // "Requirements/Dependencies are open to any member" posture the
+  // comment just below this one describes for the rest of the page),
+  // so fetched unconditionally rather than gated behind
+  // canGrantPermissions the way the Permissions section's own
+  // admin-only cycle list is.
+  const allCycles = communityRow.cyclesEnabled ? await listCycles(viewing) : [];
 
   // "Permissions granted by this task" (docs/development-plan.md's
   // Phase 64) reads/writes the exact same PermissionGrant rows the
@@ -387,7 +430,27 @@ export default async function TaskDetailPage({
         {branchRow?.name ?? "—"} · {effortSummary(taskRow.effort, taskRow.effortMagnitude)} ·{" "}
         {taskRow.status} · {realAssignments.length}
         {taskRow.capacity !== null ? `/${taskRow.capacity}` : ""} held
+        {communityRow.cyclesEnabled && <> · {taskCycle ? taskCycle.name : "not cycle-scoped"}</>}
       </div>
+      {communityRow.cyclesEnabled && (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-[12px] text-[var(--accent-1)]">Change cycle</summary>
+          <form action={updateTaskCycleAction} className="mt-2 flex flex-wrap items-center gap-2">
+            <input type="hidden" name="taskId" value={taskRow.id} />
+            <select name="cycleId" defaultValue={taskRow.cycleId ?? ""} className={INPUT}>
+              <option value="">No cycle (unscoped)</option>
+              {allCycles.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className={BUTTON_SECONDARY}>
+              Save
+            </button>
+          </form>
+        </details>
+      )}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <CopyLinkButton path={taskPath} label="Copy link" />
         <CopyLinkButton
@@ -422,6 +485,158 @@ export default async function TaskDetailPage({
           </p>
         ))}
       {taskRow.description && <p className="mt-3 text-[14px] text-[var(--text)]">{taskRow.description}</p>}
+
+      <div className="mt-3 flex flex-wrap items-start gap-2">
+        <details className="group">
+          <summary
+            className={`${BUTTON_ICON} list-none [&::-webkit-details-marker]:hidden`}
+            title="Signal something / flag for coordination"
+          >
+            <FlagIcon size={18} />
+          </summary>
+          <div className="mt-2 w-[min(90vw,420px)] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
+            <p className="text-[13px] font-medium text-[var(--text)]">Signal something</p>
+            <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+              A quiet, anonymous nudge to that branch&rsquo;s coordination — no detail required, and
+              nothing here says it was you.
+            </p>
+            <form action={createSignalAction} className="mt-3 flex flex-wrap gap-2">
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <select name="kind" defaultValue="worth_a_look" className={INPUT}>
+                {Object.entries(SIGNAL_LABELS).map(([kind, label]) => (
+                  <option key={kind} value={kind}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className={BUTTON_PRIMARY}>
+                Send signal
+              </button>
+            </form>
+
+            {isCoordHolderForBranch && (
+              <div className="mt-3">
+                {openSignals.length === 0 && <p className="text-[13px] text-[var(--text-muted)]">No open signals.</p>}
+                {openSignals.map((s) => (
+                  <div key={s.id} className="mb-1.5 flex items-center gap-2 text-[13px] text-[var(--text)]">
+                    <span>
+                      {SIGNAL_LABELS[s.kind] ?? s.kind} — {new Date(s.createdAt).toLocaleDateString()}
+                    </span>
+                    <form action={resolveSignalAction}>
+                      <input type="hidden" name="taskId" value={taskRow.id} />
+                      <input type="hidden" name="signalId" value={s.id} />
+                      <button type="submit" className={BUTTON_GHOST}>
+                        Dismiss
+                      </button>
+                    </form>
+                  </div>
+                ))}
+                {resolvedSignals.length > 0 && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
+                      Dismissed signals ({resolvedSignals.length})
+                    </summary>
+                    <ul className="mt-2 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
+                      {resolvedSignals.map((s) => (
+                        <li key={s.id}>{SIGNAL_LABELS[s.kind] ?? s.kind}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
+          </div>
+        </details>
+
+        <details className="group">
+          <summary
+            className={`${BUTTON_ICON} list-none [&::-webkit-details-marker]:hidden`}
+            title="Questions"
+          >
+            <QuestionIcon size={18} />
+          </summary>
+          <div className="mt-2 w-[min(90vw,520px)] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
+            <p className="text-[13px] font-medium text-[var(--text)]">Questions</p>
+            <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+              Anyone can ask something tied to this task — it queues silently and bundles into the
+              next Input round, no ping sent now. Answers stay visible here once the round&rsquo;s open.
+            </p>
+
+            {questions.length === 0 && <p className="mt-3 text-[13px] text-[var(--text-muted)]">No questions yet.</p>}
+            <div className="mt-3">
+              {questions.map((q) => {
+                const tally =
+                  q.responseType !== "free_text"
+                    ? q.options.map((o) => ({
+                        option: o,
+                        count: q.responses.filter((r) => {
+                          const v = r.value as string | string[];
+                          return Array.isArray(v) ? v.includes(o) : v === o;
+                        }).length,
+                      }))
+                    : null;
+                return (
+                  <div key={q.id} className="mb-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-3.5">
+                    <p className="flex flex-wrap items-center gap-1.5 text-[13px]">
+                      <span className="font-medium text-[var(--text)]">{q.text}</span>
+                      <span className="text-[12px] text-[var(--text-muted)]">
+                        {q.status === "queued" && "queued for the next round"}
+                        {q.status === "open" && (
+                          <>
+                            <Link href="/input-rounds" className="text-[var(--accent-1)] hover:underline">
+                              open in the current round — answer it there
+                            </Link>
+                          </>
+                        )}
+                        {q.status === "closed" && `closed, ${q.responses.length} response(s)`}
+                        {q.priority ? " · can't move forward without this" : ""}
+                        {q.deadline ? ` · needed by ${new Date(q.deadline).toLocaleDateString()}` : ""}
+                      </span>
+                    </p>
+                    {tally && q.responses.length > 0 && (
+                      <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
+                        {tally.map((t) => (
+                          <li key={t.option}>
+                            {t.option}: {t.count}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {!tally && q.responses.length > 0 && (
+                      <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
+                        {q.responses.map((r) => (
+                          <li key={r.id}>{String(r.value)}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <form action={createQuestionAction} className="mt-3 flex flex-col gap-2">
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <input type="text" name="text" required placeholder="Ask something" className={INPUT} />
+              <select name="responseType" defaultValue="free_text" className={INPUT}>
+                <option value="free_text">Free text</option>
+                <option value="single_choice">Single choice</option>
+                <option value="multi_choice">Multi choice</option>
+              </select>
+              <input type="text" name="options" placeholder="options for choice types, comma-separated" className={INPUT} />
+              <label className="flex items-center gap-2 text-[13px] text-[var(--text-muted)]">
+                Deadline (optional)
+                <input type="date" name="deadline" className={INPUT} />
+              </label>
+              <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                <input type="checkbox" name="priority" /> Can&rsquo;t move forward without this
+              </label>
+              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                Ask
+              </button>
+            </form>
+          </div>
+        </details>
+      </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {canShadow && (
@@ -486,6 +701,12 @@ export default async function TaskDetailPage({
         </p>
       )}
 
+      <div className="mt-8">
+        <TabBar active={activeTab} taskPath={taskPath} scopeParam={scopeParam} />
+      </div>
+
+      {activeTab === "requirements" && (
+      <>
       <section className="mt-6">
         <SectionHeading>Requirements</SectionHeading>
         {requirements.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
@@ -718,6 +939,184 @@ export default async function TaskDetailPage({
             </button>
           </form>
         </section>
+      )}
+      </>
+      )}
+
+      {activeTab === "notes" && (
+      <>
+      <p className="text-[13px] text-[var(--text-muted)]">
+        The description above is the goal, not the method. Everything here is optional notes on
+        how it&rsquo;s actually been done — never mistaken for the instructions.
+      </p>
+
+      <section className="mt-4">
+        <SectionHeading>Wiki summary</SectionHeading>
+        {notes.wikiRevisions.length > 0 ? (
+          <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
+            <p className="whitespace-pre-wrap text-[13px] text-[var(--text)]">{notes.wikiRevisions[0].content}</p>
+            <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+              Last edited by {memberNameById.get(notes.wikiRevisions[0].editedBy) ?? "—"} on{" "}
+              {new Date(notes.wikiRevisions[0].editedAt).toLocaleString()}
+            </p>
+          </div>
+        ) : (
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">Nothing written up yet.</p>
+        )}
+
+        <form action={editWikiAction} className="mt-3 flex flex-col gap-2">
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <textarea
+            name="content"
+            rows={4}
+            required
+            defaultValue={notes.wikiRevisions[0]?.content ?? ""}
+            placeholder="What's worked, what to watch out for, where the good deal was..."
+            className={INPUT}
+          />
+          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+            Save wiki edit
+          </button>
+        </form>
+
+        {notes.wikiRevisions.length > 1 && (
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
+              Revision history ({notes.wikiRevisions.length})
+            </summary>
+            <ul className="mt-2 flex flex-col gap-1.5 text-[13px] text-[var(--text)]">
+              {notes.wikiRevisions.slice(1).map((rev) => (
+                <li key={rev.id}>
+                  <span className="text-[var(--text-muted)]">
+                    {memberNameById.get(rev.editedBy) ?? "—"} — {new Date(rev.editedAt).toLocaleString()}:
+                  </span>{" "}
+                  {rev.content}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </section>
+
+      <section className="mt-8">
+        <SectionHeading>Comments</SectionHeading>
+        {notes.comments.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">No comments yet.</p>}
+        <div className="mt-2">
+          {notes.comments.map((c) => (
+            <div key={c.id} className="mb-2">
+              <div className="text-[12px] text-[var(--text-muted)]">
+                {memberNameById.get(c.memberId) ?? "—"} — {new Date(c.createdAt).toLocaleString()}
+              </div>
+              <p className="text-[13px] text-[var(--text)]">{c.body}</p>
+            </div>
+          ))}
+        </div>
+
+        <form action={addCommentAction} className="mt-3 flex gap-2">
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <input type="text" name="body" required placeholder="Add a comment…" className={`${INPUT} flex-1`} />
+          <button type="submit" className={BUTTON_PRIMARY}>
+            Post
+          </button>
+        </form>
+      </section>
+
+      <section className="mt-8">
+        <SectionHeading>Resources</SectionHeading>
+        {notes.resources.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">No resources linked yet.</p>}
+        <ul className="mt-2 flex flex-col gap-1">
+          {notes.resources.map((r) => (
+            <li key={r.id} className="text-[13px]">
+              <a href={r.url} target="_blank" rel="noopener noreferrer" className="font-medium text-[var(--accent-1)] hover:underline">
+                {r.label}
+              </a>
+              {r.tag && <span className="text-[var(--text-muted)]"> — {r.tag}</span>}
+            </li>
+          ))}
+        </ul>
+
+        <form action={addResourceAction} className="mt-3 flex flex-wrap gap-2">
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <input type="text" name="label" required placeholder="Label" className={INPUT} />
+          <input type="url" name="url" required placeholder="https://…" className={`${INPUT} flex-1`} />
+          <input type="text" name="tag" placeholder="tag (optional)" className={INPUT} />
+          <button type="submit" className={BUTTON_PRIMARY}>
+            Add
+          </button>
+        </form>
+      </section>
+      </>
+      )}
+
+      {activeTab === "milestones" && (
+      <section className="mt-6">
+        <SectionHeading>Milestones</SectionHeading>
+        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          A current holder adds/edits/removes these directly; anyone else&rsquo;s addition shows
+          immediately but lands pending until a holder confirms or rejects it (an unclaimed task
+          confirms immediately either way).
+        </p>
+        {milestones.length === 0 && <p className="mt-3 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+        <div className="mt-3">
+          {milestones.map((m) => (
+            <div key={m.id} className="mb-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[13px] font-medium text-[var(--text)]">{m.label}</span>
+                {m.status === "pending" && (
+                  <Tag tone="warning">pending — proposed by {memberNameById.get(m.proposedBy) ?? "—"}</Tag>
+                )}
+              </div>
+              <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+                {m.resolvedDate ?? "unresolved"}
+                {m.drifted && <span style={{ color: "var(--warning)" }}> · drifted from its anchor</span>}
+              </div>
+
+              {holdsTask && (
+                <>
+                  <form action={updateMilestoneAction} className="mt-2 flex flex-col gap-2">
+                    <input type="hidden" name="taskId" value={taskRow.id} />
+                    <input type="hidden" name="milestoneId" value={m.id} />
+                    <MilestoneDateFields milestone={m} phases={cyclePhases} />
+                    <div className="flex gap-2">
+                      <button type="submit" className={BUTTON_PRIMARY}>
+                        Save
+                      </button>
+                    </div>
+                  </form>
+                  <div className="mt-2 flex gap-2">
+                    {m.status === "pending" && (
+                      <form action={confirmMilestoneAction}>
+                        <input type="hidden" name="taskId" value={taskRow.id} />
+                        <input type="hidden" name="milestoneId" value={m.id} />
+                        <button type="submit" className={BUTTON_PRIMARY}>
+                          Confirm
+                        </button>
+                      </form>
+                    )}
+                    <form action={deleteMilestoneAction}>
+                      <input type="hidden" name="taskId" value={taskRow.id} />
+                      <input type="hidden" name="milestoneId" value={m.id} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        {m.status === "pending" ? "Reject" : "Remove"}
+                      </button>
+                    </form>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <h3 className="mt-4 text-[15px] font-medium text-[var(--text)]">Add a milestone</h3>
+        <form action={addMilestoneAction} className="mt-2 flex max-w-[420px] flex-col gap-2">
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <input type="text" name="label" required placeholder="Label (e.g. Deposit due)" className={INPUT} />
+          <MilestoneDateFields phases={cyclePhases} />
+          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+            Add
+          </button>
+        </form>
+      </section>
       )}
 
       {needsSelfAssignConfirmation && (
@@ -1006,59 +1405,6 @@ export default async function TaskDetailPage({
         </section>
       )}
 
-      <section className="mt-8">
-        <SectionHeading>Signal something</SectionHeading>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-          A quiet, anonymous nudge to that branch&rsquo;s coordination — no detail required, and
-          nothing here says it was you.
-        </p>
-        <form action={createSignalAction} className="mt-3 flex flex-wrap gap-2">
-          <input type="hidden" name="taskId" value={taskRow.id} />
-          <select name="kind" defaultValue="worth_a_look" className={INPUT}>
-            {Object.entries(SIGNAL_LABELS).map(([kind, label]) => (
-              <option key={kind} value={kind}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <button type="submit" className={BUTTON_PRIMARY}>
-            Send signal
-          </button>
-        </form>
-
-        {isCoordHolderForBranch && (
-          <div className="mt-3">
-            {openSignals.length === 0 && <p className="text-[13px] text-[var(--text-muted)]">No open signals.</p>}
-            {openSignals.map((s) => (
-              <div key={s.id} className="mb-1.5 flex items-center gap-2 text-[13px] text-[var(--text)]">
-                <span>
-                  {SIGNAL_LABELS[s.kind] ?? s.kind} — {new Date(s.createdAt).toLocaleDateString()}
-                </span>
-                <form action={resolveSignalAction}>
-                  <input type="hidden" name="taskId" value={taskRow.id} />
-                  <input type="hidden" name="signalId" value={s.id} />
-                  <button type="submit" className={BUTTON_GHOST}>
-                    Dismiss
-                  </button>
-                </form>
-              </div>
-            ))}
-            {resolvedSignals.length > 0 && (
-              <details className="mt-2">
-                <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
-                  Dismissed signals ({resolvedSignals.length})
-                </summary>
-                <ul className="mt-2 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
-                  {resolvedSignals.map((s) => (
-                    <li key={s.id}>{SIGNAL_LABELS[s.kind] ?? s.kind}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </div>
-        )}
-      </section>
-
       {isCoordHolderForBranch && (openPings.length > 0 || resolvedPings.length > 0) && (
         <section className="mt-8">
           <SectionHeading>Talk-to-coordinator pings</SectionHeading>
@@ -1129,22 +1475,7 @@ export default async function TaskDetailPage({
                     ))}
                   </select>
 
-                  <select name="effort" required defaultValue={taskRow.effort} className={INPUT}>
-                    <option value="one_off">One-off</option>
-                    <option value="ongoing">Ongoing</option>
-                    <option value="owns_a_thing">Owns-a-thing</option>
-                  </select>
-
-                  <select name="duration" defaultValue="few_hours" className={INPUT}>
-                    <option value="under_hour">Under an hour</option>
-                    <option value="few_hours">A few hours</option>
-                    <option value="half_day">Half a day</option>
-                    <option value="multi_day">Multi-day</option>
-                  </select>
-                  <span className="text-[12px] text-[var(--text-muted)]">(if one-off)</span>
-
-                  <input type="number" name="hoursPerWeek" placeholder="hours/week" min={0} className={`${INPUT} w-32`} />
-                  <span className="text-[12px] text-[var(--text-muted)]">(if ongoing/owns-a-thing)</span>
+                  <EffortFields defaultEffort={taskRow.effort} />
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
@@ -1166,257 +1497,6 @@ export default async function TaskDetailPage({
         </section>
       )}
 
-      <div className="my-9 h-px bg-[var(--border)]" />
-      <p className="text-[13px] text-[var(--text-muted)]">
-        The description above is the goal, not the method. Everything below is optional notes on
-        how it&rsquo;s actually been done — never mistaken for the instructions.
-      </p>
-
-      <section className="mt-6">
-        <SectionHeading>Wiki summary</SectionHeading>
-        {notes.wikiRevisions.length > 0 ? (
-          <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
-            <p className="whitespace-pre-wrap text-[13px] text-[var(--text)]">{notes.wikiRevisions[0].content}</p>
-            <p className="mt-2 text-[12px] text-[var(--text-muted)]">
-              Last edited by {memberNameById.get(notes.wikiRevisions[0].editedBy) ?? "—"} on{" "}
-              {new Date(notes.wikiRevisions[0].editedAt).toLocaleString()}
-            </p>
-          </div>
-        ) : (
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">Nothing written up yet.</p>
-        )}
-
-        <form action={editWikiAction} className="mt-3 flex flex-col gap-2">
-          <input type="hidden" name="taskId" value={taskRow.id} />
-          <textarea
-            name="content"
-            rows={4}
-            required
-            defaultValue={notes.wikiRevisions[0]?.content ?? ""}
-            placeholder="What's worked, what to watch out for, where the good deal was..."
-            className={INPUT}
-          />
-          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-            Save wiki edit
-          </button>
-        </form>
-
-        {notes.wikiRevisions.length > 1 && (
-          <details className="mt-2">
-            <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
-              Revision history ({notes.wikiRevisions.length})
-            </summary>
-            <ul className="mt-2 flex flex-col gap-1.5 text-[13px] text-[var(--text)]">
-              {notes.wikiRevisions.slice(1).map((rev) => (
-                <li key={rev.id}>
-                  <span className="text-[var(--text-muted)]">
-                    {memberNameById.get(rev.editedBy) ?? "—"} — {new Date(rev.editedAt).toLocaleString()}:
-                  </span>{" "}
-                  {rev.content}
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-      </section>
-
-      <section className="mt-8">
-        <SectionHeading>Comments</SectionHeading>
-        {notes.comments.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">No comments yet.</p>}
-        <div className="mt-2">
-          {notes.comments.map((c) => (
-            <div key={c.id} className="mb-2">
-              <div className="text-[12px] text-[var(--text-muted)]">
-                {memberNameById.get(c.memberId) ?? "—"} — {new Date(c.createdAt).toLocaleString()}
-              </div>
-              <p className="text-[13px] text-[var(--text)]">{c.body}</p>
-            </div>
-          ))}
-        </div>
-
-        <form action={addCommentAction} className="mt-3 flex gap-2">
-          <input type="hidden" name="taskId" value={taskRow.id} />
-          <input type="text" name="body" required placeholder="Add a comment…" className={`${INPUT} flex-1`} />
-          <button type="submit" className={BUTTON_PRIMARY}>
-            Post
-          </button>
-        </form>
-      </section>
-
-      <section className="mt-8">
-        <SectionHeading>Resources</SectionHeading>
-        {notes.resources.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">No resources linked yet.</p>}
-        <ul className="mt-2 flex flex-col gap-1">
-          {notes.resources.map((r) => (
-            <li key={r.id} className="text-[13px]">
-              <a href={r.url} target="_blank" rel="noopener noreferrer" className="font-medium text-[var(--accent-1)] hover:underline">
-                {r.label}
-              </a>
-              {r.tag && <span className="text-[var(--text-muted)]"> — {r.tag}</span>}
-            </li>
-          ))}
-        </ul>
-
-        <form action={addResourceAction} className="mt-3 flex flex-wrap gap-2">
-          <input type="hidden" name="taskId" value={taskRow.id} />
-          <input type="text" name="label" required placeholder="Label" className={INPUT} />
-          <input type="url" name="url" required placeholder="https://…" className={`${INPUT} flex-1`} />
-          <input type="text" name="tag" placeholder="tag (optional)" className={INPUT} />
-          <button type="submit" className={BUTTON_PRIMARY}>
-            Add
-          </button>
-        </form>
-      </section>
-
-      <section className="mt-8">
-        <SectionHeading>Milestones</SectionHeading>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-          A current holder adds/edits/removes these directly; anyone else&rsquo;s addition shows
-          immediately but lands pending until a holder confirms or rejects it (an unclaimed task
-          confirms immediately either way).
-        </p>
-        {milestones.length === 0 && <p className="mt-3 text-[13px] text-[var(--text-muted)]">None yet.</p>}
-        <div className="mt-3">
-          {milestones.map((m) => (
-            <div key={m.id} className="mb-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[13px] font-medium text-[var(--text)]">{m.label}</span>
-                {m.status === "pending" && (
-                  <Tag tone="warning">pending — proposed by {memberNameById.get(m.proposedBy) ?? "—"}</Tag>
-                )}
-              </div>
-              <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
-                {m.resolvedDate ?? "unresolved"}
-                {m.drifted && <span style={{ color: "var(--warning)" }}> · drifted from its anchor</span>}
-              </div>
-
-              {holdsTask && (
-                <>
-                  <form action={updateMilestoneAction} className="mt-2 flex flex-col gap-2">
-                    <input type="hidden" name="taskId" value={taskRow.id} />
-                    <input type="hidden" name="milestoneId" value={m.id} />
-                    <MilestoneDateFields milestone={m} phases={cyclePhases} />
-                    <div className="flex gap-2">
-                      <button type="submit" className={BUTTON_PRIMARY}>
-                        Save
-                      </button>
-                    </div>
-                  </form>
-                  <div className="mt-2 flex gap-2">
-                    {m.status === "pending" && (
-                      <form action={confirmMilestoneAction}>
-                        <input type="hidden" name="taskId" value={taskRow.id} />
-                        <input type="hidden" name="milestoneId" value={m.id} />
-                        <button type="submit" className={BUTTON_PRIMARY}>
-                          Confirm
-                        </button>
-                      </form>
-                    )}
-                    <form action={deleteMilestoneAction}>
-                      <input type="hidden" name="taskId" value={taskRow.id} />
-                      <input type="hidden" name="milestoneId" value={m.id} />
-                      <button type="submit" className={BUTTON_SECONDARY}>
-                        {m.status === "pending" ? "Reject" : "Remove"}
-                      </button>
-                    </form>
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <h3 className="mt-4 text-[15px] font-medium text-[var(--text)]">Add a milestone</h3>
-        <form action={addMilestoneAction} className="mt-2 flex max-w-[420px] flex-col gap-2">
-          <input type="hidden" name="taskId" value={taskRow.id} />
-          <input type="text" name="label" required placeholder="Label (e.g. Deposit due)" className={INPUT} />
-          <MilestoneDateFields phases={cyclePhases} />
-          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-            Add
-          </button>
-        </form>
-      </section>
-
-      <section className="mt-8">
-        <SectionHeading>Questions</SectionHeading>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-          Anyone can ask something tied to this task — it queues silently and bundles into the
-          next Input round, no ping sent now. Answers stay visible here once the round&rsquo;s open.
-        </p>
-
-        {questions.length === 0 && <p className="mt-3 text-[13px] text-[var(--text-muted)]">No questions yet.</p>}
-        <div className="mt-3">
-          {questions.map((q) => {
-            const tally =
-              q.responseType !== "free_text"
-                ? q.options.map((o) => ({
-                    option: o,
-                    count: q.responses.filter((r) => {
-                      const v = r.value as string | string[];
-                      return Array.isArray(v) ? v.includes(o) : v === o;
-                    }).length,
-                  }))
-                : null;
-            return (
-              <div key={q.id} className="mb-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
-                <p className="flex flex-wrap items-center gap-1.5 text-[13px]">
-                  <span className="font-medium text-[var(--text)]">{q.text}</span>
-                  <span className="text-[12px] text-[var(--text-muted)]">
-                    {q.status === "queued" && "queued for the next round"}
-                    {q.status === "open" && (
-                      <>
-                        <Link href="/input-rounds" className="text-[var(--accent-1)] hover:underline">
-                          open in the current round — answer it there
-                        </Link>
-                      </>
-                    )}
-                    {q.status === "closed" && `closed, ${q.responses.length} response(s)`}
-                    {q.priority ? " · can't move forward without this" : ""}
-                    {q.deadline ? ` · needed by ${new Date(q.deadline).toLocaleDateString()}` : ""}
-                  </span>
-                </p>
-                {tally && q.responses.length > 0 && (
-                  <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
-                    {tally.map((t) => (
-                      <li key={t.option}>
-                        {t.option}: {t.count}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {!tally && q.responses.length > 0 && (
-                  <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
-                    {q.responses.map((r) => (
-                      <li key={r.id}>{String(r.value)}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <form action={createQuestionAction} className="mt-3 flex max-w-[500px] flex-col gap-2">
-          <input type="hidden" name="taskId" value={taskRow.id} />
-          <input type="text" name="text" required placeholder="Ask something" className={INPUT} />
-          <select name="responseType" defaultValue="free_text" className={INPUT}>
-            <option value="free_text">Free text</option>
-            <option value="single_choice">Single choice</option>
-            <option value="multi_choice">Multi choice</option>
-          </select>
-          <input type="text" name="options" placeholder="options for choice types, comma-separated" className={INPUT} />
-          <label className="flex items-center gap-2 text-[13px] text-[var(--text-muted)]">
-            Deadline (optional)
-            <input type="date" name="deadline" className={INPUT} />
-          </label>
-          <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
-            <input type="checkbox" name="priority" /> Can&rsquo;t move forward without this
-          </label>
-          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-            Ask
-          </button>
-        </form>
-      </section>
     </main>
   );
 }

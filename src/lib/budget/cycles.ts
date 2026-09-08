@@ -8,7 +8,7 @@ import { requireModuleEnabled } from "../modules";
 
 type Member = typeof memberTable.$inferSelect;
 
-const lineItemInput = z.object({
+export const lineItemInput = z.object({
   label: z.string().min(1),
   amount: z.number().int().positive(),
 });
@@ -116,4 +116,40 @@ export async function getBudgetCycleForCycle(actor: Member, cycleId: string) {
     .orderBy(desc(budgetCycle.createdAt))
     .limit(1);
   return row ?? null;
+}
+
+// Opt-in convenience for "start a Cycle and also start its Budget" —
+// never automatic on its own (a brand-new Cycle otherwise starts with
+// no Budget process until someone actually sets one up, same as Event
+// scheduling/Spatial planning — docs/spec.md's "Concurrent cycles &
+// view scope"). Only called when the admin explicitly checked the box
+// on the create-Cycle form — see .../participation/actions.ts's
+// createCycleAction.
+//
+// Carries the previous BudgetCycle's ownerTaskId and fixedCosts
+// forward as a starting point — a nudge, never an inheritance of
+// authority, the same "recipe not the date" posture Cycle cloning
+// already takes elsewhere: whoever currently holds that task is still
+// the real owner regardless of how it got set here, and it still needs
+// claiming like any other task. proposalDeadline has no repeatable
+// recipe to carry forward (a point in time, not a shape) — two weeks
+// out is a visible placeholder the owner is expected to revise with
+// updateBudgetCycle before relying on it.
+//
+// Returns null (not an error) rather than creating anything when
+// there's no previous BudgetCycle to carry an owner task forward from
+// yet, or the community's last one is still active — the "one active
+// cycle at a time" invariant createBudgetCycle itself enforces. Either
+// way the admin can still start one by hand from /budget.
+export async function startBudgetCycleForNewCycle(actor: Member, newCycle: { id: string; name: string }) {
+  const previous = await getCurrentBudgetCycle(actor);
+  if (!previous || previous.status !== "confirmed") return null;
+
+  return createBudgetCycle(actor, {
+    title: `${newCycle.name} Budget`,
+    cycleId: newCycle.id,
+    fixedCosts: previous.fixedCosts as BudgetLineItem[],
+    proposalDeadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+    ownerTaskId: previous.ownerTaskId,
+  });
 }

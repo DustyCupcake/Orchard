@@ -92,7 +92,7 @@ function endColumns(b: StoredBoundary) {
 // flat `startDate`/`endDate` fields are kept as shorthand for "absolute,
 // this exact date" — the common case, and what every caller before
 // Phase 39 already sends. `start`/`end` win if both are given.
-const phaseInput = z.object({
+export const phaseInput = z.object({
   name: z.string().min(1),
   order: z.number().int(),
   startDate: z.string().min(1).nullable().optional(),
@@ -100,7 +100,7 @@ const phaseInput = z.object({
   start: dateBoundaryInput.optional(),
   end: dateBoundaryInput.optional(),
 });
-type PhaseInput = z.infer<typeof phaseInput>;
+export type PhaseInput = z.infer<typeof phaseInput>;
 
 function resolvedBoundaryInput(
   boundary: DateBoundaryInput | undefined,
@@ -936,4 +936,31 @@ export async function updatePhaseHighlight(actor: Member, phaseId: string, highl
     .where(eq(phase.id, phaseId))
     .returning();
   return updated;
+}
+
+// Phases could previously only ever enter a Cycle via createCycle's own
+// `phases` array (no UI ever called it with one — see createBlankCycle
+// above) or by being carried through a clone — there was genuinely no
+// way to add one to an already-existing Cycle. Same authority gate as
+// updatePhaseBoundary/updatePhaseHighlight just above. `order` is
+// computed here, not trusted from the caller — always appended after
+// whatever already exists; `phase.order` has no unique constraint, so a
+// rare concurrent-add race is cosmetic at worst, not a crash.
+export async function addPhase(actor: Member, cycleId: string, input: Omit<PhaseInput, "order">) {
+  await requireCycleInitiationEligibility(actor);
+
+  const [cycleRow] = await db.select().from(cycle).where(eq(cycle.id, cycleId));
+  if (!cycleRow || cycleRow.communityId !== actor.communityId) {
+    throw new NotFoundError("Cycle not found");
+  }
+  requireCycleOpen(cycleRow);
+
+  const existing = await db.select({ id: phase.id }).from(phase).where(eq(phase.cycleId, cycleId));
+  const values = phaseInsertValues(cycleId, cycleRow.startDate, cycleRow.endDate, {
+    ...input,
+    order: existing.length,
+  });
+
+  const [created] = await db.insert(phase).values(values).returning();
+  return { ...created, flags: getPhaseFlags(cycleRow, created) };
 }
