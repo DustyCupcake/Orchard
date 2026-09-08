@@ -11,8 +11,8 @@
 #   - docker-compose.yml            -> docker compose down && up -d
 #     (network-level changes, e.g. a subnet, aren't reliably applied to an
 #     already-existing network by a plain `up -d` — needs a real recreate)
-#   - app code / Dockerfile / deps  -> typecheck stage (fast fail), then
-#     docker compose build app (+ up -d)
+#   - app code / Dockerfile / deps  -> checks stage (lint + tsc, fast fail),
+#     then docker compose build app (+ up -d)
 #   - .env                          -> docker compose up -d
 #     (Compose hashes resolved env_file content itself, so this alone is
 #     enough to get the affected container recreated)
@@ -79,9 +79,13 @@ caddy_changed=false
 did_something=false
 
 if [ "$image_changed" = true ]; then
-  log "App code / Dockerfile / package.json changed — type-checking first (fast fail before the full build)..."
-  docker build --target typecheck .
-  log "Type check passed — building the image..."
+  log "App code / Dockerfile / package.json changed — linting and type-checking first (fast fail before the full build)..."
+  # cacheonly: run the stage for its pass/fail exit code without
+  # materializing/exporting an image afterward — that export (unpacking a
+  # throwaway copy of node_modules) is pure waste for a stage nothing ever
+  # runs, and dominates wall-clock on a box with slow disk I/O.
+  docker build --target checks --output type=cacheonly .
+  log "Checks passed — building the image..."
   docker compose build app
   did_something=true
 fi

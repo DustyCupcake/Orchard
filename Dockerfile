@@ -12,22 +12,26 @@ COPY package.json package-lock.json* ./
 # package*.json are byte-identical to a previous build anyway.
 RUN --mount=type=cache,target=/root/.npm npm ci
 
-# ---- typecheck ----
-# Reuses deps' node_modules and just runs tsc — no bundling, minification,
-# or page-data collection, so it fails on a type error in seconds/minutes
-# instead of the ~15min it'd take to hit the same error inside `next
-# build`'s own type-checking step below. scripts/rebuild.sh runs this
-# stage on its own ahead of the real image build, as a fast pre-check.
-FROM base AS typecheck
+# ---- checks ----
+# Reuses deps' node_modules and just runs lint + tsc — no bundling,
+# minification, or page-data collection, so either one fails in
+# seconds/minutes instead of the ~15min it'd take to hit the same error
+# inside `next build`. scripts/rebuild.sh runs this stage on its own
+# ahead of the real image build, as a fast pre-check. next.config.ts sets
+# eslint.ignoreDuringBuilds and typescript.ignoreBuildErrors so the real
+# build never redoes this work — both checks still gate the deploy, they
+# just run once, here, instead of a second time inside the heavier step.
+FROM base AS checks
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Same fix as the builder stage below: Node sizes its default heap off
 # physical RAM only, and on a small VPS that default is small enough that
-# even bare `tsc` (no bundling, just this repo's own type-checking) OOMs
+# even bare lint/tsc (no bundling, just this repo's own source) OOMs
 # without it — this isn't about needing extra headroom for a heavier step.
 ARG BUILD_MAX_OLD_SPACE_MB=1536
 ENV NODE_OPTIONS=--max-old-space-size=${BUILD_MAX_OLD_SPACE_MB}
+RUN npm run lint
 RUN npx tsc --noEmit
 
 # ---- build ----

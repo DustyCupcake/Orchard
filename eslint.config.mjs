@@ -5,6 +5,10 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
+  // `next build`'s own internal lint step ignores its generated
+  // next-env.d.ts automatically; running plain `eslint .` (as the
+  // Dockerfile's checks stage now does) doesn't get that for free.
+  { ignores: ["next-env.d.ts"] },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
 ];
 
