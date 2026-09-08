@@ -26,7 +26,7 @@ import {
   tierNameLookup,
   describeRequirement,
 } from "@/lib/tasks";
-import { getCommunity, isAdmin, listBranches, listTiers } from "@/lib/settings";
+import { getCommunity, isAdmin, listBranches } from "@/lib/settings";
 import {
   allowsMultipleGrants,
   CYCLE_SCOPED_MODULES,
@@ -164,7 +164,6 @@ export default async function TaskDetailPage({
     taskCycle,
     nominations,
     dependencies,
-    tiers,
     allCommunityTasks,
   ] = await Promise.all([
     db.select().from(branch).where(eq(branch.id, taskRow.branchId)).then((r) => r[0]),
@@ -188,7 +187,6 @@ export default async function TaskDetailPage({
     taskRow.cycleId ? getCycle(viewing, taskRow.cycleId) : Promise.resolve(null),
     listNominationsForTask(viewing, id),
     listTaskDependencies(viewing, id),
-    listTiers(viewing),
     listTasks(viewing),
   ]);
   const cyclePhases = taskCycle?.phases ?? [];

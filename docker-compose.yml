@@ -16,6 +16,12 @@ services:
       retries: 10
 
   app:
+    # Built off-box by .github/workflows/docker-build.yml (GitHub's
+    # runners have real RAM/disk, unlike this VPS) and pulled from here —
+    # `build:` stays too as a local-build fallback (scripts/rebuild.sh's
+    # image_changed path, or plain `docker compose build app`), so this
+    # doesn't have to be the only way to get an image onto the box.
+    image: ghcr.io/dustycupcake/orchard:${ORCHARD_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile

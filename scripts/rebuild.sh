@@ -11,8 +11,12 @@
 #   - docker-compose.yml            -> docker compose down && up -d
 #     (network-level changes, e.g. a subnet, aren't reliably applied to an
 #     already-existing network by a plain `up -d` — needs a real recreate)
-#   - app code / Dockerfile / deps  -> checks stage (lint + tsc, fast fail),
-#     then docker compose build app (+ up -d)
+#   - app code / Dockerfile / deps  -> docker compose pull app (+ up -d),
+#     pinned to this exact commit's tag rather than :latest — see
+#     ORCHARD_IMAGE_TAG below. Built off-box by
+#     .github/workflows/docker-build.yml; docker-compose.yml's own
+#     `build:` block is still there as a manual local-build fallback,
+#     just not what this script reaches for.
 #   - .env                          -> docker compose up -d
 #     (Compose hashes resolved env_file content itself, so this alone is
 #     enough to get the affected container recreated)
@@ -29,6 +33,13 @@ set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 log() { printf '\n\033[1;32m==>\033[0m %s\n' "$1"; }
+
+# Pin every docker compose invocation below to the image built from
+# exactly the commit checked out here — never a floating :latest. If you
+# deploy right after pushing, before CI has finished, this fails loudly
+# ("manifest not found") instead of silently redeploying the previous
+# commit's image.
+export ORCHARD_IMAGE_TAG="$(git rev-parse HEAD)"
 
 STATE_FILE=".rebuild-state"
 
@@ -79,14 +90,8 @@ caddy_changed=false
 did_something=false
 
 if [ "$image_changed" = true ]; then
-  log "App code / Dockerfile / package.json changed — linting and type-checking first (fast fail before the full build)..."
-  # cacheonly: run the stage for its pass/fail exit code without
-  # materializing/exporting an image afterward — that export (unpacking a
-  # throwaway copy of node_modules) is pure waste for a stage nothing ever
-  # runs, and dominates wall-clock on a box with slow disk I/O.
-  docker build --target checks --output type=cacheonly .
-  log "Checks passed — building the image..."
-  docker compose build app
+  log "App code / Dockerfile / package.json changed — pulling the image CI built for commit ${ORCHARD_IMAGE_TAG:0:12}..."
+  docker compose pull app
   did_something=true
 fi
 
@@ -99,6 +104,15 @@ elif [ "$image_changed" = true ] || [ "$env_changed" = true ]; then
   log "Applying changes..."
   docker compose up -d
   did_something=true
+fi
+
+if [ "$image_changed" = true ]; then
+  # Each deploy pulls a new commit-SHA-tagged image; Compose never drops
+  # the previous one on its own. On a disk this small, that accumulation
+  # is exactly the kind of slow-motion refill that caused today's "no
+  # space left on device" — prune anything no longer referenced now that
+  # up -d (above) has switched the running container onto the new image.
+  docker image prune -af
 fi
 
 if [ "$caddy_changed" = true ] && [ "$compose_changed" = false ]; then
