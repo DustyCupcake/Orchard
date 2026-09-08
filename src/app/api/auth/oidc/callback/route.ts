@@ -30,9 +30,18 @@ export async function GET(request: NextRequest) {
 
   const community = await getOrCreateCommunity();
 
+  // openid-client derives the redirect_uri it sends to the token endpoint
+  // straight from this URL's origin+path (query stripped) — it has to be
+  // byte-for-byte the same redirect_uri the login route sent to the IdP.
+  // request.url is the raw URL as Next.js sees it, which behind Caddy is
+  // plain http on an internal port; building off appUrl (the same
+  // resolveAppUrl used for that original redirect_uri) instead of
+  // request.url is what keeps the two in sync.
+  const currentUrl = new URL(request.nextUrl.pathname + request.nextUrl.search, appUrl);
+
   let result;
   try {
-    result = await handleOidcCallback(community, new URL(request.url), {
+    result = await handleOidcCallback(community, currentUrl, {
       expectedState: flow.state,
       expectedNonce: flow.nonce,
       pkceCodeVerifier: flow.codeVerifier,
