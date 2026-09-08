@@ -153,6 +153,7 @@ export async function updateGeneralSettingsAction(formData: FormData) {
       oidcIssuerUrl: String(formData.get("oidcIssuerUrl") ?? "").trim() || null,
       oidcClientId: String(formData.get("oidcClientId") ?? "").trim() || null,
       oidcRequiredRole: String(formData.get("oidcRequiredRole") ?? "").trim() || null,
+      oidcPrimary: formData.get("oidcPrimary") === "on",
     });
     await updateCommunity(actor, input);
   } catch (err) {

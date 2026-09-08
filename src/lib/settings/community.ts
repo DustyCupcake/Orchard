@@ -82,6 +82,7 @@ export const updateCommunityInput = z.object({
   oidcIssuerUrl: z.string().url().nullable().optional(),
   oidcClientId: z.string().min(1).nullable().optional(),
   oidcRequiredRole: z.string().min(1).nullable().optional(),
+  oidcPrimary: z.boolean().optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -200,6 +201,7 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.oidcIssuerUrl !== undefined && { oidcIssuerUrl: input.oidcIssuerUrl }),
       ...(input.oidcClientId !== undefined && { oidcClientId: input.oidcClientId }),
       ...(input.oidcRequiredRole !== undefined && { oidcRequiredRole: input.oidcRequiredRole }),
+      ...(input.oidcPrimary !== undefined && { oidcPrimary: input.oidcPrimary }),
     })
     .where(eq(community.id, actor.communityId))
     .returning();

@@ -1,0 +1,1 @@
+ALTER TABLE "community" ADD COLUMN "oidc_primary" boolean DEFAULT true NOT NULL;

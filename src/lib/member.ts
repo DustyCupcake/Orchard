@@ -1,7 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { member, memberIdentity } from "@/db/schema";
+import { member, memberIdentity, community as communityTable } from "@/db/schema";
 import { isModuleEnabled } from "./modules";
+import { isOidcConfigured } from "./oidc";
 
 // Finds the Member already linked to this email via a magic_link
 // identity, or creates both a new Member and that identity — first
@@ -13,18 +14,45 @@ import { isModuleEnabled } from "./modules";
 // creating a Member — see docs/development-plan.md's Phase 32. Only
 // new-membership creation is gated: an existing member (an identity
 // already on file) always logs in exactly as before, module on or off.
-export async function findOrCreateMemberByEmail(
-  community: { id: string; modulesEnabled: string[] },
-  email: string,
-) {
-  const [existing] = await db
+export async function findOrCreateMemberByEmail(community: typeof communityTable.$inferSelect, email: string) {
+  const [existingMagicLink] = await db
     .select({ member })
     .from(memberIdentity)
     .innerJoin(member, eq(memberIdentity.memberId, member.id))
     .where(and(eq(memberIdentity.provider, "magic_link"), eq(memberIdentity.loginEmail, email)));
 
-  if (existing) {
-    return existing.member;
+  if (existingMagicLink) {
+    return existingMagicLink.member;
+  }
+
+  // A member provisioned (or last logged in) via OIDC has no magic_link
+  // identity, so the lookup above misses them — without this, magic-link
+  // login for a Zitadel-originated member would either bounce (Recruitment
+  // on) or silently create a *second*, disconnected Member sharing their
+  // email (Recruitment off). Matching by email here keeps magic-link
+  // working as a fallback onto the exact same account, of either
+  // provenance — see the OIDC-configured gate below for what it's
+  // deliberately not allowed to do.
+  const [existingOidc] = await db
+    .select({ member })
+    .from(memberIdentity)
+    .innerJoin(member, eq(memberIdentity.memberId, member.id))
+    .where(and(eq(memberIdentity.provider, "oidc"), eq(memberIdentity.loginEmail, email)));
+
+  if (existingOidc) {
+    return existingOidc.member;
+  }
+
+  // Once a Community has SSO configured *and* made it primary (a
+  // separate opt-in — oidcPrimary — from merely having OIDC working;
+  // see src/db/schema/community.ts's own comment), magic-link stops
+  // being a way to *originate* a new account — new members are meant to
+  // arrive via Zitadel. It stays available purely as a fallback login
+  // for someone who already has an account (matched above, either
+  // provenance) — and when oidcPrimary is off, nothing here changes at
+  // all from magic-link-only behavior.
+  if (isOidcConfigured(community) && community.oidcPrimary) {
+    return null;
   }
 
   if (isModuleEnabled(community, "recruitment")) {

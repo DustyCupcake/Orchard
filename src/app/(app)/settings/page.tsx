@@ -403,6 +403,17 @@ export default async function SettingsPage({
                   magic-link-only. The client secret itself is set via this deployment&rsquo;s{" "}
                   <code>OIDC_CLIENT_SECRET</code> environment variable, never here.
                 </span>
+                <CheckField
+                  label="Make SSO the primary sign-in method"
+                  name="oidcPrimary"
+                  defaultChecked={communityRow.oidcPrimary}
+                />
+                <span className="text-[12px] text-[var(--text-muted)]">
+                  On: /login redirects straight to Zitadel instead of showing a form, and magic-link stops being able
+                  to create new accounts — it only works for someone who already has a Zitadel-linked account here.
+                  Off: unchanged from magic-link-only behavior — both shown as equal options, and magic-link can
+                  still originate new accounts. Only takes effect once OIDC is actually configured above.
+                </span>
               </FieldSet>
 
               <CheckField label="Cycles on (multiple named production runs over time)" name="cyclesEnabled" defaultChecked={communityRow.cyclesEnabled} />

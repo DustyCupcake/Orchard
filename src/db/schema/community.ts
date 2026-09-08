@@ -165,4 +165,16 @@ export const community = pgTable("community", {
   // login" — the exact role name (Zitadel project-role) a token must
   // carry before src/lib/oidc.ts resolves or creates a Member at all.
   oidcRequiredRole: text("oidc_required_role"),
+  // Whether SSO is treated as the primary sign-in method once configured
+  // (the three fields above alone don't decide this — a Community can
+  // have OIDC fully working and still want magic-link shown as an equal
+  // option, e.g. mid-transition). When true: /login redirects straight
+  // to Zitadel instead of showing a form, and magic-link stops being
+  // able to originate new accounts — it only resolves someone who
+  // already has an oidc MemberIdentity (see findOrCreateMemberByEmail).
+  // When false: unchanged from pre-OIDC behavior, both shown as equal
+  // options. Meaningless while OIDC is unconfigured. Defaults true since
+  // that's the behavior a Community configuring OIDC at all most likely
+  // wants — flip it off for a softer transition.
+  oidcPrimary: boolean("oidc_primary").notNull().default(true),
 });
