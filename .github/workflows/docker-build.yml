@@ -5,26 +5,27 @@ name: Build and publish image
 # where the OOM/disk-pressure fight that used to happen on the VPS itself
 # (see scripts/rebuild.sh) belongs instead. The VPS's job shrinks to
 # `docker compose pull` + restart.
+#
+# Docker Hub, not GHCR: ghcr.io's registry API has no IPv6 (AAAA) record
+# at all, and the deploy VPS is IPv6-only with no NAT64/DNS64 gateway —
+# ghcr.io is unreachable from it, full stop. registry-1.docker.io,
+# auth.docker.io, and its Cloudflare-fronted blob storage are all
+# dual-stack, confirmed by DNS lookup before switching.
 on:
   push:
     branches: [main]
   workflow_dispatch: {}
+
+env:
+  IMAGE: docker.io/dustycupcake/orchard
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
-
-      # ghcr.io requires an all-lowercase image path; github.repository
-      # preserves the account/repo's actual casing (DustyCupcake/Orchard),
-      # which buildx then rejects outright — lowercase it explicitly
-      # rather than relying on the repo/account name ever being lowercase.
-      - name: Compute lowercase image name
-        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -41,11 +42,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Username isn't sensitive (it's already public in the image tag
+      # above) — only the access token needs to be a secret.
       - uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: dustycupcake
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push
         uses: docker/build-push-action@v6

@@ -21,7 +21,9 @@ services:
     # `build:` stays too as a local-build fallback (scripts/rebuild.sh's
     # image_changed path, or plain `docker compose build app`), so this
     # doesn't have to be the only way to get an image onto the box.
-    image: ghcr.io/dustycupcake/orchard:${ORCHARD_IMAGE_TAG:-latest}
+    # Docker Hub, not GHCR: ghcr.io has no IPv6 route at all and this VPS
+    # is IPv6-only — see the workflow's own comment for the DNS check.
+    image: docker.io/dustycupcake/orchard:${ORCHARD_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
