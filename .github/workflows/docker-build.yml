@@ -10,9 +10,6 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
-env:
-  IMAGE: ghcr.io/${{ github.repository }}
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,6 +18,13 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      # ghcr.io requires an all-lowercase image path; github.repository
+      # preserves the account/repo's actual casing (DustyCupcake/Orchard),
+      # which buildx then rejects outright — lowercase it explicitly
+      # rather than relying on the repo/account name ever being lowercase.
+      - name: Compute lowercase image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@v3
 
