@@ -5,6 +5,12 @@ import { member, requirement, task } from "@/db/schema";
 import { createProfileQuestion } from "@/lib/profile-questions/questions";
 import { listOutstandingQuestions } from "@/lib/profile-questions/answers";
 import { completeOnboarding, listTaskFitSuggestions, ONBOARDING_CARDS } from "@/lib/onboarding";
+import {
+  COMMITMENT_PREFERENCE_AXIS_KEY,
+  createTraitAxis,
+  setTaskAxisValues,
+  upsertMemberAxisValue,
+} from "@/lib/trait-axes";
 import { createFixtures, resetDatabase } from "./helpers";
 
 async function insertTask(
@@ -181,6 +187,71 @@ describe("Onboarding", () => {
       const [freshAlice] = await db.select().from(member).where(eq(member.id, alice.id));
       const suggestions = await listTaskFitSuggestions(freshAlice, { limit: 2 });
       expect(suggestions.length).toBe(2);
+    });
+  });
+
+  describe("listTaskFitSuggestions — trait axis ranking", () => {
+    it("ranks the closer-on-axis candidate above an equally tag-matching farther one", async () => {
+      const { alice, community: testCommunity, branch: testBranch } = await createFixtures();
+      await db.update(member).set({ tags: ["carpentry"] }).where(eq(member.id, alice.id));
+      const axis = await createTraitAxis(alice, { key: "autonomy", lowLabel: "guided", highLabel: "independent" });
+      await upsertMemberAxisValue(alice, axis.id, 2);
+
+      const close = await insertTask(testCommunity.id, testBranch.id, alice.id, { title: "Close fit", tags: ["carpentry"] });
+      const far = await insertTask(testCommunity.id, testBranch.id, alice.id, { title: "Far fit", tags: ["carpentry"] });
+      await setTaskAxisValues(db, close.id, { [axis.id]: 2 });
+      await setTaskAxisValues(db, far.id, { [axis.id]: -2 });
+
+      const [freshAlice] = await db.select().from(member).where(eq(member.id, alice.id));
+      const suggestions = await listTaskFitSuggestions(freshAlice);
+      expect(suggestions.map((s) => s.id)).toEqual([close.id, far.id]);
+    });
+
+    it("includes a task with no tag/gate overlap but a shared trait axis", async () => {
+      const { alice, community: testCommunity, branch: testBranch } = await createFixtures();
+      const axis = await createTraitAxis(alice, { key: "structured_creative", lowLabel: "structured", highLabel: "creative" });
+      await upsertMemberAxisValue(alice, axis.id, 1);
+      const axisOnly = await insertTask(testCommunity.id, testBranch.id, alice.id, { title: "Axis-only fit" });
+      await setTaskAxisValues(db, axisOnly.id, { [axis.id]: 1 });
+
+      const [freshAlice] = await db.select().from(member).where(eq(member.id, alice.id));
+      const suggestions = await listTaskFitSuggestions(freshAlice);
+      expect(suggestions.map((s) => s.id)).toEqual([axisOnly.id]);
+    });
+
+    it("a trait axis existing with no data on one side falls back to tag fit, never throws", async () => {
+      const { alice, community: testCommunity, branch: testBranch } = await createFixtures();
+      await db.update(member).set({ tags: ["carpentry"] }).where(eq(member.id, alice.id));
+      await createTraitAxis(alice, { key: "autonomy", lowLabel: "guided", highLabel: "independent" });
+      const fitting = await insertTask(testCommunity.id, testBranch.id, alice.id, { title: "Tag only", tags: ["carpentry"] });
+
+      const [freshAlice] = await db.select().from(member).where(eq(member.id, alice.id));
+      const suggestions = await listTaskFitSuggestions(freshAlice);
+      expect(suggestions.map((s) => s.id)).toEqual([fitting.id]);
+    });
+
+    it("commitment-preference axis reads the task's Effort directly, no TaskAxisValue row involved", async () => {
+      const { alice, community: testCommunity, branch: testBranch } = await createFixtures();
+      const axis = await createTraitAxis(alice, {
+        key: COMMITMENT_PREFERENCE_AXIS_KEY,
+        lowLabel: "one-off",
+        highLabel: "ownership",
+      });
+      // Alice wants ownership (+2) — owns_a_thing maps to +2, one_off to -2.
+      await upsertMemberAxisValue(alice, axis.id, 2);
+      const ownsAThing = await insertTask(testCommunity.id, testBranch.id, alice.id, {
+        title: "Own this",
+        effort: "owns_a_thing",
+        effortMagnitude: { hours_per_week: 5 },
+      });
+      const oneOff = await insertTask(testCommunity.id, testBranch.id, alice.id, {
+        title: "Quick one-off",
+        effort: "one_off",
+      });
+
+      const [freshAlice] = await db.select().from(member).where(eq(member.id, alice.id));
+      const suggestions = await listTaskFitSuggestions(freshAlice);
+      expect(suggestions.map((s) => s.id)).toEqual([ownsAThing.id, oneOff.id]);
     });
   });
 });

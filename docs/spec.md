@@ -323,7 +323,7 @@ An eligibility predicate attached to a task. Generalized from the old fixed stri
 | Type             | Example                                                                    |
 |------------------|-----------------------------------------------------------------------------|
 | `tier`           | Requires membership in Tier "Experienced"                                  |
-| `language`       | Requires a language tag on the member profile                              |
+| `language`       | Requires a language recorded on the member's profile (`member_language`, any proficiency level — see Member) |
 | `completed_task` | Requires having completed a specific prior task — held *or* shadowed both count (see Shadow slots & succession) |
 | `custom`         | Free-form flag defined by the Community (e.g. "has kitchen certification") |
 
@@ -575,11 +575,15 @@ Each boundary (start and end) is stored with the shared date shape — either an
 | id           | uuid             |                                                                |
 | community_id | uuid → Community |                                                                |
 | name         | string           |                                                                |
-| tags         | string\[\]       | languages, skills, free-form                                   |
+| tags         | string\[\]       | skills, interests, free-form — search/filter, not the onboarding ranking signal (see MemberLanguage, MemberAxisValue below) |
 | tier_ids     | uuid\[\]         | computed or manually assigned depending on tier criterion_type |
 | joined_at    | timestamp        |                                                                |
 | referred_by_member_id | uuid → Member, nullable | set on invite-link redemption (see Recruitment: Invite links); powers the Accompaniment default suggestion |
 | joined_via_invite_id  | uuid → CommunityInvite, nullable | which specific link was redeemed, if any                                                            |
+
+**MemberLanguage** — repeatable (a member can speak several), so it's its own table rather than a ProfileQuestion answer: `member_id → Member`, `language` (free text), `level` (enum: basic/conversational/fluent/native). Checked by Requirement's `language` type, any level.
+
+**TraitAxis / MemberAxisValue / TaskAxisValue** — a community-defined registry of bipolar scales (e.g. "wants direction" ↔ "wants independence"), set on both members (their own stated preference) and tasks (a proposer's suggestion, reviewed at activation), compared by proximity to rank onboarding's task suggestions (see Member onboarding & first session, below, and `src/lib/trait-axes.ts`). One axis — "commitment preference," one-off ↔ ongoing/ownership — has no TaskAxisValue row at all; its task-side value is derived live from Task.effort instead.
 
 **MemberIdentity** (see Authentication)
 
@@ -1256,7 +1260,7 @@ Optional (per Community, off by default except where noted): recruitment, budget
 Separate from Recruitment's application/evaluation flow (getting someone in) — this is what a newly-accepted member actually experiences the first time they open the platform, and it's not domain-specific:
 
 1. **Bite-size tutorial** — how the platform works, in a handful of cards, not a manual.
-2. **Strengths + participation preferences** — the member defines their own tags and availability; this is the matching input, not something assigned to them.
+2. **Strengths + participation preferences** — the member defines their own tags and availability; this is the matching input, not something assigned to them. Built as: a short trait-axis screen here (3 axes, the rest settable later at `/profile`) plus tags, feeding proximity-ranked suggestions in step 3 below — see MemberLanguage/TraitAxis above and Requirement's deferred-automated-matching note. Availability reuses ProfileQuestion's existing `feeds_capacity_signal` mechanism (see Profile questions) rather than a new field.
 3. **Suggested fitted tasks** — 2–3 matched tasks surfaced immediately, so the first session isn't a blank board.
 4. **Search/filter** — an escape hatch for self-starters who'd rather browse than be handed something.
 5. **Related tasks** — finishing one task surfaces a nudge toward the next. This is the growth engine for the "start small, take on more" participation type.
@@ -1390,7 +1394,7 @@ The smallest version worth building — usable by Peach Please *and* at least on
 - Automated cycle kickoff sequencing (Round 0/1/2 as an enforced flow rather than a manual process) and Browse mode's contested-slot resolution UI.
 - Task packs as a portable, shareable mechanism (import/export beyond the one clone-previous-cycle path already in scope) — general pack library, cross-community sharing, wiki/resource carry-forward on clone. The pack's phase-spine content (PackPhase, `item.phase_ref`) and the Pack import review screen touch the MVP-listed clone-previous-cycle path itself, not just this deferred general-library work — **left genuinely open whether that piece lands in the same MVP slice or ships as a fast-follow immediately after**, rather than assumed either way.
 - All optional modules (recruitment, sensitive data, shifts, budget, events, spatial planning, conflict management, assemblies) — now specified in full, but none required to prove the core loop.
-- Automated matching/suggestion (strength-tag → task fitting) — coordinators do this by reading the board, as in the original Phase 1 plan. Capacity-weighted automatic ranking (see Coordination mechanics: Capacity-aware fitted asks) merges into this same deferral; capacity as a manual sort/filter dimension does not and ships independently.
+- Automated matching/suggestion (strength-tag → task fitting) — coordinators do this by reading the board, as in the original Phase 1 plan. Capacity-weighted automatic ranking (see Coordination mechanics: Capacity-aware fitted asks) merges into this same deferral; capacity as a manual sort/filter dimension does not and ships independently. **Revisited later** (trait axes + language/proficiency, `src/lib/onboarding.ts`, `src/lib/trait-axes.ts`): internal proximity-based scoring to *rank* onboarding's task suggestions is now built — still never shown as a number, never a factor in claim eligibility, and never auto-assigns anyone. What stays permanently out of scope is automatic assignment, not internal ranking used only to order a surfaced list.
 - Coordination mechanics beyond the bare lifecycle — one-click action emails, bulk task selection, request-to-join, anonymous task signal, talk-to-my-coordinator, self-assign confirmation check, escalation views, subtasks, task openness settings, requirement waiving, shadow slots & succession. Real, fully-designed, second slice.
 - Requirement modes beyond the default `individual_gate` (`group_coverage`, `soft_priority`) and the surfacing/ranking logic they drive. MVP's Requirement filtering stays single-mode — block or don't, matching today's behavior — but the `mode` field is cheap to add to the schema now so it doesn't need revisiting later.
 - Input rounds, Assemblies, and Scheduling polls — the shared Question/QuestionResponse schema is cheap, but the scheduling/phase/overlap logic around all three containers is real infrastructure, not a UI nicety, so all three are deferred as a unit rather than half-built.

@@ -5,6 +5,7 @@ import { member, requirement, task, taskAssignment, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { NotFoundError } from "../errors";
 import { memberHasTier } from "../eligibility";
+import { memberSpeaksLanguage } from "../member-languages";
 import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
 import { requireTaskInCommunity } from "./shared";
 
@@ -118,7 +119,7 @@ async function isSatisfied(dbOrTx: DbOrTx, member: Member, req: Requirement): Pr
       return typeof value.tierId === "string" && memberHasTier(member, value.tierId);
 
     case "language":
-      return typeof value.language === "string" && member.tags.includes(value.language);
+      return typeof value.language === "string" && (await memberSpeaksLanguage(dbOrTx, member.id, value.language));
 
     case "custom":
       return typeof value.flag === "string" && member.tags.includes(value.flag);

@@ -11,6 +11,7 @@ import {
 } from "@/lib/proposals";
 import { listTaskDependencies } from "@/lib/tasks";
 import { listGrantingTaskIds } from "@/lib/permissions";
+import { createTraitAxis, listTaskAxisValues } from "@/lib/trait-axes";
 import { ConflictError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
@@ -247,6 +248,45 @@ describe("activating a proposal", () => {
 
     const refreshed = await getProposal(alice, proposal.id);
     expect(refreshed.status).toBe("activated");
+  });
+
+  it("writes reviewed axisValues onto the new task as real TaskAxisValue rows", async () => {
+    const { branch, alice, bob } = await createFixtures();
+    const axis = await createTraitAxis(alice, { key: "autonomy", lowLabel: "guided", highLabel: "independent" });
+    const proposal = await createProposal(bob, {
+      title: "Fix the gate latch",
+      suggestedAxisValues: { [axis.id]: 1 },
+    });
+    expect(proposal.suggestedAxisValues).toEqual({ [axis.id]: 1 });
+
+    // Activation reviews and can override the proposer's own suggestion —
+    // same posture as suggestedTags/suggestedEffort.
+    const { task: created } = await activateProposal(alice, proposal.id, {
+      branchId: branch.id,
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+      axisValues: { [axis.id]: -2 },
+    });
+
+    const values = await listTaskAxisValues(created.id);
+    expect(values.get(axis.id)).toBe(-2);
+  });
+
+  it("leaves a proposal's suggestedAxisValues as a suggestion only — never auto-applied without activation passing axisValues", async () => {
+    const { branch, alice, bob } = await createFixtures();
+    const axis = await createTraitAxis(alice, { key: "autonomy", lowLabel: "guided", highLabel: "independent" });
+    const proposal = await createProposal(bob, {
+      title: "Fix the gate latch",
+      suggestedAxisValues: { [axis.id]: 1 },
+    });
+
+    const { task: created } = await activateProposal(alice, proposal.id, {
+      branchId: branch.id,
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+    });
+
+    expect((await listTaskAxisValues(created.id)).size).toBe(0);
   });
 
   it("rejects activating an already-activated or declined proposal", async () => {

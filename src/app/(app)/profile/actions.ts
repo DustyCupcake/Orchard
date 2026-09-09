@@ -21,6 +21,8 @@ import {
   deleteContactMethod,
   updateContactMethod,
 } from "@/lib/contact-methods";
+import { addMemberLanguage, deleteMemberLanguage, memberLanguageInput } from "@/lib/member-languages";
+import { upsertMemberAxisValue } from "@/lib/trait-axes";
 import { AppError } from "@/lib/errors";
 
 function redirectWithError(err: unknown): never {
@@ -141,6 +143,47 @@ export async function updateSensitiveDataAction(formData: FormData) {
     redirectWithError(err);
   }
   revalidatePath("/profile");
+}
+
+export async function addMemberLanguageAction(formData: FormData) {
+  const current = await requireMember();
+
+  try {
+    const input = memberLanguageInput.parse({
+      language: String(formData.get("language") ?? "").trim(),
+      level: String(formData.get("level") ?? "conversational"),
+    });
+    await addMemberLanguage(current, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+export async function deleteMemberLanguageAction(formData: FormData) {
+  const current = await requireMember();
+
+  const id = String(formData.get("id"));
+  try {
+    await deleteMemberLanguage(current, id);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+export async function updateMemberAxisAction(formData: FormData) {
+  const current = await requireMember();
+
+  const axisId = String(formData.get("axisId"));
+  const value = Number(formData.get("value"));
+  try {
+    await upsertMemberAxisValue(current, axisId, value);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+  revalidatePath("/dashboard");
 }
 
 export async function createContactMethodAction(formData: FormData) {

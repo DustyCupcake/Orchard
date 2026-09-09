@@ -1,5 +1,6 @@
 import EffortFields from "@/components/EffortFields";
-import { Tag, BUTTON_PRIMARY, BUTTON_SECONDARY, CheckField, INPUT } from "@/components/ui/kit";
+import AxisScaleField from "@/components/AxisScaleField";
+import { Tag, BUTTON_PRIMARY, BUTTON_SECONDARY, CheckField, INPUT, LABEL } from "@/components/ui/kit";
 import { PERMISSION_MODULE_KEYS, PERMISSION_MODULE_LABELS, type PermissionModuleKey } from "@/lib/permissions";
 import { activateProposalAction, declineProposalAction } from "./actions";
 
@@ -28,6 +29,7 @@ type Proposal = {
   suggestedCapacity: number | null;
   suggestedCritical: boolean | null;
   suggestedDueDate: string | null;
+  suggestedAxisValues: unknown;
 };
 
 // A short read-only recap of whatever a proposer suggested, shown above
@@ -69,6 +71,8 @@ export default function ProposalCard({
   cyclesEnabled,
   cycles,
   defaultCycleId,
+  tagSuggestions,
+  traitAxes,
 }: {
   proposal: Proposal;
   branches: { id: string; name: string }[];
@@ -86,11 +90,14 @@ export default function ProposalCard({
   // scoped to), same underlying community cycle list.
   cycles: { id: string; name: string }[];
   defaultCycleId: string | null;
+  tagSuggestions: string[];
+  traitAxes: { id: string; lowLabel: string; highLabel: string; optionLabels: string[] }[];
 }) {
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
   const cycleNameById = new Map(cycles.map((c) => [c.id, c.name]));
   const suggested = suggestionSummary(proposal, branchNameById, cycleNameById);
   const suggestedMag = proposal.suggestedEffortMagnitude as Record<string, unknown> | null;
+  const suggestedAxisValues = (proposal.suggestedAxisValues as Record<string, number> | null) ?? {};
 
   return (
     <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
@@ -161,8 +168,28 @@ export default function ProposalCard({
               name="tags"
               placeholder="tags (comma-separated)"
               defaultValue={proposal.suggestedTags?.join(", ") ?? ""}
+              list={`tag-suggestions-${proposal.id}`}
               className={INPUT}
             />
+            <datalist id={`tag-suggestions-${proposal.id}`}>
+              {tagSuggestions.map((t) => (
+                <option key={t} value={t} />
+              ))}
+            </datalist>
+
+            {traitAxes.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <span className={LABEL}>What kind of task is this? (optional)</span>
+                {traitAxes.map((axis) => (
+                  <AxisScaleField
+                    key={axis.id}
+                    axis={axis}
+                    name={`axis_${axis.id}`}
+                    defaultValue={suggestedAxisValues[axis.id] ?? null}
+                  />
+                ))}
+              </div>
+            )}
 
             <label className="flex flex-col gap-1">
               <span className="text-[12px] text-[var(--text-muted)]">Due date (optional — becomes a task milestone)</span>

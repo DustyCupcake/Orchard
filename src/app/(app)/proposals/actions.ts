@@ -78,6 +78,17 @@ export async function activateProposalAction(formData: FormData) {
   const cycleIdRaw = String(formData.get("cycleId") ?? "").trim();
   const dueDateRaw = String(formData.get("dueDate") ?? "").trim();
 
+  // One radio-group per axis, named "axis_<axisId>" (see AxisScaleField) —
+  // read generically off the submitted keys rather than needing this
+  // action to know the community's own axis list.
+  const axisValues: Record<string, number> = {};
+  for (const key of formData.keys()) {
+    if (!key.startsWith("axis_")) continue;
+    const raw = formData.get(key);
+    if (raw === null || raw === "") continue;
+    axisValues[key.slice("axis_".length)] = Number(raw);
+  }
+
   try {
     const input = activateProposalInput.parse({
       branchId: String(formData.get("branchId")),
@@ -97,6 +108,7 @@ export async function activateProposalAction(formData: FormData) {
       dependsOnTaskIds: dependsOnTaskIds.length > 0 ? dependsOnTaskIds : undefined,
       grantModuleKeys: grantModuleKeys.length > 0 ? grantModuleKeys : undefined,
       grantCycleId: grantCycleIdRaw || null,
+      axisValues: Object.keys(axisValues).length > 0 ? axisValues : undefined,
     });
     await activateProposal(actor, proposalId, input);
   } catch (err) {

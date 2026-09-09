@@ -5,7 +5,10 @@ import { branch, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { listCycles } from "@/lib/cycles";
+import { listAllDistinctTags } from "@/lib/tags";
+import { COMMITMENT_PREFERENCE_AXIS_KEY, listTraitAxes } from "@/lib/trait-axes";
 import EffortFields from "@/components/EffortFields";
+import AxisScaleField from "@/components/AxisScaleField";
 import { Banner, BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
 import { submitProposal } from "./actions";
 
@@ -23,12 +26,17 @@ export default async function ProposePage({
 
   const { error } = await searchParams;
 
-  const [communityMembers, branches, cycles, communityRow] = await Promise.all([
+  const [communityMembers, branches, cycles, communityRow, tagSuggestions, traitAxesRaw] = await Promise.all([
     db.select().from(member).where(eq(member.communityId, viewing.communityId)),
     db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
     listCycles(viewing),
     getCommunity(viewing),
+    listAllDistinctTags(viewing),
+    listTraitAxes(viewing),
   ]);
+  // Commitment preference has no task-side value at all — its task-side
+  // value is derived live from Effort instead (src/lib/trait-axes.ts).
+  const traitAxes = traitAxesRaw.filter((a) => a.key !== COMMITMENT_PREFERENCE_AXIS_KEY);
 
   return (
     <main className="mx-auto max-w-[520px] px-6 py-10 md:px-12 md:py-14">
@@ -102,7 +110,27 @@ export default async function ProposePage({
             <EffortFields />
           </div>
 
-          <input type="text" name="tags" placeholder="tags (comma-separated)" className={`${INPUT} mt-2 w-full`} />
+          <input
+            type="text"
+            name="tags"
+            placeholder="tags (comma-separated)"
+            list="tag-suggestions"
+            className={`${INPUT} mt-2 w-full`}
+          />
+          <datalist id="tag-suggestions">
+            {tagSuggestions.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
+
+          {traitAxes.length > 0 && (
+            <div className="mt-3 flex flex-col gap-2">
+              <span className={LABEL}>What kind of task is this? (optional — helps surface it to a good fit)</span>
+              {traitAxes.map((axis) => (
+                <AxisScaleField key={axis.id} axis={axis} name={`axis_${axis.id}`} />
+              ))}
+            </div>
+          )}
 
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">

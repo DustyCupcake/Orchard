@@ -45,6 +45,11 @@ export const taskProposal = pgTable("task_proposal", {
   suggestedCapacity: integer("suggested_capacity"),
   suggestedCritical: boolean("suggested_critical"),
   suggestedDueDate: date("suggested_due_date"),
+  // TraitAxis id -> value (-2..2), for every axis except "commitment
+  // preference" (derived from suggestedEffort/Task.effort instead — see
+  // src/lib/trait-axes.ts). Same posture as every other suggested*
+  // field: optional, reviewed and freely overridable at activation.
+  suggestedAxisValues: jsonb("suggested_axis_values"),
   status: taskProposalStatusEnum("status").notNull().default("pending"),
   declineReason: text("decline_reason"),
   activatedTaskId: uuid("activated_task_id").references(() => task.id),

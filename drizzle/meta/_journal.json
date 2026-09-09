@@ -337,6 +337,20 @@
       "when": 1788896471928,
       "tag": "0047_keen_tigra",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1788903404334,
+      "tag": "0048_concerned_bruce_banner",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1788904307240,
+      "tag": "0049_lean_tarot",
+      "breakpoints": true
     }
   ]
 }

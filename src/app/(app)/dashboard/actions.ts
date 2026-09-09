@@ -8,6 +8,7 @@ import { assertNotViewingAs } from "@/lib/view-as";
 import { respondToNomination, respondToNominationInput } from "@/lib/tasks";
 import { completeOnboarding } from "@/lib/onboarding";
 import { answerProfileQuestion } from "@/lib/profile-questions";
+import { upsertMemberAxisValue } from "@/lib/trait-axes";
 import { AppError } from "@/lib/errors";
 
 function redirectWithError(err: unknown): never {
@@ -82,4 +83,21 @@ export async function submitOnboardingAnswerAction(formData: FormData) {
   }
 
   revalidatePath("/dashboard");
+}
+
+// The onboarding panel's trait-axis form — one axis per submit, same
+// small-form-per-item shape as submitOnboardingAnswerAction above.
+export async function submitOnboardingAxisAction(formData: FormData) {
+  const actor = await requireMember();
+  const axisId = String(formData.get("axisId"));
+  const value = Number(formData.get("value"));
+
+  try {
+    await upsertMemberAxisValue(actor, axisId, value);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/profile");
 }

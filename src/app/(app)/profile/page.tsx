@@ -9,18 +9,32 @@ import { isModuleEnabled } from "@/lib/modules";
 import { SENSITIVE_FIELD_LABELS, SensitiveFieldKey } from "@/lib/sensitive-data";
 import { CONTACT_METHOD_VISIBILITIES, listOwnContactMethods } from "@/lib/contact-methods";
 import { getGatingPurposesForCommunity, hasActiveConsent, listMyConsentStatus } from "@/lib/consent";
+import { listAllDistinctTags } from "@/lib/tags";
+import { listOwnMemberLanguages, MEMBER_LANGUAGE_LEVELS, type MemberLanguageLevel } from "@/lib/member-languages";
+import { listMemberAxisValues, listTraitAxes } from "@/lib/trait-axes";
 import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL } from "@/components/ui/kit";
+import AxisScaleField from "@/components/AxisScaleField";
 import ThemeToggle from "./ThemeToggle";
 import {
+  addMemberLanguageAction,
   createContactMethodAction,
   deleteContactMethodAction,
+  deleteMemberLanguageAction,
   grantConsentAction,
   submitProfileAnswerAction,
   updateContactMethodAction,
+  updateMemberAxisAction,
   updateProfile,
   updateSensitiveDataAction,
   withdrawConsentAction,
 } from "./actions";
+
+const LANGUAGE_LEVEL_LABELS: Record<MemberLanguageLevel, string> = {
+  basic: "Basic",
+  conversational: "Conversational",
+  fluent: "Fluent",
+  native: "Native",
+};
 
 const CONTACT_VISIBILITY_LABELS: Record<(typeof CONTACT_METHOD_VISIBILITIES)[number], string> = {
   everyone: "Everyone in the community",
@@ -145,17 +159,33 @@ export default async function ProfilePage({
 
   const { error } = await searchParams;
 
-  const [communityTiers, outstanding, onceEverAnswers, communityRow, cycleTypeProgress, ownContactMethods, gatingPurposes, myConsentStatus] =
-    await Promise.all([
-      db.select().from(tier).where(eq(tier.communityId, viewing.communityId)),
-      listOutstandingQuestions(viewing),
-      listOnceEverAnswers(viewing),
-      getCommunity(viewing),
-      getCycleTypeCountProgress(viewing),
-      listOwnContactMethods(viewing),
-      getGatingPurposesForCommunity(viewing.communityId),
-      listMyConsentStatus(viewing),
-    ]);
+  const [
+    communityTiers,
+    outstanding,
+    onceEverAnswers,
+    communityRow,
+    cycleTypeProgress,
+    ownContactMethods,
+    gatingPurposes,
+    myConsentStatus,
+    tagSuggestions,
+    ownLanguages,
+    traitAxes,
+    ownAxisValues,
+  ] = await Promise.all([
+    db.select().from(tier).where(eq(tier.communityId, viewing.communityId)),
+    listOutstandingQuestions(viewing),
+    listOnceEverAnswers(viewing),
+    getCommunity(viewing),
+    getCycleTypeCountProgress(viewing),
+    listOwnContactMethods(viewing),
+    getGatingPurposesForCommunity(viewing.communityId),
+    listMyConsentStatus(viewing),
+    listAllDistinctTags(viewing),
+    listOwnMemberLanguages(viewing),
+    listTraitAxes(viewing),
+    listMemberAxisValues(viewing.id),
+  ]);
   const sensitiveDataOn = isModuleEnabled(communityRow, "sensitive_data");
   // Only a manual-criterion tier is ever hand-toggled here — a computed
   // one (cycle_type_count, Phase 40) is owned by syncComputedTiers and
@@ -201,8 +231,14 @@ export default async function ProfilePage({
             name="tags"
             defaultValue={viewing.tags.join(", ")}
             placeholder="carpentry, spanish, night-owl"
+            list="tag-suggestions"
             className={INPUT}
           />
+          <datalist id="tag-suggestions">
+            {tagSuggestions.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
         </label>
 
         {manualTiers.length > 0 && (
@@ -229,6 +265,64 @@ export default async function ProfilePage({
           Save
         </button>
       </form>
+
+      <section className="mt-8">
+        <SectionHeading>Languages</SectionHeading>
+        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          Any you speak, at whatever level — used for a task&rsquo;s language Requirement.
+        </p>
+        {ownLanguages.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None added yet.</p>}
+        <div className="mt-2 flex flex-col gap-2">
+          {ownLanguages.map((l) => (
+            <div key={l.id} className={`flex items-center gap-2 ${CARD}`}>
+              <span className="flex-1 text-[13px] text-[var(--text)]">
+                {l.language} — {LANGUAGE_LEVEL_LABELS[l.level]}
+              </span>
+              <form action={deleteMemberLanguageAction}>
+                <input type="hidden" name="id" value={l.id} />
+                <button type="submit" className={BUTTON_GHOST}>
+                  Delete
+                </button>
+              </form>
+            </div>
+          ))}
+        </div>
+
+        <form action={addMemberLanguageAction} className="mt-3 flex flex-wrap items-center gap-2">
+          <input type="text" name="language" placeholder="language" required className={`${INPUT} min-w-[160px] flex-1`} />
+          <select name="level" defaultValue="conversational" className={INPUT}>
+            {MEMBER_LANGUAGE_LEVELS.map((level) => (
+              <option key={level} value={level}>
+                {LANGUAGE_LEVEL_LABELS[level]}
+              </option>
+            ))}
+          </select>
+          <button type="submit" className={BUTTON_PRIMARY}>
+            Add
+          </button>
+        </form>
+      </section>
+
+      {traitAxes.length > 0 && (
+        <section className="mt-8">
+          <SectionHeading>How you like to work</SectionHeading>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            Helps surface tasks that fit you — never shown to anyone else, never used to assign you
+            anything.
+          </p>
+          <div className="mt-2 flex flex-col gap-3">
+            {traitAxes.map((axis) => (
+              <form key={axis.id} action={updateMemberAxisAction} className={CARD}>
+                <input type="hidden" name="axisId" value={axis.id} />
+                <AxisScaleField axis={axis} name="value" defaultValue={ownAxisValues.get(axis.id) ?? null} />
+                <button type="submit" className={`${BUTTON_SECONDARY} mt-2`}>
+                  Save
+                </button>
+              </form>
+            ))}
+          </div>
+        </section>
+      )}
 
       {cycleTypeProgress.length > 0 && (
         <section className="mt-8">

@@ -6,12 +6,15 @@ import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
 import { resolveDefaultScopeSegment, resolveViewScopeFromSegment } from "@/lib/cycles";
 import { listOutstandingQuestions } from "@/lib/profile-questions";
 import { listTaskFitSuggestions, ONBOARDING_CARDS } from "@/lib/onboarding";
+import { listOutstandingOnboardingAxes } from "@/lib/trait-axes";
 import { ATTENTION_STYLES } from "@/lib/format";
 import { Tag, type Tone, ATTENTION_TONE } from "@/components/ui/kit";
+import AxisScaleField from "@/components/AxisScaleField";
 import {
   completeOnboardingAction,
   respondToNominationAction,
   submitOnboardingAnswerAction,
+  submitOnboardingAxisAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -202,11 +205,12 @@ export default async function DashboardPage({
   // Phase 56) — a nudge, never a gate, so this panel only ever renders
   // until hasCompletedOnboarding is set (finished or skipped) and never
   // blocks anything else on this page.
-  const [onboardingQuestions, onboardingSuggestions] = viewing.hasCompletedOnboarding
-    ? [[], []]
+  const [onboardingQuestions, onboardingSuggestions, onboardingAxes] = viewing.hasCompletedOnboarding
+    ? [[], [], []]
     : await Promise.all([
         listOutstandingQuestions(viewing, { surface: "onboarding" }),
         listTaskFitSuggestions(viewing, { limit: 3 }),
+        listOutstandingOnboardingAxes(viewing),
       ]);
 
   const hasFeedItems =
@@ -283,6 +287,34 @@ export default async function DashboardPage({
                       options={question.options}
                     />
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {onboardingAxes.length > 0 && (
+            <div className="mb-5">
+              <h3 className="mb-2 text-[15px] font-medium text-[var(--text)]">How do you like to work?</h3>
+              <p className="-mt-1 mb-2 text-[13px] text-[var(--text-muted)]">
+                Helps surface tasks that fit you — never shown to anyone else, never used to assign you
+                anything. A few more of these are settable any time at /profile.
+              </p>
+              <div className="flex flex-col gap-3">
+                {onboardingAxes.map((axis) => (
+                  <form
+                    key={axis.id}
+                    action={submitOnboardingAxisAction}
+                    className="rounded-[var(--radius-md)] border border-[var(--border)] p-3"
+                  >
+                    <input type="hidden" name="axisId" value={axis.id} />
+                    <AxisScaleField axis={axis} name="value" />
+                    <button
+                      type="submit"
+                      className="mt-2 rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3 py-1.5 text-[12px] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)]"
+                    >
+                      Save
+                    </button>
+                  </form>
                 ))}
               </div>
             </div>

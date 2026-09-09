@@ -14,6 +14,8 @@ import {
   type PermissionModuleKey,
 } from "@/lib/permissions";
 import { resolveDefaultScopeSegment, resolveViewScopeFromSegment, listCycles } from "@/lib/cycles";
+import { listAllDistinctTags } from "@/lib/tags";
+import { COMMITMENT_PREFERENCE_AXIS_KEY, listTraitAxes } from "@/lib/trait-axes";
 import { Banner } from "@/components/ui/kit";
 import ProposalCard from "./ProposalCard";
 
@@ -32,18 +34,22 @@ export default async function ProposalsPage({
   const { error, submitted, status } = await searchParams;
 
   const canGrantPermissions = await isAdmin(viewing);
-  const [proposals, branches, members, tiers, communityTasksRaw, communityGrants, cycles] = await Promise.all([
-    listProposals(viewing, { status }),
-    db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
-    db.select().from(member).where(eq(member.communityId, viewing.communityId)),
-    listTiers(viewing),
-    listTasks(viewing),
-    canGrantPermissions ? listGrantsWithTaskInfo(viewing.communityId) : Promise.resolve([]),
-    // Ungated by canGrantPermissions — every member activating a
-    // proposal picks the new task's own cycle (below), not just an
-    // admin granting permissions on it.
-    listCycles(viewing),
-  ]);
+  const [proposals, branches, members, tiers, communityTasksRaw, communityGrants, cycles, tagSuggestions, traitAxesRaw] =
+    await Promise.all([
+      listProposals(viewing, { status }),
+      db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
+      db.select().from(member).where(eq(member.communityId, viewing.communityId)),
+      listTiers(viewing),
+      listTasks(viewing),
+      canGrantPermissions ? listGrantsWithTaskInfo(viewing.communityId) : Promise.resolve([]),
+      // Ungated by canGrantPermissions — every member activating a
+      // proposal picks the new task's own cycle (below), not just an
+      // admin granting permissions on it.
+      listCycles(viewing),
+      listAllDistinctTags(viewing),
+      listTraitAxes(viewing),
+    ]);
+  const traitAxes = traitAxesRaw.filter((a) => a.key !== COMMITMENT_PREFERENCE_AXIS_KEY);
   const communityTasks = communityTasksRaw.map((t) => ({ id: t.id, title: t.title }));
 
   const memberNameById = new Map(members.map((m) => [m.id, m.name]));
@@ -109,6 +115,8 @@ export default async function ProposalsPage({
             cyclesEnabled={communityRow.cyclesEnabled}
             cycles={cycles}
             defaultCycleId={defaultCycleId}
+            tagSuggestions={tagSuggestions}
+            traitAxes={traitAxes}
           />
         ))}
       </div>

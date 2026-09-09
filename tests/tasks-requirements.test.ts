@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, member, task, taskAssignment, tier } from "@/db/schema";
+import { community, member, memberLanguage, task, taskAssignment, tier } from "@/db/schema";
 import {
   claimTask,
   computeRequirementFitScore,
@@ -154,10 +154,9 @@ describe("claim eligibility", () => {
 
     await expect(claimTask(alice, t.id)).rejects.toThrow(ForbiddenError);
 
-    await db.update(member).set({ tags: ["nl"] }).where(eq(member.id, alice.id));
-    const [refreshedAlice] = await db.select().from(member).where(eq(member.id, alice.id));
+    await db.insert(memberLanguage).values({ memberId: alice.id, language: "nl" });
 
-    const claimed = await claimTask(refreshedAlice, t.id);
+    const claimed = await claimTask(alice, t.id);
     expect(claimed.status).toBe("claimed");
   });
 
@@ -208,10 +207,9 @@ describe("claim eligibility", () => {
     await createRequirement(alice, t.id, { type: "tier", value: { tierId: experienced.id } });
     await createRequirement(alice, t.id, { type: "language", value: { language: "nl" } });
 
-    // Only the language tag, tier still missing.
-    await db.update(member).set({ tags: ["nl"] }).where(eq(member.id, alice.id));
-    const [partiallyEligible] = await db.select().from(member).where(eq(member.id, alice.id));
-    await expect(claimTask(partiallyEligible, t.id)).rejects.toThrow(ForbiddenError);
+    // Only the language, tier still missing.
+    await db.insert(memberLanguage).values({ memberId: alice.id, language: "nl" });
+    await expect(claimTask(alice, t.id)).rejects.toThrow(ForbiddenError);
 
     await db
       .update(member)
@@ -267,9 +265,8 @@ describe("getGroupCoverageStatus", () => {
     await claimTask(alice, t.id);
     expect((await getGroupCoverageStatus(db, t.id, [req])).get(req.id)).toBe(false);
 
-    await db.update(member).set({ tags: ["nl"] }).where(eq(member.id, bob.id));
-    const [dutchBob] = await db.select().from(member).where(eq(member.id, bob.id));
-    await claimTask(dutchBob, t.id);
+    await db.insert(memberLanguage).values({ memberId: bob.id, language: "nl" });
+    await claimTask(bob, t.id);
     expect((await getGroupCoverageStatus(db, t.id, [req])).get(req.id)).toBe(true);
   });
 
@@ -281,7 +278,7 @@ describe("getGroupCoverageStatus", () => {
       mode: "group_coverage",
       value: { language: "nl" },
     });
-    await db.update(member).set({ tags: ["nl"] }).where(eq(member.id, bob.id));
+    await db.insert(memberLanguage).values({ memberId: bob.id, language: "nl" });
     await db.insert(taskAssignment).values({ taskId: t.id, memberId: bob.id, isShadow: true });
 
     expect((await getGroupCoverageStatus(db, t.id, [req])).get(req.id)).toBe(false);
@@ -304,33 +301,30 @@ describe("computeRequirementFitScore", () => {
     expect(await computeRequirementFitScore(db, alice, [req], new Map())).toBe(0);
 
     // Alice alone satisfies it — pool of 1, full boost.
-    await db.update(member).set({ tags: ["nl"] }).where(eq(member.id, alice.id));
-    const [dutchAlice] = await db.select().from(member).where(eq(member.id, alice.id));
-    expect(await computeRequirementFitScore(db, dutchAlice, [req], new Map())).toBe(1);
+    await db.insert(memberLanguage).values({ memberId: alice.id, language: "nl" });
+    expect(await computeRequirementFitScore(db, alice, [req], new Map())).toBe(1);
 
     // Bob also satisfies it now — pool of 2, halved boost for each.
-    await db.update(member).set({ tags: ["nl"] }).where(eq(member.id, bob.id));
-    const [dutchAlice2] = await db.select().from(member).where(eq(member.id, alice.id));
-    expect(await computeRequirementFitScore(db, dutchAlice2, [req], new Map())).toBe(0.5);
+    await db.insert(memberLanguage).values({ memberId: bob.id, language: "nl" });
+    expect(await computeRequirementFitScore(db, alice, [req], new Map())).toBe(0.5);
   });
 
   it("boosts a group_coverage requirement only while unmet and the actor would satisfy it", async () => {
-    const { community: testCommunity, branch, alice } = await createFixtures();
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
     const t = await insertTask(testCommunity.id, branch.id, alice.id);
     const req = await createRequirement(alice, t.id, {
       type: "language",
       mode: "group_coverage",
       value: { language: "nl" },
     });
-    await db.update(member).set({ tags: ["nl"] }).where(eq(member.id, alice.id));
-    const [dutchAlice] = await db.select().from(member).where(eq(member.id, alice.id));
+    await db.insert(memberLanguage).values({ memberId: alice.id, language: "nl" });
 
     // Unmet, and she'd satisfy it — boosts.
-    expect(await computeRequirementFitScore(db, dutchAlice, [req], new Map([[req.id, false]]))).toBe(1);
+    expect(await computeRequirementFitScore(db, alice, [req], new Map([[req.id, false]]))).toBe(1);
     // Already covered by someone else — stops pulling on her.
-    expect(await computeRequirementFitScore(db, dutchAlice, [req], new Map([[req.id, true]]))).toBe(0);
-    // Unmet, but she herself doesn't satisfy it — no boost either.
-    expect(await computeRequirementFitScore(db, alice, [req], new Map([[req.id, false]]))).toBe(0);
+    expect(await computeRequirementFitScore(db, alice, [req], new Map([[req.id, true]]))).toBe(0);
+    // Unmet, but bob himself doesn't satisfy it (no recorded language) — no boost either.
+    expect(await computeRequirementFitScore(db, bob, [req], new Map([[req.id, false]]))).toBe(0);
   });
 
   it("gives soft_priority a flat boost whenever satisfied, never gated by coverage", async () => {

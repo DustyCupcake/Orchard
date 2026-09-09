@@ -17,6 +17,7 @@ import {
 import { listTasks } from "@/lib/tasks";
 import { listCycles } from "@/lib/cycles";
 import { listProfileQuestions } from "@/lib/profile-questions";
+import { listTraitAxes } from "@/lib/trait-axes";
 import { listTaskPacks } from "@/lib/task-packs";
 import { MODULE_DEFINITIONS } from "@/lib/modules";
 import { SENSITIVE_FIELD_KEYS, SENSITIVE_FIELD_LABELS, listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
@@ -29,6 +30,7 @@ import {
   addPermissionGrantAction,
   archiveFormAction,
   archiveProfileQuestionAction,
+  archiveTraitAxisAction,
   confirmBulkMemberImportAction,
   confirmPendingBranchAction,
   createBranchAction,
@@ -38,6 +40,7 @@ import {
   createProfileQuestionAction,
   createSensitiveFieldAccessRuleAction,
   createTierAction,
+  createTraitAxisAction,
   deleteBranchAction,
   deleteConsentPurposeAction,
   deleteCycleTypeAction,
@@ -49,6 +52,7 @@ import {
   setPermissionGrantAction,
   unarchiveFormAction,
   unarchiveProfileQuestionAction,
+  unarchiveTraitAxisAction,
   updateBranchAction,
   updateCoordinationSettingsAction,
   updateCycleTypeAction,
@@ -58,6 +62,7 @@ import {
   updateProfileQuestionAction,
   updateRecruitmentSettingsAction,
   updateTierAction,
+  updateTraitAxisAction,
 } from "./actions";
 import { decodeBulkMemberState } from "./bulk-members-state";
 import FormBuilder from "./FormBuilder";
@@ -258,6 +263,7 @@ export default async function SettingsPage({
     cycleTypes,
     cyclesForPicker,
     profileQuestions,
+    traitAxes,
     sensitiveFieldRules,
     forms,
     consentPurposes,
@@ -271,6 +277,7 @@ export default async function SettingsPage({
     listCycleTypes(viewing),
     authorized ? listCycles(viewing) : Promise.resolve([]),
     authorized ? listProfileQuestions(viewing, { includeArchived: true }) : Promise.resolve([]),
+    authorized ? listTraitAxes(viewing, { includeArchived: true }) : Promise.resolve([]),
     authorized ? listSensitiveFieldAccessRules(viewing) : Promise.resolve([]),
     authorized ? listForms(viewing, { includeArchived: true }) : Promise.resolve([]),
     authorized ? listConsentPurposes(viewing) : Promise.resolve([]),
@@ -901,6 +908,82 @@ export default async function SettingsPage({
                 <CheckField label="surface during onboarding" name="onboardingSurface" />
                 <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                   Add profile question
+                </button>
+              </form>
+            </section>
+
+            <section>
+              <h2 className="text-[18px] font-semibold text-[var(--text)]">Trait axes</h2>
+              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                Bipolar scales (e.g. &ldquo;wants direction&rdquo; ↔ &ldquo;wants independence&rdquo;) set on
+                both members (their own preference) and tasks (a proposer&rsquo;s suggestion, reviewed at
+                activation) — compared by proximity to rank onboarding&rsquo;s task suggestions. Distinct from
+                tags: never shown as a number, never a hard requirement, just a surfacing signal. &ldquo;Surface
+                during onboarding&rdquo; keeps the first-session screen short — an axis left unchecked is
+                still settable any time at <code className="font-mono">/profile</code>.
+              </p>
+              {traitAxes.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+              <div className="mt-3 flex flex-col gap-2">
+                {traitAxes.map((a) => (
+                  <div
+                    key={a.id}
+                    className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3"
+                    style={{ opacity: a.archivedAt ? 0.6 : 1 }}
+                  >
+                    <form action={updateTraitAxisAction} className="flex flex-col gap-2">
+                      <input type="hidden" name="axisId" value={a.id} />
+                      <span className="text-[12px] text-[var(--text-muted)]">
+                        key: <code className="font-mono">{a.key}</code> — not editable here.
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        <input type="text" name="lowLabel" defaultValue={a.lowLabel} placeholder="low label" className={`${INPUT} flex-1`} />
+                        <input type="text" name="highLabel" defaultValue={a.highLabel} placeholder="high label" className={`${INPUT} flex-1`} />
+                      </div>
+                      <label className="flex flex-col gap-1">
+                        <span className={LABEL}>
+                          5 option labels, &ldquo;|&rdquo;-separated (optional — overrides the low/high slider with labeled choices)
+                        </span>
+                        <input
+                          type="text"
+                          name="optionLabels"
+                          defaultValue={a.optionLabels.join(" | ")}
+                          className={INPUT}
+                        />
+                      </label>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <CheckField label="surface during onboarding" name="askAtOnboarding" defaultChecked={a.askAtOnboarding} />
+                        <label className="flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+                          Sort order
+                          <input type="number" name="sortOrder" defaultValue={a.sortOrder} className={`${INPUT} w-20`} />
+                        </label>
+                        <button type="submit" className={BUTTON_PRIMARY}>
+                          Save
+                        </button>
+                      </div>
+                    </form>
+                    <form action={a.archivedAt ? unarchiveTraitAxisAction : archiveTraitAxisAction} className="mt-2">
+                      <input type="hidden" name="axisId" value={a.id} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        {a.archivedAt ? "Unarchive" : "Archive"}
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+
+              <form action={createTraitAxisAction} className="mt-3 flex max-w-[600px] flex-col gap-2">
+                <input type="text" name="key" placeholder="key, e.g. autonomy" required className={INPUT} />
+                <div className="flex flex-wrap gap-2">
+                  <input type="text" name="lowLabel" placeholder="low label" required className={`${INPUT} flex-1`} />
+                  <input type="text" name="highLabel" placeholder="high label" required className={`${INPUT} flex-1`} />
+                </div>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>5 option labels, &ldquo;|&rdquo;-separated (optional)</span>
+                  <input type="text" name="optionLabels" className={INPUT} />
+                </label>
+                <CheckField label="surface during onboarding" name="askAtOnboarding" />
+                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                  Add trait axis
                 </button>
               </form>
             </section>

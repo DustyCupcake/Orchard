@@ -9,6 +9,7 @@ import { addTaskDependency } from "../tasks/dependencies";
 import { claimTask } from "../tasks/lifecycle";
 import { createTaskMilestone } from "../tasks/milestones";
 import { createRequirement, createRequirementInput } from "../tasks/requirements";
+import { setTaskAxisValues } from "../trait-axes";
 import { isAdmin } from "../settings/admins";
 import {
   addPermissionGrant,
@@ -39,6 +40,7 @@ export const createProposalInput = z.object({
   suggestedCapacity: z.number().int().positive().nullable().optional(),
   suggestedCritical: z.boolean().nullable().optional(),
   suggestedDueDate: z.string().min(1).nullable().optional(),
+  suggestedAxisValues: z.record(z.string(), z.number()).nullable().optional(),
 });
 export type CreateProposalInput = z.infer<typeof createProposalInput>;
 
@@ -71,6 +73,7 @@ export async function createProposal(actor: Member, input: CreateProposalInput) 
       suggestedCapacity: input.suggestedCapacity ?? null,
       suggestedCritical: input.suggestedCritical ?? null,
       suggestedDueDate: input.suggestedDueDate ?? null,
+      suggestedAxisValues: input.suggestedAxisValues ?? null,
     })
     .returning();
 
@@ -122,6 +125,10 @@ export const activateProposalInput = createTaskInput
     // Optional — becomes a single confirmed Task Milestone (see below)
     // right after the new task exists, not a real Task field itself.
     dueDate: z.string().min(1).optional(),
+    // TraitAxis id -> value, reviewed/overridable exactly like
+    // suggestedTags/suggestedEffort — see task-proposal.ts's
+    // suggestedAxisValues.
+    axisValues: z.record(z.string(), z.number()).optional(),
   });
 export type ActivateProposalInput = z.infer<typeof activateProposalInput>;
 
@@ -171,6 +178,10 @@ export async function activateProposal(
       .where(eq(task.id, newTask.id))
       .returning();
     newTask = updated;
+  }
+
+  if (input.axisValues && Object.keys(input.axisValues).length > 0) {
+    await setTaskAxisValues(db, newTask.id, input.axisValues);
   }
 
   for (const req of input.requirements ?? []) {

@@ -46,6 +46,16 @@ export async function submitProposal(formData: FormData) {
   const suggestedCritical = formData.get("critical") === "on";
   const suggestedDueDate = String(formData.get("dueDate") ?? "").trim() || null;
 
+  // One radio-group per axis, named "axis_<axisId>" (see AxisScaleField).
+  const suggestedAxisValuesRaw: Record<string, number> = {};
+  for (const key of formData.keys()) {
+    if (!key.startsWith("axis_")) continue;
+    const raw = formData.get(key);
+    if (raw === null || raw === "") continue;
+    suggestedAxisValuesRaw[key.slice("axis_".length)] = Number(raw);
+  }
+  const suggestedAxisValues = Object.keys(suggestedAxisValuesRaw).length > 0 ? suggestedAxisValuesRaw : null;
+
   try {
     await createProposal(actor, {
       title,
@@ -61,6 +71,7 @@ export async function submitProposal(formData: FormData) {
       suggestedCapacity: suggestedCapacityRaw ? Number(suggestedCapacityRaw) : null,
       suggestedCritical,
       suggestedDueDate,
+      suggestedAxisValues,
     });
   } catch (err) {
     if (err instanceof AppError) {

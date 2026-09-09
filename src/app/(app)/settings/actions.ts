@@ -56,6 +56,14 @@ import {
 } from "@/lib/sensitive-data";
 import { archiveForm, createForm, createFormInput, unarchiveForm, updateForm, updateFormInput } from "@/lib/forms";
 import { createConsentPurpose, createConsentPurposeInput, deleteConsentPurpose } from "@/lib/consent";
+import {
+  archiveTraitAxis,
+  createTraitAxis,
+  createTraitAxisInput,
+  unarchiveTraitAxis,
+  updateTraitAxis,
+  updateTraitAxisInput,
+} from "@/lib/trait-axes";
 import { AppError } from "@/lib/errors";
 
 // Fields arrive as a JSON blob from the real field-builder client
@@ -511,6 +519,88 @@ export async function deleteCycleTypeAction(formData: FormData) {
     await deleteCycleType(actor, cycleTypeId);
   } catch (err) {
     redirectWithError(err, "cycles-tiers");
+  }
+
+  revalidatePath("/settings");
+}
+
+// "|"-delimited rather than comma-split, unlike tags — an axis's
+// optionLabels are full sentences (see the autonomy axis) that could
+// themselves contain a comma.
+function parseOptionLabels(raw: string): string[] {
+  return raw
+    .split("|")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export async function createTraitAxisAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    await requireAdmins(actor);
+    const optionLabels = parseOptionLabels(String(formData.get("optionLabels") ?? ""));
+    const input = createTraitAxisInput.parse({
+      key: String(formData.get("key") ?? "").trim(),
+      lowLabel: String(formData.get("lowLabel") ?? ""),
+      highLabel: String(formData.get("highLabel") ?? ""),
+      optionLabels: optionLabels.length > 0 ? optionLabels : undefined,
+      askAtOnboarding: formData.get("askAtOnboarding") === "on",
+      sortOrder: Number(formData.get("sortOrder") ?? 0) || 0,
+    });
+    await createTraitAxis(actor, input);
+  } catch (err) {
+    redirectWithError(err, "profile-privacy");
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function updateTraitAxisAction(formData: FormData) {
+  const actor = await requireMember();
+  const axisId = String(formData.get("axisId"));
+
+  try {
+    await requireAdmins(actor);
+    const optionLabels = parseOptionLabels(String(formData.get("optionLabels") ?? ""));
+    const input = updateTraitAxisInput.parse({
+      lowLabel: String(formData.get("lowLabel") ?? "") || undefined,
+      highLabel: String(formData.get("highLabel") ?? "") || undefined,
+      optionLabels,
+      askAtOnboarding: formData.get("askAtOnboarding") === "on",
+      sortOrder: Number(formData.get("sortOrder") ?? 0) || 0,
+    });
+    await updateTraitAxis(actor, axisId, input);
+  } catch (err) {
+    redirectWithError(err, "profile-privacy");
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function archiveTraitAxisAction(formData: FormData) {
+  const actor = await requireMember();
+  const axisId = String(formData.get("axisId"));
+
+  try {
+    await requireAdmins(actor);
+    await archiveTraitAxis(actor, axisId);
+  } catch (err) {
+    redirectWithError(err, "profile-privacy");
+  }
+
+  revalidatePath("/settings");
+}
+
+export async function unarchiveTraitAxisAction(formData: FormData) {
+  const actor = await requireMember();
+  const axisId = String(formData.get("axisId"));
+
+  try {
+    await requireAdmins(actor);
+    await unarchiveTraitAxis(actor, axisId);
+  } catch (err) {
+    redirectWithError(err, "profile-privacy");
   }
 
   revalidatePath("/settings");
