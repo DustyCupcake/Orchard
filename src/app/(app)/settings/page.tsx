@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { task } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity, listBranches, listCycleTypes, listPendingBranches, listTiers, requireAdmins } from "@/lib/settings";
+import Tabs from "@/components/ui/Tabs";
 import {
   allowsMultipleGrants,
   CYCLE_SCOPED_MODULES,
@@ -86,23 +87,7 @@ type TabKey = (typeof TABS)[number]["key"];
 const TAB_KEYS = TABS.map((t) => t.key) as readonly string[];
 
 function TabBar({ active }: { active: TabKey }) {
-  return (
-    <div className="flex flex-wrap gap-x-5 gap-y-1 border-b border-[var(--border)]">
-      {TABS.map((t) => (
-        <Link
-          key={t.key}
-          href={`/settings?tab=${t.key}`}
-          className={`border-b-2 pb-2.5 text-[13px] font-medium transition-colors ${
-            active === t.key
-              ? "border-[var(--accent-1)] text-[var(--accent-1)]"
-              : "border-transparent text-[var(--text-muted)] hover:text-[var(--text)]"
-          }`}
-        >
-          {t.label}
-        </Link>
-      ))}
-    </div>
-  );
+  return <Tabs tabs={TABS} active={active} hrefFor={(key) => `/settings?tab=${key}`} />;
 }
 
 function FieldSet({ legend, children }: { legend: string; children: React.ReactNode }) {

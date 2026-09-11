@@ -6,6 +6,9 @@ import { db } from "@/db";
 import { member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag, TONE_CLASSES, type Tone } from "@/components/ui/kit";
+import DateModeField, { type DateFieldBase } from "@/components/DateModeField";
+import PageHeader from "@/components/ui/PageHeader";
+import Tabs from "@/components/ui/Tabs";
 import {
   getCalendarEvent,
   listCalendarEventInvites,
@@ -76,6 +79,20 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
+// The page used to stack Month grid / Upcoming / Invites / Your events /
+// On your calendar all at once — split into tabs (same zero-JS `?tab=`
+// pattern as settings/page.tsx and tasks/[id]/page.tsx) so it reads as
+// one view at a time. "Create an event" moves behind the header's "New
+// event" action (a `?compose=1` link, same technique as the month nav
+// already uses) instead of always rendering at the bottom of the page.
+const CAL_TABS = [
+  { key: "month", label: "Month" },
+  { key: "upcoming", label: "Upcoming" },
+  { key: "your-events", label: "Your events" },
+] as const;
+type CalTabKey = (typeof CAL_TABS)[number]["key"];
+const CAL_TAB_KEYS = CAL_TABS.map((t) => t.key) as readonly string[];
+
 // The Calendar view's payoff — one Community-wide read layer over every
 // dated thing that already exists across the app, plus (folded in from
 // Phase 42, per that phase's own "expected to move into /calendar" note)
@@ -94,6 +111,8 @@ export default async function CalendarPage({
     invited?: string;
     responded?: string;
     month?: string;
+    tab?: string;
+    compose?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
@@ -101,7 +120,12 @@ export default async function CalendarPage({
     redirect("/login");
   }
 
-  const { error, created, updated, deleted, invited, responded, month } = await searchParams;
+  const { error, created, updated, deleted, invited, responded, month, tab: tabRaw, compose } = await searchParams;
+  const activeTab: CalTabKey = CAL_TAB_KEYS.includes(tabRaw ?? "") ? (tabRaw as CalTabKey) : "month";
+  const composeOpen = compose === "1";
+  const tabHref = (key: CalTabKey) => `/calendar?tab=${key}${month ? `&month=${month}` : ""}`;
+  const newEventHref = `/calendar?compose=1&tab=your-events${month ? `&month=${month}` : ""}`;
+  const cancelComposeHref = tabHref("your-events");
 
   const [view, myEvents, myInvites, branches, cycles, communityMembers] = await Promise.all([
     getCalendarView(viewing),
@@ -137,12 +161,27 @@ export default async function CalendarPage({
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Calendar</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
-        {view.currentCycle ? `Current cycle: ${view.currentCycle.name}. ` : ""}
-        Phase boundaries, your task milestones, your calendar events, and every other module
-        deadline in one place — a read layer only, nothing here changes what any of those pages do.
-      </p>
+      <PageHeader
+        title="Calendar"
+        description={
+          <>
+            {view.currentCycle ? `Current cycle: ${view.currentCycle.name}. ` : ""}
+            Phase boundaries, your task milestones, your calendar events, and every other module
+            deadline in one place — a read layer only, nothing here changes what any of those pages do.
+          </>
+        }
+        actions={
+          <>
+            <Link href="/scheduling-polls" className={BUTTON_SECONDARY}>
+              Scheduling polls
+            </Link>
+            <Link href={newEventHref} className={BUTTON_PRIMARY}>
+              New event
+            </Link>
+          </>
+        }
+        tabs={<Tabs tabs={CAL_TABS} active={activeTab} hrefFor={tabHref} />}
+      />
 
       {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
       {created && <div className="mt-4"><Banner tone="success">Event created.</Banner></div>}
@@ -151,13 +190,8 @@ export default async function CalendarPage({
       {invited && <div className="mt-4"><Banner tone="success">Invites sent.</Banner></div>}
       {responded && <div className="mt-4"><Banner tone="success">Your response is saved.</Banner></div>}
 
-      <div className="mt-4">
-        <Link href="/scheduling-polls" className={BUTTON_SECONDARY}>
-          Scheduling polls
-        </Link>
-      </div>
-
-      <section className="mt-6">
+      {activeTab === "month" && (
+      <section className="mt-4">
         <div className="flex items-center justify-between">
           <Link
             href={`/calendar?month=${monthParam(prev.year, prev.month)}`}
@@ -223,8 +257,10 @@ export default async function CalendarPage({
           </tbody>
         </table>
       </section>
+      )}
 
-      <section className="mt-8">
+      {activeTab === "upcoming" && (
+      <section className="mt-4">
         <SectionHeading>Upcoming</SectionHeading>
         {upcoming.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">Nothing dated ahead right now.</p>}
         <ul className="mt-2">
@@ -243,9 +279,67 @@ export default async function CalendarPage({
           ))}
         </ul>
       </section>
+      )}
+
+      {activeTab === "your-events" && (
+      <>
+      {composeOpen && (
+        <section className="mt-4">
+          <div className="flex items-center justify-between">
+            <SectionHeading>Create an event</SectionHeading>
+            <Link href={cancelComposeHref} className={BUTTON_GHOST}>
+              Cancel
+            </Link>
+          </div>
+          <form action={createCalendarEventAction} className={`mt-3 flex max-w-md flex-col gap-2 ${CARD}`}>
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Title</span>
+              <input type="text" name="title" required placeholder="Title" className={INPUT} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Description (optional)</span>
+              <textarea name="description" rows={2} placeholder="Description (optional)" className={INPUT} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Cycle</span>
+              <select name="cycleId" defaultValue="" className={INPUT}>
+                <option value="">Cycle-independent</option>
+                {cycles.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <EventDateFields />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Share with</span>
+              <select name="shareTarget" defaultValue="personal" className={INPUT}>
+                <option value="personal">Personal (just you)</option>
+                <option value="branch">Shared with a Branch</option>
+                <option value="community">Shared with the whole Community</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Branch (used when share target is Branch)</span>
+              <select name="sharedBranchId" defaultValue="" className={INPUT}>
+                <option value="">— pick a Branch if shareTarget is Branch —</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+              Create
+            </button>
+          </form>
+        </section>
+      )}
 
       {myInvites.length > 0 && (
-        <section className="mt-8">
+        <section className="mt-4">
           <SectionHeading>Invites waiting on you</SectionHeading>
           {myInvites.map((i) => (
             <div key={i.eventId} className={`mt-3 ${CARD}`}>
@@ -410,54 +504,8 @@ export default async function CalendarPage({
           </ul>
         </section>
       )}
-
-      <section className="mt-8">
-        <SectionHeading>Create an event</SectionHeading>
-        <form action={createCalendarEventAction} className={`mt-3 flex max-w-md flex-col gap-2 ${CARD}`}>
-          <label className="flex flex-col gap-1">
-            <span className={LABEL}>Title</span>
-            <input type="text" name="title" required placeholder="Title" className={INPUT} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className={LABEL}>Description (optional)</span>
-            <textarea name="description" rows={2} placeholder="Description (optional)" className={INPUT} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className={LABEL}>Cycle</span>
-            <select name="cycleId" defaultValue="" className={INPUT}>
-              <option value="">Cycle-independent</option>
-              {cycles.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <EventDateFields />
-          <label className="flex flex-col gap-1">
-            <span className={LABEL}>Share with</span>
-            <select name="shareTarget" defaultValue="personal" className={INPUT}>
-              <option value="personal">Personal (just you)</option>
-              <option value="branch">Shared with a Branch</option>
-              <option value="community">Shared with the whole Community</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className={LABEL}>Branch (used when share target is Branch)</span>
-            <select name="sharedBranchId" defaultValue="" className={INPUT}>
-              <option value="">— pick a Branch if shareTarget is Branch —</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-            Create
-          </button>
-        </form>
-      </section>
+      </>
+      )}
     </main>
   );
 }
@@ -467,63 +515,29 @@ type EventRow = Awaited<ReturnType<typeof listMyCalendarEvents>>[number] | Await
 // A single date, not a start/end pair — see src/app/(app)/participation/
 // page.tsx's PhaseBoundaryFields for the two-boundary sibling of this,
 // and src/lib/dates/resolve.ts's dateBoundaryInput for the shared shape
-// both forms submit.
-function EventDateFields({ event }: { event?: EventRow }) {
-  const mode = !event || event.dateType === "absolute" ? "absolute" : `relative_${event.relativeMode}`;
+// both forms submit. Calendar events have no phase-anchor concept, so
+// DateModeField never gets a `phases` list here — only Absolute/
+// Cycle-relative are ever offered.
+const EVENT_DATE_FIELD_NAMES: Record<DateFieldBase, string> = {
+  mode: "dateMode",
+  absoluteDate: "absoluteDate",
+  anchor: "anchor",
+  offsetDays: "offsetDays",
+  percent: "percent",
+  targetDate: "targetDate",
+  phaseId: "phaseId",
+};
 
+function EventDateFields({ event }: { event?: EventRow }) {
   return (
-    <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-      <legend className="px-1 text-[12px] text-[var(--text-muted)]">When</legend>
-      <div className="flex flex-col gap-2">
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Mode</span>
-          <select name="dateMode" defaultValue={mode} className={INPUT}>
-            <option value="absolute">Absolute date</option>
-            <option value="relative_offset">Relative — offset (days from the Cycle&rsquo;s start/end)</option>
-            <option value="relative_percent">Relative — percent (between the Cycle&rsquo;s start and end)</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Absolute date (used when mode is Absolute)</span>
-          <input
-            type="date"
-            name="absoluteDate"
-            defaultValue={event?.dateType === "absolute" ? (event.date ?? "") : ""}
-            className={INPUT}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Anchor (used when mode is relative offset)</span>
-          <select name="anchor" defaultValue={event?.anchorType ?? "cycle_start"} className={INPUT}>
-            <option value="cycle_start">Cycle start</option>
-            <option value="cycle_end">Cycle end</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Offset days (used when mode is relative offset, and no target date is given below)</span>
-          <input
-            type="number"
-            name="offsetDays"
-            defaultValue={event?.relativeMode === "offset" ? (event.offsetDays ?? "") : ""}
-            className={INPUT}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Percent 0-100 (used when mode is relative percent, and no target date is given below)</span>
-          <input
-            type="number"
-            min={0}
-            max={100}
-            name="percent"
-            defaultValue={event?.relativeMode === "percent" ? (event.percent ?? "") : ""}
-            className={INPUT}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Or drag to this target date (recomputes and persists the offset/percent above)</span>
-          <input type="date" name="targetDate" className={INPUT} />
-        </label>
-      </div>
-    </fieldset>
+    <DateModeField
+      fieldNames={EVENT_DATE_FIELD_NAMES}
+      mode={event?.dateType}
+      relativeMode={event?.relativeMode}
+      anchor={event?.anchorType}
+      absoluteDate={event?.dateType === "absolute" ? event.date : undefined}
+      offsetDays={event?.relativeMode === "offset" ? event.offsetDays : undefined}
+      percent={event?.relativeMode === "percent" ? event.percent : undefined}
+    />
   );
 }

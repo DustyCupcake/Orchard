@@ -42,13 +42,16 @@ import { isModuleEnabled } from "@/lib/modules";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import CopyLinkButton from "@/components/CopyLinkButton";
 import EffortFields from "@/components/EffortFields";
+import DateModeField, { type DateFieldBase } from "@/components/DateModeField";
+import PageHeader from "@/components/ui/PageHeader";
+import Tabs from "@/components/ui/Tabs";
 import { listTaskQuestions } from "@/lib/input-rounds";
 import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
 import { getAccompaniedMemberId } from "@/lib/recruitment";
 import { computeEngagementPattern } from "@/lib/engagement";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import { FlagIcon, QuestionIcon } from "@phosphor-icons/react/dist/ssr";
-import { Tag, type Tone, ATTENTION_TONE, Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_GHOST, BUTTON_ICON, CheckField, INPUT, LABEL } from "@/components/ui/kit";
+import { Tag, type Tone, ATTENTION_TONE, Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_GHOST, BUTTON_ICON, CheckField, INPUT } from "@/components/ui/kit";
 import {
   acceptJoinRequestAction,
   addCommentAction,
@@ -126,36 +129,26 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
-// Same zero-JS "?tab= + plain <Link> bar" pattern settings/page.tsx's
-// TabBar established — no client component needed since every tab's
-// content is just conditionally rendered server-side off searchParams.
-const TABS = [
+// Same zero-JS "?tab= + shared Tabs bar" pattern settings/page.tsx uses
+// (src/components/ui/Tabs.tsx) — no client component needed since every
+// tab's content is just conditionally rendered server-side off
+// searchParams. People/Coordination/Subtasks used to render
+// unconditionally below the tab block regardless of which tab was
+// active; they're real tabs now, each only listed when it'd actually
+// have something to show (see the showPeopleTab/showCoordinationTab/
+// showSubtasksTab booleans computed further down, once every section's
+// own existing visibility condition is known) — a stale/bookmarked link
+// to a tab that's no longer visible falls back to "requirements", same
+// as before.
+const ALL_TABS = [
   { key: "requirements", label: "Requirements & Dependencies" },
   { key: "notes", label: "Notes" },
   { key: "milestones", label: "Milestones" },
+  { key: "people", label: "People" },
+  { key: "coordination", label: "Coordination" },
+  { key: "subtasks", label: "Subtasks" },
 ] as const;
-type TabKey = (typeof TABS)[number]["key"];
-const TAB_KEYS = TABS.map((t) => t.key) as readonly string[];
-
-function TabBar({ active, taskPath, scopeParam }: { active: TabKey; taskPath: string; scopeParam?: string }) {
-  return (
-    <div className="flex flex-wrap gap-x-5 gap-y-1 border-b border-[var(--border)]">
-      {TABS.map((t) => (
-        <Link
-          key={t.key}
-          href={`${taskPath}?tab=${t.key}${scopeParam ? `&scope=${scopeParam}` : ""}`}
-          className={`border-b-2 pb-2.5 text-[13px] font-medium transition-colors ${
-            active === t.key
-              ? "border-[var(--accent-1)] text-[var(--accent-1)]"
-              : "border-transparent text-[var(--text-muted)] hover:text-[var(--text)]"
-          }`}
-        >
-          {t.label}
-        </Link>
-      ))}
-    </div>
-  );
-}
+type TabKey = (typeof ALL_TABS)[number]["key"];
 
 export const dynamic = "force-dynamic";
 
@@ -173,7 +166,6 @@ export default async function TaskDetailPage({
 
   const { id } = await params;
   const { error, scope: scopeParam, tab: tabRaw } = await searchParams;
-  const activeTab: TabKey = TAB_KEYS.includes(tabRaw ?? "") ? (tabRaw as TabKey) : "requirements";
 
   const taskRow = await getTask(viewing, id);
   const isCommunityEndorsed = taskRow.openness === "community_endorsed";
@@ -381,6 +373,25 @@ export default async function TaskDetailPage({
 
   const schedulePollHref = `/scheduling-polls/new?branchId=${taskRow.branchId}&title=${encodeURIComponent(taskRow.title)}`;
 
+  // Same visibility condition each section below already gates on —
+  // the tab is only offered when its content would actually show
+  // something.
+  const showPeopleTab =
+    isCommunityEndorsed || ((pendingRequests.length > 0 || resolvedRequests.length > 0) && requestGated);
+  const showCoordinationTab =
+    (!!accompaniedMemberId && !!accompanimentEngagement) ||
+    nominations.length > 0 ||
+    (isCoordHolderForBranch && (openPings.length > 0 || resolvedPings.length > 0));
+  const showSubtasksTab = subtasks.length > 0 || holdsTask;
+  const visibleTabs = ALL_TABS.filter((t) => {
+    if (t.key === "people") return showPeopleTab;
+    if (t.key === "coordination") return showCoordinationTab;
+    if (t.key === "subtasks") return showSubtasksTab;
+    return true;
+  });
+  const activeTab: TabKey = visibleTabs.some((t) => t.key === tabRaw) ? (tabRaw as TabKey) : "requirements";
+  const tabHref = (key: TabKey) => `${taskPath}?tab=${key}${scopeParam ? `&scope=${scopeParam}` : ""}`;
+
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
       <Link href="/board" className="text-[13px] font-medium text-[var(--accent-1)] hover:underline">
@@ -421,43 +432,56 @@ export default async function TaskDetailPage({
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">{taskRow.title}</h1>
-        {taskRow.critical && <Tag tone="danger">critical</Tag>}
-        {attention && <Tag tone={ATTENTION_TONE[taskRow.attentionLevel] ?? "neutral"}>{attention.label}</Tag>}
-      </div>
-      <div className="mt-1 text-[13px] text-[var(--text-muted)]">
-        {branchRow?.name ?? "—"} · {effortSummary(taskRow.effort, taskRow.effortMagnitude)} ·{" "}
-        {taskRow.status} · {realAssignments.length}
-        {taskRow.capacity !== null ? `/${taskRow.capacity}` : ""} held
-        {communityRow.cyclesEnabled && <> · {taskCycle ? taskCycle.name : "not cycle-scoped"}</>}
-      </div>
-      {communityRow.cyclesEnabled && (
-        <details className="mt-1">
-          <summary className="cursor-pointer text-[12px] text-[var(--accent-1)]">Change cycle</summary>
-          <form action={updateTaskCycleAction} className="mt-2 flex flex-wrap items-center gap-2">
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            <select name="cycleId" defaultValue={taskRow.cycleId ?? ""} className={INPUT}>
-              <option value="">No cycle (unscoped)</option>
-              {allCycles.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            <button type="submit" className={BUTTON_SECONDARY}>
-              Save
-            </button>
-          </form>
-        </details>
-      )}
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <CopyLinkButton path={taskPath} label="Copy link" />
-        <CopyLinkButton
-          path={`${taskPath}?scope=${crossCycle.activeScopeSegment}`}
-          label={`Copy link (${scopeLabel(crossCycle.activeScope)} view)`}
-        />
-      </div>
+      <PageHeader
+        title={
+          <span className="inline-flex flex-wrap items-center gap-2">
+            {taskRow.title}
+            {taskRow.critical && <Tag tone="danger">critical</Tag>}
+            {attention && <Tag tone={ATTENTION_TONE[taskRow.attentionLevel] ?? "neutral"}>{attention.label}</Tag>}
+          </span>
+        }
+        description={
+          <>
+            <div>
+              {branchRow?.name ?? "—"} · {effortSummary(taskRow.effort, taskRow.effortMagnitude)} ·{" "}
+              {taskRow.status} · {realAssignments.length}
+              {taskRow.capacity !== null ? `/${taskRow.capacity}` : ""} held
+              {communityRow.cyclesEnabled && <> · {taskCycle ? taskCycle.name : "not cycle-scoped"}</>}
+            </div>
+            {communityRow.cyclesEnabled && (
+              <details className="mt-1">
+                <summary className="cursor-pointer text-[12px] text-[var(--accent-1)]">Change cycle</summary>
+                <form action={updateTaskCycleAction} className="mt-2 flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="taskId" value={taskRow.id} />
+                  <select name="cycleId" defaultValue={taskRow.cycleId ?? ""} className={INPUT}>
+                    <option value="">No cycle (unscoped)</option>
+                    {allCycles.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Save
+                  </button>
+                </form>
+              </details>
+            )}
+          </>
+        }
+        actions={
+          <>
+            <CopyLinkButton path={taskPath} label="Copy link" />
+            <CopyLinkButton
+              path={`${taskPath}?scope=${crossCycle.activeScopeSegment}`}
+              label={`Copy link (${scopeLabel(crossCycle.activeScope)} view)`}
+            />
+            <Link href={schedulePollHref} className={BUTTON_SECONDARY}>
+              Schedule a poll
+            </Link>
+          </>
+        }
+      />
       {parentTask && (
         <p className="mt-1 text-[13px] text-[var(--text-muted)]">
           Part of{" "}
@@ -681,13 +705,6 @@ export default async function TaskDetailPage({
             </button>
           </form>
         )}
-        {/* Pre-fills this task's branch — see /scheduling-polls/new's own
-            searchParams handling. Offered on every task rather than
-            trying to guess which ones "need" a poll; there's no signal
-            on Task to condition it on. */}
-        <Link href={schedulePollHref} className={BUTTON_SECONDARY}>
-          Schedule a poll
-        </Link>
       </div>
       {myAssignment?.isOutgoing && notes.wikiRevisions.length === 0 && (
         <p className="mt-2 text-[13px] text-[var(--danger)]">
@@ -702,7 +719,7 @@ export default async function TaskDetailPage({
       )}
 
       <div className="mt-8">
-        <TabBar active={activeTab} taskPath={taskPath} scopeParam={scopeParam} />
+        <Tabs tabs={visibleTabs} active={activeTab} hrefFor={tabHref} />
       </div>
 
       {activeTab === "requirements" && (
@@ -1220,6 +1237,8 @@ export default async function TaskDetailPage({
         </details>
       )}
 
+      {activeTab === "people" && (
+      <>
       {isCommunityEndorsed && (
         <section className="mt-8">
           <SectionHeading>Candidacy</SectionHeading>
@@ -1364,7 +1383,11 @@ export default async function TaskDetailPage({
           )}
         </section>
       )}
+      </>
+      )}
 
+      {activeTab === "coordination" && (
+      <>
       {accompaniedMemberId && accompanimentEngagement && (
         <section className="mt-8">
           <SectionHeading>Engagement record</SectionHeading>
@@ -1440,8 +1463,10 @@ export default async function TaskDetailPage({
           )}
         </section>
       )}
+      </>
+      )}
 
-      {(subtasks.length > 0 || holdsTask) && (
+      {activeTab === "subtasks" && (subtasks.length > 0 || holdsTask) && (
         <section className="mt-8">
           <SectionHeading>Subtasks</SectionHeading>
           {subtasks.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None broken off yet.</p>}
@@ -1515,89 +1540,47 @@ const ANCHOR_LABEL: Record<string, string> = {
 // existing milestone's own "edit" form (prefilled from it) — mirrors
 // src/app/participation/page.tsx's PhaseBoundaryFields, generalized to
 // the 4-way phase-or-cycle anchor plus an optional Phase override.
-function MilestoneDateFields({ milestone, phases }: { milestone?: MilestoneRow; phases: CyclePhaseRow[] }) {
-  const mode =
-    !milestone || milestone.dateType === "absolute" ? "absolute" : `relative_${milestone.relativeMode}`;
+// Phase-relative is only offered when this Cycle actually has phases
+// (DateModeField hides that segment whenever `phases` is empty).
+const MILESTONE_DATE_FIELD_NAMES: Record<DateFieldBase, string> = {
+  mode: "dateMode",
+  absoluteDate: "absoluteDate",
+  anchor: "anchor",
+  offsetDays: "offsetDays",
+  percent: "percent",
+  targetDate: "targetDate",
+  phaseId: "milestonePhaseId",
+};
 
+function MilestoneDateFields({ milestone, phases }: { milestone?: MilestoneRow; phases: CyclePhaseRow[] }) {
   return (
-    <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-      <legend className="px-1 text-[12px] text-[var(--text-muted)]">When</legend>
-      <div className="flex flex-col gap-2">
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Mode</span>
-          <select name="dateMode" defaultValue={mode} className={INPUT}>
-            <option value="absolute">Absolute date</option>
-            <option value="relative_offset">Relative — offset (days from an anchor)</option>
-            <option value="relative_percent">Relative — percent (between an anchor&rsquo;s two ends)</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Absolute date (used when mode is Absolute)</span>
-          <input
-            type="date"
-            name="absoluteDate"
-            defaultValue={milestone?.dateType === "absolute" ? (milestone.absoluteDate ?? "") : ""}
-            className={INPUT}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Anchor (used when mode is relative)</span>
-          <select name="anchor" defaultValue={milestone?.anchorType ?? "cycle_start"} className={INPUT}>
-            <option value="phase_start">Phase start</option>
-            <option value="phase_end">Phase end</option>
-            <option value="cycle_start">Cycle start</option>
-            <option value="cycle_end">Cycle end</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Phase (used when anchor is a Phase — blank defaults to this task&rsquo;s own Phase)</span>
-          <select name="milestonePhaseId" defaultValue={milestone?.phaseId ?? ""} className={INPUT}>
-            <option value="">This task&rsquo;s own Phase</option>
-            {phases.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Offset days (used when mode is relative offset, and no target date is given below)</span>
-          <input
-            type="number"
-            name="offsetDays"
-            defaultValue={milestone?.relativeMode === "offset" ? (milestone.offsetDays ?? "") : ""}
-            className={INPUT}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Percent 0-100 (used when mode is relative percent, and no target date is given below)</span>
-          <input
-            type="number"
-            min={0}
-            max={100}
-            name="percent"
-            defaultValue={milestone?.relativeMode === "percent" ? (milestone.percent ?? "") : ""}
-            className={INPUT}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Or drag to this target date (recomputes and persists the offset/percent above)</span>
-          <input type="date" name="targetDate" className={INPUT} />
-        </label>
-      </div>
-      {milestone && milestone.resolvedDate && (
-        <p className="mt-2 text-[12px] text-[var(--text-muted)]">
-          Currently: {milestone.resolvedDate}
-          {milestone.dateType === "relative" && milestone.anchorType && (
-            <>
-              {" — "}
-              {milestone.relativeMode === "offset"
-                ? `${milestone.offsetDays} day(s) from ${ANCHOR_LABEL[milestone.anchorType]}`
-                : `${milestone.percent}% of the way through ${milestone.anchorType.startsWith("phase") ? "the Phase" : "the Cycle"}`}
-            </>
-          )}
-        </p>
-      )}
-    </fieldset>
+    <DateModeField
+      fieldNames={MILESTONE_DATE_FIELD_NAMES}
+      mode={milestone?.dateType}
+      relativeMode={milestone?.relativeMode}
+      anchor={milestone?.anchorType}
+      absoluteDate={milestone?.dateType === "absolute" ? milestone.absoluteDate : undefined}
+      offsetDays={milestone?.relativeMode === "offset" ? milestone.offsetDays : undefined}
+      percent={milestone?.relativeMode === "percent" ? milestone.percent : undefined}
+      phaseId={milestone?.phaseId}
+      phases={phases}
+      phaseSelectDefaultLabel="This task’s own Phase"
+      footer={
+        milestone &&
+        milestone.resolvedDate && (
+          <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+            Currently: {milestone.resolvedDate}
+            {milestone.dateType === "relative" && milestone.anchorType && (
+              <>
+                {" — "}
+                {milestone.relativeMode === "offset"
+                  ? `${milestone.offsetDays} day(s) from ${ANCHOR_LABEL[milestone.anchorType]}`
+                  : `${milestone.percent}% of the way through ${milestone.anchorType.startsWith("phase") ? "the Phase" : "the Cycle"}`}
+              </>
+            )}
+          </p>
+        )
+      }
+    />
   );
 }

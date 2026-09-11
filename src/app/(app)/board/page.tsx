@@ -17,6 +17,7 @@ import BranchFilter from "./BranchFilter";
 import TagFilter from "./TagFilter";
 import TaskCard from "./TaskCard";
 import { Tag, Banner, BUTTON_SECONDARY, BUTTON_PRIMARY } from "@/components/ui/kit";
+import PageHeader from "@/components/ui/PageHeader";
 import { bulkClaimAction, exportSelectedTasksAsPackAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -145,7 +146,24 @@ export default async function BoardPage({
 
   return (
     <main className="mx-auto max-w-[1180px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Board</h1>
+      <PageHeader
+        title="Board"
+        actions={
+          <>
+            {HUB_LINKS.map((l) => (
+              <Link key={l.href} href={l.href} className={BUTTON_SECONDARY}>
+                {l.label}
+              </Link>
+            ))}
+            {isCoordinator &&
+              COORDINATOR_HUB_LINKS.map((l) => (
+                <Link key={l.href} href={l.href} className={BUTTON_SECONDARY}>
+                  {l.label}
+                </Link>
+              ))}
+          </>
+        }
+      />
 
       {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
       {notice && <div className="mt-4"><Banner tone="success">{notice}</Banner></div>}
@@ -170,20 +188,6 @@ export default async function BoardPage({
           )}
         </Banner></div>
       )}
-
-      <div className="mt-6 flex flex-wrap gap-2">
-        {HUB_LINKS.map((l) => (
-          <Link key={l.href} href={l.href} className={BUTTON_SECONDARY}>
-            {l.label}
-          </Link>
-        ))}
-        {isCoordinator &&
-          COORDINATOR_HUB_LINKS.map((l) => (
-            <Link key={l.href} href={l.href} className={BUTTON_SECONDARY}>
-              {l.label}
-            </Link>
-          ))}
-      </div>
 
       {branches.length > 0 && (
         <div className="mt-6 flex flex-wrap items-center gap-4">

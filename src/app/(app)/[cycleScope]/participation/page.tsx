@@ -17,6 +17,7 @@ import { HIGHLIGHTABLE_MODULES } from "@/lib/nav";
 import { ClonePreviewGrid, ClonePreviewList } from "@/components/ClonePreview";
 import type { member as memberTable } from "@/db/schema";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL, Tag } from "@/components/ui/kit";
+import DateModeField, { type DateFieldBase } from "@/components/DateModeField";
 import {
   addPhaseAction,
   closeCycleAction,
@@ -679,61 +680,28 @@ function PhaseBoundaryFields({ prefix, p }: { prefix: "start" | "end"; p?: Phase
   const offsetDays = prefix === "start" ? p?.startOffsetDays : p?.endOffsetDays;
   const percent = prefix === "start" ? p?.startPercent : p?.endPercent;
   const absoluteDate = prefix === "start" ? p?.startDate : p?.endDate;
-  const mode = dateType === "relative" ? `relative_${relativeMode}` : "absolute";
+
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const fieldNames: Record<DateFieldBase, string> = {
+    mode: `${prefix}${cap("mode")}`,
+    absoluteDate: `${prefix}${cap("absoluteDate")}`,
+    anchor: `${prefix}${cap("anchor")}`,
+    offsetDays: `${prefix}${cap("offsetDays")}`,
+    percent: `${prefix}${cap("percent")}`,
+    targetDate: `${prefix}${cap("targetDate")}`,
+    phaseId: `${prefix}${cap("phaseId")}`,
+  };
 
   return (
-    <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-      <legend className="px-1 text-[12px] capitalize text-[var(--text-muted)]">{prefix}</legend>
-      <div className="flex flex-col gap-2">
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Mode</span>
-          <select name={`${prefix}Mode`} defaultValue={mode} className={INPUT}>
-            <option value="absolute">Absolute date</option>
-            <option value="relative_offset">Relative — offset (days from an anchor)</option>
-            <option value="relative_percent">Relative — percent (between start and end)</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Absolute date (used when mode is Absolute)</span>
-          <input
-            type="date"
-            name={`${prefix}AbsoluteDate`}
-            defaultValue={dateType === "absolute" ? (absoluteDate ?? "") : ""}
-            className={INPUT}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Anchor (used when mode is offset)</span>
-          <select name={`${prefix}Anchor`} defaultValue={anchor ?? "cycle_start"} className={INPUT}>
-            <option value="cycle_start">Cycle start</option>
-            <option value="cycle_end">Cycle end</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Offset days (used when mode is offset, and no target date is given below)</span>
-          <input
-            type="number"
-            name={`${prefix}OffsetDays`}
-            defaultValue={relativeMode === "offset" ? (offsetDays ?? "") : ""}
-            className={INPUT}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Percent 0-100 (used when mode is percent, and no target date is given below)</span>
-          <input
-            type="number"
-            min={0}
-            max={100}
-            name={`${prefix}Percent`}
-            defaultValue={relativeMode === "percent" ? (percent ?? "") : ""}
-            className={INPUT}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={LABEL}>Or drag to this target date (recomputes and persists the offset/percent above)</span>
-          <input type="date" name={`${prefix}TargetDate`} className={INPUT} />
-        </label>
-      </div>
-    </fieldset>
+    <DateModeField
+      legend={prefix === "start" ? "Start" : "End"}
+      fieldNames={fieldNames}
+      mode={dateType}
+      relativeMode={relativeMode}
+      anchor={anchor}
+      absoluteDate={dateType === "absolute" ? absoluteDate : undefined}
+      offsetDays={relativeMode === "offset" ? offsetDays : undefined}
+      percent={relativeMode === "percent" ? percent : undefined}
+    />
   );
 }
