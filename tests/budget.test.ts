@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { budgetCycle, task } from "@/db/schema";
+import { branch, budgetCycle, task } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { updateCommunity } from "@/lib/settings";
 import {
@@ -22,6 +22,7 @@ import {
   updateBudgetProposal,
 } from "@/lib/budget";
 import { createCycle } from "@/lib/cycles";
+import { declareParticipation } from "@/lib/participation";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
@@ -643,5 +644,187 @@ describe("getBudgetCycleForCycle", () => {
     await db.update(budgetCycle).set({ cycleId: realCycle.id }).where(eq(budgetCycle.id, untied.id));
     const found = await getBudgetCycleForCycle(alice, realCycle.id);
     expect(found?.id).toBe(untied.id);
+  });
+});
+
+describe("Line item multipliers", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("multiplies amount by a fixed quantity", async () => {
+    const { alice, bob, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    const cycle = await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: inOneWeek(),
+      ownerTaskId: ownerTask.id,
+    });
+
+    const created = await submitBudgetProposal(bob, cycle.id, {
+      title: "Tables",
+      lineItems: [{ label: "Table", amount: 50, quantity: 8 }],
+    });
+    expect(created.totalAmount).toBe(400);
+  });
+
+  it("rejects a line item that's both a fixed quantity and per-attendee", async () => {
+    const { alice, bob, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    const cycle = await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: inOneWeek(),
+      ownerTaskId: ownerTask.id,
+    });
+
+    await expect(
+      submitBudgetProposal(bob, cycle.id, {
+        title: "Bad item",
+        lineItems: [{ label: "X", amount: 10, quantity: 3, perAttendee: true }],
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("scales a perAttendee line item off Participation `coming` for the linked Cycle, live, not just at submission time", async () => {
+    const { alice, bob, community: testCommunity, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const realCycle = await createCycle(alice, { source: "blank", name: "Reunion" });
+    await declareParticipation(alice, realCycle.id, { status: "coming" });
+    const ownerTask = await insertOwnerTask(testCommunity.id, testBranch.id, alice.id);
+    const cycle = await createBudgetCycle(alice, {
+      title: "Season budget",
+      cycleId: realCycle.id,
+      proposalDeadline: inOneWeek(),
+      ownerTaskId: ownerTask.id,
+    });
+
+    const created = await submitBudgetProposal(bob, cycle.id, {
+      title: "Catering",
+      lineItems: [{ label: "Meal", amount: 10, perAttendee: true }],
+    });
+    // Only Alice has declared "coming" so far.
+    expect(created.totalAmount).toBe(10);
+
+    // Bob RSVPs after the proposal was submitted — the stored
+    // totalAmount snapshot doesn't move, but the live voting view
+    // recomputes against the current headcount.
+    await declareParticipation(bob, realCycle.id, { status: "coming" });
+    await claimTask(alice, ownerTask.id);
+    await closeProposalsToVoting(alice, cycle.id);
+    const view = await getBudgetVotingView(alice, cycle.id);
+    expect(view.attendeeCount).toBe(2);
+    expect(view.ranked[0].liveTotal).toBe(20);
+  });
+
+  it("treats a perAttendee item as contributing 0 when the BudgetCycle isn't linked to a real Cycle", async () => {
+    const { alice, bob, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    const cycle = await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: inOneWeek(),
+      ownerTaskId: ownerTask.id,
+    });
+
+    const created = await submitBudgetProposal(bob, cycle.id, {
+      title: "Catering",
+      lineItems: [{ label: "Meal", amount: 10, perAttendee: true }],
+    });
+    expect(created.totalAmount).toBe(0);
+  });
+});
+
+describe("Line item branches", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("stores a per-line-item branch, independent of the proposal's own branch", async () => {
+    const { alice, bob, branch: fruit } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, fruit.id, alice.id);
+    const cycle = await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: inOneWeek(),
+      ownerTaskId: ownerTask.id,
+    });
+    const [veg] = await db
+      .insert(branch)
+      .values({ communityId: alice.communityId, name: "Vegetables" })
+      .returning();
+
+    const created = await submitBudgetProposal(bob, cycle.id, {
+      title: "Shared gear",
+      branchId: fruit.id,
+      lineItems: [
+        { label: "Shared tent", amount: 100 },
+        { label: "Veg-only tools", amount: 40, branchId: veg.id },
+      ],
+    });
+    expect((created.lineItems as { branchId?: string }[])[0].branchId).toBeUndefined();
+    expect((created.lineItems as { branchId?: string }[])[1].branchId).toBe(veg.id);
+  });
+
+  it("rejects a line item naming a Branch from another community", async () => {
+    const { alice, bob, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    const cycle = await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: inOneWeek(),
+      ownerTaskId: ownerTask.id,
+    });
+    const { branch: strangerBranch } = await createFixtures();
+
+    await expect(
+      submitBudgetProposal(bob, cycle.id, {
+        title: "Bad item",
+        lineItems: [{ label: "X", amount: 10, branchId: strangerBranch.id }],
+      }),
+    ).rejects.toThrow(AppError);
+  });
+
+  it("rejects a fixed cost naming a Branch from another community", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    const { branch: strangerBranch } = await createFixtures();
+
+    await expect(
+      createBudgetCycle(alice, {
+        title: "Season budget",
+        fixedCosts: [{ label: "X", amount: 10, branchId: strangerBranch.id }],
+        proposalDeadline: inOneWeek(),
+        ownerTaskId: ownerTask.id,
+      }),
+    ).rejects.toThrow(AppError);
+  });
+});
+
+describe("Contribution balance", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("sums non-null contributionSignal votes into totalPledged, and computes confirmedTotal/confirmedBalance once confirmed", async () => {
+    const { alice, bob, cycle, p1, p2 } = await setUpVotingCycle();
+    await closeProposalsToVoting(alice, cycle.id);
+
+    await submitBudgetVote(alice, cycle.id, { rankedProposalIds: [p1.id, p2.id], contributionSignal: 300 });
+    await submitBudgetVote(bob, cycle.id, { rankedProposalIds: [p1.id, p2.id], contributionSignal: null });
+
+    const beforeConfirm = await getBudgetVotingView(alice, cycle.id);
+    expect(beforeConfirm.totalPledged).toBe(300);
+    expect(beforeConfirm.pledgeCount).toBe(1);
+    expect(beforeConfirm.confirmedTotal).toBeNull();
+    expect(beforeConfirm.confirmedBalance).toBeNull();
+
+    // Fixed costs (500) + p1 (100) = 600 confirmed; p2 (200) left unfunded.
+    await confirmBudgetCycle(alice, cycle.id, { confirmedProposalIds: [p1.id] });
+    const afterConfirm = await getBudgetVotingView(alice, cycle.id);
+    expect(afterConfirm.confirmedTotal).toBe(600);
+    expect(afterConfirm.confirmedBalance).toBe(300 - 600);
   });
 });

@@ -4,7 +4,14 @@ import { db } from "@/db";
 import { budgetCycle, budgetVote, member, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import { getBudgetCycle, getCurrentBudgetCycle, lineItemInput } from "./cycles";
+import {
+  getBudgetCycle,
+  getBudgetCycleAttendeeCount,
+  getCurrentBudgetCycle,
+  lineItemInput,
+  requireValidLineItems,
+  sumLineItems,
+} from "./cycles";
 import type { BudgetLineItem } from "./cycles";
 import { listBudgetProposals } from "./proposals";
 
@@ -80,6 +87,9 @@ export async function updateBudgetCycle(actor: Member, budgetCycleId: string, in
   await requireBudgetOwner(actor, cycleRow);
   if (cycleRow.status !== "proposals_open") {
     throw new ConflictError("This budget cycle's proposal window has already closed");
+  }
+  if (input.fixedCosts !== undefined) {
+    await requireValidLineItems(actor.communityId, input.fixedCosts);
   }
 
   const [updated] = await db
@@ -185,9 +195,20 @@ function computeAggregateRanking(proposalIds: string[], votes: { rankedProposalI
 // The live voting view: each proposal's cost-per-member and a running
 // total (fixed costs plus every proposal at-or-above its rank) against
 // the current aggregate order — updates as votes accrue, before the
-// owner ever confirms anything. "current member count" is the same
-// resolved all-members reading Phases 23/24 already settled on in
-// place of a still-unbuilt Participation `coming` scope.
+// owner ever confirms anything. "current member count" (for
+// costPerMember) is the same resolved all-members reading Phases
+// 23/24 already settled on; attendeeCount below is the narrower,
+// Participation-`coming`-scoped headcount that reading was originally
+// waiting on — now used specifically for perAttendee line items rather
+// than retrofitted onto costPerMember, which stays a broader
+// "everyone, not just confirmed attendees" number on purpose.
+//
+// Every total here (fixedTotal, each proposal's liveTotal,
+// runningTotal, confirmedTotal) is computed fresh against the current
+// attendeeCount rather than trusting budgetProposal.totalAmount's
+// stored snapshot — see proposals.ts's own submit/update — so a
+// perAttendee line item's contribution stays accurate as Participation
+// changes, right up through confirmation.
 export async function getBudgetVotingView(actor: Member, budgetCycleId: string) {
   const cycleRow = await getBudgetCycle(actor, budgetCycleId);
   const proposals = await listBudgetProposals(actor, budgetCycleId);
@@ -200,28 +221,52 @@ export async function getBudgetVotingView(actor: Member, budgetCycleId: string) 
     .select({ count: sql<number>`count(*)::int` })
     .from(member)
     .where(eq(member.communityId, actor.communityId));
+  const attendeeCount = await getBudgetCycleAttendeeCount(actor, cycleRow);
 
+  const liveTotalById = new Map(
+    proposals.map((p) => [p.id, sumLineItems(p.lineItems as BudgetLineItem[], attendeeCount)] as const),
+  );
   const proposalById = new Map(proposals.map((p) => [p.id, p] as const));
-  const fixedTotal = (cycleRow.fixedCosts as BudgetLineItem[]).reduce((sum, i) => sum + i.amount, 0);
+  const fixedTotal = sumLineItems(cycleRow.fixedCosts as BudgetLineItem[], attendeeCount);
+
+  // "How much would you contribute this year?" votes, summed — the
+  // incoming-money half of "does this balance" against the cost half
+  // (fixedTotal/runningTotal/confirmedTotal) below. Only non-null
+  // signals count; a voter who left it blank isn't a pledge of 0.
+  const pledges = votes.map((v) => v.contributionSignal).filter((n): n is number => n !== null);
+  const totalPledged = pledges.reduce((sum, n) => sum + n, 0);
 
   let runningTotal = fixedTotal;
   const ranked = order.map((id, index) => {
     const p = proposalById.get(id)!;
-    runningTotal += p.totalAmount;
+    const liveTotal = liveTotalById.get(id)!;
+    runningTotal += liveTotal;
     return {
       proposal: p,
       rank: index + 1,
       bordaScore: scores.get(id) ?? 0,
-      costPerMember: memberCount > 0 ? p.totalAmount / memberCount : null,
+      liveTotal,
+      costPerMember: memberCount > 0 ? liveTotal / memberCount : null,
       runningTotal,
     };
   });
+
+  const confirmedIds = cycleRow.confirmedProposalIds as string[] | null;
+  const confirmedTotal =
+    cycleRow.status === "confirmed" && confirmedIds
+      ? fixedTotal + confirmedIds.reduce((sum, id) => sum + (liveTotalById.get(id) ?? 0), 0)
+      : null;
 
   return {
     cycle: cycleRow,
     fixedTotal,
     memberCount,
+    attendeeCount,
     voteCount: votes.length,
+    pledgeCount: pledges.length,
+    totalPledged,
+    confirmedTotal,
+    confirmedBalance: confirmedTotal !== null ? totalPledged - confirmedTotal : null,
     ranked,
     myVote: votes.find((v) => v.memberId === actor.id) ?? null,
   };

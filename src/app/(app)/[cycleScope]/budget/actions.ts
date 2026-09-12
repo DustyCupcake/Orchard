@@ -24,20 +24,23 @@ import {
 import { requireAdmins } from "@/lib/settings";
 import { AppError } from "@/lib/errors";
 
-// "label|amount" per line — the same plain-textarea convention Forms'
-// own settings action uses for its fields (parseFormFields in
-// src/app/settings/actions.ts) rather than a dynamic add-row UI; this
-// codebase has no client-side JS beyond Scheduling polls' one
-// deliberate exception.
-function parseLineItems(raw: string) {
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [label, amount] = line.split("|").map((p) => p?.trim() ?? "");
-      return { label, amount: Number(amount) };
-    });
+// LineItemsEditor.tsx mirrors its row state into one hidden JSON
+// input — same "real <form>, client component only produces the
+// payload, the Server Action's own Zod schema is the actual
+// validation" shape settings/actions.ts's parseFieldsJson already
+// established for FormBuilder. JSON.parse failing here means the
+// hidden input itself is malformed (a bug, or a request built by
+// hand) rather than anything a user typed — lineItemInput inside
+// createBudgetCycleInput/submitBudgetProposalInput etc. is what
+// actually validates each item's label/amount/quantity/branchId.
+function parseLineItemsJson(raw: string): unknown {
+  try {
+    const parsed = JSON.parse(raw || "[]");
+    if (!Array.isArray(parsed)) throw new Error("not an array");
+    return parsed;
+  } catch {
+    throw new AppError("Invalid line items — try reloading the page");
+  }
 }
 
 // Every form on this page carries a hidden `cycleScope` field so a
@@ -86,7 +89,7 @@ export async function createBudgetCycleAction(formData: FormData) {
     const input = createBudgetCycleInput.parse({
       title: String(formData.get("title") ?? ""),
       cycleId,
-      fixedCosts: parseLineItems(String(formData.get("fixedCostsRaw") ?? "")),
+      fixedCosts: parseLineItemsJson(String(formData.get("fixedCostsJson") ?? "")),
       proposalDeadline: deadlineRaw ? new Date(deadlineRaw).toISOString() : "",
       ownerTaskId: String(formData.get("ownerTaskId") ?? "").trim(),
     });
@@ -115,10 +118,13 @@ export async function updateBudgetCycleAction(formData: FormData) {
   try {
     const titleRaw = String(formData.get("title") ?? "").trim();
     const deadlineRaw = String(formData.get("proposalDeadline") ?? "").trim();
-    const fixedCostsRaw = String(formData.get("fixedCostsRaw") ?? "");
+    // Unlike the old raw-textarea convention (blank meant "leave
+    // untouched"), LineItemsEditor is always pre-loaded with the
+    // current fixed costs, so its payload is always the full,
+    // deliberately-edited set — sent unconditionally, same as title.
     const input = updateBudgetCycleInput.parse({
       title: titleRaw || undefined,
-      fixedCosts: fixedCostsRaw.trim() ? parseLineItems(fixedCostsRaw) : undefined,
+      fixedCosts: parseLineItemsJson(String(formData.get("fixedCostsJson") ?? "")),
       proposalDeadline: deadlineRaw ? new Date(deadlineRaw).toISOString() : undefined,
     });
     await updateBudgetCycle(actor, budgetCycleId, input);
@@ -141,7 +147,7 @@ export async function submitBudgetProposalAction(formData: FormData) {
     const input = submitBudgetProposalInput.parse({
       title: String(formData.get("title") ?? ""),
       description: String(formData.get("description") ?? "").trim() || undefined,
-      lineItems: parseLineItems(String(formData.get("lineItemsRaw") ?? "")),
+      lineItems: parseLineItemsJson(String(formData.get("lineItemsJson") ?? "")),
       branchId: String(formData.get("branchId") ?? "").trim() || null,
     });
     await submitBudgetProposal(actor, budgetCycleId, input);
@@ -163,7 +169,7 @@ export async function updateBudgetProposalAction(formData: FormData) {
     const input = updateBudgetProposalInput.parse({
       title: String(formData.get("title") ?? ""),
       description: String(formData.get("description") ?? "").trim() || undefined,
-      lineItems: parseLineItems(String(formData.get("lineItemsRaw") ?? "")),
+      lineItems: parseLineItemsJson(String(formData.get("lineItemsJson") ?? "")),
       branchId: String(formData.get("branchId") ?? "").trim() || null,
     });
     await updateBudgetProposal(actor, proposalId, input);

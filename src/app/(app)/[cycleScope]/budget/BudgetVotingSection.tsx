@@ -9,6 +9,16 @@ function formatAmount(n: number) {
   return n.toLocaleString();
 }
 
+// "+230 surplus" / "−150 shortfall" — pledges (contributionSignal, see
+// getBudgetVotingView) against costs, colored the same way TaskCard's
+// own met/unmet requirement list already signals good/bad at a glance.
+function formatBalance(n: number) {
+  const rounded = Math.round(n);
+  const color = rounded >= 0 ? "var(--success)" : "var(--danger)";
+  const label = rounded >= 0 ? "surplus" : "shortfall";
+  return { text: `${formatAmount(Math.abs(rounded))} ${label}`, color };
+}
+
 const TH = "border-b border-[var(--border)] px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]";
 const TD = "border-b border-[var(--border)] px-2 py-2 text-[var(--text)]";
 
@@ -37,7 +47,18 @@ export default function BudgetVotingSection({
   myContributionSignal: number | null;
   cycleScope: string;
 }) {
-  const { ranked, fixedTotal, memberCount, voteCount, myVote } = votingView;
+  const {
+    ranked,
+    fixedTotal,
+    memberCount,
+    attendeeCount,
+    voteCount,
+    pledgeCount,
+    totalPledged,
+    confirmedTotal,
+    confirmedBalance,
+    myVote,
+  } = votingView;
 
   // A neutral, vote-order-independent listing for the ballot itself —
   // `ranked` is sorted by the current aggregate score, which would
@@ -55,6 +76,18 @@ export default function BudgetVotingSection({
         {currentCycle.status === "confirmed" ? "Results" : "Voting"} — {voteCount} of {memberCount}{" "}
         members have voted
       </h3>
+      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        Pledged so far: {formatAmount(totalPledged)} ({pledgeCount} of {voteCount} voters signaled an amount)
+        {attendeeCount !== null && <> · {attendeeCount} attendee{attendeeCount === 1 ? "" : "s"} coming</>}
+      </p>
+      {currentCycle.status === "confirmed" && confirmedTotal !== null && confirmedBalance !== null && (
+        <p className="mt-1 text-[13px] text-[var(--text)]">
+          Confirmed budget: {formatAmount(confirmedTotal)} total — pledges leave a{" "}
+          <span style={{ color: formatBalance(confirmedBalance).color, fontWeight: 500 }}>
+            {formatBalance(confirmedBalance).text}
+          </span>
+        </p>
+      )}
       <div className="mt-2 overflow-x-auto">
         <table className="w-full border-collapse text-[13px]">
           <thead>
@@ -91,7 +124,7 @@ export default function BudgetVotingSection({
                   {r.proposal.branchId && <> · {branchNameById.get(r.proposal.branchId) ?? "—"}</>}
                 </td>
                 <td className={TD}>{memberNameById.get(r.proposal.submittedBy) ?? "—"}</td>
-                <td className={TD}>{formatAmount(r.proposal.totalAmount)}</td>
+                <td className={TD}>{formatAmount(r.liveTotal)}</td>
                 <td className={TD}>{r.costPerMember !== null ? formatAmount(Math.round(r.costPerMember)) : "—"}</td>
                 <td className={TD}>{formatAmount(r.runningTotal)}</td>
                 {currentCycle.status === "confirmed" && (
@@ -130,7 +163,7 @@ export default function BudgetVotingSection({
             {ballotOrder.map((r) => (
               <label key={r.proposal.id} className="flex items-center justify-between gap-2 text-[13px] text-[var(--text)]">
                 <span>
-                  {r.proposal.title} ({formatAmount(r.proposal.totalAmount)})
+                  {r.proposal.title} ({formatAmount(r.liveTotal)})
                 </span>
                 <input type="hidden" name="proposalId" value={r.proposal.id} />
                 <select name={`rank_${r.proposal.id}`} defaultValue={myRankByProposalId.get(r.proposal.id) ?? ""} required className={`${INPUT} w-fit`}>
@@ -165,7 +198,7 @@ export default function BudgetVotingSection({
             {ranked.map((r) => (
               <label key={r.proposal.id} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
                 <input type="checkbox" name="confirmedProposalIds" value={r.proposal.id} />
-                {r.proposal.title} ({formatAmount(r.proposal.totalAmount)})
+                {r.proposal.title} ({formatAmount(r.liveTotal)})
               </label>
             ))}
             <label className="flex flex-col gap-1">

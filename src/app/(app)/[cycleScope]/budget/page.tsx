@@ -6,7 +6,15 @@ import { member, task } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity, listBranches, requireAdmins } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
-import { getBudgetVotingView, getCurrentBudgetCycle, isBudgetOwner, listBudgetProposals } from "@/lib/budget";
+import {
+  getBudgetCycleAttendeeCount,
+  getBudgetVotingView,
+  getCurrentBudgetCycle,
+  isBudgetOwner,
+  lineItemTotal,
+  listBudgetProposals,
+  sumLineItems,
+} from "@/lib/budget";
 import type { BudgetLineItem } from "@/lib/budget";
 import { resolveSingleCycleScope } from "@/lib/cycles";
 import { ForbiddenError } from "@/lib/errors";
@@ -20,6 +28,7 @@ import {
   updateBudgetProposalAction,
 } from "./actions";
 import BudgetVotingSection from "./BudgetVotingSection";
+import LineItemsEditor from "./LineItemsEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +36,47 @@ function formatAmount(n: number) {
   return n.toLocaleString();
 }
 
-function formatLineItems(items: BudgetLineItem[]) {
-  return items.map((i) => `${i.label}|${i.amount}`).join("\n");
+// "8 × 50 = 400" / "23 attendees × 10 = 230" — the per-line breakdown
+// shown next to a multiplied item so the total isn't a mystery. A
+// plain (non-multiplied) item just shows its amount, unchanged from
+// before this existed. branchNameById is only passed once a Branch on
+// the item actually differs from something worth calling out — see
+// callers below.
+function formatLineItemDetail(item: BudgetLineItem, attendeeCount: number | null) {
+  const total = lineItemTotal(item, attendeeCount);
+  if (item.perAttendee) {
+    return attendeeCount === null
+      ? `${formatAmount(item.amount)} per attendee — no Cycle linked, so this counts as ${formatAmount(0)} for now`
+      : `${attendeeCount} attendee${attendeeCount === 1 ? "" : "s"} × ${formatAmount(item.amount)} = ${formatAmount(total)}`;
+  }
+  if (item.quantity && item.quantity > 1) {
+    return `${item.quantity} × ${formatAmount(item.amount)} = ${formatAmount(total)}`;
+  }
+  return formatAmount(item.amount);
+}
+
+// Rolls fixed costs and every given proposal's line items up by
+// Branch — a line item's own branchId when it has one, else its
+// parent proposal's branchId, else "unassigned" (null). Which
+// proposals to include is the caller's call (see below): everything
+// submitted so far while nothing's decided yet, or just the confirmed
+// set once it has been.
+function budgetByBranch(
+  fixedCosts: BudgetLineItem[],
+  proposalsForRollup: { branchId: string | null; lineItems: BudgetLineItem[] }[],
+  attendeeCount: number | null,
+): Map<string | null, number> {
+  const totals = new Map<string | null, number>();
+  const add = (branchId: string | null, amount: number) => totals.set(branchId, (totals.get(branchId) ?? 0) + amount);
+  for (const item of fixedCosts) {
+    add(item.branchId ?? null, lineItemTotal(item, attendeeCount));
+  }
+  for (const p of proposalsForRollup) {
+    for (const item of p.lineItems) {
+      add(item.branchId ?? p.branchId ?? null, lineItemTotal(item, attendeeCount));
+    }
+  }
+  return totals;
 }
 
 // datetime-local wants "YYYY-MM-DDTHH:mm" in local time, not a full ISO
@@ -132,7 +180,7 @@ export default async function BudgetPage({
   const canStartNewCycle = moduleOn && (!currentCycle || currentCycle.status === "confirmed");
   const isOwner = currentCycle ? await isBudgetOwner(viewing, currentCycle) : false;
 
-  const [branches, proposals, votingView] = await Promise.all([
+  const [branches, proposals, votingView, attendeeCount] = await Promise.all([
     moduleOn ? listBranches(viewing) : Promise.resolve([]),
     currentCycle && currentCycle.status === "proposals_open"
       ? listBudgetProposals(viewing, currentCycle.id)
@@ -140,6 +188,7 @@ export default async function BudgetPage({
     currentCycle && currentCycle.status !== "proposals_open"
       ? getBudgetVotingView(viewing, currentCycle.id)
       : Promise.resolve(null),
+    currentCycle ? getBudgetCycleAttendeeCount(viewing, currentCycle) : Promise.resolve(null),
   ]);
   const branchNameById = new Map(branches.map((b) => [b.id, b.name] as const));
 
@@ -160,11 +209,31 @@ export default async function BudgetPage({
     : new Map<string, string>();
 
   const fixedCosts = (currentCycle?.fixedCosts as BudgetLineItem[] | undefined) ?? [];
-  const fixedTotal = fixedCosts.reduce((sum, i) => sum + i.amount, 0);
-  const proposalsTotal = proposals.reduce((sum, p) => sum + p.totalAmount, 0);
+  const fixedTotal = sumLineItems(fixedCosts, attendeeCount);
+  const proposalsTotal = proposals.reduce(
+    (sum, p) => sum + sumLineItems(p.lineItems as BudgetLineItem[], attendeeCount),
+    0,
+  );
   const confirmedIds = new Set((currentCycle?.confirmedProposalIds as string[] | null) ?? []);
   const myContributionSignal =
     votingView?.myVote?.contributionSignal !== undefined ? votingView?.myVote?.contributionSignal : null;
+
+  // Confirmed cycles roll up only the funded set (the real, final
+  // per-branch budget); anything still open rolls up every proposal
+  // submitted so far, since nothing's been decided yet — "requested",
+  // not "funded".
+  const branchRollupProposals =
+    currentCycle?.status === "confirmed"
+      ? (votingView?.ranked ?? [])
+          .filter((r) => confirmedIds.has(r.proposal.id))
+          .map((r) => ({ branchId: r.proposal.branchId, lineItems: r.proposal.lineItems as BudgetLineItem[] }))
+      : currentCycle?.status === "proposals_open"
+        ? proposals.map((p) => ({ branchId: p.branchId, lineItems: p.lineItems as BudgetLineItem[] }))
+        : (votingView?.ranked ?? []).map((r) => ({
+            branchId: r.proposal.branchId,
+            lineItems: r.proposal.lineItems as BudgetLineItem[],
+          }));
+  const branchTotals = currentCycle ? budgetByBranch(fixedCosts, branchRollupProposals, attendeeCount) : new Map();
 
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
@@ -238,22 +307,17 @@ export default async function BudgetPage({
                   <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
                     Edit title / fixed costs / deadline
                   </summary>
-                  <form action={updateBudgetCycleAction} className="mt-2 flex max-w-[500px] flex-col gap-2">
+                  <form action={updateBudgetCycleAction} className="mt-2 flex max-w-[640px] flex-col gap-2">
                     <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
                     <input type="hidden" name="cycleScope" value={cycleScope} />
                     <label className="flex flex-col gap-1">
                       <span className={LABEL}>Title</span>
                       <input type="text" name="title" defaultValue={currentCycle.title} className={INPUT} />
                     </label>
-                    <label className="flex flex-col gap-1">
-                      <span className={LABEL}>Fixed costs — one per line, label|amount</span>
-                      <textarea
-                        name="fixedCostsRaw"
-                        defaultValue={formatLineItems(fixedCosts)}
-                        rows={3}
-                        className={`${INPUT} font-mono`}
-                      />
-                    </label>
+                    <div className="flex flex-col gap-1">
+                      <span className={LABEL}>Fixed costs</span>
+                      <LineItemsEditor name="fixedCostsJson" initialItems={fixedCosts} branches={branches} />
+                    </div>
                     <label className="flex flex-col gap-1">
                       <span className={LABEL}>Proposal deadline</span>
                       <input
@@ -296,10 +360,28 @@ export default async function BudgetPage({
                 <ul className="mt-1 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
                   {fixedCosts.map((c, i) => (
                     <li key={i}>
-                      {c.label}: {formatAmount(c.amount)}
+                      {c.label}: {formatLineItemDetail(c, attendeeCount)}
+                      {c.branchId && <> · {branchNameById.get(c.branchId) ?? "—"}</>}
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {branchTotals.size > 0 && (
+                <>
+                  <h3 className="mt-4 text-[15px] font-medium text-[var(--text)]">
+                    {currentCycle.status === "confirmed" ? "Confirmed budget by branch" : "Requested so far, by branch"}
+                  </h3>
+                  <ul className="mt-1 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
+                    {[...branchTotals.entries()]
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([branchId, total]) => (
+                        <li key={branchId ?? "unassigned"}>
+                          {branchId ? (branchNameById.get(branchId) ?? "—") : "Unassigned"}: {formatAmount(total)}
+                        </li>
+                      ))}
+                  </ul>
+                </>
               )}
 
               {currentCycle.status === "proposals_open" && (
@@ -312,20 +394,24 @@ export default async function BudgetPage({
                   <div className="mt-2 flex flex-col gap-2">
                     {proposals.map((p) => {
                       const items = p.lineItems as BudgetLineItem[];
+                      const liveTotal = sumLineItems(items, attendeeCount);
                       const mine = p.submittedBy === viewing.id;
                       return (
                         <div key={p.id} className={CARD}>
                           <p className="text-[12px] text-[var(--text-muted)]">
                             {memberNameById.get(p.submittedBy) ?? "—"}
                             {p.branchId && <> · {branchNameById.get(p.branchId) ?? "—"}</>} ·{" "}
-                            {formatAmount(p.totalAmount)} total
+                            {formatAmount(liveTotal)} total
                           </p>
                           <p className="mt-1 text-[14px] font-medium text-[var(--text)]">{p.title}</p>
                           {p.description && <p className="mt-1 text-[13px] text-[var(--text)]">{p.description}</p>}
                           <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text-muted)]">
                             {items.map((it, i) => (
                               <li key={i}>
-                                {it.label}: {formatAmount(it.amount)}
+                                {it.label}: {formatLineItemDetail(it, attendeeCount)}
+                                {it.branchId && it.branchId !== p.branchId && (
+                                  <> · {branchNameById.get(it.branchId) ?? "—"}</>
+                                )}
                               </li>
                             ))}
                           </ul>
@@ -346,13 +432,7 @@ export default async function BudgetPage({
                                     </option>
                                   ))}
                                 </select>
-                                <textarea
-                                  name="lineItemsRaw"
-                                  defaultValue={formatLineItems(items)}
-                                  rows={3}
-                                  placeholder="label|amount, one per line"
-                                  className={`${INPUT} font-mono`}
-                                />
+                                <LineItemsEditor name="lineItemsJson" initialItems={items} branches={branches} minItems={1} />
                                 <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                                   Save changes
                                 </button>
@@ -365,7 +445,7 @@ export default async function BudgetPage({
                   </div>
 
                   <h3 className="mt-6 text-[15px] font-medium text-[var(--text)]">Submit a proposal</h3>
-                  <form action={submitBudgetProposalAction} className="mt-2 flex max-w-[500px] flex-col gap-2">
+                  <form action={submitBudgetProposalAction} className="mt-2 flex max-w-[640px] flex-col gap-2">
                     <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
                     <input type="hidden" name="cycleScope" value={cycleScope} />
                     <label className="flex flex-col gap-1">
@@ -377,7 +457,7 @@ export default async function BudgetPage({
                       <textarea name="description" rows={2} className={INPUT} />
                     </label>
                     <label className="flex flex-col gap-1">
-                      <span className={LABEL}>Branch (optional)</span>
+                      <span className={LABEL}>Branch (optional) — this proposal&rsquo;s default; a line item below can override it</span>
                       <select name="branchId" defaultValue="" className={INPUT}>
                         <option value="">No branch</option>
                         {branches.map((b) => (
@@ -387,16 +467,10 @@ export default async function BudgetPage({
                         ))}
                       </select>
                     </label>
-                    <label className="flex flex-col gap-1">
-                      <span className={LABEL}>Line items — one per line, label|amount</span>
-                      <textarea
-                        name="lineItemsRaw"
-                        rows={4}
-                        required
-                        placeholder={"Portable toilets|450\nSignage|120"}
-                        className={`${INPUT} font-mono`}
-                      />
-                    </label>
+                    <div className="flex flex-col gap-1">
+                      <span className={LABEL}>Line items</span>
+                      <LineItemsEditor name="lineItemsJson" initialItems={[]} branches={branches} minItems={1} />
+                    </div>
                     <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                       Submit proposal
                     </button>
@@ -432,22 +506,17 @@ export default async function BudgetPage({
           {isAdminNow && canStartNewCycle && (
             <section className="mt-8 border-t border-[var(--border)] pt-6">
               <SectionHeading>Start a new budget cycle</SectionHeading>
-              <form action={createBudgetCycleAction} className="mt-3 flex max-w-[500px] flex-col gap-2">
+              <form action={createBudgetCycleAction} className="mt-3 flex max-w-[640px] flex-col gap-2">
                 <input type="hidden" name="cycleScope" value={cycleScope} />
                 <input type="hidden" name="cycleId" value={resolvedCycleId ?? ""} />
                 <label className="flex flex-col gap-1">
                   <span className={LABEL}>Title</span>
                   <input type="text" name="title" required className={INPUT} />
                 </label>
-                <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Fixed costs — one per line, label|amount (optional)</span>
-                  <textarea
-                    name="fixedCostsRaw"
-                    rows={3}
-                    placeholder={"Site fee|2000\nContingency|500"}
-                    className={`${INPUT} font-mono`}
-                  />
-                </label>
+                <div className="flex flex-col gap-1">
+                  <span className={LABEL}>Fixed costs (optional)</span>
+                  <LineItemsEditor name="fixedCostsJson" initialItems={[]} branches={branches} />
+                </div>
                 <label className="flex flex-col gap-1">
                   <span className={LABEL}>Proposal deadline</span>
                   <input type="datetime-local" name="proposalDeadline" required className={`${INPUT} w-fit`} />

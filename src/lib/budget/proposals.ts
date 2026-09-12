@@ -4,15 +4,10 @@ import { db } from "@/db";
 import { branch, budgetProposal } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import { getBudgetCycle } from "./cycles";
+import { getBudgetCycle, getBudgetCycleAttendeeCount, lineItemInput, requireValidLineItems, sumLineItems } from "./cycles";
 import type { BudgetLineItem } from "./cycles";
 
 type Member = typeof memberTable.$inferSelect;
-
-const lineItemInput = z.object({
-  label: z.string().min(1),
-  amount: z.number().int().positive(),
-});
 
 export const submitBudgetProposalInput = z.object({
   title: z.string().min(1),
@@ -25,10 +20,6 @@ export type SubmitBudgetProposalInput = z.infer<typeof submitBudgetProposalInput
 
 export const updateBudgetProposalInput = submitBudgetProposalInput.partial();
 export type UpdateBudgetProposalInput = z.infer<typeof updateBudgetProposalInput>;
-
-function sumLineItems(items: BudgetLineItem[]) {
-  return items.reduce((sum, i) => sum + i.amount, 0);
-}
 
 // Re-checked here, not just in the zod schema's .min(1), so a direct
 // lib caller is protected too — same defense-in-depth precedent Forms'
@@ -70,7 +61,14 @@ export async function submitBudgetProposal(
       throw new NotFoundError("Branch not found in your community");
     }
   }
+  await requireValidLineItems(actor.communityId, input.lineItems);
 
+  // A perAttendee line item's contribution to totalAmount is only a
+  // snapshot as of this write — see getBudgetVotingView, which
+  // recomputes every proposal's live total against the current
+  // attendee count rather than trusting this stored figure once
+  // heads actually get counted.
+  const attendeeCount = await getBudgetCycleAttendeeCount(actor, cycleRow);
   const [created] = await db
     .insert(budgetProposal)
     .values({
@@ -79,7 +77,7 @@ export async function submitBudgetProposal(
       title: input.title,
       description: input.description ?? null,
       lineItems: input.lineItems,
-      totalAmount: sumLineItems(input.lineItems),
+      totalAmount: sumLineItems(input.lineItems, attendeeCount),
       branchId: input.branchId ?? null,
       phaseId: input.phaseId ?? null,
     })
@@ -136,7 +134,12 @@ export async function updateBudgetProposal(
       throw new NotFoundError("Branch not found in your community");
     }
   }
+  if (input.lineItems !== undefined) {
+    await requireValidLineItems(actor.communityId, input.lineItems);
+  }
 
+  const attendeeCount =
+    input.lineItems !== undefined ? await getBudgetCycleAttendeeCount(actor, cycleRow) : null;
   const [updated] = await db
     .update(budgetProposal)
     .set({
@@ -144,7 +147,7 @@ export async function updateBudgetProposal(
       ...(input.description !== undefined && { description: input.description }),
       ...(input.lineItems !== undefined && {
         lineItems: input.lineItems,
-        totalAmount: sumLineItems(input.lineItems),
+        totalAmount: sumLineItems(input.lineItems, attendeeCount),
       }),
       ...(input.branchId !== undefined && { branchId: input.branchId }),
       ...(input.phaseId !== undefined && { phaseId: input.phaseId }),

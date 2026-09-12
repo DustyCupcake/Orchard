@@ -30,7 +30,7 @@ The core idea: **work, not roles.** The atomic unit is the task, not the positio
 
 **Forms & feedback** — a shared form primitive (free text/single/multi-choice) reused across post-cycle feedback, recruitment applications, and more, authored through a real settings-screen builder (add/remove/reorder fields, live preview, inline validation) rather than hand-typed config — the same builder edits a Form's fields or a Profile question's shape after creation too, never just at first authoring.
 
-**Budget** — fixed costs plus itemized member proposals, ranked-choice (Borda-style) voting with cost-per-member and a running total, and an owner confirmation step that requires a rationale only when it deviates from the ranked order.
+**Budget** — fixed costs plus itemized member proposals, each line item a plain amount, a fixed quantity multiplier, or one that scales live off however many members have declared Participation "coming," and each optionally tagged to its own Branch for a live per-branch cost breakdown; ranked-choice (Borda-style) voting with cost-per-member, a running total, and a pledged-contributions-vs-cost balance; and an owner confirmation step that requires a rationale only when it deviates from the ranked order.
 
 **Event scheduling** — an internal programme where any member proposes slots, conflicts are recomputed automatically on review, and a designated owner mediates and publishes — genuinely independent per concurrently-open cycle, same as Budget, right down to its own owner grant.
 
