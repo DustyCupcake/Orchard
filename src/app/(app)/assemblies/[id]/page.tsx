@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { getAssembly } from "@/lib/assemblies";
 import { Banner, BUTTON_PRIMARY, CARD, INPUT, Tag, type Tone } from "@/components/ui/kit";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import { addAgendaItemAction, submitAssemblyResponseAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,37 @@ export default async function AssemblyDetailPage({
         Agenda closes {a.agendaEndsAt.toLocaleString()} · Voting opens {a.noticeEndsAt.toLocaleString()} ·
         Closes {a.votingEndsAt.toLocaleString()}
       </p>
+
+      <details className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+        <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">What&rsquo;s an Assembly?</summary>
+        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+          A way to gather the whole community&rsquo;s view on something — anything from a genuinely
+          urgent one-off to a slower, deliberate structural question. It moves through four phases:
+        </p>
+        <ul className="mt-1.5 flex flex-col gap-1 text-[12px] text-[var(--text-muted)]">
+          <li>
+            <strong className="text-[var(--text)]">Agenda</strong> — any member can add agenda
+            items: the specific questions or motions people will vote on.
+          </li>
+          <li>
+            <strong className="text-[var(--text)]">Notice</strong> — the agenda is locked and
+            visible, but voting hasn&rsquo;t opened yet.
+          </li>
+          <li>
+            <strong className="text-[var(--text)]">Voting</strong> — members vote on each agenda
+            item.
+          </li>
+          <li>
+            <strong className="text-[var(--text)]">Closed</strong> — voting has ended and results
+            are final.
+          </li>
+        </ul>
+        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+          Results are always advisory, never applied automatically — turning any of this into an
+          actual change is a separate, deliberate step someone takes by hand.
+        </p>
+      </details>
+
       {a.phase === "closed" && (
         <p className="mt-2 text-[13px] text-[var(--text-muted)]">
           Closed. Results below are final — turning any of this into an actual change is a
@@ -153,9 +185,9 @@ export default async function AssemblyDetailPage({
             <option value="multi_choice">Multi choice</option>
           </select>
           <input type="text" name="options" placeholder="options for choice types, comma-separated" className={INPUT} />
-          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+          <SubmitButton className={`${BUTTON_PRIMARY} w-fit`} pendingLabel="Adding…">
             Add to agenda
-          </button>
+          </SubmitButton>
         </form>
       )}
     </main>

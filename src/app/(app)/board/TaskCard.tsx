@@ -288,10 +288,15 @@ export default function TaskCard({
       </div>
 
       {task.status === "claimed" && holds && (
-        <form action={parkAction} className="mt-2 flex items-center gap-2">
+        <form action={parkAction} className="mt-2 flex flex-wrap items-center gap-2">
           <input type="hidden" name="taskId" value={task.id} />
-          <input type="date" name="nextCheckinAt" required className={INPUT} />
-          <input type="text" name="waitingNote" placeholder="waiting on…" className={`${INPUT} flex-1`} />
+          <input type="date" name="nextCheckinAt" required className={`${INPUT} min-w-0`} />
+          <input
+            type="text"
+            name="waitingNote"
+            placeholder="waiting on…"
+            className={`${INPUT} min-w-0 flex-1 basis-32`}
+          />
           <button type="submit" className={BUTTON_GHOST}>
             Park
           </button>

@@ -41,6 +41,18 @@ export default async function InputRoundsPage({
         open here, in one sitting.
       </p>
 
+      <details className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+        <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">What&rsquo;s an Input round?</summary>
+        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+          Anyone can pose a small, task-specific question from that task&rsquo;s own page, any
+          time — posing one doesn&rsquo;t notify anyone. Instead, everything posed queues up and
+          batches on a fixed cadence (weekly by default, set per Community): at the cutoff,
+          everything currently queued bundles into one round, and everyone gets a single
+          notification to answer what they can in one sitting here. Answers go back to whoever
+          asked, and stay visible on the task itself.
+        </p>
+      </details>
+
       {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
 
       {reminderDue && nextCutoffAt && (

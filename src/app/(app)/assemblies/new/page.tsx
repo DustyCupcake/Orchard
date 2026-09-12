@@ -25,6 +25,15 @@ export default async function NewAssemblyPage({
         something urgent, or give a slow, structural question real time to breathe. All three
         durations are in minutes (60 = 1 hour, 1440 = 1 day, 10080 = 1 week).
       </p>
+      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+        Once proposed, the Assembly moves through those windows in order: during{" "}
+        <strong className="text-[var(--text)]">agenda-building</strong>, any member can add agenda
+        items — the specific questions or motions people will vote on. During{" "}
+        <strong className="text-[var(--text)]">notice</strong>, that agenda is locked and visible
+        but voting hasn&rsquo;t opened yet. Then <strong className="text-[var(--text)]">voting</strong>{" "}
+        opens, and once it closes the results are tallied and published — advisory only, never
+        applied automatically.
+      </p>
 
       {error && (
         <div className="mt-4">
