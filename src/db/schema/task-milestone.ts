@@ -1,4 +1,4 @@
-import { date, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { dateRelativeModeEnum, dateTypeEnum, phase } from "./phase";
 import { task } from "./task";
 import { member } from "./member";
@@ -57,6 +57,15 @@ export const taskMilestone = pgTable("task_milestone", {
   // to the same Cycle as the task's own," enforced at write time.
   phaseId: uuid("phase_id").references(() => phase.id),
   status: taskMilestoneStatusEnum("status").notNull().default("confirmed"),
+  // "The" deadline for the schedule/by-phase board views (docs/spec.md's
+  // Views: "sort by phase/deadline") — at most one true per task,
+  // enforced by src/lib/tasks/milestones.ts auto-clearing any sibling
+  // rather than a DB constraint, the same "flag one of several" shape
+  // as TaskAssignment.isCoordinationSlot. Not a new parallel date field
+  // on Task — deadlines stay inside the milestone system (confirmed/
+  // pending, phase-anchored, relative-date resolution) rather than a
+  // second concept that could drift out of sync.
+  isDeadline: boolean("is_deadline").notNull().default(false),
   // Who originally proposed it — set once, never changes. May differ
   // from createdBy: a holder's own direct add sets both to themselves;
   // a non-holder's pending add sets proposedBy to the non-holder, and

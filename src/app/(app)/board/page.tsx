@@ -1,10 +1,11 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { branch } from "@/db/schema";
+import { branch, phase } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import {
+  groupTasksByPhase,
   listDistinctTags,
   listMyPendingJoinRequests,
   listTasksWithAssignments,
@@ -13,14 +14,21 @@ import {
 import { listCoordinationBranchIds, isCoordinationHolder } from "@/lib/coordination";
 import { canInitiateCycle, resolveDefaultScopeSegment, resolveViewScopeFromSegment } from "@/lib/cycles";
 import { listTaskFitSuggestions } from "@/lib/onboarding";
+import { getCommunityRow } from "@/lib/recruitment";
 import BranchFilter from "./BranchFilter";
 import TagFilter from "./TagFilter";
 import TaskCard from "./TaskCard";
+import PhaseCard from "./PhaseCard";
 import { Tag, Banner, BUTTON_SECONDARY, BUTTON_PRIMARY } from "@/components/ui/kit";
 import PageHeader from "@/components/ui/PageHeader";
+import Tabs from "@/components/ui/Tabs";
 import { bulkClaimAction, exportSelectedTasksAsPackAction } from "./actions";
 
 export const dynamic = "force-dynamic";
+
+const VIEWS = ["kanban", "phase"] as const;
+type BoardView = (typeof VIEWS)[number];
+const VIEW_LABEL: Record<BoardView, string> = { kanban: "Kanban", phase: "By phase" };
 
 const COLUMNS = [
   { status: "unclaimed", label: "Unclaimed" },
@@ -54,6 +62,7 @@ export default async function BoardPage({
     notice?: string;
     done?: string;
     hideCycleless?: string;
+    view?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
@@ -61,7 +70,7 @@ export default async function BoardPage({
     redirect("/login");
   }
 
-  const { branchId, tag, fit, error, notice, done, hideCycleless } = await searchParams;
+  const { branchId, tag, fit, error, notice, done, hideCycleless, view } = await searchParams;
   const hidingCycleless = hideCycleless === "1";
   // "A Done confirmation gains a 'you might also like' strip" — see
   // docs/development-plan.md's Phase 56 and src/lib/onboarding.ts's
@@ -86,22 +95,43 @@ export default async function BoardPage({
       : [activeScope.cycle.id]
     : [];
 
-  const [branches, tasks, tierNames, myPendingRequests, allTags, coordinationBranchIds, canExport, isCoordinator] =
-    await Promise.all([
-      db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
-      listTasksWithAssignments(viewing, {
-        branchId,
-        tag,
-        sortByFit,
-        cycleScope: { cycleIds: scopeCycleIds, hideCycleless: hidingCycleless },
-      }),
-      tierNameLookup(viewing.communityId),
-      listMyPendingJoinRequests(viewing),
-      listDistinctTags(viewing),
-      listCoordinationBranchIds(viewing),
-      canInitiateCycle(viewing),
-      isCoordinationHolder(viewing, null),
-    ]);
+  const [
+    branches,
+    tasks,
+    tierNames,
+    myPendingRequests,
+    allTags,
+    coordinationBranchIds,
+    canExport,
+    isCoordinator,
+    communityRow,
+    phases,
+  ] = await Promise.all([
+    db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
+    listTasksWithAssignments(viewing, {
+      branchId,
+      tag,
+      sortByFit,
+      cycleScope: { cycleIds: scopeCycleIds, hideCycleless: hidingCycleless },
+    }),
+    tierNameLookup(viewing.communityId),
+    listMyPendingJoinRequests(viewing),
+    listDistinctTags(viewing),
+    listCoordinationBranchIds(viewing),
+    canInitiateCycle(viewing),
+    isCoordinationHolder(viewing, null),
+    getCommunityRow(viewing.communityId),
+    scopeCycleIds.length === 0 ? Promise.resolve([]) : db.select().from(phase).where(inArray(phase.cycleId, scopeCycleIds)),
+  ]);
+
+  // "By phase" only makes sense once there's a real phase spine to show
+  // — otherwise every task lands in one "No phase" card, no better than
+  // kanban. Falls back to kanban server-side rather than rendering a
+  // degenerate view if `view=phase` is requested anyway (e.g. a stale
+  // bookmark from when phases were on).
+  const phaseViewAvailable = communityRow.phasesEnabled && phases.length > 0;
+  const visibleViews = VIEWS.filter((v) => v !== "phase" || phaseViewAvailable);
+  const activeView: BoardView = visibleViews.includes(view as BoardView) ? (view as BoardView) : "kanban";
   // Export only ever targets one real cycle — same "the current one"
   // scoping /participation's own whole-cycle export always used, now
   // reading the switcher's own resolved single-cycle state instead of
@@ -113,24 +143,28 @@ export default async function BoardPage({
   const exportCycle = activeScope?.kind === "single" ? activeScope.cycle : null;
   const exportableInView = exportCycle ? tasks.filter((t) => t.cycleId === exportCycle.id) : [];
 
-  // Shared query-preserving link builder for the fit/cycle-less
+  // Shared query-preserving link builder for the fit/cycle-less/view
   // toggles below — a plain link, same "no client JS needed for
   // something a link can do" posture as everywhere else this codebase
   // avoids it. Each toggle only overrides its own param, carrying the
-  // other two through unchanged.
-  function boardHref(overrides: { fit?: boolean; hideCycleless?: boolean }) {
+  // others through unchanged.
+  function boardHref(overrides: { fit?: boolean; hideCycleless?: boolean; view?: BoardView }) {
     const params = new URLSearchParams();
     if (branchId) params.set("branchId", branchId);
     if (tag) params.set("tag", tag);
     const nextFit = overrides.fit ?? sortByFit;
     const nextHideCycleless = overrides.hideCycleless ?? hidingCycleless;
+    const nextView = overrides.view ?? activeView;
     if (nextFit) params.set("fit", "1");
     if (nextHideCycleless) params.set("hideCycleless", "1");
+    if (nextView !== "kanban") params.set("view", nextView);
     const query = params.toString();
     return query ? `/board?${query}` : "/board";
   }
   const fitToggleHref = boardHref({ fit: !sortByFit });
   const cyclelessToggleHref = boardHref({ hideCycleless: !hidingCycleless });
+  const viewTabs = visibleViews.map((v) => ({ key: v, label: VIEW_LABEL[v] }));
+  const phaseGroups = activeView === "phase" ? groupTasksByPhase(tasks, phases) : [];
 
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
 
@@ -163,6 +197,11 @@ export default async function BoardPage({
               ))}
           </>
         }
+        tabs={
+          viewTabs.length > 1 ? (
+            <Tabs tabs={viewTabs} active={activeView} hrefFor={(v) => boardHref({ view: v })} />
+          ) : undefined
+        }
       />
 
       {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
@@ -192,7 +231,7 @@ export default async function BoardPage({
       {branches.length > 0 && (
         <div className="mt-6 flex flex-wrap items-center gap-4">
           <BranchFilter branches={branches} selectedBranchId={branchId} />
-          {allTags.length > 0 && <TagFilter tags={allTags} selectedTag={tag} branchId={branchId} />}
+          {allTags.length > 0 && <TagFilter tags={allTags} selectedTag={tag} />}
           <Link
             href={fitToggleHref}
             className={sortByFit ? "text-[13px] font-medium text-[var(--accent-1)]" : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"}
@@ -271,36 +310,54 @@ export default async function BoardPage({
         </details>
       )}
 
-      <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {COLUMNS.map((col) => {
-          const colTasks = tasks.filter((t) => t.status === col.status);
-          return (
-            <div key={col.status}>
-              <div className="mb-3 flex items-center gap-2 border-b border-[var(--border)] pb-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-                  {col.label}
-                </span>
-                <Tag>{colTasks.length}</Tag>
+      {activeView === "kanban" && (
+        <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {COLUMNS.map((col) => {
+            const colTasks = tasks.filter((t) => t.status === col.status);
+            return (
+              <div key={col.status}>
+                <div className="mb-3 flex items-center gap-2 border-b border-[var(--border)] pb-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                    {col.label}
+                  </span>
+                  <Tag>{colTasks.length}</Tag>
+                </div>
+                {colTasks.map((t) => (
+                  <TaskCard
+                    key={t.id}
+                    task={t}
+                    assignments={t.assignments}
+                    requirements={t.requirements}
+                    unmetRequirements={t.unmetRequirements}
+                    groupCoverage={t.groupCoverage}
+                    tierNames={tierNames}
+                    branchName={branchNameById.get(t.branchId) ?? "—"}
+                    currentMemberId={viewing.id}
+                    myPendingRequestId={myPendingRequests.get(t.id) ?? null}
+                    isCoordinationHolderForBranch={coordinationBranchIds.has(t.branchId)}
+                  />
+                ))}
               </div>
-              {colTasks.map((t) => (
-                <TaskCard
-                  key={t.id}
-                  task={t}
-                  assignments={t.assignments}
-                  requirements={t.requirements}
-                  unmetRequirements={t.unmetRequirements}
-                  groupCoverage={t.groupCoverage}
-                  tierNames={tierNames}
-                  branchName={branchNameById.get(t.branchId) ?? "—"}
-                  currentMemberId={viewing.id}
-                  myPendingRequestId={myPendingRequests.get(t.id) ?? null}
-                  isCoordinationHolderForBranch={coordinationBranchIds.has(t.branchId)}
-                />
-              ))}
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
+
+      {activeView === "phase" && (
+        <div className="mt-6">
+          {phaseGroups.map((group) => (
+            <PhaseCard
+              key={group.name}
+              group={group}
+              tierNames={tierNames}
+              branchNameById={branchNameById}
+              currentMemberId={viewing.id}
+              myPendingRequests={myPendingRequests}
+              coordinationBranchIds={coordinationBranchIds}
+            />
+          ))}
+        </div>
+      )}
     </main>
   );
 }

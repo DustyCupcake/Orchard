@@ -9,6 +9,7 @@ import {
   deleteTaskMilestone,
   listMyTaskMilestones,
   listTaskMilestones,
+  listTasksWithAssignments,
   updateTaskMilestone,
 } from "@/lib/tasks";
 import { createCycle, getCycle, updateCycleSettings } from "@/lib/cycles";
@@ -482,5 +483,122 @@ describe("listMyTaskMilestones", () => {
     });
 
     expect(await listMyTaskMilestones(alice)).toHaveLength(1); // still just taskRow's own
+  });
+});
+
+// The board's "deadline" concept (see CHANGELOG.md's "Board views: a
+// view switcher, a by-phase layout, and deadline milestones") rides on
+// the existing milestone system (a boolean flag) rather than a new
+// parallel field. At most one milestone per task carries it,
+// auto-transferred rather than blocked with an error.
+describe("isDeadline", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("setting a second milestone's isDeadline clears the first one's flag on the same task", async () => {
+    const { alice, taskRow } = await setUp();
+    const first = await createTaskMilestone(alice, taskRow.id, {
+      label: "Deposit due",
+      date: { type: "absolute", date: "2027-01-15" },
+      isDeadline: true,
+    });
+    expect(first.isDeadline).toBe(true);
+
+    const second = await createTaskMilestone(alice, taskRow.id, {
+      label: "Final payment",
+      date: { type: "absolute", date: "2027-01-20" },
+      isDeadline: true,
+    });
+    expect(second.isDeadline).toBe(true);
+
+    const [reloadedFirst] = await db.select().from(taskMilestone).where(eq(taskMilestone.id, first.id));
+    expect(reloadedFirst.isDeadline).toBe(false);
+  });
+
+  it("updateTaskMilestone flagging isDeadline clears any other milestone's flag on the same task", async () => {
+    const { alice, taskRow } = await setUp();
+    await claimTask(alice, taskRow.id); // updateTaskMilestone is holder-only
+    const first = await createTaskMilestone(alice, taskRow.id, {
+      label: "Deposit due",
+      date: { type: "absolute", date: "2027-01-15" },
+      isDeadline: true,
+    });
+    const second = await createTaskMilestone(alice, taskRow.id, {
+      label: "Final payment",
+      date: { type: "absolute", date: "2027-01-20" },
+    });
+
+    const updated = await updateTaskMilestone(alice, second.id, { isDeadline: true });
+    expect(updated.isDeadline).toBe(true);
+
+    const [reloadedFirst] = await db.select().from(taskMilestone).where(eq(taskMilestone.id, first.id));
+    expect(reloadedFirst.isDeadline).toBe(false);
+  });
+
+  it("a milestone flagged on a different task is untouched", async () => {
+    const { alice, branch, community: testCommunity, cyc, procurement, taskRow } = await setUp();
+    const otherTask = await insertTask(testCommunity.id, branch.id, alice.id, {
+      cycleId: cyc.id,
+      phaseId: procurement.id,
+    });
+    const otherDeadline = await createTaskMilestone(alice, otherTask.id, {
+      label: "Their own deadline",
+      date: { type: "absolute", date: "2027-01-10" },
+      isDeadline: true,
+    });
+
+    await createTaskMilestone(alice, taskRow.id, {
+      label: "My deadline",
+      date: { type: "absolute", date: "2027-01-15" },
+      isDeadline: true,
+    });
+
+    const [reloaded] = await db.select().from(taskMilestone).where(eq(taskMilestone.id, otherDeadline.id));
+    expect(reloaded.isDeadline).toBe(true);
+  });
+});
+
+describe("getTaskDeadline (via listTasksWithAssignments)", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("resolves the flagged milestone's date when one exists", async () => {
+    const { alice, taskRow } = await setUp();
+    await createTaskMilestone(alice, taskRow.id, {
+      label: "Deposit due",
+      date: { type: "absolute", date: "2027-01-15" },
+      isDeadline: true,
+    });
+
+    const [found] = await listTasksWithAssignments(alice, { branchId: taskRow.branchId });
+    expect(found.deadlineDate).toBe("2027-01-15");
+  });
+
+  it("falls back to the task's own Phase end date when no milestone is flagged", async () => {
+    const { alice, taskRow, procurement } = await setUp();
+
+    const [found] = await listTasksWithAssignments(alice, { branchId: taskRow.branchId });
+    expect(found.deadlineDate).toBe(procurement.endDate);
+  });
+
+  it("is null when there's no flagged milestone and no Phase", async () => {
+    const { alice, branch, community: testCommunity } = await createFixtures();
+    const bare = await insertTask(testCommunity.id, branch.id, alice.id);
+
+    const [found] = await listTasksWithAssignments(alice, { branchId: bare.branchId });
+    expect(found.deadlineDate).toBeNull();
+  });
+
+  it("a non-flagged milestone on the task doesn't count as its deadline", async () => {
+    const { alice, taskRow, procurement } = await setUp();
+    await createTaskMilestone(alice, taskRow.id, {
+      label: "Just a reminder",
+      date: { type: "absolute", date: "2027-01-05" },
+    });
+
+    const [found] = await listTasksWithAssignments(alice, { branchId: taskRow.branchId });
+    expect(found.deadlineDate).toBe(procurement.endDate);
   });
 });

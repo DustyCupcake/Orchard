@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { SELECT } from "@/components/ui/kit";
 
 export default function BranchFilter({
@@ -11,6 +11,7 @@ export default function BranchFilter({
   selectedBranchId?: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   return (
     <label className="flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
@@ -19,7 +20,14 @@ export default function BranchFilter({
         defaultValue={selectedBranchId ?? ""}
         onChange={(e) => {
           const value = e.target.value;
-          router.push(value ? `/board?branchId=${value}` : "/board");
+          // Clone-then-override every other current param — a plain
+          // `?branchId=` overwrite here used to silently drop tag/fit/
+          // hideCycleless/view whenever a branch was picked.
+          const params = new URLSearchParams(searchParams.toString());
+          if (value) params.set("branchId", value);
+          else params.delete("branchId");
+          const query = params.toString();
+          router.push(query ? `/board?${query}` : "/board");
         }}
         className={SELECT}
       >

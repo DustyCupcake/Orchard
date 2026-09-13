@@ -1079,6 +1079,7 @@ export default async function TaskDetailPage({
             <div key={m.id} className="mb-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[13px] font-medium text-[var(--text)]">{m.label}</span>
+                {m.isDeadline && <Tag tone="accent">deadline</Tag>}
                 {m.status === "pending" && (
                   <Tag tone="warning">pending — proposed by {memberNameById.get(m.proposedBy) ?? "—"}</Tag>
                 )}
@@ -1094,6 +1095,10 @@ export default async function TaskDetailPage({
                     <input type="hidden" name="taskId" value={taskRow.id} />
                     <input type="hidden" name="milestoneId" value={m.id} />
                     <MilestoneDateFields milestone={m} phases={cyclePhases} />
+                    <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                      <input type="checkbox" name="isDeadline" defaultChecked={m.isDeadline} />
+                      This is the deadline
+                    </label>
                     <div className="flex gap-2">
                       <button type="submit" className={BUTTON_PRIMARY}>
                         Save
@@ -1129,6 +1134,10 @@ export default async function TaskDetailPage({
           <input type="hidden" name="taskId" value={taskRow.id} />
           <input type="text" name="label" required placeholder="Label (e.g. Deposit due)" className={INPUT} />
           <MilestoneDateFields phases={cyclePhases} />
+          <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+            <input type="checkbox" name="isDeadline" />
+            This is the deadline
+          </label>
           <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
             Add
           </button>

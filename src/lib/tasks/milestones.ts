@@ -1,6 +1,6 @@
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/db";
+import { db, type Tx } from "@/db";
 import { cycle, phase, task, taskAssignment, taskMilestone } from "@/db/schema";
 import type { member as memberTable, task as taskTable, taskAssignment as taskAssignmentTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
@@ -53,14 +53,33 @@ export type MilestoneDateInput = z.infer<typeof milestoneDateInput>;
 export const createTaskMilestoneInput = z.object({
   label: z.string().min(1),
   date: milestoneDateInput,
+  isDeadline: z.boolean().optional(),
 });
 export type CreateTaskMilestoneInput = z.infer<typeof createTaskMilestoneInput>;
 
 export const updateTaskMilestoneInput = z.object({
   label: z.string().min(1).optional(),
   date: milestoneDateInput.optional(),
+  isDeadline: z.boolean().optional(),
 });
 export type UpdateTaskMilestoneInput = z.infer<typeof updateTaskMilestoneInput>;
+
+// At most one milestone per task carries isDeadline — auto-transferred,
+// not blocked with an error: unlike Form fields (a whole array
+// submitted and validated together, see src/lib/forms.ts's
+// tooManyTaggedFields/superRefine), milestones are added/edited one at
+// a time with no natural "unset the old one first" step for a holder to
+// take. Setting a new one just silently wins.
+async function clearOtherDeadlines(tx: Tx, taskId: string, keepMilestoneId: string | null) {
+  await tx
+    .update(taskMilestone)
+    .set({ isDeadline: false })
+    .where(
+      keepMilestoneId
+        ? and(eq(taskMilestone.taskId, taskId), ne(taskMilestone.id, keepMilestoneId))
+        : eq(taskMilestone.taskId, taskId),
+    );
+}
 
 function isPhaseAnchor(anchor: AnchorType): anchor is "phase_start" | "phase_end" {
   return anchor === "phase_start" || anchor === "phase_end";
@@ -278,11 +297,26 @@ export async function createTaskMilestone(actor: Member, taskId: string, rawInpu
   const columns = await columnsFromInput(taskRow, input.date);
 
   const status = currentlyHolds(taskRow, actor.id) || !hasAnyHolder(taskRow) ? "confirmed" : "pending";
+  const isDeadline = input.isDeadline ?? false;
 
-  const [created] = await db
-    .insert(taskMilestone)
-    .values({ taskId, label: input.label, ...columns, status, proposedBy: actor.id, createdBy: actor.id })
-    .returning();
+  const created = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(taskMilestone)
+      .values({
+        taskId,
+        label: input.label,
+        ...columns,
+        isDeadline,
+        status,
+        proposedBy: actor.id,
+        createdBy: actor.id,
+      })
+      .returning();
+    if (isDeadline) {
+      await clearOtherDeadlines(tx, taskId, row.id);
+    }
+    return row;
+  });
   return { ...created, ...(await resolveMilestone(taskRow, created)) };
 }
 
@@ -301,11 +335,21 @@ export async function updateTaskMilestone(actor: Member, milestoneId: string, ra
   }
 
   const columns = input.date ? await columnsFromInput(taskRow, input.date) : undefined;
-  const [updated] = await db
-    .update(taskMilestone)
-    .set({ ...(input.label !== undefined && { label: input.label }), ...(columns ?? {}) })
-    .where(eq(taskMilestone.id, milestoneId))
-    .returning();
+  const updated = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(taskMilestone)
+      .set({
+        ...(input.label !== undefined && { label: input.label }),
+        ...(columns ?? {}),
+        ...(input.isDeadline !== undefined && { isDeadline: input.isDeadline }),
+      })
+      .where(eq(taskMilestone.id, milestoneId))
+      .returning();
+    if (input.isDeadline) {
+      await clearOtherDeadlines(tx, existing.taskId, row.id);
+    }
+    return row;
+  });
   return { ...updated, ...(await resolveMilestone(taskRow, updated)) };
 }
 
@@ -346,4 +390,23 @@ export async function confirmTaskMilestone(actor: Member, milestoneId: string) {
     .where(eq(taskMilestone.id, milestoneId))
     .returning();
   return { ...updated, ...(await resolveMilestone(taskRow, updated)) };
+}
+
+// The board's "deadline" concept (docs/spec.md's Views: "sort by
+// phase/deadline") — the task's own isDeadline-flagged milestone if it
+// has one, else the task's Phase's own end date, else null. Takes the
+// candidate milestone row rather than querying for it itself, so a
+// caller enriching many tasks at once (listTasksWithAssignments) can
+// batch-fetch every task's flagged milestone in one query instead of
+// one-per-task.
+export async function getTaskDeadline(
+  taskRow: { cycleId: string | null; phaseId: string | null },
+  deadlineMilestone: MilestoneRow | null,
+  phaseEndDate: string | null,
+): Promise<string | null> {
+  if (deadlineMilestone) {
+    const { resolvedDate } = await resolveMilestone(taskRow, deadlineMilestone);
+    if (resolvedDate) return resolvedDate;
+  }
+  return phaseEndDate;
 }

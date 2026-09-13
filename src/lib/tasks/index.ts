@@ -13,3 +13,4 @@ export * from "./waive";
 export * from "./signals";
 export * from "./coordinator-ping";
 export * from "./escalation";
+export * from "./board-views";

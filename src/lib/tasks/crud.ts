@@ -1,10 +1,11 @@
 import { and, arrayContains, eq, inArray, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { branch, member, requirement, task, taskAssignment, taskDependency } from "@/db/schema";
+import { branch, member, phase, requirement, task, taskAssignment, taskDependency, taskMilestone } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { computeRequirementFitScore, getGroupCoverageStatus, getUnmetRequirements } from "./requirements";
+import { getTaskDeadline } from "./milestones";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -225,6 +226,26 @@ export async function listTasksWithAssignments(
     requirementsByTask.set(r.taskId, list);
   }
 
+  // The board's "deadline" (docs/spec.md's Views: "sort by phase/
+  // deadline") — each task's own isDeadline-flagged milestone if it has
+  // one, else its Phase's own end date (see getTaskDeadline). Both
+  // batch-fetched here, same shape as assignments/requirements above,
+  // rather than one query per task.
+  const deadlineMilestones = await db
+    .select()
+    .from(taskMilestone)
+    .where(and(inArray(taskMilestone.taskId, tasks.map((t) => t.id)), eq(taskMilestone.isDeadline, true)));
+  const deadlineMilestoneByTask = new Map(deadlineMilestones.map((m) => [m.taskId, m]));
+
+  const phaseIds = [...new Set(tasks.map((t) => t.phaseId).filter((id): id is string => id !== null))];
+  const phaseEndDateById = new Map(
+    phaseIds.length === 0
+      ? []
+      : (await db.select({ id: phase.id, endDate: phase.endDate }).from(phase).where(inArray(phase.id, phaseIds))).map(
+          (p) => [p.id, p.endDate] as const,
+        ),
+  );
+
   const withRequirements = await Promise.all(
     tasks.map(async (t) => {
       const taskRequirements = requirementsByTask.get(t.id) ?? [];
@@ -232,6 +253,11 @@ export async function listTasksWithAssignments(
       const fitScore = filters.sortByFit
         ? await computeRequirementFitScore(db, actor, taskRequirements, groupCoverage)
         : 0;
+      const deadlineDate = await getTaskDeadline(
+        t,
+        deadlineMilestoneByTask.get(t.id) ?? null,
+        (t.phaseId && phaseEndDateById.get(t.phaseId)) || null,
+      );
       return {
         ...t,
         assignments: assignmentsByTask.get(t.id) ?? [],
@@ -239,6 +265,7 @@ export async function listTasksWithAssignments(
         unmetRequirements: requirementsByTask.has(t.id) ? await getUnmetRequirements(db, actor, t.id) : [],
         groupCoverage,
         fitScore,
+        deadlineDate,
       };
     }),
   );

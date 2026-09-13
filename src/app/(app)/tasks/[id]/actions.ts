@@ -193,6 +193,7 @@ export async function addMilestoneAction(formData: FormData) {
     await createTaskMilestone(actor, taskId, {
       label: String(formData.get("label") ?? ""),
       date: milestoneDateFromForm(formData),
+      isDeadline: formData.get("isDeadline") === "on",
     });
   } catch (err) {
     redirectWithError(taskId, err);
@@ -210,6 +211,7 @@ export async function updateMilestoneAction(formData: FormData) {
     await updateTaskMilestone(actor, milestoneId, {
       label: String(formData.get("label") ?? ""),
       date: milestoneDateFromForm(formData),
+      isDeadline: formData.get("isDeadline") === "on",
     });
   } catch (err) {
     redirectWithError(taskId, err);
