@@ -101,3 +101,31 @@ export async function submitOnboardingAxisAction(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/profile");
 }
+
+// PrefilledAnswersReview.tsx's own "Apply" step — several once-ever
+// answers reviewed together as one confirmation, unlike every other
+// profile-question form here which is deliberately one question per
+// submit (ProfileQuestion is always independently answerable per
+// spec). This bundles the submit only because the review UI presents
+// them together; each answer is still validated and written
+// individually via answerProfileQuestion, same as anywhere else. Each
+// reviewed question contributes its own "questionId" hidden input, so
+// formData.getAll recovers exactly the set the member was shown.
+export async function submitOnboardingPrefilledAnswersAction(formData: FormData) {
+  const actor = await requireMember();
+  const questionIds = formData.getAll("questionId").map(String);
+
+  try {
+    for (const questionId of questionIds) {
+      const multi = formData.getAll(`value_multi_${questionId}`).map(String);
+      const single = formData.get(`value_${questionId}`);
+      const value = multi.length > 0 ? multi : (single ?? "");
+      await answerProfileQuestion(actor, questionId, { status: "answered", value });
+    }
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/profile");
+}

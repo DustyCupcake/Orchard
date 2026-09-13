@@ -185,17 +185,28 @@ export async function listOutstandingQuestions(
 // Once-ever answers a member has already given — shown/editable
 // directly on their profile, same as tags or contact methods (spec:
 // "not something they have to hunt down a form to correct").
-export async function listOnceEverAnswers(actor: Member) {
+//
+// `options.surface`, same narrowing listOutstandingQuestions above
+// already offers, lets the Dashboard's onboarding panel ask for just
+// the subset it cares about: once_ever questions tagged for onboarding
+// that this member already has a real answer for — in practice, at
+// first login, almost always seeded by a Form field's own
+// mapsToProfileQuestionId at applicant→Member conversion (see
+// src/lib/recruitment/decisions.ts) rather than anything the member
+// typed into this platform directly. Shown as a compact, editable
+// summary rather than re-asked from scratch — see
+// src/app/(app)/dashboard/PrefilledAnswersReview.tsx.
+export async function listOnceEverAnswers(actor: Member, options: { surface?: string } = {}) {
+  const conditions = [
+    eq(profileQuestion.communityId, actor.communityId),
+    eq(profileQuestion.scope, "once_ever"),
+    isNull(profileQuestion.archivedAt),
+  ];
   const questions = await db
     .select()
     .from(profileQuestion)
-    .where(
-      and(
-        eq(profileQuestion.communityId, actor.communityId),
-        eq(profileQuestion.scope, "once_ever"),
-        isNull(profileQuestion.archivedAt),
-      ),
-    );
+    .where(and(...conditions));
+  const surfaced = options.surface ? questions.filter((q) => q.surfaces.includes(options.surface!)) : questions;
 
   const answers = await db
     .select()
@@ -203,7 +214,7 @@ export async function listOnceEverAnswers(actor: Member) {
     .where(and(eq(profileAnswer.memberId, actor.id), isNull(profileAnswer.cycleId)));
   const answerByQuestion = new Map(answers.map((a) => [a.questionId, a]));
 
-  return questions
+  return surfaced
     .filter((q) => answerByQuestion.has(q.id) && answerByQuestion.get(q.id)!.status === "answered")
     .map((q) => ({ question: q, answer: answerByQuestion.get(q.id)! }));
 }

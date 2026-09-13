@@ -22,6 +22,7 @@ import { generateToken } from "../token";
 import { getCommunityRow, requireRecruitmentTaskHolder } from "./access";
 import { computeRecruitmentOutcome } from "./evaluations";
 import { listGrantingTaskIds } from "../permissions";
+import { answerProfileQuestion } from "../profile-questions";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityRow = typeof communityTable.$inferSelect;
@@ -197,6 +198,36 @@ async function maybeConvertApplicantToMember(
         });
         return newMember.id;
       });
+
+  // Fields tagged mapsToProfileQuestionId (src/lib/forms.ts) seed a
+  // real ProfileAnswer directly from this same application answer, so
+  // the new member isn't asked to retype a fact they already gave —
+  // see docs/spec.md's Profile questions ("the same still-unanswered
+  // questions just surface the next time a relevant surface checks
+  // what's outstanding"), applied here to a surface (the application)
+  // that never became a real `surfaces` consumer. Best-effort: a blank
+  // answer, a shape mismatch (e.g. the applicant's text doesn't match
+  // one of a since-changed single_choice question's options), or a
+  // since-archived question just doesn't prefill rather than blocking
+  // conversion — the member can always answer it directly afterward.
+  const mappedFields = fields.filter((f) => f.mapsToProfileQuestionId);
+  if (mappedFields.length > 0) {
+    const [memberRow] = await db.select().from(member).where(eq(member.id, memberId));
+    if (memberRow) {
+      for (const field of mappedFields) {
+        const rawValue = values[field.key];
+        if (rawValue === undefined || rawValue === null || rawValue === "") continue;
+        try {
+          await answerProfileQuestion(memberRow, field.mapsToProfileQuestionId!, {
+            status: "answered",
+            value: rawValue,
+          });
+        } catch {
+          // best-effort — see comment above
+        }
+      }
+    }
+  }
 
   const [updated] = await db
     .update(recruitmentDecision)

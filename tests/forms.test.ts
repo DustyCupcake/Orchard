@@ -17,6 +17,7 @@ import {
   unarchiveForm,
   updateForm,
 } from "@/lib/forms";
+import { archiveProfileQuestion, createProfileQuestion } from "@/lib/profile-questions";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 import { setPermissionGrant } from "@/lib/permissions";
@@ -172,6 +173,108 @@ describe("Form CRUD", () => {
 
     const { alice: strangerAlice } = await createFixtures();
     await expect(getForm(strangerAlice, created.id)).rejects.toThrow(NotFoundError);
+  });
+});
+
+// mapsToProfileQuestionId: a Form field can name which once-ever
+// ProfileQuestion its own answer should seed at applicant→Member
+// conversion (src/lib/recruitment/decisions.ts's
+// maybeConvertApplicantToMember) — see docs/development-plan.md's own
+// generalization of isNameField/isEmailField past just name/email.
+describe("Form fields: mapsToProfileQuestionId", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("accepts a field mapped to a once_ever profile question in the same community", async () => {
+    const { alice } = await createFixtures();
+    const pronouns = await createProfileQuestion(alice, {
+      label: "Pronouns",
+      responseType: "free_text",
+      scope: "once_ever",
+    });
+    const created = await createForm(alice, {
+      title: "Application",
+      fields: [{ key: "pronouns", label: "Pronouns", responseType: "free_text", mapsToProfileQuestionId: pronouns.id }],
+    });
+    expect(created.fields).toEqual([
+      { key: "pronouns", label: "Pronouns", responseType: "free_text", mapsToProfileQuestionId: pronouns.id },
+    ]);
+  });
+
+  it("rejects two fields mapped to the same profile question", async () => {
+    const { alice } = await createFixtures();
+    const pronouns = await createProfileQuestion(alice, {
+      label: "Pronouns",
+      responseType: "free_text",
+      scope: "once_ever",
+    });
+    await expect(
+      createForm(alice, {
+        title: "Bad form",
+        fields: [
+          { key: "a", label: "A", responseType: "free_text", mapsToProfileQuestionId: pronouns.id },
+          { key: "b", label: "B", responseType: "free_text", mapsToProfileQuestionId: pronouns.id },
+        ],
+      }),
+    ).rejects.toThrow(/at most one field can map to the same profile question/);
+  });
+
+  it("rejects a field mapped to a per_cycle-scoped profile question", async () => {
+    const { alice } = await createFixtures();
+    const availability = await createProfileQuestion(alice, {
+      label: "Availability",
+      responseType: "free_text",
+      scope: "per_cycle",
+    });
+    await expect(
+      createForm(alice, {
+        title: "Bad form",
+        fields: [{ key: "a", label: "A", responseType: "free_text", mapsToProfileQuestionId: availability.id }],
+      }),
+    ).rejects.toThrow(/once-ever/);
+  });
+
+  it("rejects a field mapped to an archived profile question", async () => {
+    const { alice } = await createFixtures();
+    const pronouns = await createProfileQuestion(alice, {
+      label: "Pronouns",
+      responseType: "free_text",
+      scope: "once_ever",
+    });
+    await archiveProfileQuestion(alice, pronouns.id);
+    await expect(
+      createForm(alice, {
+        title: "Bad form",
+        fields: [{ key: "a", label: "A", responseType: "free_text", mapsToProfileQuestionId: pronouns.id }],
+      }),
+    ).rejects.toThrow(/no longer exists/);
+  });
+
+  it("rejects a field mapped to a profile question from a different community", async () => {
+    const { alice } = await createFixtures();
+    const { alice: strangerAlice } = await createFixtures();
+    const strangerQuestion = await createProfileQuestion(strangerAlice, {
+      label: "Pronouns",
+      responseType: "free_text",
+      scope: "once_ever",
+    });
+    await expect(
+      createForm(alice, {
+        title: "Bad form",
+        fields: [{ key: "a", label: "A", responseType: "free_text", mapsToProfileQuestionId: strangerQuestion.id }],
+      }),
+    ).rejects.toThrow(/no longer exists/);
+  });
+
+  it("also validates mappedProfileQuestionId on update", async () => {
+    const { alice } = await createFixtures();
+    const created = await createForm(alice, { title: "Original", fields: surveyFields });
+    await expect(
+      updateForm(alice, created.id, {
+        fields: [{ key: "x", label: "X", responseType: "free_text", mapsToProfileQuestionId: crypto.randomUUID() }],
+      }),
+    ).rejects.toThrow(/no longer exists/);
   });
 });
 

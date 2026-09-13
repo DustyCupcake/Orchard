@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { community, form, formResponse, task, taskAssignment } from "@/db/schema";
+import { community, form, formResponse, profileQuestion, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "./errors";
 import { listGrantingTaskIds } from "./permissions";
@@ -20,6 +20,26 @@ const responseTypes = ["free_text", "single_choice", "multi_choice"] as const;
 // email, since a Form's fields are otherwise opaque to the platform
 // (spec's own test in this same section). At most one of each per
 // Form, enforced below alongside the existing per-field checks.
+//
+// mapsToProfileQuestionId: the same "a Form field can name what it
+// means to the rest of the platform" exception, generalized past just
+// name/email. Spec's own ProfileQuestion section frames `surfaces` as
+// open-ended ("application, onboarding, wherever") but notes
+// "application" was never actually built as a surfaces consumer —
+// Recruitment's application intake was built on Forms instead (a
+// genuinely different mechanism, per spec's Forms/Question
+// distinction: a Form's fields are submitted together as one opaque
+// bundle, a Question is always independently answerable). Rather than
+// retrofitting Forms into ProfileQuestion's own surfacing mechanism, a
+// tagged field lets a submitted answer seed a real ProfileAnswer at
+// whatever point the submission turns into a Member — see
+// src/lib/recruitment/decisions.ts's maybeConvertApplicantToMember —
+// so the same fact (pronouns, an emergency contact) doesn't have to be
+// typed twice by someone who already gave it on their application.
+// Restricted to once_ever-scope questions only: conversion happens
+// before the new Member has any declared cycle to stamp a per_cycle/
+// phase answer against, so there's no real cadence for those to mean
+// anything here (see requireValidMappedProfileQuestions below).
 const formFieldInput = z.object({
   key: z.string().min(1),
   label: z.string().min(1),
@@ -28,11 +48,45 @@ const formFieldInput = z.object({
   required: z.boolean().optional(),
   isNameField: z.boolean().optional(),
   isEmailField: z.boolean().optional(),
+  mapsToProfileQuestionId: z.string().uuid().optional(),
 });
 export type FormField = z.infer<typeof formFieldInput>;
 
 function tooManyTaggedFields(fields: FormField[], tag: "isNameField" | "isEmailField") {
   return fields.filter((f) => f[tag]).length > 1;
+}
+
+function duplicateMappedProfileQuestion(fields: FormField[]) {
+  const mapped = fields.map((f) => f.mapsToProfileQuestionId).filter((id): id is string => !!id);
+  return new Set(mapped).size !== mapped.length;
+}
+
+// DB-backed half of the mapsToProfileQuestionId check — a referenced
+// id has to be a real, non-archived, once_ever ProfileQuestion in this
+// same community, checked here (not the zod schema above) since it
+// needs a query. Called from both createForm and updateForm, the same
+// "checked at the lib boundary, not just the settings action's parse()
+// call" defense-in-depth this file already applies to isNameField/
+// isEmailField duplication.
+async function requireValidMappedProfileQuestions(communityId: string, fields: FormField[]) {
+  const ids = [...new Set(fields.map((f) => f.mapsToProfileQuestionId).filter((id): id is string => !!id))];
+  if (ids.length === 0) return;
+
+  const rows = await db
+    .select({ id: profileQuestion.id, scope: profileQuestion.scope, archivedAt: profileQuestion.archivedAt })
+    .from(profileQuestion)
+    .where(and(inArray(profileQuestion.id, ids), eq(profileQuestion.communityId, communityId)));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+
+  for (const id of ids) {
+    const row = byId.get(id);
+    if (!row || row.archivedAt) {
+      throw new AppError("A field maps to a profile question that no longer exists");
+    }
+    if (row.scope !== "once_ever") {
+      throw new AppError("A field can only map to a once-ever profile question");
+    }
+  }
 }
 
 // A community-defined set of fields with a stated purpose — shared
@@ -68,6 +122,13 @@ function addFieldShapeIssues(fields: FormField[], ctx: z.RefinementCtx) {
   if (tooManyTaggedFields(fields, "isEmailField")) {
     ctx.addIssue({ code: "custom", message: "at most one field can be tagged as the email field", path: ["fields"] });
   }
+  if (duplicateMappedProfileQuestion(fields)) {
+    ctx.addIssue({
+      code: "custom",
+      message: "at most one field can map to the same profile question",
+      path: ["fields"],
+    });
+  }
 }
 
 export const createFormInput = z
@@ -100,10 +161,14 @@ function requireValidFields(fields: FormField[]) {
   if (tooManyTaggedFields(fields, "isEmailField")) {
     throw new AppError("at most one field can be tagged as the email field");
   }
+  if (duplicateMappedProfileQuestion(fields)) {
+    throw new AppError("at most one field can map to the same profile question");
+  }
 }
 
 export async function createForm(actor: Member, input: CreateFormInput) {
   requireValidFields(input.fields);
+  await requireValidMappedProfileQuestions(actor.communityId, input.fields);
 
   const [created] = await db
     .insert(form)
@@ -144,6 +209,7 @@ export type UpdateFormInput = z.infer<typeof updateFormInput>;
 export async function updateForm(actor: Member, formId: string, input: UpdateFormInput) {
   if (input.fields) {
     requireValidFields(input.fields);
+    await requireValidMappedProfileQuestions(actor.communityId, input.fields);
   }
 
   const [updated] = await db

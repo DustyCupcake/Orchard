@@ -34,6 +34,7 @@ export default function FormBuilder({
   initialDescription,
   initialAllowAnonymous,
   initialFields,
+  profileQuestionOptions,
   submitLabel,
 }: {
   action: (formData: FormData) => void;
@@ -43,6 +44,12 @@ export default function FormBuilder({
   initialDescription: string;
   initialAllowAnonymous: boolean;
   initialFields: BuilderField[];
+  // Once-ever ProfileQuestions this community has defined — offered as
+  // the "maps to profile question" dropdown per field (src/lib/
+  // forms.ts's mapsToProfileQuestionId). Empty list renders no dropdown
+  // (FieldShapeEditor's own guard), the same as a community with no
+  // ProfileQuestions defined yet.
+  profileQuestionOptions: { id: string; label: string }[];
   submitLabel: string;
 }) {
   const [title, setTitle] = useState(initialTitle);
@@ -50,10 +57,12 @@ export default function FormBuilder({
   const [fields, setFields] = useState<BuilderField[]>(initialFields.length > 0 ? initialFields : [emptyField()]);
 
   // Enforces "at most one field can be tagged as the name/email field"
-  // client-side too — src/lib/forms.ts's requireValidFields is the
-  // real, load-bearing check; this just keeps the builder itself from
-  // ever producing what that check would reject, by clearing the same
-  // tag on every other row the instant one row's is checked.
+  // and "at most one field can map to the same profile question"
+  // client-side too — src/lib/forms.ts's requireValidFields/
+  // requireValidMappedProfileQuestions are the real, load-bearing
+  // checks; this just keeps the builder itself from ever producing
+  // what those would reject, by clearing the same tag (or the same
+  // mapped question) on every other row the instant one row's is set.
   function updateFieldAt(index: number, next: EditableFieldShape) {
     setFields((prev) =>
       prev.map((f, i) => {
@@ -62,6 +71,10 @@ export default function FormBuilder({
           ...f,
           isNameField: next.isNameField ? false : f.isNameField,
           isEmailField: next.isEmailField ? false : f.isEmailField,
+          mapsToProfileQuestionId:
+            next.mapsToProfileQuestionId && next.mapsToProfileQuestionId === f.mapsToProfileQuestionId
+              ? undefined
+              : f.mapsToProfileQuestionId,
         };
       }),
     );
@@ -122,7 +135,9 @@ export default function FormBuilder({
 
         <p style={{ fontSize: "0.75rem", color: "#666", margin: "0.25rem 0" }}>
           Tag at most one field each as the name/email field if this form should be able to convert
-          its submissions into real members (e.g. a Recruitment application form).
+          its submissions into real members (e.g. a Recruitment application form). A field can also
+          map to a once-ever profile question, so its answer seeds that member&rsquo;s profile directly
+          instead of being asked again later.
         </p>
         <div>
           {fields.map((f, i) => (
@@ -132,6 +147,7 @@ export default function FormBuilder({
               onChange={(next) => updateFieldAt(i, next)}
               allowedResponseTypes={FORM_RESPONSE_TYPES}
               showRoleTags
+              profileQuestionOptions={profileQuestionOptions}
               fieldKey={f.key}
               onRemove={fields.length > 1 ? () => removeFieldAt(i) : undefined}
               onMoveUp={i > 0 ? () => moveField(i, -1) : undefined}

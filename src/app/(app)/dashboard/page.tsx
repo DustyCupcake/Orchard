@@ -4,17 +4,19 @@ import { CheckCircle, Tree, Users, ChartLineUp, Warning } from "@phosphor-icons/
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
 import { resolveDefaultScopeSegment, resolveViewScopeFromSegment } from "@/lib/cycles";
-import { listOutstandingQuestions } from "@/lib/profile-questions";
+import { listOnceEverAnswers, listOutstandingQuestions } from "@/lib/profile-questions";
 import { listTaskFitSuggestions, ONBOARDING_CARDS } from "@/lib/onboarding";
 import { listOutstandingOnboardingAxes } from "@/lib/trait-axes";
 import { ATTENTION_STYLES } from "@/lib/format";
 import { Tag, type Tone, ATTENTION_TONE } from "@/components/ui/kit";
 import AxisScaleField from "@/components/AxisScaleField";
+import PrefilledAnswersReview from "./PrefilledAnswersReview";
 import {
   completeOnboardingAction,
   respondToNominationAction,
   submitOnboardingAnswerAction,
   submitOnboardingAxisAction,
+  submitOnboardingPrefilledAnswersAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -205,12 +207,13 @@ export default async function DashboardPage({
   // Phase 56) — a nudge, never a gate, so this panel only ever renders
   // until hasCompletedOnboarding is set (finished or skipped) and never
   // blocks anything else on this page.
-  const [onboardingQuestions, onboardingSuggestions, onboardingAxes] = viewing.hasCompletedOnboarding
-    ? [[], [], []]
+  const [onboardingQuestions, onboardingSuggestions, onboardingAxes, prefilledAnswers] = viewing.hasCompletedOnboarding
+    ? [[], [], [], []]
     : await Promise.all([
         listOutstandingQuestions(viewing, { surface: "onboarding" }),
         listTaskFitSuggestions(viewing, { limit: 3 }),
         listOutstandingOnboardingAxes(viewing),
+        listOnceEverAnswers(viewing, { surface: "onboarding" }),
       ]);
 
   const hasFeedItems =
@@ -270,6 +273,10 @@ export default async function DashboardPage({
               </div>
             ))}
           </div>
+
+          {prefilledAnswers.length > 0 && (
+            <PrefilledAnswersReview answers={prefilledAnswers} action={submitOnboardingPrefilledAnswersAction} />
+          )}
 
           {onboardingQuestions.length > 0 && (
             <div className="mb-5">

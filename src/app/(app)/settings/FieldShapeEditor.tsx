@@ -15,6 +15,7 @@ export type EditableFieldShape = {
   required: boolean;
   isNameField?: boolean;
   isEmailField?: boolean;
+  mapsToProfileQuestionId?: string;
 };
 
 const RESPONSE_TYPE_LABELS: Record<EditableFieldShape["responseType"], string> = {
@@ -33,6 +34,7 @@ export default function FieldShapeEditor({
   onChange,
   allowedResponseTypes,
   showRoleTags,
+  profileQuestionOptions,
   fieldKey,
   onRemove,
   onMoveUp,
@@ -44,6 +46,13 @@ export default function FieldShapeEditor({
   // Form-only: "at most one field can be tagged as the name/email
   // field" (src/lib/forms.ts) — ProfileQuestion has no such concept.
   showRoleTags?: boolean;
+  // Form-only, same as showRoleTags: the once-ever ProfileQuestions
+  // this field could seed an answer for at applicant→Member conversion
+  // (src/lib/forms.ts's mapsToProfileQuestionId). Omitted entirely
+  // (rather than an empty array) when this editor isn't rendering a
+  // Form field at all, so the dropdown doesn't show up for
+  // ProfileQuestionEditor's own single-row use.
+  profileQuestionOptions?: { id: string; label: string }[];
   // Transparency only, never editable — src/lib/forms.ts's own
   // field.key is generated once when a field is added (see
   // FormBuilder.tsx) and never changes afterward, so existing
@@ -165,6 +174,28 @@ export default function FieldShapeEditor({
               A {RESPONSE_TYPE_LABELS[value.responseType].toLowerCase()} field needs at least one option.
             </p>
           )}
+        </div>
+      )}
+
+      {profileQuestionOptions && profileQuestionOptions.length > 0 && (
+        <div style={{ marginTop: "0.4rem" }}>
+          <label style={{ fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            Maps to profile question
+            <select
+              value={value.mapsToProfileQuestionId ?? ""}
+              onChange={(e) =>
+                onChange({ ...value, mapsToProfileQuestionId: e.target.value || undefined })
+              }
+              style={{ padding: "0.3rem" }}
+            >
+              <option value="">— none —</option>
+              {profileQuestionOptions.map((q) => (
+                <option key={q.id} value={q.id}>
+                  {q.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       )}
 

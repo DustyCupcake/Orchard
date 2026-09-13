@@ -14,6 +14,7 @@ import { updateCommunity } from "@/lib/settings";
 import { claimTask } from "@/lib/tasks";
 import { createForm } from "@/lib/forms";
 import type { CreateFormInput } from "@/lib/forms";
+import { createProfileQuestion, listOnceEverAnswers, listOutstandingQuestions } from "@/lib/profile-questions";
 import {
   getRecruitmentDecision,
   listOpenIntroCallsForSubscriber,
@@ -169,6 +170,69 @@ describe("Recruitment: applicant→Member conversion", () => {
     const [communityRow] = await db.select().from(community).where(eq(community.id, setupResult.communityId));
     const loggedIn = await findOrCreateMemberByEmail(communityRow, "dana@example.com");
     expect(loggedIn?.id).toBe(newMember.id);
+  });
+
+  it("seeds a real ProfileAnswer from a field tagged mapsToProfileQuestionId, so onboarding doesn't re-ask it", async () => {
+    const fixtures = await createFixtures();
+    const pronouns = await createProfileQuestion(fixtures.alice, {
+      label: "Pronouns",
+      responseType: "free_text",
+      scope: "once_ever",
+      surfaces: ["onboarding"],
+    });
+    const fieldsWithMapping: CreateFormInput["fields"] = [
+      ...taggedFields,
+      { key: "pronouns", label: "Pronouns", responseType: "free_text", mapsToProfileQuestionId: pronouns.id },
+    ];
+    const setupResult = await setUp(fixtures, fieldsWithMapping);
+
+    const application = await submitRecruitmentApplication(setupResult.communityId, {
+      values: { name: "Frankie Applicant", email: "frankie@example.com", pronouns: "they/them" },
+    });
+    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+
+    const [newMember] = await db.select().from(member).where(eq(member.id, decision!.convertedMemberId!));
+
+    const onceEver = await listOnceEverAnswers(newMember, { surface: "onboarding" });
+    expect(onceEver).toHaveLength(1);
+    expect(onceEver[0].question.id).toBe(pronouns.id);
+    expect(onceEver[0].answer.value).toBe("they/them");
+
+    // Already answered — onboarding's own "still outstanding" list
+    // must not ask for it again.
+    const outstanding = await listOutstandingQuestions(newMember, { surface: "onboarding" });
+    expect(outstanding.find((o) => o.question.id === pronouns.id)).toBeUndefined();
+  });
+
+  it("skips a mapped field that doesn't validate against its target question's shape, without blocking conversion", async () => {
+    const fixtures = await createFixtures();
+    const vibe = await createProfileQuestion(fixtures.alice, {
+      label: "Vibe",
+      responseType: "single_choice",
+      options: ["Chill", "Energetic"],
+      scope: "once_ever",
+    });
+    const fieldsWithMapping: CreateFormInput["fields"] = [
+      ...taggedFields,
+      { key: "vibe", label: "Vibe", responseType: "free_text", mapsToProfileQuestionId: vibe.id },
+    ];
+    const setupResult = await setUp(fixtures, fieldsWithMapping);
+
+    const application = await submitRecruitmentApplication(setupResult.communityId, {
+      values: { name: "Gale Applicant", email: "gale@example.com", vibe: "not one of the real options" },
+    });
+    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+
+    expect(decision!.resolution).toBe("accepted");
+    expect(decision!.convertedMemberId).not.toBeNull();
+
+    const [newMember] = await db.select().from(member).where(eq(member.id, decision!.convertedMemberId!));
+    const onceEver = await listOnceEverAnswers(newMember);
+    expect(onceEver).toHaveLength(0);
   });
 
   it("sets the new member's referredByMemberId from the linked invite's creator, and the Accompaniment task's suggestedMemberId reads it back", async () => {

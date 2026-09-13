@@ -233,6 +233,30 @@ describe("answering profile questions", () => {
     expect(onceEver[0].answer.value).toBe("Jane, 555-1234");
   });
 
+  it("listOnceEverAnswers({ surface }) narrows to answered questions tagged for that surface", async () => {
+    const { alice } = await createFixtures();
+    const onboardingTagged = await createProfileQuestion(alice, {
+      label: "Pronouns",
+      responseType: "free_text",
+      scope: "once_ever",
+      surfaces: ["onboarding"],
+    });
+    const untagged = await createProfileQuestion(alice, {
+      label: "Favorite color",
+      responseType: "free_text",
+      scope: "once_ever",
+    });
+    await answerProfileQuestion(alice, onboardingTagged.id, { status: "answered", value: "she/her" });
+    await answerProfileQuestion(alice, untagged.id, { status: "answered", value: "blue" });
+
+    const forOnboarding = await listOnceEverAnswers(alice, { surface: "onboarding" });
+    expect(forOnboarding).toHaveLength(1);
+    expect(forOnboarding[0].question.id).toBe(onboardingTagged.id);
+
+    const everything = await listOnceEverAnswers(alice);
+    expect(everything).toHaveLength(2);
+  });
+
   it("re-answering the same question updates the existing row rather than creating a second one", async () => {
     const { alice } = await createFixtures();
     const q = await createProfileQuestion(alice, {

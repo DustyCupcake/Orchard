@@ -312,6 +312,15 @@ export default async function SettingsPage({
   const ruleTaskNameById = new Map(ruleTasks.map((t) => [t.id, t.title]));
   const tierNameById = new Map(tiers.map((t) => [t.id, t.name]));
 
+  // The Forms tab's "maps to profile question" dropdown (src/lib/
+  // forms.ts's mapsToProfileQuestionId) only ever accepts a once_ever,
+  // non-archived question — see requireValidMappedProfileQuestions —
+  // so an archived or per_cycle/phase one isn't offered as an option
+  // to begin with, rather than being rejected only after submitting.
+  const onceEverProfileQuestionOptions = profileQuestions
+    .filter((q) => q.scope === "once_ever" && !q.archivedAt)
+    .map((q) => ({ id: q.id, label: q.label }));
+
   if (!authorized) {
     return (
       <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
@@ -1118,7 +1127,9 @@ export default async function SettingsPage({
                         required: field.required ?? false,
                         isNameField: field.isNameField,
                         isEmailField: field.isEmailField,
+                        mapsToProfileQuestionId: field.mapsToProfileQuestionId,
                       }))}
+                      profileQuestionOptions={onceEverProfileQuestionOptions}
                       submitLabel="Save"
                     />
                     <form action={f.archivedAt ? unarchiveFormAction : archiveFormAction} className="mt-2">
@@ -1135,7 +1146,16 @@ export default async function SettingsPage({
             <div className="mt-4">
               <h3 className="text-[15px] font-medium text-[var(--text)]">New form</h3>
               <div className="mt-2">
-                <FormBuilder action={createFormAction} mode="create" initialTitle="" initialDescription="" initialAllowAnonymous={false} initialFields={[]} submitLabel="Create form" />
+                <FormBuilder
+                  action={createFormAction}
+                  mode="create"
+                  initialTitle=""
+                  initialDescription=""
+                  initialAllowAnonymous={false}
+                  initialFields={[]}
+                  profileQuestionOptions={onceEverProfileQuestionOptions}
+                  submitLabel="Create form"
+                />
               </div>
             </div>
           </section>
