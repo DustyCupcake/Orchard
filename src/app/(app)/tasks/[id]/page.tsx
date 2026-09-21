@@ -59,6 +59,7 @@ import {
   addMilestoneAction,
   addRequirementAction,
   addResourceAction,
+  checkInTaskAction,
   claimAsShadowAction,
   confirmClaimAction,
   confirmMilestoneAction,
@@ -72,11 +73,17 @@ import {
   endorseCandidacyAction,
   escalateTaskAction,
   expressCandidacyAction,
+  finishAction,
+  finishWaitingTaskAction,
   flagForGroupAction,
+  parkAction,
   pingCoordinatorAction,
+  releaseAction,
   removeDependencyAction,
+  resnoozeTaskAction,
   resolvePingAction,
   resolveSignalAction,
+  resumeAction,
   rotateIntoShiftAction,
   setOutgoingAction,
   splitSubtaskAction,
@@ -679,6 +686,99 @@ export default async function TaskDetailPage({
           </div>
         </details>
       </div>
+
+      {/* Attention nudge actions — what to do when a task "needs attention" */}
+      {holdsTask && taskRow.status === "claimed" && taskRow.attentionLevel !== "ok" && (
+        <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--warning-border)] bg-[var(--warning-soft)] p-3">
+          <p className="text-[13px] font-medium text-[var(--warning)]">
+            This task is flagged &ldquo;{ATTENTION_STYLES[taskRow.attentionLevel]?.label ?? taskRow.attentionLevel}&rdquo;
+            {taskRow.attentionLevel === "soft" && " — it hasn't moved recently."}
+            {taskRow.attentionLevel === "hard" && " — it's been stale for a while."}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <form action={checkInTaskAction} className="flex items-center gap-2">
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <input
+                type="text"
+                name="note"
+                placeholder="Quick update (optional)"
+                className={`${INPUT} min-w-0 text-[13px]`}
+              />
+              <button type="submit" className={BUTTON_PRIMARY}>
+                Still on it
+              </button>
+            </form>
+            <form action={parkAction} className="flex items-center gap-2">
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <input type="date" name="nextCheckinAt" required className={`${INPUT} min-w-0 text-[13px]`} />
+              <input
+                type="text"
+                name="waitingNote"
+                placeholder="waiting on…"
+                className={`${INPUT} min-w-0 text-[13px]`}
+              />
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Park
+              </button>
+            </form>
+            <form action={finishAction}>
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Mark done
+              </button>
+            </form>
+            <form action={releaseAction}>
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <button type="submit" className={BUTTON_GHOST}>
+                Release
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Waiting nudge actions — all 4 spec'd options directly available */}
+      {holdsTask && taskRow.status === "waiting" && (
+        <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-3">
+          <p className="text-[13px] text-[var(--text-muted)]">
+            Check-in was {taskRow.nextCheckinAt && taskRow.nextCheckinAt < new Date() ? "due " + taskRow.nextCheckinAt.toLocaleDateString() : "set for " + taskRow.nextCheckinAt?.toLocaleDateString()}
+            {taskRow.waitingNote && <> — <em>{taskRow.waitingNote}</em></>}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <form action={resumeAction}>
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <button type="submit" className={BUTTON_PRIMARY}>
+                Resume
+              </button>
+            </form>
+            <form action={finishWaitingTaskAction}>
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Mark done
+              </button>
+            </form>
+            <form action={resnoozeTaskAction} className="flex items-center gap-2">
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <input type="date" name="nextCheckinAt" required className={`${INPUT} min-w-0 text-[13px]`} />
+              <input
+                type="text"
+                name="waitingNote"
+                placeholder="New waiting note (optional)"
+                className={`${INPUT} min-w-0 text-[13px]`}
+              />
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Re-snooze
+              </button>
+            </form>
+            <form action={releaseAction}>
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <button type="submit" className={BUTTON_GHOST}>
+                Release
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {canShadow && (

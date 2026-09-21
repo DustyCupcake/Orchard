@@ -14,6 +14,7 @@ import {
   addTaskDependency,
   addWikiRevision,
   addWikiRevisionInput,
+  checkInTask,
   claimAsShadow,
   claimOrRequestToJoin,
   confirmTaskMilestone,
@@ -29,13 +30,18 @@ import {
   endorseCandidacy,
   escalateTask,
   expressCandidacy,
+  finishTask,
+  finishWaitingTask,
   nominateForTask,
   nominateForTaskInput,
+  parkTask,
   pingCoordinator,
   releaseTask,
   removeTaskDependency,
+  resnoozeTask,
   resolvePing,
   resolveSignal,
+  resumeTask,
   setOutgoing,
   splitSubtask,
   splitSubtaskInput,
@@ -787,4 +793,120 @@ export async function deescalateTaskAction(formData: FormData) {
 
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/escalation");
+}
+
+export async function checkInTaskAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const note = String(formData.get("note") ?? "").trim() || undefined;
+
+  try {
+    await checkInTask(actor, taskId, note);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+  revalidatePath("/dashboard");
+}
+
+export async function finishWaitingTaskAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await finishWaitingTask(actor, taskId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+  revalidatePath("/dashboard");
+}
+
+export async function resnoozeTaskAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const nextCheckinAt = String(formData.get("nextCheckinAt"));
+  const waitingNote = String(formData.get("waitingNote") ?? "").trim() || undefined;
+
+  try {
+    await resnoozeTask(actor, taskId, {
+      nextCheckinAt: new Date(nextCheckinAt),
+      waitingNote,
+    });
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+  revalidatePath("/dashboard");
+}
+
+export async function parkAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const nextCheckinAt = String(formData.get("nextCheckinAt"));
+  const waitingNote = String(formData.get("waitingNote") ?? "").trim() || undefined;
+
+  try {
+    await parkTask(actor, taskId, {
+      nextCheckinAt: new Date(nextCheckinAt),
+      waitingNote,
+    });
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+  revalidatePath("/dashboard");
+}
+
+export async function finishAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await finishTask(actor, taskId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+  revalidatePath("/dashboard");
+}
+
+export async function releaseAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await releaseTask(actor, taskId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+  revalidatePath("/dashboard");
+}
+
+export async function resumeAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await resumeTask(actor, taskId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+  revalidatePath("/dashboard");
 }

@@ -238,12 +238,113 @@ export async function resumeTask(actor: Member, taskId: string) {
       .where(eq(task.id, taskId))
       .returning();
 
-    // "Update progress (resets the clock)" — the other of the two
-    // Waiting-nudge response actions this codebase's actual lifecycle
-    // graph makes directly callable from `waiting` (see
-    // docs/development-plan.md's Phase 52's own resolved reading —
-    // spec's "mark done"/"re-snooze" options both require resuming
-    // first in this codebase, so aren't separately hooked here).
+    await resolveEngagementForMember(tx, actor.id);
+
+    return updated;
+  });
+}
+
+// "Update progress (resets the clock)" — for a claimed task that's
+// been flagged stale, the owner can say "I'm still on it" which
+// resets statusChangedAt and clears the attention flag. This is the
+// claimed-state equivalent of what resumeTask does for waiting.
+export async function checkInTask(actor: Member, taskId: string, note?: string) {
+  return db.transaction(async (tx) => {
+    const current = await loadTaskForUpdate(tx, taskId, actor.communityId);
+
+    if (current.status !== "claimed") {
+      throw new ConflictError(`Cannot check in a task that is ${current.status}`);
+    }
+    await requireHolds(tx, taskId, actor.id);
+
+    const [updated] = await tx
+      .update(task)
+      .set({
+        statusChangedAt: new Date(),
+        attentionLevel: "ok",
+        // If a note is provided, append it to the waiting note or set it
+        waitingNote: note ? note : current.waitingNote,
+      })
+      .where(eq(task.id, taskId))
+      .returning();
+
+    await resolveEngagementForMember(tx, actor.id);
+
+    return updated;
+  });
+}
+
+// Mark a waiting task as done directly — one of the four nudge-response
+// options spec'd in docs/spec.md's Owner-set nudges. Previously this
+// required resuming first, then finishing; now it's callable directly
+// from waiting.
+export async function finishWaitingTask(actor: Member, taskId: string) {
+  return db.transaction(async (tx) => {
+    const current = await loadTaskForUpdate(tx, taskId, actor.communityId);
+
+    if (current.status !== "waiting") {
+      throw new ConflictError(`Cannot finish a task that is ${current.status}`);
+    }
+    await requireHolds(tx, taskId, actor.id);
+
+    const deps = await tx
+      .select({ status: task.status })
+      .from(taskDependency)
+      .innerJoin(task, eq(taskDependency.dependsOnTaskId, task.id))
+      .where(eq(taskDependency.taskId, taskId));
+    const openCount = deps.filter((d) => d.status !== "done").length;
+    if (openCount > 0) {
+      throw new ConflictError(
+        `Cannot finish: ${openCount} dependency task(s) not yet done`,
+      );
+    }
+
+    const [updated] = await tx
+      .update(task)
+      .set({
+        status: "done",
+        nextCheckinAt: null,
+        waitingNote: null,
+        statusChangedAt: new Date(),
+        attentionLevel: "ok",
+      })
+      .where(eq(task.id, taskId))
+      .returning();
+
+    await resolveEngagementForMember(tx, actor.id);
+
+    return updated;
+  });
+}
+
+// Re-snooze a waiting task with a new check-in date and reason — one
+// of the four nudge-response options spec'd in docs/spec.md's Owner-set
+// nudges. Previously this required resuming first, then parking; now
+// it's callable directly from waiting.
+export async function resnoozeTask(
+  actor: Member,
+  taskId: string,
+  input: { nextCheckinAt: Date; waitingNote?: string },
+) {
+  return db.transaction(async (tx) => {
+    const current = await loadTaskForUpdate(tx, taskId, actor.communityId);
+
+    if (current.status !== "waiting") {
+      throw new ConflictError(`Cannot re-snooze a task that is ${current.status}`);
+    }
+    await requireHolds(tx, taskId, actor.id);
+
+    const [updated] = await tx
+      .update(task)
+      .set({
+        nextCheckinAt: input.nextCheckinAt,
+        waitingNote: input.waitingNote ?? current.waitingNote,
+        statusChangedAt: new Date(),
+        attentionLevel: "ok",
+      })
+      .where(eq(task.id, taskId))
+      .returning();
+
     await resolveEngagementForMember(tx, actor.id);
 
     return updated;

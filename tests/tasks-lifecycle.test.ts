@@ -1,7 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { member, task, taskDependency } from "@/db/schema";
-import { claimTask, finishTask, parkTask, releaseTask, resumeTask } from "@/lib/tasks";
+import {
+  claimTask,
+  checkInTask,
+  finishTask,
+  finishWaitingTask,
+  parkTask,
+  releaseTask,
+  resnoozeTask,
+  resumeTask,
+} from "@/lib/tasks";
 import { ConflictError, ForbiddenError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
@@ -170,5 +180,51 @@ describe("task lifecycle", () => {
     const rejected = results.filter((r) => r.status === "rejected");
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
+  });
+
+  it("checkInTask resets statusChangedAt and clears attention flag on claimed task", async () => {
+    const { community, branch, alice } = await createFixtures();
+    const t = await insertTask(community.id, branch.id, alice.id);
+    await claimTask(alice, t.id);
+
+    // Simulate staleness by backdating statusChangedAt
+    const oldDate = new Date(Date.now() - 1000 * 60 * 60 * 24 * 10); // 10 days ago
+    await db.update(task).set({ statusChangedAt: oldDate }).where(eq(task.id, t.id));
+
+    const updated = await checkInTask(alice, t.id, "Making progress");
+    expect(updated.status).toBe("claimed");
+    expect(updated.statusChangedAt.getTime()).toBeGreaterThan(oldDate.getTime());
+  });
+
+  it("finishWaitingTask marks a waiting task as done directly", async () => {
+    const { community, branch, alice } = await createFixtures();
+    const t = await insertTask(community.id, branch.id, alice.id);
+    await claimTask(alice, t.id);
+    await parkTask(alice, t.id, {
+      nextCheckinAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
+      waitingNote: "waiting on rain",
+    });
+
+    const updated = await finishWaitingTask(alice, t.id);
+    expect(updated.status).toBe("done");
+  });
+
+  it("resnoozeTask updates nextCheckinAt and waitingNote on a waiting task", async () => {
+    const { community, branch, alice } = await createFixtures();
+    const t = await insertTask(community.id, branch.id, alice.id);
+    await claimTask(alice, t.id);
+    await parkTask(alice, t.id, {
+      nextCheckinAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
+      waitingNote: "old note",
+    });
+
+    const newDate = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3);
+    const updated = await resnoozeTask(alice, t.id, {
+      nextCheckinAt: newDate,
+      waitingNote: "new note",
+    });
+    expect(updated.status).toBe("waiting");
+    expect(updated.nextCheckinAt?.toISOString().slice(0, 10)).toBe(newDate.toISOString().slice(0, 10));
+    expect(updated.waitingNote).toBe("new note");
   });
 });
