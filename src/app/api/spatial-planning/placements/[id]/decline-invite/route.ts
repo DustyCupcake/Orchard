@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMember, errorResponse } from "@/lib/api";
+import { assertNotViewingAs } from "@/lib/view-as";
 import { declinePlacementInvite } from "@/lib/spatial-planning";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const actor = await requireMember();
+    await assertNotViewingAs();
     const { id } = await params;
     await declinePlacementInvite(actor, id);
     return NextResponse.json({ ok: true });

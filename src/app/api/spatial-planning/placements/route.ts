@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMember, errorResponse } from "@/lib/api";
+import { assertNotViewingAs } from "@/lib/view-as";
 import { createPlacement, listPlacements } from "@/lib/spatial-planning";
 import { AppError } from "@/lib/errors";
 
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const actor = await requireMember();
+    await assertNotViewingAs();
     const body = await request.json();
     const { plotId, ...input } = body;
     if (!plotId) throw new AppError("plotId is required");

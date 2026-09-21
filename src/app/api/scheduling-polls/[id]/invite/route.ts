@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMember, errorResponse } from "@/lib/api";
-import { generateIcs, getPoll } from "@/lib/scheduling-polls";
+import { generateIcs, getConfirmedAttendees, getPoll } from "@/lib/scheduling-polls";
 
 export const dynamic = "force-dynamic";
 
@@ -8,12 +8,18 @@ type Params = { params: Promise<{ id: string }> };
 
 // A downloadable calendar invite — see resolve.ts's generateIcs()
 // comment for why this is a pull (download) rather than an outbound
-// email.
+// email. Restricted to confirmed attendees: only people who submitted
+// availability for the confirmed slot can download the invite.
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const actor = await requireMember();
     const { id } = await params;
     const poll = await getPoll(actor, id);
+    const attendees = await getConfirmedAttendees(actor, id);
+    const isAttendee = attendees.some((a) => a.id === actor.id);
+    if (!isAttendee) {
+      return NextResponse.json({ error: "Only confirmed attendees can download this invite" }, { status: 403 });
+    }
     const ics = generateIcs(poll);
     return new NextResponse(ics, {
       headers: {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMember, errorResponse } from "@/lib/api";
+import { assertNotViewingAs } from "@/lib/view-as";
 import { createPlot, getPlotForCycle } from "@/lib/spatial-planning";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const actor = await requireMember();
+    await assertNotViewingAs();
     const body = await request.json();
     const { cycleId, ...input } = body;
     const created = await createPlot(actor, cycleId ?? null, input);

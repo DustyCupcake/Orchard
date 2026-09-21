@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMember, errorResponse } from "@/lib/api";
+import { assertNotViewingAs } from "@/lib/view-as";
 import { clonePlotFromCycle } from "@/lib/spatial-planning";
 import { AppError } from "@/lib/errors";
 
@@ -12,6 +13,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const actor = await requireMember();
+    await assertNotViewingAs();
     const { targetCycleId, sourceCycleId } = await request.json();
     if (!targetCycleId || !sourceCycleId) {
       throw new AppError("targetCycleId and sourceCycleId are required");

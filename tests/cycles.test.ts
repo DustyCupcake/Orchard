@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, cycle, member, requirement, task, taskDependency, taskMilestone, tier } from "@/db/schema";
+import { community, cycle, member, permissionGrant, requirement, task, taskDependency, taskMilestone, tier } from "@/db/schema";
 import {
   closeCycle,
   createCycle,
@@ -13,7 +13,7 @@ import {
 } from "@/lib/cycles";
 import { claimAsShadow, claimTask, createRequirement, createTaskMilestone } from "@/lib/tasks";
 import { ConflictError, ConfirmationRequiredError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string, cycleInitiationTierId?: string) {
   await db
@@ -324,6 +324,29 @@ describe("cloning the previous cycle", () => {
     const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
     expect(clonedTask.suggestedMemberId).toBe(bob.id);
+  });
+
+  it("copies permission grants from cloned tasks", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+
+    const previous = await createCycle(alice, { source: "blank", name: "2026 Season" });
+    const adminTask = await insertTask(testCommunity.id, branch.id, alice.id, {
+      cycleId: previous.id,
+      title: "Admins",
+    });
+    await grantPermission(testCommunity.id, "admin", adminTask.id);
+
+    const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
+    const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
+    expect(clonedTasks).toHaveLength(1);
+
+    const clonedGrants = await db
+      .select()
+      .from(permissionGrant)
+      .where(eq(permissionGrant.taskId, clonedTasks[0].id));
+    expect(clonedGrants).toHaveLength(1);
+    expect(clonedGrants[0].moduleKey).toBe("admin");
   });
 });
 

@@ -56,7 +56,7 @@ export default async function SpatialPlanningPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const { real, viewing } = await getViewingContext();
+  const { real, viewing, viewAs } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
   }
@@ -178,8 +178,8 @@ export default async function SpatialPlanningPage({
             initialPlacements={placements.map((p) => ({ ...p, geometry: p.geometry as PlacementGeometry }))}
             initialTemplates={templates.map((t) => ({ ...t, geometry: t.geometry as PlacementGeometry }))}
             communityMembers={communityMembers}
-            canEdit={canEdit}
-            myEditablePlacementIds={myEditablePlacementIds}
+            canEdit={canEdit && !viewAs}
+            myEditablePlacementIds={viewAs ? [] : myEditablePlacementIds}
             cloneCandidates={cloneCandidates.map((c) => ({
               cycleId: c.cycleId!,
               cycleName: c.cycleName,

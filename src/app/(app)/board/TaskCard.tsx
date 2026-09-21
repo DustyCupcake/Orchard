@@ -5,6 +5,7 @@ import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import { Tag, ATTENTION_TONE, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_GHOST, INPUT } from "@/components/ui/kit";
 import {
   claimAction,
+  escalateTaskAction,
   finishAction,
   parkAction,
   releaseAction,
@@ -252,6 +253,14 @@ export default function TaskCard({
           </>
         )}
 
+        {isCoordinationHolderForBranch && task.attentionLevel !== "escalated" && (
+          <form action={escalateTaskAction}>
+            <input type="hidden" name="taskId" value={task.id} />
+            <button type="submit" className={BUTTON_GHOST} title="Escalate to community-wide coordination view">
+              Escalate
+            </button>
+          </form>
+        )}
         {task.status === "claimed" && holds && (
           <>
             <form action={releaseAction}>

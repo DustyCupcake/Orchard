@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/db";
 import { branch as branchTable, task } from "@/db/schema";
-import { claimTask, listEscalatedTasks } from "@/lib/tasks";
-import { ForbiddenError } from "@/lib/errors";
+import { claimTask, deescalateTask, escalateTask, listEscalatedTasks } from "@/lib/tasks";
+import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertTask(
@@ -85,5 +85,77 @@ describe("listEscalatedTasks", () => {
 
     const escalated = await listEscalatedTasks(alice);
     expect(escalated).toHaveLength(0);
+  });
+});
+
+describe("escalateTask / deescalateTask", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("lets a coordinator escalate any task in their community", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Coordination",
+    });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
+    await claimTask(alice, coordTask.id);
+
+    const target = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Needs owner",
+      attentionLevel: "ok",
+    });
+
+    const updated = await escalateTask(alice, target.id);
+    expect(updated.attentionLevel).toBe("escalated");
+
+    const listed = await listEscalatedTasks(alice);
+    expect(listed.map((t) => t.id)).toContain(target.id);
+  });
+
+  it("lets a coordinator de-escalate a task", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Coordination",
+    });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
+    await claimTask(alice, coordTask.id);
+
+    const target = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Was escalated",
+      attentionLevel: "escalated",
+    });
+
+    const updated = await deescalateTask(alice, target.id);
+    expect(updated.attentionLevel).toBe("ok");
+
+    const listed = await listEscalatedTasks(alice);
+    expect(listed.map((t) => t.id)).not.toContain(target.id);
+  });
+
+  it("rejects escalation by a non-coordinator", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    const target = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Needs owner",
+    });
+
+    await expect(escalateTask(bob, target.id)).rejects.toThrow(ForbiddenError);
+  });
+
+  it("throws NotFoundError for a task in another community", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Coordination",
+    });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
+    await claimTask(alice, coordTask.id);
+
+    const { community: otherCommunity, branch: otherBranch, alice: otherAlice } =
+      await createFixtures();
+    const otherTask = await insertTask(otherCommunity.id, otherBranch.id, otherAlice.id, {
+      title: "Other task",
+    });
+
+    await expect(escalateTask(alice, otherTask.id)).rejects.toThrow(NotFoundError);
   });
 });

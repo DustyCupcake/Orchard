@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMember, errorResponse } from "@/lib/api";
+import { assertNotViewingAs } from "@/lib/view-as";
 import { invitePlacementMember } from "@/lib/spatial-planning";
 import { AppError } from "@/lib/errors";
 
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const actor = await requireMember();
+    await assertNotViewingAs();
     const { id } = await params;
     const { memberId } = await request.json();
     if (!memberId) throw new AppError("memberId is required");

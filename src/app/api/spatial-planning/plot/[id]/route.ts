@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMember, errorResponse } from "@/lib/api";
+import { assertNotViewingAs } from "@/lib/view-as";
 import { updatePlot } from "@/lib/spatial-planning";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const actor = await requireMember();
+    await assertNotViewingAs();
     const { id } = await params;
     const body = await request.json();
     const updated = await updatePlot(actor, id, body);

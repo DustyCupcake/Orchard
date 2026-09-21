@@ -64,11 +64,13 @@ import {
   confirmMilestoneAction,
   createQuestionAction,
   createSignalAction,
+  deescalateTaskAction,
   declineJoinRequestAction,
   deleteMilestoneAction,
   deleteRequirementAction,
   editWikiAction,
   endorseCandidacyAction,
+  escalateTaskAction,
   expressCandidacyAction,
   flagForGroupAction,
   pingCoordinatorAction,
@@ -511,6 +513,22 @@ export default async function TaskDetailPage({
       {taskRow.description && <p className="mt-3 text-[14px] text-[var(--text)]">{taskRow.description}</p>}
 
       <div className="mt-3 flex flex-wrap items-start gap-2">
+        {isCoordHolderForBranch && taskRow.attentionLevel !== "escalated" && (
+          <form action={escalateTaskAction}>
+            <input type="hidden" name="taskId" value={taskRow.id} />
+            <button type="submit" className={BUTTON_SECONDARY} title="Escalate to community-wide coordination view">
+              Escalate
+            </button>
+          </form>
+        )}
+        {isCoordHolderForBranch && taskRow.attentionLevel === "escalated" && (
+          <form action={deescalateTaskAction}>
+            <input type="hidden" name="taskId" value={taskRow.id} />
+            <button type="submit" className={BUTTON_SECONDARY} title="Remove from escalation view">
+              De-escalate
+            </button>
+          </form>
+        )}
         <details className="group">
           <summary
             className={`${BUTTON_ICON} list-none [&::-webkit-details-marker]:hidden`}

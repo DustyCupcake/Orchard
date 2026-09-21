@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMember, errorResponse } from "@/lib/api";
+import { assertNotViewingAs } from "@/lib/view-as";
 import { deletePlacement, listPlacementMembers, updatePlacement } from "@/lib/spatial-planning";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const actor = await requireMember();
+    await assertNotViewingAs();
     const { id } = await params;
     const body = await request.json();
     const updated = await updatePlacement(actor, id, body);
@@ -34,6 +36,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 export async function DELETE(_request: NextRequest, { params }: Params) {
   try {
     const actor = await requireMember();
+    await assertNotViewingAs();
     const { id } = await params;
     await deletePlacement(actor, id);
     return NextResponse.json({ ok: true });

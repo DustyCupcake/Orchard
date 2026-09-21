@@ -6,6 +6,7 @@ import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import {
   claimOrRequestToJoin,
+  escalateTask,
   finishTask,
   parkTask,
   releaseTask,
@@ -153,4 +154,10 @@ export async function parkAction(formData: FormData) {
       waitingNote: waitingNote || undefined,
     }),
   );
+}
+
+export async function escalateTaskAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  await runAction(() => escalateTask(actor, taskId));
 }

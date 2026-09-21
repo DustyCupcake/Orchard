@@ -25,7 +25,9 @@ import {
   declineJoinRequest,
   deleteRequirement,
   deleteTaskMilestone,
+  deescalateTask,
   endorseCandidacy,
+  escalateTask,
   expressCandidacy,
   nominateForTask,
   nominateForTaskInput,
@@ -757,4 +759,32 @@ export async function updateTaskPermissionGrantsAction(formData: FormData) {
 
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/settings");
+}
+
+export async function escalateTaskAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await escalateTask(actor, taskId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/escalation");
+}
+
+export async function deescalateTaskAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await deescalateTask(actor, taskId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/escalation");
 }

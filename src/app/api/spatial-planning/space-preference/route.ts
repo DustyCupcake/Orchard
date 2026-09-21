@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMember, errorResponse } from "@/lib/api";
+import { assertNotViewingAs } from "@/lib/view-as";
 import { getMySpacePreference, upsertMySpacePreference } from "@/lib/spatial-planning";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const actor = await requireMember();
+    await assertNotViewingAs();
     const body = await request.json();
     const preference = await upsertMySpacePreference(actor, body);
     return NextResponse.json({ preference });

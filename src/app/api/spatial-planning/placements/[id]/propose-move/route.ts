@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMember, errorResponse } from "@/lib/api";
+import { assertNotViewingAs } from "@/lib/view-as";
 import { proposePlacementMove } from "@/lib/spatial-planning";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const actor = await requireMember();
+    await assertNotViewingAs();
     const { id } = await params;
     const body = await request.json();
     const updated = await proposePlacementMove(actor, id, body);

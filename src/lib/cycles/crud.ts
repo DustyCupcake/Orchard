@@ -5,6 +5,7 @@ import {
   community,
   cycle,
   cycleType,
+  permissionGrant,
   phase,
   requirement,
   task,
@@ -340,6 +341,7 @@ async function cloneMostRecentCycle(
     await cloneDependencies(tx, taskIdMap);
     await cloneTaskMilestones(tx, taskIdMap, phaseIdMap);
     await cloneWikiAndResources(tx, taskIdMap);
+    await clonePermissionGrants(tx, taskIdMap);
 
     // Phase 38's own integration — see docs/spec.md's "Cloning across
     // cycles." Tasks were just cloned above in this same transaction,
@@ -723,6 +725,31 @@ async function cloneWikiAndResources(tx: Tx, taskIdMap: Map<string, string>) {
       })),
     );
   }
+}
+
+// PermissionGrants travel with their task on clone — a task that
+// granted "admin" or "branch_coordination" in the previous cycle
+// should still grant it in the new cycle, or the "whichever cycle's
+// pack includes it" reset mechanism spec describes doesn't actually
+// work. Cycle-scoped grants (event_scheduling_owner, spatial_planning)
+// are remapped to the new cycle; unscoped grants copy verbatim.
+async function clonePermissionGrants(tx: Tx, taskIdMap: Map<string, string>) {
+  if (taskIdMap.size === 0) return;
+
+  const oldGrants = await tx
+    .select()
+    .from(permissionGrant)
+    .where(inArray(permissionGrant.taskId, [...taskIdMap.keys()]));
+  if (oldGrants.length === 0) return;
+
+  await tx.insert(permissionGrant).values(
+    oldGrants.map((g) => ({
+      communityId: g.communityId,
+      moduleKey: g.moduleKey,
+      taskId: taskIdMap.get(g.taskId)!,
+      cycleId: g.cycleId,
+    })),
+  );
 }
 
 export async function listCycles(actor: Member) {
