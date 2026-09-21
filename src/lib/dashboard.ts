@@ -196,7 +196,7 @@ export type BranchHealthStatus = "on_track" | "attention_needed" | "struggling";
 // two most serious attention levels Phase 10 produces; a soft flag
 // with nothing worse is "attention needed"; no flags at all (or no
 // active tasks) is "on track."
-function deriveBranchHealthStatus(counts: { soft: number; hard: number; escalated: number }): BranchHealthStatus {
+export function deriveBranchHealthStatus(counts: { soft: number; hard: number; escalated: number }): BranchHealthStatus {
   if (counts.hard > 0 || counts.escalated > 0) return "struggling";
   if (counts.soft > 0) return "attention_needed";
   return "on_track";

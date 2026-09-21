@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { branch, phase } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import {
+  groupTasksByBranchCoverage,
   groupTasksByPhase,
   listDistinctTags,
   listMyPendingJoinRequests,
@@ -19,6 +20,7 @@ import BranchFilter from "./BranchFilter";
 import TagFilter from "./TagFilter";
 import TaskCard from "./TaskCard";
 import PhaseCard from "./PhaseCard";
+import BranchCoverageCard from "./BranchCoverageCard";
 import { Tag, Banner, BUTTON_SECONDARY, BUTTON_PRIMARY } from "@/components/ui/kit";
 import PageHeader from "@/components/ui/PageHeader";
 import Tabs from "@/components/ui/Tabs";
@@ -26,9 +28,9 @@ import { bulkClaimAction, exportSelectedTasksAsPackAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-const VIEWS = ["kanban", "phase"] as const;
+const VIEWS = ["kanban", "phase", "coverage"] as const;
 type BoardView = (typeof VIEWS)[number];
-const VIEW_LABEL: Record<BoardView, string> = { kanban: "Kanban", phase: "By phase" };
+const VIEW_LABEL: Record<BoardView, string> = { kanban: "Kanban", phase: "By phase", coverage: "Branch coverage" };
 
 const COLUMNS = [
   { status: "unclaimed", label: "Unclaimed" },
@@ -63,6 +65,12 @@ export default async function BoardPage({
     done?: string;
     hideCycleless?: string;
     view?: string;
+    attention?: string;
+    phaseId?: string;
+    duration?: string;
+    hasSlots?: string;
+    assignedToMe?: string;
+    dueWithin?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
@@ -70,7 +78,10 @@ export default async function BoardPage({
     redirect("/login");
   }
 
-  const { branchId, tag, fit, error, notice, done, hideCycleless, view } = await searchParams;
+  const {
+    branchId, tag, fit, error, notice, done, hideCycleless, view,
+    attention, phaseId, duration, hasSlots, assignedToMe, dueWithin,
+  } = await searchParams;
   const hidingCycleless = hideCycleless === "1";
   // "A Done confirmation gains a 'you might also like' strip" — see
   // docs/development-plan.md's Phase 56 and src/lib/onboarding.ts's
@@ -130,7 +141,10 @@ export default async function BoardPage({
   // degenerate view if `view=phase` is requested anyway (e.g. a stale
   // bookmark from when phases were on).
   const phaseViewAvailable = communityRow.phasesEnabled && phases.length > 0;
-  const visibleViews = VIEWS.filter((v) => v !== "phase" || phaseViewAvailable);
+  const visibleViews = VIEWS.filter((v) => {
+    if (v === "phase") return phaseViewAvailable;
+    return true;
+  });
   const activeView: BoardView = visibleViews.includes(view as BoardView) ? (view as BoardView) : "kanban";
   // Export only ever targets one real cycle — same "the current one"
   // scoping /participation's own whole-cycle export always used, now
@@ -143,28 +157,76 @@ export default async function BoardPage({
   const exportCycle = activeScope?.kind === "single" ? activeScope.cycle : null;
   const exportableInView = exportCycle ? tasks.filter((t) => t.cycleId === exportCycle.id) : [];
 
+  // Advanced filters — applied in-memory over the already-fetched task
+  // list, not pushed into listTasksWithAssignments's SQL. Each filter
+  // is independent; they combine with AND logic.
+  const now = new Date();
+  const filteredTasks = tasks.filter((t) => {
+    if (attention && t.attentionLevel !== attention) return false;
+    if (phaseId && t.phaseId !== phaseId) return false;
+    if (duration && t.effort !== "one_off") return false; // duration bucket only for one-off
+    if (duration && (t.effortMagnitude as { duration?: string })?.duration !== duration) return false;
+    if (hasSlots === "1") {
+      const held = t.assignments.filter((a) => !a.isShadow).length;
+      const cap = t.capacity ?? 1;
+      if (held >= cap) return false;
+    }
+    if (assignedToMe === "1" && !t.assignments.some((a) => a.memberId === viewing.id && !a.isShadow)) return false;
+    if (dueWithin) {
+      const days = parseInt(dueWithin, 10);
+      if (!t.deadlineDate) return false;
+      const deadline = new Date(t.deadlineDate);
+      const cutoff = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+      if (deadline > cutoff) return false;
+    }
+    return true;
+  });
+
   // Shared query-preserving link builder for the fit/cycle-less/view
   // toggles below — a plain link, same "no client JS needed for
   // something a link can do" posture as everywhere else this codebase
   // avoids it. Each toggle only overrides its own param, carrying the
   // others through unchanged.
-  function boardHref(overrides: { fit?: boolean; hideCycleless?: boolean; view?: BoardView }) {
+  function boardHref(overrides: {
+    fit?: boolean;
+    hideCycleless?: boolean;
+    view?: BoardView;
+    attention?: string | null;
+    phaseId?: string | null;
+    duration?: string | null;
+    hasSlots?: boolean;
+    assignedToMe?: boolean;
+    dueWithin?: string | null;
+  }) {
     const params = new URLSearchParams();
     if (branchId) params.set("branchId", branchId);
     if (tag) params.set("tag", tag);
     const nextFit = overrides.fit ?? sortByFit;
     const nextHideCycleless = overrides.hideCycleless ?? hidingCycleless;
     const nextView = overrides.view ?? activeView;
+    const nextAttention = overrides.attention !== undefined ? overrides.attention : attention;
+    const nextPhaseId = overrides.phaseId !== undefined ? overrides.phaseId : phaseId;
+    const nextDuration = overrides.duration !== undefined ? overrides.duration : duration;
+    const nextHasSlots = overrides.hasSlots ?? (hasSlots === "1");
+    const nextAssignedToMe = overrides.assignedToMe ?? (assignedToMe === "1");
+    const nextDueWithin = overrides.dueWithin !== undefined ? overrides.dueWithin : dueWithin;
     if (nextFit) params.set("fit", "1");
     if (nextHideCycleless) params.set("hideCycleless", "1");
     if (nextView !== "kanban") params.set("view", nextView);
+    if (nextAttention) params.set("attention", nextAttention);
+    if (nextPhaseId) params.set("phaseId", nextPhaseId);
+    if (nextDuration) params.set("duration", nextDuration);
+    if (nextHasSlots) params.set("hasSlots", "1");
+    if (nextAssignedToMe) params.set("assignedToMe", "1");
+    if (nextDueWithin) params.set("dueWithin", nextDueWithin);
     const query = params.toString();
     return query ? `/board?${query}` : "/board";
   }
   const fitToggleHref = boardHref({ fit: !sortByFit });
   const cyclelessToggleHref = boardHref({ hideCycleless: !hidingCycleless });
   const viewTabs = visibleViews.map((v) => ({ key: v, label: VIEW_LABEL[v] }));
-  const phaseGroups = activeView === "phase" ? groupTasksByPhase(tasks, phases) : [];
+  const phaseGroups = activeView === "phase" ? groupTasksByPhase(filteredTasks, phases) : [];
+  const branchCoverageGroups = activeView === "coverage" ? groupTasksByBranchCoverage(filteredTasks, branches, coordinationBranchIds) : [];
 
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
 
@@ -174,7 +236,7 @@ export default async function BoardPage({
   // selectable (defaulted on, like everything else) — they just fail
   // individually in the summary if actually claimed that way, same as
   // any other per-task failure, rather than silently skipping the check.
-  const bulkClaimable = tasks.filter(
+  const bulkClaimable = filteredTasks.filter(
     (t) => t.status === "unclaimed" && t.openness !== "community_endorsed" && t.unmetRequirements.length === 0,
   );
 
@@ -310,10 +372,103 @@ export default async function BoardPage({
         </details>
       )}
 
+      {/* Advanced filters — collapsed by default, in-memory over fetched list */}
+      <details className="mt-4">
+        <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
+          Advanced filters
+        </summary>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <select
+            name="attention"
+            className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px]"
+            value={attention ?? ""}
+            onChange={(e) => {
+              const val = e.target.value;
+              window.location.href = boardHref({ attention: val || null });
+            }}
+          >
+            <option value="">Any attention</option>
+            <option value="soft">Soft flag</option>
+            <option value="hard">Hard flag</option>
+            <option value="escalated">Escalated</option>
+          </select>
+
+          {phases.length > 0 && (
+            <select
+              name="phaseId"
+              className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px]"
+              value={phaseId ?? ""}
+              onChange={(e) => {
+                const val = e.target.value;
+                window.location.href = boardHref({ phaseId: val || null });
+              }}
+            >
+              <option value="">Any phase</option>
+              {phases.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          <select
+            name="duration"
+            className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px]"
+            value={duration ?? ""}
+            onChange={(e) => {
+              const val = e.target.value;
+              window.location.href = boardHref({ duration: val || null });
+            }}
+          >
+            <option value="">Any duration</option>
+            <option value="few_hours">Few hours</option>
+            <option value="half_day">Half day</option>
+            <option value="full_day">Full day</option>
+            <option value="multi_day">Multi-day</option>
+          </select>
+
+          <Link
+            href={boardHref({ hasSlots: hasSlots !== "1" })}
+            className={hasSlots === "1" ? "text-[13px] font-medium text-[var(--accent-1)]" : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"}
+          >
+            {hasSlots === "1" ? "✓ Has open slots" : "Has open slots"}
+          </Link>
+
+          <Link
+            href={boardHref({ assignedToMe: assignedToMe !== "1" })}
+            className={assignedToMe === "1" ? "text-[13px] font-medium text-[var(--accent-1)]" : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"}
+          >
+            {assignedToMe === "1" ? "✓ Assigned to me" : "Assigned to me"}
+          </Link>
+
+          <select
+            name="dueWithin"
+            className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px]"
+            value={dueWithin ?? ""}
+            onChange={(e) => {
+              const val = e.target.value;
+              window.location.href = boardHref({ dueWithin: val || null });
+            }}
+          >
+            <option value="">Any deadline</option>
+            <option value="7">Due within 7 days</option>
+            <option value="14">Due within 14 days</option>
+            <option value="30">Due within 30 days</option>
+          </select>
+
+          {(attention || phaseId || duration || hasSlots === "1" || assignedToMe === "1" || dueWithin) && (
+            <Link href={boardHref({ attention: null, phaseId: null, duration: null, hasSlots: false, assignedToMe: false, dueWithin: null })} className="text-[13px] text-[var(--text-muted)] hover:text-[var(--danger)]">
+              Clear all
+            </Link>
+          )}
+        </div>
+      </details>
+
       {activeView === "kanban" && (
         <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {COLUMNS.map((col) => {
-            const colTasks = tasks.filter((t) => t.status === col.status);
+            const colTasks = filteredTasks.filter((t) => t.status === col.status);
             return (
               <div key={col.status}>
                 <div className="mb-3 flex items-center gap-2 border-b border-[var(--border)] pb-2">
@@ -348,6 +503,22 @@ export default async function BoardPage({
           {phaseGroups.map((group) => (
             <PhaseCard
               key={group.name}
+              group={group}
+              tierNames={tierNames}
+              branchNameById={branchNameById}
+              currentMemberId={viewing.id}
+              myPendingRequests={myPendingRequests}
+              coordinationBranchIds={coordinationBranchIds}
+            />
+          ))}
+        </div>
+      )}
+
+      {activeView === "coverage" && (
+        <div className="mt-6">
+          {branchCoverageGroups.map((group) => (
+            <BranchCoverageCard
+              key={group.branchId}
               group={group}
               tierNames={tierNames}
               branchNameById={branchNameById}

@@ -4,6 +4,10 @@
 // crud.ts's DB-backed listTasksWithAssignments so they're trivially
 // unit-testable against plain fixtures, no Postgres required.
 
+import { deriveBranchHealthStatus, type BranchHealthStatus } from "@/lib/dashboard";
+
+export { BranchHealthStatus };
+
 export interface PhaseGroupTask {
   id: string;
   phaseId: string | null;
@@ -63,4 +67,84 @@ export function groupTasksByPhase<T extends PhaseGroupTask>(tasks: T[], phases: 
   }
 
   return Array.from(groups.values()).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+}
+
+// Task shape needed for branch coverage — a subset of what
+// listTasksWithAssignments returns, kept minimal so tests need
+// no Postgres.
+export interface BranchCoverageTask {
+  id: string;
+  branchId: string;
+  title: string;
+  status: string;
+  attentionLevel: string;
+  critical: boolean;
+  deadlineDate: string | null;
+}
+
+export interface BranchCoverageGroup<T extends BranchCoverageTask> {
+  branchId: string;
+  branchName: string;
+  status: BranchHealthStatus;
+  counts: { soft: number; hard: number; escalated: number } | null;
+  tasks: T[];
+}
+
+// "group by branch → coordinator coverage" — docs/spec.md's Views.
+// Public status (on_track/attention_needed/struggling) for everyone;
+// real counts and worst-first task ordering only for that branch's
+// coordination holders. A branch with no active tasks is on_track.
+export function groupTasksByBranchCoverage<T extends BranchCoverageTask>(
+  tasks: T[],
+  branches: { id: string; name: string }[],
+  coordinationBranchIds: Set<string>,
+): BranchCoverageGroup<T>[] {
+  const groups = new Map<string, BranchCoverageGroup<T>>();
+  for (const b of branches) {
+    groups.set(b.id, {
+      branchId: b.id,
+      branchName: b.name,
+      status: "on_track",
+      counts: null,
+      tasks: [],
+    });
+  }
+
+  // Only active (non-done) tasks count toward branch health
+  const activeTasks = tasks.filter((t) => t.status !== "done");
+
+  for (const t of activeTasks) {
+    const group = groups.get(t.branchId);
+    if (group) group.tasks.push(t);
+  }
+
+  for (const group of groups.values()) {
+    const counts = {
+      soft: group.tasks.filter((t) => t.attentionLevel === "soft").length,
+      hard: group.tasks.filter((t) => t.attentionLevel === "hard").length,
+      escalated: group.tasks.filter((t) => t.attentionLevel === "escalated").length,
+    };
+    group.status = deriveBranchHealthStatus(counts);
+    // Counts only for coordination holders of this branch
+    if (coordinationBranchIds.has(group.branchId)) {
+      group.counts = counts;
+    }
+    // Worst-first ordering for coordination holders
+    const attentionOrder: Record<string, number> = { escalated: 0, hard: 1, soft: 2, ok: 3 };
+    group.tasks.sort((a, b) => {
+      const ao = attentionOrder[a.attentionLevel] ?? 99;
+      const bo = attentionOrder[b.attentionLevel] ?? 99;
+      if (ao !== bo) return ao - bo;
+      if (a.deadlineDate && b.deadlineDate) return a.deadlineDate.localeCompare(b.deadlineDate);
+      if (a.deadlineDate) return -1;
+      if (b.deadlineDate) return 1;
+      return a.title.localeCompare(b.title);
+    });
+  }
+
+  // Sort: struggling first, then attention_needed, then on_track
+  const statusOrder: Record<BranchHealthStatus, number> = { struggling: 0, attention_needed: 1, on_track: 2 };
+  return Array.from(groups.values()).sort(
+    (a, b) => statusOrder[a.status] - statusOrder[b.status] || a.branchName.localeCompare(b.branchName),
+  );
 }
