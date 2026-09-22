@@ -43,21 +43,8 @@ export default function FieldShapeEditor({
   value: EditableFieldShape;
   onChange: (next: EditableFieldShape) => void;
   allowedResponseTypes: EditableFieldShape["responseType"][];
-  // Form-only: "at most one field can be tagged as the name/email
-  // field" (src/lib/forms.ts) — ProfileQuestion has no such concept.
   showRoleTags?: boolean;
-  // Form-only, same as showRoleTags: the once-ever ProfileQuestions
-  // this field could seed an answer for at applicant→Member conversion
-  // (src/lib/forms.ts's mapsToProfileQuestionId). Omitted entirely
-  // (rather than an empty array) when this editor isn't rendering a
-  // Form field at all, so the dropdown doesn't show up for
-  // ProfileQuestionEditor's own single-row use.
   profileQuestionOptions?: { id: string; label: string }[];
-  // Transparency only, never editable — src/lib/forms.ts's own
-  // field.key is generated once when a field is added (see
-  // FormBuilder.tsx) and never changes afterward, so existing
-  // FormResponse.values lookups never silently break underneath an
-  // edited label.
   fieldKey?: string;
   onRemove?: () => void;
   onMoveUp?: () => void;
@@ -66,14 +53,14 @@ export default function FieldShapeEditor({
   const optionsError = isChoiceType(value.responseType) && value.options.filter((o) => o.trim()).length === 0;
 
   return (
-    <div style={{ border: "1px solid #ddd", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}>
-      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+    <div className="rounded-[var(--radius-md)] border border-[var(--border)] p-2.5">
+      <div className="flex flex-wrap items-center gap-2">
         <input
           type="text"
           value={value.label}
           onChange={(e) => onChange({ ...value, label: e.target.value })}
           placeholder="Field label"
-          style={{ padding: "0.3rem", flex: 1, minWidth: "10rem" }}
+          className="min-w-[10rem] flex-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none"
         />
         <select
           value={value.responseType}
@@ -81,12 +68,10 @@ export default function FieldShapeEditor({
             onChange({
               ...value,
               responseType: e.target.value as EditableFieldShape["responseType"],
-              // Stale options from a previous choice-type don't carry
-              // forward once the field stops being choice-based.
               options: isChoiceType(e.target.value as EditableFieldShape["responseType"]) ? value.options : [],
             })
           }
-          style={{ padding: "0.3rem" }}
+          className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px] text-[var(--text)]"
         >
           {allowedResponseTypes.map((rt) => (
             <option key={rt} value={rt}>
@@ -94,7 +79,7 @@ export default function FieldShapeEditor({
             </option>
           ))}
         </select>
-        <label style={{ fontSize: "0.8rem" }}>
+        <label className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
           <input
             type="checkbox"
             checked={value.required}
@@ -104,7 +89,7 @@ export default function FieldShapeEditor({
         </label>
         {showRoleTags && (
           <>
-            <label style={{ fontSize: "0.8rem" }}>
+            <label className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
               <input
                 type="checkbox"
                 checked={value.isNameField ?? false}
@@ -112,7 +97,7 @@ export default function FieldShapeEditor({
               />{" "}
               name field
             </label>
-            <label style={{ fontSize: "0.8rem" }}>
+            <label className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
               <input
                 type="checkbox"
                 checked={value.isEmailField ?? false}
@@ -123,20 +108,35 @@ export default function FieldShapeEditor({
           </>
         )}
         {(onMoveUp || onMoveDown || onRemove) && (
-          <span style={{ marginLeft: "auto", display: "flex", gap: "0.25rem" }}>
+          <span className="ml-auto flex gap-1">
             {onMoveUp && (
-              <button type="button" onClick={onMoveUp} title="Move up">
+              <button
+                type="button"
+                onClick={onMoveUp}
+                title="Move up"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--neutral-100)] hover:text-[var(--text)]"
+              >
                 ↑
               </button>
             )}
             {onMoveDown && (
-              <button type="button" onClick={onMoveDown} title="Move down">
+              <button
+                type="button"
+                onClick={onMoveDown}
+                title="Move down"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--neutral-100)] hover:text-[var(--text)]"
+              >
                 ↓
               </button>
             )}
             {onRemove && (
-              <button type="button" onClick={onRemove} title="Remove field">
-                Remove
+              <button
+                type="button"
+                onClick={onRemove}
+                title="Remove field"
+                className="inline-flex h-7 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border)] px-2 text-[12px] text-[var(--text-muted)] hover:bg-[var(--neutral-100)] hover:text-[var(--danger)]"
+              >
+                ✕
               </button>
             )}
           </span>
@@ -144,9 +144,9 @@ export default function FieldShapeEditor({
       </div>
 
       {isChoiceType(value.responseType) && (
-        <div style={{ marginTop: "0.4rem", paddingLeft: "0.5rem" }}>
+        <div className="mt-2 flex flex-col gap-1.5 pl-1">
           {value.options.map((o, i) => (
-            <div key={i} style={{ display: "flex", gap: "0.4rem", marginBottom: "0.25rem" }}>
+            <div key={i} className="flex items-center gap-1.5">
               <input
                 type="text"
                 value={o}
@@ -156,21 +156,27 @@ export default function FieldShapeEditor({
                   onChange({ ...value, options: next });
                 }}
                 placeholder={`Option ${i + 1}`}
-                style={{ padding: "0.25rem", flex: 1 }}
+                className="min-w-0 flex-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none"
               />
               <button
                 type="button"
                 onClick={() => onChange({ ...value, options: value.options.filter((_, j) => j !== i) })}
+                title="Remove option"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--neutral-100)] hover:text-[var(--danger)]"
               >
-                Remove
+                ✕
               </button>
             </div>
           ))}
-          <button type="button" onClick={() => onChange({ ...value, options: [...value.options, ""] })}>
+          <button
+            type="button"
+            onClick={() => onChange({ ...value, options: [...value.options, ""] })}
+            className="mt-0.5 w-fit text-[12px] font-medium text-[var(--accent-1)] hover:underline"
+          >
             + Add option
           </button>
           {optionsError && (
-            <p style={{ color: "crimson", fontSize: "0.8rem", margin: "0.25rem 0 0" }}>
+            <p className="mt-0.5 text-[12px] text-[var(--danger)]">
               A {RESPONSE_TYPE_LABELS[value.responseType].toLowerCase()} field needs at least one option.
             </p>
           )}
@@ -178,15 +184,15 @@ export default function FieldShapeEditor({
       )}
 
       {profileQuestionOptions && profileQuestionOptions.length > 0 && (
-        <div style={{ marginTop: "0.4rem" }}>
-          <label style={{ fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+        <div className="mt-2">
+          <label className="flex items-center gap-2 text-[12px] text-[var(--text)]">
             Maps to profile question
             <select
               value={value.mapsToProfileQuestionId ?? ""}
               onChange={(e) =>
                 onChange({ ...value, mapsToProfileQuestionId: e.target.value || undefined })
               }
-              style={{ padding: "0.3rem" }}
+              className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px] text-[var(--text)]"
             >
               <option value="">— none —</option>
               {profileQuestionOptions.map((q) => (
@@ -200,7 +206,7 @@ export default function FieldShapeEditor({
       )}
 
       {fieldKey && (
-        <p style={{ margin: "0.3rem 0 0", fontSize: "0.7rem", color: "#999" }}>key: {fieldKey}</p>
+        <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">key: {fieldKey}</p>
       )}
     </div>
   );

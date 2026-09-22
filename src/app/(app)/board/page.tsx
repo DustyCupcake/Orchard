@@ -21,6 +21,7 @@ import TagFilter from "./TagFilter";
 import TaskCard from "./TaskCard";
 import PhaseCard from "./PhaseCard";
 import BranchCoverageCard from "./BranchCoverageCard";
+import FilterSelect from "./FilterSelect";
 import { Tag, Banner, BUTTON_SECONDARY, BUTTON_PRIMARY } from "@/components/ui/kit";
 import PageHeader from "@/components/ui/PageHeader";
 import Tabs from "@/components/ui/Tabs";
@@ -378,55 +379,37 @@ export default async function BoardPage({
           Advanced filters
         </summary>
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <select
-            name="attention"
-            className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px]"
-            value={attention ?? ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              window.location.href = boardHref({ attention: val || null });
-            }}
-          >
-            <option value="">Any attention</option>
-            <option value="soft">Soft flag</option>
-            <option value="hard">Hard flag</option>
-            <option value="escalated">Escalated</option>
-          </select>
+          <FilterSelect
+            value={attention}
+            param="attention"
+            placeholder="Any attention"
+            options={[
+              { value: "soft", label: "Soft flag" },
+              { value: "hard", label: "Hard flag" },
+              { value: "escalated", label: "Escalated" },
+            ]}
+          />
 
           {phases.length > 0 && (
-            <select
-              name="phaseId"
-              className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px]"
-              value={phaseId ?? ""}
-              onChange={(e) => {
-                const val = e.target.value;
-                window.location.href = boardHref({ phaseId: val || null });
-              }}
-            >
-              <option value="">Any phase</option>
-              {phases.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <FilterSelect
+              value={phaseId}
+              param="phaseId"
+              placeholder="Any phase"
+              options={phases.map((p) => ({ value: p.id, label: p.name }))}
+            />
           )}
 
-          <select
-            name="duration"
-            className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px]"
-            value={duration ?? ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              window.location.href = boardHref({ duration: val || null });
-            }}
-          >
-            <option value="">Any duration</option>
-            <option value="few_hours">Few hours</option>
-            <option value="half_day">Half day</option>
-            <option value="full_day">Full day</option>
-            <option value="multi_day">Multi-day</option>
-          </select>
+          <FilterSelect
+            value={duration}
+            param="duration"
+            placeholder="Any duration"
+            options={[
+              { value: "few_hours", label: "Few hours" },
+              { value: "half_day", label: "Half day" },
+              { value: "full_day", label: "Full day" },
+              { value: "multi_day", label: "Multi-day" },
+            ]}
+          />
 
           <Link
             href={boardHref({ hasSlots: hasSlots !== "1" })}
@@ -442,20 +425,16 @@ export default async function BoardPage({
             {assignedToMe === "1" ? "✓ Assigned to me" : "Assigned to me"}
           </Link>
 
-          <select
-            name="dueWithin"
-            className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px]"
-            value={dueWithin ?? ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              window.location.href = boardHref({ dueWithin: val || null });
-            }}
-          >
-            <option value="">Any deadline</option>
-            <option value="7">Due within 7 days</option>
-            <option value="14">Due within 14 days</option>
-            <option value="30">Due within 30 days</option>
-          </select>
+          <FilterSelect
+            value={dueWithin}
+            param="dueWithin"
+            placeholder="Any deadline"
+            options={[
+              { value: "7", label: "Due within 7 days" },
+              { value: "14", label: "Due within 14 days" },
+              { value: "30", label: "Due within 30 days" },
+            ]}
+          />
 
           {(attention || phaseId || duration || hasSlots === "1" || assignedToMe === "1" || dueWithin) && (
             <Link href={boardHref({ attention: null, phaseId: null, duration: null, hasSlots: false, assignedToMe: false, dueWithin: null })} className="text-[13px] text-[var(--text-muted)] hover:text-[var(--danger)]">

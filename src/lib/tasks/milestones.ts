@@ -247,7 +247,16 @@ function hasAnyHolder(taskRow: TaskRow): boolean {
 export async function listTaskMilestones(actor: Member, taskId: string) {
   const taskRow = await getTask(actor, taskId);
   const rows = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, taskId)).orderBy(taskMilestone.createdAt);
-  return Promise.all(rows.map(async (m) => ({ ...m, ...(await resolveMilestone(taskRow, m)) })));
+  const resolved = await Promise.all(rows.map(async (m) => ({ ...m, ...(await resolveMilestone(taskRow, m)) })));
+  // Date order for display — unresolved (null resolvedDate) last, creation order as tiebreak.
+  resolved.sort((a, b) => {
+    if (a.resolvedDate === null && b.resolvedDate === null) return a.createdAt.getTime() - b.createdAt.getTime();
+    if (a.resolvedDate === null) return 1;
+    if (b.resolvedDate === null) return -1;
+    if (a.resolvedDate !== b.resolvedDate) return a.resolvedDate < b.resolvedDate ? -1 : 1;
+    return a.createdAt.getTime() - b.createdAt.getTime();
+  });
+  return resolved;
 }
 
 // The Calendar view's own layer (docs/development-plan.md's Phase 44) —

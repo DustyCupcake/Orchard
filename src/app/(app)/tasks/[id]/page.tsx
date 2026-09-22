@@ -480,13 +480,18 @@ export default async function TaskDetailPage({
         }
         actions={
           <>
-            <CopyLinkButton path={taskPath} label="Copy link" />
             <CopyLinkButton
-              path={`${taskPath}?scope=${crossCycle.activeScopeSegment}`}
-              label={`Copy link (${scopeLabel(crossCycle.activeScope)} view)`}
+              path={taskPath}
+              scopedPath={`${taskPath}?scope=${crossCycle.activeScopeSegment}`}
+              scopedLabel={scopeLabel(crossCycle.activeScope)}
             />
-            <Link href={schedulePollHref} className={BUTTON_SECONDARY}>
-              Schedule a poll
+            <Link
+              href={schedulePollHref}
+              className="inline-flex h-7 items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 text-[12px] text-[var(--text-muted)] hover:text-[var(--text)]"
+              title="Find a time"
+            >
+              <CalendarIcon />
+              <span className="hidden sm:inline">Find a time</span>
             </Link>
           </>
         }
@@ -1247,19 +1252,23 @@ export default async function TaskDetailPage({
           ))}
         </div>
 
-        <h3 className="mt-4 text-[15px] font-medium text-[var(--text)]">Add a milestone</h3>
-        <form action={addMilestoneAction} className="mt-2 flex max-w-[420px] flex-col gap-2">
-          <input type="hidden" name="taskId" value={taskRow.id} />
-          <input type="text" name="label" required placeholder="Label (e.g. Deposit due)" className={INPUT} />
-          <MilestoneDateFields phases={cyclePhases} />
-          <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
-            <input type="checkbox" name="isDeadline" />
-            This is the deadline
-          </label>
-          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-            Add
-          </button>
-        </form>
+        <details className="mt-4">
+          <summary className="inline-flex cursor-pointer items-center gap-1 text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+            <PlusIcon /> Add milestone
+          </summary>
+          <form action={addMilestoneAction} className="mt-2 flex max-w-[420px] flex-col gap-2">
+            <input type="hidden" name="taskId" value={taskRow.id} />
+            <input type="text" name="label" required placeholder="Label (e.g. Deposit due)" className={INPUT} />
+            <MilestoneDateFields phases={cyclePhases} />
+            <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+              <input type="checkbox" name="isDeadline" />
+              This is the deadline
+            </label>
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+              Add
+            </button>
+          </form>
+        </details>
       </section>
       )}
 
@@ -1709,5 +1718,25 @@ function MilestoneDateFields({ milestone, phases }: { milestone?: MilestoneRow; 
         )
       }
     />
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
   );
 }

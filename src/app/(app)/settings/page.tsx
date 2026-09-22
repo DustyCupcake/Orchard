@@ -890,20 +890,25 @@ export default async function SettingsPage({
                 ))}
               </div>
 
-              <form action={createProfileQuestionAction} className="mt-3 flex max-w-[600px] flex-col gap-2">
-                <ProfileQuestionEditor initial={{ label: "", responseType: "free_text", options: [], required: false }} />
-                <select name="scope" defaultValue="once_ever" className={INPUT}>
-                  <option value="once_ever">Once ever</option>
-                  <option value="per_cycle">Per cycle</option>
-                  <option value="phase">Tied to one phase name</option>
-                </select>
-                <input type="text" name="phaseNameHint" placeholder="phase name (only if scope is 'phase'), e.g. Build" className={INPUT} />
-                <CheckField label="feeds capacity signal (phase-scoped only)" name="feedsCapacitySignal" />
-                <CheckField label="surface during onboarding" name="onboardingSurface" />
-                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                  Add profile question
-                </button>
-              </form>
+              <details className="mt-3">
+                <summary className="inline-flex cursor-pointer items-center gap-1 text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+                  <PlusIcon /> Add profile question
+                </summary>
+                <form action={createProfileQuestionAction} className="mt-2 flex max-w-[600px] flex-col gap-2">
+                  <ProfileQuestionEditor initial={{ label: "", responseType: "free_text", options: [], required: false }} />
+                  <select name="scope" defaultValue="once_ever" className={INPUT}>
+                    <option value="once_ever">Once ever</option>
+                    <option value="per_cycle">Per cycle</option>
+                    <option value="phase">Tied to one phase name</option>
+                  </select>
+                  <input type="text" name="phaseNameHint" placeholder="phase name (only if scope is 'phase'), e.g. Build" className={INPUT} />
+                  <CheckField label="feeds capacity signal (phase-scoped only)" name="feedsCapacitySignal" />
+                  <CheckField label="surface during onboarding" name="onboardingSurface" />
+                  <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                    Add
+                  </button>
+                </form>
+              </details>
             </section>
 
             <section>
@@ -1250,5 +1255,14 @@ export default async function SettingsPage({
         )}
       </div>
     </main>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
   );
 }

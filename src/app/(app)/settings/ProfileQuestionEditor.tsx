@@ -11,26 +11,17 @@ const PROFILE_QUESTION_RESPONSE_TYPES: EditableFieldShape["responseType"][] = [
   "date",
 ];
 
-// The single-field counterpart to FormBuilder.tsx — a ProfileQuestion
-// IS one field (one row per question, per src/db/schema/profile-
-// question.ts), not an array of them, so there's no add/remove/reorder
-// here, just the same reusable FieldShapeEditor plus a live preview of
-// what answering this one question actually looks like. Renders as a
-// plain child inside the existing server-rendered create/update
-// <form> in settings/page.tsx — it only needs to emit its own named
-// inputs for that surrounding form to pick up on submit, not own a
-// <form> of its own the way FormBuilder does.
 export default function ProfileQuestionEditor({ initial }: { initial: EditableFieldShape }) {
   const [field, setField] = useState<EditableFieldShape>(initial);
 
   return (
-    <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+    <div className="flex flex-wrap items-start gap-4">
       <input type="hidden" name="responseType" value={field.responseType} />
       {field.options.map((o, i) => (
         <input type="hidden" key={i} name="options" value={o} />
       ))}
 
-      <div style={{ flex: 1, minWidth: "16rem" }}>
+      <div className="min-w-[16rem] flex-1">
         <input
           type="text"
           name="label"
@@ -38,7 +29,7 @@ export default function ProfileQuestionEditor({ initial }: { initial: EditableFi
           value={field.label}
           onChange={(e) => setField({ ...field, label: e.target.value })}
           placeholder="Question label"
-          style={{ padding: "0.4rem", width: "100%", marginBottom: "0.4rem" }}
+          className="mb-2 w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none"
         />
         <FieldShapeEditor
           value={field}
@@ -51,8 +42,8 @@ export default function ProfileQuestionEditor({ initial }: { initial: EditableFi
         <input type="hidden" name="required" value={field.required ? "on" : ""} />
       </div>
 
-      <div style={{ flex: 1, minWidth: "14rem", border: "1px dashed #ccc", borderRadius: 6, padding: "0.6rem" }}>
-        <p style={{ margin: "0 0 0.4rem", fontSize: "0.7rem", color: "#999", textTransform: "uppercase" }}>
+      <div className="min-w-[14rem] flex-1 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] p-3">
+        <p className="mb-2 text-[11px] uppercase tracking-wide text-[var(--text-muted)]">
           Preview — not submittable
         </p>
         <FieldPreview field={field} disabled />

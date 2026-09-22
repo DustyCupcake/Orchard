@@ -335,6 +335,21 @@ function SidebarHeader({
   );
 }
 
+function BugIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="8" y="6" width="8" height="14" rx="4" />
+      <path d="M19 7l-3.75 2.5" />
+      <path d="M5 7l3.75 2.5" />
+      <path d="M20 13h-4" />
+      <path d="M4 13h4" />
+      <path d="M19 19l-3.75-2.5" />
+      <path d="M5 19l3.75-2.5" />
+      <path d="M9 6a3 3 0 0 1 6 0" />
+    </svg>
+  );
+}
+
 function UserBlock({ memberName, collapsed }: { memberName: string; collapsed: boolean }) {
   const initial = memberName.trim().charAt(0).toUpperCase() || "?";
   return (
@@ -352,6 +367,15 @@ function UserBlock({ memberName, collapsed }: { memberName: string; collapsed: b
             {memberName}
           </Link>
         )}
+        <a
+          href="https://github.com/DustyCupcake/Orchard/issues/new"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Report a bug"
+          className={ICON_BUTTON}
+        >
+          <BugIcon />
+        </a>
         <form action="/api/auth/logout" method="post">
           <button type="submit" title="Log out" className={ICON_BUTTON}>
             <NavIcon name="logout" size={16} />
