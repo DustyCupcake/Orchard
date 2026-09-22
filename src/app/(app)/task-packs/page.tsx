@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { listTaskPacks } from "@/lib/task-packs";
+import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, CARD } from "@/components/ui/kit";
+import PageHeader from "@/components/ui/PageHeader";
 import { archiveTaskPackAction, importTaskPackFromFileAction, unarchiveTaskPackAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -29,44 +31,48 @@ export default async function TaskPacksPage({
   const archived = packs.filter((p) => p.archivedAt);
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 720 }}>
-      <h1>Task Packs</h1>
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
-      {exported && <p style={{ color: "#2a7a2a" }}>Exported — see it below.</p>}
-      {imported && <p style={{ color: "#2a7a2a" }}>Uploaded — see it below.</p>}
-      <p style={{ color: "#666", fontSize: "0.85rem" }}>
-        A portable, importable bundle of tasks — export a cycle&rsquo;s task set from{" "}
-        <Link href="/participation">Participation</Link>, or upload a file someone handed you from
-        another deployment below. Import one into a new cycle from here.
-      </p>
+    <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
+      <PageHeader
+        title="Task Packs"
+        description={
+          <>
+            A portable, importable bundle of tasks — export a cycle&rsquo;s task set from{" "}
+            <Link href="/participation" className="text-[var(--accent-1)] hover:underline">Participation</Link>, or upload a file someone handed you from
+            another deployment below. Import one into a new cycle from here.
+          </>
+        }
+      />
+      {error && <Banner tone="danger">{error}</Banner>}
+      {exported && <Banner tone="success">Exported — see it below.</Banner>}
+      {imported && <Banner tone="success">Uploaded — see it below.</Banner>}
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2>Upload a pack file</h2>
-        <form action={importTaskPackFromFileAction} encType="multipart/form-data" style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          <input type="file" name="file" accept="application/json,.json" required />
-          <button type="submit" style={{ padding: "0.4rem 1rem" }}>
+      <section className="mt-6">
+        <h2 className="text-[22px] font-semibold text-[var(--text)]">Upload a pack file</h2>
+        <form action={importTaskPackFromFileAction} encType="multipart/form-data" className="mt-3 flex items-center gap-2">
+          <input type="file" name="file" accept="application/json,.json" required className="text-[13px] text-[var(--text)]" />
+          <button type="submit" className={BUTTON_PRIMARY}>
             Upload
           </button>
         </form>
       </section>
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2>Saved packs</h2>
-        {active.length === 0 && <p style={{ color: "#666" }}>Nothing saved yet.</p>}
-        <ul style={{ listStyle: "none", padding: 0 }}>
+      <section className="mt-6">
+        <h2 className="text-[22px] font-semibold text-[var(--text)]">Saved packs</h2>
+        {active.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nothing saved yet.</p>}
+        <ul className="mt-3 list-none space-y-3 p-0">
           {active.map((p) => (
-            <li key={p.id} style={{ border: "1px solid #ddd", borderRadius: 6, padding: "0.75rem", marginBottom: "0.75rem" }}>
-              <strong>{p.name}</strong>{" "}
+            <li key={p.id} className={CARD}>
+              <strong className="text-[var(--text)]">{p.name}</strong>{" "}
               {p.domainTags.length > 0 && (
-                <span style={{ color: "#666", fontSize: "0.8rem" }}>({p.domainTags.join(", ")})</span>
+                <span className="text-[12px] text-[var(--text-muted)]">({p.domainTags.join(", ")})</span>
               )}
-              {p.description && <p style={{ color: "#666", margin: "0.25rem 0" }}>{p.description}</p>}
-              <div style={{ display: "flex", gap: "0.75rem", fontSize: "0.85rem", marginTop: "0.4rem" }}>
-                <Link href={`/task-packs/import/${p.id}`}>Import into a new cycle</Link>
-                <a href={`/api/task-packs/${p.id}/download`}>Download</a>
+              {p.description && <p className="mt-1 text-[13px] text-[var(--text-muted)]">{p.description}</p>}
+              <div className="mt-2 flex items-center gap-3 text-[13px]">
+                <Link href={`/task-packs/import/${p.id}`} className="text-[var(--accent-1)] hover:underline">Import into a new cycle</Link>
+                <a href={`/api/task-packs/${p.id}/download`} className="text-[var(--accent-1)] hover:underline">Download</a>
                 <form action={archiveTaskPackAction}>
                   <input type="hidden" name="packId" value={p.id} />
-                  <button type="submit" style={{ background: "none", border: "none", color: "#b91c1c", cursor: "pointer", padding: 0 }}>
+                  <button type="submit" className="cursor-pointer bg-transparent p-0 text-[13px] text-[var(--danger)] hover:underline">
                     Archive
                   </button>
                 </form>
@@ -77,15 +83,15 @@ export default async function TaskPacksPage({
       </section>
 
       {archived.length > 0 && (
-        <section style={{ marginTop: "1.5rem" }}>
-          <h2>Archived</h2>
-          <ul style={{ listStyle: "none", padding: 0 }}>
+        <section className="mt-6">
+          <h2 className="text-[22px] font-semibold text-[var(--text)]">Archived</h2>
+          <ul className="mt-2 list-none p-0">
             {archived.map((p) => (
-              <li key={p.id} style={{ padding: "0.4rem 0", borderBottom: "1px solid #eee", color: "#666" }}>
+              <li key={p.id} className="border-b border-[var(--border)] py-2 text-[13px] text-[var(--text-muted)]">
                 {p.name}{" "}
-                <form action={unarchiveTaskPackAction} style={{ display: "inline" }}>
+                <form action={unarchiveTaskPackAction} className="inline">
                   <input type="hidden" name="packId" value={p.id} />
-                  <button type="submit" style={{ fontSize: "0.85rem" }}>
+                  <button type="submit" className={BUTTON_GHOST}>
                     Unarchive
                   </button>
                 </form>

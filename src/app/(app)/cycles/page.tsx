@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { cycle } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
+import { BUTTON_PRIMARY, INPUT } from "@/components/ui/kit";
+import PageHeader from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -39,33 +41,32 @@ export default async function CyclesSearchPage({
     : [];
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 640 }}>
-      <h1>Find a closed cycle</h1>
-      <p style={{ color: "#666" }}>
-        A closed cycle stays fully reachable, read-only — it just never appears in the nav
-        switcher&rsquo;s default view.
-      </p>
-      <form method="get" style={{ display: "flex", gap: "0.5rem" }}>
+    <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
+      <PageHeader
+        title="Find a closed cycle"
+        description="A closed cycle stays fully reachable, read-only — it just never appears in the nav switcher's default view."
+      />
+      <form method="get" className="mt-4 flex gap-2">
         <input
           type="text"
           name="q"
           defaultValue={query}
           placeholder="Search closed cycles by name…"
-          style={{ padding: "0.4rem", flex: 1 }}
+          className={`${INPUT} flex-1`}
         />
-        <button type="submit" style={{ padding: "0.4rem 1rem" }}>
+        <button type="submit" className={BUTTON_PRIMARY}>
           Search
         </button>
       </form>
 
-      {query && results.length === 0 && <p style={{ color: "#666", marginTop: "1rem" }}>No closed cycle matches.</p>}
+      {query && results.length === 0 && <p className="mt-4 text-[13px] text-[var(--text-muted)]">No closed cycle matches.</p>}
       {results.length > 0 && (
-        <ul style={{ marginTop: "1rem" }}>
+        <ul className="mt-4 space-y-2 text-[13px]">
           {results.map((c) => (
-            <li key={c.id}>
-              <a href={`/${c.id}/participation`}>{c.name}</a>
+            <li key={c.id} className="text-[var(--text)]">
+              <a href={`/${c.id}/participation`} className="text-[var(--accent-1)] hover:underline">{c.name}</a>
               {c.closedAt && (
-                <span style={{ color: "#666" }}> — closed {new Date(c.closedAt).toLocaleDateString()}</span>
+                <span className="text-[var(--text-muted)]"> — closed {new Date(c.closedAt).toLocaleDateString()}</span>
               )}
             </li>
           ))}

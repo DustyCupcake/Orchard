@@ -8,6 +8,7 @@ import {
   claimOrRequestToJoin,
   escalateTask,
   finishTask,
+  finishWaitingTask,
   parkTask,
   releaseTask,
   resumeTask,
@@ -160,4 +161,23 @@ export async function escalateTaskAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
   await runAction(() => escalateTask(actor, taskId));
+}
+
+// "Mark done" straight from Waiting — one of the four spec'd nudge
+// options, surfaced in the card's overflow menu so it doesn't need a
+// Resume-first detour. Same done-redirect as finishAction so the
+// "you might also like" strip still fires.
+export async function finishWaitingAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await finishWaitingTask(actor, taskId);
+  } catch (err) {
+    if (err instanceof AppError) {
+      redirect(`/board?error=${encodeURIComponent(err.message)}`);
+    }
+    throw err;
+  }
+  redirect(`/board?done=${taskId}`);
 }

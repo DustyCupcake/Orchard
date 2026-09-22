@@ -438,6 +438,24 @@ export async function setOutgoingAction(formData: FormData) {
   revalidatePath(`/tasks/${taskId}`);
 }
 
+// The plain, ungated claim — the header's primary action on an
+// unclaimed (or joinable claimed) task. Distinct from confirmClaimAction
+// below: that's the coordinator self-assign *confirmation* path, which
+// passes { confirmed: true } to skip the check this one enforces.
+export async function claimAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+
+  try {
+    await claimOrRequestToJoin(actor, taskId);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+}
+
 // Self-assign confirmation check — see docs/spec.md's Coordination
 // mechanics. The three options spec lists: really want it myself
 // (confirmClaimAction, below), suggest a person instead

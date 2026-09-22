@@ -9,6 +9,8 @@ import {
   listMyCommunityInvites,
 } from "@/lib/recruitment";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
+import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL, Tag, type Tone } from "@/components/ui/kit";
+import PageHeader from "@/components/ui/PageHeader";
 import {
   claimInquiryAction,
   createCommunityInviteAction,
@@ -23,6 +25,13 @@ const STATUS_LABEL: Record<string, string> = {
   redeemed: "redeemed",
   revoked: "revoked",
   expired: "expired",
+};
+
+const STATUS_TONE: Record<string, Tone> = {
+  valid: "success",
+  redeemed: "neutral",
+  revoked: "danger",
+  expired: "warning",
 };
 
 // See docs/spec.md's Recruitment "Invite links" and "A public inquiry
@@ -58,11 +67,11 @@ export default async function InvitesPage({
   const inquiries = moduleOn && isHolder ? await listInquiries(viewing) : [];
 
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 760 }}>
-      <h1>Invites</h1>
+    <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
+      <PageHeader title="Invites" />
 
       {!moduleOn && (
-        <p style={{ color: "#666" }}>
+        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
           Recruitment isn&rsquo;t turned on for this Community yet — a current Admins holder can
           enable it under Modules on the Settings screen.
         </p>
@@ -70,73 +79,65 @@ export default async function InvitesPage({
 
       {moduleOn && (
         <>
-          {error && <p style={{ color: "crimson" }}>{error}</p>}
-          {created && <p style={{ color: "#2a7a2a" }}>Invite created — copy the link below.</p>}
-          {revoked && <p style={{ color: "#2a7a2a" }}>Invite revoked.</p>}
-          {claimed && <p style={{ color: "#2a7a2a" }}>Inquiry claimed.</p>}
-          {inquiryResolved && <p style={{ color: "#2a7a2a" }}>Inquiry marked resolved.</p>}
+          {error && <Banner tone="danger">{error}</Banner>}
+          {created && <Banner tone="success">Invite created — copy the link below.</Banner>}
+          {revoked && <Banner tone="success">Invite revoked.</Banner>}
+          {claimed && <Banner tone="success">Inquiry claimed.</Banner>}
+          {inquiryResolved && <Banner tone="success">Inquiry marked resolved.</Banner>}
 
-          <section style={{ marginTop: "1rem" }}>
-            <h2>Create an invite link</h2>
-            <p style={{ color: "#666", fontSize: "0.85rem" }}>
+          <section className="mt-6">
+            <h2 className="text-[22px] font-semibold text-[var(--text)]">Create an invite link</h2>
+            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
               Always single-use — shows nothing about you or the community&rsquo;s roster to
               whoever opens it, just a path to become a member.
             </p>
             <form
               action={createCommunityInviteAction}
-              style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: 480 }}
+              className="mt-3 flex max-w-[480px] flex-col gap-3"
             >
-              <label>
-                Label (optional — so you can tell several links apart)
-                <br />
-                <input type="text" name="label" style={{ padding: "0.4rem", width: "100%" }} />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Label (optional — so you can tell several links apart)</span>
+                <input type="text" name="label" className={INPUT} />
               </label>
-              <label>
-                <input type="checkbox" name="inviterThinksGoodFit" /> I think this person is a good
-                fit
+              <CheckField label="I think this person is a good fit" name="inviterThinksGoodFit" />
+              <CheckField label="I personally know this person" name="inviterKnowsPersonally" />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Expires at (optional)</span>
+                <input type="datetime-local" name="expiresAt" className={INPUT} />
               </label>
-              <label>
-                <input type="checkbox" name="inviterKnowsPersonally" /> I personally know this
-                person
-              </label>
-              <label>
-                Expires at (optional)
-                <br />
-                <input type="datetime-local" name="expiresAt" style={{ padding: "0.4rem" }} />
-              </label>
-              <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
+              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                 Create invite
               </button>
             </form>
           </section>
 
-          <section style={{ marginTop: "2rem" }}>
-            <h2>Your invite links</h2>
-            {myInvites.length === 0 && <p style={{ color: "#666" }}>None yet.</p>}
+          <section className="mt-6">
+            <h2 className="text-[22px] font-semibold text-[var(--text)]">Your invite links</h2>
+            {myInvites.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+            <div className="mt-3 space-y-3">
             {myInvites.map((invite) => {
               const status = communityInviteStatus(invite);
               return (
-                <div
-                  key={invite.id}
-                  style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
-                >
-                  <strong>{invite.label || "(unlabeled)"}</strong>{" "}
-                  <span style={{ color: "#666" }}>— {STATUS_LABEL[status]}</span>
+                <div key={invite.id} className={CARD}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <strong className="text-[var(--text)]">{invite.label || "(unlabeled)"}</strong>
+                    <Tag tone={STATUS_TONE[status] ?? "neutral"}>{STATUS_LABEL[status]}</Tag>
+                  </div>
                   {status === "valid" && (
-                    <p style={{ margin: "0.3rem 0", fontSize: "0.85rem", wordBreak: "break-all" }}>
+                    <p className="mt-1 break-all text-[13px] text-[var(--text)]">
                       {appUrl}/invite/{invite.token}
                     </p>
                   )}
-                  <p style={{ margin: "0.2rem 0", fontSize: "0.8rem", color: "#666" }}>
+                  <p className="mt-1 text-[12px] text-[var(--text-muted)]">
                     {invite.inviterThinksGoodFit && "good fit · "}
                     {invite.inviterKnowsPersonally && "know personally · "}
                     created {new Date(invite.createdAt).toLocaleDateString()}
                     {invite.expiresAt && ` · expires ${new Date(invite.expiresAt).toLocaleDateString()}`}
                   </p>
                   {status === "valid" && (
-                    <form action={revokeCommunityInviteAction}>
+                    <form action={revokeCommunityInviteAction} className="mt-2">
                       <input type="hidden" name="inviteId" value={invite.id} />
-                      <button type="submit" style={{ padding: "0.3rem 0.6rem" }}>
+                      <button type="submit" className={BUTTON_SECONDARY}>
                         Revoke
                       </button>
                     </form>
@@ -144,45 +145,46 @@ export default async function InvitesPage({
                 </div>
               );
             })}
+            </div>
           </section>
 
           {isHolder && (
-            <section style={{ marginTop: "2rem" }}>
-              <h2>Inquiry inbox</h2>
-              <p style={{ color: "#666", fontSize: "0.85rem" }}>
+            <section className="mt-6">
+              <h2 className="text-[22px] font-semibold text-[var(--text)]">Inquiry inbox</h2>
+              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
                 Visible to you because you hold the recruitment task. Claim one so two people don&rsquo;t
                 unknowingly reach out to the same person.
               </p>
-              {inquiries.length === 0 && <p style={{ color: "#666" }}>Nothing pending.</p>}
+              {inquiries.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nothing pending.</p>}
+              <div className="mt-3 space-y-3">
               {inquiries.map((inq) => (
-                <div
-                  key={inq.id}
-                  style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
-                >
-                  <p style={{ margin: "0 0 0.3rem" }}>{inq.message}</p>
-                  <p style={{ margin: "0 0 0.3rem", fontSize: "0.85rem", color: "#666" }}>
+                <div key={inq.id} className={CARD}>
+                  <p className="text-[13px] text-[var(--text)]">{inq.message}</p>
+                  <p className="mt-1 text-[13px] text-[var(--text-muted)]">
                     Contact: {inq.contactInfo} · submitted {new Date(inq.submittedAt).toLocaleString()}
                   </p>
-                  <p style={{ margin: "0 0 0.3rem", fontSize: "0.8rem" }}>
-                    {inq.resolvedAt
-                      ? "Resolved"
-                      : inq.claimedBy
-                        ? `Claimed ${new Date(inq.claimedAt!).toLocaleString()}`
-                        : "Unclaimed"}
+                  <p className="mt-1">
+                    <Tag tone={inq.resolvedAt ? "success" : inq.claimedBy ? "accent" : "warning"}>
+                      {inq.resolvedAt
+                        ? "Resolved"
+                        : inq.claimedBy
+                          ? `Claimed ${new Date(inq.claimedAt!).toLocaleString()}`
+                          : "Unclaimed"}
+                    </Tag>
                   </p>
                   {!inq.resolvedAt && (
-                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <div className="mt-2 flex gap-2">
                       {!inq.claimedBy && (
                         <form action={claimInquiryAction}>
                           <input type="hidden" name="inquiryId" value={inq.id} />
-                          <button type="submit" style={{ padding: "0.3rem 0.6rem" }}>
+                          <button type="submit" className={BUTTON_SECONDARY}>
                             Claim
                           </button>
                         </form>
                       )}
                       <form action={resolveInquiryAction}>
                         <input type="hidden" name="inquiryId" value={inq.id} />
-                        <button type="submit" style={{ padding: "0.3rem 0.6rem" }}>
+                        <button type="submit" className={BUTTON_SECONDARY}>
                           Mark resolved
                         </button>
                       </form>
@@ -190,6 +192,7 @@ export default async function InvitesPage({
                   )}
                 </div>
               ))}
+              </div>
             </section>
           )}
         </>

@@ -18,3 +18,19 @@ export const ATTENTION_STYLES: Record<string, { label: string; color: string; bo
   hard: { label: "stale", color: "#b3001b", borderColor: "#b3001b" },
   escalated: { label: "escalated", color: "#b3001b", borderColor: "#b3001b" },
 };
+
+// Task UI grammar (docs/design_handoff_conventions/README.md) — UI copy
+// speaks outcomes, not schema values. Never inline these strings in
+// pages; extend the maps here instead.
+export const OPENNESS_LABELS: Record<string, string> = {
+  open: "Open to claim",
+  request: "Ask to join",
+  coordination_approved: "Requires approval",
+  community_endorsed: "Chosen by endorsement",
+};
+
+export const REQUIREMENT_MODE_LABELS: Record<string, string> = {
+  individual_gate: "Required of each person",
+  group_coverage: "Someone on the team must have this",
+  soft_priority: "Helpful, not required",
+};

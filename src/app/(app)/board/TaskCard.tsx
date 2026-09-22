@@ -1,12 +1,16 @@
 import Link from "next/link";
+import { FlameIcon } from "@phosphor-icons/react/dist/ssr";
 import type { requirement as requirementTable } from "@/db/schema";
 import { describeRequirement } from "@/lib/tasks";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
-import { Tag, ATTENTION_TONE, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_GHOST, INPUT } from "@/components/ui/kit";
+import { Tag, ATTENTION_TONE, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT } from "@/components/ui/kit";
+import ActionMenu from "@/components/ui/ActionMenu";
+import { BranchChip, CapacityChip, DateChip, EffortChip } from "@/components/tasks/MetaChips";
 import {
   claimAction,
   escalateTaskAction,
   finishAction,
+  finishWaitingAction,
   parkAction,
   releaseAction,
   resumeAction,
@@ -37,6 +41,12 @@ type Task = {
   cycleId: string | null;
 };
 
+// Task UI grammar (docs/design_handoff_conventions/README.md):
+// - No status icon here — kanban columns / phase groups / coverage
+//   groups already carry status; an icon would be noise.
+// - One primary action per state, everything else in the ⋯ menu.
+// - Requirements summarize: unmet individual gates listed, the rest
+//   collapse to "N of M met"; soft_priority is detail-page-only.
 export default function TaskCard({
   task,
   assignments,
@@ -71,28 +81,11 @@ export default function TaskCard({
   const unmetIds = new Set(unmetRequirements.map((r) => r.id));
   const eligible = unmetRequirements.length === 0;
 
-  // Joining an already-held task under `request`/`coordination_approved`
-  // openness creates a pending request instead of an instant claim —
-  // see docs/spec.md's "Request to join". Mirrors the same branch
-  // claimOrRequestToJoin() takes server-side, purely for the button
-  // label; the server is what actually enforces it.
   const requestGated = task.openness === "request" || task.openness === "coordination_approved";
   const joiningRequiresRequest =
     task.status === "claimed" && realAssignments.length > 0 && requestGated;
-  // community_endorsed never claims through the ordinary Claim/Request
-  // button at all — see the task detail page's "Candidacy" section
-  // (expressCandidacy/endorseCandidacy), a genuinely different flow
-  // (put yourself forward, others endorse) that doesn't fit a single
-  // button the way the other three openness values do.
   const isCommunityEndorsed = task.openness === "community_endorsed";
 
-  // "When anyone with placement authority tries to self-assign a
-  // flagged or unclaimed task" — see docs/spec.md's Coordination
-  // mechanics: self-assign confirmation check. Only for someone who
-  // currently does this task's branch's coordination; server-enforced
-  // in join-requests.ts's claimOrRequestToJoin(), this just routes the
-  // button to the task page's confirmation block instead of an instant
-  // submit, so the check can't be silently skipped by clicking Claim.
   const needsSelfAssignConfirmation =
     isCoordinationHolderForBranch && (task.status === "unclaimed" || task.attentionLevel !== "ok");
 
@@ -118,13 +111,113 @@ export default function TaskCard({
     (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
     !eligible &&
     !myPendingRequestId;
-  // Shadowing only makes sense once someone's actually doing the task —
-  // see shadows.ts's claimAsShadow(), which enforces the same rule
-  // server-side. Not excluded for community_endorsed: shadowing is
-  // orthogonal to openness, nothing about learning alongside a current
-  // holder depends on how they got the task.
   const canShadow = !holds && !shadowing && (task.status === "claimed" || task.status === "waiting");
   const attention = ATTENTION_STYLES[task.attentionLevel];
+
+  // Requirements summarization — individual_gate: unmet listed, met
+  // counted; group_coverage: one standing status line each;
+  // soft_priority: hidden on cards (detail page only).
+  const gateReqs = requirements.filter((r) => r.mode === "individual_gate");
+  const unmetGateReqs = gateReqs.filter((r) => unmetIds.has(r.id));
+  const metGateCount = gateReqs.length - unmetGateReqs.length;
+  const coverageReqs = requirements.filter((r) => r.mode === "group_coverage");
+
+  // ── Action wiring (one primary + menu, per the grammar table) ──
+  const escalateForm = isCoordinationHolderForBranch && task.attentionLevel !== "escalated" && (
+    <form action={escalateTaskAction}>
+      <input type="hidden" name="taskId" value={task.id} />
+      <button type="submit">Escalate</button>
+    </form>
+  );
+  const releaseForm = (
+    <form action={releaseAction}>
+      <input type="hidden" name="taskId" value={task.id} />
+      <button type="submit">Release</button>
+    </form>
+  );
+  const shadowLink = canShadow && <Link href={`/tasks/${task.id}`}>Shadow this task</Link>;
+
+  let primaryAction: React.ReactNode = null;
+  let secondaryAction: React.ReactNode = null;
+  const menuItems: React.ReactNode[] = [];
+
+  if ((canClaim || canRequest) && !holds) {
+    primaryAction = (
+      <form action={claimAction}>
+        <input type="hidden" name="taskId" value={task.id} />
+        <button type="submit" className={BUTTON_PRIMARY}>
+          {canRequest ? "Request to join" : "Claim"}
+        </button>
+      </form>
+    );
+    if (shadowLink) menuItems.push(shadowLink);
+    if (escalateForm) menuItems.push(escalateForm);
+  } else if (task.status === "claimed" && holds) {
+    primaryAction = (
+      <form action={finishAction}>
+        <input type="hidden" name="taskId" value={task.id} />
+        <button type="submit" className={BUTTON_PRIMARY}>
+          Finish
+        </button>
+      </form>
+    );
+    // Park needs inputs (date + note), so it's a disclosure, not a menu row.
+    secondaryAction = (
+      <details className="w-full">
+        <summary className="inline-flex cursor-pointer items-center text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text)]">
+          Park until a check-in date…
+        </summary>
+        <form action={parkAction} className="mt-2 flex flex-wrap items-center gap-2">
+          <input type="hidden" name="taskId" value={task.id} />
+          <input type="date" name="nextCheckinAt" required className={`${INPUT} min-w-0`} />
+          <input
+            type="text"
+            name="waitingNote"
+            placeholder="waiting on…"
+            className={`${INPUT} min-w-0 flex-1 basis-32`}
+          />
+          <button type="submit" className={BUTTON_SECONDARY}>
+            Park
+          </button>
+        </form>
+      </details>
+    );
+    menuItems.push(releaseForm);
+    if (escalateForm) menuItems.push(escalateForm);
+  } else if (task.status === "waiting" && holds) {
+    primaryAction = (
+      <form action={resumeAction}>
+        <input type="hidden" name="taskId" value={task.id} />
+        <button type="submit" className={BUTTON_PRIMARY}>
+          Resume
+        </button>
+      </form>
+    );
+    menuItems.push(
+      <form action={finishWaitingAction}>
+        <input type="hidden" name="taskId" value={task.id} />
+        <button type="submit">Mark done</button>
+      </form>,
+      <Link href={`/tasks/${task.id}`}>Re-snooze…</Link>,
+      releaseForm,
+    );
+    if (escalateForm) menuItems.push(escalateForm);
+  } else if (shadowing) {
+    secondaryAction = (
+      <form action={releaseAction}>
+        <input type="hidden" name="taskId" value={task.id} />
+        <button type="submit" className={BUTTON_SECONDARY}>
+          Stop shadowing
+        </button>
+      </form>
+    );
+    if (escalateForm) menuItems.push(escalateForm);
+  } else {
+    // Not actionable for this viewer (endorsed flow, blocked, pending,
+    // or just someone else's task) — links/menu only.
+    if (shadowLink) menuItems.push(shadowLink);
+    if (escalateForm) menuItems.push(escalateForm);
+  }
 
   return (
     <div
@@ -136,21 +229,28 @@ export default function TaskCard({
       }}
     >
       <div className="flex flex-wrap items-center gap-1.5">
+        {task.critical && (
+          <span className="text-[var(--danger)]" title="Critical" aria-label="Critical" role="img">
+            <FlameIcon size={14} weight="fill" />
+          </span>
+        )}
         <Link href={`/tasks/${task.id}`} className="text-[14px] font-semibold text-[var(--text)] hover:text-[var(--accent-1)]">
           {task.title}
         </Link>
-        {task.critical && <Tag tone="danger">critical</Tag>}
         {attention && <Tag tone={ATTENTION_TONE[task.attentionLevel] ?? "neutral"}>{attention.label}</Tag>}
-        {/* Evergreen work, or anything predating cycles — shows in every
-            scope by design (docs/development-plan.md's Phase 67), just
-            visibly marked as not belonging to any one cycle. */}
         {task.cycleId === null && <Tag>not cycle-scoped</Tag>}
       </div>
-      <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
-        {branchName} · {effortSummary(task.effort, task.effortMagnitude)} · {realAssignments.length}
-        {task.capacity !== null ? `/${task.capacity}` : ""} held
+
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <BranchChip name={branchName} />
+        <EffortChip summary={effortSummary(task.effort, task.effortMagnitude)} />
+        <CapacityChip held={realAssignments.length} capacity={task.capacity} />
       </div>
-      {task.description && <p className="mt-1.5 text-[13px] text-[var(--text)]">{task.description}</p>}
+
+      {task.description && (
+        <p className="mt-1.5 line-clamp-2 text-[13px] text-[var(--text)]">{task.description}</p>
+      )}
+
       {realAssignments.length > 0 && (
         <p className="mt-1.5 text-[12px] text-[var(--text)]">
           Held by: {realAssignments.map((a) => a.memberName).join(", ")}
@@ -162,40 +262,34 @@ export default function TaskCard({
         </p>
       )}
       {task.status === "waiting" && (
-        <p className="mt-1.5 text-[12px] text-[var(--text)]">
-          Next check-in: {task.nextCheckinAt ? new Date(task.nextCheckinAt).toLocaleDateString() : "—"}
-          {task.waitingNote && ` — ${task.waitingNote}`}
+        <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-[var(--text)]">
+          <DateChip date={task.nextCheckinAt ?? "—"} label="Check-in" />
+          {task.waitingNote && <span className="text-[var(--text-muted)]">— {task.waitingNote}</span>}
         </p>
       )}
 
-      {requirements.length > 0 && (
+      {(unmetGateReqs.length > 0 || metGateCount > 0 || coverageReqs.length > 0) && (
         <ul className="my-1.5 flex flex-col gap-0.5 text-[12px]">
-          {requirements.map((r) => {
-            // Three modes, three different lines — see docs/spec.md's
-            // Requirement. individual_gate is a personal met/not-met
-            // gate (unmetRequirements, computed for this viewer only);
-            // group_coverage is a standing team-wide status line, never
-            // gated on who's looking; soft_priority never gates or
-            // flags anything, purely informational.
-            if (r.mode === "group_coverage") {
-              const covered = groupCoverage.get(r.id) ?? false;
-              return (
-                <li key={r.id} style={{ color: covered ? "var(--success)" : "var(--warning)" }}>
-                  {describeRequirement(r, tierNames)} — {covered ? "covered" : "not yet covered"}
-                </li>
-              );
-            }
-            if (r.mode === "soft_priority") {
-              return (
-                <li key={r.id} className="text-[var(--text-muted)]">
-                  {describeRequirement(r, tierNames)} (preferred)
-                </li>
-              );
-            }
+          {unmetGateReqs.map((r) => (
+            <li key={r.id} className="text-[var(--danger)]">
+              {describeRequirement(r, tierNames)} (not met)
+            </li>
+          ))}
+          {gateReqs.length > 0 && unmetGateReqs.length === 0 && (
+            <li className="text-[var(--success)]">
+              {metGateCount} of {gateReqs.length} requirement{gateReqs.length !== 1 ? "s" : ""} met
+            </li>
+          )}
+          {gateReqs.length > 0 && unmetGateReqs.length > 0 && metGateCount > 0 && (
+            <li className="text-[var(--text-muted)]">
+              {metGateCount} of {gateReqs.length} met
+            </li>
+          )}
+          {coverageReqs.map((r) => {
+            const covered = groupCoverage.get(r.id) ?? false;
             return (
-              <li key={r.id} style={{ color: unmetIds.has(r.id) ? "var(--danger)" : "var(--success)" }}>
-                {describeRequirement(r, tierNames)}
-                {unmetIds.has(r.id) ? " (not met)" : " (met)"}
+              <li key={r.id} className={covered ? "text-[var(--success)]" : "text-[var(--warning)]"}>
+                {describeRequirement(r, tierNames)} — {covered ? "covered" : "not yet covered"}
               </li>
             );
           })}
@@ -203,14 +297,9 @@ export default function TaskCard({
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        {(canClaim || canRequest) && (
-          <form action={claimAction}>
-            <input type="hidden" name="taskId" value={task.id} />
-            <button type="submit" className={BUTTON_PRIMARY}>
-              {canRequest ? "Request to join" : "Claim"}
-            </button>
-          </form>
-        )}
+        {primaryAction}
+        {secondaryAction}
+
         {myPendingRequestId && (
           <>
             <span className="text-[12px] text-[var(--text-muted)]">Request pending</span>
@@ -224,7 +313,7 @@ export default function TaskCard({
           </>
         )}
         {blockedByRequirements && (
-          <span className="text-[12px] text-[var(--danger)]">Not eligible — see requirements above</span>
+          <span className="text-[12px] text-[var(--danger)]">Not eligible — see unmet requirements</span>
         )}
         {needsConfirmationLink && (
           <Link href={`/tasks/${task.id}`} className="text-[12px] font-medium text-[var(--accent-1)] hover:underline">
@@ -236,81 +325,14 @@ export default function TaskCard({
             Put yourself forward or endorse a candidate →
           </Link>
         )}
-        {canShadow && (
-          <Link href={`/tasks/${task.id}`} className="text-[12px] font-medium text-[var(--accent-1)] hover:underline">
-            Shadow this task →
-          </Link>
-        )}
-        {shadowing && (
-          <>
-            <span className="text-[12px] text-[var(--text-muted)]">Shadowing</span>
-            <form action={releaseAction}>
-              <input type="hidden" name="taskId" value={task.id} />
-              <button type="submit" className={BUTTON_SECONDARY}>
-                Stop shadowing
-              </button>
-            </form>
-          </>
-        )}
+        {shadowing && <span className="text-[12px] text-[var(--text-muted)]">Shadowing</span>}
 
-        {isCoordinationHolderForBranch && task.attentionLevel !== "escalated" && (
-          <form action={escalateTaskAction}>
-            <input type="hidden" name="taskId" value={task.id} />
-            <button type="submit" className={BUTTON_GHOST} title="Escalate to community-wide coordination view">
-              Escalate
-            </button>
-          </form>
-        )}
-        {task.status === "claimed" && holds && (
-          <>
-            <form action={releaseAction}>
-              <input type="hidden" name="taskId" value={task.id} />
-              <button type="submit" className={BUTTON_SECONDARY}>
-                Release
-              </button>
-            </form>
-            <form action={finishAction}>
-              <input type="hidden" name="taskId" value={task.id} />
-              <button type="submit" className={BUTTON_PRIMARY}>
-                Finish
-              </button>
-            </form>
-          </>
-        )}
-
-        {task.status === "waiting" && holds && (
-          <>
-            <form action={resumeAction}>
-              <input type="hidden" name="taskId" value={task.id} />
-              <button type="submit" className={BUTTON_PRIMARY}>
-                Resume
-              </button>
-            </form>
-            <form action={releaseAction}>
-              <input type="hidden" name="taskId" value={task.id} />
-              <button type="submit" className={BUTTON_SECONDARY}>
-                Release
-              </button>
-            </form>
-          </>
+        {menuItems.length > 0 && (
+          <span className="ml-auto">
+            <ActionMenu>{menuItems.map((item, i) => <span key={i}>{item}</span>)}</ActionMenu>
+          </span>
         )}
       </div>
-
-      {task.status === "claimed" && holds && (
-        <form action={parkAction} className="mt-2 flex flex-wrap items-center gap-2">
-          <input type="hidden" name="taskId" value={task.id} />
-          <input type="date" name="nextCheckinAt" required className={`${INPUT} min-w-0`} />
-          <input
-            type="text"
-            name="waitingNote"
-            placeholder="waiting on…"
-            className={`${INPUT} min-w-0 flex-1 basis-32`}
-          />
-          <button type="submit" className={BUTTON_GHOST}>
-            Park
-          </button>
-        </form>
-      )}
     </div>
   );
 }

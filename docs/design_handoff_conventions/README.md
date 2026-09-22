@@ -72,6 +72,64 @@ See the reference file for exact markup/states of each — reproduce as Tailwind
 - **Theme is personal, not communal**: default from `window.matchMedia('(prefers-color-scheme: dark)')`, with an explicit override stored per-member (e.g. a nullable `theme_preference` enum column on `member`, or simplest: client-only `localStorage`, no DB/round-trip needed unless cross-device sync matters). Give it a control on `/profile`, not `/settings`.
 - **Accent 1, Accent 2, and logo are communal**: set once by whoever holds Admins, on `/settings`, applied for everyone.
 
+## Task UI grammar
+
+Decided 2026-09 with the product owner. This is the component-level grammar for everything task-shaped — cards, the task detail page, and any future list/dashboard surface that renders tasks. It builds on the tokens/components above; it doesn't replace them.
+
+### Action hierarchy — one primary, everything else in a menu
+Every task surface shows **at most one primary action** (state-dependent) plus at most one secondary; all remaining actions live in a `⋯` overflow menu (`src/components/ui/ActionMenu.tsx`, a client dropdown — the one place a real dropdown is used; `<details>` stays the pattern for *edit* disclosures). Menu items that need input (e.g. Park's date+note) are not menu rows — they're a `<details>` disclosure containing the form.
+
+| Task state (for the current viewer) | Primary | Secondary | Menu |
+|---|---|---|---|
+| Unclaimed, eligible | **Claim** | — | Escalate (coord only) |
+| Claimed, mine | **Finish** | Park (disclosure w/ form) | Release, Escalate |
+| Claimed, mine, attention-flagged | **Still on it** (detail page nudge panel) | — | Park, Finish, Release |
+| Waiting, mine | **Resume** | — | Mark done, Re-snooze, Release |
+| Claimed, not mine, has room | **Request to join** | — | Shadow, Escalate |
+| Any, not mine | — | Shadow | Escalate (coord only) |
+
+### Status iconography — one icon, two channels
+Status and attention are orthogonal, so they share one visual element: **shape = lifecycle status, color = attention level**.
+
+| | ok | soft | hard |
+|---|---|---|---|
+| Unclaimed | `Circle` gray | amber | red |
+| Claimed | `PlayCircle` accent-1 | amber | red |
+| Waiting | `PauseCircle` gray | amber | red |
+| Done | `CheckCircle` green | — | — |
+
+- **Escalated overrides the shape** → `Megaphone`, red. It's a manual coordinator action, a different kind of thing from automatic staleness.
+- **View-dependent visibility**: the status icon only appears where tasks of *mixed* status render together (dashboard, contribution, coverage groups, search). On kanban the column already carries status — an icon there is noise. `TaskCard` therefore takes no status icon; it keeps the 3px colored left border as its attention signal plus the word-tag on non-ok tasks.
+- Color is never the *sole* attention channel (the word-tag always accompanies non-ok), so colorblind users are covered.
+- **Known risk**: a community accent-1 too close to amber/red would collide with the attention tints on the claimed icon. Accepted for now; the escape hatch is rendering status icons in the neutral ramp and reserving hue for attention only.
+
+### Metadata — icon chips
+Task metadata renders as small icon+value chips, not a `·`-separated sentence: `GitBranch` branch · `Clock` effort · `Users` capacity `1/2` · `ArrowsClockwise` cycle · `CalendarBlank` deadline/check-in. Used on cards (one wrapping row) and under the detail-page title.
+
+### Terminology — UI copy speaks outcomes, not schema
+| Internal value | User-facing copy |
+|---|---|
+| `open` | Open to claim |
+| `request` | Ask to join |
+| `coordination_approved` | Requires approval |
+| `community_endorsed` | Chosen by endorsement |
+| `individual_gate` | Required of each person |
+| `group_coverage` | Someone on the team must have this |
+| `soft_priority` | Helpful, not required |
+
+Canonical mapping lives in `src/lib/format.ts` (`OPENNESS_LABELS`, `REQUIREMENT_MODE_LABELS`) — never inline these strings.
+
+### Contextual strip — what earns the top of the task page
+Only *actionable-right-now-for-this-viewer* content appears above the standing content, in this priority order: (1) attention flag + response actions, (2) waiting check-in due + response actions, (3) coordinator self-assign confirmation, (4) cross-cycle mismatch, (5) my pending join request, (6) overdue/upcoming milestone. Nothing else earns a top slot without explicit discussion — that discipline is what keeps the page from becoming a wall again.
+
+### Card density
+- Description clamps to 2 lines (full text one click away).
+- Requirements summarize: unmet `individual_gate` items listed (danger), met ones collapse to "N of M met"; `group_coverage` keeps one status line each; `soft_priority` is hidden on cards (shown on the detail page).
+- The park form is never always-visible — it lives behind its disclosure.
+
+### Task detail page — two-column, collapsing
+`lg` and up: main column (description, notes/wiki/comments inline — never tab-gated, per spec — subtasks, people/coordination sections) + 300px right rail (status/actions card, holders, requirements summary, milestones, dependencies, admin-ish disclosures like permissions/cycle-change). Below `lg`: the rail stacks under the main column — nothing is lost, actions stay in the always-top page header. The old 6-tab bar is gone; sections replaced it.
+
 ## Data model changes needed
 - `community`: add `accent_primary text`, `accent_secondary text` (hex strings), `logo_url text` (or a stored-asset reference, matching however the codebase handles uploads — none exists yet for images, so this may need a small upload/storage utility).
 - `member` (optional): `theme_preference text` enum `system | light | dark`, default `system` — only if cross-device sync of the preference is wanted; otherwise skip and keep it `localStorage`-only.

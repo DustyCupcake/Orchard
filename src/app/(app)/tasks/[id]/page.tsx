@@ -44,7 +44,9 @@ import CopyLinkButton from "@/components/CopyLinkButton";
 import EffortFields from "@/components/EffortFields";
 import DateModeField, { type DateFieldBase } from "@/components/DateModeField";
 import PageHeader from "@/components/ui/PageHeader";
-import Tabs from "@/components/ui/Tabs";
+import ActionMenu from "@/components/ui/ActionMenu";
+import StatusIcon from "@/components/tasks/StatusIcon";
+import { BranchChip, CapacityChip, CycleChip, EffortChip } from "@/components/tasks/MetaChips";
 import { listTaskQuestions } from "@/lib/input-rounds";
 import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
 import { getAccompaniedMemberId } from "@/lib/recruitment";
@@ -60,6 +62,7 @@ import {
   addRequirementAction,
   addResourceAction,
   checkInTaskAction,
+  claimAction,
   claimAsShadowAction,
   confirmClaimAction,
   confirmMilestoneAction,
@@ -141,23 +144,12 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 // Same zero-JS "?tab= + shared Tabs bar" pattern settings/page.tsx uses
 // (src/components/ui/Tabs.tsx) — no client component needed since every
 // tab's content is just conditionally rendered server-side off
-// searchParams. People/Coordination/Subtasks used to render
-// unconditionally below the tab block regardless of which tab was
-// active; they're real tabs now, each only listed when it'd actually
-// have something to show (see the showPeopleTab/showCoordinationTab/
-// showSubtasksTab booleans computed further down, once every section's
-// own existing visibility condition is known) — a stale/bookmarked link
-// to a tab that's no longer visible falls back to "requirements", same
-// as before.
-const ALL_TABS = [
-  { key: "requirements", label: "Requirements & Dependencies" },
-  { key: "notes", label: "Notes" },
-  { key: "milestones", label: "Milestones" },
-  { key: "people", label: "People" },
-  { key: "coordination", label: "Coordination" },
-  { key: "subtasks", label: "Subtasks" },
-] as const;
-type TabKey = (typeof ALL_TABS)[number]["key"];
+// The tab bar this page used to have is gone — the task UI grammar
+// (docs/design_handoff_conventions/README.md) lays the page out as a
+// main column + reference rail, with Notes inline (spec: never behind
+// a toggle) and People/Coordination/Subtasks as plain sections gated on
+// the same showPeopleTab/showCoordinationTab/showSubtasksTab booleans
+// the tabs used. Old ?tab= links are accepted and ignored.
 
 export const dynamic = "force-dynamic";
 
@@ -174,7 +166,9 @@ export default async function TaskDetailPage({
   }
 
   const { id } = await params;
-  const { error, scope: scopeParam, tab: tabRaw } = await searchParams;
+  // `tab` is accepted but ignored — the tab bar is gone (see the note
+  // above); old bookmarks still land on the right page.
+  const { error, scope: scopeParam } = await searchParams;
 
   const taskRow = await getTask(viewing, id);
   const isCommunityEndorsed = taskRow.openness === "community_endorsed";
@@ -392,17 +386,108 @@ export default async function TaskDetailPage({
     nominations.length > 0 ||
     (isCoordHolderForBranch && (openPings.length > 0 || resolvedPings.length > 0));
   const showSubtasksTab = subtasks.length > 0 || holdsTask;
-  const visibleTabs = ALL_TABS.filter((t) => {
-    if (t.key === "people") return showPeopleTab;
-    if (t.key === "coordination") return showCoordinationTab;
-    if (t.key === "subtasks") return showSubtasksTab;
-    return true;
-  });
-  const activeTab: TabKey = visibleTabs.some((t) => t.key === tabRaw) ? (tabRaw as TabKey) : "requirements";
-  const tabHref = (key: TabKey) => `${taskPath}?tab=${key}${scopeParam ? `&scope=${scopeParam}` : ""}`;
+
+  // ── Task UI grammar: one primary action in the header ────────────
+  // When a contextual nudge panel is showing (attention-flagged claimed,
+  // or any waiting state) it carries the state-appropriate actions just
+  // below the header, so the header primary is suppressed to avoid
+  // duplicating them. Self-assign confirmation likewise lives in its own
+  // contextual banner, not the header.
+  const nudgePanelShown = holdsTask && (taskRow.status === "waiting" || (taskRow.status === "claimed" && flagged));
+  const joiningRequiresRequest = requestGated && taskRow.status === "claimed" && realAssignments.length > 0;
+  let primaryHeaderAction: React.ReactNode = null;
+  if (!nudgePanelShown && !needsSelfAssignConfirmation) {
+    if (canActBase) {
+      primaryHeaderAction = (
+        <form action={claimAction}>
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <button type="submit" className={BUTTON_PRIMARY}>
+            {joiningRequiresRequest ? "Request to join" : "Claim"}
+          </button>
+        </form>
+      );
+    } else if (holdsTask && taskRow.status === "claimed") {
+      primaryHeaderAction = (
+        <form action={finishAction}>
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <button type="submit" className={BUTTON_PRIMARY}>
+            Finish
+          </button>
+        </form>
+      );
+    }
+  }
+
+  // ⋯ menu contents — the secondary/tertiary actions. Park isn't here:
+  // it needs inputs, so it's a disclosure in the Status rail card.
+  const menuItems: React.ReactNode[] = [];
+  if (canShadow) {
+    menuItems.push(
+      <form action={claimAsShadowAction}>
+        <input type="hidden" name="taskId" value={taskRow.id} />
+        <button type="submit">Shadow this task</button>
+      </form>,
+    );
+  }
+  if (isShadowing) {
+    menuItems.push(
+      <form action={stopShadowingAction}>
+        <input type="hidden" name="taskId" value={taskRow.id} />
+        <button type="submit">Stop shadowing</button>
+      </form>,
+    );
+  }
+  if (holdsTask) {
+    menuItems.push(
+      <form action={setOutgoingAction}>
+        <input type="hidden" name="taskId" value={taskRow.id} />
+        <input type="hidden" name="outgoing" value={(!myAssignment?.isOutgoing).toString()} />
+        <button type="submit">{myAssignment?.isOutgoing ? "Unmark as outgoing" : "Mark yourself as outgoing"}</button>
+      </form>,
+    );
+    if (!flagged && taskRow.status === "claimed") {
+      menuItems.push(
+        <form action={releaseAction}>
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <button type="submit">Release</button>
+        </form>,
+      );
+    }
+  }
+  if (holdsTask && shiftsModuleOn) {
+    menuItems.push(
+      <form action={rotateIntoShiftAction}>
+        <input type="hidden" name="taskId" value={taskRow.id} />
+        <button type="submit">Rotate this task into a shift</button>
+      </form>,
+    );
+  }
+  if (canPingCoordinator) {
+    menuItems.push(
+      <form action={pingCoordinatorAction}>
+        <input type="hidden" name="taskId" value={taskRow.id} />
+        <button type="submit">Talk to my coordinator</button>
+      </form>,
+    );
+  }
+  if (isCoordHolderForBranch) {
+    menuItems.push(
+      taskRow.attentionLevel !== "escalated" ? (
+        <form action={escalateTaskAction}>
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <button type="submit">Escalate</button>
+        </form>
+      ) : (
+        <form action={deescalateTaskAction}>
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <button type="submit">De-escalate</button>
+        </form>
+      ),
+    );
+  }
 
   return (
-    <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
+    <main className="mx-auto max-w-[1100px] px-6 py-10 md:px-12 md:py-14">
       <Link href="/board" className="text-[13px] font-medium text-[var(--accent-1)] hover:underline">
         ← Back to board
       </Link>
@@ -450,36 +535,20 @@ export default async function TaskDetailPage({
           </span>
         }
         description={
-          <>
-            <div>
-              {branchRow?.name ?? "—"} · {effortSummary(taskRow.effort, taskRow.effortMagnitude)} ·{" "}
-              {taskRow.status} · {realAssignments.length}
-              {taskRow.capacity !== null ? `/${taskRow.capacity}` : ""} held
-              {communityRow.cyclesEnabled && <> · {taskCycle ? taskCycle.name : "not cycle-scoped"}</>}
-            </div>
-            {communityRow.cyclesEnabled && (
-              <details className="mt-1">
-                <summary className="cursor-pointer text-[12px] text-[var(--accent-1)]">Change cycle</summary>
-                <form action={updateTaskCycleAction} className="mt-2 flex flex-wrap items-center gap-2">
-                  <input type="hidden" name="taskId" value={taskRow.id} />
-                  <select name="cycleId" defaultValue={taskRow.cycleId ?? ""} className={INPUT}>
-                    <option value="">No cycle (unscoped)</option>
-                    {allCycles.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button type="submit" className={BUTTON_SECONDARY}>
-                    Save
-                  </button>
-                </form>
-              </details>
-            )}
-          </>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <StatusIcon status={taskRow.status} attentionLevel={taskRow.attentionLevel} showLabel />
+            <BranchChip name={branchRow?.name ?? "—"} />
+            <EffortChip summary={effortSummary(taskRow.effort, taskRow.effortMagnitude)} />
+            <CapacityChip held={realAssignments.length} capacity={taskRow.capacity} />
+            {communityRow.cyclesEnabled && <CycleChip name={taskCycle ? taskCycle.name : "not cycle-scoped"} />}
+          </div>
         }
         actions={
           <>
+            {primaryHeaderAction}
+            {menuItems.length > 0 && (
+              <ActionMenu>{menuItems.map((item, i) => <span key={i}>{item}</span>)}</ActionMenu>
+            )}
             <CopyLinkButton
               path={taskPath}
               scopedPath={`${taskPath}?scope=${crossCycle.activeScopeSegment}`}
@@ -504,43 +573,9 @@ export default async function TaskDetailPage({
           </Link>
         </p>
       )}
-      {realAssignments.length > 0 && (
-        <p className="mt-2 text-[13px] text-[var(--text)]">
-          Held by: {realAssignments.map((a) => memberNameById.get(a.memberId) ?? "—").join(", ")}
-        </p>
-      )}
-      {shadowAssignments.length > 0 && (
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-          Shadowed by: {shadowAssignments.map((a) => memberNameById.get(a.memberId) ?? "—").join(", ")}
-        </p>
-      )}
-      {realAssignments
-        .filter((a) => a.gateWaivedBy)
-        .map((a) => (
-          <p key={a.memberId} className="mt-1 text-[13px] text-[var(--warning)]">
-            {memberNameById.get(a.memberId) ?? "—"}&rsquo;s requirement was waived by{" "}
-            {memberNameById.get(a.gateWaivedBy!) ?? "—"}: {a.gateWaivedReason}
-          </p>
-        ))}
       {taskRow.description && <p className="mt-3 text-[14px] text-[var(--text)]">{taskRow.description}</p>}
 
       <div className="mt-3 flex flex-wrap items-start gap-2">
-        {isCoordHolderForBranch && taskRow.attentionLevel !== "escalated" && (
-          <form action={escalateTaskAction}>
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            <button type="submit" className={BUTTON_SECONDARY} title="Escalate to community-wide coordination view">
-              Escalate
-            </button>
-          </form>
-        )}
-        {isCoordHolderForBranch && taskRow.attentionLevel === "escalated" && (
-          <form action={deescalateTaskAction}>
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            <button type="submit" className={BUTTON_SECONDARY} title="Remove from escalation view">
-              De-escalate
-            </button>
-          </form>
-        )}
         <details className="group">
           <summary
             className={`${BUTTON_ICON} list-none [&::-webkit-details-marker]:hidden`}
@@ -785,50 +820,63 @@ export default async function TaskDetailPage({
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {canShadow && (
-          <form action={claimAsShadowAction}>
+      {/* Contextual strip, continued — coordinator self-assign check.
+          Used to render buried below the active tab's content; the task
+          UI grammar puts it up here where a coordinator actually sees it
+          before claiming. */}
+      {needsSelfAssignConfirmation && (
+        <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--warning-border)] bg-[var(--warning-soft)] p-3">
+          <p className="text-[13px] font-medium text-[var(--warning)]">
+            You coordinate this branch — are you sure there isn&rsquo;t someone with just the
+            skills for this?
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <form action={confirmClaimAction}>
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <button type="submit" className={BUTTON_PRIMARY}>
+                Yes, I&rsquo;ll take it
+              </button>
+            </form>
+            <form action={suggestSomeoneAction} className="flex gap-2">
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <select name="memberId" defaultValue="" className={INPUT}>
+                <option value="" disabled>
+                  Suggest someone…
+                </option>
+                {communityMembers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Suggest
+              </button>
+            </form>
+            <form action={flagForGroupAction}>
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Flag for the group
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Contextual strip — my pending join request */}
+      {myRequest && myRequest.status === "pending" && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-3 text-[13px] text-[var(--text)]">
+          <span>You&rsquo;ve asked to join this task — waiting for a holder&rsquo;s response.</span>
+          <form action={withdrawJoinRequestAction}>
             <input type="hidden" name="taskId" value={taskRow.id} />
+            <input type="hidden" name="requestId" value={myRequest.id} />
             <button type="submit" className={BUTTON_SECONDARY}>
-              Shadow this task
+              Withdraw
             </button>
           </form>
-        )}
-        {isShadowing && (
-          <form action={stopShadowingAction} className="flex items-center gap-2">
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            <span className="text-[13px] text-[var(--text-muted)]">You&rsquo;re shadowing this task.</span>
-            <button type="submit" className={BUTTON_SECONDARY}>
-              Stop shadowing
-            </button>
-          </form>
-        )}
-        {holdsTask && (
-          <form action={setOutgoingAction}>
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            <input type="hidden" name="outgoing" value={(!myAssignment?.isOutgoing).toString()} />
-            <button type="submit" className={BUTTON_SECONDARY}>
-              {myAssignment?.isOutgoing ? "Unmark as outgoing" : "Mark yourself as outgoing"}
-            </button>
-          </form>
-        )}
-        {holdsTask && shiftsModuleOn && (
-          <form action={rotateIntoShiftAction}>
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            <button type="submit" className={BUTTON_SECONDARY}>
-              Rotate this task into a shift
-            </button>
-          </form>
-        )}
-        {canPingCoordinator && (
-          <form action={pingCoordinatorAction}>
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            <button type="submit" className={BUTTON_SECONDARY}>
-              Talk to my coordinator
-            </button>
-          </form>
-        )}
-      </div>
+        </div>
+      )}
+
       {myAssignment?.isOutgoing && notes.wikiRevisions.length === 0 && (
         <p className="mt-2 text-[13px] text-[var(--danger)]">
           You&rsquo;ve marked yourself as outgoing on this task — this is the best moment to write
@@ -841,13 +889,11 @@ export default async function TaskDetailPage({
         </p>
       )}
 
-      <div className="mt-8">
-        <Tabs tabs={visibleTabs} active={activeTab} hrefFor={tabHref} />
-      </div>
-
-      {activeTab === "requirements" && (
-      <>
-      <section className="mt-6">
+      {/* Two-column layout (task UI grammar): main column + reference
+          rail at lg; rail stacks below main on smaller screens. */}
+      <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
+      <div className="min-w-0">
+      <section>
         <SectionHeading>Requirements</SectionHeading>
         {requirements.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
         <ul className="mt-2 flex flex-col gap-2">
@@ -1032,8 +1078,10 @@ export default async function TaskDetailPage({
       </section>
 
       {canGrantPermissions && (
-        <section className="mt-6">
-          <SectionHeading>Permissions granted by this task</SectionHeading>
+        <details className="mt-6 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+          <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
+            Permissions granted by this task
+          </summary>
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             Check which module-level access gate(s) whoever currently holds this task should get —
             the identical <code>PermissionGrant</code> rows the settings panel&rsquo;s Access &amp;
@@ -1078,14 +1126,13 @@ export default async function TaskDetailPage({
               Save
             </button>
           </form>
-        </section>
-      )}
-      </>
+        </details>
       )}
 
-      {activeTab === "notes" && (
-      <>
-      <p className="text-[13px] text-[var(--text-muted)]">
+      {/* Notes render inline, never tab-gated — spec: "not buried
+          behind a toggle, a mode switch, or a different part of the
+          app." */}
+      <p className="mt-8 text-[13px] text-[var(--text-muted)]">
         The description above is the goal, not the method. Everything here is optional notes on
         how it&rsquo;s actually been done — never mistaken for the instructions.
       </p>
@@ -1185,11 +1232,8 @@ export default async function TaskDetailPage({
           </button>
         </form>
       </section>
-      </>
-      )}
 
-      {activeTab === "milestones" && (
-      <section className="mt-6">
+      <section className="mt-8">
         <SectionHeading>Milestones</SectionHeading>
         <p className="mt-1 text-[13px] text-[var(--text-muted)]">
           A current holder adds/edits/removes these directly; anyone else&rsquo;s addition shows
@@ -1270,46 +1314,6 @@ export default async function TaskDetailPage({
           </form>
         </details>
       </section>
-      )}
-
-      {needsSelfAssignConfirmation && (
-        <section className="mt-6 rounded-[var(--radius-md)] p-3.5" style={{ background: "var(--warning-soft)", border: "1px solid var(--warning-border)" }}>
-          <p className="text-[14px] font-medium" style={{ color: "var(--warning)" }}>
-            You coordinate this branch — are you sure there isn&rsquo;t someone with just the
-            skills for this?
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <form action={confirmClaimAction}>
-              <input type="hidden" name="taskId" value={taskRow.id} />
-              <button type="submit" className={BUTTON_PRIMARY}>
-                Yes, I&rsquo;ll take it
-              </button>
-            </form>
-            <form action={suggestSomeoneAction} className="flex gap-2">
-              <input type="hidden" name="taskId" value={taskRow.id} />
-              <select name="memberId" defaultValue="" className={INPUT}>
-                <option value="" disabled>
-                  Suggest someone…
-                </option>
-                {communityMembers.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-              <button type="submit" className={BUTTON_SECONDARY}>
-                Suggest
-              </button>
-            </form>
-            <form action={flagForGroupAction}>
-              <input type="hidden" name="taskId" value={taskRow.id} />
-              <button type="submit" className={BUTTON_SECONDARY}>
-                Flag for the group
-              </button>
-            </form>
-          </div>
-        </section>
-      )}
 
       {canWaive && (
         <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
@@ -1373,7 +1377,7 @@ export default async function TaskDetailPage({
         </details>
       )}
 
-      {activeTab === "people" && (
+      {showPeopleTab && (
       <>
       {isCommunityEndorsed && (
         <section className="mt-8">
@@ -1450,18 +1454,8 @@ export default async function TaskDetailPage({
         </section>
       )}
 
-      {myRequest && myRequest.status === "pending" && (
-        <p className="mt-4 flex items-center gap-2 text-[13px] text-[var(--text)]">
-          You&rsquo;ve asked to join this task — pending.
-          <form action={withdrawJoinRequestAction}>
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            <input type="hidden" name="requestId" value={myRequest.id} />
-            <button type="submit" className={BUTTON_SECONDARY}>
-              Withdraw
-            </button>
-          </form>
-        </p>
-      )}
+      {/* The pending-request notice lives in the contextual strip at
+          the top now — only the declined outcome stays down here. */}
       {myRequest && myRequest.status === "declined" && (
         <p className="mt-4 text-[13px] text-[var(--text)]">
           Your request to join was declined
@@ -1522,7 +1516,7 @@ export default async function TaskDetailPage({
       </>
       )}
 
-      {activeTab === "coordination" && (
+      {showCoordinationTab && (
       <>
       {accompaniedMemberId && accompanimentEngagement && (
         <section className="mt-8">
@@ -1602,7 +1596,7 @@ export default async function TaskDetailPage({
       </>
       )}
 
-      {activeTab === "subtasks" && (subtasks.length > 0 || holdsTask) && (
+      {showSubtasksTab && (
         <section className="mt-8">
           <SectionHeading>Subtasks</SectionHeading>
           {subtasks.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None broken off yet.</p>}
@@ -1657,6 +1651,119 @@ export default async function TaskDetailPage({
           )}
         </section>
       )}
+      </div>{/* end main column */}
+
+      {/* Reference rail — status, people, requirements summary, and the
+          quiet admin disclosures. Stacks below the main column under lg. */}
+      <aside className="flex flex-col gap-4">
+        <section className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
+          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Status</h2>
+          <div className="mt-2">
+            <StatusIcon status={taskRow.status} attentionLevel={taskRow.attentionLevel} showLabel />
+          </div>
+          {realAssignments.length > 0 && (
+            <p className="mt-2 text-[13px] text-[var(--text)]">
+              Held by: {realAssignments.map((a) => memberNameById.get(a.memberId) ?? "—").join(", ")}
+            </p>
+          )}
+          {shadowAssignments.length > 0 && (
+            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              Shadowed by: {shadowAssignments.map((a) => memberNameById.get(a.memberId) ?? "—").join(", ")}
+            </p>
+          )}
+          {realAssignments
+            .filter((a) => a.gateWaivedBy)
+            .map((a) => (
+              <p key={a.memberId} className="mt-1 text-[13px] text-[var(--warning)]">
+                {memberNameById.get(a.memberId) ?? "—"}&rsquo;s requirement was waived by{" "}
+                {memberNameById.get(a.gateWaivedBy!) ?? "—"}: {a.gateWaivedReason}
+              </p>
+            ))}
+          {taskRow.status === "waiting" && (
+            <p className="mt-2 text-[13px] text-[var(--text)]">
+              Next check-in: {taskRow.nextCheckinAt ? new Date(taskRow.nextCheckinAt).toLocaleDateString() : "—"}
+              {taskRow.waitingNote && <span className="text-[var(--text-muted)]"> — {taskRow.waitingNote}</span>}
+            </p>
+          )}
+          {/* Park is a disclosure, not a menu row — it needs inputs.
+              Suppressed while the attention nudge panel is showing (it
+              carries its own Park form). */}
+          {holdsTask && taskRow.status === "claimed" && !flagged && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text)]">
+                Park until a check-in date…
+              </summary>
+              <form action={parkAction} className="mt-2 flex flex-col gap-2">
+                <input type="hidden" name="taskId" value={taskRow.id} />
+                <input type="date" name="nextCheckinAt" required className={INPUT} />
+                <input type="text" name="waitingNote" placeholder="waiting on…" className={INPUT} />
+                <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
+                  Park
+                </button>
+              </form>
+            </details>
+          )}
+        </section>
+
+        {requirements.length > 0 && (
+          <section className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              Requirements
+            </h2>
+            <ul className="mt-2 flex flex-col gap-1 text-[13px]">
+              {requirements.map((r) => {
+                const covered = r.mode === "group_coverage" ? (groupCoverage.get(r.id) ?? false) : null;
+                const colorClass =
+                  r.mode === "group_coverage"
+                    ? covered
+                      ? "text-[var(--success)]"
+                      : "text-[var(--warning)]"
+                    : r.mode === "soft_priority"
+                      ? "text-[var(--text-muted)]"
+                      : unmetIds.has(r.id)
+                        ? "text-[var(--danger)]"
+                        : "text-[var(--success)]";
+                const statusLabel =
+                  r.mode === "group_coverage"
+                    ? covered
+                      ? "covered"
+                      : "not yet covered"
+                    : r.mode === "soft_priority"
+                      ? "helpful, not required"
+                      : unmetIds.has(r.id)
+                        ? "not met"
+                        : "met";
+                return (
+                  <li key={r.id} className={colorClass}>
+                    {describeRequirement(r, tierNames)} — {statusLabel}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+
+        {communityRow.cyclesEnabled && (
+          <details className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
+            <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Change cycle</summary>
+            <form action={updateTaskCycleAction} className="mt-3 flex flex-col gap-2">
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <select name="cycleId" defaultValue={taskRow.cycleId ?? ""} className={INPUT}>
+                <option value="">No cycle (unscoped)</option>
+                {allCycles.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
+                Save
+              </button>
+            </form>
+          </details>
+        )}
+      </aside>
+      </div>{/* end grid */}
 
     </main>
   );
