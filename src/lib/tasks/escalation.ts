@@ -1,9 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import { branch, task } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { requireCoordinationHolder } from "../coordination";
-import { NotFoundError } from "../errors";
+import { isCoordinationHolder, requireCoordinationHolder } from "../coordination";
+import { isBackstopForScope, listBackstopScopesForMember } from "../backstop";
+import { ForbiddenError, NotFoundError } from "../errors";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -16,8 +17,21 @@ type Member = typeof memberTable.$inferSelect;
 // deadline, with phases off). Visible community-wide (branchId=null),
 // not scoped to one branch, matching "cross-branch placement
 // encouraged."
+//
+// docs/cycle-scope-remediation-plan.md §4.7/§5.3 admits a second
+// viewer class: a scope's backstop sees the escalated tasks in their
+// own scope (their cycle, or the community/evergreen scope for a
+// cycle-less backstop) alongside the community-wide coordination gate.
+// Coordinators still see the whole queue; a backstop that isn't also a
+// coordinator sees only their own scope's segment.
 export async function listEscalatedTasks(actor: Member) {
-  await requireCoordinationHolder(actor, null);
+  const isCoordinator = await isCoordinationHolder(actor, null);
+  const backstopScopes = isCoordinator ? [] : await listBackstopScopesForMember(actor);
+  if (!isCoordinator && backstopScopes.length === 0) {
+    throw new ForbiddenError("Only a coordination or backstop holder can see the escalated queue");
+  }
+
+  const scopeConditions = backstopScopes.map((cid) => (cid === null ? isNull(task.cycleId) : eq(task.cycleId, cid)));
 
   return db
     .select({
@@ -31,22 +45,35 @@ export async function listEscalatedTasks(actor: Member) {
     })
     .from(task)
     .innerJoin(branch, eq(task.branchId, branch.id))
-    .where(and(eq(task.communityId, actor.communityId), eq(task.attentionLevel, "escalated")))
+    .where(
+      and(
+        eq(task.communityId, actor.communityId),
+        eq(task.attentionLevel, "escalated"),
+        isCoordinator ? undefined : or(...scopeConditions),
+      ),
+    )
     .orderBy(task.createdAt);
 }
 
 // A deliberate coordinator action — docs/spec.md's "Escalation"
 // mechanic. Any coordinator can escalate any task in their community
 // (not just their own branch), making it visible on the shared
-// Escalation view for cross-branch placement.
+// Escalation view for cross-branch placement. The task's own scope's
+// backstop can escalate it too (§4.7, D5: the backstop is responsible
+// when a task stalls, and escalating it is part of that) — but only
+// inside their own scope, never cross-scope.
 export async function escalateTask(actor: Member, taskId: string) {
-  await requireCoordinationHolder(actor, null);
-
   const [taskRow] = await db
     .select()
     .from(task)
     .where(and(eq(task.id, taskId), eq(task.communityId, actor.communityId)));
   if (!taskRow) throw new NotFoundError("Task not found");
+
+  const isCoordinator = await isCoordinationHolder(actor, null);
+  const isBackstop = await isBackstopForScope(actor, taskRow.cycleId);
+  if (!isCoordinator && !isBackstop) {
+    throw new ForbiddenError("Only a coordination holder, or the backstop of this task's scope, can escalate it");
+  }
 
   const [updated] = await db
     .update(task)

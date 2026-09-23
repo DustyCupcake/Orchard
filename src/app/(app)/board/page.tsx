@@ -13,6 +13,8 @@ import {
   tierNameLookup,
 } from "@/lib/tasks";
 import { listCoordinationBranchIds, isCoordinationHolder } from "@/lib/coordination";
+import { listBackstopHoldersForScopes, listBackstopScopesForMember } from "@/lib/backstop";
+import { ATTENTION_STYLES } from "@/lib/format";
 import { canInitiateCycle, resolveDefaultScopeSegment, resolveViewScopeFromSegment } from "@/lib/cycles";
 import { listTaskFitSuggestions } from "@/lib/onboarding";
 import { getCommunityRow } from "@/lib/recruitment";
@@ -22,10 +24,12 @@ import TaskCard from "./TaskCard";
 import PhaseCard from "./PhaseCard";
 import BranchCoverageCard from "./BranchCoverageCard";
 import FilterSelect from "./FilterSelect";
-import { Tag, Banner, BUTTON_SECONDARY, BUTTON_PRIMARY } from "@/components/ui/kit";
+import { Tag, Banner, BUTTON_SECONDARY, BUTTON_PRIMARY, ATTENTION_TONE } from "@/components/ui/kit";
 import PageHeader from "@/components/ui/PageHeader";
 import Tabs from "@/components/ui/Tabs";
 import { bulkClaimAction, exportSelectedTasksAsPackAction } from "./actions";
+
+type BoardTask = Awaited<ReturnType<typeof listTasksWithAssignments>>[number];
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +43,8 @@ const COLUMNS = [
   { status: "waiting", label: "Waiting" },
   { status: "done", label: "Done" },
 ] as const;
+
+const STATUS_LABEL = Object.fromEntries(COLUMNS.map((c) => [c.status, c.label])) as Record<string, string>;
 
 // "The main task view" — most of the rest of the Tasks nav group's
 // destinations are reachable from here as buttons, with the sidebar's
@@ -118,6 +124,8 @@ export default async function BoardPage({
     isCoordinator,
     communityRow,
     phases,
+    backstopHolders,
+    myBackstopScopes,
   ] = await Promise.all([
     db.select().from(branch).where(eq(branch.communityId, viewing.communityId)),
     listTasksWithAssignments(viewing, {
@@ -134,6 +142,11 @@ export default async function BoardPage({
     isCoordinationHolder(viewing, null),
     getCommunityRow(viewing.communityId),
     scopeCycleIds.length === 0 ? Promise.resolve([]) : db.select().from(phase).where(inArray(phase.cycleId, scopeCycleIds)),
+    listBackstopHoldersForScopes(
+      viewing.communityId,
+      hidingCycleless ? scopeCycleIds : [...scopeCycleIds, null],
+    ),
+    listBackstopScopesForMember(viewing),
   ]);
 
   // "By phase" only makes sense once there's a real phase spine to show
@@ -240,6 +253,22 @@ export default async function BoardPage({
   const bulkClaimable = filteredTasks.filter(
     (t) => t.status === "unclaimed" && t.openness !== "community_endorsed" && t.unmetRequirements.length === 0,
   );
+
+  // §5.5 (docs/cycle-scope-remediation-plan.md) backstop surfaces:
+  // scopes in view that have a filled backstop mark their unclaimed
+  // criticals "Backstop: {name}" (still open and claimable by anyone,
+  // D5), and the scope's own backstop sees their scopes' critical tasks
+  // as a duty segment. Nothing new is computed — this is the already-
+  // loaded task/attention state rendered for one more role.
+  const backstopNameFor = (t: BoardTask) =>
+    t.critical && t.status === "unclaimed" ? (backstopHolders.get(t.cycleId)?.memberName ?? null) : null;
+  const myVisibleBackstopScopes = new Set(
+    myBackstopScopes.filter((c) => (c === null ? !hidingCycleless : scopeCycleIds.includes(c))),
+  );
+  const isDutyHolder = myVisibleBackstopScopes.size > 0;
+  const dutyTasks = isDutyHolder
+    ? tasks.filter((t) => t.critical && myVisibleBackstopScopes.has(t.cycleId))
+    : [];
 
   return (
     <main className="mx-auto max-w-[1180px] px-6 py-10 md:px-12 md:py-14">
@@ -444,6 +473,49 @@ export default async function BoardPage({
         </div>
       </details>
 
+      {isDutyHolder && (
+        <section className="mt-6 rounded-[var(--radius-md)] border border-[var(--border)] p-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
+            <h2 className="text-[15px] font-semibold text-[var(--text)]">Backstop duty</h2>
+            <span className="text-[12px] text-[var(--text-muted)]">
+              The critical tasks your backstop covers — you&rsquo;re the named party responsible until each is moving.
+            </span>
+          </div>
+          {dutyTasks.length === 0 && (
+            <p className="mt-3 text-[13px] text-[var(--text-muted)]">No critical tasks in your scope right now.</p>
+          )}
+          <ul className="mt-3 flex flex-col gap-2">
+            {dutyTasks.map((t) => (
+              <li key={t.id} className="flex flex-wrap items-center gap-2">
+                <Link
+                  href={`/tasks/${t.id}`}
+                  className="text-[13px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]"
+                >
+                  {t.title}
+                </Link>
+                <Tag>{STATUS_LABEL[t.status] ?? t.status}</Tag>
+                {t.attentionLevel !== "ok" && (
+                  <Tag tone={ATTENTION_TONE[t.attentionLevel] ?? "neutral"}>
+                    {ATTENTION_STYLES[t.attentionLevel]?.label ?? t.attentionLevel}
+                  </Tag>
+                )}
+                {t.assignments.length === 0 && (
+                  <span className="text-[12px] text-[var(--text-muted)]">
+                    unclaimed — claimable by anyone
+                    {backstopNameFor(t) ? `, backstop: ${backstopNameFor(t)}` : ""}
+                  </span>
+                )}
+                {t.assignments.length > 0 && (
+                  <span className="text-[12px] text-[var(--text-muted)]">
+                    held by {t.assignments.map((a) => a.memberName).join(", ")}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {activeView === "kanban" && (
         <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {COLUMNS.map((col) => {
@@ -469,6 +541,7 @@ export default async function BoardPage({
                     currentMemberId={viewing.id}
                     myPendingRequestId={myPendingRequests.get(t.id) ?? null}
                     isCoordinationHolderForBranch={coordinationBranchIds.has(t.branchId)}
+                    backstopName={backstopNameFor(t)}
                   />
                 ))}
               </div>
@@ -488,6 +561,7 @@ export default async function BoardPage({
               currentMemberId={viewing.id}
               myPendingRequests={myPendingRequests}
               coordinationBranchIds={coordinationBranchIds}
+              backstopNameFor={backstopNameFor}
             />
           ))}
         </div>
@@ -504,6 +578,7 @@ export default async function BoardPage({
               currentMemberId={viewing.id}
               myPendingRequests={myPendingRequests}
               coordinationBranchIds={coordinationBranchIds}
+              backstopNameFor={backstopNameFor}
             />
           ))}
         </div>

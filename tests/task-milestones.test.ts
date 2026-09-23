@@ -361,9 +361,11 @@ describe("carrying forward through a Cycle clone", () => {
     });
 
     const cloned = await createCycle(alice, { source: "clone_previous", name: "Next Season", confirmed: true });
+    // The auto-created Backstop task cloned too — pick the clone of the
+    // hand-written source task by cloning lineage.
     const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
-    expect(clonedTasks).toHaveLength(1);
-    const clonedTaskId = clonedTasks[0].id;
+    expect(clonedTasks).toHaveLength(2);
+    const clonedTaskId = clonedTasks.find((ct) => ct.clonedFromTaskId === taskRow.id)!.id;
 
     const clonedMilestones = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, clonedTaskId));
     expect(clonedMilestones).toHaveLength(2);
@@ -388,7 +390,8 @@ describe("carrying forward through a Cycle clone", () => {
 
     const cloned = await createCycle(alice, { source: "clone_previous", name: "Next Season", confirmed: true });
     const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
-    const clonedMilestones = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, clonedTasks[0].id));
+    const clonedTaskId = clonedTasks.find((ct) => ct.clonedFromTaskId === taskRow.id)!.id;
+    const clonedMilestones = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, clonedTaskId));
     expect(clonedMilestones).toHaveLength(0);
   });
 
@@ -402,7 +405,8 @@ describe("carrying forward through a Cycle clone", () => {
 
     const cloned = await createCycle(alice, { source: "clone_previous", name: "Next Season", confirmed: true });
     const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
-    const clonedMilestones = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, clonedTasks[0].id));
+    const clonedTaskId = clonedTasks.find((ct) => ct.clonedFromTaskId === taskRow.id)!.id;
+    const clonedMilestones = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, clonedTaskId));
     expect(clonedMilestones).toHaveLength(0);
   });
 
@@ -572,14 +576,18 @@ describe("getTaskDeadline (via listTasksWithAssignments)", () => {
       isDeadline: true,
     });
 
-    const [found] = await listTasksWithAssignments(alice, { branchId: taskRow.branchId });
+    const found = (await listTasksWithAssignments(alice, { branchId: taskRow.branchId })).find(
+      (t) => t.id === taskRow.id,
+    )!;
     expect(found.deadlineDate).toBe("2027-01-15");
   });
 
   it("falls back to the task's own Phase end date when no milestone is flagged", async () => {
     const { alice, taskRow, procurement } = await setUp();
 
-    const [found] = await listTasksWithAssignments(alice, { branchId: taskRow.branchId });
+    const found = (await listTasksWithAssignments(alice, { branchId: taskRow.branchId })).find(
+      (t) => t.id === taskRow.id,
+    )!;
     expect(found.deadlineDate).toBe(procurement.endDate);
   });
 
@@ -598,7 +606,9 @@ describe("getTaskDeadline (via listTasksWithAssignments)", () => {
       date: { type: "absolute", date: "2027-01-05" },
     });
 
-    const [found] = await listTasksWithAssignments(alice, { branchId: taskRow.branchId });
+    const found = (await listTasksWithAssignments(alice, { branchId: taskRow.branchId })).find(
+      (t) => t.id === taskRow.id,
+    )!;
     expect(found.deadlineDate).toBe(procurement.endDate);
   });
 });

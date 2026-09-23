@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { community, phase, task, taskAssignment, taskDependency } from "@/db/schema";
 import { computeAttentionLevel } from "./compute";
 import { logEngagementEvent } from "../engagement";
+import { notifyBackstopOfHardFlag } from "../backstop";
 
 // Recomputes attention_level for every not-done task across every
 // Community, writing back only the rows whose level actually changed.
@@ -16,6 +17,8 @@ export async function recomputeAttentionLevels(): Promise<{ checked: number; upd
     .select({
       id: task.id,
       communityId: task.communityId,
+      cycleId: task.cycleId,
+      title: task.title,
       status: task.status,
       critical: task.critical,
       createdAt: task.createdAt,
@@ -73,6 +76,22 @@ export async function recomputeAttentionLevels(): Promise<{ checked: number; upd
     if (level !== t.attentionLevel) {
       await db.update(task).set({ attentionLevel: level }).where(eq(task.id, t.id));
       updated++;
+
+      // D7 (docs/cycle-scope-remediation-plan.md §4.7) — the only
+      // backstop notification: a critical task's hard-flag transition
+      // tells the scope's backstop it happened. The scope is the task's
+      // own placement (§2.1); a cycle-less critical resolves to the
+      // community/evergreen backstop. Nobody is told on browse-close —
+      // that's visible on the backstop's duty view and the board
+      // "Backstop: {name}" marker.
+      if (t.critical && level === "hard") {
+        await notifyBackstopOfHardFlag({
+          communityId: t.communityId,
+          cycleId: t.cycleId,
+          taskId: t.id,
+          taskTitle: t.title,
+        });
+      }
 
       // "Ignoring the nudge past a grace period re-flags the task" —
       // see docs/spec.md's Owner-set nudges and

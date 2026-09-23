@@ -141,3 +141,22 @@ export async function sendOutboundMessageEmail(
   const text = `From ${input.senderName}:\n\n${input.body}`;
   await sendPlainTextEmail(email, input.subject, text, `outbound message for ${email}: "${input.subject}"`);
 }
+
+// D7 (docs/cycle-scope-remediation-plan.md §4.7) — the one backstop
+// notification: a critical task in the backstop's scope has hard-flagged.
+// Informational, no action token: the backstop's own job is to get it
+// moving, which the ordinary claim path already lets them do; this email
+// just tells them it happened.
+export async function sendBackstopHardFlagEmail(
+  email: string,
+  input: { taskTitle: string; taskUrl: string },
+) {
+  const subject = `Critical task hard-flagged: ${input.taskTitle}`;
+  const text = [
+    `A critical task in your backstop scope has hard-flagged — no owner, past the point its deadline tolerates:`,
+    `\n${input.taskTitle}`,
+    `\nAs this scope's backstop, getting it moving is yours: claim it yourself or find it an owner. It stays open and claimable by anyone until then.`,
+    `\n${input.taskUrl}`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `backstop hard flag ("${input.taskTitle}"):\n${input.taskUrl}`);
+}

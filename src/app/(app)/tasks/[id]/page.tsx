@@ -47,6 +47,7 @@ import StatusIcon from "@/components/tasks/StatusIcon";
 import { BranchChip, CapacityChip, CycleChip, EffortChip } from "@/components/tasks/MetaChips";
 import { listTaskQuestions } from "@/lib/input-rounds";
 import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
+import { resolveBackstopHolder } from "@/lib/backstop";
 import { getAccompaniedMemberId } from "@/lib/recruitment";
 import { computeEngagementPattern } from "@/lib/engagement";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
@@ -369,6 +370,15 @@ export default async function TaskDetailPage({
   const unmetIds = new Set(unmetRequirements.map((r) => r.id));
   const attention = ATTENTION_STYLES[taskRow.attentionLevel];
 
+  // §5.5 — an unclaimed critical names its scope's backstop while
+  // staying open and claimable by anyone ("Backstop: {name}" marker,
+  // the same one the board's TaskCard renders). Null when the scope has
+  // no backstop yet or the task is already being worked.
+  const scopeBackstopName =
+    taskRow.critical && taskRow.status === "unclaimed"
+      ? ((await resolveBackstopHolder(communityRow.id, taskRow.cycleId))?.name ?? null)
+      : null;
+
   const schedulePollHref = `/scheduling-polls/new?branchId=${taskRow.branchId}&title=${encodeURIComponent(taskRow.title)}`;
 
   // Same visibility condition each section below already gates on —
@@ -527,6 +537,7 @@ export default async function TaskDetailPage({
             {taskRow.title}
             {taskRow.critical && <Tag tone="danger">critical</Tag>}
             {attention && <Tag tone={ATTENTION_TONE[taskRow.attentionLevel] ?? "neutral"}>{attention.label}</Tag>}
+            {scopeBackstopName && <Tag tone="danger">Backstop: {scopeBackstopName}</Tag>}
           </span>
         }
         description={

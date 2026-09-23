@@ -1,0 +1,1 @@
+ALTER TYPE "public"."permission_grant_module" ADD VALUE 'backstop';

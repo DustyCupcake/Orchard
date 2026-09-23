@@ -1,13 +1,24 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community } from "@/db/schema";
+import { community, task } from "@/db/schema";
 import { createCycle } from "@/lib/cycles";
 import { createTask, listTasks } from "@/lib/tasks";
 import { createFixtures, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
+}
+
+// Every cycle carries its auto-created Backstop task (docs/cycle-scope-
+// remediation-plan.md §4.7), so a cycle in scope always contributes it
+// as a task too.
+async function backstopIn(cycleId: string) {
+  const [row] = await db
+    .select({ id: task.id })
+    .from(task)
+    .where(and(eq(task.cycleId, cycleId), eq(task.title, "Backstop")));
+  return row!;
 }
 
 // docs/development-plan.md's Phase 67 — the board's own cycle-scope
@@ -48,7 +59,9 @@ describe("listTasks cycleScope filter", () => {
     });
 
     const result = await listTasks(alice, { cycleScope: { cycleIds: [cycleA.id] } });
-    expect(result.map((t) => t.id).sort()).toEqual([cycleless.id, inA.id].sort());
+    expect(result.map((t) => t.id).sort()).toEqual(
+      [cycleless.id, inA.id, (await backstopIn(cycleA.id)).id].sort(),
+    );
     expect(result.map((t) => t.id)).not.toContain(inB.id);
   });
 
@@ -105,7 +118,7 @@ describe("listTasks cycleScope filter", () => {
     });
 
     const result = await listTasks(alice, { cycleScope: { cycleIds: [cycleA.id], hideCycleless: true } });
-    expect(result.map((t) => t.id)).toEqual([inA.id]);
+    expect(result.map((t) => t.id).sort()).toEqual([inA.id, (await backstopIn(cycleA.id)).id].sort());
   });
 
   it("an empty cycleIds list (nothing in scope) still shows cycle-less tasks, unless hidden", async () => {

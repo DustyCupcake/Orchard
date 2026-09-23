@@ -119,10 +119,13 @@ describe("getOwnContribution: categorization", () => {
     await assign(t.id, alice.id);
 
     const categories = await getOwnContribution(alice);
-    expect(categories).toHaveLength(1);
-    expect(categories[0].name).toBe("Build");
-    expect(categories[0].future.count).toBe(1);
-    expect(categories[0].active.count).toBe(0);
+    // The cycle's own auto-claimed Backstop task shows up as an active
+    // "Overall" contribution (phase-less) alongside the Build category.
+    expect(categories).toHaveLength(2);
+    const build = categories.find((c) => c.name === "Build")!;
+    expect(build.name).toBe("Build");
+    expect(build.future.count).toBe(1);
+    expect(build.active.count).toBe(0);
   });
 
   it("buckets a task in an already-started phase as active or completed", async () => {
@@ -204,9 +207,13 @@ describe("getOwnContribution: categorization", () => {
     await assign(t2.id, alice.id);
 
     const categories = await getOwnContribution(alice);
-    expect(categories).toHaveLength(1);
-    expect(categories[0].name).toBe("Planning");
-    expect(categories[0].active.count).toBe(2);
+    // One Planning category across both seasons' phases (merged by
+    // name), plus an "Overall" bucket holding both cycles' auto-claimed
+    // Backstop tasks.
+    expect(categories).toHaveLength(2);
+    const planning = categories.find((c) => c.name === "Planning")!;
+    expect(planning.name).toBe("Planning");
+    expect(planning.active.count).toBe(2);
   });
 
   it("sums hours_per_week for ongoing/owns_a_thing tasks, excludes one_off from the hours total", async () => {
@@ -368,15 +375,16 @@ describe("getContributionCommunityAverage (Phase 31)", () => {
     await declareParticipation(alice, cyc.id, { status: "coming" });
     await declareParticipation(bob, cyc.id, { status: "coming" });
 
-    // Only alice has an active task — bob contributes a real zero, not
-    // an excluded denominator.
+    // Only alice has active tasks — her own plus the cycle's auto-claimed
+    // Backstop task (docs/cycle-scope-remediation-plan.md §4.7); bob
+    // contributes a real zero, not an excluded denominator.
     const t = await insertTask(alice.communityId, branch.id, alice.id, { status: "claimed" });
     await assign(t.id, alice.id);
 
     const averages = await getContributionCommunityAverage(alice);
     expect(averages).toHaveLength(1);
     expect(averages![0].name).toBe("Overall");
-    expect(averages![0].active.count).toBe(0.5);
+    expect(averages![0].active.count).toBe(1);
   });
 
   it("excludes a 'maybe'/'not_coming' member from the average denominator", async () => {
@@ -390,6 +398,7 @@ describe("getContributionCommunityAverage (Phase 31)", () => {
     await assign(t.id, alice.id);
 
     const averages = await getContributionCommunityAverage(alice);
-    expect(averages![0].active.count).toBe(1);
+    // alice's hand-made task plus the cycle's auto-claimed Backstop task.
+    expect(averages![0].active.count).toBe(2);
   });
 });

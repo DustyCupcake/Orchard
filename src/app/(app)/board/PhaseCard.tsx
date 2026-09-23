@@ -24,6 +24,7 @@ export default function PhaseCard({
   currentMemberId,
   myPendingRequests,
   coordinationBranchIds,
+  backstopNameFor,
 }: {
   group: PhaseGroup<BoardTask>;
   tierNames: Map<string, string>;
@@ -31,6 +32,7 @@ export default function PhaseCard({
   currentMemberId: string;
   myPendingRequests: Map<string, string>;
   coordinationBranchIds: Set<string>;
+  backstopNameFor: (t: BoardTask) => string | null;
 }) {
   const shown = group.tasks.slice(0, SHOWN_BY_DEFAULT);
   const rest = group.tasks.slice(SHOWN_BY_DEFAULT);
@@ -48,6 +50,7 @@ export default function PhaseCard({
       currentMemberId={currentMemberId}
       myPendingRequestId={myPendingRequests.get(t.id) ?? null}
       isCoordinationHolderForBranch={coordinationBranchIds.has(t.branchId)}
+      backstopName={backstopNameFor(t)}
     />
   );
 

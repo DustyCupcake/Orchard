@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { community, task } from "@/db/schema";
 import {
@@ -170,7 +170,12 @@ describe("carrying forward through a Cycle clone", () => {
     await addWikiRevision(bob, t.id, { content: "Updated with the new supplier." });
 
     const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
-    const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
+    // The cycle's auto-created Backstop task also cloned — pick the clone
+    // of the hand-written source task by its clonedFromTaskId.
+    const [clonedTask] = await db
+      .select()
+      .from(task)
+      .where(and(eq(task.cycleId, cloned.id), eq(task.clonedFromTaskId, t.id)));
 
     const clonedRevisions = await listWikiRevisions(alice, clonedTask.id);
     expect(clonedRevisions).toHaveLength(1);
@@ -192,7 +197,12 @@ describe("carrying forward through a Cycle clone", () => {
     await addResource(bob, t.id, { label: "Sign design", url: "https://example.com/sign", tag: "design asset" });
 
     const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
-    const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
+    // The cycle's auto-created Backstop task also cloned — pick the clone
+    // of the hand-written source task by its clonedFromTaskId.
+    const [clonedTask] = await db
+      .select()
+      .from(task)
+      .where(and(eq(task.cycleId, cloned.id), eq(task.clonedFromTaskId, t.id)));
 
     const clonedResources = await listResources(alice, clonedTask.id);
     expect(clonedResources).toHaveLength(2);
@@ -209,7 +219,10 @@ describe("carrying forward through a Cycle clone", () => {
     await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: previous.id });
 
     const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
-    const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
+    const [clonedTask] = await db
+      .select()
+      .from(task)
+      .where(and(eq(task.cycleId, cloned.id), ne(task.title, "Backstop")));
 
     const notes = await getTaskNotes(alice, clonedTask.id);
     expect(notes).toEqual({ wikiRevisions: [], comments: [], resources: [] });

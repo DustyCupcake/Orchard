@@ -58,6 +58,7 @@ export default function TaskCard({
   currentMemberId,
   myPendingRequestId,
   isCoordinationHolderForBranch,
+  backstopName,
 }: {
   task: Task;
   assignments: Assignment[];
@@ -69,6 +70,7 @@ export default function TaskCard({
   currentMemberId: string;
   myPendingRequestId: string | null;
   isCoordinationHolderForBranch: boolean;
+  backstopName: string | null;
 }) {
   // A shadow isn't a real holder — doesn't count toward capacity, isn't
   // who "Held by" means — see docs/spec.md's "Shadow slots & succession"
@@ -238,6 +240,10 @@ export default function TaskCard({
           {task.title}
         </Link>
         {attention && <Tag tone={ATTENTION_TONE[task.attentionLevel] ?? "neutral"}>{attention.label}</Tag>}
+        {/* docs/cycle-scope-remediation-plan.md §5.5 — an unclaimed
+            critical in a scope that has a backstop names its accountable
+            holder while staying open and claimable by anyone (D5). */}
+        {backstopName && <Tag tone="danger">Backstop: {backstopName}</Tag>}
         {task.cycleId === null && <Tag>not cycle-scoped</Tag>}
       </div>
 

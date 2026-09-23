@@ -3,28 +3,36 @@ import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { listEscalatedTasks } from "@/lib/tasks";
 import { isCoordinationHolder } from "@/lib/coordination";
+import { listBackstopScopesForMember } from "@/lib/backstop";
 import { Tag, Banner } from "@/components/ui/kit";
 
 export const dynamic = "force-dynamic";
 
 // "Unplaceable tasks surface in a shared 'needs an owner' view visible
 // to all coordinators, with cross-branch placement encouraged" — see
-// docs/spec.md's Coordination mechanics: Escalation.
+// docs/spec.md's Coordination mechanics: Escalation. docs/cycle-scope-
+// remediation-plan.md §5.5 also admits the scope's backstop — their own
+// cycle segment only (listEscalatedTasks applies the view-scope gating).
 export default async function EscalationPage() {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
   }
 
-  const authorized = await isCoordinationHolder(viewing, null);
-  if (!authorized) {
+  const [isCoordinator, backstopScopes] = await Promise.all([
+    isCoordinationHolder(viewing, null),
+    listBackstopScopesForMember(viewing),
+  ]);
+  const isBackstopOnly = !isCoordinator && backstopScopes.length > 0;
+  if (!isCoordinator && backstopScopes.length === 0) {
     return (
       <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
         <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Escalation</h1>
         <div className="mt-4">
           <Banner tone="danger">
-            Only a current holder of any branch&rsquo;s coordination-tagged task can see this —
-            it&rsquo;s community-wide, not scoped to one branch.
+            Only a current coordination-tagged task holder, or the backstop of a cycle, can see this —
+            it&rsquo;s a community-wide view, scoped to the backstop&rsquo;s own cycle when that&rsquo;s
+            all the viewer holds.
           </Banner>
         </div>
       </main>
@@ -40,6 +48,7 @@ export default async function EscalationPage() {
         Tasks that have escalated — no owner, past the point staleness/deadline tolerates.
         Cross-branch placement is encouraged: taking one of these is always a visible, deliberate
         act.
+        {isBackstopOnly && " You see only your own scope\u2019s tasks — the ones you\u2019re accountable for."}
       </p>
 
       {tasks.length === 0 && (

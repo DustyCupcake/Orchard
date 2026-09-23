@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db, type DbOrTx, type Tx } from "@/db";
 import {
+  branch,
   community,
   cycle,
   cycleType,
@@ -296,6 +297,10 @@ async function createBlankCycle(
       );
     }
 
+    // §4.7 — every cycle is born with its backstop, auto-claimed to
+    // whoever started it (D6).
+    await createBackstopTask(tx, actor, newCycle.id);
+
     return newCycle;
   });
 }
@@ -358,6 +363,11 @@ async function cloneMostRecentCycle(
     if (cloneSpatialPlan) {
       await cloneSpatialPlanIntoNewCycle(actor, tx, previous.id, newCycle.id, taskIdMap);
     }
+
+    // §4.7/D6 — the new cycle gets its backstop filled too (see
+    // ensureCloneHasBackstop): the cloned one auto-claimed, or a fresh
+    // one when the previous cycle predates the module.
+    await ensureCloneHasBackstop(tx, actor, newCycle.id);
 
     return newCycle;
   });
@@ -725,6 +735,82 @@ async function cloneWikiAndResources(tx: Tx, taskIdMap: Map<string, string>) {
         tag: res.tag,
       })),
     );
+  }
+}
+
+// §4.7 (docs/cycle-scope-remediation-plan.md): every cycle is born with
+// a backstop — a critical, single-slot, `backstop`-granted task whose
+// first holder is auto-claimed to the member who started the cycle (D6).
+// It's an ordinary task beyond that: transferable and unclaimable like
+// anything else, and clearing it just turns it into the visible critical
+// gap D6 describes — no special machinery. The grant's scope comes from
+// placement (§2.1): the task sits in this brand-new cycle, so it grants
+// `backstop` to this cycle only, never beyond.
+async function createBackstopTask(tx: Tx, actor: Member, cycleId: string) {
+  // task.branchId is NOT NULL; the backstop task must sit on some branch
+  // for the field's sake, but its scope is its cycle placement, never its
+  // branch — the community's first branch is as good a home as any.
+  const [branchRow] = await tx
+    .select({ id: branch.id })
+    .from(branch)
+    .where(eq(branch.communityId, actor.communityId))
+    .limit(1);
+  if (!branchRow) {
+    throw new ConflictError("No branch exists yet — create one before starting a cycle");
+  }
+
+  const [backstopTask] = await tx
+    .insert(task)
+    .values({
+      communityId: actor.communityId,
+      branchId: branchRow.id,
+      cycleId,
+      title: "Backstop",
+      description:
+        "The standing accountable holder for this cycle's critical tasks. Unclaimed criticals stay open and claimable by anyone — this task's holder is simply the named party responsible for getting each one moving if it stalls.",
+      tags: ["backstop"],
+      effort: "owns_a_thing",
+      effortMagnitude: { hours_per_week: 1 },
+      capacity: 1,
+      openness: "request",
+      critical: true,
+      createdBy: actor.id,
+    })
+    .returning();
+
+  await tx.insert(permissionGrant).values({
+    communityId: actor.communityId,
+    moduleKey: "backstop",
+    taskId: backstopTask.id,
+  });
+  await tx.insert(taskAssignment).values({ taskId: backstopTask.id, memberId: actor.id });
+}
+
+// D6 — a cloned cycle must be born with its backstop filled regardless
+// of whether the previous cycle had one. If it did, that task was cloned
+// like everything else (§4.4 carries its `backstop` grant) but clones
+// come over unclaimed, so it's auto-claimed to the new startedBy. If it
+// didn't (every cycle that predates the module), the task is created
+// fresh. Either way the new cycle ends up with exactly one backstop task
+// — no single-cardinality-per-scope collision — held by the person who
+// just started this cycle.
+async function ensureCloneHasBackstop(tx: Tx, actor: Member, newCycleId: string) {
+  const [clonedBackstop] = await tx
+    .select({ id: task.id })
+    .from(permissionGrant)
+    .innerJoin(task, eq(task.id, permissionGrant.taskId))
+    .where(
+      and(
+        eq(permissionGrant.communityId, actor.communityId),
+        eq(permissionGrant.moduleKey, "backstop"),
+        eq(task.cycleId, newCycleId),
+      ),
+    )
+    .limit(1);
+  if (clonedBackstop) {
+    await tx.insert(taskAssignment).values({ taskId: clonedBackstop.id, memberId: actor.id });
+  } else {
+    await createBackstopTask(tx, actor, newCycleId);
   }
 }
 

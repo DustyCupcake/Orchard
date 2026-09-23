@@ -13,6 +13,7 @@ export const PERMISSION_MODULE_KEYS = [
   "spatial_planning",
   "announcements",
   "support",
+  "backstop",
 ] as const;
 export type PermissionModuleKey = (typeof PERMISSION_MODULE_KEYS)[number];
 
@@ -31,6 +32,7 @@ export const PERMISSION_MODULE_LABELS: Record<PermissionModuleKey, string> = {
   spatial_planning: "Spatial planning",
   announcements: "Announcements",
   support: "Support (View-as)",
+  backstop: "Backstop",
 };
 
 export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
@@ -50,6 +52,8 @@ export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
     "Targeted messages (branch/task-holders/arrival-window) work without this — it only gates community-wide announcements.",
   support:
     "Whoever currently holds a task granted here can view the platform exactly as another member would, read-only — see docs/spec.md's View-as (support).",
+  backstop:
+    "The standing accountable holder for critical tasks in this scope — cycle-shaped, like Announcements: a task placed in a cycle is that cycle's backstop (covering its critical tasks), a cycle-less task is the community/evergreen backstop (covering cycle-less criticals only, D1). Unclaimed criticals stay open and claimable for anyone — being the backstop is about being named responsible, not closing the task off.",
 };
 
 // Modules where more than one task can simultaneously grant access

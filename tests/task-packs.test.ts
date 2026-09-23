@@ -122,8 +122,11 @@ describe("exportCycleAsTaskPack", () => {
     expect(loaded.phases[0].startOffsetAnchor).toBe("cycle_start");
     expect(loaded.phases[0].startOffsetDays).toBe(0);
 
-    expect(loaded.items).toHaveLength(1);
-    const item = loaded.items[0];
+    // The cycle's auto-created Backstop task (docs/cycle-scope-remediation-
+    // plan.md §4.7) rides along as an item too — pick the hand-built one
+    // out for the packed-task assertions.
+    expect(loaded.items).toHaveLength(2);
+    const item = loaded.items.find((i) => i.title === "Order seedlings")!;
     expect(item.branchNameHint).toBe(branch.name);
     expect(item.phaseRef).toBe(build.order);
     expect(item.wikiSummarySeed).toBe("Seed catalogue: ...");
@@ -206,8 +209,8 @@ describe("Task Pack file round-trip", () => {
     expect(imported.id).not.toBe(pack.id);
 
     const loaded = await getTaskPack(bob, imported.id);
-    expect(loaded.items).toHaveLength(1);
-    expect(loaded.items[0].title).toBe("Order seedlings");
+    expect(loaded.items).toHaveLength(2);
+    expect(loaded.items.find((i) => i.title === "Order seedlings")?.title).toBe("Order seedlings");
   });
 
   it("rejects a file that isn't valid Task Pack JSON", async () => {
@@ -229,7 +232,8 @@ describe("Task Pack file round-trip", () => {
     const [bob] = await db.insert(member).values({ communityId: otherCommunity.id, name: "Bob" }).returning();
     const imported = await importTaskPackFromFile(bob, file);
     const loaded = await getTaskPack(bob, imported.id);
-    expect(loaded.items[0].grantModuleKeys).toEqual(["event_scheduling_owner"]);
+    const ownerItem = loaded.items.find((i) => i.title === "Scheduling owner")!;
+    expect(ownerItem.grantModuleKeys).toEqual(["event_scheduling_owner"]);
   });
 
   it("still accepts a pack file authored before packs carried grants (field absent defaults to empty)", async () => {
@@ -318,12 +322,13 @@ describe("commitPackImport", () => {
     expect(newPhases[0].name).toBe("Build");
 
     const newTasks = await db.select().from(task).where(eq(task.cycleId, newCycle.id));
-    expect(newTasks).toHaveLength(1);
-    expect(newTasks[0].branchId).toBe(branch.id);
-    expect(newTasks[0].phaseId).toBe(newPhases[0].id);
-    expect(newTasks[0].createdBy).toBe(alice.id);
+    const [newTask] = newTasks.filter((nt) => nt.title === "Order seedlings");
+    expect(newTasks).toHaveLength(2); // + the imported Backstop task
+    expect(newTask.branchId).toBe(branch.id);
+    expect(newTask.phaseId).toBe(newPhases[0].id);
+    expect(newTask.createdBy).toBe(alice.id);
 
-    const newMilestones = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, newTasks[0].id));
+    const newMilestones = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, newTask.id));
     expect(newMilestones).toHaveLength(1);
     expect(newMilestones[0].phaseId).toBe(newPhases[0].id);
   });
@@ -347,14 +352,15 @@ describe("commitPackImport", () => {
     });
 
     const newTasks = await db.select().from(task).where(eq(task.cycleId, newCycle.id));
-    expect(newTasks).toHaveLength(1);
-    expect(newTasks[0].title).toBe("Scheduling owner");
-    expect(newTasks[0].cycleId).toBe(newCycle.id);
+    const [importedOwner] = newTasks.filter((nt) => nt.title === "Scheduling owner");
+    expect(newTasks).toHaveLength(2); // + the imported Backstop task
+    expect(importedOwner.title).toBe("Scheduling owner");
+    expect(importedOwner.cycleId).toBe(newCycle.id);
 
     const importedGrants = await db
       .select()
       .from(permissionGrant)
-      .where(eq(permissionGrant.taskId, newTasks[0].id));
+      .where(eq(permissionGrant.taskId, importedOwner.id));
     expect(importedGrants).toHaveLength(1);
     expect(importedGrants[0].moduleKey).toBe("event_scheduling_owner");
     expect(importedGrants[0].communityId).toBe(testCommunity.id);
@@ -389,17 +395,21 @@ describe("commitPackImport", () => {
     const { branch, alice, pack } = await makeSourcePack();
     const [otherBranch] = await db.insert(branchTable).values({ communityId: branch.communityId, name: "Wood" }).returning();
     const loaded = await getTaskPack(alice, pack.id);
-    const itemId = loaded.items[0].id;
+    const itemId = loaded.items.find((i) => i.title === "Order seedlings")!.id;
+    // The auto-created Backstop task rides in the pack too (same "Fruit"
+    // hint) — give it an override as well so it lands on the existing
+    // branch while the hand-picked task is individually re-routed.
+    const backstopItemId = loaded.items.find((i) => i.title === "Backstop")!.id;
 
     const newCycle = await commitPackImport(alice, {
       packId: pack.id,
       cycleName: "2028 Season",
       hintResolutions: {},
-      itemBranchOverrides: { [itemId]: otherBranch.id },
+      itemBranchOverrides: { [itemId]: otherBranch.id, [backstopItemId]: branch.id },
     });
 
     const newTasks = await db.select().from(task).where(eq(task.cycleId, newCycle.id));
-    expect(newTasks[0].branchId).toBe(otherBranch.id);
+    expect(newTasks.find((nt) => nt.title === "Order seedlings")!.branchId).toBe(otherBranch.id);
   });
 
   it("previewPackImportBranches suggests an exact case-insensitive match", async () => {

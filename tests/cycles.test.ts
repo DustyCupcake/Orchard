@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community, cycle, member, permissionGrant, requirement, task, taskDependency, taskMilestone, tier } from "@/db/schema";
 import {
@@ -211,8 +211,10 @@ describe("cloning the previous cycle", () => {
     expect(clonedWithPhases.phases.map((p) => p.name)).toEqual(["Procurement", "Build"]);
     const clonedBuildPhase = clonedWithPhases.phases.find((p) => p.name === "Build")!;
 
+    // The Backstop task every cycle is born with (docs/cycle-scope-
+    // remediation-plan.md §4.7) clones like any other task.
     const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
-    expect(clonedTasks).toHaveLength(2);
+    expect(clonedTasks).toHaveLength(3);
 
     const clonedGated = clonedTasks.find((t) => t.title === "Build the arbor")!;
     expect(clonedGated.status).toBe("unclaimed");
@@ -270,7 +272,8 @@ describe("cloning the previous cycle", () => {
 
     const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
-    expect(clonedTasks.map((t) => t.title)).toEqual(["Only in the newer cycle"]);
+    // The newer cycle's own Backstop task clones over too.
+    expect(clonedTasks.map((t) => t.title).sort()).toEqual(["Backstop", "Only in the newer cycle"]);
 
     // listCycles should reflect the same most-recent-first ordering.
     const all = await listCycles(alice);
@@ -322,7 +325,10 @@ describe("cloning the previous cycle", () => {
     await claimAsShadow(carol, t.id);
 
     const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
-    const [clonedTask] = await db.select().from(task).where(eq(task.cycleId, cloned.id));
+    const [clonedTask] = await db
+      .select()
+      .from(task)
+      .where(and(eq(task.cycleId, cloned.id), eq(task.clonedFromTaskId, t.id)));
     expect(clonedTask.suggestedMemberId).toBe(bob.id);
   });
 
@@ -339,12 +345,14 @@ describe("cloning the previous cycle", () => {
 
     const cloned = await createCycle(alice, { source: "clone_previous", name: "2027 Season", confirmed: true });
     const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
-    expect(clonedTasks).toHaveLength(1);
+    // The cycle's auto-created Backstop task cloned alongside "Admins".
+    expect(clonedTasks).toHaveLength(2);
 
+    const clonedAdmin = clonedTasks.find((ct) => ct.title === "Admins")!;
     const clonedGrants = await db
       .select()
       .from(permissionGrant)
-      .where(eq(permissionGrant.taskId, clonedTasks[0].id));
+      .where(eq(permissionGrant.taskId, clonedAdmin.id));
     expect(clonedGrants).toHaveLength(1);
     expect(clonedGrants[0].moduleKey).toBe("admin");
   });

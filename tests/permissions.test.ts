@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community, task } from "@/db/schema";
 import { createCycle } from "@/lib/cycles";
@@ -186,15 +186,32 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
     await setPermissionGrant(testCommunity.id, "branch_coordination", communityTask.id);
 
     const grants = await listGrantsWithTaskInfo(testCommunity.id);
-    expect(grants).toEqual([
-      { moduleKey: "spatial_planning", taskId: cycleTask.id, title: "Owns A", branchId: branch.id, cycleId: cycleA.id },
-      {
-        moduleKey: "branch_coordination",
-        taskId: communityTask.id,
-        title: "Owns community",
-        branchId: branch.id,
-        cycleId: null,
-      },
-    ]);
+    // The cycle's auto-created Backstop task (docs/cycle-scope-
+    // remediation-plan.md §4.7) carries a `backstop` grant scoped to
+    // cycleA too — listed right alongside the hand-granted modules.
+    const [backstopRow] = await db
+      .select({ id: task.id })
+      .from(task)
+      .where(and(eq(task.cycleId, cycleA.id), eq(task.title, "Backstop")));
+    expect(grants).toEqual(
+      expect.arrayContaining([
+        { moduleKey: "spatial_planning", taskId: cycleTask.id, title: "Owns A", branchId: branch.id, cycleId: cycleA.id },
+        {
+          moduleKey: "branch_coordination",
+          taskId: communityTask.id,
+          title: "Owns community",
+          branchId: branch.id,
+          cycleId: null,
+        },
+        {
+          moduleKey: "backstop",
+          taskId: backstopRow.id,
+          title: "Backstop",
+          branchId: branch.id,
+          cycleId: cycleA.id,
+        },
+      ]),
+    );
+    expect(grants).toHaveLength(3);
   });
 });
