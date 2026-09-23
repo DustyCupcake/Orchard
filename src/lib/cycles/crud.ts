@@ -21,6 +21,7 @@ import { memberHasTier } from "../eligibility";
 import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
 import { cloneSpatialPlanIntoNewCycle } from "../spatial-planning";
 import { recomputeCalendarEventDatesForCycle } from "../calendar-events";
+import { copyPermissionGrants, type PermissionModuleKey } from "../permissions";
 import { requireCycleOpen } from "./lifecycle";
 import {
   dateBoundaryInput,
@@ -735,7 +736,10 @@ async function cloneWikiAndResources(tx: Tx, taskIdMap: Map<string, string>) {
 // the granted task's own placement (task.cycleId, docs/cycle-scope-
 // remediation-plan.md §2.1), and the cloned task now sits in the
 // brand-new cycle, so its grant row — copied verbatim below — already
-// points at the new cycle's data.
+// points at the new cycle's data. The actual insert is the shared
+// copyPermissionGrants helper (the same one pack import calls, §4.4);
+// this function is just the clone path's way of building that helper's
+// per-task module-key map from the source cycle's live grant rows.
 async function clonePermissionGrants(tx: Tx, taskIdMap: Map<string, string>) {
   if (taskIdMap.size === 0) return;
 
@@ -745,13 +749,13 @@ async function clonePermissionGrants(tx: Tx, taskIdMap: Map<string, string>) {
     .where(inArray(permissionGrant.taskId, [...taskIdMap.keys()]));
   if (oldGrants.length === 0) return;
 
-  await tx.insert(permissionGrant).values(
-    oldGrants.map((g) => ({
-      communityId: g.communityId,
-      moduleKey: g.moduleKey,
-      taskId: taskIdMap.get(g.taskId)!,
-    })),
-  );
+  const moduleKeysByTask = new Map<string, PermissionModuleKey[]>();
+  for (const g of oldGrants) {
+    const keys = moduleKeysByTask.get(taskIdMap.get(g.taskId)!) ?? [];
+    if (!keys.includes(g.moduleKey)) keys.push(g.moduleKey);
+    moduleKeysByTask.set(taskIdMap.get(g.taskId)!, keys);
+  }
+  await copyPermissionGrants(tx, oldGrants[0].communityId, moduleKeysByTask);
 }
 
 export async function listCycles(actor: Member) {

@@ -13,6 +13,7 @@ import {
 } from "../cycles";
 import { recomputeBoundary, type StoredBoundary } from "../dates";
 import { isAdmin } from "../settings/admins";
+import { copyPermissionGrants, type PermissionModuleKey } from "../permissions";
 import { getTaskPack } from "./crud";
 import { findClosestNameMatch } from "./match-name";
 
@@ -234,6 +235,13 @@ export async function commitPackImport(actor: Member, input: CommitPackImportInp
     // items sharing a hint all land on the same branch.
     const branchIdByHint = new Map<string, string>();
 
+    // Grants collected during the item loop below and applied in one
+    // shared copyPermissionGrants call afterwards (§4.4): an imported
+    // task keeps every module its source granted, and — because every
+    // imported task sits in newCycle — those copied rows are automatically
+    // scoped to the imported cycle (§2.1), exactly like a cloned cycle's.
+    const grantModuleKeysByTask = new Map<string, PermissionModuleKey[]>();
+
     async function resolveBranchForItem(item: PackItemRow): Promise<string> {
       const override = input.itemBranchOverrides?.[item.id];
       if (override) {
@@ -359,6 +367,19 @@ export async function commitPackImport(actor: Member, input: CommitPackImportInp
           resources.map((r) => ({ taskId: newTask.id, addedBy: actor.id, label: r.label, url: r.url, tag: r.tag })),
         );
       }
+
+      // A pack item's grantModuleKeys are a clean module-key list from
+      // its source (export) or the file shape's own validation — re-
+      // granted below via the shared copy helper alongside every other
+      // imported task's, not here one-by-one.
+      const grantModuleKeys = item.grantModuleKeys as PermissionModuleKey[];
+      if (grantModuleKeys.length > 0) {
+        grantModuleKeysByTask.set(newTask.id, grantModuleKeys);
+      }
+    }
+
+    if (grantModuleKeysByTask.size > 0) {
+      await copyPermissionGrants(tx, actor.communityId, grantModuleKeysByTask);
     }
 
     return newCycle;

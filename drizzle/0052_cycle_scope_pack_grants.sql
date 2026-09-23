@@ -1,0 +1,1 @@
+ALTER TABLE "task_pack_item" ADD COLUMN "grant_module_keys" text[] DEFAULT '{}' NOT NULL;

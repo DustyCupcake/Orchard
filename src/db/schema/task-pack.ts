@@ -108,4 +108,11 @@ export const taskPackItem = pgTable("task_pack_item", {
   // of the item's own phaseRef above, since a milestone can anchor to
   // a different phase than its task's own (see Phase 41).
   milestones: jsonb("milestones").notNull().default([]),
+  // Which modules this task granted at export time — the permission_grant
+  // module keys the source task carried (docs/cycle-scope-remediation-
+  // plan.md §4.4), so pack import can re-grant the imported task and the
+  // imported cycle arrives with its own authorities the same way a
+  // cloned cycle does. The imported grant's scope comes from the imported
+  // task's own placement (§2.1), never from anything carried here.
+  grantModuleKeys: text("grant_module_keys").array().notNull().default([]),
 });

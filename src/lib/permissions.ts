@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { db } from "@/db";
+import { db, type Tx } from "@/db";
 import { permissionGrant, task } from "@/db/schema";
 import { NotFoundError } from "./errors";
 
@@ -278,4 +278,30 @@ export async function removePermissionGrant(
         eq(permissionGrant.taskId, taskId),
       ),
     );
+}
+
+// The shared core of cycle clone and task-pack import
+// (docs/cycle-scope-remediation-plan.md §4.4): a copied task keeps the
+// module grants its source had, as new bare { communityId, moduleKey,
+// taskId } rows keyed by the copy's task id. No scope is copied — the
+// copy's own placement re-scopes everything (§2.1): clone-previous-cycle
+// places the copied task in the brand-new cycle, pack import places it in
+// the imported cycle, so the grant rows already point at the right cycle's
+// data before this is even called. Both that clone path
+// (src/lib/cycles/crud.ts's clonePermissionGrants) and commitPackImport
+// build their moduleKeysByTask map from their own source and call this
+// once, so the two copy paths can never drift.
+export async function copyPermissionGrants(
+  tx: Tx,
+  communityId: string,
+  moduleKeysByTask: Map<string, readonly PermissionModuleKey[]>,
+): Promise<void> {
+  const rows: { communityId: string; moduleKey: PermissionModuleKey; taskId: string }[] = [];
+  for (const [taskId, moduleKeys] of moduleKeysByTask) {
+    for (const moduleKey of moduleKeys) {
+      rows.push({ communityId, moduleKey, taskId });
+    }
+  }
+  if (rows.length === 0) return;
+  await tx.insert(permissionGrant).values(rows);
 }

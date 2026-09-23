@@ -6,6 +6,7 @@ import {
   community,
   cycle,
   member,
+  permissionGrant,
   phase,
   requirement,
   task,
@@ -159,6 +160,29 @@ describe("exportCycleAsTaskPack", () => {
 
     await expect(exportCycleAsTaskPack(alice, otherCycle.id, { name: "Steal" })).rejects.toThrow(NotFoundError);
   });
+
+  // docs/cycle-scope-remediation-plan.md §4.4 — the grant-copy story:
+  // a pack is a cycle "in a box", and a cycle's authority tasks are
+  // part of what it carries. Each imported task's module grants must
+  // travel on its item so commitPackImport can re-grant it.
+  it("carries which modules each exported task granted", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const newCycle = await createCycle(alice, { source: "blank", name: "2027 Season", startDate: "2027-06-01", endDate: "2027-06-10" });
+
+    const ownerTask = await insertTask(testCommunity.id, branch.id, newCycle.id, alice.id, { title: "Scheduling owner" });
+    await insertTask(testCommunity.id, branch.id, newCycle.id, alice.id, { title: "Plain task" });
+    await grantPermission(testCommunity.id, "event_scheduling_owner", ownerTask.id);
+    await grantPermission(testCommunity.id, "admin", ownerTask.id);
+
+    const pack = await exportCycleAsTaskPack(alice, newCycle.id, { name: "Authority pack" });
+    const loaded = await getTaskPack(alice, pack.id);
+
+    const ownerItem = loaded.items.find((i) => i.title === "Scheduling owner")!;
+    expect(ownerItem.grantModuleKeys).toEqual(["event_scheduling_owner", "admin"]);
+    const plainItem = loaded.items.find((i) => i.title === "Plain task")!;
+    expect(plainItem.grantModuleKeys).toEqual([]);
+  });
 });
 
 describe("Task Pack file round-trip", () => {
@@ -189,6 +213,60 @@ describe("Task Pack file round-trip", () => {
   it("rejects a file that isn't valid Task Pack JSON", async () => {
     const { alice } = await createFixtures();
     await expect(importTaskPackFromFile(alice, { not: "a pack" })).rejects.toThrow(AppError);
+  });
+
+  it("a file round-trips its items' module grants (§4.4), surviving a cross-community upload", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const newCycle = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    const ownerTask = await insertTask(testCommunity.id, branch.id, newCycle.id, alice.id, { title: "Scheduling owner" });
+    await grantPermission(testCommunity.id, "event_scheduling_owner", ownerTask.id);
+
+    const pack = await exportCycleAsTaskPack(alice, newCycle.id, { name: "Authority pack" });
+    const file = await exportTaskPackToFile(alice, pack.id);
+
+    const [otherCommunity] = await db.insert(community).values({ name: "Sister community" }).returning();
+    const [bob] = await db.insert(member).values({ communityId: otherCommunity.id, name: "Bob" }).returning();
+    const imported = await importTaskPackFromFile(bob, file);
+    const loaded = await getTaskPack(bob, imported.id);
+    expect(loaded.items[0].grantModuleKeys).toEqual(["event_scheduling_owner"]);
+  });
+
+  it("still accepts a pack file authored before packs carried grants (field absent defaults to empty)", async () => {
+    const { alice } = await createFixtures();
+    const legacyFile = {
+      formatVersion: 1,
+      name: "Legacy",
+      description: null,
+      source: null,
+      version: "1",
+      domainTags: [],
+      phases: [],
+      items: [
+        {
+          branchNameHint: "Fruit",
+          phaseRef: null,
+          title: "Legacy task",
+          description: "",
+          tags: [],
+          effort: "one_off",
+          effortMagnitude: { duration: "few_hours" },
+          critical: false,
+          capacity: 1,
+          openness: "request",
+          endorsementThreshold: null,
+          requirements: [],
+          wikiSummarySeed: null,
+          resources: [],
+          milestones: [],
+          // deliberately no grantModuleKeys field
+        },
+      ],
+    };
+
+    const imported = await importTaskPackFromFile(alice, legacyFile);
+    const loaded = await getTaskPack(alice, imported.id);
+    expect(loaded.items[0].grantModuleKeys).toEqual([]);
   });
 });
 
@@ -248,6 +326,38 @@ describe("commitPackImport", () => {
     const newMilestones = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, newTasks[0].id));
     expect(newMilestones).toHaveLength(1);
     expect(newMilestones[0].phaseId).toBe(newPhases[0].id);
+  });
+
+  // docs/cycle-scope-remediation-plan.md §4.4 — the imported task keeps
+  // the modules its source granted, and because it lands in the imported
+  // cycle those grant rows are already scoped to that cycle (§2.1), the
+  // same way cloned grants are.
+  it("re-grants imported tasks, scoped to the imported cycle", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const sourceCycle = await createCycle(alice, { source: "blank", name: "Source" });
+    const ownerTask = await insertTask(testCommunity.id, branch.id, sourceCycle.id, alice.id, { title: "Scheduling owner" });
+    await grantPermission(testCommunity.id, "event_scheduling_owner", ownerTask.id);
+    const pack = await exportCycleAsTaskPack(alice, sourceCycle.id, { name: "Authority pack" });
+
+    const newCycle = await commitPackImport(alice, {
+      packId: pack.id,
+      cycleName: "2028 Season",
+      hintResolutions: { [branch.name]: { action: "use_existing", branchId: branch.id } },
+    });
+
+    const newTasks = await db.select().from(task).where(eq(task.cycleId, newCycle.id));
+    expect(newTasks).toHaveLength(1);
+    expect(newTasks[0].title).toBe("Scheduling owner");
+    expect(newTasks[0].cycleId).toBe(newCycle.id);
+
+    const importedGrants = await db
+      .select()
+      .from(permissionGrant)
+      .where(eq(permissionGrant.taskId, newTasks[0].id));
+    expect(importedGrants).toHaveLength(1);
+    expect(importedGrants[0].moduleKey).toBe("event_scheduling_owner");
+    expect(importedGrants[0].communityId).toBe(testCommunity.id);
   });
 
   it("creates a new, confirmed branch when the actor holds Admins", async () => {

@@ -61,6 +61,11 @@ const packFileItem = z.object({
       phaseRef: z.number().int().nullable(),
     }),
   ),
+  // Module keys the task granted at export (docs/cycle-scope-
+  // remediation-plan.md §4.4). Optional for forward/backward
+  // compatibility with the formatVersion 1 shape — a pack authored
+  // before packs carried grants just imports with none.
+  grantModuleKeys: z.array(z.string()).optional().default([]),
 });
 
 export const packFile = z.object({
@@ -112,6 +117,7 @@ export async function exportTaskPackToFile(actor: Member, packId: string): Promi
       wikiSummarySeed: i.wikiSummarySeed,
       resources: i.resources as PackFile["items"][number]["resources"],
       milestones: i.milestones as PackFile["items"][number]["milestones"],
+      grantModuleKeys: i.grantModuleKeys,
     })),
   };
 }

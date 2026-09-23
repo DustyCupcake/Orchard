@@ -5,6 +5,7 @@ import {
   branch,
   cycle,
   phase,
+  permissionGrant,
   requirement,
   task,
   taskMilestone,
@@ -112,6 +113,22 @@ export async function exportCycleAsTaskPack(actor: Member, cycleId: string, inpu
     carriedMilestonesByTask.set(m.taskId, list);
   }
 
+  // Which modules each exported task granted — carried so pack import
+  // can re-grant the imported task (docs/cycle-scope-remediation-plan.md
+  // §4.4: a pack is a cycle "in a box", and a cycle's authority tasks
+  // are part of what it carries). Only the module key travels, never a
+  // scope: the imported task's own placement decides that (§2.1).
+  const allGrants = await db
+    .select({ taskId: permissionGrant.taskId, moduleKey: permissionGrant.moduleKey })
+    .from(permissionGrant)
+    .where(inArray(permissionGrant.taskId, taskIdsToExport));
+  const grantModuleKeysByTask = new Map<string, string[]>();
+  for (const g of allGrants) {
+    const list = grantModuleKeysByTask.get(g.taskId) ?? [];
+    list.push(g.moduleKey);
+    grantModuleKeysByTask.set(g.taskId, list);
+  }
+
   return db.transaction(async (tx) => {
     const [pack] = await tx
       .insert(taskPack)
@@ -181,6 +198,7 @@ export async function exportCycleAsTaskPack(actor: Member, cycleId: string, inpu
           percent: m.percent,
           phaseRef: m.phaseId ? (phaseOrderById.get(m.phaseId) ?? null) : null,
         })),
+        grantModuleKeys: grantModuleKeysByTask.get(t.id) ?? [],
       })),
     );
 
