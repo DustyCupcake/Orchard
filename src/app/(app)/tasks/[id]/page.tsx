@@ -610,7 +610,7 @@ export default async function TaskDetailPage({
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-[12px] font-medium text-[var(--text-muted)]">Branch</span>
-              <select name="branchId" defaultValue={taskRow.branchId} className={INPUT}>
+              <select name="branchId" defaultValue={taskRow.branchId} key={taskRow.branchId} className={INPUT}>
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
@@ -621,7 +621,7 @@ export default async function TaskDetailPage({
             {communityRow.cyclesEnabled && (
               <label className="flex flex-col gap-1">
                 <span className="text-[12px] font-medium text-[var(--text-muted)]">Cycle</span>
-                <select name="cycleId" defaultValue={taskRow.cycleId ?? ""} className={INPUT}>
+                <select name="cycleId" defaultValue={taskRow.cycleId ?? ""} key={taskRow.cycleId ?? ""} className={INPUT}>
                   <option value="">No cycle (unscoped)</option>
                   {allCycles.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -633,7 +633,7 @@ export default async function TaskDetailPage({
             )}
             <label className="flex flex-col gap-1">
               <span className="text-[12px] font-medium text-[var(--text-muted)]">Phase</span>
-              <select name="phaseId" defaultValue={taskRow.phaseId ?? ""} className={INPUT}>
+              <select name="phaseId" defaultValue={taskRow.phaseId ?? ""} key={taskRow.phaseId ?? ""} className={INPUT}>
                 <option value="">No phase</option>
                 {cyclePhases.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -692,7 +692,7 @@ export default async function TaskDetailPage({
                       <input type="hidden" name="requirementId" value={r.id} />
                       <input type="hidden" name="requirementType" value={r.type} />
                       {r.type === "tier" && (
-                        <select name="requirementTierId" defaultValue={value.tierId ?? ""} className={INPUT}>
+                        <select name="requirementTierId" defaultValue={value.tierId ?? ""} key={value.tierId ?? ""} className={INPUT}>
                           <option value="">Tier…</option>
                           {tierOptions.map((t) => (
                             <option key={t.id} value={t.id}>
@@ -705,7 +705,7 @@ export default async function TaskDetailPage({
                         <input type="text" name="requirementLanguage" defaultValue={value.language ?? ""} className={INPUT} />
                       )}
                       {r.type === "completed_task" && (
-                        <select name="requirementCompletedTaskId" defaultValue={value.taskId ?? ""} className={INPUT}>
+                        <select name="requirementCompletedTaskId" defaultValue={value.taskId ?? ""} key={value.taskId ?? ""} className={INPUT}>
                           <option value="">Task…</option>
                           {communityTasks.map((t) => (
                             <option key={t.id} value={t.id}>
@@ -1151,12 +1151,12 @@ export default async function TaskDetailPage({
           rail at lg; rail stacks below main on smaller screens. */}
       <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
       <div className="min-w-0">
+      {requirements.length > 0 && (
       <section>
         <SectionHeading>Requirements</SectionHeading>
         <p className="mt-1 text-[13px] text-[var(--text-muted)]">
           Status only — add, edit, and remove live in the <em>Edit task</em> panel above.
         </p>
-        {requirements.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
         <ul className="mt-2 flex flex-col gap-2">
           {requirements.map((r) => {
             const covered = r.mode === "group_coverage" ? (groupCoverage.get(r.id) ?? false) : null;
@@ -1190,14 +1190,15 @@ export default async function TaskDetailPage({
           })}
         </ul>
       </section>
+      )}
 
+      {dependencies.length > 0 && (
       <section className="mt-6">
         <SectionHeading>Dependencies</SectionHeading>
         <p className="mt-1 text-[13px] text-[var(--text-muted)]">
           This task can&rsquo;t be finished while any of these are still open. Add and remove live
           in the <em>Edit task</em> panel above.
         </p>
-        {dependencies.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None.</p>}
         <ul className="mt-2 flex flex-col gap-1.5">
           {dependencies.map((d) => (
             <li key={d.dependsOnTaskId} className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text)]">
@@ -1209,6 +1210,7 @@ export default async function TaskDetailPage({
           ))}
         </ul>
       </section>
+      )}
 
       {canGrantPermissions && (
         <details className="mt-6 rounded-[var(--radius-md)] border border-[var(--border)] p-3">

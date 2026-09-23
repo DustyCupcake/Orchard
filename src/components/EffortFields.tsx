@@ -25,6 +25,7 @@ export default function EffortFields({
   return (
     <>
       <select
+        key={defaultEffort}
         name="effort"
         required
         defaultValue={defaultEffort}
@@ -36,7 +37,7 @@ export default function EffortFields({
         <option value="owns_a_thing">Owns-a-thing</option>
       </select>
       {effort === "one_off" ? (
-        <select name="duration" defaultValue={defaultDuration} className={INPUT}>
+        <select key={defaultDuration} name="duration" defaultValue={defaultDuration} className={INPUT}>
           <option value="under_hour">Under an hour</option>
           <option value="few_hours">A few hours</option>
           <option value="half_day">Half a day</option>
