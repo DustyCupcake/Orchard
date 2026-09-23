@@ -23,12 +23,18 @@ import { setPermissionGrant } from "@/lib/permissions";
 import { AppError, ConflictError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
-async function insertTask(communityId: string, branchId: string, createdBy: string) {
+async function insertTask(
+  communityId: string,
+  branchId: string,
+  createdBy: string,
+  cycleId: string | null = null,
+) {
   const [row] = await db
     .insert(task)
     .values({
       communityId,
       branchId,
+      cycleId,
       title: "A task",
       effort: "one_off",
       effortMagnitude: { duration: "few_hours" },
@@ -209,15 +215,16 @@ describe("read-only-reference: Spatial-planning Zone/Placement edits", () => {
     const fixtures = await createFixtures();
     const { alice, branch, community: testCommunity } = fixtures;
     await updateCommunity(alice, { modulesEnabled: ["spatial_planning"] });
-    const holderTask = await insertTask(testCommunity.id, branch.id, alice.id);
-    await claimTask(alice, holderTask.id);
     const [testCycle] = await db
       .insert(cycle)
       .values({ communityId: testCommunity.id, name: "Cycle A", status: "active", startedAt: new Date() })
       .returning();
-    // docs/development-plan.md's Phase 68 — spatial_planning ownership
-    // is now per-cycle, so the grant is scoped to testCycle.
-    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, testCycle.id);
+    // spatial_planning ownership is scoped by the holder task's own
+    // placement, so the task sits in testCycle and the grant is
+    // community-wide-audience but placement-scoped (no cycle argument).
+    const holderTask = await insertTask(testCommunity.id, branch.id, alice.id, testCycle.id);
+    await claimTask(alice, holderTask.id);
+    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id);
     const plot = await createPlot(alice, testCycle.id, {
       name: "Main site",
       scaleCalibration: { pointA: { x: 0, y: 0 }, pointB: { x: 10, y: 0 }, realWorldDistanceMeters: 5 },

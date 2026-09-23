@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { cycle, task } from "@/db/schema";
+import { cycle, task, type member as memberTable } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { createCycleType, updateCommunity } from "@/lib/settings";
 import { setPermissionGrant } from "@/lib/permissions";
+
+type Member = typeof memberTable.$inferSelect;
 import {
   clonePlotFromCycle,
   createPlacement,
@@ -30,12 +32,18 @@ import {
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
-async function insertSpatialPlanningTask(communityId: string, branchId: string, createdBy: string) {
+async function insertSpatialPlanningTask(
+  communityId: string,
+  branchId: string,
+  createdBy: string,
+  cycleId: string | null = null,
+) {
   const [row] = await db
     .insert(task)
     .values({
       communityId,
       branchId,
+      cycleId,
       title: "Lay out the Plot",
       effort: "owns_a_thing",
       effortMagnitude: { hours_per_week: 2 },
@@ -53,21 +61,36 @@ async function insertCycle(communityId: string, name: string, startedAt: Date) {
   return row;
 }
 
-// docs/development-plan.md's Phase 68 — spatial_planning ownership is
-// now per-cycle, so the grant is scoped to testCycle specifically
-// (created first, so there's a real cycle to scope it to) rather than
-// community-wide. Any test that needs the same holder to also own a
-// *different* cycle's Plot grants that explicitly, right where it
-// creates that cycle — the same way a real Admin would through the
-// settings panel's cycle-picker.
+// A spatial-planning holder's authority is scoped by where their task
+// sits (task.cycleId — the one scope read after migration D8): a task
+// placed in a cycle owns that cycle's Plot only. This grants a fresh
+// holder task *in* the given cycle, then names it as the module's
+// grantee with no cycle argument — the direct successor of Phase 68's
+// `setPermissionGrant(..., cycleId)` (one task, one scope).
+async function addHolderInCycle(
+  communityId: string,
+  branchId: string,
+  holder: Member,
+  cycleId: string,
+) {
+  const holderTask = await insertSpatialPlanningTask(communityId, branchId, holder.id, cycleId);
+  await claimTask(holder, holderTask.id);
+  await setPermissionGrant(communityId, "spatial_planning", holderTask.id);
+  return holderTask;
+}
+
+// spatial_planning ownership is per-scope: the holder task sits *in*
+// testCycle (created first, so there's a real cycle to place it in),
+// making it that cycle's owner — rather than community-wide. Any test
+// that needs a second cycle's owner calls addHolderInCycle right where
+// it creates that cycle — the same way a real Admin would grant the
+// module to a task placed in that cycle.
 async function setUpModule() {
   const fixtures = await createFixtures();
   const { alice, branch: testBranch, community: testCommunity } = fixtures;
   await updateCommunity(alice, { modulesEnabled: ["spatial_planning"] });
-  const holderTask = await insertSpatialPlanningTask(testCommunity.id, testBranch.id, alice.id);
-  await claimTask(alice, holderTask.id);
   const testCycle = await insertCycle(testCommunity.id, "Cycle A", new Date("2026-01-01"));
-  await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, testCycle.id);
+  const holderTask = await addHolderInCycle(testCommunity.id, testBranch.id, alice, testCycle.id);
   return { ...fixtures, holderTask, cycle: testCycle };
 }
 
@@ -131,7 +154,7 @@ describe("Plot", () => {
   });
 
   it("clones a Plot and its Zones from a previous Cycle, without touching the target's Task/Member links (Zones have none)", async () => {
-    const { alice, cycle: sourceCycle, community: testCommunity, holderTask } = await setUpModule();
+    const { alice, branch: testBranch, cycle: sourceCycle, community: testCommunity } = await setUpModule();
     const sourcePlot = await createPlot(alice, sourceCycle.id, {
       name: "Last year's site",
       scaleCalibration: { pointA: { x: 0, y: 0 }, pointB: { x: 10, y: 0 }, realWorldDistanceMeters: 10 },
@@ -144,7 +167,7 @@ describe("Plot", () => {
     });
 
     const targetCycle = await insertCycle(testCommunity.id, "Cycle B", new Date("2026-06-01"));
-    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, targetCycle.id);
+    await addHolderInCycle(testCommunity.id, testBranch.id, alice, targetCycle.id);
     const cloned = await clonePlotFromCycle(alice, targetCycle.id, sourceCycle.id);
     expect(cloned.cycleId).toBe(targetCycle.id);
     expect(cloned.name).toBe("Last year's site");
@@ -157,19 +180,19 @@ describe("Plot", () => {
   });
 
   it("refuses to clone onto a Cycle that already has a Plot", async () => {
-    const { alice, cycle: sourceCycle, community: testCommunity, holderTask } = await setUpModule();
+    const { alice, branch: testBranch, cycle: sourceCycle, community: testCommunity } = await setUpModule();
     await createPlot(alice, sourceCycle.id, { name: "Source" });
     const targetCycle = await insertCycle(testCommunity.id, "Cycle B", new Date("2026-06-01"));
-    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, targetCycle.id);
+    await addHolderInCycle(testCommunity.id, testBranch.id, alice, targetCycle.id);
     await createPlot(alice, targetCycle.id, { name: "Already exists" });
     await expect(clonePlotFromCycle(alice, targetCycle.id, sourceCycle.id)).rejects.toThrow(ConflictError);
   });
 
   it("refuses to clone from a Cycle with no Plot", async () => {
-    const { alice, cycle: sourceCycle, community: testCommunity, holderTask } = await setUpModule();
+    const { alice, branch: testBranch, cycle: sourceCycle, community: testCommunity } = await setUpModule();
     const emptySourceCycle = await insertCycle(testCommunity.id, "Empty", new Date("2025-01-01"));
     const targetCycle = await insertCycle(testCommunity.id, "Cycle B", new Date("2026-06-01"));
-    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, targetCycle.id);
+    await addHolderInCycle(testCommunity.id, testBranch.id, alice, targetCycle.id);
     await expect(clonePlotFromCycle(alice, targetCycle.id, emptySourceCycle.id)).rejects.toThrow(NotFoundError);
     void sourceCycle;
   });
@@ -189,10 +212,10 @@ describe("Plot", () => {
   });
 
   it("lists Cycles with a Plot most-recent-first, excluding the target Cycle itself", async () => {
-    const { alice, cycle: cycleA, community: testCommunity, holderTask } = await setUpModule();
+    const { alice, branch: testBranch, cycle: cycleA, community: testCommunity } = await setUpModule();
     await createPlot(alice, cycleA.id, { name: "A" });
     const cycleB = await insertCycle(testCommunity.id, "Cycle B", new Date("2026-06-01"));
-    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, cycleB.id);
+    await addHolderInCycle(testCommunity.id, testBranch.id, alice, cycleB.id);
     await createPlot(alice, cycleB.id, { name: "B" });
     const cycleC = await insertCycle(testCommunity.id, "Cycle C", new Date("2027-01-01"));
 
@@ -203,7 +226,7 @@ describe("Plot", () => {
   // Phase 40's own note on Phase 36 — once Cycle type exists, a
   // same-type Cycle bubbles ahead of a more-recent different-type one.
   it("bubbles a same-type Cycle ahead of a more-recent different-type one", async () => {
-    const { alice, cycle: cycleA, community: testCommunity, holderTask } = await setUpModule();
+    const { alice, branch: testBranch, cycle: cycleA, community: testCommunity } = await setUpModule();
     const season = await createCycleType(alice, { name: "Season" });
     const reunion = await createCycleType(alice, { name: "Reunion" });
     await db.update(cycle).set({ cycleTypeId: season.id }).where(eq(cycle.id, cycleA.id));
@@ -211,7 +234,7 @@ describe("Plot", () => {
     await createPlot(alice, cycleA.id, { name: "A (Season)" });
     const cycleB = await insertCycle(testCommunity.id, "Cycle B (Reunion)", new Date("2026-06-01"));
     await db.update(cycle).set({ cycleTypeId: reunion.id }).where(eq(cycle.id, cycleB.id));
-    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, cycleB.id);
+    await addHolderInCycle(testCommunity.id, testBranch.id, alice, cycleB.id);
     await createPlot(alice, cycleB.id, { name: "B" });
 
     const target = await insertCycle(testCommunity.id, "Cycle C (Season)", new Date("2027-01-01"));
@@ -224,13 +247,13 @@ describe("Plot", () => {
   });
 
   it("falls back to plain most-recent-first when the target Cycle has no type", async () => {
-    const { alice, cycle: cycleA, community: testCommunity, holderTask } = await setUpModule();
+    const { alice, branch: testBranch, cycle: cycleA, community: testCommunity } = await setUpModule();
     const season = await createCycleType(alice, { name: "Season" });
     await db.update(cycle).set({ cycleTypeId: season.id }).where(eq(cycle.id, cycleA.id));
     await createPlot(alice, cycleA.id, { name: "A (Season)" });
 
     const cycleB = await insertCycle(testCommunity.id, "Cycle B (untyped)", new Date("2026-06-01"));
-    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, cycleB.id);
+    await addHolderInCycle(testCommunity.id, testBranch.id, alice, cycleB.id);
     await createPlot(alice, cycleB.id, { name: "B" });
 
     const target = await insertCycle(testCommunity.id, "Cycle C (untyped)", new Date("2027-01-01"));
@@ -315,10 +338,12 @@ describe("Zone", () => {
   });
 });
 
-// docs/development-plan.md's Phase 68 — spatial_planning ownership
-// becomes genuinely per-cycle: two concurrently-open cycles each get
-// their own independent owner grant, and one cycle's owner has no
-// authority over the other's Plot/Zone/Placement.
+// docs/development-plan.md's Phase 68 kept its per-cycle isolation
+// assertions, but under the scope-remediation model (docs/cycle-scope-
+// remediation-plan.md §2.1) each owner grant is scoped by where that
+// owner's *task* sits: task in cycle A owns cycle A, task in cycle B
+// owns cycle B, and one cycle's owner has no authority over the
+// other's Plot/Zone/Placement.
 describe("cycle-scoped ownership (Phase 68)", () => {
   beforeEach(async () => {
     await resetDatabase();
@@ -330,12 +355,8 @@ describe("cycle-scoped ownership (Phase 68)", () => {
     await updateCommunity(alice, { modulesEnabled: ["spatial_planning"] });
     const cycleA = await insertCycle(testCommunity.id, "Cycle A", new Date("2026-01-01"));
     const cycleB = await insertCycle(testCommunity.id, "Cycle B", new Date("2026-06-01"));
-    const holderA = await insertSpatialPlanningTask(testCommunity.id, testBranch.id, alice.id);
-    await claimTask(alice, holderA.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", holderA.id, cycleA.id);
-    const holderB = await insertSpatialPlanningTask(testCommunity.id, testBranch.id, bob.id);
-    await claimTask(bob, holderB.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", holderB.id, cycleB.id);
+    const holderA = await addHolderInCycle(testCommunity.id, testBranch.id, alice, cycleA.id);
+    const holderB = await addHolderInCycle(testCommunity.id, testBranch.id, bob, cycleB.id);
     return { ...fixtures, cycleA, cycleB, holderA, holderB };
   }
 

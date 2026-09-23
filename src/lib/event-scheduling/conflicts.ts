@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { eventProposal, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
@@ -14,27 +14,34 @@ type EventProposalRow = typeof eventProposal.$inferSelect;
 // the-task check Forms'/Budget's own isFeedbackReviewHolder/
 // isBudgetOwner establish, baked into the review/publish functions
 // themselves rather than gated by the caller. `cycleId` (docs/
-// development-plan.md's Phase 68) follows listGrantingTaskIds' own
-// undefined/null/string convention: omitted means "owns *any* cycle's
-// programme" (nav/dashboard visibility, matching isAnyBudgetOwner's
-// identical role); a real id or null checks only that specific cycle's
-// grant, required by every function acting on one particular proposal
+// development-plan.md's Phase 68) keeps its undefined/null/string
+// convention, but now filters the *granting task's own placement*
+// (task.cycleId — the one scope read, docs/cycle-scope-remediation-
+// plan.md §2.1) rather than a cycle column on the grant row:
+// omitted means "owns *any* cycle's programme" (nav/dashboard
+// visibility, matching isAnyBudgetOwner's identical role); a real id
+// or null checks only that specific cycle's work — a task sitting in
+// cycle C grants cycle C only, a cycle-less task is the community-wide
+// owner — required by every function acting on one particular proposal
 // or review/publish batch below.
 export async function isEventSchedulingOwner(actor: Member, cycleId?: string | null) {
-  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "event_scheduling_owner", cycleId);
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "event_scheduling_owner");
   if (grantingTaskIds.length === 0) return false;
+
+  const conditions = [
+    inArray(task.id, grantingTaskIds),
+    eq(taskAssignment.memberId, actor.id),
+    eq(taskAssignment.isShadow, false),
+  ];
+  if (cycleId !== undefined) {
+    conditions.push(cycleId === null ? isNull(task.cycleId) : eq(task.cycleId, cycleId));
+  }
 
   const [holding] = await db
     .select({ id: task.id })
     .from(task)
     .innerJoin(taskAssignment, eq(taskAssignment.taskId, task.id))
-    .where(
-      and(
-        inArray(task.id, grantingTaskIds),
-        eq(taskAssignment.memberId, actor.id),
-        eq(taskAssignment.isShadow, false),
-      ),
-    );
+    .where(and(...conditions));
   return Boolean(holding);
 }
 

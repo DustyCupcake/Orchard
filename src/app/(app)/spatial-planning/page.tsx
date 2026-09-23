@@ -5,7 +5,7 @@ import { member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
-import { listGrantingTaskIds } from "@/lib/permissions";
+import { listGrantingTaskIdsForScope } from "@/lib/permissions";
 import { resolveDefaultScopeSegment, resolveSingleCycleScope } from "@/lib/cycles";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import {
@@ -98,7 +98,11 @@ export default async function SpatialPlanningPage({
   }
   const currentCycle = resolution.kind === "resolved" ? resolution.cycle : null;
   const cycleId = currentCycle?.id ?? null;
-  const spatialPlanningGrantingTaskIds = await listGrantingTaskIds(communityRow.id, "spatial_planning", cycleId);
+  const spatialPlanningGrantingTaskIds = await listGrantingTaskIdsForScope(
+    communityRow.id,
+    "spatial_planning",
+    cycleId,
+  );
 
   const plotRow = moduleOn ? await getPlotForCycle(viewing, cycleId) : null;
   const [zones, placements, templates, canEdit, cloneCandidates, communityMembers, mySpacePreference] =

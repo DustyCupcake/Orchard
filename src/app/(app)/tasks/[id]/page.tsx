@@ -29,8 +29,6 @@ import {
 import { getCommunity, isAdmin, listBranches } from "@/lib/settings";
 import {
   allowsMultipleGrants,
-  CYCLE_SCOPED_MODULES,
-  listGrantedCycleScopesForTask,
   listGrantsWithTaskInfo,
   listModuleKeysGrantedByTask,
   PERMISSION_MODULE_KEYS,
@@ -206,9 +204,9 @@ export default async function TaskDetailPage({
     listBranches(viewing),
     listJoinRequests(viewing, id),
     isCommunityEndorsed ? listCandidacies(viewing, id) : [],
-    isCoordinationHolder(viewing, taskRow.branchId),
-    isAuthorizedToWaive(viewing, taskRow.branchId, id),
-    isAuthorizedToNominate(viewing, { id, branchId: taskRow.branchId }),
+    isCoordinationHolder(viewing, { branchId: taskRow.branchId, cycleId: taskRow.cycleId }),
+    isAuthorizedToWaive(viewing, { branchId: taskRow.branchId, cycleId: taskRow.cycleId }, id),
+    isAuthorizedToNominate(viewing, { id, branchId: taskRow.branchId, cycleId: taskRow.cycleId }),
     listMyPings(viewing, id),
     db.select().from(member).where(eq(member.communityId, viewing.communityId)),
     listTaskQuestions(viewing, id),
@@ -247,25 +245,22 @@ export default async function TaskDetailPage({
   // updateTaskPermissionGrantsAction in ./actions.ts for the server-
   // side enforcement this mirrors).
   const canGrantPermissions = await isAdmin(viewing);
-  const [communityGrants, grantedByThisTask, grantedCycleScopesByThisTask, grantCycles] = canGrantPermissions
+  const [communityGrants, grantedByThisTask] = canGrantPermissions
     ? await Promise.all([
         listGrantsWithTaskInfo(taskRow.communityId),
         listModuleKeysGrantedByTask(taskRow.communityId, taskRow.id),
-        listGrantedCycleScopesForTask(taskRow.communityId, taskRow.id),
-        listCycles(viewing),
       ])
-    : [[], new Set<PermissionModuleKey>(), {}, []];
-  // The single shared cycle-select's own default (docs/development-
-  // plan.md's Phase 68) — the viewer's own resolved active scope, when
-  // it's a specific cycle; also what the "currently held elsewhere"
-  // warning below is keyed against for the two cycle-scoped modules,
-  // since the warning can only meaningfully reflect one cycle choice
-  // at a time on a static server-rendered page.
-  const defaultGrantCycleId = crossCycle.activeScope.kind === "single" ? crossCycle.activeScope.cycle.id : null;
+    : [[], new Set<PermissionModuleKey>()];
+  // The "currently held elsewhere" warning below is keyed against this
+  // task's *own* placement (taskRow.cycleId — the one scope read,
+  // docs/cycle-scope-remediation-plan.md §2.1): a grant in a different
+  // cycle isn't in this task's scope at all, so checking the same
+  // module here creates a second, coexisting grant instead of moving
+  // it.
   const elsewhereHolderByModule = new Map<PermissionModuleKey, string>();
   for (const g of communityGrants) {
     if (g.taskId === taskRow.id || allowsMultipleGrants(g.moduleKey)) continue;
-    if (CYCLE_SCOPED_MODULES.has(g.moduleKey) && g.cycleId !== defaultGrantCycleId) continue;
+    if (g.cycleId !== taskRow.cycleId) continue;
     elsewhereHolderByModule.set(g.moduleKey, g.title);
   }
 
@@ -1207,34 +1202,19 @@ export default async function TaskDetailPage({
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             Check which module-level access gate(s) whoever currently holds this task should get —
             the identical <code>PermissionGrant</code> rows the settings panel&rsquo;s Access &amp;
-            permissions tab edits.
+            permissions tab edits. A grant&rsquo;s scope comes from this task&rsquo;s own placement: a
+            cycle-less task is the community-wide/evergreen role, a task placed in a cycle grants
+            that cycle&rsquo;s data only.
           </p>
           <form action={updateTaskPermissionGrantsAction} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="taskId" value={taskRow.id} />
-            {communityRow.cyclesEnabled && (
-              <label className="flex flex-col gap-1 text-[13px] text-[var(--text-muted)]">
-                Cycle (applies to Event scheduling owner / Spatial planning only, below)
-                <select name="grantCycleId" defaultValue={defaultGrantCycleId ?? ""} className={INPUT}>
-                  <option value="">Community-wide (no cycle)</option>
-                  {grantCycles.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
             {PERMISSION_MODULE_KEYS.map((moduleKey) => (
               <div key={moduleKey}>
                 <CheckField
                   label={PERMISSION_MODULE_LABELS[moduleKey]}
                   name="moduleKeys"
                   value={moduleKey}
-                  defaultChecked={
-                    CYCLE_SCOPED_MODULES.has(moduleKey)
-                      ? (grantedCycleScopesByThisTask[moduleKey] ?? []).includes(defaultGrantCycleId)
-                      : grantedByThisTask.has(moduleKey)
-                  }
+                  defaultChecked={grantedByThisTask.has(moduleKey)}
                 />
                 {elsewhereHolderByModule.has(moduleKey) && (
                   <p className="ml-6 text-[12px] text-[var(--text-muted)]">

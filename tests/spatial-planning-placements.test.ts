@@ -30,12 +30,18 @@ import { AppError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { setPermissionGrant } from "@/lib/permissions";
 import { createFixtures, resetDatabase } from "./helpers";
 
-async function insertSpatialPlanningTask(communityId: string, branchId: string, createdBy: string) {
+async function insertSpatialPlanningTask(
+  communityId: string,
+  branchId: string,
+  createdBy: string,
+  cycleId: string | null = null,
+) {
   const [row] = await db
     .insert(task)
     .values({
       communityId,
       branchId,
+      cycleId,
       title: "Lay out the Plot",
       effort: "owns_a_thing",
       effortMagnitude: { hours_per_week: 2 },
@@ -53,17 +59,18 @@ async function insertCycle(communityId: string, name: string, startedAt: Date) {
   return row;
 }
 
-// docs/development-plan.md's Phase 68 — spatial_planning ownership is
-// now per-cycle, so the grant is scoped to testCycle specifically
-// (created first, so there's a real cycle to scope it to).
+// The holder task sits *in* testCycle (created first, so there's a
+// real cycle to place it in) — a grant's scope comes from the granted
+// task's own placement (task.cycleId, docs/cycle-scope-remediation-
+// plan.md §2.1), making it that cycle's Plot owner.
 async function setUpModule() {
   const fixtures = await createFixtures();
   const { alice, branch: testBranch, community: testCommunity } = fixtures;
   await updateCommunity(alice, { modulesEnabled: ["spatial_planning"] });
-  const holderTask = await insertSpatialPlanningTask(testCommunity.id, testBranch.id, alice.id);
-  await claimTask(alice, holderTask.id);
   const testCycle = await insertCycle(testCommunity.id, "Cycle A", new Date("2026-01-01"));
-  await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, testCycle.id);
+  const holderTask = await insertSpatialPlanningTask(testCommunity.id, testBranch.id, alice.id, testCycle.id);
+  await claimTask(alice, holderTask.id);
+  await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id);
   const plotRow = await createPlot(alice, testCycle.id, {
     name: "Main site",
     scaleCalibration: { pointA: { x: 0, y: 0 }, pointB: { x: 10, y: 0 }, realWorldDistanceMeters: 5 },
@@ -318,7 +325,7 @@ describe("Cloning Placements across Cycles", () => {
   });
 
   it("clones Placements with zoneId remapped, linkedTaskId dropped, and no PlacementMember rows", async () => {
-    const { alice, bob, plot: sourcePlot, cycle: sourceCycle, community: testCommunity, holderTask } =
+    const { alice, bob, plot: sourcePlot, cycle: sourceCycle, community: testCommunity, branch: testBranch, holderTask } =
       await setUpModule();
     const sourceZone = await createZone(alice, sourcePlot.id, {
       name: "Kitchen zone",
@@ -337,7 +344,14 @@ describe("Cloning Placements across Cycles", () => {
     });
 
     const targetCycle = await insertCycle(testCommunity.id, "Cycle B", new Date("2026-06-01"));
-    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id, targetCycle.id);
+    const targetHolderTask = await insertSpatialPlanningTask(
+      testCommunity.id,
+      testBranch.id,
+      alice.id,
+      targetCycle.id,
+    );
+    await claimTask(alice, targetHolderTask.id);
+    await setPermissionGrant(testCommunity.id, "spatial_planning", targetHolderTask.id);
     const clonedPlot = await clonePlotFromCycle(alice, targetCycle.id, sourceCycle.id);
 
     const clonedPlacements = await listPlacements(alice, clonedPlot.id);

@@ -9,7 +9,6 @@ import { listTasks } from "@/lib/tasks";
 import { getCommunity, isAdmin, listTiers } from "@/lib/settings";
 import {
   allowsMultipleGrants,
-  CYCLE_SCOPED_MODULES,
   listGrantsWithTaskInfo,
   type PermissionModuleKey,
 } from "@/lib/permissions";
@@ -77,7 +76,7 @@ export default async function ProposalsPage({
   const elsewhereHolderByModule: Partial<Record<PermissionModuleKey, string>> = {};
   for (const g of communityGrants) {
     if (allowsMultipleGrants(g.moduleKey)) continue;
-    if (CYCLE_SCOPED_MODULES.has(g.moduleKey) && g.cycleId !== defaultCycleId) continue;
+    if (g.cycleId !== defaultCycleId) continue;
     elsewhereHolderByModule[g.moduleKey] = g.title;
   }
 

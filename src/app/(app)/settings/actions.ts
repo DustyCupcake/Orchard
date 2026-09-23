@@ -251,27 +251,26 @@ async function requireTaskInActorCommunity(taskId: string, communityId: string) 
 
 // Single-cardinality modules (conflict_team, feedback_review,
 // event_scheduling_owner, recruitment, spatial_planning, announcements)
-// — sets (or, with an empty taskId, clears) the one task granting this
-// module, replacing whatever previously granted it. Every one of these
-// six previously had its own bespoke Community column/action; this one
-// generic action now backs every one of their settings-tab forms.
+// — makes the typed task *the* task granting this module, replacing a
+// sibling grant in the same scope (the granted task's own placement,
+// task.cycleId — docs/cycle-scope-remediation-plan.md §2.1), or adding
+// a coexisting grant when the scope is new. Every one of these six
+// previously had its own bespoke Community column/action; this generic
+// action now backs every one of their settings-tab forms. Clearing a
+// grant is the per-row Remove button (removePermissionGrantAction), not
+// an empty taskId — a grant always names a real task.
 export async function setPermissionGrantAction(formData: FormData) {
   const actor = await requireMember();
-  const moduleKeyRaw = String(formData.get("moduleKey") ?? "");
-  const taskIdRaw = String(formData.get("taskId") ?? "").trim();
-  const cycleId = String(formData.get("cycleId") ?? "").trim() || null;
   const tab = String(formData.get("tab") ?? "") || undefined;
 
   try {
     await requireAdmins(actor);
-    const moduleKey = permissionGrantFields.shape.moduleKey.parse(moduleKeyRaw);
-    if (taskIdRaw) {
-      const { taskId } = permissionGrantFields.parse({ moduleKey, taskId: taskIdRaw });
-      await requireTaskInActorCommunity(taskId, actor.communityId);
-      await setPermissionGrant(actor.communityId, moduleKey, taskId, cycleId);
-    } else {
-      await setPermissionGrant(actor.communityId, moduleKey, null, cycleId);
-    }
+    const { moduleKey, taskId } = permissionGrantFields.parse({
+      moduleKey: String(formData.get("moduleKey") ?? ""),
+      taskId: String(formData.get("taskId") ?? "").trim(),
+    });
+    await requireTaskInActorCommunity(taskId, actor.communityId);
+    await setPermissionGrant(actor.communityId, moduleKey, taskId);
   } catch (err) {
     redirectWithError(err, tab);
   }
@@ -307,7 +306,6 @@ export async function addPermissionGrantAction(formData: FormData) {
 export async function removePermissionGrantAction(formData: FormData) {
   const actor = await requireMember();
   const tab = String(formData.get("tab") ?? "") || undefined;
-  const cycleId = String(formData.get("cycleId") ?? "").trim() || null;
 
   try {
     await requireAdmins(actor);
@@ -315,7 +313,7 @@ export async function removePermissionGrantAction(formData: FormData) {
       moduleKey: String(formData.get("moduleKey") ?? ""),
       taskId: String(formData.get("taskId") ?? ""),
     });
-    await removePermissionGrant(actor.communityId, moduleKey, taskId, cycleId);
+    await removePermissionGrant(actor.communityId, moduleKey, taskId);
   } catch (err) {
     redirectWithError(err, tab);
   }

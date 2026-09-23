@@ -74,7 +74,6 @@ export async function activateProposalAction(formData: FormData) {
     .getAll("grantModuleKeys")
     .map(String)
     .filter(Boolean);
-  const grantCycleIdRaw = String(formData.get("grantCycleId") ?? "").trim();
   const cycleIdRaw = String(formData.get("cycleId") ?? "").trim();
   const dueDateRaw = String(formData.get("dueDate") ?? "").trim();
 
@@ -107,7 +106,6 @@ export async function activateProposalAction(formData: FormData) {
       requirements,
       dependsOnTaskIds: dependsOnTaskIds.length > 0 ? dependsOnTaskIds : undefined,
       grantModuleKeys: grantModuleKeys.length > 0 ? grantModuleKeys : undefined,
-      grantCycleId: grantCycleIdRaw || null,
       axisValues: Object.keys(axisValues).length > 0 ? axisValues : undefined,
     });
     await activateProposal(actor, proposalId, input);

@@ -4,8 +4,8 @@ import { db } from "@/db";
 import { community, task } from "@/db/schema";
 import { createCycle } from "@/lib/cycles";
 import {
-  listGrantedCycleScopesForTask,
   listGrantingTaskIds,
+  listGrantingTaskIdsForScope,
   listGrantsWithTaskInfo,
   listModuleKeysGrantedByTask,
   removePermissionGrant,
@@ -92,96 +92,109 @@ describe("listModuleKeysGrantedByTask", () => {
   });
 });
 
-// docs/development-plan.md's Phase 68 — event_scheduling_owner/
-// spatial_planning grants start carrying a real cycleId. Every change
-// here is additive/backward-compatible for the other seven modules
-// (already covered above); these cases exercise the new cycle
-// dimension specifically.
-describe("cycle-scoped grants (Phase 68)", () => {
+// docs/cycle-scope-remediation-plan.md — a grant's scope comes from
+// the granting task's own placement (`task.cycleId`), not a cycle
+// column on the grant row (retired in migration D8). task.cycleId =
+// NULL is the community/evergreen role; = C covers cycle C only, and a
+// task grants exactly one scope (its own).
+describe("placement-derived scopes (cycle-scope remediation)", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  it("listGrantingTaskIds: omitted cycleId means every cycle; a real id or null filters to just that one", async () => {
+  it("listGrantingTaskIds returns every grant; listGrantingTaskIdsForScope filters by the granting task's placement", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     await enableCycles(testCommunity.id);
     const cycleA = await createCycle(alice, { source: "blank", name: "A" });
     const cycleB = await createCycle(alice, { source: "blank", name: "B", confirmed: true });
-    const taskA = await insertTask(testCommunity.id, branch.id, alice.id, { title: "Owns A" });
-    const taskB = await insertTask(testCommunity.id, branch.id, alice.id, { title: "Owns B" });
-    await setPermissionGrant(testCommunity.id, "spatial_planning", taskA.id, cycleA.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", taskB.id, cycleB.id);
+    const taskA = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id, title: "Owns A" });
+    const taskB = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleB.id, title: "Owns B" });
+    const communityTask = await insertTask(testCommunity.id, branch.id, alice.id, { title: "Owns community" });
+    await setPermissionGrant(testCommunity.id, "spatial_planning", taskA.id);
+    await setPermissionGrant(testCommunity.id, "spatial_planning", taskB.id);
+    await setPermissionGrant(testCommunity.id, "spatial_planning", communityTask.id);
 
     expect((await listGrantingTaskIds(testCommunity.id, "spatial_planning")).sort()).toEqual(
-      [taskA.id, taskB.id].sort(),
+      [taskA.id, taskB.id, communityTask.id].sort(),
     );
-    expect(await listGrantingTaskIds(testCommunity.id, "spatial_planning", cycleA.id)).toEqual([taskA.id]);
-    expect(await listGrantingTaskIds(testCommunity.id, "spatial_planning", cycleB.id)).toEqual([taskB.id]);
-    expect(await listGrantingTaskIds(testCommunity.id, "spatial_planning", null)).toEqual([]);
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", cycleA.id)).toEqual([taskA.id]);
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", cycleB.id)).toEqual([taskB.id]);
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", null)).toEqual([communityTask.id]);
   });
 
-  it("setPermissionGrant scoped to one cycle doesn't clobber another cycle's grant for the same module", async () => {
+  it("setPermissionGrant replaces only the sibling grant in the granted task's own scope, never a different cycle's", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     await enableCycles(testCommunity.id);
     const cycleA = await createCycle(alice, { source: "blank", name: "A" });
     const cycleB = await createCycle(alice, { source: "blank", name: "B", confirmed: true });
-    const taskA = await insertTask(testCommunity.id, branch.id, alice.id);
-    const taskB = await insertTask(testCommunity.id, branch.id, alice.id);
+    const taskA = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
+    const taskB = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleB.id });
 
-    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", taskA.id, cycleA.id);
-    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", taskB.id, cycleB.id);
-    expect(await listGrantingTaskIds(testCommunity.id, "event_scheduling_owner", cycleA.id)).toEqual([taskA.id]);
-    expect(await listGrantingTaskIds(testCommunity.id, "event_scheduling_owner", cycleB.id)).toEqual([taskB.id]);
+    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", taskA.id);
+    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", taskB.id);
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "event_scheduling_owner", cycleA.id)).toEqual([taskA.id]);
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "event_scheduling_owner", cycleB.id)).toEqual([taskB.id]);
 
-    // Replacing cycle A's grant with a third task leaves cycle B's untouched.
-    const taskC = await insertTask(testCommunity.id, branch.id, alice.id);
-    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", taskC.id, cycleA.id);
-    expect(await listGrantingTaskIds(testCommunity.id, "event_scheduling_owner", cycleA.id)).toEqual([taskC.id]);
-    expect(await listGrantingTaskIds(testCommunity.id, "event_scheduling_owner", cycleB.id)).toEqual([taskB.id]);
+    // Replacing cycle A's grant with a third task placed in A leaves B's untouched.
+    const taskC = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
+    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", taskC.id);
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "event_scheduling_owner", cycleA.id)).toEqual([taskC.id]);
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "event_scheduling_owner", cycleB.id)).toEqual([taskB.id]);
   });
 
-  it("the same task can hold the same module for two different cycles at once", async () => {
+  it("one task, one scope: a task's grant follows wherever it sits", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     await enableCycles(testCommunity.id);
     const cycleA = await createCycle(alice, { source: "blank", name: "A" });
     const cycleB = await createCycle(alice, { source: "blank", name: "B", confirmed: true });
-    const t = await insertTask(testCommunity.id, branch.id, alice.id);
+    const t = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
 
-    await setPermissionGrant(testCommunity.id, "spatial_planning", t.id, cycleA.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", t.id, cycleB.id);
-    expect(await listGrantingTaskIds(testCommunity.id, "spatial_planning", cycleA.id)).toEqual([t.id]);
-    expect(await listGrantingTaskIds(testCommunity.id, "spatial_planning", cycleB.id)).toEqual([t.id]);
+    await setPermissionGrant(testCommunity.id, "spatial_planning", t.id);
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", cycleA.id)).toEqual([t.id]);
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", cycleB.id)).toEqual([]);
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", null)).toEqual([]);
 
-    const scopes = await listGrantedCycleScopesForTask(testCommunity.id, t.id);
-    expect(scopes.spatial_planning?.sort()).toEqual([cycleA.id, cycleB.id].sort());
+    // Rearranging the task's placement moves its grant's scope with it —
+    // the direct migration of the old "same task, two cycles" stacking
+    // (a task now grants exactly the one scope it sits in, §2.1/D2).
+    await db.update(task).set({ cycleId: cycleB.id }).where(eq(task.id, t.id));
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", cycleB.id)).toEqual([t.id]);
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", cycleA.id)).toEqual([]);
   });
 
-  it("removePermissionGrant with a cycleId only removes that cycle's row, defaulting to community-wide", async () => {
+  it("removePermissionGrant drops the task's own grant row, regardless of scope", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     await enableCycles(testCommunity.id);
     const cycleA = await createCycle(alice, { source: "blank", name: "A" });
-    const t = await insertTask(testCommunity.id, branch.id, alice.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", t.id, cycleA.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", t.id, null);
+    const cycleTask = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
+    const communityTask = await insertTask(testCommunity.id, branch.id, alice.id);
+    await setPermissionGrant(testCommunity.id, "spatial_planning", cycleTask.id);
+    await setPermissionGrant(testCommunity.id, "spatial_planning", communityTask.id);
 
-    await removePermissionGrant(testCommunity.id, "spatial_planning", t.id, cycleA.id);
-    expect(await listGrantingTaskIds(testCommunity.id, "spatial_planning", cycleA.id)).toEqual([]);
-    expect(await listGrantingTaskIds(testCommunity.id, "spatial_planning", null)).toEqual([t.id]);
+    await removePermissionGrant(testCommunity.id, "spatial_planning", cycleTask.id);
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", cycleA.id)).toEqual([]);
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", null)).toEqual([communityTask.id]);
   });
 
-  it("listGrantedCycleScopesForTask maps every module this task grants to its cycle (or null for community-wide)", async () => {
+  it("listGrantsWithTaskInfo reports each granting task's placement as its scope", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     await enableCycles(testCommunity.id);
     const cycleA = await createCycle(alice, { source: "blank", name: "A" });
-    const t = await insertTask(testCommunity.id, branch.id, alice.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", t.id, cycleA.id);
-    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", t.id, null);
-    await grantPermission(testCommunity.id, "support", t.id);
+    const cycleTask = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id, title: "Owns A" });
+    const communityTask = await insertTask(testCommunity.id, branch.id, alice.id, { title: "Owns community" });
+    await setPermissionGrant(testCommunity.id, "spatial_planning", cycleTask.id);
+    await setPermissionGrant(testCommunity.id, "branch_coordination", communityTask.id);
 
-    expect(await listGrantedCycleScopesForTask(testCommunity.id, t.id)).toEqual({
-      spatial_planning: [cycleA.id],
-      event_scheduling_owner: [null],
-      support: [null],
-    });
+    const grants = await listGrantsWithTaskInfo(testCommunity.id);
+    expect(grants).toEqual([
+      { moduleKey: "spatial_planning", taskId: cycleTask.id, title: "Owns A", branchId: branch.id, cycleId: cycleA.id },
+      {
+        moduleKey: "branch_coordination",
+        taskId: communityTask.id,
+        title: "Owns community",
+        branchId: branch.id,
+        cycleId: null,
+      },
+    ]);
   });
 });

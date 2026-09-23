@@ -38,8 +38,11 @@ async function getCommunityRow(communityId: string) {
 // waive.ts's isAuthorizedToWaive (narrowed to the task's own
 // coordination slot specifically), since spec's own language here is
 // "an existing owner," not "the coordination slot."
-export async function isAuthorizedToNominate(actor: Member, taskRow: { id: string; branchId: string }) {
-  if (await isCoordinationHolder(actor, taskRow.branchId)) return true;
+export async function isAuthorizedToNominate(
+  actor: Member,
+  taskRow: { id: string; branchId: string; cycleId: string | null },
+) {
+  if (await isCoordinationHolder(actor, { branchId: taskRow.branchId, cycleId: taskRow.cycleId })) return true;
   const [holding] = await db
     .select({ taskId: taskAssignment.taskId })
     .from(taskAssignment)

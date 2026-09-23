@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { community, placementMember, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable, placement as placementTable } from "@/db/schema";
@@ -14,32 +14,38 @@ type Member = typeof memberTable.$inferSelect;
 // plan.md's Phase 63 — previously Community.spatialPlanningTaskId, a
 // single scalar pointer). Used to gate Zone edits and pending-Placement
 // review (see docs/spec.md's "Whoever holds a Spatial planning task
-// reviews pending changes"). `cycleId` (Phase 68) follows
-// listGrantingTaskIds' own undefined/null/string convention: omitted
-// means "holds it for *any* cycle" (nav/dashboard visibility, and every
-// genuinely cycle-agnostic write below — the shape-template library,
-// space preferences); a real id or null checks only that specific
-// cycle's grant, which every write touching one particular Plot must
-// use — a cycle-A owner must not be able to edit cycle B's Plot just
-// because that's a call site that forgot to pass one.
+// reviews pending changes"). `cycleId` (Phase 68) keeps its
+// undefined/null/string convention, but now filters the *granting
+// task's own placement* (task.cycleId — the one scope read, docs/
+// cycle-scope-remediation-plan.md §2.1) rather than a cycle column on
+// the grant row: omitted means "holds it for *any* cycle" (nav/
+// dashboard visibility, and every genuinely cycle-agnostic write below
+// — the shape-template library, space preferences); a real id or null
+// checks only that specific scope — a task sitting in cycle A owns
+// cycle A's Plot only, a cycle-less task is the community-wide owner —
+// which every write touching one particular Plot must use, so a
+// cycle-A owner can't edit cycle B's Plot just because that's a call
+// site that forgot to pass one.
 export async function isSpatialPlanningHolder(
   actor: Member,
   communityRow: { id: string },
   cycleId?: string | null,
 ) {
-  const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "spatial_planning", cycleId);
+  const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "spatial_planning");
   if (grantingTaskIds.length === 0) return false;
+  const conditions = [
+    inArray(task.id, grantingTaskIds),
+    eq(taskAssignment.memberId, actor.id),
+    eq(taskAssignment.isShadow, false),
+  ];
+  if (cycleId !== undefined) {
+    conditions.push(cycleId === null ? isNull(task.cycleId) : eq(task.cycleId, cycleId));
+  }
   const [holding] = await db
     .select({ id: task.id })
     .from(task)
     .innerJoin(taskAssignment, eq(taskAssignment.taskId, task.id))
-    .where(
-      and(
-        inArray(task.id, grantingTaskIds),
-        eq(taskAssignment.memberId, actor.id),
-        eq(taskAssignment.isShadow, false),
-      ),
-    );
+    .where(and(...conditions));
   return Boolean(holding);
 }
 

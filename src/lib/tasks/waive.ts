@@ -31,14 +31,18 @@ export async function waiveAndClaim(
   input: WaiveAndClaimInput,
 ) {
   const [taskRow] = await db
-    .select({ id: task.id, branchId: task.branchId, communityId: task.communityId })
+    .select({ id: task.id, branchId: task.branchId, cycleId: task.cycleId, communityId: task.communityId })
     .from(task)
     .where(and(eq(task.id, taskId), eq(task.communityId, actor.communityId)));
   if (!taskRow) {
     throw new NotFoundError("Task not found");
   }
 
-  const authorized = await isAuthorizedToWaive(actor, taskRow.branchId, taskId);
+  const authorized = await isAuthorizedToWaive(
+    actor,
+    { branchId: taskRow.branchId, cycleId: taskRow.cycleId },
+    taskId,
+  );
   if (!authorized) {
     throw new ForbiddenError(
       "Only that branch's coordination (or this task's own coordination slot) can waive a requirement here",

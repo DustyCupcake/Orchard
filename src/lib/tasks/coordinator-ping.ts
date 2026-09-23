@@ -48,7 +48,7 @@ export async function listPings(actor: Member, taskId: string) {
   if (!taskRow || taskRow.communityId !== actor.communityId) {
     throw new NotFoundError("Task not found");
   }
-  await requireCoordinationHolder(actor, taskRow.branchId);
+  await requireCoordinationHolder(actor, { branchId: taskRow.branchId, cycleId: taskRow.cycleId });
 
   return db
     .select()
@@ -62,7 +62,7 @@ export async function resolvePing(actor: Member, taskId: string, pingId: string)
   if (!taskRow || taskRow.communityId !== actor.communityId) {
     throw new NotFoundError("Task not found");
   }
-  await requireCoordinationHolder(actor, taskRow.branchId);
+  await requireCoordinationHolder(actor, { branchId: taskRow.branchId, cycleId: taskRow.cycleId });
 
   const [updated] = await db
     .update(coordinatorPing)

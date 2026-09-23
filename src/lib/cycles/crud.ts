@@ -731,8 +731,11 @@ async function cloneWikiAndResources(tx: Tx, taskIdMap: Map<string, string>) {
 // granted "admin" or "branch_coordination" in the previous cycle
 // should still grant it in the new cycle, or the "whichever cycle's
 // pack includes it" reset mechanism spec describes doesn't actually
-// work. Cycle-scoped grants (event_scheduling_owner, spatial_planning)
-// are remapped to the new cycle; unscoped grants copy verbatim.
+// work. There's no scope column to remap: a grant's scope comes from
+// the granted task's own placement (task.cycleId, docs/cycle-scope-
+// remediation-plan.md §2.1), and the cloned task now sits in the
+// brand-new cycle, so its grant row — copied verbatim below — already
+// points at the new cycle's data.
 async function clonePermissionGrants(tx: Tx, taskIdMap: Map<string, string>) {
   if (taskIdMap.size === 0) return;
 
@@ -747,7 +750,6 @@ async function clonePermissionGrants(tx: Tx, taskIdMap: Map<string, string>) {
       communityId: g.communityId,
       moduleKey: g.moduleKey,
       taskId: taskIdMap.get(g.taskId)!,
-      cycleId: g.cycleId,
     })),
   );
 }

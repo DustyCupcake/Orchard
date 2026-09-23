@@ -14,7 +14,6 @@ import { isAdmin } from "../settings/admins";
 import {
   addPermissionGrant,
   allowsMultipleGrants,
-  CYCLE_SCOPED_MODULES,
   PERMISSION_MODULE_KEYS,
   setPermissionGrant,
 } from "../permissions";
@@ -118,10 +117,6 @@ export const activateProposalInput = createTaskInput
     requirements: z.array(createRequirementInput).optional(),
     dependsOnTaskIds: z.array(z.string().uuid()).optional(),
     grantModuleKeys: z.array(z.enum(PERMISSION_MODULE_KEYS)).optional(),
-    // The one shared cycle-select (docs/development-plan.md's Phase
-    // 68) — applies only to whichever of event_scheduling_owner/
-    // spatial_planning are present in grantModuleKeys.
-    grantCycleId: z.string().uuid().nullable().optional(),
     // Optional — becomes a single confirmed Task Milestone (see below)
     // right after the new task exists, not a real Task field itself.
     dueDate: z.string().min(1).optional(),
@@ -207,9 +202,11 @@ export async function activateProposal(
     for (const moduleKey of input.grantModuleKeys) {
       if (allowsMultipleGrants(moduleKey)) {
         await addPermissionGrant(actor.communityId, moduleKey, newTask.id);
-      } else if (CYCLE_SCOPED_MODULES.has(moduleKey)) {
-        await setPermissionGrant(actor.communityId, moduleKey, newTask.id, input.grantCycleId ?? null);
       } else {
+        // Scope comes from the new task's own placement (task.cycleId —
+        // docs/cycle-scope-remediation-plan.md §2.1), so this replaces a
+        // sibling grant *in that same scope* only, never a different
+        // cycle's owner.
         await setPermissionGrant(actor.communityId, moduleKey, newTask.id);
       }
     }

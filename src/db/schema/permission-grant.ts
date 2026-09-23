@@ -1,6 +1,5 @@
 import { pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
-import { cycle } from "./cycle";
 import { task } from "./task";
 
 // Every one of these nine module keys used to be its own Community
@@ -13,6 +12,14 @@ import { task } from "./task";
 // shape's real bug, not just an inconsistency, was that a task tagged
 // "support" for unrelated logistics reasons could silently grant real
 // View-as access).
+//
+// A grant row is deliberately bare — task + module only. The granted
+// task's *scope* comes from where the task sits (`task.cycleId`, see
+// docs/cycle-scope-remediation-plan.md §2.1): a cycle-placed task's
+// authority covers that cycle's data only; a cycle-less task is the
+// community/evergreen role. `permission_grant.cycleId` was retired in
+// a single migration (D8) once task placement became the one scope
+// read.
 export const permissionGrantModuleEnum = pgEnum("permission_grant_module", [
   "admin",
   "branch_coordination",
@@ -39,12 +46,6 @@ export const permissionGrant = pgTable("permission_grant", {
   taskId: uuid("task_id")
     .notNull()
     .references(() => task.id),
-  // Reserved, always null until a future phase actually resolves the
-  // concurrent-cycles view model (docs/development-plan.md's Phase 68,
-  // for event_scheduling_owner/spatial_planning specifically) — added
-  // now so that phase extends this table instead of migrating it a
-  // second time.
-  cycleId: uuid("cycle_id").references(() => cycle.id),
   // Reserved, always null (meaning "grants the whole module") until a
   // future phase defines real finer-grained permission keys and teaches
   // specific enforcement checks to read them — see the "Beyond" note on

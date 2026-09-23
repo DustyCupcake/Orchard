@@ -38,7 +38,7 @@ export async function listSignals(actor: Member, taskId: string) {
   if (!taskRow || taskRow.communityId !== actor.communityId) {
     throw new NotFoundError("Task not found");
   }
-  await requireCoordinationHolder(actor, taskRow.branchId);
+  await requireCoordinationHolder(actor, { branchId: taskRow.branchId, cycleId: taskRow.cycleId });
 
   return db
     .select()
@@ -52,7 +52,7 @@ export async function resolveSignal(actor: Member, taskId: string, signalId: str
   if (!taskRow || taskRow.communityId !== actor.communityId) {
     throw new NotFoundError("Task not found");
   }
-  await requireCoordinationHolder(actor, taskRow.branchId);
+  await requireCoordinationHolder(actor, { branchId: taskRow.branchId, cycleId: taskRow.cycleId });
 
   const [updated] = await db
     .update(taskSignal)

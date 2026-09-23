@@ -50,7 +50,7 @@ export async function claimOrRequestToJoin(
     if (
       !options.confirmed &&
       (current.status === "unclaimed" || current.attentionLevel !== "ok") &&
-      (await isCoordinationHolder(actor, current.branchId))
+      (await isCoordinationHolder(actor, { branchId: current.branchId, cycleId: current.cycleId }))
     ) {
       throw new ConfirmationRequiredError(
         "You coordinate this branch — confirm on the task's page before self-assigning a flagged or unclaimed task",

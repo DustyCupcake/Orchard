@@ -83,11 +83,9 @@ export default function ProposalCard({
   canGrantPermissions: boolean;
   elsewhereHolderByModule: Partial<Record<PermissionModuleKey, string>>;
   cyclesEnabled: boolean;
-  // Same list/default used for both the new task's own cycleId select
-  // below and the permissions fieldset's grantCycleId select further
-  // down — two different concerns (which cycle the task itself
-  // belongs to, vs. which cycle a permission grant it hands out is
-  // scoped to), same underlying community cycle list.
+  // The new task's own placement select — its grants' scopes derive
+  // from wherever it lands (docs/cycle-scope-remediation-plan.md §2.1),
+  // so this one cycle list is the only one the proposal form needs.
   cycles: { id: string; name: string }[];
   defaultCycleId: string | null;
   tagSuggestions: string[];
@@ -305,19 +303,6 @@ export default function ProposalCard({
                 <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
                   Permissions granted by this task (optional)
                 </summary>
-                {cyclesEnabled && (
-                  <label className="mb-2 mt-3 flex flex-col gap-1 text-[12px] text-[var(--text-muted)]">
-                    Cycle (applies to Event scheduling owner / Spatial planning only, below)
-                    <select name="grantCycleId" defaultValue={defaultCycleId ?? ""} className={INPUT}>
-                      <option value="">Community-wide (no cycle)</option>
-                      {cycles.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
                 <div className="mt-3 flex flex-col gap-1">
                   {PERMISSION_MODULE_KEYS.map((moduleKey) => (
                     <div key={moduleKey}>

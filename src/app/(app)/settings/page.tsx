@@ -8,7 +8,6 @@ import { getCommunity, listBranches, listCycleTypes, listPendingBranches, listTi
 import Tabs from "@/components/ui/Tabs";
 import {
   allowsMultipleGrants,
-  CYCLE_SCOPED_MODULES,
   listGrantsWithTaskInfo,
   PERMISSION_MODULE_KEYS,
   PERMISSION_MODULE_HINTS,
@@ -130,31 +129,30 @@ function TextField({
 // 64), replacing Phase 63's two separate stopgap components
 // (SingleGrantField/MultiGrantField) that each tab used to render
 // its own scattered field with. A single-cardinality module
-// (allowsMultipleGrants === false) still enforces at most one
-// grantee — the Add form posts to setPermissionGrantAction (delete-
-// then-insert) instead of addPermissionGrantAction, with a static
-// warning next to it once a grantee already exists, rather than the
-// old pre-filled-input-doubling-as-replace UX. The Add input's
-// `list` attribute wires it to the shared task datalist rendered once
-// for the whole tab (see the "permissions" tab body below) — a
-// zero-JS "search by title" picker; the datalist's own <option value>
-// is still the raw taskId (that's how HTML datalists work), so the
-// input's text collapses to the ID once a suggestion is picked, but
-// the human-readable label is what's actually searched/matched while
+// (allowsMultipleGrants === false) still enforces at most one grantee
+// *per scope* — the Add form posts to setPermissionGrantAction
+// (replaces the same scope's existing grant) instead of
+// addPermissionGrantAction, with a static warning next to it once the
+// same scope already has a grantee, rather than the old pre-filled-
+// input-doubling-as-replace UX. Each row shows the granted task plus
+// its derived scope (task — branch — cycle name, or "community-wide"
+// for a cycle-less task; docs/cycle-scope-remediation-plan.md §2.1 —
+// the grant row itself carries no cycle). The Add input's `list`
+// attribute wires it to the shared task datalist rendered once for the
+// whole tab (see the "permissions" tab body below) — a zero-JS "search
+// by title" picker; the datalist's own <option value> is still the raw
+// taskId (that's how HTML datalists work), so the input's text
+// collapses to the ID once a suggestion is picked, but the
+// human-readable label is what's actually searched/matched while
 // typing.
 function GrantField({
   moduleKey,
   grants,
-  cyclesEnabled,
-  cycles,
 }: {
   moduleKey: PermissionModuleKey;
   grants: { taskId: string; title: string; branchName: string; cycleId: string | null; cycleName: string | null }[];
-  cyclesEnabled: boolean;
-  cycles: { id: string; name: string }[];
 }) {
   const multi = allowsMultipleGrants(moduleKey);
-  const cycleScoped = cyclesEnabled && CYCLE_SCOPED_MODULES.has(moduleKey);
   return (
     <FieldSet legend={PERMISSION_MODULE_LABELS[moduleKey]}>
       <p className="text-[12px] text-[var(--text-muted)]">{PERMISSION_MODULE_HINTS[moduleKey]}</p>
@@ -162,13 +160,12 @@ function GrantField({
       {grants.length > 0 && (
         <ul className="flex flex-col gap-1.5">
           {grants.map((g) => (
-            <li key={`${g.taskId}-${g.cycleId ?? ""}`} className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text)]">
+            <li key={g.taskId} className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text)]">
               {g.title} — {g.branchName}
-              {cycleScoped && <span className="text-[var(--text-muted)]"> — {g.cycleName ?? "community-wide"}</span>}
+              <span className="text-[var(--text-muted)]"> — {g.cycleName ?? "community-wide"}</span>
               <form action={removePermissionGrantAction}>
                 <input type="hidden" name="moduleKey" value={moduleKey} />
                 <input type="hidden" name="taskId" value={g.taskId} />
-                <input type="hidden" name="cycleId" value={g.cycleId ?? ""} />
                 <input type="hidden" name="tab" value="permissions" />
                 <button type="submit" className={BUTTON_SECONDARY}>
                   Remove
@@ -180,9 +177,8 @@ function GrantField({
       )}
       {!multi && grants.length > 0 && (
         <p className="text-[12px] text-[var(--text-muted)]">
-          {cycleScoped
-            ? "Only one task can hold this per cycle — adding another for the same cycle moves it here instead of alongside it."
-            : "Only one task can hold this — adding another below moves it here instead of alongside it."}
+          Only one task can hold this per scope — adding a task placed in the same scope (the same
+          cycle, or community-wide for a cycle-less task) moves it here instead of alongside it.
         </p>
       )}
       <form
@@ -198,16 +194,6 @@ function GrantField({
           placeholder="search by task title…"
           className={`${INPUT} min-w-[18rem] flex-1`}
         />
-        {cycleScoped && (
-          <select name="cycleId" defaultValue="" className={INPUT}>
-            <option value="">Community-wide (no cycle)</option>
-            {cycles.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        )}
         <button type="submit" className={BUTTON_SECONDARY}>
           {multi ? "Add" : grants.length > 0 ? "Replace" : "Grant"}
         </button>
@@ -467,13 +453,7 @@ export default async function SettingsPage({
               ))}
             </datalist>
             {PERMISSION_MODULE_KEYS.map((moduleKey) => (
-              <GrantField
-                key={moduleKey}
-                moduleKey={moduleKey}
-                grants={grantsFor(moduleKey)}
-                cyclesEnabled={communityRow.cyclesEnabled}
-                cycles={cyclesForPicker}
-              />
+              <GrantField key={moduleKey} moduleKey={moduleKey} grants={grantsFor(moduleKey)} />
             ))}
           </div>
         )}

@@ -26,13 +26,20 @@ async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
 }
 
-async function insertOwnerTask(communityId: string, branchId: string, createdBy: string, title = "Scheduling owner") {
+async function insertOwnerTask(
+  communityId: string,
+  branchId: string,
+  createdBy: string,
+  title = "Scheduling owner",
+  cycleId: string | null = null,
+) {
   const [row] = await db
     .insert(task)
     .values({
       communityId,
       branchId,
       title,
+      cycleId,
       effort: "owns_a_thing",
       effortMagnitude: { hours_per_week: 2 },
       createdBy,
@@ -477,12 +484,15 @@ describe("cycle-scoped ownership (Phase 68)", () => {
     await enableCycles(testCommunity.id);
     const cycleA = await createCycle(alice, { source: "blank", name: "A" });
     const cycleB = await createCycle(alice, { source: "blank", name: "B", confirmed: true });
-    const ownerA = await insertOwnerTask(testCommunity.id, testBranch.id, alice.id, "Owner A");
+    // Each owner task sits *in* its own cycle — the grant's scope comes
+    // from the granted task's placement, not an argument (cycle-scope
+    // remediation).
+    const ownerA = await insertOwnerTask(testCommunity.id, testBranch.id, alice.id, "Owner A", cycleA.id);
     await claimTask(alice, ownerA.id);
-    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", ownerA.id, cycleA.id);
-    const ownerB = await insertOwnerTask(testCommunity.id, testBranch.id, bob.id, "Owner B");
+    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", ownerA.id);
+    const ownerB = await insertOwnerTask(testCommunity.id, testBranch.id, bob.id, "Owner B", cycleB.id);
     await claimTask(bob, ownerB.id);
-    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", ownerB.id, cycleB.id);
+    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", ownerB.id);
     return { ...fixtures, cycleA, cycleB };
   }
 
