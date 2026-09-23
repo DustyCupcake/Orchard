@@ -37,6 +37,7 @@ import {
 } from "@/lib/permissions";
 import { getCycle, listCycles, resolveCrossCycleContext, scopeLabel } from "@/lib/cycles";
 import { isModuleEnabled } from "@/lib/modules";
+import { isShiftManagerForScope } from "@/lib/shifts";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import CopyLinkButton from "@/components/CopyLinkButton";
 import EffortFields from "@/components/EffortFields";
@@ -267,6 +268,10 @@ export default async function TaskDetailPage({
 
   const groupCoverage = await getGroupCoverageStatus(db, id, requirements);
   const shiftsModuleOn = isModuleEnabled(communityRow, "shifts");
+  // D10 (§4.8) — rotateTaskIntoShift creates a *standing* series, which
+  // is the standing scope's shift manager's act; holding the source task
+  // no longer grants it. Show the action to whoever can actually take it.
+  const isStandingShiftManager = shiftsModuleOn && (await isShiftManagerForScope(viewing, null));
   const myEndorsements = isCommunityEndorsed
     ? await listMyEndorsements(
         viewing,
@@ -459,7 +464,7 @@ export default async function TaskDetailPage({
       );
     }
   }
-  if (holdsTask && shiftsModuleOn) {
+  if (isStandingShiftManager) {
     menuItems.push(
       <form action={rotateIntoShiftAction}>
         <input type="hidden" name="taskId" value={taskRow.id} />

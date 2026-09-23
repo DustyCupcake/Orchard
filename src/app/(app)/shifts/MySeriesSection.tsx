@@ -4,6 +4,7 @@ import {
   archiveShiftSeriesAction,
   generateOccurrencesAction,
   markShiftSignupNoShowAction,
+  setShiftSeriesScopeAction,
   unarchiveShiftSeriesAction,
 } from "./actions";
 
@@ -17,17 +18,24 @@ function formatRange(startsAt: Date | string, endsAt: Date | string) {
   return `${new Date(startsAt).toLocaleString()} – ${new Date(endsAt).toLocaleTimeString()}`;
 }
 
-// The coordinator's own management view — see docs/spec.md's "Shifts /
+// The shift manager's own management view — see docs/spec.md's "Shifts /
 // rota" and docs/development-plan.md's Phase 29 ("a coordinator view
-// ... listing each occurrence's current signups"). Rendered by
-// page.tsx only for series the current member coordinates (creator, or
-// whoever holds sourceTaskId if set).
+// ... listing each occurrence's current signups"). Rendered by page.tsx
+// only for series in scopes the current member actually manages (the
+// shift_management grant, D10 — src/lib/shifts/management.ts). Each
+// card shows the series' scope (§5.6: "Cycle N roster" vs "Standing
+// series") and, for a managing member, lets them re-place it into any
+// other scope they manage (destination-manager gated server-side too).
 export default function MySeriesSection({
   series,
   memberNameById,
+  cycleNameById,
+  placementOptions,
 }: {
   series: { series: ShiftSeriesRow; occurrences: ShiftOccurrenceRow[]; signups: ShiftSignupRow[] }[];
   memberNameById: Map<string, string>;
+  cycleNameById: Map<string, { name: string }>;
+  placementOptions: { cycleId: string | null; label: string }[];
 }) {
   return (
     <section className="mt-8 border-t border-[var(--border)] pt-6">
@@ -41,14 +49,39 @@ export default function MySeriesSection({
             signupsByOccurrence.set(sg.occurrenceId, list);
           }
 
+          const scopeLabel = s.cycleId
+            ? `Cycle ${cycleNameById.get(s.cycleId)?.name ?? "—"} roster`
+            : "Standing series";
+          const replacementOptions = placementOptions.filter((o) => o.cycleId !== s.cycleId);
+
           return (
             <div key={s.id} className={CARD}>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Tag tone={s.archivedAt ? "neutral" : "success"}>{s.archivedAt ? "Archived" : "Active"}</Tag>
+                <Tag tone="neutral">{scopeLabel}</Tag>
                 <span className="text-[12px] text-[var(--text-muted)]">default capacity {s.defaultCapacity}</span>
               </div>
               <p className="mt-1.5 text-[14px] font-medium text-[var(--text)]">{s.title}</p>
               {s.description && <p className="mt-1 text-[13px] text-[var(--text)]">{s.description}</p>}
+
+              {replacementOptions.length > 0 && (
+                <form action={setShiftSeriesScopeAction} className="mt-2 flex max-w-[440px] items-end gap-2">
+                  <input type="hidden" name="seriesId" value={s.id} />
+                  <label className="flex flex-1 flex-col gap-1">
+                    <span className={LABEL}>Re-place into</span>
+                    <select name="cycleId" defaultValue="" className={INPUT}>
+                      {replacementOptions.map((o) => (
+                        <option key={o.cycleId ?? "standing"} value={o.cycleId ?? ""}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Re-place
+                  </button>
+                </form>
+              )}
 
               <form action={s.archivedAt ? unarchiveShiftSeriesAction : archiveShiftSeriesAction} className="mt-2">
                 <input type="hidden" name="seriesId" value={s.id} />

@@ -13,7 +13,7 @@ import { createBudgetCycle } from "@/lib/budget";
 import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
 import { updateCommunity } from "@/lib/settings";
 import { getCalendarView } from "@/lib/calendar";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, grantShiftManagementTo, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
@@ -237,8 +237,9 @@ describe("getCalendarView", () => {
   });
 
   it("includes the actor's own upcoming signed-up shift occurrence, not a past one or someone else's", async () => {
-    const { alice, bob } = await createFixtures();
+    const { alice, bob, branch: testBranch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["shifts"] });
+    await grantShiftManagementTo(alice, testBranch.id);
     const series = await createShiftSeries(alice, { title: "Dish duty", defaultCapacity: 2 });
     const [occurrence] = await generateShiftOccurrences(alice, series.id, {
       mode: "explicit",

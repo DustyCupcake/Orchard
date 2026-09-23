@@ -92,7 +92,9 @@ export async function createCycleAction(formData: FormData) {
   let created;
   try {
     if (source === "clone_previous") {
-      created = await createCycle(actor, { source: "clone_previous", name, cycleTypeId, confirmed });
+      const startDate = String(formData.get("startDate") ?? "").trim() || null;
+      const endDate = String(formData.get("endDate") ?? "").trim() || null;
+      created = await createCycle(actor, { source: "clone_previous", name, cycleTypeId, startDate, endDate, confirmed });
     } else {
       const startDate = String(formData.get("startDate") ?? "").trim() || null;
       const endDate = String(formData.get("endDate") ?? "").trim() || null;

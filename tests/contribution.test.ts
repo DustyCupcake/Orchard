@@ -5,6 +5,7 @@ import { community, phase, shiftOccurrence, task, taskAssignment } from "@/db/sc
 import { createCycle } from "@/lib/cycles";
 import { createShiftSeries, generateShiftOccurrences, markShiftSignupCompleted, signUpForShift } from "@/lib/shifts";
 import { updateCommunity } from "@/lib/settings";
+import { releaseTask } from "@/lib/tasks";
 import {
   getContributionCommunityAverage,
   getOwnContribution,
@@ -14,7 +15,7 @@ import {
 } from "@/lib/contribution";
 import { declareParticipation } from "@/lib/participation";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantShiftManagementTo, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
@@ -54,6 +55,11 @@ const iso = (hoursFromNow: number) => new Date(Date.now() + hoursFromNow * 60 * 
 // tests/shifts.test.ts uses for its own completion tests.
 async function completeAShift(actor: Awaited<ReturnType<typeof createFixtures>>["alice"], branchId: string) {
   await updateCommunity(actor, { modulesEnabled: ["shifts"] });
+  // D10 — creating a standing series is the standing shift manager's act.
+  // The manager task is released once the roster is set up so these tests
+  // keep measuring the assignments they explicitly create (a "manager set
+  // it up and stepped away" state — legitimate, and the roster stays put).
+  const managerTask = await grantShiftManagementTo(actor, branchId);
   const series = await createShiftSeries(actor, {
     title: "Dish duty",
     defaultCapacity: 2,
@@ -63,6 +69,7 @@ async function completeAShift(actor: Awaited<ReturnType<typeof createFixtures>>[
     mode: "explicit",
     slots: [{ startsAt: iso(24), endsAt: iso(25) }],
   });
+  await releaseTask(actor, managerTask.id);
   const signup = await signUpForShift(actor, occurrence.id);
   await db
     .update(shiftOccurrence)
@@ -329,11 +336,16 @@ describe("shift completions (Phase 30)", () => {
     const { alice, branch } = await createFixtures();
     await updateContributionVisibility(alice, { visible: false });
     await updateCommunity(alice, { modulesEnabled: ["shifts"] });
+    const managerTask = await grantShiftManagementTo(alice, branch.id);
     const series = await createShiftSeries(alice, { title: "Dish duty", defaultCapacity: 2, branchId: branch.id });
     const [occurrence] = await generateShiftOccurrences(alice, series.id, {
       mode: "explicit",
       slots: [{ startsAt: iso(24), endsAt: iso(25) }],
     });
+    // Same "manager stepped away" release as completeAShift — what's being
+    // tested is that an un-completed signup contributes nothing, not that
+    // the manager's own task is invisible.
+    await releaseTask(alice, managerTask.id);
     await signUpForShift(alice, occurrence.id);
 
     const categories = await getOwnContribution(alice);

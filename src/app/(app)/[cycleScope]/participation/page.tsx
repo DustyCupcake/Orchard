@@ -10,6 +10,11 @@ import {
 } from "@/lib/cycles";
 import { getBudgetCycleForCycle, getCurrentBudgetCycle } from "@/lib/budget";
 import { getCycleParticipationSummary, getMyParticipation } from "@/lib/participation";
+import { getCycleShiftRoster } from "@/lib/shifts";
+import {
+  confirmShiftProposalAction,
+  openCycleShiftSignupsAction,
+} from "../../shifts/actions";
 import { getCommunity, isAdmin, listCycleTypes } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import { listTaskPacks } from "@/lib/task-packs";
@@ -78,6 +83,8 @@ export default async function ParticipationPage({
     cycleCreated?: string;
     budgetNotStarted?: string;
     cycleClosed?: string;
+    shiftOpened?: string;
+    proposalConfirmed?: string;
     previewStart?: string;
     previewEnd?: string;
     previewView?: string;
@@ -99,6 +106,8 @@ export default async function ParticipationPage({
     cycleCreated,
     budgetNotStarted,
     cycleClosed,
+    shiftOpened,
+    proposalConfirmed,
     previewStart,
     previewEnd,
     previewView,
@@ -168,6 +177,16 @@ export default async function ParticipationPage({
       {cycleClosed && (
         <div className="mt-4">
           <Banner tone="success">Cycle closed.</Banner>
+        </div>
+      )}
+      {shiftOpened && (
+        <div className="mt-4">
+          <Banner tone="success">Sign-ups opened for this cycle&rsquo;s shift roster — it can&rsquo;t be closed again.</Banner>
+        </div>
+      )}
+      {proposalConfirmed && (
+        <div className="mt-4">
+          <Banner tone="success">Shift proposal confirmed — it&rsquo;s on the roster now.</Banner>
         </div>
       )}
 
@@ -346,9 +365,18 @@ async function StartNewCycleSection({
             </select>
           </label>
         )}
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Start date (optional)</span>
+          <input type="date" name="startDate" className={INPUT} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>End date (optional)</span>
+          <input type="date" name="endDate" className={INPUT} />
+        </label>
         <p className="text-[12px] text-[var(--text-muted)]">
-          A clone&rsquo;s own start/end aren&rsquo;t set here — use the Cycle settings form above once
-          it exists.
+          Setting a clone&rsquo;s dates here resolves its phased boundaries and re-derives its shift
+          roster&rsquo;s occurrence timestamps immediately; a clone started without them defers the
+          shift occurrences until you set dates in the Cycle settings form above.
         </p>
         {canAutoStartBudget && (
           <CheckField
@@ -387,6 +415,10 @@ async function ParticipationForCycle({
     canInitiateCycle(viewing),
     getCommunity(viewing),
   ]);
+  const shiftsOn = isModuleEnabled(communityRow, "shifts");
+  // The cycle's shift roster (§5.6) — visible to any member of the
+  // community, management actions only for the cycle's manager.
+  const roster = shiftsOn ? await getCycleShiftRoster(viewing, cycleId) : null;
   // Only needed for the cycle-settings/phase-dates sections below —
   // skip the extra query entirely for anyone who can't see them.
   const withPhases = canConfigure ? await getCycle(viewing, cycleId) : null;
@@ -424,6 +456,72 @@ async function ParticipationForCycle({
           </p>
         )}
       </section>
+
+      {roster && (
+        <section className="mt-6">
+          <SectionHeading>Shift roster</SectionHeading>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="text-[13px] text-[var(--text-muted)]">
+              {roster.manager
+                ? `Managed by ${roster.manager.name}.`
+                : "No shift manager selected — this roster stays closed until someone holds a shift_management-granted task in this cycle."}
+            </span>
+            {roster.signupsOpened ? (
+              <Tag tone="success">Sign-ups open</Tag>
+            ) : (
+              <Tag tone="neutral">Collecting — sign-ups closed</Tag>
+            )}
+          </div>
+
+          {!closed && roster.isManager && !roster.signupsOpened && (
+            <form action={openCycleShiftSignupsAction} className="mt-2">
+              <input type="hidden" name="cycleId" value={cycleId} />
+              <input type="hidden" name="cycleScope" value={cycleId} />
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Open sign-ups for this roster (one-way)
+              </button>
+            </form>
+          )}
+
+          {roster.series.length === 0 ? (
+            <p className="mt-3 text-[13px] text-[var(--text-muted)]">Nothing placed in this roster yet.</p>
+          ) : (
+            <div className="mt-3 flex flex-col gap-3">
+              {roster.series.map(({ series: s, confirmedAt, occurrences }) => (
+                <div key={s.id} className={CARD}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!confirmedAt && <Tag tone="warning">proposal — pending confirmation</Tag>}
+                    <span className="text-[14px] font-medium text-[var(--text)]">{s.title}</span>
+                  </div>
+                  {s.description && <p className="mt-1 text-[13px] text-[var(--text)]">{s.description}</p>}
+                  {!confirmedAt && !closed && roster.isManager && (
+                    <form action={confirmShiftProposalAction} className="mt-2">
+                      <input type="hidden" name="seriesId" value={s.id} />
+                      <input type="hidden" name="cycleScope" value={cycleId} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        Confirm for this roster
+                      </button>
+                    </form>
+                  )}
+                  {occurrences.length > 0 ? (
+                    <ul className="mt-2 flex flex-col gap-0.5">
+                      {occurrences.map(({ occurrence, capacity, signupCount }) => (
+                        <li key={occurrence.id} className="text-[13px] text-[var(--text)]">
+                          {new Date(occurrence.startsAt).toLocaleString()} — {signupCount}/{capacity} signed up
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    confirmedAt && (
+                      <p className="mt-2 text-[12px] text-[var(--text-muted)]">No occurrences generated yet.</p>
+                    )
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {!closed && (
         <section className="mt-6">

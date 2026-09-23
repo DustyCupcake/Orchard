@@ -1,6 +1,7 @@
 import { integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { branch } from "./branch";
 import { community } from "./community";
+import { cycle } from "./cycle";
 import { member } from "./member";
 import { task } from "./task";
 
@@ -25,9 +26,22 @@ export const shiftSeries = pgTable("shift_series", {
     .notNull()
     .references(() => community.id),
   branchId: uuid("branch_id").references(() => branch.id),
+  // Placement is the declaration (docs/cycle-scope-remediation-plan.md
+  // §2.6/D9): a series placed in a cycle is that cycle's roster; a
+  // cycle-less series is a standing, community-wide series. Scope is
+  // only ever read through this column (mirroring task.cycleId, §2.1),
+  // so shift_occurrence/shift_signup stay unkeyed — they resolve scope
+  // through their series. Real FK, same reasoning as sourceTaskId below.
+  cycleId: uuid("cycle_id").references(() => cycle.id),
   title: text("title").notNull(),
   description: text("description"),
   defaultCapacity: integer("default_capacity").notNull(),
+  // null = a pending proposal, hidden from the browse surface and not
+  // claimable until the cycle's shift_management holder confirms it
+  // (§2.6/D11). Set at placement time: instantly during a collecting
+  // window (open-to-anyone, the batch opens together), only via a
+  // manager's confirm after the roster's one-way open act.
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
   // Real FK, not the non-FK pointer pattern Community's own task
   // pointers need — shift.ts is a fresh schema file task.ts has no
   // reason to ever import back, same reasoning Phase 22's

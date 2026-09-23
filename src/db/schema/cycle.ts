@@ -61,4 +61,11 @@ export const cycle = pgTable("cycle", {
   // so it's a normal FK. See src/lib/cycles/lifecycle.ts's closeCycle.
   closedBy: uuid("closed_by").references(() => member.id),
   closedAt: timestamp("closed_at", { withTimezone: true }),
+  // The shift roster's one-way open act (docs/cycle-scope-remediation-
+  // plan.md §2.6/D11): null = collecting (any member can place series
+  // in this cycle's roster, and they open together); set once by the
+  // cycle's shift_management holder, after which new placements land
+  // as proposals awaiting that same holder's confirmation. Never
+  // unset — the act is deliberately irreversible.
+  shiftSignupsOpenedAt: timestamp("shift_signups_opened_at", { withTimezone: true }),
 });

@@ -24,7 +24,8 @@ import {
   withdrawFromShift,
 } from "@/lib/shifts";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createCycle } from "@/lib/cycles";
+import { createFixtures, grantShiftManagementTo, resetDatabase } from "./helpers";
 
 async function insertTask(communityId: string, branchId: string, createdBy: string) {
   const [row] = await db
@@ -47,8 +48,12 @@ function iso(hoursFromNow: number) {
 
 async function setUpModule() {
   const fixtures = await createFixtures();
-  const { alice } = fixtures;
-  await updateCommunity(alice, { modulesEnabled: ["shifts"] });
+  const { alice, branch: testBranch } = fixtures;
+  await updateCommunity(alice, { modulesEnabled: ["shifts"], cyclesEnabled: true });
+  // D10 — creating a standing series is the standing scope's
+  // shift_management holder's act, so make alice that holder for all the
+  // existing standing-series tests.
+  await grantShiftManagementTo(alice, testBranch.id);
   return fixtures;
 }
 
@@ -93,29 +98,37 @@ describe("ShiftSeries creation", () => {
   });
 });
 
-describe("Coordinator authority", () => {
+describe("Coordinator authority (D10 — grant-based)", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  it("the creator is always the coordinator", async () => {
+  it("the scope's shift_management holder coordinates a standing series — creatorship alone grants nothing", async () => {
     const { alice, bob } = await setUpModule();
     const series = await createSeries(alice);
     expect(await isShiftCoordinator(alice, series)).toBe(true);
     expect(await isShiftCoordinator(bob, series)).toBe(false);
   });
 
-  it("whoever holds sourceTaskId is also a coordinator", async () => {
+  it("a cycle-placed series is scoped to its cycle's manager, not the standing one", async () => {
     const { alice, bob, branch: testBranch } = await setUpModule();
-    const sourceTask = await insertTask(alice.communityId, testBranch.id, alice.id);
-    const series = await createSeries(bob, { sourceTaskId: sourceTask.id });
+    const cycleRow = await createCycle(alice, { source: "blank", name: "Roster cycle" });
 
+    // Any member can place a series into a still-collecting cycle.
+    const series = await createSeries(bob, { cycleId: cycleRow.id });
+    expect(series.confirmedAt).not.toBeNull();
+
+    // The standing manager isn't this cycle's manager...
     expect(await isShiftCoordinator(alice, series)).toBe(false);
-    await claimTask(alice, sourceTask.id);
-    expect(await isShiftCoordinator(alice, series)).toBe(true);
+    // ...and neither is the creator who placed it.
+    expect(await isShiftCoordinator(bob, series)).toBe(false);
+
+    // Grant bob the cycle's own shift_management scope — now he is.
+    await grantShiftManagementTo(bob, testBranch.id, cycleRow.id);
+    expect(await isShiftCoordinator(bob, series)).toBe(true);
   });
 
-  it("archiving and unarchiving are coordinator-only", async () => {
+  it("archiving and unarchiving are manager-only", async () => {
     const { alice, bob } = await setUpModule();
     const series = await createSeries(alice);
 
@@ -399,7 +412,7 @@ describe("Rotate a task into a shift", () => {
     await resetDatabase();
   });
 
-  it("is only available to a current holder", async () => {
+  it("is only available to the standing scope's shift manager", async () => {
     const { alice, bob, branch: testBranch } = await setUpModule();
     const sourceTask = await insertTask(alice.communityId, testBranch.id, alice.id);
     await expect(rotateTaskIntoShift(bob, sourceTask.id)).rejects.toThrow(ForbiddenError);

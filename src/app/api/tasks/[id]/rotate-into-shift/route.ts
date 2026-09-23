@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
-// Any current holder, enforced inside rotateTaskIntoShift — a
-// one-click action, no body of its own.
+// The standing scope's shift manager's act, enforced inside
+// rotateTaskIntoShift (D10) — a one-click action, no body of its own.
 export async function POST(_request: NextRequest, { params }: Params) {
   try {
     const actor = await requireMember();

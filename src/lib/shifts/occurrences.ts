@@ -1,7 +1,7 @@
-import { and, asc, eq, gte, isNull } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { shiftOccurrence, shiftSeries } from "@/db/schema";
+import { cycle, shiftOccurrence, shiftSeries } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
 import { getShiftSeries, requireShiftCoordinator } from "./series";
@@ -120,7 +120,11 @@ export function effectiveCapacity(occurrence: Pick<ShiftOccurrenceRow, "capacity
 
 // The general browse surface — every future occurrence in the
 // Community whose series isn't archived, for "browse upcoming
-// occurrences grouped by series" on /shifts. Open to any member.
+// occurrences grouped by series" on /shifts. Open to any member. D11
+// gating: unconfirmed proposals (cycle-placed, confirmedAt null) are
+// hidden entirely; a confirmed series in a still-collecting cycle shows
+// as visible-but-closed (signupsOpen false) until its roster's open
+// act; standing series are always open.
 export async function listUpcomingShiftOccurrences(actor: Member) {
   const rows = await db
     .select({ occurrence: shiftOccurrence, series: shiftSeries })
@@ -130,11 +134,28 @@ export async function listUpcomingShiftOccurrences(actor: Member) {
       and(
         eq(shiftSeries.communityId, actor.communityId),
         isNull(shiftSeries.archivedAt),
+        isNotNull(shiftSeries.confirmedAt),
         gte(shiftOccurrence.startsAt, new Date()),
       ),
     )
     .orderBy(asc(shiftOccurrence.startsAt));
-  return rows;
+
+  const cycleIds = [...new Set(rows.map((r) => r.series.cycleId).filter((c): c is string => c !== null))];
+  const openedById = new Map<string, boolean>();
+  if (cycleIds.length > 0) {
+    const cycleRows = await db
+      .select({ id: cycle.id, shiftSignupsOpenedAt: cycle.shiftSignupsOpenedAt })
+      .from(cycle)
+      .where(inArray(cycle.id, cycleIds));
+    for (const c of cycleRows) {
+      openedById.set(c.id, c.shiftSignupsOpenedAt !== null);
+    }
+  }
+
+  return rows.map((r) => ({
+    ...r,
+    signupsOpen: r.series.cycleId ? openedById.get(r.series.cycleId) === true : true,
+  }));
 }
 
 // The coordinator's own management view — every occurrence for their

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
-import { shiftOccurrence, shiftSeries, shiftSignup } from "@/db/schema";
+import { cycle, shiftOccurrence, shiftSeries, shiftSignup } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { isShiftCoordinator, listShiftSeries, requireShiftCoordinator } from "./series";
@@ -12,6 +12,26 @@ type Member = typeof memberTable.$inferSelect;
 // come ... no waitlist for v1)."
 export async function signUpForShift(actor: Member, occurrenceId: string) {
   const { occurrence, series } = await getShiftOccurrence(actor, occurrenceId);
+
+  // D11 roster gate: a cycle-placed series is claimable only when it's
+  // both confirmed into its roster AND that roster has been opened by
+  // its shift_management holder. An unconfirmed proposal is hidden and
+  // never claimable; a confirmed series in a still-collecting roster is
+  // visible-but-closed until the open act. Standing series stay
+  // always-open.
+  if (series.cycleId) {
+    if (!series.confirmedAt) {
+      throw new ConflictError("This series is still an unconfirmed proposal — its cycle's shift manager hasn't confirmed it for this roster yet");
+    }
+    const [cycleRow] = await db
+      .select({ shiftSignupsOpenedAt: cycle.shiftSignupsOpenedAt })
+      .from(cycle)
+      .where(eq(cycle.id, series.cycleId));
+    if (!cycleRow?.shiftSignupsOpenedAt) {
+      throw new ConflictError("This cycle's shift sign-ups aren't open yet — its shift manager opens them with a single act");
+    }
+  }
+
   if (series.archivedAt) {
     throw new ConflictError("This shift series is archived");
   }
@@ -161,14 +181,16 @@ export interface ShiftCoordinatorNeedsAction {
   unresolvedCount: number;
 }
 
-// Dashboard's own needs-action surface for a shift coordinator — see
-// docs/development-plan.md's Phase 49. "Coordinates" means either of
-// isShiftCoordinator's two routes (series creator, or the current
-// holder of its sourceTaskId) — checked per series, since no existing
-// query already knows "every series I coordinate" the way
+// Dashboard's own needs-action surface for a shift manager — see
+// docs/development-plan.md's Phase 49. "Coordinates" now means holding
+// the shift_management-granted task in the series' scope (D10 —
+// src/lib/shifts/management.ts), checked per series since no existing
+// query already knows "every series I manage" the way
 // isRecruitmentTaskHolder knows a single task pointer. Gracefully
-// returns [] for a member who coordinates nothing, same posture as
-// this phase's other three needs-action functions.
+// returns [] for a member who manages nothing, same posture as this
+// phase's other three needs-action functions. A scope with no filled
+// manager surfaces as an unmanaged gap on the roster views instead of
+// a per-person dashboard entry.
 export async function listShiftCoordinatorNeedsAction(actor: Member): Promise<ShiftCoordinatorNeedsAction[]> {
   const allSeries = await listShiftSeries(actor);
   const coordinated: string[] = [];

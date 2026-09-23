@@ -7,12 +7,15 @@ import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import {
   archiveShiftSeries,
+  confirmShiftProposal,
   createShiftSeries,
   createShiftSeriesInput,
   generateShiftOccurrences,
   generateShiftOccurrencesInput,
   markShiftSignupCompleted,
   markShiftSignupNoShow,
+  openCycleShiftSignups,
+  setShiftSeriesScope,
   signUpForShift,
   unarchiveShiftSeries,
   withdrawFromShift,
@@ -52,6 +55,7 @@ export async function createShiftSeriesAction(formData: FormData) {
       description: String(formData.get("description") ?? "").trim() || undefined,
       defaultCapacity: Number(formData.get("defaultCapacity") ?? NaN),
       sourceTaskId: String(formData.get("sourceTaskId") ?? "").trim() || null,
+      cycleId: String(formData.get("cycleId") ?? "").trim() || null,
     });
     await createShiftSeries(actor, input);
   } catch (err) {
@@ -189,4 +193,71 @@ export async function markShiftSignupNoShowAction(formData: FormData) {
 
   revalidatePath("/shifts");
   redirect("/shifts?markedNoShow=1");
+}
+
+// The D11 open act — the cycle's shift_management holder opens its
+// roster's sign-ups once, irreversibly. Enforced inside
+// openCycleShiftSignups (manager-only). Postable from /shifts or a
+// cycle's own view; the origin cycle's scope is a hidden field so the
+// redirect lands back on whichever surface submitted.
+function redirectForRosterAction(redirectTo: string | null, okParam: string): never {
+  if (redirectTo) {
+    redirect(`/${redirectTo}/participation?${okParam}=1`);
+  }
+  redirect(`/shifts?${okParam}=1`);
+}
+
+export async function openCycleShiftSignupsAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleId = String(formData.get("cycleId"));
+  const origin = String(formData.get("cycleScope") ?? "").trim() || null;
+
+  try {
+    await openCycleShiftSignups(actor, cycleId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/shifts");
+  if (origin) revalidatePath(`/${origin}/participation`);
+  redirectForRosterAction(origin, "shiftOpened");
+}
+
+// The cycle's shift_management holder confirms a series placed after
+// the open act. Enforced inside confirmShiftProposal.
+export async function confirmShiftProposalAction(formData: FormData) {
+  const actor = await requireMember();
+  const seriesId = String(formData.get("seriesId"));
+  const origin = String(formData.get("cycleScope") ?? "").trim() || null;
+
+  try {
+    await confirmShiftProposal(actor, seriesId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/shifts");
+  if (origin) revalidatePath(`/${origin}/participation`);
+  redirectForRosterAction(origin, "proposalConfirmed");
+}
+
+// Re-place an existing series into another scope (standing ↔ cycle, or
+// cycle → cycle) — the destination scope's shift manager's act, per
+// D10. Posting the form with an empty cycleId demotes the series to a
+// standing one; a real cycleId places it into that cycle's roster.
+export async function setShiftSeriesScopeAction(formData: FormData) {
+  const actor = await requireMember();
+  const seriesId = String(formData.get("seriesId"));
+  const cycleId = String(formData.get("cycleId") ?? "").trim() || null;
+  const origin = String(formData.get("cycleScope") ?? "").trim() || null;
+
+  try {
+    await setShiftSeriesScope(actor, seriesId, cycleId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/shifts");
+  if (origin) revalidatePath(`/${origin}/participation`);
+  redirectForRosterAction(origin, "seriesReplaced");
 }

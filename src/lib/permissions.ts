@@ -14,6 +14,7 @@ export const PERMISSION_MODULE_KEYS = [
   "announcements",
   "support",
   "backstop",
+  "shift_management",
 ] as const;
 export type PermissionModuleKey = (typeof PERMISSION_MODULE_KEYS)[number];
 
@@ -33,6 +34,7 @@ export const PERMISSION_MODULE_LABELS: Record<PermissionModuleKey, string> = {
   announcements: "Announcements",
   support: "Support (View-as)",
   backstop: "Backstop",
+  shift_management: "Shift management",
 };
 
 export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
@@ -54,6 +56,8 @@ export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
     "Whoever currently holds a task granted here can view the platform exactly as another member would, read-only — see docs/spec.md's View-as (support).",
   backstop:
     "The standing accountable holder for critical tasks in this scope — cycle-shaped, like Announcements: a task placed in a cycle is that cycle's backstop (covering its critical tasks), a cycle-less task is the community/evergreen backstop (covering cycle-less criticals only, D1). Unclaimed criticals stay open and claimable for anyone — being the backstop is about being named responsible, not closing the task off.",
+  shift_management:
+    "Whoever holds a task granted here manages that scope's shift roster — opening sign-ups, confirming proposals, re-placing series — cycle-shaped like Announcements: a task placed in a cycle manages that cycle's roster, a cycle-less task manages the community's standing series. Placing a series in a collecting cycle is open to any member; managing (and adding standing series) is not. A roster with no grant-backed manager stays visibly closed.",
 };
 
 // Modules where more than one task can simultaneously grant access
@@ -71,7 +75,7 @@ export function allowsMultipleGrants(moduleKey: PermissionModuleKey): boolean {
 }
 
 // Which task(s) currently grant this module for a Community — the one
-// thing every one of the nine old fields/tags actually meant, and the
+// thing every one of the original fields/tags actually meant, and the
 // one thing every enforcement check below reads instead of a Community
 // column or a Task.tags match now. Scope is *not* an argument: it
 // travels on the granting task's own placement (`task.cycleId` — see

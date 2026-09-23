@@ -9,6 +9,8 @@ import {
   permissionGrant,
   phase,
   requirement,
+  shiftOccurrence,
+  shiftSeries,
   task,
   taskAssignment,
   taskDependency,
@@ -137,6 +139,15 @@ export const createCycleInput = z.discriminatedUnion("source", [
     source: z.literal("clone_previous"),
     name: z.string().min(1),
     cycleTypeId: z.string().uuid().nullable().optional(),
+    // A clone's own working dates (Phase 39's Event window) — optional.
+    // Set here (rather than only via updateCycleSettings afterwards) so
+    // the clone can re-derive its phased boundaries AND its shift
+    // roster's occurrence timestamps immediately, in the same call; a
+    // clone without them defers shift occurrence materialization ("defer
+    // occurrence materialization when target dates unknown", docs/cycle-
+    // scope-remediation-plan.md §4.8) to whenever the dates are set.
+    startDate: z.string().min(1).nullable().optional(),
+    endDate: z.string().min(1).nullable().optional(),
     // "Also clone its spatial plan?" — docs/spec.md's "Cloning across
     // cycles." Only meaningful on this exact path (the immediately-
     // previous-cycle clone), the same restriction Shadow slots'
@@ -227,7 +238,14 @@ export async function createCycle(actor: Member, input: CreateCycleInput) {
   }
 
   if (input.source === "clone_previous") {
-    return cloneMostRecentCycle(actor, input.name, input.cycleTypeId ?? null, input.cloneSpatialPlan ?? false);
+    return cloneMostRecentCycle(
+      actor,
+      input.name,
+      input.cycleTypeId ?? null,
+      input.cloneSpatialPlan ?? false,
+      input.startDate ?? null,
+      input.endDate ?? null,
+    );
   }
   return createBlankCycle(
     actor,
@@ -316,6 +334,8 @@ async function cloneMostRecentCycle(
   name: string,
   cycleTypeId: string | null,
   cloneSpatialPlan: boolean,
+  startDate: string | null,
+  endDate: string | null,
 ) {
   const [previous] = await db
     .select()
@@ -325,6 +345,9 @@ async function cloneMostRecentCycle(
     .limit(1);
   if (!previous) {
     throw new NotFoundError("No previous cycle to clone");
+  }
+  if (violatesBoundaryOrder(startDate, endDate)) {
+    throw new ConflictError("A cycle's end date can't be before its own start date");
   }
 
   return db.transaction(async (tx) => {
@@ -338,16 +361,31 @@ async function cloneMostRecentCycle(
         startedAt: new Date(),
         sourceType: "pack",
         cycleTypeId,
+        startDate,
+        endDate,
       })
       .returning();
 
     const phaseIdMap = await clonePhases(tx, previous, newCycle.id);
+    // A clone with its own dates set here (rather than null, ready to be
+    // filled in via updateCycleSettings later) resolves every cloned
+    // phase recipe against them immediately — the same recompute
+    // updateCycleSettings runs, so the two paths never drift.
+    if (startDate) {
+      await recomputePhaseDatesForCycle(tx, newCycle.id, startDate, endDate);
+    }
     const taskIdMap = await cloneTasks(tx, actor, previous.id, newCycle.id, phaseIdMap);
     await cloneRequirements(tx, taskIdMap);
     await cloneDependencies(tx, taskIdMap);
     await cloneTaskMilestones(tx, taskIdMap, phaseIdMap);
     await cloneWikiAndResources(tx, taskIdMap);
     await clonePermissionGrants(tx, taskIdMap);
+
+    // §2.6/D9-D11 — the roster carries across a clone (see
+    // cloneShiftRoster below): the placement (series rows, confirmed and
+    // proposed alike) always travels; occurrences re-derive their
+    // timestamps relative to the target cycle's dates when known.
+    await cloneShiftRoster(tx, actor, previous, newCycle);
 
     // Phase 38's own integration — see docs/spec.md's "Cloning across
     // cycles." Tasks were just cloned above in this same transaction,
@@ -842,6 +880,104 @@ async function clonePermissionGrants(tx: Tx, taskIdMap: Map<string, string>) {
     moduleKeysByTask.set(taskIdMap.get(g.taskId)!, keys);
   }
   await copyPermissionGrants(tx, oldGrants[0].communityId, moduleKeysByTask);
+}
+
+// §2.6/§4.8 — clone carries the roster. Placement is the declaration,
+// so that part always travels: every series of the previous cycle
+// clones into the new one, confirmed or proposed alike (a proposed one
+// carries as a proposal — confirmedAt null — for the new cycle's
+// manager to confirm). Occurrences are the tricky half: they're
+// absolute datetimes, so "cloning carries the recipe, not the date"
+// (docs/spec.md) applies — each occurrence is converted into a derived
+// offset recipe against the *source* cycle's start_date via the same
+// deriveClonedBoundaryRecipe machinery Phase 38/39 use, then resolved
+// against the destination cycle's own dates, preserving the original
+// time-of-day and duration. When the target dates aren't known yet (a
+// clone with no start_date — the common case, set later via
+// updateCycleSettings), occurrence materialization is deferred: the
+// series still arrives in the roster, with no occurrence rows until its
+// manager generates them (the plan's "defer occurrence materialization
+// when target dates unknown").
+async function cloneShiftRoster(
+  tx: Tx,
+  actor: Member,
+  previous: { id: string; startDate: string | null },
+  newCycle: { id: string; startDate: string | null; endDate: string | null },
+) {
+  const sourceSeries = await tx.select().from(shiftSeries).where(eq(shiftSeries.cycleId, previous.id));
+  if (sourceSeries.length === 0) return;
+
+  const newSeriesIdMap = new Map<string, string>();
+  for (const s of sourceSeries) {
+    const [newSeries] = await tx
+      .insert(shiftSeries)
+      .values({
+        communityId: actor.communityId,
+        branchId: s.branchId,
+        cycleId: newCycle.id,
+        title: s.title,
+        description: s.description,
+        defaultCapacity: s.defaultCapacity,
+        sourceTaskId: s.sourceTaskId,
+        confirmedAt: s.confirmedAt,
+        createdBy: actor.id,
+      })
+      .returning();
+    newSeriesIdMap.set(s.id, newSeries.id);
+  }
+
+  if (!previous.startDate || !newCycle.startDate) return;
+
+  const oldOccurrences = await tx
+    .select()
+    .from(shiftOccurrence)
+    .where(inArray(shiftOccurrence.seriesId, sourceSeries.map((s) => s.id)));
+  if (oldOccurrences.length === 0) return;
+
+  const rowsToInsert: { seriesId: string; startsAt: Date; endsAt: Date; capacity: number | null }[] = [];
+  for (const o of oldOccurrences) {
+    const newSeriesId = newSeriesIdMap.get(o.seriesId);
+    if (!newSeriesId) continue;
+    const newStartsAt = derivedCloneOccurrenceStart(
+      o.startsAt,
+      previous.startDate,
+      newCycle.startDate,
+      newCycle.endDate,
+    );
+    if (!newStartsAt) continue; // un-derivable — defer this one
+    rowsToInsert.push({
+      seriesId: newSeriesId,
+      startsAt: newStartsAt,
+      endsAt: new Date(newStartsAt.getTime() + (o.endsAt.getTime() - o.startsAt.getTime())),
+      capacity: o.capacity,
+    });
+  }
+  if (rowsToInsert.length > 0) {
+    await tx.insert(shiftOccurrence).values(rowsToInsert);
+  }
+}
+
+// One shift occurrence's absolute startsAt re-derived against a
+// destination cycle's dates: converted to an offset recipe measured in
+// days from the source cycle's start_date (deriveClonedBoundaryRecipe —
+// an un-derivable source yields a fully unset recipe and deferral),
+// resolved against the destination start/end, then the original
+// UTC time-of-day spliced back onto the resulting date so the shift's
+// clock time survives a cycle-length move.
+function derivedCloneOccurrenceStart(
+  startsAt: Date,
+  sourceCycleStart: string,
+  destCycleStart: string,
+  destCycleEnd: string | null,
+): Date | null {
+  const recipe = deriveClonedBoundaryRecipe(
+    { dateType: "absolute", date: startsAt.toISOString().slice(0, 10), relativeMode: null, offsetAnchor: null, offsetDays: null, percent: null },
+    sourceCycleStart,
+  );
+  const resolved = recomputeBoundary(recipe, destCycleStart, destCycleEnd);
+  if (!resolved.date) return null;
+  const withTime = new Date(`${resolved.date}T${startsAt.toISOString().slice(11)}`);
+  return Number.isNaN(withTime.getTime()) ? null : withTime;
 }
 
 export async function listCycles(actor: Member) {

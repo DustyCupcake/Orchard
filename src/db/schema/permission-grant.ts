@@ -2,10 +2,12 @@ import { pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
 import { task } from "./task";
 
-// Every one of these nine module keys used to be its own Community
-// column — either a tag matched against a task's general-purpose
-// Task.tags (admin/branch_coordination/support), or a single scalar
-// task-id pointer (the other six). Both shapes are replaced by this one
+// Every one of these module keys used to be its own Community column
+// (the nine originals — either a tag matched against a task's
+// general-purpose Task.tags (admin/branch_coordination/support), or a
+// single scalar task-id pointer (the other six)) — and the later
+// cycle-shaped modules (backstop, shift_management) arrive as plain
+// additions to the same table. Both shapes are replaced by this one
 // table: a row is a real, explicit "this task grants this module"
 // fact, never a string match against a field also used for ordinary
 // board categorization (docs/development-plan.md's Phase 63 — the tag
@@ -31,6 +33,7 @@ export const permissionGrantModuleEnum = pgEnum("permission_grant_module", [
   "announcements",
   "support",
   "backstop",
+  "shift_management",
 ]);
 
 // A plain new table, not a Community column — no circular-import

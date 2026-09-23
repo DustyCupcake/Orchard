@@ -331,9 +331,10 @@ export async function splitSubtaskAction(formData: FormData) {
   redirect(`/tasks/${created.id}`);
 }
 
-// Any current holder, enforced inside rotateTaskIntoShift — a
-// one-click action, no form fields of its own. The original Task is
-// left untouched; this just starts a new ShiftSeries.
+// The standing scope's shift manager's act, enforced inside
+// rotateTaskIntoShift (D10) — a one-click action, no form fields of its
+// own. The original Task is left untouched; this just starts a new
+// standing ShiftSeries.
 export async function rotateIntoShiftAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));

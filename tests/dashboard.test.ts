@@ -21,7 +21,7 @@ import { closeProposalsToVoting } from "@/lib/budget";
 import { createEventProposal } from "@/lib/event-scheduling";
 import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
 import { fileConflictReport } from "@/lib/conflict";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, grantShiftManagementTo, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
@@ -476,8 +476,9 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
   });
 
   it("Shifts: a coordinator sees an ended occurrence with an unresolved signup", async () => {
-    const { alice, bob } = await createFixtures();
+    const { alice, bob, branch: testBranch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["shifts"] });
+    await grantShiftManagementTo(alice, testBranch.id);
     const series = await createShiftSeries(alice, { title: "Dish duty", defaultCapacity: 2 });
     const [occurrence] = await generateShiftOccurrences(alice, series.id, {
       mode: "explicit",
@@ -496,8 +497,9 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
   });
 
   it("Shifts: the signed-up member (not the coordinator) sees their own past shift needing completion", async () => {
-    const { alice, bob } = await createFixtures();
+    const { alice, bob, branch: testBranch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["shifts"] });
+    await grantShiftManagementTo(alice, testBranch.id);
     const series = await createShiftSeries(alice, { title: "Dish duty", defaultCapacity: 2 });
     const [occurrence] = await generateShiftOccurrences(alice, series.id, {
       mode: "explicit",
