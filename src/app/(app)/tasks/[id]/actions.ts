@@ -216,8 +216,13 @@ export async function updateMilestoneAction(formData: FormData) {
   const milestoneId = String(formData.get("milestoneId"));
 
   try {
+    // The edit form has no label field (a milestone's name is set at add
+    // time and shown read-only when editing its date/deadline), so an
+    // absent label must not fail updateTaskMilestoneInput's min(1) check —
+    // map it to undefined rather than a blank string.
+    const label = String(formData.get("label") ?? "").trim() || undefined;
     await updateTaskMilestone(actor, milestoneId, {
-      label: String(formData.get("label") ?? ""),
+      label,
       date: milestoneDateFromForm(formData),
       isDeadline: formData.get("isDeadline") === "on",
     });

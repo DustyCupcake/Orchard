@@ -44,7 +44,17 @@ export default function ActionMenu({ children, label = "More actions" }: { child
       {open && (
         <div
           role="menu"
-          onClick={() => setOpen(false)}
+          onClick={() => {
+            // Rows are server-action <form>s (Release, escalate, …) and
+            // <Link>s passed in from a Server Component. Closing here
+            // synchronously would unmount the clicked row — and its
+            // <form> — before the click's default action (the form
+            // submission) can run, silently swallowing the action. Defer
+            // the close to the next task so the submission starts first;
+            // the menu still collapses right after, and the page the
+            // action revalidates/redirects to replaces it anyway.
+            setTimeout(() => setOpen(false), 0);
+          }}
           className="absolute right-0 top-8 z-20 flex w-52 flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-md,0_4px_14px_rgba(0,0,0,0.08))] [&_button]:w-full [&_button]:rounded-none [&_button]:border-0 [&_button]:bg-transparent [&_button]:px-3 [&_button]:py-2 [&_button]:text-left [&_button]:text-[13px] [&_button]:text-[var(--text)] [&_button]:hover:bg-[var(--surface-sunken)] [&_a]:block [&_a]:px-3 [&_a]:py-2 [&_a]:text-[13px] [&_a]:text-[var(--text)] [&_a]:hover:bg-[var(--surface-sunken)]"
         >
           {children}
