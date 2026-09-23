@@ -49,6 +49,7 @@ import {
   updateRequirement,
   updateRequirementInput,
   updateTask,
+  updateTaskInput,
   updateTaskMilestone,
   waiveAndClaim,
   waiveAndClaimInput,
@@ -141,21 +142,55 @@ export async function addResourceAction(formData: FormData) {
   revalidatePath(`/tasks/${taskId}`);
 }
 
-// The only place a task's own cycleId is ever set after creation — see
-// the "Change cycle" disclosure below the header meta line. Open to
-// any member, same as Requirements/Dependencies editing on this page
-// (updateTask's own REST route already permits this to any community
-// member; this just gives it a real form). Activating a proposal onto
-// the board (src/app/(app)/proposals/actions.ts's activateProposalAction)
-// is the other, more common way a task gets a cycleId — this covers
-// fixing it afterward, or a task that was never given one.
-export async function updateTaskCycleAction(formData: FormData) {
+// Backs the "Edit task" disclosure at the top of the task page — the
+// only place a task's core fields (title, description, branch, cycle,
+// phase, effort, capacity, critical, tags) are edited after creation.
+// Open to any member, same posture as Requirements/Dependencies editing
+// on this page (updateTask's own REST route already permits this to any
+// community member; this just gives it a real form). Submitting a blank
+// "No cycle" clears the cycle and likewise "No phase" clears the phase;
+// updateTask itself guards the "phase belongs to the resulting cycle"
+// invariant when the two are changed together.
+export async function updateTaskAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
-  const cycleIdRaw = String(formData.get("cycleId") ?? "").trim();
 
   try {
-    await updateTask(actor, taskId, { cycleId: cycleIdRaw || null });
+    const title = String(formData.get("title") ?? "").trim();
+    const description = String(formData.get("description") ?? "").trim();
+    const branchId = String(formData.get("branchId") ?? "").trim();
+    const cycleIdRaw = String(formData.get("cycleId") ?? "").trim();
+    const phaseIdRaw = String(formData.get("phaseId") ?? "").trim();
+    const tags = String(formData.get("tags") ?? "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    const effort = String(formData.get("effort") ?? "one_off");
+    const duration = String(formData.get("duration") ?? "");
+    const hoursPerWeekRaw = String(formData.get("hoursPerWeek") ?? "");
+    const effortMagnitude =
+      effort === "one_off"
+        ? { duration: duration || "few_hours" }
+        : { hours_per_week: Number(hoursPerWeekRaw) || 1 };
+
+    const capacityRaw = String(formData.get("capacity") ?? "");
+    const cycleId = cycleIdRaw || null;
+
+    const input = updateTaskInput.parse({
+      title: title || undefined,
+      description: description || undefined,
+      branchId: branchId || undefined,
+      cycleId,
+      phaseId: phaseIdRaw || null,
+      tags,
+      effort,
+      effortMagnitude,
+      capacity: capacityRaw ? Number(capacityRaw) : null,
+      critical: formData.get("critical") === "on",
+    });
+
+    await updateTask(actor, taskId, input);
   } catch (err) {
     redirectWithError(taskId, err);
   }

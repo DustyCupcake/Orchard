@@ -94,7 +94,7 @@ import {
   suggestSomeoneAction,
   updateMilestoneAction,
   updateRequirementAction,
-  updateTaskCycleAction,
+  updateTaskAction,
   updateTaskPermissionGrantsAction,
   waiveAndClaimAction,
   withdrawCandidacyAction,
@@ -230,7 +230,7 @@ export default async function TaskDetailPage({
     (t) => !dependencies.some((d) => d.dependsOnTaskId === t.id),
   );
 
-  // For the "Change cycle" control below — open to any member (same
+  // For the "Edit task" panel's Cycle select — open to any member (same
   // "Requirements/Dependencies are open to any member" posture the
   // comment just below this one describes for the rest of the page),
   // so fetched unconditionally rather than gated behind
@@ -575,6 +575,253 @@ export default async function TaskDetailPage({
       )}
       {taskRow.description && <p className="mt-3 text-[14px] text-[var(--text)]">{taskRow.description}</p>}
 
+      {/* Edit task — the only place a task's core details (title,
+          description, branch, cycle, phase, effort, capacity, critical,
+          tags) and its Requirements/Dependencies management live; kept
+          closed by default so the page reads as a status/notes view.
+          Any member can adjust these, the same "Requirements/Depen-
+          dencies are open to any member" posture this page already
+          had — the controls just moved in here. */}
+      <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
+        <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Edit task</summary>
+
+        <form action={updateTaskAction} className="mt-3 flex flex-col gap-3">
+          <input type="hidden" name="taskId" value={taskRow.id} />
+          <label className="flex flex-col gap-1">
+            <span className="text-[12px] font-medium text-[var(--text-muted)]">Title</span>
+            <input type="text" name="title" defaultValue={taskRow.title} className={INPUT} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[12px] font-medium text-[var(--text-muted)]">Description</span>
+            <textarea name="description" rows={3} defaultValue={taskRow.description ?? ""} className={INPUT} />
+          </label>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-[12px] font-medium text-[var(--text-muted)]">Branch</span>
+              <select name="branchId" defaultValue={taskRow.branchId} className={INPUT}>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {communityRow.cyclesEnabled && (
+              <label className="flex flex-col gap-1">
+                <span className="text-[12px] font-medium text-[var(--text-muted)]">Cycle</span>
+                <select name="cycleId" defaultValue={taskRow.cycleId ?? ""} className={INPUT}>
+                  <option value="">No cycle (unscoped)</option>
+                  {allCycles.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="flex flex-col gap-1">
+              <span className="text-[12px] font-medium text-[var(--text-muted)]">Phase</span>
+              <select name="phaseId" defaultValue={taskRow.phaseId ?? ""} className={INPUT}>
+                <option value="">No phase</option>
+                {cyclePhases.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-[12px] font-medium text-[var(--text-muted)]">Effort</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <EffortFields
+                  defaultEffort={taskRow.effort}
+                  defaultDuration={(taskRow.effortMagnitude as { duration?: string } | null | undefined)?.duration}
+                  defaultHoursPerWeek={
+                    (taskRow.effortMagnitude as { hours_per_week?: number } | null | undefined)?.hours_per_week
+                  }
+                />
+              </div>
+            </div>
+            <label className="flex flex-col gap-1">
+              <span className="text-[12px] font-medium text-[var(--text-muted)]">Capacity (blank = uncapped)</span>
+              <input type="number" name="capacity" min={1} defaultValue={taskRow.capacity ?? ""} className={`${INPUT} w-24`} />
+            </label>
+            <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+              <input type="checkbox" name="critical" defaultChecked={taskRow.critical} /> Critical
+            </label>
+          </div>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-[12px] font-medium text-[var(--text-muted)]">Tags (comma-separated)</span>
+            <input type="text" name="tags" defaultValue={(taskRow.tags ?? []).join(", ")} className={INPUT} />
+          </label>
+
+          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+            Save changes
+          </button>
+        </form>
+
+        <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+          <p className="text-[13px] font-medium text-[var(--text)]">Requirements</p>
+          {requirements.length === 0 && <p className="mt-1 text-[12px] text-[var(--text-muted)]">None yet.</p>}
+          <ul className="mt-2 flex flex-col gap-2">
+            {requirements.map((r) => {
+              const value = r.value as { tierId?: string; language?: string; taskId?: string; flag?: string };
+              return (
+                <li key={r.id} className="flex flex-wrap items-center gap-3 text-[13px] text-[var(--text)]">
+                  <span>{describeRequirement(r, tierNames)}</span>
+                  <details>
+                    <summary className="cursor-pointer text-[12px] text-[var(--accent-1)]">Edit</summary>
+                    <form action={updateRequirementAction} className="mt-2 flex flex-wrap items-center gap-2">
+                      <input type="hidden" name="taskId" value={taskRow.id} />
+                      <input type="hidden" name="requirementId" value={r.id} />
+                      <input type="hidden" name="requirementType" value={r.type} />
+                      {r.type === "tier" && (
+                        <select name="requirementTierId" defaultValue={value.tierId ?? ""} className={INPUT}>
+                          <option value="">Tier…</option>
+                          {tierOptions.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {r.type === "language" && (
+                        <input type="text" name="requirementLanguage" defaultValue={value.language ?? ""} className={INPUT} />
+                      )}
+                      {r.type === "completed_task" && (
+                        <select name="requirementCompletedTaskId" defaultValue={value.taskId ?? ""} className={INPUT}>
+                          <option value="">Task…</option>
+                          {communityTasks.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.title}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {r.type === "custom" && (
+                        <input type="text" name="requirementFlag" defaultValue={value.flag ?? ""} className={INPUT} />
+                      )}
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        Update
+                      </button>
+                    </form>
+                  </details>
+                  <form action={deleteRequirementAction}>
+                    <input type="hidden" name="taskId" value={taskRow.id} />
+                    <input type="hidden" name="requirementId" value={r.id} />
+                    <button type="submit" className={BUTTON_GHOST}>
+                      Remove
+                    </button>
+                  </form>
+                </li>
+              );
+            })}
+          </ul>
+
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Add a requirement</summary>
+            <form action={addRequirementAction} className="mt-2 flex max-w-[420px] flex-col gap-2">
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <div className="flex flex-wrap items-center gap-2">
+                <select name="requirementType" required defaultValue="" className={INPUT}>
+                  <option value="" disabled>
+                    Type…
+                  </option>
+                  <option value="tier">Tier</option>
+                  <option value="language">Language</option>
+                  <option value="completed_task">Completed a specific task</option>
+                  <option value="custom">Custom flag</option>
+                </select>
+                <select name="requirementMode" defaultValue="individual_gate" className={INPUT}>
+                  <option value="individual_gate">Individual gate</option>
+                  <option value="group_coverage">Group coverage</option>
+                  <option value="soft_priority">Soft priority</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+                <select name="requirementTierId" defaultValue="" className={INPUT}>
+                  <option value="">Tier…</option>
+                  {tierOptions.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                (if type = tier)
+              </label>
+              <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+                <input type="text" name="requirementLanguage" placeholder="language" className={INPUT} />
+                (if type = language)
+              </label>
+              <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+                <select name="requirementCompletedTaskId" defaultValue="" className={INPUT}>
+                  <option value="">Task…</option>
+                  {communityTasks.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title}
+                    </option>
+                  ))}
+                </select>
+                (if type = completed task)
+              </label>
+              <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+                <input type="text" name="requirementFlag" placeholder="custom flag" className={INPUT} />
+                (if type = custom)
+              </label>
+              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                Add
+              </button>
+            </form>
+          </details>
+        </div>
+
+        <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+          <p className="text-[13px] font-medium text-[var(--text)]">Dependencies</p>
+          {dependencies.length === 0 && <p className="mt-1 text-[12px] text-[var(--text-muted)]">None.</p>}
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {dependencies.map((d) => (
+              <li key={d.dependsOnTaskId} className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text)]">
+                <Link href={`/tasks/${d.dependsOnTaskId}`} className="font-medium text-[var(--accent-1)] hover:underline">
+                  {d.title}
+                </Link>
+                <span className="text-[var(--text-muted)]">({d.status})</span>
+                <form action={removeDependencyAction}>
+                  <input type="hidden" name="taskId" value={taskRow.id} />
+                  <input type="hidden" name="dependsOnTaskId" value={d.dependsOnTaskId} />
+                  <button type="submit" className={BUTTON_GHOST}>
+                    Remove
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+
+          {dependencyOptions.length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Add dependencies</summary>
+              <form action={addDependencyAction} className="mt-2 flex max-w-[420px] flex-col gap-2">
+                <input type="hidden" name="taskId" value={taskRow.id} />
+                <select name="dependsOnTaskIds" multiple className={`${INPUT} h-32`}>
+                  {dependencyOptions.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                  Add
+                </button>
+              </form>
+            </details>
+          )}
+        </div>
+      </details>
+
       <div className="mt-3 flex flex-wrap items-start gap-2">
         <details className="group">
           <summary
@@ -895,6 +1142,9 @@ export default async function TaskDetailPage({
       <div className="min-w-0">
       <section>
         <SectionHeading>Requirements</SectionHeading>
+        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          Status only — add, edit, and remove live in the <em>Edit task</em> panel above.
+        </p>
         {requirements.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
         <ul className="mt-2 flex flex-col gap-2">
           {requirements.map((r) => {
@@ -919,124 +1169,22 @@ export default async function TaskDetailPage({
                   : unmetIds.has(r.id)
                     ? "not met"
                     : "met";
-            const value = r.value as { tierId?: string; language?: string; taskId?: string; flag?: string };
             return (
               <li key={r.id} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-2.5 text-[13px]">
                 <span style={{ color: statusColor }}>
                   {describeRequirement(r, tierNames)} — {statusLabel}
                 </span>
-                <div className="mt-1.5 flex flex-wrap items-center gap-3">
-                  <details>
-                    <summary className="cursor-pointer text-[12px] text-[var(--accent-1)]">Edit</summary>
-                    <form action={updateRequirementAction} className="mt-2 flex flex-wrap items-center gap-2">
-                      <input type="hidden" name="taskId" value={taskRow.id} />
-                      <input type="hidden" name="requirementId" value={r.id} />
-                      <input type="hidden" name="requirementType" value={r.type} />
-                      {r.type === "tier" && (
-                        <select name="requirementTierId" defaultValue={value.tierId ?? ""} className={INPUT}>
-                          <option value="">Tier…</option>
-                          {tierOptions.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      {r.type === "language" && (
-                        <input type="text" name="requirementLanguage" defaultValue={value.language ?? ""} className={INPUT} />
-                      )}
-                      {r.type === "completed_task" && (
-                        <select name="requirementCompletedTaskId" defaultValue={value.taskId ?? ""} className={INPUT}>
-                          <option value="">Task…</option>
-                          {communityTasks.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.title}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      {r.type === "custom" && (
-                        <input type="text" name="requirementFlag" defaultValue={value.flag ?? ""} className={INPUT} />
-                      )}
-                      <button type="submit" className={BUTTON_SECONDARY}>
-                        Save
-                      </button>
-                    </form>
-                  </details>
-                  <form action={deleteRequirementAction}>
-                    <input type="hidden" name="taskId" value={taskRow.id} />
-                    <input type="hidden" name="requirementId" value={r.id} />
-                    <button type="submit" className={BUTTON_GHOST}>
-                      Remove
-                    </button>
-                  </form>
-                </div>
               </li>
             );
           })}
         </ul>
-
-        <details className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Add a requirement</summary>
-          <form action={addRequirementAction} className="mt-3 flex max-w-[420px] flex-col gap-2">
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            <div className="flex flex-wrap items-center gap-2">
-              <select name="requirementType" required defaultValue="" className={INPUT}>
-                <option value="" disabled>
-                  Type…
-                </option>
-                <option value="tier">Tier</option>
-                <option value="language">Language</option>
-                <option value="completed_task">Completed a specific task</option>
-                <option value="custom">Custom flag</option>
-              </select>
-              <select name="requirementMode" defaultValue="individual_gate" className={INPUT}>
-                <option value="individual_gate">Individual gate</option>
-                <option value="group_coverage">Group coverage</option>
-                <option value="soft_priority">Soft priority</option>
-              </select>
-            </div>
-            <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
-              <select name="requirementTierId" defaultValue="" className={INPUT}>
-                <option value="">Tier…</option>
-                {tierOptions.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-              (if type = tier)
-            </label>
-            <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
-              <input type="text" name="requirementLanguage" placeholder="language" className={INPUT} />
-              (if type = language)
-            </label>
-            <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
-              <select name="requirementCompletedTaskId" defaultValue="" className={INPUT}>
-                <option value="">Task…</option>
-                {communityTasks.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title}
-                  </option>
-                ))}
-              </select>
-              (if type = completed task)
-            </label>
-            <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
-              <input type="text" name="requirementFlag" placeholder="custom flag" className={INPUT} />
-              (if type = custom)
-            </label>
-            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-              Add
-            </button>
-          </form>
-        </details>
       </section>
 
       <section className="mt-6">
         <SectionHeading>Dependencies</SectionHeading>
         <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-          This task can&rsquo;t be finished while any of these are still open.
+          This task can&rsquo;t be finished while any of these are still open. Add and remove live
+          in the <em>Edit task</em> panel above.
         </p>
         {dependencies.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None.</p>}
         <ul className="mt-2 flex flex-col gap-1.5">
@@ -1046,35 +1194,9 @@ export default async function TaskDetailPage({
                 {d.title}
               </Link>
               <span className="text-[var(--text-muted)]">({d.status})</span>
-              <form action={removeDependencyAction}>
-                <input type="hidden" name="taskId" value={taskRow.id} />
-                <input type="hidden" name="dependsOnTaskId" value={d.dependsOnTaskId} />
-                <button type="submit" className={BUTTON_GHOST}>
-                  Remove
-                </button>
-              </form>
             </li>
           ))}
         </ul>
-
-        {dependencyOptions.length > 0 && (
-          <details className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-            <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Add dependencies</summary>
-            <form action={addDependencyAction} className="mt-3 flex max-w-[420px] flex-col gap-2">
-              <input type="hidden" name="taskId" value={taskRow.id} />
-              <select name="dependsOnTaskIds" multiple className={`${INPUT} h-32`}>
-                {dependencyOptions.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title}
-                  </option>
-                ))}
-              </select>
-              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                Add
-              </button>
-            </form>
-          </details>
-        )}
       </section>
 
       {canGrantPermissions && (
@@ -1743,26 +1865,7 @@ export default async function TaskDetailPage({
           </section>
         )}
 
-        {communityRow.cyclesEnabled && (
-          <details className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
-            <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Change cycle</summary>
-            <form action={updateTaskCycleAction} className="mt-3 flex flex-col gap-2">
-              <input type="hidden" name="taskId" value={taskRow.id} />
-              <select name="cycleId" defaultValue={taskRow.cycleId ?? ""} className={INPUT}>
-                <option value="">No cycle (unscoped)</option>
-                {allCycles.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
-                Save
-              </button>
-            </form>
-          </details>
-        )}
-      </aside>
+        </aside>
       </div>{/* end grid */}
 
     </main>

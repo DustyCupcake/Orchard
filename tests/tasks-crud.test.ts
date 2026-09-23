@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { branch, community, task, taskDependency } from "@/db/schema";
+import { branch, community, phase, task, taskDependency } from "@/db/schema";
 import { claimTask, createTask, deleteTask, listDistinctTags, listTasks, updateTask } from "@/lib/tasks";
+import { createCycle } from "@/lib/cycles";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
@@ -58,6 +59,70 @@ describe("task CRUD", () => {
     const updated = await updateTask(alice, created.id, { title: "Water the fruit trees" });
     expect(updated.title).toBe("Water the fruit trees");
     expect(updated.status).toBe("unclaimed");
+  });
+
+  // Two cycles with phases + an unclaimed task filed under the first
+  // cycle's Procurement phase — the fixture the phase/cycle invariant
+  // tests below rest on.
+  async function cycleStructure() {
+    const { branch: testBranch, alice, community: testCommunity } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, testCommunity.id));
+
+    const season = await createCycle(alice, {
+      source: "blank",
+      name: "Season",
+      startDate: "2027-01-01",
+      endDate: "2027-12-31",
+      phases: [
+        { name: "Procurement", order: 0, startDate: "2027-01-01", endDate: "2027-01-31" },
+        { name: "Build", order: 1, startDate: "2027-02-01", endDate: "2027-04-01" },
+      ],
+    });
+    const following = await createCycle(alice, {
+      source: "blank",
+      name: "Following",
+      startDate: "2028-01-01",
+      endDate: "2028-12-31",
+      phases: [{ name: "Planting", order: 0, startDate: "2028-02-01", endDate: "2028-03-01" }],
+      confirmed: true,
+    });
+    const [procurement] = await db.select().from(phase).where(eq(phase.cycleId, season.id)).orderBy(phase.order);
+    const [planting] = await db.select().from(phase).where(eq(phase.cycleId, following.id)).orderBy(phase.order);
+
+    const taskRow = await createTask(alice, {
+      branchId: testBranch.id,
+      title: "Grow the orchard",
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+      cycleId: season.id,
+      phaseId: procurement.id,
+    });
+    return { alice, season, following, procurement, planting, taskRow };
+  }
+
+  it("drops a stale phase when a task moves into another cycle", async () => {
+    const { alice, following, taskRow } = await cycleStructure();
+    expect(taskRow.phaseId).not.toBeNull();
+
+    const moved = await updateTask(alice, taskRow.id, { cycleId: following.id });
+    expect(moved.cycleId).toBe(following.id);
+    expect(moved.phaseId).toBeNull();
+  });
+
+  it("keeps a named phase that belongs to the destination cycle", async () => {
+    const { alice, following, planting, taskRow } = await cycleStructure();
+
+    const moved = await updateTask(alice, taskRow.id, { cycleId: following.id, phaseId: planting.id });
+    expect(moved.cycleId).toBe(following.id);
+    expect(moved.phaseId).toBe(planting.id);
+  });
+
+  it("clears the phase when the task's cycle is cleared", async () => {
+    const { alice, taskRow } = await cycleStructure();
+
+    const cleared = await updateTask(alice, taskRow.id, { cycleId: null });
+    expect(cleared.cycleId).toBeNull();
+    expect(cleared.phaseId).toBeNull();
   });
 
   it("deletes an unclaimed task created by the actor", async () => {

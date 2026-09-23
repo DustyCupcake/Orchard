@@ -318,6 +318,26 @@ export async function updateTask(actor: Member, taskId: string, input: UpdateTas
     }
   }
 
+  // A task's phase must belong to the cycle it ends up in — moving a
+  // task to another cycle (or clearing its cycle) while it still points
+  // at a phase from the old cycle leaves it dangling. The task page's
+  // Edit panel is one such path (its phase select lists the *current*
+  // cycle's phases), but this guard lives here so the invariant holds
+  // for every updater, REST PATCH included. When the cycle changes: an
+  // unnamed phase is dropped, and a named phase that isn't in the new
+  // cycle is dropped too.
+  if (input.cycleId !== undefined && input.cycleId !== existing.cycleId) {
+    if (input.phaseId === undefined) {
+      input.phaseId = null;
+    } else if (input.phaseId !== null) {
+      const [phaseRow] = await db
+        .select({ phaseCycleId: phase.cycleId })
+        .from(phase)
+        .where(eq(phase.id, input.phaseId));
+      if (!phaseRow || phaseRow.phaseCycleId !== input.cycleId) input.phaseId = null;
+    }
+  }
+
   const resultingOpenness = input.openness ?? existing.openness;
   const resultingBrowsePeriodEnd =
     input.browsePeriodEnd !== undefined
