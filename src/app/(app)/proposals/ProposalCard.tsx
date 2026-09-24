@@ -303,6 +303,11 @@ export default function ProposalCard({
                 <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
                   Permissions granted by this task (optional)
                 </summary>
+                <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                  One rule, same as everywhere grants are edited (docs/cycle-scope-remediation-plan.md
+                  §5.4): a task grants what it sits in — wherever this proposal lands on the board,
+                  each checked module is granted for that task&rsquo;s own scope only.
+                </p>
                 <div className="mt-3 flex flex-col gap-1">
                   {PERMISSION_MODULE_KEYS.map((moduleKey) => (
                     <div key={moduleKey}>
