@@ -1,5 +1,6 @@
 import { boolean, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
+import { cycle } from "./cycle";
 import { member } from "./member";
 
 // A community-defined set of fields with a stated purpose — shared
@@ -39,6 +40,13 @@ export const formResponse = pgTable("form_response", {
   formId: uuid("form_id")
     .notNull()
     .references(() => form.id),
+  // The cycle this submission is about — docs/spec.md's `response.cycle_id`
+  // (spec.md:867). Post-cycle feedback is the first consumer
+  // (docs/cycle-scope-remediation-plan.md §4.3): a feedback_review task
+  // placed in a cycle reviews that cycle's responses, a cycle-less one
+  // reviews everything. Null = general feedback not tied to any one
+  // cycle (or a community that runs no cycles at all).
+  cycleId: uuid("cycle_id").references(() => cycle.id),
   submittedBy: uuid("submitted_by").references(() => member.id),
   values: jsonb("values").notNull(),
   submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),

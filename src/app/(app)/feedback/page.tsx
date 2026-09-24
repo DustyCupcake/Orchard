@@ -1,13 +1,13 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { member } from "@/db/schema";
+import { cycle, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getPostCycleFeedbackForm, listPostCycleFeedbackResponses } from "@/lib/forms";
 import type { FormField } from "@/lib/forms";
 import FieldPreview from "@/components/FieldPreview";
 import { ForbiddenError } from "@/lib/errors";
-import { Banner, BUTTON_PRIMARY, CARD, CheckField } from "@/components/ui/kit";
+import { Banner, BUTTON_PRIMARY, CARD, CheckField, SELECT } from "@/components/ui/kit";
 import { submitFeedbackAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +47,16 @@ export default async function FeedbackPage({
       )
     : new Map<string, string>();
 
+  // Which cycles a response can be "about" — most recently started
+  // first, so the default pick is the freshest one. Untagged responses
+  // ("General") stay meaningful for communities that run no cycles.
+  const cycles = await db
+    .select({ id: cycle.id, name: cycle.name })
+    .from(cycle)
+    .where(eq(cycle.communityId, viewing.communityId))
+    .orderBy(desc(cycle.startedAt));
+  const cycleNameById = new Map(cycles.map((c) => [c.id, c.name] as const));
+
   const fields = (form?.fields as FormField[] | undefined) ?? [];
 
   return (
@@ -78,6 +88,23 @@ export default async function FeedbackPage({
             {form.description && <p className="mt-1 text-[13px] text-[var(--text-muted)]">{form.description}</p>}
 
             <form action={submitFeedbackAction} className="mt-4 flex flex-col gap-4">
+              {cycles.length > 0 && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[13px] font-medium text-[var(--text)]">Which cycle is this about?</span>
+                  <span className="text-[12px] text-[var(--text-muted)]">
+                    Defaults to the most recent cycle; pick “General” for feedback not tied to one.
+                  </span>
+                  <select name="cycleId" defaultValue={cycles[0].id} className={SELECT}>
+                    {cycles.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                    <option value="">General — not about a specific cycle</option>
+                  </select>
+                </label>
+              )}
+
               {fields.map((f) => (
                 <FieldPreview
                   key={f.key}
@@ -102,7 +129,10 @@ export default async function FeedbackPage({
                 {responses.map((r) => (
                   <div key={r.id} className={CARD}>
                     <p className="text-[12px] text-[var(--text-muted)]">
-                      {r.submittedBy ? memberNameById.get(r.submittedBy) ?? "—" : "Anonymous"} —{" "}
+                      {r.submittedBy ? memberNameById.get(r.submittedBy) ?? "—" : "Anonymous"}
+                      {" — "}
+                      {r.cycleId ? cycleNameById.get(r.cycleId) ?? "—" : "General"}
+                      {" — "}
                       {new Date(r.submittedAt).toLocaleString()}
                     </p>
                     <ul className="mt-2 flex flex-col gap-1 text-[13px] text-[var(--text)]">

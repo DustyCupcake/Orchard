@@ -42,6 +42,7 @@ export async function submitFeedbackAction(formData: FormData) {
     const input = submitFormResponseInput.parse({
       values,
       anonymous: formData.get("anonymous") === "on",
+      cycleId: String(formData.get("cycleId") ?? "").trim() || null,
     });
     await submitPostCycleFeedback(actor, input);
   } catch (err) {

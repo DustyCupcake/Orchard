@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { community, form, formResponse, profileQuestion, task, taskAssignment } from "@/db/schema";
+import { community, cycle, form, formResponse, profileQuestion, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "./errors";
 import { listGrantingTaskIds } from "./permissions";
@@ -277,10 +277,14 @@ export async function getForm(actor: Member, formId: string) {
 // Submission is all-or-nothing against the form's field definitions —
 // required fields block the whole submission — the real behavioral
 // line spec draws between a Form and a Question (always independently
-// optional to answer).
+// optional to answer). cycleId is the cycle the response is about
+// (docs/spec.md's response.cycle_id; §4.3's feedback_review pass) —
+// null for general/untagged feedback; validated against the community
+// in submitFormResponse, not here.
 export const submitFormResponseInput = z.object({
   values: z.record(z.string(), z.unknown()),
   anonymous: z.boolean().optional(),
+  cycleId: z.string().uuid().nullable().optional(),
 });
 export type SubmitFormResponseInput = z.infer<typeof submitFormResponseInput>;
 
@@ -288,10 +292,26 @@ function isBlank(value: unknown) {
   return value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
 }
 
+// A response can name the cycle it's about — the cycle must be this
+// community's own, so a member can't tag a response with a foreign or
+// nonexistent cycle id.
+async function requireCycleInCommunity(communityId: string, cycleId: string) {
+  const [row] = await db
+    .select({ id: cycle.id })
+    .from(cycle)
+    .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, communityId)));
+  if (!row) {
+    throw new NotFoundError("Cycle not found in your community");
+  }
+}
+
 export async function submitFormResponse(actor: Member, formId: string, input: SubmitFormResponseInput) {
   const formRow = await getForm(actor, formId);
   if (formRow.archivedAt) {
     throw new ConflictError("This form is no longer accepting responses");
+  }
+  if (input.cycleId) {
+    await requireCycleInCommunity(actor.communityId, input.cycleId);
   }
 
   const fields = formRow.fields as FormField[];
@@ -305,7 +325,7 @@ export async function submitFormResponse(actor: Member, formId: string, input: S
 
   const [created] = await db
     .insert(formResponse)
-    .values({ formId, submittedBy, values: input.values })
+    .values({ formId, submittedBy, values: input.values, cycleId: input.cycleId ?? null })
     .returning();
   return created;
 }
@@ -367,12 +387,18 @@ async function getCommunityRow(communityId: string) {
   return row;
 }
 
-async function isFeedbackReviewHolder(actor: Member): Promise<boolean> {
+// The set of scopes the actor currently holds feedback review for —
+// the placement cycleIds (`task.cycleId`) of the feedback_review-
+// granted tasks they hold. A `null` member of the set means they hold
+// a cycle-less (community/evergreen) review task, which covers every
+// response — cycle-tagged or not, mirroring how spatial-planning's
+// cycle-less task is the community-wide owner.
+async function listHeldFeedbackReviewScopes(actor: Member): Promise<Set<string | null>> {
   const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "feedback_review");
-  if (grantingTaskIds.length === 0) return false;
+  if (grantingTaskIds.length === 0) return new Set();
 
-  const [holding] = await db
-    .select({ id: task.id })
+  const rows = await db
+    .select({ cycleId: task.cycleId })
     .from(task)
     .innerJoin(taskAssignment, eq(taskAssignment.taskId, task.id))
     .where(
@@ -383,7 +409,7 @@ async function isFeedbackReviewHolder(actor: Member): Promise<boolean> {
         eq(taskAssignment.isShadow, false),
       ),
     );
-  return Boolean(holding);
+  return new Set(rows.map((r) => r.cycleId));
 }
 
 export async function getPostCycleFeedbackForm(actor: Member) {
@@ -402,14 +428,29 @@ export async function submitPostCycleFeedback(actor: Member, input: SubmitFormRe
 
 // Only the feedback-review task's current holder sees responses —
 // same "the task is the authority" gate Conflict management's own
-// pointer field established.
+// pointer field established — and then only as far as the scope they
+// hold reaches (docs/cycle-scope-remediation-plan.md §4.3): a reviewer
+// holding the cycle-less task sees every response; one holding a task
+// placed in cycle C sees only responses tagged with that cycle — not
+// untagged "general" ones, which belong to the community/evergreen
+// scope.
 export async function listPostCycleFeedbackResponses(actor: Member) {
   const communityRow = await getCommunityRow(actor.communityId);
   if (!communityRow.postCycleFeedbackFormId) {
     return [];
   }
-  if (!(await isFeedbackReviewHolder(actor))) {
+  const heldScopes = await listHeldFeedbackReviewScopes(actor);
+  if (heldScopes.size === 0) {
     throw new ForbiddenError("Only the current feedback-review task holder can see responses");
   }
-  return listFormResponses(actor, communityRow.postCycleFeedbackFormId);
+  const conditions = [eq(formResponse.formId, communityRow.postCycleFeedbackFormId)];
+  if (!heldScopes.has(null)) {
+    conditions.push(
+      inArray(
+        formResponse.cycleId,
+        [...heldScopes].filter((c): c is string => c !== null),
+      ),
+    );
+  }
+  return db.select().from(formResponse).where(and(...conditions));
 }

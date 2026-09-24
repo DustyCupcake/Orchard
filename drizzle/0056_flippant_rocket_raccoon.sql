@@ -1,0 +1,2 @@
+ALTER TABLE "form_response" ADD COLUMN "cycle_id" uuid;--> statement-breakpoint
+ALTER TABLE "form_response" ADD CONSTRAINT "form_response_cycle_id_cycle_id_fk" FOREIGN KEY ("cycle_id") REFERENCES "public"."cycle"("id") ON DELETE no action ON UPDATE no action;

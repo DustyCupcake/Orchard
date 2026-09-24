@@ -228,7 +228,7 @@ describe("describeGrantScope / isMisplacedCommunityGrant", () => {
   });
 
   it("labels a cycle-less grant Community-wide for community-shaped/deferred modules, Evergreen for cycle-shaped ones", () => {
-    for (const moduleKey of ["admin", "conflict_team", "support", "announcements", "feedback_review", "recruitment"] as const) {
+    for (const moduleKey of ["admin", "conflict_team", "support", "announcements", "recruitment"] as const) {
       expect(describeGrantScope(moduleKey, null, null)).toBe("Community-wide");
     }
     for (const moduleKey of [
@@ -237,6 +237,7 @@ describe("describeGrantScope / isMisplacedCommunityGrant", () => {
       "branch_coordination",
       "backstop",
       "shift_management",
+      "feedback_review",
     ] as const) {
       expect(describeGrantScope(moduleKey, null, null)).toBe("Evergreen");
     }

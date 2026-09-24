@@ -21,8 +21,14 @@ import { archiveProfileQuestion, createProfileQuestion } from "@/lib/profile-que
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 import { setPermissionGrant } from "@/lib/permissions";
+import { createCycle } from "@/lib/cycles";
 
-async function insertReviewTask(communityId: string, branchId: string, createdBy: string) {
+async function insertReviewTask(
+  communityId: string,
+  branchId: string,
+  createdBy: string,
+  cycleId?: string | null,
+) {
   const [row] = await db
     .insert(task)
     .values({
@@ -32,6 +38,7 @@ async function insertReviewTask(communityId: string, branchId: string, createdBy
       effort: "owns_a_thing",
       effortMagnitude: { hours_per_week: 1 },
       createdBy,
+      ...(cycleId !== undefined && { cycleId }),
     })
     .returning();
   return row;
@@ -394,5 +401,96 @@ describe("post-cycle feedback consumer", () => {
     await expect(
       setPermissionGrant(alice.communityId, "feedback_review", strangerTask.id),
     ).rejects.toThrow(NotFoundError);
+  });
+});
+
+// docs/cycle-scope-remediation-plan.md §4.3 (the feedback_review half)
+// — formResponse.cycle_id lands, so a feedback_review task placed in a
+// cycle reviews that cycle's responses while a cycle-less one reviews
+// everything. The reviewer resolves scope from their own task's
+// placement, the same per-cycle resolver shape spatial-planning already
+// uses.
+describe("post-cycle feedback is cycle-scoped (§4.3)", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  async function setUpCycleFeedback() {
+    const fixtures = await createFixtures();
+    const surveyForm = await createForm(fixtures.alice, {
+      title: "Survey",
+      fields: surveyFields,
+      allowAnonymous: true,
+    });
+    await updateCommunity(fixtures.alice, { postCycleFeedbackFormId: surveyForm.id, cyclesEnabled: true });
+    const springCycle = await createCycle(fixtures.alice, { source: "blank", name: "Spring 2026" });
+    const summerCycle = await createCycle(fixtures.alice, { source: "blank", name: "Summer 2026", confirmed: true });
+    return { ...fixtures, surveyForm, springCycle, summerCycle };
+  }
+
+  const overallOf = (r: { values: unknown }) => (r.values as Record<string, unknown>).overall;
+
+  it("records the cycle a response is about, defaulting to null", async () => {
+    const { bob, springCycle } = await setUpCycleFeedback();
+
+    const tagged = await submitPostCycleFeedback(bob, { values: { overall: "Great" }, cycleId: springCycle.id });
+    expect(tagged.cycleId).toBe(springCycle.id);
+
+    const untagged = await submitPostCycleFeedback(bob, { values: { overall: "General note" } });
+    expect(untagged.cycleId).toBeNull();
+  });
+
+  it("rejects tagging a response with a cycle from another community", async () => {
+    const { bob } = await setUpCycleFeedback();
+    const { alice: strangerAlice } = await createFixtures();
+    await updateCommunity(strangerAlice, { cyclesEnabled: true });
+    const strangerCycle = await createCycle(strangerAlice, { source: "blank", name: "Elsewhere 2026" });
+
+    await expect(
+      submitPostCycleFeedback(bob, { values: { overall: "x" }, cycleId: strangerCycle.id }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("scopes each reviewer to their task's placement: one cycle, or every response for cycle-less", async () => {
+    const { alice, bob, branch, springCycle, summerCycle } = await setUpCycleFeedback();
+
+    await submitPostCycleFeedback(bob, { values: { overall: "Spring report" }, cycleId: springCycle.id });
+    await submitPostCycleFeedback(bob, { values: { overall: "Summer report" }, cycleId: summerCycle.id });
+    await submitPostCycleFeedback(bob, { values: { overall: "General note" } });
+
+    // Not a holder of any feedback_review task — forbidden.
+    await expect(listPostCycleFeedbackResponses(alice)).rejects.toThrow(ForbiddenError);
+
+    // Spring's reviewer: the spring-tagged response only — not summer's,
+    // and not the untagged general one (that belongs to the
+    // community/evergreen scope).
+    const springTask = await insertReviewTask(alice.communityId, branch.id, alice.id, springCycle.id);
+    await claimTask(alice, springTask.id);
+    await grantPermission(alice.communityId, "feedback_review", springTask.id);
+    const springResponses = await listPostCycleFeedbackResponses(alice);
+    expect(springResponses.map(overallOf)).toEqual(["Spring report"]);
+
+    // Summer's own reviewer coexists (single cardinality is per scope),
+    // seeing exactly summer's response.
+    const summerTask = await insertReviewTask(alice.communityId, branch.id, bob.id, summerCycle.id);
+    await claimTask(bob, summerTask.id);
+    await grantPermission(alice.communityId, "feedback_review", summerTask.id);
+    const summerResponses = await listPostCycleFeedbackResponses(bob);
+    expect(summerResponses.map(overallOf)).toEqual(["Summer report"]);
+  });
+
+  it("a cycle-less (evergreen) reviewer sees every response, cycle-tagged or not", async () => {
+    const { alice, bob, branch, springCycle, summerCycle } = await setUpCycleFeedback();
+
+    await submitPostCycleFeedback(bob, { values: { overall: "Spring report" }, cycleId: springCycle.id });
+    await submitPostCycleFeedback(bob, { values: { overall: "Summer report" }, cycleId: summerCycle.id });
+    await submitPostCycleFeedback(bob, { values: { overall: "General note" } });
+
+    const communityTask = await insertReviewTask(alice.communityId, branch.id, alice.id);
+    await claimTask(alice, communityTask.id);
+    await grantPermission(alice.communityId, "feedback_review", communityTask.id);
+
+    const responses = await listPostCycleFeedbackResponses(alice);
+    expect(responses).toHaveLength(3);
   });
 });
