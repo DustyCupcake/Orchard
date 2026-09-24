@@ -10,6 +10,7 @@ import {
   listDistinctTags,
   listMyPendingJoinRequests,
   listTasksWithAssignments,
+  sortUnclaimedQueue,
   tierNameLookup,
 } from "@/lib/tasks";
 import { listCoordinationBranchIds, isCoordinationHolder } from "@/lib/coordination";
@@ -33,9 +34,9 @@ type BoardTask = Awaited<ReturnType<typeof listTasksWithAssignments>>[number];
 
 export const dynamic = "force-dynamic";
 
-const VIEWS = ["kanban", "phase", "coverage"] as const;
+const VIEWS = ["unclaimed", "kanban", "phase", "coverage"] as const;
 type BoardView = (typeof VIEWS)[number];
-const VIEW_LABEL: Record<BoardView, string> = { kanban: "Kanban", phase: "By phase", coverage: "Branch coverage" };
+const VIEW_LABEL: Record<BoardView, string> = { unclaimed: "Unclaimed", kanban: "Kanban", phase: "By phase", coverage: "Branch coverage" };
 
 const COLUMNS = [
   { status: "unclaimed", label: "Unclaimed" },
@@ -159,7 +160,7 @@ export default async function BoardPage({
     if (v === "phase") return phaseViewAvailable;
     return true;
   });
-  const activeView: BoardView = visibleViews.includes(view as BoardView) ? (view as BoardView) : "kanban";
+  const activeView: BoardView = visibleViews.includes(view as BoardView) ? (view as BoardView) : "unclaimed";
   // Export only ever targets one real cycle — same "the current one"
   // scoping /participation's own whole-cycle export always used, now
   // reading the switcher's own resolved single-cycle state instead of
@@ -241,6 +242,13 @@ export default async function BoardPage({
   const viewTabs = visibleViews.map((v) => ({ key: v, label: VIEW_LABEL[v] }));
   const phaseGroups = activeView === "phase" ? groupTasksByPhase(filteredTasks, phases) : [];
   const branchCoverageGroups = activeView === "coverage" ? groupTasksByBranchCoverage(filteredTasks, branches, coordinationBranchIds) : [];
+  const phaseEndDateById = new Map(
+    phases.map((p) => [p.id, p.endDate] as const).filter(([, d]) => d !== null) as Array<readonly [string, string]>,
+  );
+  const unclaimedQueue = sortUnclaimedQueue(
+    filteredTasks.filter((t) => t.status === "unclaimed"),
+    phaseEndDateById,
+  );
 
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
 
@@ -514,6 +522,42 @@ export default async function BoardPage({
             ))}
           </ul>
         </section>
+      )}
+
+      {activeView === "unclaimed" && (
+        <div className="mt-6">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              Attention queue
+            </span>
+            <Tag>{unclaimedQueue.length}</Tag>
+          </div>
+          {unclaimedQueue.length === 0 ? (
+            <p className="text-sm text-[var(--text-muted)]">
+              No unclaimed tasks in this scope — the queue is clear.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {unclaimedQueue.map((t) => (
+                <li key={t.id}>
+                  <TaskCard
+                    task={t}
+                    assignments={t.assignments}
+                    requirements={t.requirements}
+                    unmetRequirements={t.unmetRequirements}
+                    groupCoverage={t.groupCoverage}
+                    tierNames={tierNames}
+                    branchName={branchNameById.get(t.branchId) ?? "—"}
+                    currentMemberId={viewing.id}
+                    myPendingRequestId={myPendingRequests.get(t.id) ?? null}
+                    isCoordinationHolderForBranch={coordinationBranchIds.has(t.branchId)}
+                    backstopName={backstopNameFor(t)}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {activeView === "kanban" && (
