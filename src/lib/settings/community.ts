@@ -48,6 +48,12 @@ export const updateCommunityInput = z.object({
   // Null turns off application intake — /apply says so. Same non-FK
   // pointer reasoning as postCycleFeedbackFormId.
   recruitmentApplicationFormId: z.string().uuid().nullable().optional(),
+  // Community-wide recruitment door toggles (docs/cycle-scope-
+  // remediation-plan.md §4.3/D13): close the *general* cycle-less doors
+  // so a community can run fully closed except for the cycles it opens
+  // (per-cycle doors live on the cycle itself).
+  recruitmentApplicationsOpen: z.boolean().optional(),
+  recruitmentInvitesOpen: z.boolean().optional(),
   recruitmentEvaluatorCount: z.number().int().positive().optional(),
   recruitmentDecisionRules: recruitmentDecisionRulesSchema.optional(),
   recruitmentSubscriptionLapseThreshold: z.number().int().positive().optional(),
@@ -166,6 +172,12 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       }),
       ...(input.recruitmentApplicationFormId !== undefined && {
         recruitmentApplicationFormId: input.recruitmentApplicationFormId,
+      }),
+      ...(input.recruitmentApplicationsOpen !== undefined && {
+        recruitmentApplicationsOpen: input.recruitmentApplicationsOpen,
+      }),
+      ...(input.recruitmentInvitesOpen !== undefined && {
+        recruitmentInvitesOpen: input.recruitmentInvitesOpen,
       }),
       ...(input.recruitmentEvaluatorCount !== undefined && {
         recruitmentEvaluatorCount: input.recruitmentEvaluatorCount,

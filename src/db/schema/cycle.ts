@@ -1,4 +1,4 @@
-import { date, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { date, integer, pgEnum, pgTable, text, timestamp, uuid, boolean } from "drizzle-orm/pg-core";
 import { community } from "./community";
 import { cycleType } from "./cycle-type";
 import { member } from "./member";
@@ -12,6 +12,11 @@ export const cycleStatusEnum = pgEnum("cycle_status", [
   "archived",
 ]);
 export const cycleSourceTypeEnum = pgEnum("cycle_source_type", ["blank", "pack"]);
+// §4.3/D12 — how a cycle's own invite links behave: `direct` invites
+// redeem straight into membership (skipping /apply), `referral` invites
+// route through the evaluated application instead. Defaults direct.
+export const joiningInviteModeEnum = pgEnum("joining_invite_mode", ["direct", "referral"]);
+export const JOINING_INVITE_MODES = ["direct", "referral"] as const;
 
 // A discrete run of production (a season, a reunion weekend, a one-off
 // event). Optional — a Community with `cycles_enabled = false` runs one
@@ -30,6 +35,26 @@ export const cycle = pgTable("cycle", {
   sourceType: cycleSourceTypeEnum("source_type").notNull().default("blank"),
   capacity: integer("capacity"),
   returningWindowClosesAt: timestamp("returning_window_closes_at", { withTimezone: true }),
+  // Per-cycle joining configuration (docs/cycle-scope-remediation-plan.md
+  // §4.3/D13, work-plan step 8c) — how and when this cycle admits new
+  // members. The application-form pointer is a plain uuid, the same
+  // non-FK pattern as community.recruitmentApplicationFormId (form.ts
+  // imports community.ts, so community.ts/cycle.ts can't import form.ts
+  // back); null falls back to the community's standing form. A cycle's
+  // joining period runs from the close of its returning-priority window
+  // (returningWindowClosesAt above — existing members declare first) or
+  // its start if none, until `joiningWindowClosesAt` (null = until the
+  // cycle closes). Both doors are shut outside that period and once
+  // capacity is reached — see src/lib/recruitment/joining.ts.
+  //
+  // Invites-only: joiningInviteMode (direct | referral) decides how this
+  // cycle's invite links behave; the invite plumbing itself is §4.3's
+  // work-plan step 8d.
+  recruitmentApplicationFormId: uuid("recruitment_application_form_id"),
+  applicationsOpen: boolean("applications_open").notNull().default(true),
+  invitesOpen: boolean("invites_open").notNull().default(true),
+  joiningInviteMode: joiningInviteModeEnum("joining_invite_mode").notNull().default("direct"),
+  joiningWindowClosesAt: timestamp("joining_window_closes_at", { withTimezone: true }),
   cycleTypeId: uuid("cycle_type_id").references(() => cycleType.id),
   // The event's own working dates — distinct from `started_at` (an
   // admin log entry of when the Cycle row itself was created). Neither

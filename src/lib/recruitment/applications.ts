@@ -14,6 +14,7 @@ import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../error
 import { requireModuleEnabled } from "../modules";
 import { getForm, submitPublicFormResponse } from "../forms";
 import { computeRecruitmentOutcome } from "./evaluations";
+import { getCycleJoiningState, type CycleJoiningState } from "./joining";
 import { getCommunityRow, isRecruitmentTaskHolder, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
 import { computeWiderDiscussionStatus, getRecruitmentDecision } from "./decisions";
 import { listObjections } from "./objections";
@@ -48,20 +49,44 @@ export const submitRecruitmentApplicationInput = z.object({
   // recruitmentApplicationInvite comment for why an applicant might
   // reference an invite link here instead of just redeeming it.
   inviteToken: z.string().min(1).nullable().optional(),
+  // The cycle this application is for (§4.3/8c): null = the community's
+  // general, cycle-less door. When set, the cycle's own joining config
+  // gates the submission and the response is tagged with the cycle.
+  cycleId: z.string().uuid().nullable().optional(),
 });
 export type SubmitRecruitmentApplicationInput = z.infer<typeof submitRecruitmentApplicationInput>;
 
-// Public — no actor. Always resolves the form id itself from
-// Community.recruitmentApplicationFormId rather than accepting one
-// from request input — see submitPublicFormResponse's own comment for
-// why that matters.
+// Public — no actor. Always resolves the form id itself from the
+// Community/Cycle config rather than accepting one from request input —
+// see submitPublicFormResponse's own comment for why that matters.
 export async function submitRecruitmentApplication(
   communityId: string,
   input: SubmitRecruitmentApplicationInput,
 ) {
   const communityRow = await getCommunityRow(communityId);
   requireModuleEnabled(communityRow, "recruitment");
-  if (!communityRow.recruitmentApplicationFormId) {
+
+  // Which door does this submission knock on (§4.3/8c)? A cycle-targeted
+  // application gates on the cycle's own joining state (period + door +
+  // capacity room); the general application gates on the community-wide
+  // door toggle.
+  const joining = input.cycleId ? await getCycleJoiningState(communityId, input.cycleId) : null;
+  if (joining) {
+    if (joining.atCapacity) {
+      throw new AppError("This cycle is full — no capacity left for new applications");
+    }
+    if (!joining.periodOpen) {
+      throw new AppError("Applications for this cycle aren't open right now");
+    }
+    if (!joining.cycle.applicationsOpen) {
+      throw new AppError("Applications for this cycle are closed");
+    }
+  } else if (!communityRow.recruitmentApplicationsOpen) {
+    throw new AppError("This community isn't accepting applications right now");
+  }
+
+  const formId = joining?.cycle.recruitmentApplicationFormId ?? communityRow.recruitmentApplicationFormId;
+  if (!formId) {
     throw new AppError("No application form is configured for this Community yet");
   }
 
@@ -82,9 +107,15 @@ export async function submitRecruitmentApplication(
     }
   }
 
-  const created = await submitPublicFormResponse(communityRow.recruitmentApplicationFormId, {
-    values: input.values,
-  });
+  const created = await submitPublicFormResponse(formId, { values: input.values });
+  if (joining) {
+    const [tagged] = await db
+      .update(formResponse)
+      .set({ cycleId: joining.cycle.id })
+      .where(eq(formResponse.id, created.id))
+      .returning();
+    return tagged;
+  }
 
   if (invite) {
     await db
@@ -93,6 +124,68 @@ export async function submitRecruitmentApplication(
   }
 
   return created;
+}
+
+// The form a public join lands on — the cycle's own pointer falling
+// back to the community's standing form (§4.3/8c). Shared by /apply's
+// page (to render the door/context, or "not accepting" copy instead of
+// a form) and its action (to build the fields, then submit).
+export type PublicApplicationFormResolution =
+  | { kind: "general"; form: typeof form.$inferSelect | null; applicationsOpen: boolean }
+  | { kind: "cycle"; form: typeof form.$inferSelect | null; joining: CycleJoiningState };
+
+export async function resolvePublicApplicationForm(
+  communityId: string,
+  cycleId: string | null,
+): Promise<PublicApplicationFormResolution> {
+  const communityRow = await getCommunityRow(communityId);
+  if (!cycleId) {
+    const formRow = communityRow.recruitmentApplicationFormId
+      ? await getRecruitmentApplicationFormPublicById(communityId, communityRow.recruitmentApplicationFormId)
+      : null;
+    return { kind: "general", form: formRow, applicationsOpen: communityRow.recruitmentApplicationsOpen };
+  }
+  const joining = await getCycleJoiningState(communityId, cycleId);
+  const formId = joining.cycle.recruitmentApplicationFormId ?? communityRow.recruitmentApplicationFormId;
+  const formRow = formId ? await getRecruitmentApplicationFormPublicById(communityId, formId) : null;
+  return { kind: "cycle", form: formRow, joining };
+}
+
+export async function getRecruitmentApplicationFormPublicById(communityId: string, formId: string) {
+  const [formRow] = await db
+    .select()
+    .from(form)
+    .where(and(eq(form.id, formId), eq(form.communityId, communityId)));
+  return formRow ?? null;
+}
+
+// Human-readable door enforcement for a resolved application surface —
+// the /apply action runs this to turn a shut or unconfigured door into
+// a clean redirect error; the page uses the resolution's bare state to
+// render "not accepting" copy instead of a form.
+export function requireApplicationDoorOpen(resolution: PublicApplicationFormResolution) {
+  if (resolution.kind === "general") {
+    if (!resolution.form) {
+      throw new AppError("No application form is configured for this Community yet");
+    }
+    if (!resolution.applicationsOpen) {
+      throw new AppError("This community isn't accepting applications right now");
+    }
+    return;
+  }
+  if (!resolution.form) {
+    throw new AppError("No application form is configured for this cycle yet");
+  }
+  const { joining } = resolution;
+  if (joining.atCapacity) {
+    throw new AppError("This cycle is full — no capacity left for new applications");
+  }
+  if (!joining.periodOpen) {
+    throw new AppError("Applications for this cycle aren't open right now");
+  }
+  if (!joining.cycle.applicationsOpen) {
+    throw new AppError("Applications for this cycle are closed");
+  }
 }
 
 async function isSubscribed(actor: Member): Promise<boolean> {

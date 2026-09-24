@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, cycle, formResponse, member, recruitmentApplicationInvite, recruitmentDecision, task } from "@/db/schema";
+import { community, cycle, formResponse, member, participation, recruitmentApplicationInvite, recruitmentDecision, task } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
-import { createCycle } from "@/lib/cycles";
+import { createCycle, updateCycleSettings } from "@/lib/cycles";
 import { claimTask } from "@/lib/tasks";
 import { archiveForm, createForm, listFormResponses, submitPublicFormResponse } from "@/lib/forms";
 import type { CreateFormInput } from "@/lib/forms";
@@ -12,6 +12,7 @@ import {
   computeRecruitmentOutcome,
   createCommunityInvite,
   getCommunityInviteByToken,
+  getCycleJoiningState,
   getMyRecruitmentSubscription,
   getRecruitmentApplicationForm,
   getRecruitmentApplicationFormPublic,
@@ -600,5 +601,184 @@ describe("cycle-scoped recruitment authority (docs/cycle-scope-remediation-plan.
 
     expect(await listHeldRecruitmentScopes(alice)).toEqual(new Set([null, cycleA.id]));
     expect(await listApplicationsForEvaluation(alice)).toHaveLength(2);
+  });
+});
+
+// --- cycle-targeted intake (docs/cycle-scope-remediation-plan.md §4.3,
+// work-plan step 8c) ---
+
+describe("cycle-targeted intake (docs/cycle-scope-remediation-plan.md §4.3/8c)", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  // Recruitment on, cycles enabled, a configured application form and
+  // one open cycle to target.
+  async function setUpIntakeFixtures(fixtures: Awaited<ReturnType<typeof createFixtures>>) {
+    const { community: testCommunity, alice } = fixtures;
+    await enableRecruitment(testCommunity.id);
+    await enableCycles(testCommunity.id);
+    const form = await createForm(alice, { title: "Application", fields: applicationFields });
+    await updateCommunity(alice, { recruitmentApplicationFormId: form.id });
+    const cycleRow = await createCycle(alice, { source: "blank", name: "Season A" });
+    return { form, cycle: cycleRow };
+  }
+
+  it("submitting with a cycleId tags the response with that cycle", async () => {
+    const fixtures = await createFixtures();
+    const { form, cycle } = await setUpIntakeFixtures(fixtures);
+
+    const created = await submitRecruitmentApplication(fixtures.community.id, {
+      values: { name: "Dana" },
+      cycleId: cycle.id,
+    });
+
+    expect(created.cycleId).toBe(cycle.id);
+    expect(created.formId).toBe(form.id);
+  });
+
+  it("prefers the cycle's own form pointer over the community's standing form", async () => {
+    const fixtures = await createFixtures();
+    const { alice } = fixtures;
+    const { cycle } = await setUpIntakeFixtures(fixtures);
+    const cycleForm = await createForm(alice, { title: "Cycle-specific form", fields: applicationFields });
+    await updateCycleSettings(alice, cycle.id, { recruitmentApplicationFormId: cycleForm.id });
+
+    const created = await submitRecruitmentApplication(fixtures.community.id, {
+      values: { name: "Dana" },
+      cycleId: cycle.id,
+    });
+
+    expect(created.formId).toBe(cycleForm.id);
+  });
+
+  it("a general /apply submit stays untagged and uses the community's form", async () => {
+    const fixtures = await createFixtures();
+    const { form } = await setUpIntakeFixtures(fixtures);
+
+    const created = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
+
+    expect(created.cycleId).toBeNull();
+    expect(created.formId).toBe(form.id);
+  });
+
+  it("rejects a cycleId from outside the community", async () => {
+    const fixtures = await createFixtures();
+    await setUpIntakeFixtures(fixtures);
+
+    await expect(
+      submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" }, cycleId: crypto.randomUUID() }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("updateCycleSettings persists the joining config", async () => {
+    const fixtures = await createFixtures();
+    const { alice, community: testCommunity } = fixtures;
+    const { cycle } = await setUpIntakeFixtures(fixtures);
+    const cycleForm = await createForm(alice, { title: "Cycle form", fields: applicationFields });
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+
+    await updateCycleSettings(alice, cycle.id, {
+      recruitmentApplicationFormId: cycleForm.id,
+      applicationsOpen: false,
+      invitesOpen: false,
+      joiningInviteMode: "referral",
+      joiningWindowClosesAt: future,
+    });
+
+    const state = await getCycleJoiningState(testCommunity.id, cycle.id);
+    expect(state.cycle.recruitmentApplicationFormId).toBe(cycleForm.id);
+    expect(state.cycle.applicationsOpen).toBe(false);
+    expect(state.cycle.invitesOpen).toBe(false);
+    expect(state.cycle.joiningInviteMode).toBe("referral");
+    expect(state.cycle.joiningWindowClosesAt?.toISOString()).toBe(new Date(future).toISOString());
+  });
+
+  it("rejects a cycle form pointer from another community", async () => {
+    const fixtures = await createFixtures();
+    const { alice } = fixtures;
+    const { cycle } = await setUpIntakeFixtures(fixtures);
+    const other = await createFixtures();
+    const foreignForm = await createForm(other.alice, { title: "Elsewhere", fields: applicationFields });
+
+    await expect(
+      updateCycleSettings(alice, cycle.id, { recruitmentApplicationFormId: foreignForm.id }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("the community-wide applications toggle closes the general door but not a cycle's own", async () => {
+    const fixtures = await createFixtures();
+    const { alice, community: testCommunity } = fixtures;
+    const { form, cycle } = await setUpIntakeFixtures(fixtures);
+
+    await updateCommunity(alice, { recruitmentApplicationsOpen: false });
+
+    await expect(
+      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" } }),
+    ).rejects.toThrow(AppError);
+
+    // A cycle with its own applicationsOpen=true still admits — the
+    // per-cycle doors are §4.3's real gate, the community toggle only
+    // closes the general cycle-less door.
+    const created = await submitRecruitmentApplication(testCommunity.id, {
+      values: { name: "Dana" },
+      cycleId: cycle.id,
+    });
+    expect(created.formId).toBe(form.id);
+    expect(created.cycleId).toBe(cycle.id);
+  });
+
+  it("the per-cycle applicationsOpen flag shuts the cycle's door", async () => {
+    const fixtures = await createFixtures();
+    const { alice, community: testCommunity } = fixtures;
+    const { cycle } = await setUpIntakeFixtures(fixtures);
+    await updateCycleSettings(alice, cycle.id, { applicationsOpen: false });
+
+    await expect(
+      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" }, cycleId: cycle.id }),
+    ).rejects.toThrow(AppError);
+  });
+
+  it("the joining period gates intake — not yet open before the returning-priority window closes", async () => {
+    const fixtures = await createFixtures();
+    const { alice, community: testCommunity } = fixtures;
+    const { cycle } = await setUpIntakeFixtures(fixtures);
+    await updateCycleSettings(alice, cycle.id, {
+      returningWindowClosesAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+
+    await expect(
+      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" }, cycleId: cycle.id }),
+    ).rejects.toThrow(AppError);
+  });
+
+  it("the joining period gates intake — closed once joiningWindowClosesAt passes", async () => {
+    const fixtures = await createFixtures();
+    const { alice, community: testCommunity } = fixtures;
+    const { cycle } = await setUpIntakeFixtures(fixtures);
+    await updateCycleSettings(alice, cycle.id, {
+      joiningWindowClosesAt: new Date(Date.now() - 86_400_000).toISOString(),
+    });
+
+    await expect(
+      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" }, cycleId: cycle.id }),
+    ).rejects.toThrow(AppError);
+  });
+
+  it("capacity gates intake once comingCount fills the cycle", async () => {
+    const fixtures = await createFixtures();
+    const { alice, bob, community: testCommunity } = fixtures;
+    const { cycle } = await setUpIntakeFixtures(fixtures);
+    await updateCycleSettings(alice, cycle.id, { capacity: 1 });
+
+    await db.insert(participation).values({ cycleId: cycle.id, memberId: bob.id, status: "coming" });
+
+    const state = await getCycleJoiningState(testCommunity.id, cycle.id);
+    expect(state.atCapacity).toBe(true);
+    expect(state.applicationsOpen).toBe(false);
+
+    await expect(
+      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" }, cycleId: cycle.id }),
+    ).rejects.toThrow(AppError);
   });
 });

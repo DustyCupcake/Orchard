@@ -6,6 +6,8 @@ import {
   community,
   cycle,
   cycleType,
+  form,
+  JOINING_INVITE_MODES,
   permissionGrant,
   phase,
   requirement,
@@ -1050,6 +1052,15 @@ export const updateCycleSettingsInput = z.object({
   // Cycle.
   startDate: z.string().min(1).nullable().optional(),
   endDate: z.string().min(1).nullable().optional(),
+  // §4.3/8c joining configuration — see src/db/schema/cycle.ts's own
+  // comment block for what each of these does. Null clears the
+  // per-cycle form pointer (back to the community's) or the joining-
+  // window deadline (back to "until the cycle closes").
+  recruitmentApplicationFormId: z.string().uuid().nullable().optional(),
+  applicationsOpen: z.boolean().optional(),
+  invitesOpen: z.boolean().optional(),
+  joiningInviteMode: z.enum(JOINING_INVITE_MODES).optional(),
+  joiningWindowClosesAt: z.string().min(1).nullable().optional(),
 });
 export type UpdateCycleSettingsInput = z.infer<typeof updateCycleSettingsInput>;
 
@@ -1065,6 +1076,16 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
   }
   requireCycleOpen(row);
 
+  if (input.recruitmentApplicationFormId) {
+    const [formRow] = await db
+      .select({ id: form.id })
+      .from(form)
+      .where(and(eq(form.id, input.recruitmentApplicationFormId), eq(form.communityId, actor.communityId)));
+    if (!formRow) {
+      throw new NotFoundError("Form not found in your community");
+    }
+  }
+
   const nextStartDate = input.startDate !== undefined ? input.startDate : row.startDate;
   const nextEndDate = input.endDate !== undefined ? input.endDate : row.endDate;
   if (violatesBoundaryOrder(nextStartDate, nextEndDate)) {
@@ -1077,6 +1098,15 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
       ...(input.capacity !== undefined && { capacity: input.capacity }),
       ...(input.returningWindowClosesAt !== undefined && {
         returningWindowClosesAt: input.returningWindowClosesAt ? new Date(input.returningWindowClosesAt) : null,
+      }),
+      ...(input.recruitmentApplicationFormId !== undefined && {
+        recruitmentApplicationFormId: input.recruitmentApplicationFormId,
+      }),
+      ...(input.applicationsOpen !== undefined && { applicationsOpen: input.applicationsOpen }),
+      ...(input.invitesOpen !== undefined && { invitesOpen: input.invitesOpen }),
+      ...(input.joiningInviteMode !== undefined && { joiningInviteMode: input.joiningInviteMode }),
+      ...(input.joiningWindowClosesAt !== undefined && {
+        joiningWindowClosesAt: input.joiningWindowClosesAt ? new Date(input.joiningWindowClosesAt) : null,
       }),
       ...(input.startDate !== undefined && { startDate: input.startDate }),
       ...(input.endDate !== undefined && { endDate: input.endDate }),

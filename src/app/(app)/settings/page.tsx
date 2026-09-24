@@ -602,6 +602,23 @@ export default async function SettingsPage({
               </span>
             </label>
 
+            <FieldSet legend="Recruitment doors">
+              <CheckField
+                label="General applications open"
+                name="recruitmentApplicationsOpen"
+                defaultChecked={communityRow.recruitmentApplicationsOpen}
+              />
+              <CheckField
+                label="General invites open"
+                name="recruitmentInvitesOpen"
+                defaultChecked={communityRow.recruitmentInvitesOpen}
+              />
+              <span className="text-[12px] text-[var(--text-muted)]">
+                Close the community&rsquo;s general cycle-less doors to run fully closed except for the cycles
+                or periods you open — per-cycle doors live on each cycle&rsquo;s own settings (§4.3/D13).
+              </span>
+            </FieldSet>
+
             <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
               Save
             </button>

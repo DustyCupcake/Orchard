@@ -81,6 +81,14 @@ export const community = pgTable("community", {
   // pointer convention, reused here rather than growing a second one.
   // Null = no application form configured yet — /apply says so.
   recruitmentApplicationFormId: uuid("recruitment_application_form_id"),
+  // Community-wide recruitment door toggles (docs/cycle-scope-remediation-
+  // plan.md §4.3/D13): close the *general* cycle-less doors so a
+  // community can run fully closed except for the cycles/periods it
+  // opens (per-cycle doors live on the cycle itself). Default true — a
+  // community that has never touched these keeps working exactly as
+  // before.
+  recruitmentApplicationsOpen: boolean("recruitment_applications_open").notNull().default(true),
+  recruitmentInvitesOpen: boolean("recruitment_invites_open").notNull().default(true),
   // "However many evaluators the Community assigns (two, in the
   // reference case)" — see docs/spec.md's Recruitment. "The
   // evaluators" are resolved as whoever currently holds a task granting

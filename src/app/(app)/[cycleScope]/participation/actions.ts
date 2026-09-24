@@ -134,6 +134,9 @@ export async function updateCycleSettingsAction(formData: FormData) {
   const windowRaw = String(formData.get("returningWindowClosesAt") ?? "").trim();
   const startDateRaw = String(formData.get("startDate") ?? "").trim();
   const endDateRaw = String(formData.get("endDate") ?? "").trim();
+  const applicationFormId = String(formData.get("recruitmentApplicationFormId") ?? "").trim() || null;
+  const joiningModeRaw = String(formData.get("joiningInviteMode") ?? "").trim();
+  const joiningWindowRaw = String(formData.get("joiningWindowClosesAt") ?? "").trim();
 
   try {
     const input = updateCycleSettingsInput.parse({
@@ -141,6 +144,11 @@ export async function updateCycleSettingsAction(formData: FormData) {
       returningWindowClosesAt: windowRaw ? new Date(windowRaw).toISOString() : null,
       startDate: startDateRaw || null,
       endDate: endDateRaw || null,
+      recruitmentApplicationFormId: applicationFormId,
+      applicationsOpen: formData.get("applicationsOpen") === "on",
+      invitesOpen: formData.get("invitesOpen") === "on",
+      joiningInviteMode: joiningModeRaw === "referral" ? "referral" : "direct",
+      joiningWindowClosesAt: joiningWindowRaw ? new Date(joiningWindowRaw).toISOString() : null,
     });
     await updateCycleSettings(actor, cycleId, input);
   } catch (err) {

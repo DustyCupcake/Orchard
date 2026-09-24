@@ -219,6 +219,8 @@ export async function updateRecruitmentSettingsAction(formData: FormData) {
     await requireAdmins(actor);
     const input = updateCommunityInput.parse({
       recruitmentApplicationFormId: String(formData.get("recruitmentApplicationFormId") ?? "").trim() || null,
+      recruitmentApplicationsOpen: formData.get("recruitmentApplicationsOpen") === "on",
+      recruitmentInvitesOpen: formData.get("recruitmentInvitesOpen") === "on",
       recruitmentEvaluatorCount: Number(formData.get("recruitmentEvaluatorCount") ?? NaN) || undefined,
       recruitmentDecisionRules: parseDecisionRules(String(formData.get("recruitmentDecisionRulesRaw") ?? "")),
       recruitmentSubscriptionLapseThreshold:

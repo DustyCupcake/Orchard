@@ -11,6 +11,7 @@ import {
 import { getBudgetCycleForCycle, getCurrentBudgetCycle } from "@/lib/budget";
 import { getCycleParticipationSummary, getMyParticipation } from "@/lib/participation";
 import { getCycleShiftRoster } from "@/lib/shifts";
+import { listForms } from "@/lib/forms";
 import {
   confirmShiftProposalAction,
   openCycleShiftSignupsAction,
@@ -422,6 +423,10 @@ async function ParticipationForCycle({
   // Only needed for the cycle-settings/phase-dates sections below —
   // skip the extra query entirely for anyone who can't see them.
   const withPhases = canConfigure ? await getCycle(viewing, cycleId) : null;
+  // Forms pickable as the cycle's own application form (blank = fall
+  // back to the community's standing form) — only for the same
+  // audience, same reason.
+  const forms = canConfigure ? await listForms(viewing) : [];
   // Admin-only, and only meaningful for a still-open cycle — see
   // closeCycle's own budget-owner warning (src/lib/cycles/lifecycle.ts).
   const budgetCycleRow =
@@ -563,7 +568,7 @@ async function ParticipationForCycle({
           <SectionHeading>Cycle settings</SectionHeading>
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             Visible to you because you can start a cycle for this Community — the same authority
-            configures its capacity and returning-priority window.
+            configures its capacity, returning-priority window, and joining config (§4.3/8c).
           </p>
           <form action={updateCycleSettingsAction} className="mt-3 flex max-w-[400px] flex-col gap-2">
             <input type="hidden" name="cycleId" value={cycleId} />
@@ -587,6 +592,60 @@ async function ParticipationForCycle({
                 name="returningWindowClosesAt"
                 defaultValue={
                   summary.returningWindowClosesAt ? toDatetimeLocal(new Date(summary.returningWindowClosesAt)) : ""
+                }
+                className={`${INPUT} w-fit`}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Application form (optional — blank = community standing form)</span>
+              <select
+                name="recruitmentApplicationFormId"
+                className={`${INPUT} w-fit`}
+                defaultValue={withPhases?.recruitmentApplicationFormId ?? ""}
+              >
+                <option value="">— use the community&apos;s form —</option>
+                {forms
+                  .filter((f) => !f.archivedAt)
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.title}
+                    </option>
+                  ))}
+              </select>
+              <span className="text-[12px] text-[var(--text-muted)]">
+                The cycle&rsquo;s joining window runs from the returning-priority close above until the
+                deadline below; both doors are shut outside it and once capacity is reached.
+              </span>
+            </label>
+            <CheckField
+              label="Applications open"
+              name="applicationsOpen"
+              defaultChecked={withPhases?.applicationsOpen ?? true}
+            />
+            <CheckField label="Invites open" name="invitesOpen" defaultChecked={withPhases?.invitesOpen ?? true} />
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Invite mode</span>
+              <select
+                name="joiningInviteMode"
+                className={`${INPUT} w-fit`}
+                defaultValue={withPhases?.joiningInviteMode ?? "direct"}
+              >
+                <option value="direct">Direct — invite redeems straight into membership</option>
+                <option value="referral">Referral — invite routes through the evaluated application</option>
+              </select>
+              <span className="text-[12px] text-[var(--text-muted)]">
+                How this cycle&rsquo;s invite links behave — the invite plumbing itself lands in §4.3&rsquo;s step 8d.
+              </span>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Joining window closes at (optional — blank = until the cycle closes)</span>
+              <input
+                type="datetime-local"
+                name="joiningWindowClosesAt"
+                defaultValue={
+                  withPhases?.joiningWindowClosesAt
+                    ? toDatetimeLocal(new Date(withPhases.joiningWindowClosesAt))
+                    : ""
                 }
                 className={`${INPUT} w-fit`}
               />
