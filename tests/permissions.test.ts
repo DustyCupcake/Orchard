@@ -227,8 +227,8 @@ describe("describeGrantScope / isMisplacedCommunityGrant", () => {
     expect(describeGrantScope("spatial_planning", "cycle-1", null)).toBe("that cycle");
   });
 
-  it("labels a cycle-less grant Community-wide for community-shaped/deferred modules, Evergreen for cycle-shaped ones", () => {
-    for (const moduleKey of ["admin", "conflict_team", "support", "announcements", "recruitment"] as const) {
+  it("labels a cycle-less grant Community-wide for community-shaped modules, Evergreen for cycle-shaped ones", () => {
+    for (const moduleKey of ["admin", "conflict_team", "support", "announcements"] as const) {
       expect(describeGrantScope(moduleKey, null, null)).toBe("Community-wide");
     }
     for (const moduleKey of [
@@ -238,6 +238,7 @@ describe("describeGrantScope / isMisplacedCommunityGrant", () => {
       "backstop",
       "shift_management",
       "feedback_review",
+      "recruitment",
     ] as const) {
       expect(describeGrantScope(moduleKey, null, null)).toBe("Evergreen");
     }

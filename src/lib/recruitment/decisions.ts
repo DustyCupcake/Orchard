@@ -19,7 +19,7 @@ import { ConflictError, NotFoundError } from "../errors";
 import { createTask } from "../tasks";
 import { createPoll } from "../scheduling-polls";
 import { generateToken } from "../token";
-import { getCommunityRow, requireRecruitmentTaskHolder } from "./access";
+import { getCommunityRow, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
 import { computeRecruitmentOutcome } from "./evaluations";
 import { listGrantingTaskIds } from "../permissions";
 import { answerProfileQuestion } from "../profile-questions";
@@ -371,6 +371,17 @@ export async function resolveWiderDiscussionManually(
   input: ResolveWiderDiscussionInput,
 ) {
   await requireRecruitmentTaskHolder(actor);
+  const [responseRow] = await db
+    .select({ cycleId: formResponse.cycleId })
+    .from(formResponse)
+    .where(eq(formResponse.id, formResponseId));
+  if (!responseRow) {
+    throw new NotFoundError("Application not found");
+  }
+  // Deciding, like evaluating, is scoped to the holder's placement
+  // (§4.3): a cycle-placed recorder only resolves their own cycle's
+  // applications.
+  await requireRecruitmentScopeForCycle(actor, responseRow.cycleId);
   const decision = await getRecruitmentDecision(formResponseId);
   if (!decision || decision.ruleOutcome !== "wider_discussion") {
     throw new NotFoundError("No open wider-discussion decision for this application");

@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { cycle } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
@@ -9,6 +12,7 @@ import {
   isRecruitmentTaskHolder,
   listApplicationAlerts,
   listApplicationsForEvaluation,
+  listHeldRecruitmentScopes,
   listOpenIntroCallsForSubscriber,
 } from "@/lib/recruitment";
 import type { FormField } from "@/lib/forms";
@@ -60,14 +64,26 @@ export default async function ApplicationsPage({
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");
 
-  const [subscription, isHolder, form, appUrl, openIntroCalls] = await Promise.all([
+  const [subscription, isHolder, form, appUrl, openIntroCalls, heldScopes, cycles] = await Promise.all([
     moduleOn ? getMyRecruitmentSubscription(viewing) : Promise.resolve(null),
     moduleOn ? isRecruitmentTaskHolder(viewing) : Promise.resolve(false),
     moduleOn ? getRecruitmentApplicationForm(viewing) : Promise.resolve(null),
     resolveAppUrlFromHeaders(),
     moduleOn ? listOpenIntroCallsForSubscriber(viewing) : Promise.resolve([]),
+    moduleOn ? listHeldRecruitmentScopes(viewing) : Promise.resolve(new Set<string | null>()),
+    moduleOn
+      ? db.select({ id: cycle.id, name: cycle.name }).from(cycle).where(eq(cycle.communityId, viewing.communityId))
+      : Promise.resolve([] as { id: string; name: string }[]),
   ]);
   const fields = (form?.fields as FormField[] | undefined) ?? [];
+  // Where this holder's recruitment authority reaches (docs/cycle-
+  // scope-remediation-plan.md §4.3) — the scope line and per-
+  // application cycle tag below both render it.
+  const cycleNameById = new Map(cycles.map((c) => [c.id, c.name] as const));
+  const heldScopeCycles = cycles.filter((c) => heldScopes.has(c.id));
+  const coverageLine = heldScopes.has(null)
+    ? "You cover the community-wide scope — every application, cycle-tagged or not."
+    : `You cover only: ${heldScopeCycles.map((c) => c.name).join(", ")}.`;
   const lapsed =
     Boolean(subscription?.id) &&
     !subscription?.active &&
@@ -207,6 +223,7 @@ export default async function ApplicationsPage({
           {form && isHolder && (
             <section style={{ marginTop: "1.5rem" }}>
               <h2>Applications ({full.length})</h2>
+              <p style={{ color: "#666", fontSize: "0.85rem" }}>{coverageLine}</p>
               {full.length === 0 && <p style={{ color: "#666" }}>Nothing pending.</p>}
               {full.map(({ response, evaluations, outcome, evaluationsFiled, evaluatorsNeeded, decision, widerDiscussionStatus, objections, convertedMember }) => {
                 const myEvaluation = evaluations.find((e) => e.evaluatorId === viewing.id);
@@ -217,6 +234,9 @@ export default async function ApplicationsPage({
                   >
                     <p style={{ margin: "0 0 0.4rem", fontSize: "0.8rem", color: "#666" }}>
                       Submitted {new Date(response.submittedAt).toLocaleString()}
+                      {response.cycleId
+                        ? ` — for ${cycleNameById.get(response.cycleId) ?? "that cycle"}`
+                        : " — not tied to a cycle"}
                     </p>
                     <ul style={{ margin: "0 0 0.5rem" }}>
                       {fields.map((f) => {

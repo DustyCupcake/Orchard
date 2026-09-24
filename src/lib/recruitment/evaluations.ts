@@ -5,7 +5,7 @@ import { communityInvite, evaluation, formResponse, recruitmentApplicationInvite
 import type { community as communityTable, member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
-import { getCommunityRow, requireRecruitmentTaskHolder } from "./access";
+import { getCommunityRow, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityRow = typeof communityTable.$inferSelect;
@@ -187,7 +187,7 @@ export async function submitEvaluation(actor: Member, formResponseId: string, in
   }
 
   const [responseRow] = await db
-    .select({ id: formResponse.id })
+    .select({ id: formResponse.id, cycleId: formResponse.cycleId })
     .from(formResponse)
     .where(
       and(eq(formResponse.id, formResponseId), eq(formResponse.formId, communityRow.recruitmentApplicationFormId)),
@@ -195,6 +195,11 @@ export async function submitEvaluation(actor: Member, formResponseId: string, in
   if (!responseRow) {
     throw new NotFoundError("Application not found");
   }
+
+  // A cycle-placed evaluator can only act on their own cycle's
+  // applications — the §4.3 scope rule, enforced on every write just as
+  // it is on the pipeline listing.
+  await requireRecruitmentScopeForCycle(actor, responseRow.cycleId);
 
   const values = { recommendation: input.recommendation, notes: input.notes ?? null, filedAt: new Date() };
 

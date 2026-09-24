@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { objection, recruitmentSubscription } from "@/db/schema";
+import { objection, formResponse, recruitmentSubscription } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
-import { getCommunityRow, requireRecruitmentTaskHolder } from "./access";
+import { getCommunityRow, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
 import { computeWiderDiscussionStatus, getRecruitmentDecision } from "./decisions";
 
 type Member = typeof memberTable.$inferSelect;
@@ -51,9 +51,18 @@ export async function raiseObjection(actor: Member, formResponseId: string, inpu
 // never returned: "anonymous" reads unqualified here, the same posture
 // the Anonymous task signal already takes, not just "hidden from the
 // wider community." See src/db/schema/recruitment.ts's objection
-// comment.
+// comment. Scoped like every other holder read (§4.3): a cycle-placed
+// holder only sees objections on their own cycle's applications.
 export async function listObjections(actor: Member, formResponseId: string) {
   await requireRecruitmentTaskHolder(actor);
+  const [responseRow] = await db
+    .select({ cycleId: formResponse.cycleId })
+    .from(formResponse)
+    .where(eq(formResponse.id, formResponseId));
+  if (!responseRow) {
+    throw new NotFoundError("Application not found");
+  }
+  await requireRecruitmentScopeForCycle(actor, responseRow.cycleId);
   const rows = await db
     .select({ id: objection.id, note: objection.note, raisedAt: objection.raisedAt })
     .from(objection)

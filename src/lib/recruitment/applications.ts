@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -14,7 +14,7 @@ import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../error
 import { requireModuleEnabled } from "../modules";
 import { getForm, submitPublicFormResponse } from "../forms";
 import { computeRecruitmentOutcome } from "./evaluations";
-import { getCommunityRow, isRecruitmentTaskHolder, requireRecruitmentTaskHolder } from "./access";
+import { getCommunityRow, isRecruitmentTaskHolder, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
 import { computeWiderDiscussionStatus, getRecruitmentDecision } from "./decisions";
 import { listObjections } from "./objections";
 
@@ -144,7 +144,13 @@ export async function listApplicationAlerts(actor: Member) {
 
 // Holder-only — full applicant answers, filed evaluations, the
 // live-computed outcome, and (once reached) the persisted decision
-// plus any objections, one row per pending application.
+// plus any objections, one row per pending application. Scoped by the
+// holder's recruitment placement (docs/cycle-scope-remediation-plan.md
+// §4.3): a cycle-placed holder sees only that cycle's applications
+// (formResponse.cycleId in their held scopes); a holder of the
+// cycle-less community/evergreen task sees every application — its own
+// cycle's and untagged — the same filter feedback's
+// listPostCycleFeedbackResponses already builds.
 export async function listApplicationsForEvaluation(actor: Member) {
   await requireRecruitmentTaskHolder(actor);
   const communityRow = await getCommunityRow(actor.communityId);
@@ -152,10 +158,21 @@ export async function listApplicationsForEvaluation(actor: Member) {
     return [];
   }
 
+  const heldScopes = await listHeldRecruitmentScopes(actor);
+  const conditions = [eq(formResponse.formId, communityRow.recruitmentApplicationFormId)];
+  if (!heldScopes.has(null)) {
+    conditions.push(
+      inArray(
+        formResponse.cycleId,
+        [...heldScopes].filter((c): c is string => c !== null),
+      ),
+    );
+  }
+
   const responses = await db
     .select()
     .from(formResponse)
-    .where(eq(formResponse.formId, communityRow.recruitmentApplicationFormId))
+    .where(and(...conditions))
     .orderBy(desc(formResponse.submittedAt));
 
   return Promise.all(

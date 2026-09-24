@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, member, recruitmentApplicationInvite, task } from "@/db/schema";
+import { community, cycle, formResponse, member, recruitmentApplicationInvite, recruitmentDecision, task } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
+import { createCycle } from "@/lib/cycles";
 import { claimTask } from "@/lib/tasks";
 import { archiveForm, createForm, listFormResponses, submitPublicFormResponse } from "@/lib/forms";
 import type { CreateFormInput } from "@/lib/forms";
@@ -16,7 +17,10 @@ import {
   getRecruitmentApplicationFormPublic,
   listApplicationAlerts,
   listApplicationsForEvaluation,
+  listHeldRecruitmentScopes,
+  listObjections,
   requireValidDecisionRules,
+  resolveWiderDiscussionManually,
   revokeCommunityInvite,
   setRecruitmentSubscriptionActive,
   submitEvaluation,
@@ -432,5 +436,169 @@ describe("Recruitment subscription", () => {
     const deactivated = await setRecruitmentSubscriptionActive(alice, false);
     expect(deactivated.id).toBe(activated.id);
     expect(deactivated.active).toBe(false);
+  });
+});
+
+// --- cycle-scoped recruitment authority (docs/cycle-scope-remediation-
+// plan.md §4.3, work-plan step 8b) ---
+
+async function enableCycles(communityId: string) {
+  await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
+}
+
+// 8c's intake will tag applications through the public path; until then
+// the scope rides on the FormResponse row (formResponse.cycleId), so
+// tests insert it directly the way the planned per-cycle intake will.
+async function insertApplicationResponse(formId: string, cycleId: string | null, name: string) {
+  const [row] = await db
+    .insert(formResponse)
+    .values({ formId, cycleId, submittedBy: null, values: { name } })
+    .returning();
+  return row;
+}
+
+describe("cycle-scoped recruitment authority (docs/cycle-scope-remediation-plan.md §4.3)", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  // Recruitment on, cycles enabled, an application form configured, and
+  // two cycles to place work in.
+  async function setUpCycleFixtures(fixtures: Awaited<ReturnType<typeof createFixtures>>) {
+    const { community: testCommunity, alice } = fixtures;
+    await enableRecruitment(testCommunity.id);
+    await enableCycles(testCommunity.id);
+    const form = await createForm(alice, { title: "Application", fields: applicationFields });
+    await updateCommunity(alice, { recruitmentApplicationFormId: form.id });
+    const cycleA = await createCycle(alice, { source: "blank", name: "Season A" });
+    // createCycle guards against two open cycles (Phase 65) — close A at
+    // the row level so the fixture can open B through the same API.
+    await db.update(cycle).set({ closedAt: new Date() }).where(eq(cycle.id, cycleA.id));
+    const cycleB = await createCycle(alice, { source: "blank", name: "Season B" });
+    return { form, cycleA, cycleB };
+  }
+
+  // Places a recruitment task in `cycleId` (null = the standing,
+  // community/evergreen placement) and makes alice its holder.
+  async function designateRecruitment(fixtures: Awaited<ReturnType<typeof createFixtures>>, cycleId: string | null) {
+    const { community: testCommunity, branch, alice } = fixtures;
+    const t = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId });
+    await grantPermission(testCommunity.id, "recruitment", t.id);
+    const [refetchedAlice] = await db.select().from(member).where(eq(member.id, alice.id));
+    await claimTask(refetchedAlice, t.id);
+    return refetchedAlice;
+  }
+
+  it("a cycle-less (community/evergreen) placement is the null scope", async () => {
+    const fixtures = await createFixtures();
+    await setUpCycleFixtures(fixtures);
+    const communityWide = await designateRecruitment(fixtures, null);
+    expect(await listHeldRecruitmentScopes(communityWide)).toEqual(new Set([null]));
+  });
+
+  it("a cycle-placed recruitment task yields exactly that cycle's scope", async () => {
+    const fixtures = await createFixtures();
+    const { cycleA } = await setUpCycleFixtures(fixtures);
+    const cycleHeld = await designateRecruitment(fixtures, cycleA.id);
+    expect(await listHeldRecruitmentScopes(cycleHeld)).toEqual(new Set([cycleA.id]));
+  });
+
+  it("a cycle-less (community/evergreen) task covers every application — tagged and untagged", async () => {
+    const fixtures = await createFixtures();
+    const { form, cycleA } = await setUpCycleFixtures(fixtures);
+    const alice = await designateRecruitment(fixtures, null);
+
+    const tagged = await insertApplicationResponse(form.id, cycleA.id, "Dana");
+    const untagged = await insertApplicationResponse(form.id, null, "Eli");
+
+    const full = await listApplicationsForEvaluation(alice);
+    expect(full.map((f) => f.response.id).sort()).toEqual([tagged.id, untagged.id].sort());
+  });
+
+  it("a recruitment task placed in cycle C sees only cycle C's applications", async () => {
+    const fixtures = await createFixtures();
+    const { form, cycleA, cycleB } = await setUpCycleFixtures(fixtures);
+    const alice = await designateRecruitment(fixtures, cycleA.id);
+
+    const own = await insertApplicationResponse(form.id, cycleA.id, "Dana");
+    await insertApplicationResponse(form.id, cycleB.id, "Eli");
+    const untagged = await insertApplicationResponse(form.id, null, "Fia");
+
+    const full = await listApplicationsForEvaluation(alice);
+    expect(full.map((f) => f.response.id)).toEqual([own.id]);
+    expect(full.map((f) => f.response.id)).not.toContain(untagged.id);
+  });
+
+  it("a cycle-placed holder cannot evaluate another cycle's or an untagged application", async () => {
+    const fixtures = await createFixtures();
+    const { form, cycleA, cycleB } = await setUpCycleFixtures(fixtures);
+    const alice = await designateRecruitment(fixtures, cycleA.id);
+
+    const otherCycle = await insertApplicationResponse(form.id, cycleB.id, "Dana");
+    const untagged = await insertApplicationResponse(form.id, null, "Eli");
+
+    await expect(submitEvaluation(alice, otherCycle.id, { recommendation: "proceed" })).rejects.toThrow(ForbiddenError);
+    await expect(submitEvaluation(alice, untagged.id, { recommendation: "proceed" })).rejects.toThrow(ForbiddenError);
+  });
+
+  it("a cycle-placed holder can evaluate their own cycle's application", async () => {
+    const fixtures = await createFixtures();
+    const { form, cycleA } = await setUpCycleFixtures(fixtures);
+    const alice = await designateRecruitment(fixtures, cycleA.id);
+
+    const own = await insertApplicationResponse(form.id, cycleA.id, "Dana");
+    const filed = await submitEvaluation(alice, own.id, { recommendation: "proceed" });
+    expect(filed.recommendation).toBe("proceed");
+  });
+
+  it("a cycle-placed holder cannot resolve another cycle's wider-discussion decision", async () => {
+    const fixtures = await createFixtures();
+    const { form, cycleA, cycleB } = await setUpCycleFixtures(fixtures);
+    const alice = await designateRecruitment(fixtures, cycleA.id);
+
+    const other = await insertApplicationResponse(form.id, cycleB.id, "Dana");
+    await db.insert(recruitmentDecision).values({
+      formResponseId: other.id,
+      ruleOutcome: "wider_discussion",
+      defaultResolution: "proceed",
+      resolution: null,
+      widerDiscussionDeadline: new Date(Date.now() + 3_600_000),
+    });
+
+    await expect(
+      resolveWiderDiscussionManually(alice, other.id, { resolution: "accepted" }),
+    ).rejects.toThrow(ForbiddenError);
+  });
+
+  it("a cycle-placed holder cannot list objections on another cycle's application", async () => {
+    const fixtures = await createFixtures();
+    const { form, cycleA, cycleB } = await setUpCycleFixtures(fixtures);
+    const alice = await designateRecruitment(fixtures, cycleA.id);
+
+    const other = await insertApplicationResponse(form.id, cycleB.id, "Dana");
+    await expect(listObjections(alice, other.id)).rejects.toThrow(ForbiddenError);
+  });
+
+  it("a holder can list objections on an application their scope covers", async () => {
+    const fixtures = await createFixtures();
+    const { form, cycleA } = await setUpCycleFixtures(fixtures);
+    const alice = await designateRecruitment(fixtures, cycleA.id);
+
+    const own = await insertApplicationResponse(form.id, cycleA.id, "Dana");
+    // No decision → no objection rows, but the scope check passes.
+    expect(await listObjections(alice, own.id)).toEqual([]);
+  });
+
+  it("holding the community scope and a cycle together covers everything", async () => {
+    const fixtures = await createFixtures();
+    const { form, cycleA, cycleB } = await setUpCycleFixtures(fixtures);
+    const alice = await designateRecruitment(fixtures, null);
+    await designateRecruitment(fixtures, cycleA.id);
+
+    await insertApplicationResponse(form.id, cycleA.id, "Dana");
+    await insertApplicationResponse(form.id, cycleB.id, "Eli");
+
+    expect(await listHeldRecruitmentScopes(alice)).toEqual(new Set([null, cycleA.id]));
+    expect(await listApplicationsForEvaluation(alice)).toHaveLength(2);
   });
 });

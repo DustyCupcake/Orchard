@@ -55,7 +55,7 @@ export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
   event_scheduling_owner:
     "Cycle-shaped — placed in a cycle, it owns that cycle's event scheduling; cycle-less, the community/evergreen scope. Members can still submit proposals without this set, but nobody can review, confirm, or publish until it is.",
   recruitment:
-    "Community-wide this pass — cycle scoping lands once intake carries a cycle. Invite links and inquiries still work without this set, but nobody sees the inquiry inbox until it is.",
+    "Cycle-shaped — placed in a cycle, it evaluates that cycle's applications; cycle-less, the community/evergreen scope covering every application (each application carries the cycle it's for, §4.3). Whoever holds it sees applications on /applications and the inquiry inbox on /invites.",
   spatial_planning:
     "Cycle-shaped — placed in a cycle, it owns that cycle's Zones; cycle-less, the community/evergreen scope. Nobody can draw or edit Zones until this is set — see /spatial-planning.",
   announcements:
@@ -80,13 +80,11 @@ export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
 //                     → cycle C; cycle-less → the community/evergreen
 //                     scope (branch_coordination, event_scheduling_owner,
 //                     spatial_planning, backstop, shift_management,
-//                     feedback_review).
+//                     feedback_review, recruitment).
 //   "cycle_variant" — community-shaped base with an optional per-cycle
 //                     variant: cycle-less → community-wide; cycle-placed
 //                     → that cycle (announcements).
-//   "deferred"      — community-wide this pass; cycle-keyed intake lands
-//                     in a later pass (§4.3/D4) (recruitment).
-export type PermissionModuleScopeTier = "community" | "cycle" | "cycle_variant" | "deferred";
+export type PermissionModuleScopeTier = "community" | "cycle" | "cycle_variant";
 
 export const PERMISSION_MODULE_SCOPE_TIER: Record<PermissionModuleKey, PermissionModuleScopeTier> = {
   admin: "community",
@@ -94,7 +92,7 @@ export const PERMISSION_MODULE_SCOPE_TIER: Record<PermissionModuleKey, Permissio
   conflict_team: "community",
   feedback_review: "cycle",
   event_scheduling_owner: "cycle",
-  recruitment: "deferred",
+  recruitment: "cycle",
   spatial_planning: "cycle",
   announcements: "cycle_variant",
   support: "community",
@@ -104,9 +102,8 @@ export const PERMISSION_MODULE_SCOPE_TIER: Record<PermissionModuleKey, Permissio
 
 // The derived-scope label a grant row shows (§5.1): the cycle the
 // granting task is placed in, or — for a cycle-less task — "Community-
-// wide" for a module whose authority is whole-community (and
-// recruitment, deferred this pass), and "Evergreen" for a cycle-shaped
-// module's standing/community-less instance (§2.2).
+// wide" for a module whose authority is whole-community, and "Evergreen"
+// for a cycle-shaped module's standing/community-less instance (§2.2).
 export function describeGrantScope(
   moduleKey: PermissionModuleKey,
   cycleId: string | null,
