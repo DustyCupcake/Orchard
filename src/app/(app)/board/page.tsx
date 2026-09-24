@@ -26,6 +26,7 @@ import PhaseCard from "./PhaseCard";
 import BranchCoverageCard from "./BranchCoverageCard";
 import FilterSelect from "./FilterSelect";
 import { Tag, Banner, BUTTON_SECONDARY, BUTTON_PRIMARY, ATTENTION_TONE } from "@/components/ui/kit";
+import ActionMenu from "@/components/ui/ActionMenu";
 import PageHeader from "@/components/ui/PageHeader";
 import Tabs from "@/components/ui/Tabs";
 import { bulkClaimAction, exportSelectedTasksAsPackAction } from "./actions";
@@ -284,17 +285,22 @@ export default async function BoardPage({
         title="Board"
         actions={
           <>
-            {HUB_LINKS.map((l) => (
-              <Link key={l.href} href={l.href} className={BUTTON_SECONDARY}>
-                {l.label}
-              </Link>
-            ))}
-            {isCoordinator &&
-              COORDINATOR_HUB_LINKS.map((l) => (
-                <Link key={l.href} href={l.href} className={BUTTON_SECONDARY}>
+            <Link href="/propose" className={BUTTON_PRIMARY}>
+              Propose a task
+            </Link>
+            <ActionMenu>
+              {HUB_LINKS.map((l) => (
+                <Link key={l.href} href={l.href}>
                   {l.label}
                 </Link>
               ))}
+              {isCoordinator &&
+                COORDINATOR_HUB_LINKS.map((l) => (
+                  <Link key={l.href} href={l.href}>
+                    {l.label}
+                  </Link>
+                ))}
+            </ActionMenu>
           </>
         }
         tabs={
