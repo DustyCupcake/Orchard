@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   community,
   communityInvite,
   member,
   memberIdentity,
+  participation,
   recruitmentDecision,
   recruitmentSubscription,
   task,
 } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
+import { createCycle } from "@/lib/cycles";
 import { claimTask } from "@/lib/tasks";
 import { createForm } from "@/lib/forms";
 import type { CreateFormInput } from "@/lib/forms";
@@ -357,6 +359,30 @@ describe("Recruitment: applicant→Member conversion", () => {
     const decision = await getRecruitmentDecision(application.id);
     expect(decision!.resolution).toBe("accepted");
     expect(decision!.convertedMemberId).not.toBeNull();
+  });
+
+  it("accepting a cycle-keyed application seeds the converted member's participation as coming (§4.3/8d)", async () => {
+    const fixtures = await createFixtures();
+    const setupResult = await setUp(fixtures, taggedFields);
+    await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, setupResult.communityId));
+    const cycleRow = await createCycle(setupResult.alice, { source: "blank", name: "Season A" });
+
+    const application = await submitRecruitmentApplication(setupResult.communityId, {
+      values: { name: "Dana Applicant", email: "dana@example.com" },
+      cycleId: cycleRow.id,
+    });
+    expect(application.cycleId).toBe(cycleRow.id);
+    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+
+    expect(decision!.resolution).toBe("accepted");
+    const [newMember] = await db.select().from(member).where(eq(member.id, decision!.convertedMemberId!));
+    const [row] = await db
+      .select()
+      .from(participation)
+      .where(and(eq(participation.cycleId, cycleRow.id), eq(participation.memberId, newMember.id)));
+    expect(row?.status).toBe("coming");
   });
 });
 

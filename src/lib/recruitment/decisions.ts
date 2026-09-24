@@ -8,6 +8,7 @@ import {
   member,
   memberIdentity,
   objection,
+  participation,
   recruitmentApplicationInvite,
   recruitmentDecision,
   task,
@@ -226,6 +227,21 @@ async function maybeConvertApplicantToMember(
           // best-effort — see comment above
         }
       }
+    }
+  }
+
+  // §4.3/8d (D14): accepting a cycle-keyed application seeds the new
+  // member's participation in that cycle — "coming", idempotently — so
+  // they count against the cycle's capacity from day one (same
+  // select-then-insert posture redeemCommunityInvite keeps; there's no
+  // DB-level unique constraint on participation).
+  if (responseRow.cycleId) {
+    const [existing] = await db
+      .select({ id: participation.id })
+      .from(participation)
+      .where(and(eq(participation.cycleId, responseRow.cycleId), eq(participation.memberId, memberId)));
+    if (!existing) {
+      await db.insert(participation).values({ cycleId: responseRow.cycleId, memberId, status: "coming" });
     }
   }
 

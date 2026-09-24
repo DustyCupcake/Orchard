@@ -1,4 +1,7 @@
 import { redirect } from "next/navigation";
+import { and, eq, isNull } from "drizzle-orm";
+import { db } from "@/db";
+import { cycle } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
@@ -59,12 +62,21 @@ export default async function InvitesPage({
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");
 
-  const [myInvites, isHolder, appUrl] = await Promise.all([
+  const [myInvites, isHolder, appUrl, cycles] = await Promise.all([
     moduleOn ? listMyCommunityInvites(viewing) : Promise.resolve([]),
     moduleOn ? isRecruitmentTaskHolder(viewing) : Promise.resolve(false),
     resolveAppUrlFromHeaders(),
+    // The cycle picker — open cycles only: closed ones admit no one.
+    moduleOn
+      ? db
+          .select({ id: cycle.id, name: cycle.name, joiningInviteMode: cycle.joiningInviteMode })
+          .from(cycle)
+          .where(and(eq(cycle.communityId, viewing.communityId), isNull(cycle.closedAt)))
+          .orderBy(cycle.name)
+      : Promise.resolve([]),
   ]);
   const inquiries = moduleOn && isHolder ? await listInquiries(viewing) : [];
+  const cycleNames = new Map(cycles.map((c) => [c.id, c.name]));
 
   return (
     <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
@@ -102,6 +114,22 @@ export default async function InvitesPage({
               <CheckField label="I think this person is a good fit" name="inviterThinksGoodFit" />
               <CheckField label="I personally know this person" name="inviterKnowsPersonally" />
               <label className="flex flex-col gap-1">
+                <span className={LABEL}>For a cycle (optional — off = a general community invite)</span>
+                <select name="cycleId" className={INPUT} defaultValue="">
+                  <option value="">— general invite —</option>
+                  {cycles.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.joiningInviteMode})
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[12px] text-[var(--text-muted)]">
+                  A cycle invite&rsquo;s meaning follows that cycle&rsquo;s join mode — direct redeems on the spot
+                  and holds a capacity slot until used (an expiry is required for capacity-capped cycles);
+                  referral routes through the evaluated application instead and holds nothing (§4.3/8d).
+                </span>
+              </label>
+              <label className="flex flex-col gap-1">
                 <span className={LABEL}>Expires at (optional)</span>
                 <input type="datetime-local" name="expiresAt" className={INPUT} />
               </label>
@@ -129,6 +157,9 @@ export default async function InvitesPage({
                     </p>
                   )}
                   <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                    {invite.cycleId && cycleNames.has(invite.cycleId) && (
+                      <span className="font-medium text-[var(--text)]">{cycleNames.get(invite.cycleId)} · </span>
+                    )}
                     {invite.inviterThinksGoodFit && "good fit · "}
                     {invite.inviterKnowsPersonally && "know personally · "}
                     created {new Date(invite.createdAt).toLocaleDateString()}

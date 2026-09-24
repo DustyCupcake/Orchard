@@ -43,6 +43,7 @@ export async function createCommunityInviteAction(formData: FormData) {
       label: String(formData.get("label") ?? "").trim() || null,
       inviterThinksGoodFit: formData.get("inviterThinksGoodFit") === "on",
       inviterKnowsPersonally: formData.get("inviterKnowsPersonally") === "on",
+      cycleId: String(formData.get("cycleId") ?? "").trim() || null,
       expiresAt: String(formData.get("expiresAt") ?? "").trim()
         ? new Date(String(formData.get("expiresAt"))).toISOString()
         : null,

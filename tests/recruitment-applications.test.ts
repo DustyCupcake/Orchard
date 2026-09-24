@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community, cycle, formResponse, member, participation, recruitmentApplicationInvite, recruitmentDecision, task } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
@@ -20,7 +20,9 @@ import {
   listApplicationsForEvaluation,
   listHeldRecruitmentScopes,
   listObjections,
+  listOutstandingReferralInvites,
   requireValidDecisionRules,
+  redeemCommunityInvite,
   resolveWiderDiscussionManually,
   revokeCommunityInvite,
   setRecruitmentSubscriptionActive,
@@ -780,5 +782,231 @@ describe("cycle-targeted intake (docs/cycle-scope-remediation-plan.md §4.3/8c)"
     await expect(
       submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" }, cycleId: cycle.id }),
     ).rejects.toThrow(AppError);
+  });
+});
+
+// --- cycle invites + capacity holds + joining seed + pipeline
+// visibility (docs/cycle-scope-remediation-plan.md §4.3, work-plan step
+// 8d) ---
+
+describe("cycle invites + capacity holds + joining seed (docs/cycle-scope-remediation-plan.md §4.3/8d)", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  // Recruitment on, cycles enabled, an application form configured, and
+  // one open cycle to invite into.
+  async function setUpInvitesFixtures(fixtures: Awaited<ReturnType<typeof createFixtures>>) {
+    const { community: testCommunity, alice } = fixtures;
+    await enableRecruitment(testCommunity.id);
+    await enableCycles(testCommunity.id);
+    const form = await createForm(alice, { title: "Application", fields: applicationFields });
+    await updateCommunity(alice, { recruitmentApplicationFormId: form.id });
+    const cycleRow = await createCycle(alice, { source: "blank", name: "Season A" });
+    return { form, cycle: cycleRow };
+  }
+
+  it("a general invite gates on the community-wide invites toggle; a cycle invite does not", async () => {
+    const fixtures = await createFixtures();
+    const { alice } = fixtures;
+    const { cycle } = await setUpInvitesFixtures(fixtures);
+    await updateCommunity(alice, { recruitmentInvitesOpen: false });
+
+    await expect(createCommunityInvite(alice, { label: "general" })).rejects.toThrow(AppError);
+
+    // Per-cycle doors are §4.3's real gate — the community toggle only
+    // closes the general, cycle-less door.
+    const created = await createCommunityInvite(alice, { cycleId: cycle.id, label: "for the cycle" });
+    expect(created.cycleId).toBe(cycle.id);
+  });
+
+  it("direct invites into a capacity-capped cycle require a non-past expiry — no immortal holds", async () => {
+    const fixtures = await createFixtures();
+    const { alice } = fixtures;
+    const { cycle } = await setUpInvitesFixtures(fixtures);
+    await updateCycleSettings(alice, cycle.id, { capacity: 3 });
+
+    await expect(createCommunityInvite(alice, { cycleId: cycle.id })).rejects.toThrow(AppError);
+    await expect(
+      createCommunityInvite(alice, { cycleId: cycle.id, expiresAt: new Date(Date.now() - 1000).toISOString() }),
+    ).rejects.toThrow(AppError);
+
+    const created = await createCommunityInvite(alice, {
+      cycleId: cycle.id,
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    expect(created.cycleId).toBe(cycle.id);
+  });
+
+  it("creating a cycle invite gates on the mode's door — direct on invitesOpen, referral on applicationsOpen", async () => {
+    const fixtures = await createFixtures();
+    const { alice } = fixtures;
+    const { cycle } = await setUpInvitesFixtures(fixtures);
+
+    await updateCycleSettings(alice, cycle.id, { invitesOpen: false });
+    await expect(createCommunityInvite(alice, { cycleId: cycle.id })).rejects.toThrow(ConflictError);
+
+    await updateCycleSettings(alice, cycle.id, { invitesOpen: true, joiningInviteMode: "referral" });
+    await updateCycleSettings(alice, cycle.id, { applicationsOpen: false });
+    await expect(createCommunityInvite(alice, { cycleId: cycle.id })).rejects.toThrow(ConflictError);
+
+    await updateCycleSettings(alice, cycle.id, { applicationsOpen: true });
+    const created = await createCommunityInvite(alice, { cycleId: cycle.id });
+    expect(created.cycleId).toBe(cycle.id);
+  });
+
+  it("rejects a cycleId from outside the community", async () => {
+    const fixtures = await createFixtures();
+    const { alice } = fixtures;
+    await setUpInvitesFixtures(fixtures);
+    const other = await createFixtures();
+    await enableRecruitment(other.community.id);
+    await enableCycles(other.community.id);
+    const foreignCycle = await createCycle(other.alice, { source: "blank", name: "Elsewhere" });
+
+    await expect(createCommunityInvite(alice, { cycleId: foreignCycle.id })).rejects.toThrow(NotFoundError);
+  });
+
+  it("outstanding direct invites hold capacity slots until used, revoked, or expired", async () => {
+    const fixtures = await createFixtures();
+    const { alice, community: testCommunity } = fixtures;
+    const { cycle } = await setUpInvitesFixtures(fixtures);
+    await updateCycleSettings(alice, cycle.id, { capacity: 2 });
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+
+    const first = await createCommunityInvite(alice, { cycleId: cycle.id, expiresAt: future });
+    let state = await getCycleJoiningState(testCommunity.id, cycle.id);
+    expect(state.holds).toBe(1);
+    expect(state.atCapacity).toBe(false);
+    expect(state.invitesOpen).toBe(true);
+
+    await createCommunityInvite(alice, { cycleId: cycle.id, expiresAt: future });
+    state = await getCycleJoiningState(testCommunity.id, cycle.id);
+    expect(state.holds).toBe(2);
+    expect(state.atCapacity).toBe(true);
+    expect(state.invitesOpen).toBe(false);
+
+    // Revoking a hold releases its slot.
+    await revokeCommunityInvite(alice, first.id);
+    state = await getCycleJoiningState(testCommunity.id, cycle.id);
+    expect(state.holds).toBe(1);
+    expect(state.atCapacity).toBe(false);
+  });
+
+  it("referral-mode cycle invites hold nothing — the mode follows the cycle, not the invite", async () => {
+    const fixtures = await createFixtures();
+    const { alice, community: testCommunity } = fixtures;
+    const { cycle } = await setUpInvitesFixtures(fixtures);
+    await updateCycleSettings(alice, cycle.id, { capacity: 2, joiningInviteMode: "referral" });
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+
+    await createCommunityInvite(alice, { cycleId: cycle.id, expiresAt: future });
+    await createCommunityInvite(alice, { cycleId: cycle.id, expiresAt: future });
+
+    const state = await getCycleJoiningState(testCommunity.id, cycle.id);
+    expect(state.holds).toBe(0);
+    expect(state.atCapacity).toBe(false);
+  });
+
+  it("redeeming a direct cycle invite creates the member and seeds participation as coming", async () => {
+    const fixtures = await createFixtures();
+    const { alice } = fixtures;
+    const { cycle } = await setUpInvitesFixtures(fixtures);
+    const created = await createCommunityInvite(alice, { cycleId: cycle.id, label: "Dana" });
+
+    const newMember = await redeemCommunityInvite(created.token, { email: "dana@example.com" });
+
+    expect(newMember.communityId).toBe(fixtures.community.id);
+    expect(newMember.joinedViaInviteId).toBe(created.id);
+    const [row] = await db
+      .select()
+      .from(participation)
+      .where(and(eq(participation.cycleId, cycle.id), eq(participation.memberId, newMember.id)));
+    expect(row?.status).toBe("coming");
+  });
+
+  it("a referral invite never redeems directly", async () => {
+    const fixtures = await createFixtures();
+    const { alice } = fixtures;
+    const { cycle } = await setUpInvitesFixtures(fixtures);
+    await updateCycleSettings(alice, cycle.id, { joiningInviteMode: "referral" });
+    const created = await createCommunityInvite(alice, { cycleId: cycle.id });
+
+    await expect(redeemCommunityInvite(created.token, { email: "dana@example.com" })).rejects.toThrow(ConflictError);
+  });
+
+  it("an application referencing a referral invite is tagged with the invite's cycle", async () => {
+    const fixtures = await createFixtures();
+    const { alice } = fixtures;
+    const { cycle } = await setUpInvitesFixtures(fixtures);
+    await updateCycleSettings(alice, cycle.id, { joiningInviteMode: "referral" });
+    const created = await createCommunityInvite(alice, { cycleId: cycle.id, label: "Dana" });
+
+    const response = await submitRecruitmentApplication(fixtures.community.id, {
+      values: { name: "Dana" },
+      inviteToken: created.token,
+    });
+
+    expect(response.cycleId).toBe(cycle.id);
+  });
+
+  it("a direct invite's token on the application path is rejected — it redeems on /invite", async () => {
+    const fixtures = await createFixtures();
+    const { alice } = fixtures;
+    const { cycle } = await setUpInvitesFixtures(fixtures);
+    const created = await createCommunityInvite(alice, { cycleId: cycle.id });
+
+    await expect(
+      submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" }, inviteToken: created.token }),
+    ).rejects.toThrow(AppError);
+  });
+
+  it("an explicit cycleId conflicting with the invite's cycle is rejected", async () => {
+    const fixtures = await createFixtures();
+    const { alice } = fixtures;
+    const { cycle: cycleA } = await setUpInvitesFixtures(fixtures);
+    await db.update(cycle).set({ closedAt: new Date() }).where(eq(cycle.id, cycleA.id));
+    const cycleB = await createCycle(alice, { source: "blank", name: "Season B" });
+    await updateCycleSettings(alice, cycleB.id, { joiningInviteMode: "referral" });
+    const created = await createCommunityInvite(alice, { cycleId: cycleB.id });
+
+    await expect(
+      submitRecruitmentApplication(fixtures.community.id, {
+        values: { name: "Dana" },
+        inviteToken: created.token,
+        cycleId: cycleA.id,
+      }),
+    ).rejects.toThrow(AppError);
+  });
+
+  it("outstanding referral invites are visible to the recruitment pipeline, scoped like applications", async () => {
+    const fixtures = await createFixtures();
+    const { community: testCommunity, branch, alice } = fixtures;
+    const { cycle: cycleA } = await setUpInvitesFixtures(fixtures);
+    await updateCycleSettings(alice, cycleA.id, { joiningInviteMode: "referral" });
+    // The invite must be created while the period is open — created
+    // first, then the cycle closes so a second can be opened alongside.
+    await createCommunityInvite(alice, { cycleId: cycleA.id, label: "For A" });
+    await db.update(cycle).set({ closedAt: new Date() }).where(eq(cycle.id, cycleA.id));
+    const cycleB = await createCycle(alice, { source: "blank", name: "Season B" });
+    await updateCycleSettings(alice, cycleB.id, { joiningInviteMode: "referral" });
+    await createCommunityInvite(alice, { cycleId: cycleB.id, label: "For B" });
+
+    // A cycle-placed holder sees only their own cycle's outstanding
+    // referral invites (§4.3 scope, applied to the invitation side).
+    const tA = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
+    await grantPermission(testCommunity.id, "recruitment", tA.id);
+    const [aliceRow] = await db.select().from(member).where(eq(member.id, alice.id));
+    await claimTask(aliceRow, tA.id);
+    expect((await listOutstandingReferralInvites(aliceRow)).map((r) => r.label)).toEqual(["For A"]);
+
+    // The cycle-less community/evergreen holder sees every cycle's.
+    const t0 = await insertTask(testCommunity.id, branch.id, alice.id, {});
+    await grantPermission(testCommunity.id, "recruitment", t0.id);
+    await claimTask(aliceRow, t0.id);
+    expect((await listOutstandingReferralInvites(aliceRow)).map((r) => r.label).sort()).toEqual([
+      "For A",
+      "For B",
+    ]);
   });
 });

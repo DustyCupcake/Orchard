@@ -14,6 +14,7 @@ import {
   listApplicationsForEvaluation,
   listHeldRecruitmentScopes,
   listOpenIntroCallsForSubscriber,
+  listOutstandingReferralInvites,
 } from "@/lib/recruitment";
 import type { FormField } from "@/lib/forms";
 import { ForbiddenError } from "@/lib/errors";
@@ -91,8 +92,10 @@ export default async function ApplicationsPage({
 
   let alerts: Awaited<ReturnType<typeof listApplicationAlerts>> = [];
   let full: Awaited<ReturnType<typeof listApplicationsForEvaluation>> = [];
+  let referralInvites: Awaited<ReturnType<typeof listOutstandingReferralInvites>> = [];
   if (moduleOn && isHolder) {
     full = await listApplicationsForEvaluation(viewing);
+    referralInvites = await listOutstandingReferralInvites(viewing);
   } else if (moduleOn) {
     try {
       alerts = await listApplicationAlerts(viewing);
@@ -222,6 +225,26 @@ export default async function ApplicationsPage({
 
           {form && isHolder && (
             <section style={{ marginTop: "1.5rem" }}>
+              {referralInvites.length > 0 && (
+                <div style={{ marginBottom: "1.25rem" }}>
+                  <h2>Outstanding referral invites ({referralInvites.length})</h2>
+                  <p style={{ color: "#666", fontSize: "0.85rem" }}>
+                    Cycle invites in referral mode route through the evaluated application here — they hold
+                    no capacity slot, but their applicants may be on their way in (§4.3/8d).
+                  </p>
+                  {referralInvites.map((r) => (
+                    <div
+                      key={`${r.cycleId}:${r.createdAt.toISOString()}`}
+                      style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
+                    >
+                      <p style={{ margin: 0, fontSize: "0.85rem" }}>
+                        <strong>{r.label || "(unlabeled)"}</strong> — for {r.cycleName}, created{" "}
+                        {new Date(r.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
               <h2>Applications ({full.length})</h2>
               <p style={{ color: "#666", fontSize: "0.85rem" }}>{coverageLine}</p>
               {full.length === 0 && <p style={{ color: "#666" }}>Nothing pending.</p>}

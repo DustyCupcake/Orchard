@@ -1,5 +1,6 @@
 import { boolean, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
+import { cycle } from "./cycle";
 import { member } from "./member";
 
 // A second, private joining path alongside the ordinary open-door
@@ -26,6 +27,11 @@ export const communityInvite = pgTable("community_invite", {
     .notNull()
     .references(() => member.id),
   token: text("token").notNull().unique(),
+  // §4.3/8d — the cycle this invite is for (null = today's general
+  // community invite). An invite's meaning follows its cycle's
+  // joiningInviteMode (direct | referral); the mode is never snapshotted
+  // on the row, so a mode switch on the cycle re-reads the same link.
+  cycleId: uuid("cycle_id").references(() => cycle.id),
   label: text("label"),
   inviterThinksGoodFit: boolean("inviter_thinks_good_fit").notNull().default(false),
   inviterKnowsPersonally: boolean("inviter_knows_personally").notNull().default(false),

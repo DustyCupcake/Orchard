@@ -66,12 +66,44 @@ export async function submitRecruitmentApplication(
   const communityRow = await getCommunityRow(communityId);
   requireModuleEnabled(communityRow, "recruitment");
 
+  // Validated up front, before resolving the door or creating the
+  // FormResponse — an invalid token should never leave behind an
+  // orphaned, unlinked application the applicant then has to notice and
+  // resubmit.
+  let invite: typeof communityInvite.$inferSelect | undefined;
+  if (input.inviteToken) {
+    [invite] = await db
+      .select()
+      .from(communityInvite)
+      .where(and(eq(communityInvite.token, input.inviteToken), eq(communityInvite.communityId, communityId)));
+    if (!invite) {
+      throw new NotFoundError("Invite link not found");
+    }
+    if (invite.revokedAt) {
+      throw new ConflictError("This invite link has been revoked");
+    }
+  }
+
   // Which door does this submission knock on (§4.3/8c)? A cycle-targeted
   // application gates on the cycle's own joining state (period + door +
   // capacity room); the general application gates on the community-wide
-  // door toggle.
-  const joining = input.cycleId ? await getCycleJoiningState(communityId, input.cycleId) : null;
+  // door toggle. A cycle-scoped *referral* invite defines the target
+  // cycle itself — its token is the vouch, routing the application
+  // onto that cycle's pipeline (§4.3/8d).
+  let targetCycleId = input.cycleId ?? null;
+  if (invite?.cycleId) {
+    if (input.cycleId && input.cycleId !== invite.cycleId) {
+      throw new AppError("This invite is for a different cycle");
+    }
+    targetCycleId = invite.cycleId;
+  }
+  const joining = targetCycleId ? await getCycleJoiningState(communityId, targetCycleId) : null;
   if (joining) {
+    if (invite?.cycleId && joining.cycle.joiningInviteMode === "direct") {
+      // A direct invite skips the funnel entirely — it redeems on
+      // /invite/[token], not through the evaluated application.
+      throw new AppError("This invite redeems directly — open its join link instead of applying");
+    }
     if (joining.atCapacity) {
       throw new AppError("This cycle is full — no capacity left for new applications");
     }
@@ -90,24 +122,17 @@ export async function submitRecruitmentApplication(
     throw new AppError("No application form is configured for this Community yet");
   }
 
-  // Validated up front, before creating the FormResponse — an invalid
-  // token should never leave behind an orphaned, unlinked application
-  // the applicant then has to notice and resubmit.
-  let invite: typeof communityInvite.$inferSelect | undefined;
-  if (input.inviteToken) {
-    [invite] = await db
-      .select()
-      .from(communityInvite)
-      .where(and(eq(communityInvite.token, input.inviteToken), eq(communityInvite.communityId, communityId)));
-    if (!invite) {
-      throw new NotFoundError("Invite link not found");
-    }
-    if (invite.revokedAt) {
-      throw new ConflictError("This invite link has been revoked");
-    }
+  const created = await submitPublicFormResponse(formId, { values: input.values });
+
+  // Linked whether or not the response is cycle-tagged — the invite's
+  // checkboxes feed outcome matching either way (the referral half of
+  // §4.3/8d routes the token through this same path).
+  if (invite) {
+    await db
+      .insert(recruitmentApplicationInvite)
+      .values({ formResponseId: created.id, communityInviteId: invite.id });
   }
 
-  const created = await submitPublicFormResponse(formId, { values: input.values });
   if (joining) {
     const [tagged] = await db
       .update(formResponse)
@@ -115,12 +140,6 @@ export async function submitRecruitmentApplication(
       .where(eq(formResponse.id, created.id))
       .returning();
     return tagged;
-  }
-
-  if (invite) {
-    await db
-      .insert(recruitmentApplicationInvite)
-      .values({ formResponseId: created.id, communityInviteId: invite.id });
   }
 
   return created;

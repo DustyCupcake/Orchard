@@ -145,6 +145,7 @@ describe("communityInviteStatus", () => {
       communityId: "x",
       createdBy: "x",
       token: "x",
+      cycleId: null,
       label: null,
       inviterThinksGoodFit: false,
       inviterKnowsPersonally: false,
