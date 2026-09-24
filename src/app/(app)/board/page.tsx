@@ -27,9 +27,10 @@ import BranchCoverageCard from "./BranchCoverageCard";
 import FilterSelect from "./FilterSelect";
 import { Tag, Banner, BUTTON_SECONDARY, BUTTON_PRIMARY, ATTENTION_TONE } from "@/components/ui/kit";
 import ActionMenu from "@/components/ui/ActionMenu";
+import BulkClaimSelect from "@/components/tasks/BulkClaimSelect";
 import PageHeader from "@/components/ui/PageHeader";
 import Tabs from "@/components/ui/Tabs";
-import { bulkClaimAction, exportSelectedTasksAsPackAction } from "./actions";
+import { exportSelectedTasksAsPackAction } from "./actions";
 
 type BoardTask = Awaited<ReturnType<typeof listTasksWithAssignments>>[number];
 
@@ -361,22 +362,7 @@ export default async function BoardPage({
       )}
 
       {bulkClaimable.length > 1 && (
-        <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
-            Bulk claim ({bulkClaimable.length} eligible in this view)
-          </summary>
-          <form action={bulkClaimAction} className="mt-3 flex flex-col gap-2">
-            {bulkClaimable.map((t) => (
-              <label key={t.id} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
-                <input type="checkbox" name="taskIds" value={t.id} defaultChecked />
-                {t.title} <span className="text-[var(--text-muted)]">({branchNameById.get(t.branchId) ?? "—"})</span>
-              </label>
-            ))}
-            <button type="submit" className={`${BUTTON_PRIMARY} mt-1 w-fit`}>
-              Claim selected
-            </button>
-          </form>
-        </details>
+        <BulkClaimSelect claimable={bulkClaimable} branchNameById={branchNameById} />
       )}
 
       {canExport && !exportCycle && (
