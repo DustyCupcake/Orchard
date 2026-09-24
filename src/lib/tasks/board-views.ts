@@ -148,3 +148,57 @@ export function groupTasksByBranchCoverage<T extends BranchCoverageTask>(
     (a, b) => statusOrder[a.status] - statusOrder[b.status] || a.branchName.localeCompare(b.branchName),
   );
 }
+
+// Task shape needed for the default "Unclaimed" attention queue — the
+// subset of listTasksWithAssignments rows the queue sort needs, kept
+// minimal so tests need no Postgres (same convention as PhaseGroupTask
+// / BranchCoverageTask above). Status is included so the queue can
+// fuse the "only show unclaimed" rule into the same step that orders
+// them rather than expecting callers to filter first.
+export interface QueueTask {
+  id: string;
+  title: string;
+  status: string;
+  attentionLevel: string;
+  critical: boolean;
+  deadlineDate: string | null;
+  phaseId: string | null;
+}
+
+// "Surfacing, not deciding" — Phase 50's own posture, applied to the
+// default landing. The queue is *not* a second sort option you can
+// flip on; it's what the board shows first. It leans on the same
+// worst-first attention hierarchy the board's attention strip already
+// computes (escalated > hard > soft > ok), then folds in the two
+// things docs/spec.md's Views actually care about — "critical" and
+// soonest phase-end — because a task whose phase closes next week is
+// more claimable-than-tomorrow than one in a phase that runs all
+// cycle. Criticality and near-phase-ends get folded into the queue's
+// own attention, exactly the "incorporate dates and criticality into
+// the attention/criticality calculation" the exploration asked for.
+export function sortUnclaimedQueue<T extends QueueTask>(
+  tasks: T[],
+  phaseEndDateById: Map<string, string> = new Map(),
+): T[] {
+  return tasks
+    .filter((t) => t.status === "unclaimed")
+    .sort((a, b) => {
+      const attentionOrder: Record<string, number> = { escalated: 0, hard: 1, soft: 2, ok: 3 };
+      const ao = attentionOrder[a.attentionLevel] ?? 99;
+      const bo = attentionOrder[b.attentionLevel] ?? 99;
+      if (ao !== bo) return ao - bo;
+
+      if (a.critical !== b.critical) return a.critical ? -1 : 1;
+
+      const aPhaseEnd = a.phaseId ? phaseEndDateById.get(a.phaseId) : undefined;
+      const bPhaseEnd = b.phaseId ? phaseEndDateById.get(b.phaseId) : undefined;
+      if (aPhaseEnd && bPhaseEnd) return aPhaseEnd.localeCompare(bPhaseEnd);
+      if (aPhaseEnd) return -1;
+      if (bPhaseEnd) return 1;
+
+      if (a.deadlineDate && b.deadlineDate) return a.deadlineDate.localeCompare(b.deadlineDate);
+      if (a.deadlineDate) return -1;
+      if (b.deadlineDate) return 1;
+      return a.title.localeCompare(b.title);
+    });
+}
