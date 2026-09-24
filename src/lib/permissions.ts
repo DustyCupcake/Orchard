@@ -51,7 +51,7 @@ export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
     "Invite links and inquiries still work without this set, but nobody sees the inquiry inbox until it is.",
   spatial_planning: "Nobody can draw or edit Zones until this is set — see /spatial-planning.",
   announcements:
-    "Targeted messages (branch/task-holders/arrival-window) work without this — it only gates community-wide announcements.",
+    "Targeted messages (branch/task-holders/arrival-window) work without this — it gates announcements by scope: a cycle-less task gates community-wide sends, a task placed in a cycle gates messages to that cycle's roster (coming and/or maybe).",
   support:
     "Whoever currently holds a task granted here can view the platform exactly as another member would, read-only — see docs/spec.md's View-as (support).",
   backstop:

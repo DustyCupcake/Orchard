@@ -6,6 +6,7 @@ export const outboundMessageScopeEnum = pgEnum("outbound_message_scope", [
   "branch",
   "task_holders",
   "arrival_window",
+  "cycle",
   "community",
 ]);
 
@@ -27,6 +28,13 @@ export const outboundMessageScopeEnum = pgEnum("outbound_message_scope", [
 //                       so a message sent against one cycle's
 //                       Participation doesn't silently start meaning a
 //                       different cycle's once a new one starts.
+//   cycle           -> { cycleId, segments } — the cycle-roster
+//                       announcement variant (docs/cycle-scope-
+//                       remediation-plan.md §4.5/D3); segments is a
+//                       non-empty subset of ["coming", "maybe"] and the
+//                       audience is that cycle's Participation rows in
+//                       those statuses. cycleId is captured at send time
+//                       for the same reason arrival_window's is.
 //   community       -> {} (nothing to scope by)
 export const outboundMessage = pgTable("outbound_message", {
   id: uuid("id").primaryKey().defaultRandom(),

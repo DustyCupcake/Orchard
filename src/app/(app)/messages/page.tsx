@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
-import { canInitiateCycle } from "@/lib/cycles";
+import { canInitiateCycle, listCycles } from "@/lib/cycles";
 import {
   isAnnouncementTaskHolder,
+  listMyAnnouncementCycles,
   listMyCoordinatedBranches,
   listMyHeldTasksForMessaging,
   listOutboundMessagesVisibleTo,
@@ -16,13 +17,20 @@ const SCOPE_LABEL: Record<string, string> = {
   branch: "Branch",
   task_holders: "Task holders",
   arrival_window: "Arrival window",
+  cycle: "Cycle roster",
   community: "Community announcement",
 };
 
-function describeScope(scope: string, scopeRef: unknown): string {
+function describeScope(scope: string, scopeRef: unknown, cycleNameById: Map<string, string>): string {
   if (scope === "arrival_window") {
     const ref = scopeRef as { start?: string; end?: string };
     return `${SCOPE_LABEL[scope]}: ${ref.start ?? "?"} – ${ref.end ?? "?"}`;
+  }
+  if (scope === "cycle") {
+    const ref = scopeRef as { cycleId?: string; segments?: string[] };
+    const name = ref.cycleId ? (cycleNameById.get(ref.cycleId) ?? "?") : "?";
+    const segments = (ref.segments ?? []).join(" + ");
+    return `${SCOPE_LABEL[scope]}: ${name}${segments ? ` — ${segments}` : ""}`;
   }
   return SCOPE_LABEL[scope] ?? scope;
 }
@@ -43,13 +51,17 @@ export default async function MessagesPage({
 
   const { error } = await searchParams;
 
-  const [coordinatedBranches, heldTasks, canArrivalWindow, canAnnounce, sentMessages] = await Promise.all([
-    listMyCoordinatedBranches(viewing),
-    listMyHeldTasksForMessaging(viewing),
-    canInitiateCycle(viewing),
-    isAnnouncementTaskHolder(viewing),
-    listOutboundMessagesVisibleTo(viewing),
-  ]);
+  const [coordinatedBranches, heldTasks, canArrivalWindow, canAnnounce, myAnnouncementCycles, allCycles, sentMessages] =
+    await Promise.all([
+      listMyCoordinatedBranches(viewing),
+      listMyHeldTasksForMessaging(viewing),
+      canInitiateCycle(viewing),
+      isAnnouncementTaskHolder(viewing),
+      listMyAnnouncementCycles(viewing),
+      listCycles(viewing),
+      listOutboundMessagesVisibleTo(viewing),
+    ]);
+  const cycleNameById = new Map(allCycles.map((c) => [c.id, c.name] as const));
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
@@ -133,10 +145,48 @@ export default async function MessagesPage({
         </section>
       )}
 
+      {myAnnouncementCycles.length > 0 && (
+        <section className="mt-6">
+          <SectionHeading>Message a cycle roster</SectionHeading>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            Goes to members who&rsquo;ve said they&rsquo;re coming and/or maybe for the chosen cycle.
+            Pick which of those two groups should get it — they often need different messages.
+          </p>
+          <form action={sendMessageAction} className="mt-3 flex flex-col gap-2">
+            <input type="hidden" name="scope" value="cycle" />
+            <select name="cycleId" required className={INPUT}>
+              {myAnnouncementCycles.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-1.5 text-[13px] text-[var(--text)]">
+                <input type="checkbox" name="segments" value="coming" defaultChecked />
+                Coming
+              </label>
+              <label className="flex items-center gap-1.5 text-[13px] text-[var(--text)]">
+                <input type="checkbox" name="segments" value="maybe" defaultChecked />
+                Maybe
+              </label>
+            </div>
+            <input type="text" name="subject" placeholder="Subject" required className={INPUT} />
+            <textarea name="body" placeholder="Message" required rows={3} className={INPUT} />
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+              Send to cycle roster
+            </button>
+          </form>
+        </section>
+      )}
+
       {canAnnounce && (
         <section className="mt-6">
           <SectionHeading>Send a community-wide announcement</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">Goes to every member in the community.</p>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            Goes to every member in the community. A cycle-placed announcement task messages that
+            cycle&rsquo;s roster instead — see above.
+          </p>
           <form action={sendMessageAction} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="scope" value="community" />
             <input type="text" name="subject" placeholder="Subject" required className={INPUT} />
@@ -148,12 +198,16 @@ export default async function MessagesPage({
         </section>
       )}
 
-      {coordinatedBranches.length === 0 && heldTasks.length === 0 && !canArrivalWindow && !canAnnounce && (
-        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
-          You don&rsquo;t currently have access to send anything — coordinate a branch, hold a task
-          with a co-holder, be eligible to start a cycle, or hold the announcement task.
-        </p>
-      )}
+      {coordinatedBranches.length === 0 &&
+        heldTasks.length === 0 &&
+        !canArrivalWindow &&
+        !canAnnounce &&
+        myAnnouncementCycles.length === 0 && (
+          <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+            You don&rsquo;t currently have access to send anything — coordinate a branch, hold a task
+            with a co-holder, be eligible to start a cycle, or hold an announcement task.
+          </p>
+        )}
 
       <section className="mt-8">
         <SectionHeading>Sent messages</SectionHeading>
@@ -163,7 +217,7 @@ export default async function MessagesPage({
             <div key={m.id} className={CARD}>
               <p className="text-[14px] font-medium text-[var(--text)]">{m.subject}</p>
               <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
-                {describeScope(m.scope, m.scopeRef)} — {new Date(m.sentAt).toLocaleString()}
+                {describeScope(m.scope, m.scopeRef, cycleNameById)} — {new Date(m.sentAt).toLocaleString()}
               </p>
               <p className="mt-2 whitespace-pre-wrap text-[13px] text-[var(--text)]">{m.body}</p>
             </div>

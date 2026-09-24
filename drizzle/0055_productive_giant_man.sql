@@ -1,0 +1,1 @@
+ALTER TYPE "public"."outbound_message_scope" ADD VALUE 'cycle' BEFORE 'community';

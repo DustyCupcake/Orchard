@@ -5,7 +5,9 @@ import { branch as branchTable, community, cycle, member, memberIdentity, partic
 import { claimTask } from "@/lib/tasks";
 import { updateCommunity } from "@/lib/settings";
 import {
+  isAnnouncementHolderForCycle,
   isAnnouncementTaskHolder,
+  listMyAnnouncementCycles,
   listMyCoordinatedBranches,
   listMyHeldTasksForMessaging,
   listOutboundMessagesVisibleTo,
@@ -48,6 +50,19 @@ async function makeCoordinationHolder(fixtures: Fixtures, actor: Fixtures["alice
   await grantPermission(fixtures.community.id, "branch_coordination", coordTask.id);
   await claimTask(actor, coordTask.id);
   return coordTask;
+}
+
+// A cycle-placed `announcements`-granted task claimed by `actor` — the
+// §4.5 cycle-roster authority (distinct from the cycle-less task that
+// gates community-wide sends).
+async function makeAnnouncementHolderForCycle(fixtures: Fixtures, actor: Fixtures["alice"], cycleId: string) {
+  const announceTask = await insertTask(fixtures.community.id, fixtures.branch.id, actor.id, {
+    title: "Announcements",
+    cycleId,
+  });
+  await grantPermission(fixtures.community.id, "announcements", announceTask.id);
+  await claimTask(actor, announceTask.id);
+  return announceTask;
 }
 
 async function giveEmail(memberId: string, email: string) {
@@ -117,6 +132,124 @@ describe("isAnnouncementTaskHolder / requireAnnouncementTaskHolder", () => {
     expect(await isAnnouncementTaskHolder(fixtures.bob)).toBe(false);
     await claimTask(fixtures.bob, announceTask.id);
     expect(await isAnnouncementTaskHolder(fixtures.bob)).toBe(true);
+  });
+
+  it("scopes by placement: a cycle-placed task grants that cycle, never community (D1)", async () => {
+    const fixtures = await createFixtures();
+    const currentCycle = await makeCurrentCycle(fixtures);
+    await makeAnnouncementHolderForCycle(fixtures, fixtures.alice, currentCycle.id);
+
+    // The cycle authority is real...
+    expect(await isAnnouncementHolderForCycle(fixtures.alice, currentCycle.id)).toBe(true);
+    // ...but it does not reach community-wide sends, and vice versa.
+    expect(await isAnnouncementTaskHolder(fixtures.alice)).toBe(false);
+    await expect(requireAnnouncementTaskHolder(fixtures.alice)).rejects.toThrow(ForbiddenError);
+  });
+});
+
+describe("sendOutboundMessage: cycle scope (announcements)", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("rejects a member without that cycle's announcement task", async () => {
+    const fixtures = await createFixtures();
+    const currentCycle = await makeCurrentCycle(fixtures);
+    await expect(
+      sendOutboundMessage(fixtures.alice, {
+        scope: "cycle",
+        cycleId: currentCycle.id,
+        segments: ["coming"],
+        subject: "Hi",
+        body: "Hello",
+      }),
+    ).rejects.toThrow(ForbiddenError);
+  });
+
+  it("rejects a community-wide announcement holder — the two scopes never cross (D1)", async () => {
+    const fixtures = await createFixtures();
+    const currentCycle = await makeCurrentCycle(fixtures);
+    const announceTask = await insertTask(fixtures.community.id, fixtures.branch.id, fixtures.alice.id, {
+      title: "Announcements",
+    });
+    await grantPermission(fixtures.community.id, "announcements", announceTask.id);
+    await claimTask(fixtures.alice, announceTask.id);
+
+    await expect(
+      sendOutboundMessage(fixtures.alice, {
+        scope: "cycle",
+        cycleId: currentCycle.id,
+        segments: ["coming"],
+        subject: "Hi",
+        body: "Hello",
+      }),
+    ).rejects.toThrow(ForbiddenError);
+  });
+
+  it("rejects an unknown cycle", async () => {
+    const fixtures = await createFixtures();
+    await expect(
+      sendOutboundMessage(fixtures.alice, {
+        scope: "cycle",
+        cycleId: "00000000-0000-0000-0000-000000000000",
+        segments: ["coming"],
+        subject: "Hi",
+        body: "Hello",
+      }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("rejects an empty segment selection", async () => {
+    const fixtures = await createFixtures();
+    const currentCycle = await makeCurrentCycle(fixtures);
+    await makeAnnouncementHolderForCycle(fixtures, fixtures.alice, currentCycle.id);
+
+    await expect(
+      sendOutboundMessage(fixtures.alice, {
+        scope: "cycle",
+        cycleId: currentCycle.id,
+        segments: [],
+        subject: "Hi",
+        body: "Hello",
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("messages only the selected segments of the cycle's Participation", async () => {
+    const fixtures = await createFixtures();
+    const currentCycle = await makeCurrentCycle(fixtures);
+    await makeAnnouncementHolderForCycle(fixtures, fixtures.alice, currentCycle.id);
+    const [carol] = await db.insert(member).values({ communityId: fixtures.community.id, name: "Carol" }).returning();
+    const [dave] = await db.insert(member).values({ communityId: fixtures.community.id, name: "Dave" }).returning();
+
+    await declareParticipation(currentCycle.id, fixtures.bob.id, { status: "coming" });
+    await declareParticipation(currentCycle.id, carol.id, { status: "maybe" });
+    await declareParticipation(currentCycle.id, dave.id, { status: "not_coming" });
+
+    const comingOnly = await sendOutboundMessage(fixtures.alice, {
+      scope: "cycle",
+      cycleId: currentCycle.id,
+      segments: ["coming"],
+      subject: "Coming soon",
+      body: "See you there",
+    });
+    expect(comingOnly.scopeRef).toEqual({ cycleId: currentCycle.id, segments: ["coming"] });
+
+    const [carolRow] = await db.select().from(member).where(eq(member.id, carol.id));
+    const [daveRow] = await db.select().from(member).where(eq(member.id, dave.id));
+    expect((await listOutboundMessagesVisibleTo(fixtures.bob)).map((m) => m.id)).toContain(comingOnly.id);
+    expect((await listOutboundMessagesVisibleTo(carolRow)).map((m) => m.id)).not.toContain(comingOnly.id);
+
+    // The sender can widen to both groups, and 'not_coming' still never hears.
+    const both = await sendOutboundMessage(fixtures.alice, {
+      scope: "cycle",
+      cycleId: currentCycle.id,
+      segments: ["coming", "maybe"],
+      subject: "Everyone",
+      body: "Update",
+    });
+    expect((await listOutboundMessagesVisibleTo(carolRow)).map((m) => m.id)).toContain(both.id);
+    expect((await listOutboundMessagesVisibleTo(daveRow)).map((m) => m.id)).not.toContain(both.id);
   });
 });
 
@@ -392,6 +525,23 @@ describe("UI-gating helpers", () => {
     await makeCoordinationHolder(fixtures, fixtures.alice);
     const branches = await listMyCoordinatedBranches(fixtures.alice);
     expect(branches.map((b) => b.id)).toEqual([fixtures.branch.id]);
+  });
+
+  it("listMyAnnouncementCycles lists only cycles where the actor really holds the announcements task", async () => {
+    const fixtures = await createFixtures();
+    const currentCycle = await makeCurrentCycle(fixtures);
+    expect(await listMyAnnouncementCycles(fixtures.alice)).toEqual([]);
+
+    await makeAnnouncementHolderForCycle(fixtures, fixtures.alice, currentCycle.id);
+    const cycles = await listMyAnnouncementCycles(fixtures.alice);
+    expect(cycles.map((c) => c.id)).toEqual([currentCycle.id]);
+
+    // A cycle-less announcements task grants community sends, not a cycle.
+    const communityTask = await insertTask(fixtures.community.id, fixtures.branch.id, fixtures.alice.id, {
+      title: "Community announcements",
+    });
+    await grantPermission(fixtures.community.id, "announcements", communityTask.id);
+    expect((await listMyAnnouncementCycles(fixtures.alice)).map((c) => c.id)).toEqual([currentCycle.id]);
   });
 
   it("listMyHeldTasksForMessaging lists only tasks the actor currently, really holds", async () => {

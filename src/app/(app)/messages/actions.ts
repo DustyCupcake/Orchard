@@ -28,11 +28,11 @@ async function requireMember() {
   return actor;
 }
 
-// One shared action for all four scopes — each form on the page
+// One shared action for all five scopes — each form on the page
 // carries its own hidden `scope` field, and sendOutboundMessage's own
 // zod discriminated union does the real per-scope validation, so this
 // just routes formData into the right shape rather than duplicating
-// four near-identical Server Actions.
+// five near-identical Server Actions.
 export async function sendMessageAction(formData: FormData) {
   const actor = await requireMember();
   const scope = String(formData.get("scope") ?? "");
@@ -59,6 +59,20 @@ export async function sendMessageAction(formData: FormData) {
         scope: "arrival_window",
         start: String(formData.get("start") ?? ""),
         end: String(formData.get("end") ?? ""),
+        subject,
+        body,
+      });
+    } else if (scope === "cycle") {
+      // Checkbox groups submit one entry per checked box (D3: the sender
+      // picks coming and/or maybe); zod rejects an empty selection.
+      const segments = formData
+        .getAll("segments")
+        .map(String)
+        .filter((s): s is "coming" | "maybe" => s === "coming" || s === "maybe");
+      await sendOutboundMessage(actor, {
+        scope: "cycle",
+        cycleId: String(formData.get("cycleId") ?? ""),
+        segments,
         subject,
         body,
       });

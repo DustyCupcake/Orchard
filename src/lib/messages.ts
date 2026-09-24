@@ -3,10 +3,12 @@ import { z } from "zod";
 import { db } from "@/db";
 import {
   branch,
+  cycle,
   member,
   memberIdentity,
   outboundMessage,
   participation,
+  permissionGrant,
   task,
   taskAssignment,
 } from "@/db/schema";
@@ -16,19 +18,18 @@ import { isCoordinationHolder, listCoordinationBranchIds } from "./coordination"
 import { requireCycleInitiationEligibility, resolveViewScopeCycleForMember } from "./cycles";
 import { branchRosterMemberIds } from "./calendar-events";
 import { sendOutboundMessageEmail } from "./mailer";
-import { listGrantingTaskIds } from "./permissions";
+import { listGrantingTaskIdsForScope } from "./permissions";
 
 type Member = typeof memberTable.$inferSelect;
 type OutboundMessageRow = typeof outboundMessageTable.$inferSelect;
 type OutboundMessageScope = OutboundMessageRow["scope"];
+// The sender-selectable Participation segments a cycle-roster
+// announcement can target (D3) — the two groups may need different
+// messages, so the sender picks any non-empty subset.
+type CycleAnnouncementSegment = "coming" | "maybe";
 
-// "Sending an announcement is itself a task on the board... whoever
-// holds that task can send" — same "the task is the authority" check
-// isEventSchedulingOwner/isBudgetOwner already establish, now against a
-// real `announcements`-module PermissionGrant row (docs/development-
-// plan.md's Phase 63 — previously Community.announcementTaskId).
-export async function isAnnouncementTaskHolder(actor: Member): Promise<boolean> {
-  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "announcements");
+// Does `actor` really (non-shadow) hold any of these granting tasks?
+async function holdsAnyGrantingTask(actor: Member, grantingTaskIds: string[]): Promise<boolean> {
   if (grantingTaskIds.length === 0) return false;
 
   const [holding] = await db
@@ -45,10 +46,57 @@ export async function isAnnouncementTaskHolder(actor: Member): Promise<boolean> 
   return Boolean(holding);
 }
 
+// "Sending an announcement is itself a task on the board... whoever
+// holds that task can send" — same "the task is the authority" check
+// isEventSchedulingOwner/isBudgetOwner already establish, now against a
+// real `announcements`-module PermissionGrant row (docs/development-
+// plan.md's Phase 63 — previously Community.announcementTaskId).
+//
+// Scope follows the granted task's own placement (§2.1/D1): a
+// *cycle-less* announcements task gates community-wide sends, and only
+// those; a task placed in cycle C gates sends to cycle C's roster
+// (§4.5/D3) and never community-wide. The two authorities never cross.
+export async function isAnnouncementTaskHolder(actor: Member): Promise<boolean> {
+  const grantingTaskIds = await listGrantingTaskIdsForScope(actor.communityId, "announcements", null);
+  return holdsAnyGrantingTask(actor, grantingTaskIds);
+}
+
+// The cycle's announcement authority — the holder of an
+// `announcements`-granted task *placed in that cycle* (§4.5).
+export async function isAnnouncementHolderForCycle(actor: Member, cycleId: string): Promise<boolean> {
+  const grantingTaskIds = await listGrantingTaskIdsForScope(actor.communityId, "announcements", cycleId);
+  return holdsAnyGrantingTask(actor, grantingTaskIds);
+}
+
 export async function requireAnnouncementTaskHolder(actor: Member) {
   if (!(await isAnnouncementTaskHolder(actor))) {
     throw new ForbiddenError("Only the current announcement-task holder can do this");
   }
+}
+
+// The cycles whose roster this actor may announce to — every cycle
+// holding an `announcements`-granted task the actor currently really
+// holds (mirrors listMyCoordinatedBranches below). Powers the
+// /messages cycle-roster form's cycle picker.
+export async function listMyAnnouncementCycles(actor: Member) {
+  return db
+    .select({ id: cycle.id, name: cycle.name })
+    .from(permissionGrant)
+    .innerJoin(task, eq(task.id, permissionGrant.taskId))
+    .innerJoin(
+      taskAssignment,
+      and(eq(taskAssignment.taskId, task.id), eq(taskAssignment.isShadow, false)),
+    )
+    .innerJoin(cycle, eq(cycle.id, task.cycleId))
+    .where(
+      and(
+        eq(permissionGrant.communityId, actor.communityId),
+        eq(permissionGrant.moduleKey, "announcements"),
+        eq(task.communityId, actor.communityId),
+        eq(taskAssignment.memberId, actor.id),
+      ),
+    )
+    .orderBy(cycle.name);
 }
 
 // The live recipient-resolution this module's schema comment promises
@@ -102,6 +150,25 @@ export async function resolveRecipientMemberIds(
       const rows = await db.select({ id: member.id }).from(member).where(eq(member.communityId, communityId));
       return rows.map((r) => r.id);
     }
+    case "cycle": {
+      const { cycleId, segments } = scopeRef as {
+        cycleId: string;
+        segments: CycleAnnouncementSegment[];
+      };
+      // "recipients drawn from Participation in the target cycle, as
+      // selectable segments the sender picks" (D3) — exactly the chosen
+      // statuses, nothing else.
+      const rows = await db
+        .select({ memberId: participation.memberId })
+        .from(participation)
+        .where(
+          and(
+            eq(participation.cycleId, cycleId),
+            inArray(participation.status, segments),
+          ),
+        );
+      return rows.map((r) => r.memberId);
+    }
   }
 }
 
@@ -122,6 +189,14 @@ export const sendMessageInput = z.discriminatedUnion("scope", [
     scope: z.literal("arrival_window"),
     start: z.string().min(1),
     end: z.string().min(1),
+    subject: z.string().min(1),
+    body: z.string().min(1),
+  }),
+  z.object({
+    scope: z.literal("cycle"),
+    cycleId: z.string().uuid(),
+    // At least one segment — the sender picks coming and/or maybe (D3).
+    segments: z.array(z.enum(["coming", "maybe"])).min(1),
     subject: z.string().min(1),
     body: z.string().min(1),
   }),
@@ -204,6 +279,22 @@ async function resolveScopeForSend(
     }
     const scopeRef = { cycleId: currentCycle.id, start: input.start, end: input.end };
     const recipientIds = await resolveRecipientMemberIds(actor.communityId, "arrival_window", scopeRef);
+    return { scopeRef, recipientIds: recipientIds.filter((id) => id !== actor.id) };
+  }
+
+  if (input.scope === "cycle") {
+    const [cycleRow] = await db
+      .select({ id: cycle.id, communityId: cycle.communityId })
+      .from(cycle)
+      .where(eq(cycle.id, input.cycleId));
+    if (!cycleRow || cycleRow.communityId !== actor.communityId) {
+      throw new NotFoundError("Cycle not found in your community");
+    }
+    if (!(await isAnnouncementHolderForCycle(actor, input.cycleId))) {
+      throw new ForbiddenError("Only that cycle's announcement-task holder can message its roster");
+    }
+    const scopeRef = { cycleId: input.cycleId, segments: input.segments };
+    const recipientIds = await resolveRecipientMemberIds(actor.communityId, "cycle", scopeRef);
     return { scopeRef, recipientIds: recipientIds.filter((id) => id !== actor.id) };
   }
 
