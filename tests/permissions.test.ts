@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { community, task } from "@/db/schema";
 import { createCycle } from "@/lib/cycles";
 import {
+  describeGrantScope,
+  isMisplacedCommunityGrant,
   listGrantingTaskIds,
   listGrantingTaskIdsForScope,
   listGrantsWithTaskInfo,
@@ -213,5 +215,44 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
       ]),
     );
     expect(grants).toHaveLength(3);
+  });
+});
+
+// docs/cycle-scope-remediation-plan.md §5.1 — the derived-scope label
+// and community-shaped misplacement flag the settings panel and
+// task-detail form render, driven by the §2.2 tier table.
+describe("describeGrantScope / isMisplacedCommunityGrant", () => {
+  it("labels a cycle-placed grant with its cycle name, falling back when it can't be resolved", () => {
+    expect(describeGrantScope("spatial_planning", "cycle-1", "Spring 2026")).toBe("Spring 2026");
+    expect(describeGrantScope("spatial_planning", "cycle-1", null)).toBe("that cycle");
+  });
+
+  it("labels a cycle-less grant Community-wide for community-shaped/deferred modules, Evergreen for cycle-shaped ones", () => {
+    for (const moduleKey of ["admin", "conflict_team", "support", "announcements", "feedback_review", "recruitment"] as const) {
+      expect(describeGrantScope(moduleKey, null, null)).toBe("Community-wide");
+    }
+    for (const moduleKey of [
+      "spatial_planning",
+      "event_scheduling_owner",
+      "branch_coordination",
+      "backstop",
+      "shift_management",
+    ] as const) {
+      expect(describeGrantScope(moduleKey, null, null)).toBe("Evergreen");
+    }
+  });
+
+  it("flags only community-shaped modules whose granting task sits in a cycle", () => {
+    expect(isMisplacedCommunityGrant("admin", "cycle-1")).toBe(true);
+    expect(isMisplacedCommunityGrant("conflict_team", "cycle-1")).toBe(true);
+    expect(isMisplacedCommunityGrant("support", "cycle-1")).toBe(true);
+
+    // Cycle-shaped and cycle-variant modules legitimately sit in a cycle.
+    expect(isMisplacedCommunityGrant("spatial_planning", "cycle-1")).toBe(false);
+    expect(isMisplacedCommunityGrant("announcements", "cycle-1")).toBe(false);
+    expect(isMisplacedCommunityGrant("shift_management", "cycle-1")).toBe(false);
+
+    // A cycle-less community-shaped grant is exactly right.
+    expect(isMisplacedCommunityGrant("admin", null)).toBe(false);
   });
 });

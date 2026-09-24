@@ -37,28 +37,92 @@ export const PERMISSION_MODULE_LABELS: Record<PermissionModuleKey, string> = {
   shift_management: "Shift management",
 };
 
+// Each hint leads with its module's scope rule now (docs/cycle-scope-
+// remediation-plan.md §5.1/§2.2): "a task grants what it sits in." The
+// tier table below (PERMISSION_MODULE_SCOPE_TIER) is the same rule made
+// concrete per module; these hints state it in words so the settings
+// panel and the task-detail form never describe the same gate two
+// different ways.
 export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
   admin:
-    "Whoever currently holds any task granted here gates this whole settings screen — see its own candidacy/endorsement flow on the task itself.",
+    "A community-wide role — keep its cycle unset. A cycle-placed Admin task is a contradiction (it would still grant community-wide Admins), so the interface warns rather than silently ignoring it. Whoever currently holds any task granted here gates this whole settings screen — see its own candidacy/endorsement flow on the task itself.",
   branch_coordination:
-    "Whoever currently holds a task granted here does that task's branch's coordination — waiving requirements, seeing escalations and talk-to-coordinator pings for that branch.",
+    "Cycle-shaped — placed in a cycle, it coordinates that cycle; cycle-less, it's a branch-wide coordinator at the community/evergreen scope. Whoever currently holds a task granted here does that task's branch's coordination — waiving requirements, seeing escalations and talk-to-coordinator pings for that branch.",
   conflict_team:
-    "Whoever holds a task granted here is on the conflict team — a critical, multi-slot coordination task like any other. Reports can still be filed with nobody set, but nobody can review or acknowledge them until it is.",
-  feedback_review: "Whoever holds this task sees feedback responses on /feedback.",
+    "A community-wide role — keep its cycle unset; conflicts are relationship-shaped, not cycle-shaped. Whoever holds a task granted here is on the conflict team — a critical, multi-slot coordination task like any other. Reports can still be filed with nobody set, but nobody can review or acknowledge them until it is.",
+  feedback_review:
+    "Community-wide this pass — cycle scoping lands once responses carry a cycle. Whoever holds this task sees feedback responses on /feedback.",
   event_scheduling_owner:
-    "Members can still submit proposals without this set, but nobody can review, confirm, or publish until it is.",
+    "Cycle-shaped — placed in a cycle, it owns that cycle's event scheduling; cycle-less, the community/evergreen scope. Members can still submit proposals without this set, but nobody can review, confirm, or publish until it is.",
   recruitment:
-    "Invite links and inquiries still work without this set, but nobody sees the inquiry inbox until it is.",
-  spatial_planning: "Nobody can draw or edit Zones until this is set — see /spatial-planning.",
+    "Community-wide this pass — cycle scoping lands once intake carries a cycle. Invite links and inquiries still work without this set, but nobody sees the inquiry inbox until it is.",
+  spatial_planning:
+    "Cycle-shaped — placed in a cycle, it owns that cycle's Zones; cycle-less, the community/evergreen scope. Nobody can draw or edit Zones until this is set — see /spatial-planning.",
   announcements:
-    "Targeted messages (branch/task-holders/arrival-window) work without this — it gates announcements by scope: a cycle-less task gates community-wide sends, a task placed in a cycle gates messages to that cycle's roster (coming and/or maybe).",
+    "Cycle-less, it gates community-wide announcements; placed in a cycle, it gates messages to that cycle's roster (coming and/or maybe) instead. Targeted messages (branch/task-holders/arrival-window) work without this.",
   support:
-    "Whoever currently holds a task granted here can view the platform exactly as another member would, read-only — see docs/spec.md's View-as (support).",
+    "A community-wide role — keep its cycle unset. Whoever currently holds a task granted here can view the platform exactly as another member would, read-only — see docs/spec.md's View-as (support).",
   backstop:
-    "The standing accountable holder for critical tasks in this scope — cycle-shaped, like Announcements: a task placed in a cycle is that cycle's backstop (covering its critical tasks), a cycle-less task is the community/evergreen backstop (covering cycle-less criticals only, D1). Unclaimed criticals stay open and claimable for anyone — being the backstop is about being named responsible, not closing the task off.",
+    "Cycle-shaped, like Announcements: a task placed in a cycle is that cycle's backstop (covering its critical tasks); a cycle-less task is the community/evergreen backstop (covering cycle-less criticals only, D1). Unclaimed criticals stay open and claimable for anyone — being the backstop is about being named responsible, not closing the task off.",
   shift_management:
-    "Whoever holds a task granted here manages that scope's shift roster — opening sign-ups, confirming proposals, re-placing series — cycle-shaped like Announcements: a task placed in a cycle manages that cycle's roster, a cycle-less task manages the community's standing series. Placing a series in a collecting cycle is open to any member; managing (and adding standing series) is not. A roster with no grant-backed manager stays visibly closed.",
+    "Cycle-shaped like Announcements: a task placed in a cycle manages that cycle's roster; a cycle-less task manages the community's standing series. Whoever holds it opens sign-ups, confirms proposals, and re-places series. Placing a series in a collecting cycle is open to any member; managing (and adding standing series) is not. A roster with no grant-backed manager stays visibly closed.",
 };
+
+// The §2.2 tier table made concrete — how each module's authority
+// follows the granted task's placement (§2.1). The settings panel and
+// the task-detail form read this to render each grant's derived scope
+// and to flag a community-shaped grant that sits in a cycle, rather
+// than hard-coding per-module exceptions at each surface:
+//   "community"     — community-shaped: cycle-less only. A cycle-placed
+//                     instance is a contradiction the interface warns
+//                     about (admin, conflict_team, support).
+//   "cycle"         — cycle-shaped: placement *is* the scope. In cycle C
+//                     → cycle C; cycle-less → the community/evergreen
+//                     scope (branch_coordination, event_scheduling_owner,
+//                     spatial_planning, backstop, shift_management).
+//   "cycle_variant" — community-shaped base with an optional per-cycle
+//                     variant: cycle-less → community-wide; cycle-placed
+//                     → that cycle (announcements).
+//   "deferred"      — community-wide this pass; cycle-keyed data lands
+//                     in a later pass (§4.3/D4) (feedback_review,
+//                     recruitment).
+export type PermissionModuleScopeTier = "community" | "cycle" | "cycle_variant" | "deferred";
+
+export const PERMISSION_MODULE_SCOPE_TIER: Record<PermissionModuleKey, PermissionModuleScopeTier> = {
+  admin: "community",
+  branch_coordination: "cycle",
+  conflict_team: "community",
+  feedback_review: "deferred",
+  event_scheduling_owner: "cycle",
+  recruitment: "deferred",
+  spatial_planning: "cycle",
+  announcements: "cycle_variant",
+  support: "community",
+  backstop: "cycle",
+  shift_management: "cycle",
+};
+
+// The derived-scope label a grant row shows (§5.1): the cycle the
+// granting task is placed in, or — for a cycle-less task — "Community-
+// wide" for a module whose authority is whole-community (and the
+// deferred modules, community-wide this pass), and "Evergreen" for a
+// cycle-shaped module's standing/community-less instance (§2.2).
+export function describeGrantScope(
+  moduleKey: PermissionModuleKey,
+  cycleId: string | null,
+  cycleName: string | null,
+): string {
+  if (cycleId) return cycleName ?? "that cycle";
+  return PERMISSION_MODULE_SCOPE_TIER[moduleKey] === "cycle" ? "Evergreen" : "Community-wide";
+}
+
+// A community-shaped module whose granting task sits in a cycle — the
+// contradiction §2.2 describes. The authority still applies (the server
+// is the source of truth, D1), so this is a warning the interface shows,
+// not a mistake it blocks.
+export function isMisplacedCommunityGrant(moduleKey: PermissionModuleKey, cycleId: string | null): boolean {
+  return PERMISSION_MODULE_SCOPE_TIER[moduleKey] === "community" && cycleId !== null;
+}
 
 // Modules where more than one task can simultaneously grant access
 // (Phase 13/15/54's original tag-based gates) — every other module

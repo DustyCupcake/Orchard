@@ -8,6 +8,8 @@ import { getCommunity, listBranches, listCycleTypes, listPendingBranches, listTi
 import Tabs from "@/components/ui/Tabs";
 import {
   allowsMultipleGrants,
+  describeGrantScope,
+  isMisplacedCommunityGrant,
   listGrantsWithTaskInfo,
   PERMISSION_MODULE_KEYS,
   PERMISSION_MODULE_HINTS,
@@ -135,9 +137,13 @@ function TextField({
 // addPermissionGrantAction, with a static warning next to it once the
 // same scope already has a grantee, rather than the old pre-filled-
 // input-doubling-as-replace UX. Each row shows the granted task plus
-// its derived scope (task — branch — cycle name, or "community-wide"
-// for a cycle-less task; docs/cycle-scope-remediation-plan.md §2.1 —
-// the grant row itself carries no cycle). The Add input's `list`
+// its derived scope — task — branch — {cycle name | Community-wide |
+// Evergreen} via describeGrantScope (docs/cycle-scope-remediation-
+// plan.md §2.1/§5.1: the grant row itself carries no cycle; the
+// granting task's own placement *is* the scope, so there is nothing
+// else to pick). A community-shaped module's task that sits in a cycle
+// renders a warning rather than being silently ignored
+// (isMisplacedCommunityGrant). The Add input's `list`
 // attribute wires it to the shared task datalist rendered once for the
 // whole tab (see the "permissions" tab body below) — a zero-JS "search
 // by title" picker; the datalist's own <option value> is still the raw
@@ -160,17 +166,29 @@ function GrantField({
       {grants.length > 0 && (
         <ul className="flex flex-col gap-1.5">
           {grants.map((g) => (
-            <li key={g.taskId} className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text)]">
-              {g.title} — {g.branchName}
-              <span className="text-[var(--text-muted)]"> — {g.cycleName ?? "community-wide"}</span>
-              <form action={removePermissionGrantAction}>
-                <input type="hidden" name="moduleKey" value={moduleKey} />
-                <input type="hidden" name="taskId" value={g.taskId} />
-                <input type="hidden" name="tab" value="permissions" />
-                <button type="submit" className={BUTTON_SECONDARY}>
-                  Remove
-                </button>
-              </form>
+            <li key={g.taskId} className="flex flex-col gap-1 text-[13px] text-[var(--text)]">
+              <div className="flex flex-wrap items-center gap-2">
+                {g.title} — {g.branchName}
+                <span className="text-[var(--text-muted)]">
+                  {" "}
+                  — {describeGrantScope(moduleKey, g.cycleId, g.cycleName)}
+                </span>
+                <form action={removePermissionGrantAction}>
+                  <input type="hidden" name="moduleKey" value={moduleKey} />
+                  <input type="hidden" name="taskId" value={g.taskId} />
+                  <input type="hidden" name="tab" value="permissions" />
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Remove
+                  </button>
+                </form>
+              </div>
+              {isMisplacedCommunityGrant(moduleKey, g.cycleId) && (
+                <Banner tone="warning">
+                  This task sits in a cycle, but {PERMISSION_MODULE_LABELS[moduleKey]} is a community-wide
+                  role — keep its cycle unset. It still grants community-wide access (the server is the
+                  source of truth), so it isn&rsquo;t silently ignored.
+                </Banner>
+              )}
             </li>
           ))}
         </ul>
@@ -277,7 +295,7 @@ export default async function SettingsPage({
       title: g.title,
       branchName: branchNameById.get(g.branchId) ?? "—",
       cycleId: g.cycleId,
-      cycleName: g.cycleId ? (cycleNameById.get(g.cycleId) ?? "—") : null,
+      cycleName: g.cycleId ? (cycleNameById.get(g.cycleId) ?? null) : null,
     });
     grantsByModule.set(g.moduleKey, list);
   }
@@ -441,8 +459,10 @@ export default async function SettingsPage({
         {activeTab === "permissions" && (
           <div className="flex flex-col gap-5">
             <p className="text-[13px] text-[var(--text-muted)]">
-              Every access-gated capability in the app, in one place — who currently holds it, and a
-              search-by-title picker to add or replace a grant. See a task&rsquo;s own detail or
+              Every access-gated capability in the app, in one place. One rule covers them all:{" "}
+              <span className="text-[var(--text)]">a task grants what it sits in</span> — placed in a
+              cycle, it covers that cycle; cycle-less, it covers the community/evergreen scope. Add or
+              replace a grant with the search-by-title picker. See a task&rsquo;s own detail or
               proposal-activation screen for the identical checkbox-driven equivalent.
             </p>
             <datalist id="permissions-community-tasks">
