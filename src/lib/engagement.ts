@@ -12,7 +12,7 @@ import {
   taskAssignment,
 } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { listCoordinationBranchIds } from "./coordination";
+import { listCoordinationScopeIds } from "./coordination";
 
 type Member = typeof memberTable.$inferSelect;
 type EngagementEventKind = "task_nomination_expired" | "nudge_ignored" | "call_summary_unread_past_window";
@@ -81,7 +81,7 @@ export async function computeEngagementPattern(
 // noise" posture every other needs-action list in this codebase
 // already takes.
 export async function listEngagementPatternsForCoordinator(actor: Member) {
-  const branchIds = await listCoordinationBranchIds(actor);
+  const { branchIds } = await listCoordinationScopeIds(actor);
   if (branchIds.size === 0) return [];
 
   const holders = await db

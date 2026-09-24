@@ -1,11 +1,10 @@
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { task, taskAssignment } from "@/db/schema";
-import type { member as memberTable } from "@/db/schema";
+import { member, permissionGrant, task, taskAssignment } from "@/db/schema";
 import { ForbiddenError } from "./errors";
 import { listGrantingTaskIds } from "./permissions";
 
-type Member = typeof memberTable.$inferSelect;
+type Member = typeof member.$inferSelect;
 
 // The one scope read (docs/cycle-scope-remediation-plan.md §2.1/§2.4),
 // passed by everything that asks "does this actor do coordination
@@ -82,18 +81,23 @@ export async function requireCoordinationHolder(actor: Member, scope: Coordinati
   }
 }
 
-// The board renders many tasks across many branches at once — one
-// query up front instead of calling isCoordinationHolder() per task.
-// Returns the set of branchIds the actor currently does coordination
-// for — column semantics (cycle-less granted tasks only, §2.4), so a
-// cycle-scoped coordination task never lights up the community-wide
-// branch columns it has no authority over.
-export async function listCoordinationBranchIds(actor: Member) {
+// The board renders many tasks across many branches and cycles at once
+// — one query up front instead of calling isCoordinationHolder() per
+// task. Returns both dimensions of the actor's current coordination
+// coverage (§2.4 / §5.3): `branchIds` is column semantics (cycle-less
+// granted tasks only — branch-wide authority across every cycle of
+// that branch), `cycleIds` is row semantics (cycle-placed granted
+// tasks — the whole row of that cycle, any branch). Callers that only
+// ever have a branch in hand (messages, engagement) read `branchIds`
+// and stay column-only; the board reads both.
+export async function listCoordinationScopeIds(actor: Member) {
   const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "branch_coordination");
-  if (grantingTaskIds.length === 0) return new Set<string>();
+  if (grantingTaskIds.length === 0) {
+    return { branchIds: new Set<string>(), cycleIds: new Set<string>() };
+  }
 
-  const holdings = await db
-    .select({ branchId: task.branchId })
+  const rows = await db
+    .select({ branchId: task.branchId, cycleId: task.cycleId })
     .from(taskAssignment)
     .innerJoin(task, eq(taskAssignment.taskId, task.id))
     .where(
@@ -101,12 +105,78 @@ export async function listCoordinationBranchIds(actor: Member) {
         eq(taskAssignment.memberId, actor.id),
         eq(taskAssignment.isShadow, false),
         eq(task.communityId, actor.communityId),
-        isNull(task.cycleId),
         inArray(taskAssignment.taskId, grantingTaskIds),
       ),
     );
 
-  return new Set(holdings.map((h) => h.branchId));
+  const branchIds = new Set<string>();
+  const cycleIds = new Set<string>();
+  for (const r of rows) {
+    if (r.cycleId === null) branchIds.add(r.branchId);
+    else cycleIds.add(r.cycleId);
+  }
+  return { branchIds, cycleIds };
+}
+
+export interface CoordinationHolder {
+  memberId: string;
+  memberName: string;
+}
+
+// The coordination holder for each of the given scopes, in one query —
+// what the board needs to render its "Coordinated by {name}" tags
+// (§5.3) across whatever branches and cycles are in view. Branch
+// columns mean a cycle-less granted coordination task in that branch;
+// cycle rows mean a granted coordination task placed in that cycle.
+// First holder wins per scope (mirror of backstop.ts's
+// listBackstopHoldersForScopes).
+export async function listCoordinationHoldersForScopes(
+  communityId: string,
+  branchIds: string[],
+  cycleIds: string[],
+): Promise<{ byBranch: Map<string, CoordinationHolder>; byCycle: Map<string, CoordinationHolder> }> {
+  const byBranch = new Map<string, CoordinationHolder>();
+  const byCycle = new Map<string, CoordinationHolder>();
+  if (branchIds.length === 0 && cycleIds.length === 0) return { byBranch, byCycle };
+
+  const scopeConditions: (SQL | undefined)[] = [];
+  if (branchIds.length > 0) {
+    scopeConditions.push(and(isNull(task.cycleId), inArray(task.branchId, branchIds)));
+  }
+  for (const cid of cycleIds) {
+    scopeConditions.push(eq(task.cycleId, cid));
+  }
+
+  const rows = await db
+    .select({
+      branchId: task.branchId,
+      cycleId: task.cycleId,
+      memberId: taskAssignment.memberId,
+      memberName: member.name,
+    })
+    .from(permissionGrant)
+    .innerJoin(task, eq(task.id, permissionGrant.taskId))
+    .innerJoin(taskAssignment, and(eq(taskAssignment.taskId, task.id), eq(taskAssignment.isShadow, false)))
+    .innerJoin(member, eq(member.id, taskAssignment.memberId))
+    .where(
+      and(
+        eq(permissionGrant.communityId, communityId),
+        eq(permissionGrant.moduleKey, "branch_coordination"),
+        eq(task.communityId, communityId),
+        or(...scopeConditions)!,
+      ),
+    );
+
+  for (const r of rows) {
+    if (r.cycleId === null) {
+      if (!byBranch.has(r.branchId)) {
+        byBranch.set(r.branchId, { memberId: r.memberId, memberName: r.memberName });
+      }
+    } else if (!byCycle.has(r.cycleId)) {
+      byCycle.set(r.cycleId, { memberId: r.memberId, memberName: r.memberName });
+    }
+  }
+  return { byBranch, byCycle };
 }
 
 // The task's own coordination slot (Phase 12's is_coordination_slot,

@@ -35,7 +35,7 @@ describe("listEscalatedTasks", () => {
 
   it("rejects a member with no coordination authority anywhere in the community", async () => {
     const { alice } = await createFixtures();
-    await expect(listEscalatedTasks(alice)).rejects.toThrow(ForbiddenError);
+    await expect(listEscalatedTasks(alice, [])).rejects.toThrow(ForbiddenError);
   });
 
   it("lists escalated tasks community-wide, not scoped to the coordinator's own branch", async () => {
@@ -64,10 +64,45 @@ describe("listEscalatedTasks", () => {
       attentionLevel: "soft",
     });
 
-    const escalated = await listEscalatedTasks(alice);
+    const escalated = await listEscalatedTasks(alice, []);
     expect(escalated.map((t) => t.id).sort()).toEqual(
       [escalatedElsewhere.id, escalatedHere.id].sort(),
     );
+  });
+
+  it("scopes a cycle-placed coordinator to their own cycle's rows (§5.3)", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, testCommunity.id));
+    const cycleA = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    const cycleB = await createCycle(bob, { source: "blank", name: "2028 Season", confirmed: true });
+
+    // Alice coordinates row A only — a coordination task placed in cycle A.
+    const coordA = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Coordination",
+      cycleId: cycleA.id,
+    });
+    await grantPermission(testCommunity.id, "branch_coordination", coordA.id);
+    await claimTask(alice, coordA.id);
+
+    const inA = await insertTask(testCommunity.id, branch.id, alice.id, {
+      cycleId: cycleA.id,
+      attentionLevel: "escalated",
+    });
+    const inB = await insertTask(testCommunity.id, branch.id, bob.id, {
+      cycleId: cycleB.id,
+      attentionLevel: "escalated",
+    });
+    const cycleless = await insertTask(testCommunity.id, branch.id, alice.id, {
+      attentionLevel: "escalated",
+    });
+
+    // Pointed at row A: row A only — never row B or the community scope.
+    const sees = await listEscalatedTasks(alice, [cycleA.id]);
+    expect(sees.map((t) => t.id)).toEqual([inA.id]);
+    expect(sees.map((t) => t.id)).not.toContain(inB.id);
+    expect(sees.map((t) => t.id)).not.toContain(cycleless.id);
+    // Pointed at a cycle she doesn't cover: an empty segment, no leak.
+    expect(await listEscalatedTasks(alice, [cycleB.id])).toEqual([]);
   });
 
   it("excludes escalated tasks from another community", async () => {
@@ -85,7 +120,7 @@ describe("listEscalatedTasks", () => {
       attentionLevel: "escalated",
     });
 
-    const escalated = await listEscalatedTasks(alice);
+    const escalated = await listEscalatedTasks(alice, []);
     expect(escalated).toHaveLength(0);
   });
 });
@@ -111,7 +146,7 @@ describe("escalateTask / deescalateTask", () => {
     const updated = await escalateTask(alice, target.id);
     expect(updated.attentionLevel).toBe("escalated");
 
-    const listed = await listEscalatedTasks(alice);
+    const listed = await listEscalatedTasks(alice, []);
     expect(listed.map((t) => t.id)).toContain(target.id);
   });
 
@@ -131,7 +166,7 @@ describe("escalateTask / deescalateTask", () => {
     const updated = await deescalateTask(alice, target.id);
     expect(updated.attentionLevel).toBe("ok");
 
-    const listed = await listEscalatedTasks(alice);
+    const listed = await listEscalatedTasks(alice, []);
     expect(listed.map((t) => t.id)).not.toContain(target.id);
   });
 
@@ -186,7 +221,7 @@ describe("backstop admission (§4.7/§5.5)", () => {
 
     // bob backs cycle B only — the queue, and their escalate reach, is
     // scoped to it (never leaking into cycle A, §2.1's strict rule).
-    const bobSees = await listEscalatedTasks(bob);
+    const bobSees = await listEscalatedTasks(bob, [cycleB.id]);
     expect(bobSees.map((t) => t.id)).toEqual([inB.id]);
 
     await expect(escalateTask(bob, inA.id)).rejects.toThrow(ForbiddenError);
@@ -210,7 +245,7 @@ describe("backstop admission (§4.7/§5.5)", () => {
     });
 
     expect((await escalateTask(bob, cycleless.id)).attentionLevel).toBe("escalated");
-    const bobSees = await listEscalatedTasks(bob);
+    const bobSees = await listEscalatedTasks(bob, []);
     expect(bobSees.map((t) => t.id)).toEqual([cycleless.id]);
   });
 
@@ -222,6 +257,6 @@ describe("backstop admission (§4.7/§5.5)", () => {
     const target = await insertTask(testCommunity.id, branch.id, alice.id);
 
     await expect(escalateTask(bob, target.id)).rejects.toThrow(ForbiddenError);
-    await expect(listEscalatedTasks(bob)).rejects.toThrow(ForbiddenError);
+    await expect(listEscalatedTasks(bob, [])).rejects.toThrow(ForbiddenError);
   });
 });

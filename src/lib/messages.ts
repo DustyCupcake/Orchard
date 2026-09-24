@@ -14,7 +14,7 @@ import {
 } from "@/db/schema";
 import type { member as memberTable, outboundMessage as outboundMessageTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "./errors";
-import { isCoordinationHolder, listCoordinationBranchIds } from "./coordination";
+import { isCoordinationHolder, listCoordinationScopeIds } from "./coordination";
 import { requireCycleInitiationEligibility, resolveViewScopeCycleForMember } from "./cycles";
 import { branchRosterMemberIds } from "./calendar-events";
 import { sendOutboundMessageEmail } from "./mailer";
@@ -384,7 +384,7 @@ export async function listOutboundMessagesVisibleTo(actor: Member): Promise<Outb
 // offer this actor, without duplicating resolveScopeForSend's own
 // authority checks.
 export async function listMyCoordinatedBranches(actor: Member) {
-  const branchIds = await listCoordinationBranchIds(actor);
+  const { branchIds } = await listCoordinationScopeIds(actor);
   if (branchIds.size === 0) return [];
   return db
     .select({ id: branch.id, name: branch.name })

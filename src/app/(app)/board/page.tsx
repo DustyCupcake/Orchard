@@ -13,7 +13,11 @@ import {
   sortUnclaimedQueue,
   tierNameLookup,
 } from "@/lib/tasks";
-import { listCoordinationBranchIds, isCoordinationHolder } from "@/lib/coordination";
+import {
+  listCoordinationScopeIds,
+  listCoordinationHoldersForScopes,
+  isCoordinationHolder,
+} from "@/lib/coordination";
 import { listBackstopHoldersForScopes, listBackstopScopesForMember } from "@/lib/backstop";
 import { ATTENTION_STYLES } from "@/lib/format";
 import { canInitiateCycle, resolveDefaultScopeSegment, resolveViewScopeFromSegment } from "@/lib/cycles";
@@ -122,7 +126,7 @@ export default async function BoardPage({
     tierNames,
     myPendingRequests,
     allTags,
-    coordinationBranchIds,
+    coordinationScope,
     canExport,
     isCoordinator,
     communityRow,
@@ -140,7 +144,7 @@ export default async function BoardPage({
     tierNameLookup(viewing.communityId),
     listMyPendingJoinRequests(viewing),
     listDistinctTags(viewing),
-    listCoordinationBranchIds(viewing),
+    listCoordinationScopeIds(viewing),
     canInitiateCycle(viewing),
     isCoordinationHolder(viewing, null),
     getCommunityRow(viewing.communityId),
@@ -151,6 +155,23 @@ export default async function BoardPage({
     ),
     listBackstopScopesForMember(viewing),
   ]);
+
+  // §5.3 (docs/cycle-scope-remediation-plan.md) — resolve coordination
+  // from both dimensions: the viewer's own coverage (branch column OR
+  // cycle row) drives the per-task markers and actions, and the
+  // covering holder per scope in view feeds the task cards'
+  // "Coordinated by {name}" tag for every viewer.
+  const coordHolders = await listCoordinationHoldersForScopes(
+    viewing.communityId,
+    branches.map((b) => b.id),
+    scopeCycleIds,
+  );
+  const isCoordinationHolderForTask = (t: BoardTask) =>
+    coordinationScope.branchIds.has(t.branchId) ||
+    (t.cycleId !== null && coordinationScope.cycleIds.has(t.cycleId));
+  const coordinationNameFor = (t: BoardTask) =>
+    coordHolders.byBranch.get(t.branchId)?.memberName ??
+    (t.cycleId === null ? null : coordHolders.byCycle.get(t.cycleId)?.memberName ?? null);
 
   // "By phase" only makes sense once there's a real phase spine to show
   // — otherwise every task lands in one "No phase" card, no better than
@@ -243,7 +264,7 @@ export default async function BoardPage({
   const cyclelessToggleHref = boardHref({ hideCycleless: !hidingCycleless });
   const viewTabs = visibleViews.map((v) => ({ key: v, label: VIEW_LABEL[v] }));
   const phaseGroups = activeView === "phase" ? groupTasksByPhase(filteredTasks, phases) : [];
-  const branchCoverageGroups = activeView === "coverage" ? groupTasksByBranchCoverage(filteredTasks, branches, coordinationBranchIds) : [];
+  const branchCoverageGroups = activeView === "coverage" ? groupTasksByBranchCoverage(filteredTasks, branches, coordinationScope.branchIds) : [];
   const phaseEndDateById = new Map(
     phases.map((p) => [p.id, p.endDate] as const).filter(([, d]) => d !== null) as Array<readonly [string, string]>,
   );
@@ -542,7 +563,8 @@ export default async function BoardPage({
                     branchName={branchNameById.get(t.branchId) ?? "—"}
                     currentMemberId={viewing.id}
                     myPendingRequestId={myPendingRequests.get(t.id) ?? null}
-                    isCoordinationHolderForBranch={coordinationBranchIds.has(t.branchId)}
+                    isCoordinationHolderForTask={isCoordinationHolderForTask(t)}
+                    coordinationName={coordinationNameFor(t)}
                     backstopName={backstopNameFor(t)}
                   />
                 </li>
@@ -576,7 +598,8 @@ export default async function BoardPage({
                     branchName={branchNameById.get(t.branchId) ?? "—"}
                     currentMemberId={viewing.id}
                     myPendingRequestId={myPendingRequests.get(t.id) ?? null}
-                    isCoordinationHolderForBranch={coordinationBranchIds.has(t.branchId)}
+                    isCoordinationHolderForTask={isCoordinationHolderForTask(t)}
+                    coordinationName={coordinationNameFor(t)}
                     backstopName={backstopNameFor(t)}
                   />
                 ))}
@@ -596,7 +619,8 @@ export default async function BoardPage({
               branchNameById={branchNameById}
               currentMemberId={viewing.id}
               myPendingRequests={myPendingRequests}
-              coordinationBranchIds={coordinationBranchIds}
+              isCoordinationHolderForTask={isCoordinationHolderForTask}
+              coordinationNameFor={coordinationNameFor}
               backstopNameFor={backstopNameFor}
             />
           ))}
@@ -613,7 +637,8 @@ export default async function BoardPage({
               branchNameById={branchNameById}
               currentMemberId={viewing.id}
               myPendingRequests={myPendingRequests}
-              coordinationBranchIds={coordinationBranchIds}
+              isCoordinationHolderForTask={isCoordinationHolderForTask}
+              coordinationNameFor={coordinationNameFor}
               backstopNameFor={backstopNameFor}
             />
           ))}

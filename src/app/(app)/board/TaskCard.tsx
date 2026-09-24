@@ -57,7 +57,8 @@ export default function TaskCard({
   branchName,
   currentMemberId,
   myPendingRequestId,
-  isCoordinationHolderForBranch,
+  isCoordinationHolderForTask,
+  coordinationName,
   backstopName,
 }: {
   task: Task;
@@ -69,7 +70,12 @@ export default function TaskCard({
   branchName: string;
   currentMemberId: string;
   myPendingRequestId: string | null;
-  isCoordinationHolderForBranch: boolean;
+  // §5.3 (docs/cycle-scope-remediation-plan.md) — the viewer's own
+  // coordination coverage resolved from both dimensions: their branch
+  // column or the task's cycle row. `coordinationName` is the
+  // covering holder's name (whoever holds it, for every viewer).
+  isCoordinationHolderForTask: boolean;
+  coordinationName: string | null;
   backstopName: string | null;
 }) {
   // A shadow isn't a real holder — doesn't count toward capacity, isn't
@@ -89,7 +95,7 @@ export default function TaskCard({
   const isCommunityEndorsed = task.openness === "community_endorsed";
 
   const needsSelfAssignConfirmation =
-    isCoordinationHolderForBranch && (task.status === "unclaimed" || task.attentionLevel !== "ok");
+    isCoordinationHolderForTask && (task.status === "unclaimed" || task.attentionLevel !== "ok");
 
   const canAct =
     !isCommunityEndorsed &&
@@ -125,7 +131,7 @@ export default function TaskCard({
   const coverageReqs = requirements.filter((r) => r.mode === "group_coverage");
 
   // ── Action wiring (one primary + menu, per the grammar table) ──
-  const escalateForm = isCoordinationHolderForBranch && task.attentionLevel !== "escalated" && (
+  const escalateForm = isCoordinationHolderForTask && task.attentionLevel !== "escalated" && (
     <form action={escalateTaskAction}>
       <input type="hidden" name="taskId" value={task.id} />
       <button type="submit">Escalate</button>
@@ -244,6 +250,11 @@ export default function TaskCard({
             critical in a scope that has a backstop names its accountable
             holder while staying open and claimable by anyone (D5). */}
         {backstopName && <Tag tone="danger">Backstop: {backstopName}</Tag>}
+        {/* docs/cycle-scope-remediation-plan.md §5.3 — the covering
+            coordination holder, resolved from both dimensions (§2.4):
+            a cycle-less holder lights up its branch column, a
+            cycle-placed holder its cycle row. */}
+        {coordinationName && <Tag tone="neutral">Coordinated by {coordinationName}</Tag>}
         {task.cycleId === null && <Tag>not cycle-scoped</Tag>}
       </div>
 

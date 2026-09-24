@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { branch as branchTable, member, task, taskAssignment } from "@/db/schema";
+import { branch as branchTable, community, member, task, taskAssignment } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
+import { createCycle } from "@/lib/cycles";
 import {
   holdsTaskCoordinationSlot,
   isAuthorizedToWaive,
   isCoordinationHolder,
-  listCoordinationBranchIds,
+  listCoordinationScopeIds,
   requireCoordinationHolder,
 } from "@/lib/coordination";
 import { ForbiddenError } from "@/lib/errors";
@@ -144,12 +145,12 @@ describe("holdsTaskCoordinationSlot / isAuthorizedToWaive", () => {
   });
 });
 
-describe("listCoordinationBranchIds", () => {
+describe("listCoordinationScopeIds (§5.3)", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  it("returns every branch the actor currently coordinates, community-wide", async () => {
+  it("returns every branch the actor coordinates cycle-less — column semantics", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     const [otherBranch] = await db
       .insert(branchTable)
@@ -165,12 +166,50 @@ describe("listCoordinationBranchIds", () => {
     await claimTask(alice, t1.id);
     await claimTask(alice, t2.id);
 
-    const branchIds = await listCoordinationBranchIds(alice);
+    const { branchIds, cycleIds } = await listCoordinationScopeIds(alice);
     expect(branchIds).toEqual(new Set([branch.id, otherBranch.id]));
+    expect(cycleIds.size).toBe(0);
+  });
+
+  it("returns the actor's cycle row for a coordination task placed in a cycle", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, testCommunity.id));
+    const cycleA = await createCycle(alice, { source: "blank", name: "2027 Season" });
+
+    const t = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
+    await grantPermission(testCommunity.id, "branch_coordination", t.id);
+    await claimTask(alice, t.id);
+
+    // Column semantics: a cycle-placed task never lights up its branch
+    // column (cycle-less only, §2.1) — the cycle row is where it lands.
+    const { branchIds, cycleIds } = await listCoordinationScopeIds(alice);
+    expect(branchIds.size).toBe(0);
+    expect(cycleIds).toEqual(new Set([cycleA.id]));
+  });
+
+  it("combines both dimensions across cycle-less and cycle-placed grants", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, testCommunity.id));
+    const cycleA = await createCycle(alice, { source: "blank", name: "2027 Season" });
+
+    const cycleless = await insertTask(testCommunity.id, branch.id, alice.id);
+    const cycleTask = await insertTask(testCommunity.id, branch.id, alice.id, {
+      cycleId: cycleA.id,
+    });
+    await grantPermission(testCommunity.id, "branch_coordination", cycleless.id);
+    await grantPermission(testCommunity.id, "branch_coordination", cycleTask.id);
+    await claimTask(alice, cycleless.id);
+    await claimTask(alice, cycleTask.id);
+
+    const { branchIds, cycleIds } = await listCoordinationScopeIds(alice);
+    expect(branchIds).toEqual(new Set([branch.id]));
+    expect(cycleIds).toEqual(new Set([cycleA.id]));
   });
 
   it("is empty for a member holding no coordination-tagged tasks", async () => {
     const { alice } = await createFixtures();
-    expect((await listCoordinationBranchIds(alice)).size).toBe(0);
+    const { branchIds, cycleIds } = await listCoordinationScopeIds(alice);
+    expect(branchIds.size).toBe(0);
+    expect(cycleIds.size).toBe(0);
   });
 });
