@@ -447,7 +447,7 @@ async function ParticipationForCycle({
             "No capacity cap set — unlimited."
           ) : (
             <>
-              Capacity {summary.capacity} · {summary.comingCount} coming ·{" "}
+              Capacity {summary.capacity} · {summary.comingCount} coming{summary.holds > 0 && ` · ${summary.holds} held`} ·{" "}
               {summary.remainingCapacity !== null && summary.remainingCapacity < 0
                 ? `${-summary.remainingCapacity} over capacity`
                 : `${summary.remainingCapacity} remaining`}

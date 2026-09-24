@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community, cycle, member, tier } from "@/db/schema";
 import { closeCycle, createCycle, getCycle, updateCycleSettings } from "@/lib/cycles";
+import { createCommunityInvite } from "@/lib/recruitment";
 import {
   declareParticipation,
   getCycleParticipationSummary,
@@ -127,6 +128,38 @@ describe("getCycleParticipationSummary", () => {
     const summary = await getCycleParticipationSummary(alice, cyc.id);
     expect(summary.comingCount).toBe(2);
     expect(summary.remainingCapacity).toBe(-1);
+  });
+
+  it("outstanding direct invites hold a capacity slot alongside coming members (§4.3/8d)", async () => {
+    const { community: testCommunity, alice, bob } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const [communityRow] = await db.select().from(community).where(eq(community.id, testCommunity.id));
+    await db
+      .update(community)
+      .set({ modulesEnabled: [...communityRow.modulesEnabled, "recruitment"] })
+      .where(eq(community.id, testCommunity.id));
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    await updateCycleSettings(alice, cyc.id, { capacity: 3 });
+
+    await declareParticipation(bob, cyc.id, { status: "coming" });
+    // A direct invite into a capacity-capped cycle needs a future expiry.
+    await createCommunityInvite(alice, {
+      cycleId: cyc.id,
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    });
+
+    const summary = await getCycleParticipationSummary(alice, cyc.id);
+    expect(summary.comingCount).toBe(1);
+    expect(summary.holds).toBe(1);
+    expect(summary.remainingCapacity).toBe(1);
+
+    // The same invites hold nothing once the cycle's mode is referral —
+    // an invite's meaning follows the cycle, never moved when the
+    // invites themselves were issued.
+    await updateCycleSettings(alice, cyc.id, { joiningInviteMode: "referral" });
+    const referralSummary = await getCycleParticipationSummary(alice, cyc.id);
+    expect(referralSummary.holds).toBe(0);
+    expect(referralSummary.remainingCapacity).toBe(2);
   });
 
   it("returning window is open before the close time and closed after, purely time-computed", async () => {

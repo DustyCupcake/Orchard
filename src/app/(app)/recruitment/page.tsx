@@ -84,6 +84,7 @@ export default async function RecruitmentPipelinePage() {
               <p className="mt-2 text-[13px] text-[var(--text)]">
                 Capacity {pipeline.capacity.capacity ?? "unset"} · {pipeline.capacity.comingCount} coming
                 this cycle
+                {pipeline.capacity.holds > 0 && ` · ${pipeline.capacity.holds} held`}
                 {pipeline.capacity.remainingCapacity !== null && (
                   <>
                     {" · "}

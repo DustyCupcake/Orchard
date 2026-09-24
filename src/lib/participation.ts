@@ -1,7 +1,7 @@
-import { and, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { cycle, participation } from "@/db/schema";
+import { communityInvite, cycle, participation } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { NotFoundError } from "./errors";
 import { syncComputedTiers } from "./settings/tiers";
@@ -101,7 +101,11 @@ export async function getMyParticipation(actor: Member, cycleId: string) {
 // returningWindowClosesAt, the same no-scheduler-job pattern Assemblies'
 // computeAssemblyPhase already established — null when the Community
 // hasn't set one (most communities never will, per spec, unless
-// Recruitment is on).
+// Recruitment is on). As of §4.3/8d the outstanding direct invites
+// "hold" capacity slots too, so they count against what's left here
+// the same way getCycleJoiningState counts them at the door (a
+// referral-mode cycle's invites hold nothing; the mode follows the
+// cycle, never the invite).
 export async function getCycleParticipationSummary(actor: Member, cycleId: string) {
   const cycleRow = await requireCycleInCommunity(actor, cycleId);
 
@@ -111,10 +115,30 @@ export async function getCycleParticipationSummary(actor: Member, cycleId: strin
     .where(and(eq(participation.cycleId, cycleId), eq(participation.status, "coming")));
   const comingCount = comingRows.length;
 
+  let holds = 0;
+  if (cycleRow.joiningInviteMode === "direct") {
+    const now = new Date();
+    const heldRows = await db
+      .select({ id: communityInvite.id })
+      .from(communityInvite)
+      .where(
+        and(
+          eq(communityInvite.cycleId, cycleId),
+          eq(communityInvite.communityId, cycleRow.communityId),
+          isNull(communityInvite.redeemedAt),
+          isNull(communityInvite.revokedAt),
+          or(isNull(communityInvite.expiresAt), gt(communityInvite.expiresAt, now)),
+        ),
+      );
+    holds = heldRows.length;
+  }
+  const usedCapacity = comingCount + holds;
+
   return {
     capacity: cycleRow.capacity,
     comingCount,
-    remainingCapacity: cycleRow.capacity === null ? null : cycleRow.capacity - comingCount,
+    holds,
+    remainingCapacity: cycleRow.capacity === null ? null : cycleRow.capacity - usedCapacity,
     returningWindowClosesAt: cycleRow.returningWindowClosesAt,
     returningWindowOpen: cycleRow.returningWindowClosesAt
       ? new Date() < cycleRow.returningWindowClosesAt
