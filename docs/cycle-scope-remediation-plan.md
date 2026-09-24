@@ -292,19 +292,19 @@ Short answer: no — it is strictly cheaper than today, and the two things that 
 
 ## Work plan (suggested order)
 
-**Execution status:** steps 1–6 are committed locally on `main` (the tasks session's `ea7ed0e` landed §5.2's surface within step 6); step 7 was verified as already covered by step 1's single migration. The feedback half of step 8 is committed (`908f36c`); the recruitment half is split into 8b–8d, each a separate commit approved step by step — the design is locked in §4.3 and D12–D14.
+**Execution status:** steps 1–8 are committed locally on `main` (the tasks session's `ea7ed0e` landed §5.2's surface within step 6); step 7 was verified as already covered by step 1's single migration. The feedback half of step 8 is committed (`908f36c`); the recruitment half is split into 8b–8d, each a separate commit approved step by step — the design is locked in §4.3 and D12–D14.
 
 1. **Backend model** — §4.1 + §4.2, with `task.cycleId` as the only scope read; existing Phase 68 tests must pass unchanged post-migration. ✅ `36b7ee0`
 2. **Cycle clone grants** — §4.4 (unblocks the "clone carries authority" story; needed before any UI depends on it). ✅ `1da3f1d`
 3. **Backstop** — §4.7 + §5.5 (new module, cycle-creation default, unclaimed-critical marker + duty view). Rides directly on the unified resolver shape from step 1. ✅ `15dc763`
 4. **Shift rosters** — §4.8 + §5.6 (series placement column, `shift_management` module, roster open-act + proposal gate, surfaces + clone carries the roster). Same resolver shape. ✅ `51ceaa4`
 5. **Announcements cycle variant** — §4.5 (cycle send scope with selectable `coming`/`maybe` segments, D3). ✅ `34703f3`
-6. **Interface** — §5.1 then §5.2 (the two confusing surfaces), then §5.3–5.4. ✅ `6ce0ff0` (§5.1); §5.2 landed via the tasks session's `ea7ed0e`.
+6. **Interface** — §5.1 then §5.2 (the two confusing surfaces), then §5.3–5.4. ✅ `6ce0ff0` (§5.1); §5.2 landed via the tasks session's `ea7ed0e`; ✅ `f831219` (§5.3 — coordination surfaces visualize both dimensions + `[cycleScope]` gates); ✅ `4341fb7` (§5.4 — the coherent one-rule copy pass).
 7. **Retire the old scope pipe** — §4.6, then drop the column in step 1's single migration (D8). ✅ (verified already covered by step 1's migration — no `CYCLE_SCOPED_MODULES` / `listGrantedCycleScopesForTask` / `grantCycleId` remains).
 8. **Data pass + scope the two deferred modules** — §4.3.
    - **8a. Feedback half.** `formResponse.cycleId` + cycle-picker intake + response cycle tags; `feedback_review` scoping (`deferred → cycle`, `listHeldFeedbackReviewScopes`). ✅ `908f36c`
-   - **8b. Recruitment authority half.** Tier `recruitment` `deferred → cycle`; `listHeldRecruitmentScopes`; applications/evaluations/decisions resolve against the candidate response's cycle; inquiries stay any-holder. Permission + resolver tests.
-   - **8c. Joining config + per-cycle intake.** `cycle` joining columns (application-form pointer, `applicationsOpen`, `invitesOpen`, `joiningInviteMode`, `joiningWindowClosesAt`), community-wide door toggles (D13), `updateCycleSettings` + participation-page config, Settings toggles, `/apply` cycle context (form resolution, door/period/capacity gates, `cycleId` tagging).
-   - **8d. Cycle-scoped invites + seeding + visibility.** `community_invite.cycleId`; direct vs referral creation/redemption semantics (D12); direct-invite capacity holds with expiry enforcement; participation seeding on acceptance and redemption (D14); pipeline + participation-page held/outstanding counts.
+   - **8b. Recruitment authority half.** Tier `recruitment` `deferred → cycle`; `listHeldRecruitmentScopes`; applications/evaluations/decisions resolve against the candidate response's cycle; inquiries stay any-holder. Permission + resolver tests. ✅ `e0738db`
+   - **8c. Joining config + per-cycle intake.** `cycle` joining columns (application-form pointer, `applicationsOpen`, `invitesOpen`, `joiningInviteMode`, `joiningWindowClosesAt`), community-wide door toggles (D13), `updateCycleSettings` + participation-page config, Settings toggles, `/apply` cycle context (form resolution, door/period/capacity gates, `cycleId` tagging). ✅ `0fe0e6c`
+   - **8d. Cycle-scoped invites + seeding + visibility.** `community_invite.cycleId`; direct vs referral creation/redemption semantics (D12); direct-invite capacity holds with expiry enforcement; participation seeding on acceptance and redemption (D14); pipeline + participation-page held/outstanding counts. ✅ `969a2d8` (+ `0d13350` for the held-capacity display).
 
 Cross-referenced from: `CHANGELOG.md` (Phases 63, 67, 68), `docs/spec-audit-remediation-plan.md` §3, `docs/development-plan.full-archive.md` "Beyond" (recruitment), `docs/spec.md:867` (`response.cycle_id`).
