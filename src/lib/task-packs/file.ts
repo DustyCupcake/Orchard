@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { db } from "@/db";
 import {
-  cycleOffsetAnchorEnum,
-  dateRelativeModeEnum,
+  dateRelativeBasisEnum,
   packPhase,
   taskEffortEnum,
   taskOpennessEnum,
@@ -26,14 +25,10 @@ type Member = typeof memberTable.$inferSelect;
 const packFilePhase = z.object({
   name: z.string().min(1),
   order: z.number().int(),
-  startRelativeMode: z.enum(dateRelativeModeEnum.enumValues).nullable(),
-  startOffsetAnchor: z.enum(cycleOffsetAnchorEnum.enumValues).nullable(),
-  startOffsetDays: z.number().int().nullable(),
-  startPercent: z.number().int().nullable(),
-  endRelativeMode: z.enum(dateRelativeModeEnum.enumValues).nullable(),
-  endOffsetAnchor: z.enum(cycleOffsetAnchorEnum.enumValues).nullable(),
-  endOffsetDays: z.number().int().nullable(),
-  endPercent: z.number().int().nullable(),
+  startRelativeBasis: z.enum(dateRelativeBasisEnum.enumValues).nullable(),
+  startRelativeValue: z.number().int().nullable(),
+  endRelativeBasis: z.enum(dateRelativeBasisEnum.enumValues).nullable(),
+  endRelativeValue: z.number().int().nullable(),
 });
 
 const packFileItem = z.object({
@@ -54,22 +49,18 @@ const packFileItem = z.object({
   milestones: z.array(
     z.object({
       label: z.string(),
-      anchorType: z.string().nullable(),
-      relativeMode: z.string().nullable(),
-      offsetDays: z.number().int().nullable(),
-      percent: z.number().int().nullable(),
+      parentType: z.enum(["cycle", "phase"]),
+      relativeBasis: z.enum(["start", "end", "between"]),
+      relativeValue: z.number().int(),
       phaseRef: z.number().int().nullable(),
+      isDeadline: z.boolean(),
     }),
   ),
-  // Module keys the task granted at export (docs/cycle-scope-
-  // remediation-plan.md §4.4). Optional for forward/backward
-  // compatibility with the formatVersion 1 shape — a pack authored
-  // before packs carried grants just imports with none.
-  grantModuleKeys: z.array(z.string()).optional().default([]),
+  grantModuleKeys: z.array(z.string()),
 });
 
 export const packFile = z.object({
-  formatVersion: z.literal(1),
+  formatVersion: z.literal(2),
   name: z.string().min(1),
   description: z.string().nullable(),
   source: z.string().nullable(),
@@ -83,7 +74,7 @@ export type PackFile = z.infer<typeof packFile>;
 export async function exportTaskPackToFile(actor: Member, packId: string): Promise<PackFile> {
   const { pack, phases, items } = await getTaskPack(actor, packId);
   return {
-    formatVersion: 1,
+    formatVersion: 2,
     name: pack.name,
     description: pack.description,
     source: pack.source,
@@ -92,14 +83,10 @@ export async function exportTaskPackToFile(actor: Member, packId: string): Promi
     phases: phases.map((p) => ({
       name: p.name,
       order: p.order,
-      startRelativeMode: p.startRelativeMode,
-      startOffsetAnchor: p.startOffsetAnchor,
-      startOffsetDays: p.startOffsetDays,
-      startPercent: p.startPercent,
-      endRelativeMode: p.endRelativeMode,
-      endOffsetAnchor: p.endOffsetAnchor,
-      endOffsetDays: p.endOffsetDays,
-      endPercent: p.endPercent,
+      startRelativeBasis: p.startRelativeBasis,
+      startRelativeValue: p.startRelativeValue,
+      endRelativeBasis: p.endRelativeBasis,
+      endRelativeValue: p.endRelativeValue,
     })),
     items: items.map((i) => ({
       branchNameHint: i.branchNameHint,

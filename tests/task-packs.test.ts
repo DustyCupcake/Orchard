@@ -88,9 +88,9 @@ describe("exportCycleAsTaskPack", () => {
       taskId: t1.id,
       label: "Order deadline",
       dateType: "relative",
-      relativeMode: "offset",
-      anchorType: "phase_start",
-      offsetDays: 3,
+      relativeBasis: "start",
+      relativeValue: 3,
+      parentType: "phase",
       phaseId: build.id,
       status: "confirmed",
       proposedBy: alice.id,
@@ -101,9 +101,9 @@ describe("exportCycleAsTaskPack", () => {
       taskId: t1.id,
       label: "Still pending",
       dateType: "relative",
-      relativeMode: "offset",
-      anchorType: "cycle_start",
-      offsetDays: 1,
+      relativeBasis: "start",
+      relativeValue: 1,
+      parentType: "cycle",
       status: "pending",
       proposedBy: alice.id,
       createdBy: alice.id,
@@ -118,9 +118,8 @@ describe("exportCycleAsTaskPack", () => {
     expect(loaded.phases[0].name).toBe("Build");
     // Build's boundary was absolute (2027-06-01); export derives an
     // offset-from-cycle-start recipe rather than dropping it.
-    expect(loaded.phases[0].startRelativeMode).toBe("offset");
-    expect(loaded.phases[0].startOffsetAnchor).toBe("cycle_start");
-    expect(loaded.phases[0].startOffsetDays).toBe(0);
+    expect(loaded.phases[0].startRelativeBasis).toBe("between");
+    expect(loaded.phases[0].startRelativeValue).toBe(0);
 
     // The cycle's auto-created Backstop task (docs/cycle-scope-remediation-
     // plan.md §4.7) rides along as an item too — pick the hand-built one
@@ -236,7 +235,7 @@ describe("Task Pack file round-trip", () => {
     expect(ownerItem.grantModuleKeys).toEqual(["event_scheduling_owner"]);
   });
 
-  it("still accepts a pack file authored before packs carried grants (field absent defaults to empty)", async () => {
+  it("rejects the pre-v2 pack format", async () => {
     const { alice } = await createFixtures();
     const legacyFile = {
       formatVersion: 1,
@@ -246,31 +245,9 @@ describe("Task Pack file round-trip", () => {
       version: "1",
       domainTags: [],
       phases: [],
-      items: [
-        {
-          branchNameHint: "Fruit",
-          phaseRef: null,
-          title: "Legacy task",
-          description: "",
-          tags: [],
-          effort: "one_off",
-          effortMagnitude: { duration: "few_hours" },
-          critical: false,
-          capacity: 1,
-          openness: "request",
-          endorsementThreshold: null,
-          requirements: [],
-          wikiSummarySeed: null,
-          resources: [],
-          milestones: [],
-          // deliberately no grantModuleKeys field
-        },
-      ],
+      items: [],
     };
-
-    const imported = await importTaskPackFromFile(alice, legacyFile);
-    const loaded = await getTaskPack(alice, imported.id);
-    expect(loaded.items[0].grantModuleKeys).toEqual([]);
+    await expect(importTaskPackFromFile(alice, legacyFile)).rejects.toThrow(AppError);
   });
 });
 
@@ -292,9 +269,9 @@ describe("commitPackImport", () => {
       taskId: t1.id,
       label: "Order deadline",
       dateType: "relative",
-      relativeMode: "offset",
-      anchorType: "phase_start",
-      offsetDays: 2,
+      relativeBasis: "start",
+      relativeValue: 2,
+      parentType: "phase",
       phaseId: build.id,
       status: "confirmed",
       proposedBy: alice.id,

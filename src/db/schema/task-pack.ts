@@ -1,7 +1,7 @@
 import { boolean, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
 import { member } from "./member";
-import { dateRelativeModeEnum, cycleOffsetAnchorEnum } from "./phase";
+import { dateRelativeBasisEnum } from "./phase";
 import { taskEffortEnum, taskOpennessEnum } from "./task";
 
 // A portable, importable bundle of tasks — see docs/spec.md's "Task
@@ -43,12 +43,9 @@ export const taskPack = pgTable("task_pack", {
   archivedAt: timestamp("archived_at", { withTimezone: true }),
 });
 
-// A pack's own phase spine — timeless, no absolute dates (a pack never
-// holds one; see Task Pack in spec.md), only the relative recipe
-// Phase 39's dateRelativeModeEnum/cycleOffsetAnchorEnum already define.
-// `order` doubles as this phase's local reference key within the pack
-// (spec's own words) — TaskPackItem.phaseRef points at it directly, no
-// separate id scheme needed.
+// A pack's own phase spine — timeless, no absolute dates. Each
+// boundary carries the canonical relative basis/value recipe.
+// `order` doubles as this phase's local reference key within the pack.
 export const packPhase = pgTable("pack_phase", {
   id: uuid("id").primaryKey().defaultRandom(),
   packId: uuid("pack_id")
@@ -56,14 +53,10 @@ export const packPhase = pgTable("pack_phase", {
     .references(() => taskPack.id),
   name: text("name").notNull(),
   order: integer("order").notNull(),
-  startRelativeMode: dateRelativeModeEnum("start_relative_mode"),
-  startOffsetAnchor: cycleOffsetAnchorEnum("start_offset_anchor"),
-  startOffsetDays: integer("start_offset_days"),
-  startPercent: integer("start_percent"),
-  endRelativeMode: dateRelativeModeEnum("end_relative_mode"),
-  endOffsetAnchor: cycleOffsetAnchorEnum("end_offset_anchor"),
-  endOffsetDays: integer("end_offset_days"),
-  endPercent: integer("end_percent"),
+  startRelativeBasis: dateRelativeBasisEnum("start_relative_basis"),
+  startRelativeValue: integer("start_relative_value"),
+  endRelativeBasis: dateRelativeBasisEnum("end_relative_basis"),
+  endRelativeValue: integer("end_relative_value"),
 });
 
 // One task, minus every Community/Cycle-specific id — see spec.md's
@@ -101,12 +94,8 @@ export const taskPackItem = pgTable("task_pack_item", {
   wikiSummarySeed: text("wiki_summary_seed"),
   // [{label, url, tag}]
   resources: jsonb("resources").notNull().default([]),
-  // [{label, anchorType, relativeMode, offsetDays, percent, phaseRef}]
-  // — only relative, confirmed milestones ever carry into a pack (the
-  // same rule src/lib/cycles/crud.ts's cloneTaskMilestones already
-  // enforces for clone-previous-cycle); phaseRef here is independent
-  // of the item's own phaseRef above, since a milestone can anchor to
-  // a different phase than its task's own (see Phase 41).
+  // [{label, parentType, phaseRef, relativeBasis, relativeValue}] —
+  // only relative, confirmed milestones carry into a pack.
   milestones: jsonb("milestones").notNull().default([]),
   // Which modules this task granted at export time — the permission_grant
   // module keys the source task carried (docs/cycle-scope-remediation-

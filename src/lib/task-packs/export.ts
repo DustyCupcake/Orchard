@@ -148,20 +148,16 @@ export async function exportCycleAsTaskPack(actor: Member, cycleId: string, inpu
     if (phases.length > 0) {
       await tx.insert(packPhase).values(
         phases.map((p) => {
-          const start = deriveClonedBoundaryRecipe(startBoundaryOf(p), cycleRow.startDate);
-          const end = deriveClonedBoundaryRecipe(endBoundaryOf(p), cycleRow.startDate);
+          const start = deriveClonedBoundaryRecipe(startBoundaryOf(p), cycleRow.startDate, cycleRow.endDate);
+          const end = deriveClonedBoundaryRecipe(endBoundaryOf(p), cycleRow.startDate, cycleRow.endDate);
           return {
             packId: pack.id,
             name: p.name,
             order: p.order,
-            startRelativeMode: start.relativeMode,
-            startOffsetAnchor: start.offsetAnchor,
-            startOffsetDays: start.offsetDays,
-            startPercent: start.percent,
-            endRelativeMode: end.relativeMode,
-            endOffsetAnchor: end.offsetAnchor,
-            endOffsetDays: end.offsetDays,
-            endPercent: end.percent,
+            startRelativeBasis: start.relativeBasis,
+            startRelativeValue: start.relativeValue,
+            endRelativeBasis: end.relativeBasis,
+            endRelativeValue: end.relativeValue,
           };
         }),
       );
@@ -194,11 +190,11 @@ export async function exportCycleAsTaskPack(actor: Member, cycleId: string, inpu
         })),
         milestones: (carriedMilestonesByTask.get(t.id) ?? []).map((m) => ({
           label: m.label,
-          anchorType: m.anchorType,
-          relativeMode: m.relativeMode,
-          offsetDays: m.offsetDays,
-          percent: m.percent,
+          parentType: m.parentType,
+          relativeBasis: m.relativeBasis,
+          relativeValue: m.relativeValue,
           phaseRef: m.phaseId ? (phaseOrderById.get(m.phaseId) ?? null) : null,
+          isDeadline: m.isDeadline,
         })),
         grantModuleKeys: grantModuleKeysByTask.get(t.id) ?? [],
       })),

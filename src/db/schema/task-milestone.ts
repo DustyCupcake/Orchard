@@ -1,44 +1,24 @@
 import { boolean, date, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { dateRelativeModeEnum, dateTypeEnum, phase } from "./phase";
+import { dateRelativeBasisEnum, dateTypeEnum, phase } from "./phase";
 import { task } from "./task";
 import { member } from "./member";
 
-// The 4-way anchor Task milestones (and, per spec, Freestanding events
-// in Phase 42) need — a Phase's own boundary can only ever anchor to
-// its Cycle (2-way, see phase.ts's cycleOffsetAnchorEnum), but a
-// milestone's parent can be either a Phase or the task's own Cycle. See
-// docs/spec.md's "Task milestones" and docs/development-plan.md's
-// Phase 41.
-export const milestoneAnchorTypeEnum = pgEnum("milestone_anchor_type", [
-  "phase_start",
-  "phase_end",
-  "cycle_start",
-  "cycle_end",
-]);
+// A milestone's parent can be either a Phase or the task's own Cycle.
+// The relative recipe itself carries start/end/between; this enum only
+// identifies which kind of parent supplies that recipe's boundaries.
+export const milestoneParentTypeEnum = pgEnum("milestone_parent_type", ["cycle", "phase"]);
 export const taskMilestoneStatusEnum = pgEnum("task_milestone_status", ["confirmed", "pending"]);
 
 // User-labeled dates on a task ("Deposit due," "Order arrives") — see
-// docs/spec.md's "Task milestones." Reuses Phase 39's dateTypeEnum/
-// dateRelativeModeEnum (absolute/relative, offset/percent) but not its
-// cycleOffsetAnchorEnum, since a milestone's anchor can be a Phase
-// boundary too.
+// docs/spec.md's "Task milestones." Reuses the canonical date recipe
+// shared with Phase boundaries and Calendar events. Milestones remain
+// live-computed on read; unlike Phase/Event dates there is no cached
+// resolved column because no existing consumer needs one.
 //
-// No cached/resolved-date column, unlike Phase's own start_date/
-// end_date (a deliberate exception Phase 39 documents there) — nothing
-// pre-existing reads a TaskMilestone date expecting a plain column, so
-// this defaults back to this codebase's usual live-computed-on-read
-// posture; see src/lib/task-milestones.ts's resolveMilestone.
-//
-// One deliberate deviation from spec's own literal field list: spec's
-// data model also lists a `span_type` enum(single, between) column —
-// but per spec's own prose ("Percent only means something for the
-// between case... offset stays the only option outside the span"),
-// span_type is fully determined by relative_mode (offset⟺single,
-// percent⟺between) with no other combination ever valid, so it's
-// omitted here as redundant rather than persisted as a second thing
-// that could drift out of sync for no benefit — the same choice Phase
-// 39 already made for Phase's own boundary shape (which never had a
-// separate span-type field either).
+// `parentType` chooses the source of the two parent boundaries;
+// `relativeBasis` then says whether the recipe is before the start,
+// after the end, or between them. There is deliberately no separate
+// start/end anchor for percent mode.
 export const taskMilestone = pgTable("task_milestone", {
   id: uuid("id").primaryKey().defaultRandom(),
   taskId: uuid("task_id")
@@ -47,14 +27,11 @@ export const taskMilestone = pgTable("task_milestone", {
   label: text("label").notNull(),
   dateType: dateTypeEnum("date_type").notNull().default("absolute"),
   absoluteDate: date("absolute_date"),
-  relativeMode: dateRelativeModeEnum("relative_mode"),
-  anchorType: milestoneAnchorTypeEnum("anchor_type"),
-  offsetDays: integer("offset_days"),
-  percent: integer("percent"),
-  // Set when anchorType is phase_start/phase_end and this milestone
-  // points at a Phase other than the task's own (defaults to the
-  // task's own phaseId when null) — see docs/spec.md: "should belong
-  // to the same Cycle as the task's own," enforced at write time.
+  relativeBasis: dateRelativeBasisEnum("relative_basis"),
+  relativeValue: integer("relative_value"),
+  parentType: milestoneParentTypeEnum("parent_type"),
+  // Set when parentType = phase and this milestone points at a Phase
+  // other than the task's own; null means the task's own Phase.
   phaseId: uuid("phase_id").references(() => phase.id),
   status: taskMilestoneStatusEnum("status").notNull().default("confirmed"),
   // "The" deadline for the schedule/by-phase board views (docs/spec.md's

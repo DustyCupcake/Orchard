@@ -73,7 +73,7 @@ describe("creating and resolving a CalendarEvent's date", () => {
     const e = await createCalendarEvent(alice, {
       title: "Applications close",
       cycleId: cyc.id,
-      date: { type: "relative_offset", anchor: "cycle_end", offsetDays: -14 },
+      date: { type: "relative", date: "2027-12-17" },
     });
     expect(e.date).toBe("2027-12-17");
   });
@@ -90,21 +90,23 @@ describe("creating and resolving a CalendarEvent's date", () => {
     const e = await createCalendarEvent(alice, {
       title: "Midpoint check-in",
       cycleId: cyc.id,
-      date: { type: "relative_percent", percent: 50 },
+      date: { type: "relative", date: "2027-01-06" },
     });
     expect(e.date).toBe("2027-01-06");
   });
 
-  it("stays unresolved when the Cycle has no dates yet", async () => {
+  it("resolves a one-sided relative date from the known Cycle start", async () => {
     const { alice } = await createFixtures();
     await enableCycles(alice.communityId);
-    const cyc = await createCycle(alice, { source: "blank", name: "Season" });
+    const cyc = await createCycle(alice, { source: "blank", name: "Season", startDate: "2027-01-01" });
     const e = await createCalendarEvent(alice, {
       title: "Someday",
       cycleId: cyc.id,
-      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 3 },
+      date: { type: "relative", date: "2027-01-04" },
     });
-    expect(e.date).toBeNull();
+    expect(e.date).toBe("2027-01-04");
+    expect(e.relativeBasis).toBe("start");
+    expect(e.relativeValue).toBe(3);
   });
 
   it("reverse-computes the offset from a dragged target date", async () => {
@@ -118,9 +120,10 @@ describe("creating and resolving a CalendarEvent's date", () => {
     const e = await createCalendarEvent(alice, {
       title: "Dragged",
       cycleId: cyc.id,
-      date: { type: "relative_offset", anchor: "cycle_start", targetDate: "2027-02-01" },
+      date: { type: "relative", date: "2027-02-01" },
     });
-    expect(e.offsetDays).toBe(31);
+    expect(e.relativeBasis).toBe("start");
+    expect(e.relativeValue).toBe(31);
     expect(e.date).toBe("2027-02-01");
   });
 
@@ -381,7 +384,7 @@ describe("editing, deleting, and visibility", () => {
   });
 });
 
-describe("cascading recompute and drift, mirroring Phase 39's Phase boundaries", () => {
+describe("cascading recompute", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
@@ -393,32 +396,12 @@ describe("cascading recompute and drift, mirroring Phase 39's Phase boundaries",
     const e = await createCalendarEvent(alice, {
       title: "x",
       cycleId: cyc.id,
-      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 10 },
+      date: { type: "relative", date: "2027-01-11" },
     });
     expect(e.date).toBe("2027-01-11");
 
     await updateCycleSettings(alice, cyc.id, { startDate: "2027-02-01" });
     const after = await getCalendarEvent(alice, e.id);
     expect(after.date).toBe("2027-02-11");
-  });
-
-  it("surfaces the drift flag once the Cycle's dates move the event closer to the other end", async () => {
-    const { alice } = await createFixtures();
-    await enableCycles(alice.communityId);
-    const cyc = await createCycle(alice, {
-      source: "blank",
-      name: "Season",
-      startDate: "2027-01-01",
-      endDate: "2027-01-31",
-    });
-    const e = await createCalendarEvent(alice, {
-      title: "x",
-      cycleId: cyc.id,
-      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 4 },
-    });
-    expect((await getCalendarEvent(alice, e.id)).drifted).toBe(false);
-
-    await updateCycleSettings(alice, cyc.id, { endDate: "2027-01-06" });
-    expect((await getCalendarEvent(alice, e.id)).drifted).toBe(true);
   });
 });

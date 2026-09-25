@@ -4,15 +4,21 @@ import { db } from "@/db";
 import { branch, calendarEvent, calendarEventInvite, cycle, member, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "./errors";
-import { dateBoundaryInput, isBoundaryDrifted, recomputeBoundary, toStoredBoundary, type DateBoundaryInput } from "./dates";
+import {
+  boundaryForEditing,
+  dateBoundaryInput,
+  normalizeBoundary,
+  toStoredBoundary,
+  type DateBoundaryInput,
+  type StoredBoundary,
+} from "./dates";
 
 type Member = typeof memberTable.$inferSelect;
 type CalendarEventRow = typeof calendarEvent.$inferSelect;
 
-// See docs/spec.md's "Freestanding events." Reuses the exact
-// absolute/relative date shape Phase's own boundaries use (Phase 39) —
-// a CalendarEvent's anchor is always the Cycle, never a Phase, so this
-// is `dateBoundaryInput` itself, not TaskMilestone's own 4-way variant.
+// See docs/spec.md's "Freestanding events." Reuses the canonical
+// absolute/relative date shape; a CalendarEvent's parent is its selected
+// Cycle, never a Phase.
 const shareTargetSchema = z.enum(["personal", "branch", "community"]);
 
 export const createCalendarEventInput = z
@@ -69,14 +75,7 @@ async function dateColumns(communityId: string, cycleId: string | null | undefin
     anchorEnd = cycleRow.endDate;
   }
   const boundary = toStoredBoundary(date, anchorStart, anchorEnd);
-  return {
-    dateType: boundary.dateType,
-    date: boundary.date,
-    relativeMode: boundary.relativeMode,
-    anchorType: boundary.offsetAnchor,
-    offsetDays: boundary.offsetDays,
-    percent: boundary.percent,
-  };
+  return boundaryColumns(boundary);
 }
 
 async function requireEvent(actor: Member, eventId: string): Promise<CalendarEventRow> {
@@ -184,6 +183,24 @@ export async function createCalendarEvent(actor: Member, rawInput: CreateCalenda
   return created;
 }
 
+function storedBoundaryOf(event: CalendarEventRow): StoredBoundary {
+  return {
+    dateType: event.dateType,
+    date: event.date,
+    relativeBasis: event.relativeBasis,
+    relativeValue: event.relativeValue,
+  };
+}
+
+function boundaryColumns(boundary: StoredBoundary) {
+  return {
+    dateType: boundary.dateType,
+    date: boundary.date,
+    relativeBasis: boundary.relativeBasis,
+    relativeValue: boundary.relativeValue,
+  };
+}
+
 export async function updateCalendarEvent(actor: Member, eventId: string, rawInput: UpdateCalendarEventInput) {
   const input = updateCalendarEventInput.parse(rawInput);
   const existing = await requireEvent(actor, eventId);
@@ -194,7 +211,32 @@ export async function updateCalendarEvent(actor: Member, eventId: string, rawInp
   }
 
   const nextCycleId = input.cycleId !== undefined ? input.cycleId : existing.cycleId;
-  const columns = input.date ? await dateColumns(actor.communityId, nextCycleId, input.date) : undefined;
+  let columns: ReturnType<typeof boundaryColumns> | undefined;
+  if (input.date) {
+    if (input.date.type === "relative" && existing.dateType === "relative" && nextCycleId === existing.cycleId) {
+      const sameCycle = nextCycleId ? await requireCycleInCommunity(actor.communityId, nextCycleId) : null;
+      columns = boundaryColumns(
+        boundaryForEditing(
+          storedBoundaryOf(existing),
+          input.date,
+          sameCycle?.startDate ?? null,
+          sameCycle?.endDate ?? null,
+        ),
+      );
+    } else {
+      columns = await dateColumns(actor.communityId, nextCycleId, input.date);
+    }
+  }
+  if (!columns && input.cycleId !== undefined && input.cycleId !== existing.cycleId && existing.dateType === "relative") {
+    const nextCycle = nextCycleId ? await requireCycleInCommunity(actor.communityId, nextCycleId) : null;
+    columns = boundaryColumns(
+      normalizeBoundary(
+        storedBoundaryOf(existing),
+        nextCycle?.startDate ?? null,
+        nextCycle?.endDate ?? null,
+      ),
+    );
+  }
 
   const nextShareTarget = input.shareTarget ?? existing.shareTarget;
 
@@ -229,33 +271,6 @@ export async function deleteCalendarEvent(actor: Member, eventId: string) {
   });
 }
 
-export interface CalendarEventResolution {
-  drifted: boolean;
-}
-
-function resolveEventFlags(event: CalendarEventRow, anchorStart: string | null, anchorEnd: string | null): CalendarEventResolution {
-  return {
-    drifted: isBoundaryDrifted(
-      {
-        dateType: event.dateType,
-        date: event.date,
-        relativeMode: event.relativeMode,
-        offsetAnchor: event.anchorType,
-        offsetDays: event.offsetDays,
-        percent: event.percent,
-      },
-      anchorStart,
-      anchorEnd,
-    ),
-  };
-}
-
-async function withFlags(event: CalendarEventRow) {
-  if (!event.cycleId) return { ...event, drifted: false };
-  const [cycleRow] = await db.select({ startDate: cycle.startDate, endDate: cycle.endDate }).from(cycle).where(eq(cycle.id, event.cycleId));
-  return { ...event, ...resolveEventFlags(event, cycleRow?.startDate ?? null, cycleRow?.endDate ?? null) };
-}
-
 // Visible to its creator always; to anyone with an invite (any status,
 // so a decline can still be seen/reviewed by the invitee themselves);
 // and, for a `community`-shared event, to any member at all — see
@@ -267,7 +282,7 @@ async function withFlags(event: CalendarEventRow) {
 export async function getCalendarEvent(actor: Member, eventId: string) {
   const event = await requireEvent(actor, eventId);
   if (event.memberId === actor.id || event.shareTarget === "community") {
-    return withFlags(event);
+    return event;
   }
   const [invite] = await db
     .select({ id: calendarEventInvite.id })
@@ -276,7 +291,7 @@ export async function getCalendarEvent(actor: Member, eventId: string) {
   if (!invite) {
     throw new NotFoundError("Event not found");
   }
-  return withFlags(event);
+  return event;
 }
 
 // A member's own calendar — events they created, plus events they've
@@ -295,7 +310,7 @@ export async function listMyCalendarEvents(actor: Member) {
   for (const { event } of acceptedRows) {
     byId.set(event.id, event);
   }
-  return Promise.all([...byId.values()].map(withFlags));
+  return [...byId.values()];
 }
 
 // The Dashboard feed helper — "a still-pending invite surfaces on the
@@ -424,19 +439,16 @@ export async function recomputeCalendarEventDatesForCycle(
 ) {
   const events = await db.select().from(calendarEvent).where(eq(calendarEvent.cycleId, cycleId));
   for (const e of events) {
-    const recomputed = recomputeBoundary(
-      {
-        dateType: e.dateType,
-        date: e.date,
-        relativeMode: e.relativeMode,
-        offsetAnchor: e.anchorType,
-        offsetDays: e.offsetDays,
-        percent: e.percent,
-      },
-      anchorStart,
-      anchorEnd,
-    );
-    if (recomputed.date === e.date) continue;
-    await db.update(calendarEvent).set({ date: recomputed.date }).where(eq(calendarEvent.id, e.id));
+    const recomputed = normalizeBoundary(storedBoundaryOf(e), anchorStart, anchorEnd);
+    const next = boundaryColumns(recomputed);
+    if (
+      next.date === e.date &&
+      next.dateType === e.dateType &&
+      next.relativeBasis === e.relativeBasis &&
+      next.relativeValue === e.relativeValue
+    ) {
+      continue;
+    }
+    await db.update(calendarEvent).set(next).where(eq(calendarEvent.id, e.id));
   }
 }

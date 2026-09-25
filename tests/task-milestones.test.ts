@@ -84,31 +84,37 @@ describe("resolving a milestone's date", () => {
     expect(m.status).toBe("confirmed");
   });
 
-  it("cycle-anchored offset resolves against the task's own Cycle", async () => {
+  it("infers a cycle-relative recipe from the selected target date", async () => {
     const { alice, taskRow } = await setUp();
     const m = await createTaskMilestone(alice, taskRow.id, {
       label: "Early bird",
-      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 10 },
+      date: { type: "relative", date: "2027-01-11", parent: "cycle" },
     });
     expect(m.resolvedDate).toBe("2027-01-11");
+    expect(m.parentType).toBe("cycle");
+    expect(m.relativeBasis).toBe("between");
+    expect(m.relativeValue).toBe(275);
   });
 
-  it("phase-anchored offset defaults to the task's own Phase", async () => {
+  it("defaults a milestone to the task's own Phase when no parent is submitted", async () => {
     const { alice, taskRow } = await setUp();
     const m = await createTaskMilestone(alice, taskRow.id, {
       label: "Confirm order",
-      date: { type: "relative_offset", anchor: "phase_start", offsetDays: 5 },
+      date: { type: "relative", date: "2027-01-06", parent: "phase" },
     });
-    expect(m.resolvedDate).toBe("2027-01-06"); // Procurement starts 2027-01-01
+    expect(m.resolvedDate).toBe("2027-01-06");
+    expect(m.parentType).toBe("phase");
+    expect(m.phaseId).toBeNull();
   });
 
-  it("phase-anchored offset can point at a different Phase in the same Cycle", async () => {
+  it("can point at a different Phase in the same Cycle", async () => {
     const { alice, taskRow, build } = await setUp();
     const m = await createTaskMilestone(alice, taskRow.id, {
       label: "Related to Build's end",
-      date: { type: "relative_offset", anchor: "phase_end", phaseId: build.id, offsetDays: -3 },
+      date: { type: "relative", date: "2027-03-29", parent: "phase", phaseId: build.id },
     });
-    expect(m.resolvedDate).toBe("2027-03-29"); // Build ends 2027-04-01
+    expect(m.resolvedDate).toBe("2027-03-29");
+    expect(m.phaseId).toBe(build.id);
   });
 
   it("rejects a Phase belonging to a different Cycle", async () => {
@@ -124,60 +130,52 @@ describe("resolving a milestone's date", () => {
     await expect(
       createTaskMilestone(alice, taskRow.id, {
         label: "Cross-cycle",
-        date: { type: "relative_offset", anchor: "phase_start", phaseId: otherPhase.id, offsetDays: 0 },
+        date: { type: "relative", date: "2027-01-01", parent: "phase", phaseId: otherPhase.id },
       }),
     ).rejects.toThrow(ConflictError);
   });
 
-  it("percent resolves proportionally between the anchor's own two ends", async () => {
+  it("uses hundredths of a percent for an in-range Phase target", async () => {
     const { alice, taskRow, build } = await setUp();
     const m = await createTaskMilestone(alice, taskRow.id, {
       label: "Midpoint of Build",
-      date: { type: "relative_percent", anchor: "phase_start", phaseId: build.id, percent: 50 },
+      date: { type: "relative", date: "2027-03-03", parent: "phase", phaseId: build.id },
     });
-    // Build spans 2027-02-01..2027-04-01, a 59-day span; 50% ~ +30 days
     expect(m.resolvedDate).toBe("2027-03-03");
+    expect(m.relativeBasis).toBe("between");
+    expect(m.relativeValue).toBe(5085);
   });
 
-  it("cycle-anchored milestone doesn't resolve on a task with no Cycle", async () => {
-    const { alice, branch, community: testCommunity } = await setUp();
-    const standaloneTask = await insertTask(testCommunity.id, branch.id, alice.id);
-    const m = await createTaskMilestone(alice, standaloneTask.id, {
-      label: "Someday",
-      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 3 },
-    });
-    expect(m.resolvedDate).toBeNull();
-  });
-
-  it("phase-anchored milestone doesn't resolve when the task has no Phase and none was given", async () => {
-    const { alice, branch, cyc } = await setUp();
-    const taskNoPhase = await insertTask(cyc.communityId, branch.id, alice.id, { cycleId: cyc.id });
-    const m = await createTaskMilestone(alice, taskNoPhase.id, {
-      label: "Whenever the phase is",
-      date: { type: "relative_offset", anchor: "phase_start", offsetDays: 1 },
-    });
-    expect(m.resolvedDate).toBeNull();
-  });
-
-  it("reverse-computes the offset from a dragged target date", async () => {
-    const { alice, taskRow } = await setUp();
-    const m = await createTaskMilestone(alice, taskRow.id, {
-      label: "Dragged",
-      date: { type: "relative_offset", anchor: "cycle_start", targetDate: "2027-02-01" },
-    });
-    expect(m.offsetDays).toBe(31);
-    expect(m.resolvedDate).toBe("2027-02-01");
-  });
-
-  it("rejects dragging to a date when the anchor isn't resolvable yet", async () => {
+  it("rejects a relative milestone when its selected parent has no dates", async () => {
     const { alice, branch, community: testCommunity } = await setUp();
     const standaloneTask = await insertTask(testCommunity.id, branch.id, alice.id);
     await expect(
       createTaskMilestone(alice, standaloneTask.id, {
-        label: "Dragged nowhere",
-        date: { type: "relative_offset", anchor: "cycle_start", targetDate: "2027-02-01" },
+        label: "Someday",
+        date: { type: "relative", date: "2027-02-01", parent: "cycle" },
       }),
     ).rejects.toThrow(AppError);
+  });
+
+  it("rejects a Phase-relative milestone when the task has no Phase", async () => {
+    const { alice, branch, cyc } = await setUp();
+    const taskNoPhase = await insertTask(cyc.communityId, branch.id, alice.id, { cycleId: cyc.id });
+    await expect(
+      createTaskMilestone(alice, taskNoPhase.id, {
+        label: "Whenever the phase is",
+        date: { type: "relative", date: "2027-01-02", parent: "phase" },
+      }),
+    ).rejects.toThrow(AppError);
+  });
+
+  it("stores the inferred signed offset when the target is outside the parent span", async () => {
+    const { alice, taskRow } = await setUp();
+    const m = await createTaskMilestone(alice, taskRow.id, {
+      label: "After the season",
+      date: { type: "relative", date: "2028-01-10", parent: "cycle" },
+    });
+    expect(m.relativeBasis).toBe("end");
+    expect(m.relativeValue).toBe(10);
   });
 });
 
@@ -308,39 +306,31 @@ describe("confirmation follows ownership", () => {
   });
 });
 
-describe("the drift flag", () => {
+describe("parent-boundary reclassification", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  it("surfaces once the Cycle's own dates move an offset milestone closer to the other end", async () => {
-    const { alice, taskRow } = await setUp();
-    const m = await createTaskMilestone(alice, taskRow.id, {
-      label: "Near the start",
-      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 4 },
+  it("reclassifies a one-sided cycle recipe when the end boundary is added", async () => {
+    const { alice, branch, community: testCommunity } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, {
+      source: "blank",
+      name: "Season",
+      startDate: "2027-01-01",
     });
-
-    const [before] = await listTaskMilestones(alice, taskRow.id);
-    expect(before.id).toBe(m.id);
-    expect(before.drifted).toBe(false);
-
-    // Shrink the cycle so the fixed 4-day offset now sits much closer
-    // to cycle_end than to the cycle_start it's actually anchored to.
-    await updateCycleSettings(alice, taskRow.cycleId!, { endDate: "2027-01-06" });
-
-    const [after] = await listTaskMilestones(alice, taskRow.id);
-    expect(after.drifted).toBe(true);
-  });
-
-  it("percent mode is structurally immune to drift", async () => {
-    const { alice, taskRow, build } = await setUp();
-    await createTaskMilestone(alice, taskRow.id, {
-      label: "Near the end, percent",
-      date: { type: "relative_percent", anchor: "phase_start", phaseId: build.id, percent: 97 },
+    const taskRow = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cyc.id });
+    const created = await createTaskMilestone(alice, taskRow.id, {
+      label: "Provisional",
+      date: { type: "relative", date: "2027-01-11", parent: "cycle" },
     });
+    expect(created.relativeBasis).toBe("start");
 
-    const [m] = await listTaskMilestones(alice, taskRow.id);
-    expect(m.drifted).toBe(false);
+    await updateCycleSettings(alice, cyc.id, { endDate: "2027-01-31" });
+    const [reloaded] = await listTaskMilestones(alice, taskRow.id);
+    expect(reloaded.relativeBasis).toBe("between");
+    expect(reloaded.relativeValue).toBe(3333);
+    expect(reloaded.resolvedDate).toBe("2027-01-11");
   });
 });
 
@@ -353,11 +343,11 @@ describe("carrying forward through a Cycle clone", () => {
     const { alice, taskRow, build } = await setUp();
     await createTaskMilestone(alice, taskRow.id, {
       label: "Related to Build",
-      date: { type: "relative_offset", anchor: "phase_end", phaseId: build.id, offsetDays: -3 },
+      date: { type: "relative", date: "2027-04-04", parent: "phase", phaseId: build.id },
     });
     await createTaskMilestone(alice, taskRow.id, {
       label: "Cycle-anchored",
-      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 2 },
+      date: { type: "relative", date: "2027-01-03", parent: "cycle" },
     });
 
     const cloned = await createCycle(alice, { source: "clone_previous", name: "Next Season", confirmed: true });
@@ -370,14 +360,16 @@ describe("carrying forward through a Cycle clone", () => {
     const clonedMilestones = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, clonedTaskId));
     expect(clonedMilestones).toHaveLength(2);
 
-    const clonedPhaseAnchored = clonedMilestones.find((m) => m.anchorType === "phase_end")!;
-    expect(clonedPhaseAnchored.offsetDays).toBe(-3);
+    const clonedPhaseAnchored = clonedMilestones.find((m) => m.parentType === "phase" && m.phaseId !== null)!;
+    expect(clonedPhaseAnchored.relativeBasis).toBe("end");
+    expect(clonedPhaseAnchored.relativeValue).toBe(3);
     expect(clonedPhaseAnchored.status).toBe("confirmed");
     expect(clonedPhaseAnchored.phaseId).not.toBe(build.id); // remapped onto the new clone's own Build
     expect(clonedPhaseAnchored.phaseId).not.toBeNull();
 
-    const clonedCycleAnchored = clonedMilestones.find((m) => m.anchorType === "cycle_start")!;
-    expect(clonedCycleAnchored.offsetDays).toBe(2);
+    const clonedCycleAnchored = clonedMilestones.find((m) => m.parentType === "cycle")!;
+    expect(clonedCycleAnchored.relativeBasis).toBe("between");
+    expect(clonedCycleAnchored.relativeValue).toBe(55);
     expect(clonedCycleAnchored.phaseId).toBeNull();
   });
 
@@ -400,7 +392,7 @@ describe("carrying forward through a Cycle clone", () => {
     await claimTask(alice, taskRow.id);
     await createTaskMilestone(bob, taskRow.id, {
       label: "Unreviewed",
-      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 1 },
+      date: { type: "relative", date: "2027-01-02", parent: "cycle" },
     });
 
     const cloned = await createCycle(alice, { source: "clone_previous", name: "Next Season", confirmed: true });
@@ -424,13 +416,13 @@ describe("listMyTaskMilestones", () => {
     await claimTask(alice, taskRow.id);
     const confirmed = await createTaskMilestone(alice, taskRow.id, {
       label: "Order arrives",
-      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 5 },
+      date: { type: "relative", date: "2027-01-06", parent: "cycle" },
     });
     // Bob's own addition to a task Alice holds lands pending — shouldn't
     // surface for Alice, and Bob doesn't hold the task at all.
     await createTaskMilestone(bob, taskRow.id, {
       label: "Unreviewed",
-      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 1 },
+      date: { type: "relative", date: "2027-01-02", parent: "cycle" },
     });
 
     const mine = await listMyTaskMilestones(alice);
@@ -449,9 +441,9 @@ describe("listMyTaskMilestones", () => {
       taskId: taskRow.id,
       label: "Shadow shouldn't see this",
       dateType: "relative",
-      relativeMode: "offset",
-      anchorType: "cycle_start",
-      offsetDays: 1,
+      relativeBasis: "start",
+      relativeValue: 1,
+      parentType: "cycle",
       status: "confirmed",
       proposedBy: alice.id,
       createdBy: alice.id,
@@ -478,9 +470,9 @@ describe("listMyTaskMilestones", () => {
       taskId: doneTask.id,
       label: "Stale",
       dateType: "relative",
-      relativeMode: "offset",
-      anchorType: "cycle_start",
-      offsetDays: 1,
+      relativeBasis: "start",
+      relativeValue: 1,
+      parentType: "cycle",
       status: "confirmed",
       proposedBy: alice.id,
       createdBy: alice.id,

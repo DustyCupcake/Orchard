@@ -2,7 +2,7 @@ import { date, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-o
 import { branch } from "./branch";
 import { community } from "./community";
 import { cycle } from "./cycle";
-import { cycleOffsetAnchorEnum, dateRelativeModeEnum, dateTypeEnum } from "./phase";
+import { dateRelativeBasisEnum, dateTypeEnum } from "./phase";
 import { member } from "./member";
 
 export const calendarEventShareTargetEnum = pgEnum("calendar_event_share_target", [
@@ -17,16 +17,10 @@ export const calendarEventShareTargetEnum = pgEnum("calendar_event_share_target"
 // authority-based confirmation gate, unlike Branch creation by non-
 // Admins.
 //
-// Reuses the exact same shape Phase's own start_date/end_date columns
-// use (Phase 39) — cycleOffsetAnchorEnum's 2-way cycle-only anchor,
-// not TaskMilestone's 4-way one, since spec is explicit an event
-// anchors to the Cycle only, never a Phase ("a Phase-scoped date
-// belongs on a TaskMilestone instead"). `date` is cached/resolved when
-// relative, same as Phase's own boundaries (and unlike TaskMilestone's
-// deliberately-never-cached shape) — src/lib/dates/resolve.ts's
-// StoredBoundary/dateBoundaryInput/toStoredBoundary/recomputeBoundary/
-// isBoundaryDrifted are reused here directly, no new resolution logic
-// needed at all.
+// Reuses the canonical relative date recipe shared with Phase
+// boundaries. Events are anchored to their selected Cycle only; a
+// Phase-scoped date belongs on a TaskMilestone. `date` is eagerly
+// cached when relative, like Phase's own boundaries.
 export const calendarEvent = pgTable("calendar_event", {
   id: uuid("id").primaryKey().defaultRandom(),
   communityId: uuid("community_id")
@@ -44,10 +38,8 @@ export const calendarEvent = pgTable("calendar_event", {
   description: text("description"),
   dateType: dateTypeEnum("date_type").notNull().default("absolute"),
   date: date("date"),
-  relativeMode: dateRelativeModeEnum("relative_mode"),
-  anchorType: cycleOffsetAnchorEnum("anchor_type"),
-  offsetDays: integer("offset_days"),
-  percent: integer("percent"),
+  relativeBasis: dateRelativeBasisEnum("relative_basis"),
+  relativeValue: integer("relative_value"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

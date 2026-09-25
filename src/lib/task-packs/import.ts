@@ -79,15 +79,13 @@ export async function previewPackImportBranches(actor: Member, packId: string): 
 // same recomputeBoundary primitive, so a preview's numbers are
 // guaranteed to match what actually lands.
 function packBoundary(
-  relativeMode: PackPhaseRow["startRelativeMode"],
-  offsetAnchor: PackPhaseRow["startOffsetAnchor"],
-  offsetDays: number | null,
-  percent: number | null,
+  basis: PackPhaseRow["startRelativeBasis"],
+  value: number | null,
 ): StoredBoundary {
-  if (!relativeMode) {
-    return { dateType: "absolute", date: null, relativeMode: null, offsetAnchor: null, offsetDays: null, percent: null };
+  if (!basis) {
+    return { dateType: "absolute", date: null, relativeBasis: null, relativeValue: null };
   }
-  return { dateType: "relative", date: null, relativeMode, offsetAnchor, offsetDays, percent };
+  return { dateType: "relative", date: null, relativeBasis: basis, relativeValue: value };
 }
 
 export async function previewPackImportDates(
@@ -100,12 +98,12 @@ export async function previewPackImportDates(
 
   const previewPhases: ClonePreviewPhase[] = phases.map((p) => {
     const start = recomputeBoundary(
-      packBoundary(p.startRelativeMode, p.startOffsetAnchor, p.startOffsetDays, p.startPercent),
+      packBoundary(p.startRelativeBasis, p.startRelativeValue),
       hypotheticalStart,
       hypotheticalEnd,
     );
     const end = recomputeBoundary(
-      packBoundary(p.endRelativeMode, p.endOffsetAnchor, p.endOffsetDays, p.endPercent),
+      packBoundary(p.endRelativeBasis, p.endRelativeValue),
       hypotheticalStart,
       hypotheticalEnd,
     );
@@ -117,25 +115,21 @@ export async function previewPackImportDates(
   for (const item of items) {
     const milestones = item.milestones as {
       label: string;
-      anchorType: string | null;
-      relativeMode: "offset" | "percent" | null;
-      offsetDays: number | null;
-      percent: number | null;
+      parentType: "cycle" | "phase";
+      relativeBasis: "start" | "end" | "between";
+      relativeValue: number;
       phaseRef: number | null;
     }[];
     for (const m of milestones) {
-      const isPhaseAnchor = m.anchorType === "phase_start" || m.anchorType === "phase_end";
-      const previewPhase = isPhaseAnchor && m.phaseRef !== null ? previewByOrder.get(m.phaseRef) : undefined;
-      const start = isPhaseAnchor ? (previewPhase?.start ?? null) : hypotheticalStart;
-      const end = isPhaseAnchor ? (previewPhase?.end ?? null) : hypotheticalEnd;
-      const directionalAnchor = m.anchorType === "phase_start" || m.anchorType === "cycle_start" ? "cycle_start" : "cycle_end";
-      const date = m.relativeMode
-        ? recomputeBoundary(
-            { dateType: "relative", date: null, relativeMode: m.relativeMode, offsetAnchor: directionalAnchor, offsetDays: m.offsetDays, percent: m.percent },
-            start,
-            end,
-          ).date
-        : null;
+      const phaseOrder = m.phaseRef ?? item.phaseRef;
+      const previewPhase = m.parentType === "phase" && phaseOrder !== null ? previewByOrder.get(phaseOrder) : undefined;
+      const start = m.parentType === "phase" ? (previewPhase?.start ?? null) : hypotheticalStart;
+      const end = m.parentType === "phase" ? (previewPhase?.end ?? null) : hypotheticalEnd;
+      const date = recomputeBoundary(
+        { dateType: "relative", date: null, relativeBasis: m.relativeBasis, relativeValue: m.relativeValue },
+        start,
+        end,
+      ).date;
       previewMilestones.push({ taskTitle: item.title, label: m.label, phaseName: previewPhase?.name ?? null, date });
     }
   }
@@ -169,8 +163,8 @@ export type CommitPackImportInput = z.infer<typeof commitPackImportInput>;
 async function resolvePhaseRows(tx: Tx, newCycleId: string, phases: PackPhaseRow[]) {
   const phaseIdByOrder = new Map<number, string>();
   for (const p of phases) {
-    const startRel = p.startRelativeMode !== null;
-    const endRel = p.endRelativeMode !== null;
+    const startRel = p.startRelativeBasis !== null;
+    const endRel = p.endRelativeBasis !== null;
     const [newPhase] = await tx
       .insert(phase)
       .values({
@@ -178,15 +172,11 @@ async function resolvePhaseRows(tx: Tx, newCycleId: string, phases: PackPhaseRow
         name: p.name,
         order: p.order,
         startDateType: startRel ? "relative" : "absolute",
-        startRelativeMode: p.startRelativeMode,
-        startOffsetAnchor: p.startOffsetAnchor,
-        startOffsetDays: p.startOffsetDays,
-        startPercent: p.startPercent,
+        startRelativeBasis: p.startRelativeBasis,
+        startRelativeValue: p.startRelativeValue,
         endDateType: endRel ? "relative" : "absolute",
-        endRelativeMode: p.endRelativeMode,
-        endOffsetAnchor: p.endOffsetAnchor,
-        endOffsetDays: p.endOffsetDays,
-        endPercent: p.endPercent,
+        endRelativeBasis: p.endRelativeBasis,
+        endRelativeValue: p.endRelativeValue,
       })
       .returning();
     phaseIdByOrder.set(p.order, newPhase.id);
@@ -323,28 +313,28 @@ export async function commitPackImport(actor: Member, input: CommitPackImportInp
       // src/lib/cycles/crud.ts's cloneTaskMilestones already applies.
       const milestones = item.milestones as {
         label: string;
-        anchorType: "phase_start" | "phase_end" | "cycle_start" | "cycle_end" | null;
-        relativeMode: "offset" | "percent" | null;
-        offsetDays: number | null;
-        percent: number | null;
+        parentType: "cycle" | "phase";
+        relativeBasis: "start" | "end" | "between";
+        relativeValue: number;
         phaseRef: number | null;
+        isDeadline: boolean;
       }[];
       const milestoneRows = milestones
         .map((m) => {
-          const isPhaseAnchor = m.anchorType === "phase_start" || m.anchorType === "phase_end";
-          const newPhaseId = m.phaseRef !== null ? phaseIdByOrder.get(m.phaseRef) : undefined;
-          if (isPhaseAnchor && m.phaseRef !== null && !newPhaseId) return null;
+          const phaseOrder = m.phaseRef ?? item.phaseRef;
+          const newPhaseId = phaseOrder !== null ? phaseIdByOrder.get(phaseOrder) : undefined;
+          if (m.parentType === "phase" && phaseOrder !== null && !newPhaseId) return null;
           return {
             taskId: newTask.id,
             label: m.label,
             dateType: "relative" as const,
             absoluteDate: null,
-            relativeMode: m.relativeMode,
-            anchorType: m.anchorType,
-            offsetDays: m.offsetDays,
-            percent: m.percent,
-            phaseId: isPhaseAnchor ? (newPhaseId ?? null) : null,
+            relativeBasis: m.relativeBasis,
+            relativeValue: m.relativeValue,
+            parentType: m.parentType,
+            phaseId: m.parentType === "phase" ? (newPhaseId ?? null) : null,
             status: "confirmed" as const,
+            isDeadline: m.isDeadline,
             proposedBy: actor.id,
             createdBy: actor.id,
           };

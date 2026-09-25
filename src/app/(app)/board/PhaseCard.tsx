@@ -1,4 +1,5 @@
 import type { listTasksWithAssignments, PhaseGroup } from "@/lib/tasks";
+import { formatDateLabel, type DateDisplayMode } from "@/lib/dates";
 import { Tag } from "@/components/ui/kit";
 import TaskCard from "./TaskCard";
 
@@ -19,6 +20,7 @@ const SHOWN_BY_DEFAULT = 5;
 // TaskCard the kanban view renders; only the grouping/layout differs.
 export default function PhaseCard({
   group,
+  dateDisplayMode = "exact",
   tierNames,
   branchNameById,
   currentMemberId,
@@ -28,6 +30,7 @@ export default function PhaseCard({
   backstopNameFor,
 }: {
   group: PhaseGroup<BoardTask>;
+  dateDisplayMode?: DateDisplayMode;
   tierNames: Map<string, string>;
   branchNameById: Map<string, string>;
   currentMemberId: string;
@@ -38,6 +41,16 @@ export default function PhaseCard({
 }) {
   const shown = group.tasks.slice(0, SHOWN_BY_DEFAULT);
   const rest = group.tasks.slice(SHOWN_BY_DEFAULT);
+  const cycleIds = new Set(group.tasks.map((task) => task.cycleId).filter((id): id is string => id !== null));
+  const period =
+    group.startDate && group.endDate && cycleIds.size <= 1
+      ? { name: group.name, startDate: group.startDate, endDate: group.endDate }
+      : null;
+  const startLabel = formatDateLabel(group.startDate, dateDisplayMode, period);
+  const endPeriod = period
+    ? { ...period, boundaryKind: "end" as const }
+    : null;
+  const endLabel = formatDateLabel(group.endDate, dateDisplayMode, endPeriod);
 
   const renderTask = (t: BoardTask) => (
     <TaskCard
@@ -63,7 +76,9 @@ export default function PhaseCard({
         <h3 className="text-[15px] font-semibold text-[var(--text)]">{group.name}</h3>
         {(group.startDate || group.endDate) && (
           <span className="text-[12px] text-[var(--text-muted)]">
-            {group.startDate ?? "—"} – {group.endDate ?? "—"}
+            <span title={`${startLabel.exact} – ${endLabel.exact}`}>
+               <time dateTime={group.startDate ?? undefined} aria-label={startLabel.exact}>{startLabel.visible}</time> – <time dateTime={group.endDate ?? undefined} aria-label={endLabel.exact}>{endLabel.visible}</time>
+             </span>
           </span>
         )}
       </div>

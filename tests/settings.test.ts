@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, task, taskAssignment } from "@/db/schema";
+import { community, member, task, taskAssignment } from "@/db/schema";
 import {
   createBranch,
   createTier,
@@ -36,6 +36,17 @@ describe("community settings", () => {
     expect(updated.name).toBe("Renamed Community");
     expect(updated.cyclesEnabled).toBe(true);
     expect(updated.phasesEnabled).toBe(true);
+  });
+
+  it("persists the Community date-display default without overwriting member overrides", async () => {
+    const { alice, bob } = await createFixtures();
+    expect((await getCommunity(alice)).defaultDateDisplayMode).toBe("exact");
+
+    const updated = await updateCommunity(alice, { defaultDateDisplayMode: "period" });
+    expect(updated.defaultDateDisplayMode).toBe("period");
+
+    const [bobRow] = await db.select().from(member).where(eq(member.id, bob.id));
+    expect(bobRow.dateDisplayMode).toBeNull();
   });
 
   it("accepts a same-community tier as the cycle-initiation gate", async () => {

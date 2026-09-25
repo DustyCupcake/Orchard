@@ -197,33 +197,19 @@ export async function updateTaskAction(formData: FormData) {
   revalidatePath("/board");
 }
 
-// Reads one milestone's date fields off the submitted form — see
-// src/app/tasks/[id]/page.tsx's MilestoneDateFields, which renders
-// exactly this shape. Mirrors src/app/participation/actions.ts's own
-// boundaryFromForm, generalized to the 4-way phase-or-cycle anchor and
-// an optional phaseId override.
-function milestoneDateFromForm(formData: FormData): MilestoneDateInput {
+// One date plus the parent-period choice. The server infers the
+// canonical basis/value recipe; no offset/percent controls are submitted.
+function milestoneDateFromForm(formData: FormData): MilestoneDateInput | undefined {
   const mode = String(formData.get("dateMode") ?? "absolute");
-  if (mode === "absolute") {
-    return { type: "absolute", date: String(formData.get("absoluteDate") ?? "").trim() };
-  }
-
-  const anchor = String(formData.get("anchor") ?? "cycle_start") as
-    | "phase_start"
-    | "phase_end"
-    | "cycle_start"
-    | "cycle_end";
-  const phaseId = String(formData.get("milestonePhaseId") ?? "").trim() || null;
-  const targetDate = String(formData.get("targetDate") ?? "").trim();
-
-  if (mode === "relative_offset") {
-    if (targetDate) return { type: "relative_offset", anchor, phaseId, targetDate };
-    const offsetDaysRaw = String(formData.get("offsetDays") ?? "").trim();
-    return { type: "relative_offset", anchor, phaseId, offsetDays: offsetDaysRaw ? Number(offsetDaysRaw) : 0 };
-  }
-  if (targetDate) return { type: "relative_percent", anchor, phaseId, targetDate };
-  const percentRaw = String(formData.get("percent") ?? "").trim();
-  return { type: "relative_percent", anchor, phaseId, percent: percentRaw ? Number(percentRaw) : 0 };
+  const date = String(formData.get("date") ?? "").trim();
+  if (mode === "relative" && !date) return undefined;
+  if (mode === "absolute") return { type: "absolute", date };
+  return {
+    type: "relative",
+    date,
+    parent: String(formData.get("parentType") ?? "cycle") as "cycle" | "phase",
+    phaseId: String(formData.get("milestonePhaseId") ?? "").trim() || null,
+  };
 }
 
 export async function addMilestoneAction(formData: FormData) {
@@ -231,9 +217,11 @@ export async function addMilestoneAction(formData: FormData) {
   const taskId = String(formData.get("taskId"));
 
   try {
+    const date = milestoneDateFromForm(formData);
+    if (!date) throw new AppError("A milestone date is required");
     await createTaskMilestone(actor, taskId, {
       label: String(formData.get("label") ?? ""),
-      date: milestoneDateFromForm(formData),
+      date,
       isDeadline: formData.get("isDeadline") === "on",
     });
   } catch (err) {

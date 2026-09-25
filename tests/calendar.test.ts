@@ -88,7 +88,7 @@ describe("getCalendarView", () => {
     await claimTask(alice, t.id);
     const m = await createTaskMilestone(alice, t.id, {
       label: "Order arrives",
-      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 10 },
+      date: { type: "relative", date: "2027-01-11", parent: "cycle" },
     });
 
     const view = await getCalendarView(alice);

@@ -642,7 +642,13 @@ async function ParticipationForCycle({
       )}
 
       {withPhases && !closed && (
-        <PhaseDatesSection phases={withPhases.phases} cycleId={cycleId} cycleScope={cycleScope} />
+        <PhaseDatesSection
+          phases={withPhases.phases}
+          cycleId={cycleId}
+          cycleScope={cycleScope}
+          cycleStartDate={withPhases.startDate}
+          cycleEndDate={withPhases.endDate}
+        />
       )}
 
       {canConfigure && (
@@ -706,33 +712,42 @@ type CycleWithPhases = Awaited<ReturnType<typeof getCycle>>;
 type PhaseRow = CycleWithPhases["phases"][number];
 
 const ANCHOR_LABEL: Record<string, string> = {
-  cycle_start: "the cycle's start",
-  cycle_end: "the cycle's end",
+  start: "the cycle's start",
+  end: "the cycle's end",
+  between: "the cycle's span",
 };
 
-function describeBoundary(prefix: "Start" | "End", p: PhaseRow, dateType: string, relativeMode: string | null) {
+function describeBoundary(prefix: "Start" | "End", p: PhaseRow, dateType: string, basis: string | null, value: number | null) {
   if (dateType === "absolute") return "Absolute date, hand-typed.";
-  if (relativeMode === "offset") {
-    const anchor = prefix === "Start" ? p.startOffsetAnchor : p.endOffsetAnchor;
-    const days = prefix === "Start" ? p.startOffsetDays : p.endOffsetDays;
-    return `${days} day(s) from ${anchor ? ANCHOR_LABEL[anchor] : "?"}.`;
-  }
-  const percent = prefix === "Start" ? p.startPercent : p.endPercent;
-  return `${percent}% of the way from the cycle's start to its end.`;
+  if (!basis || value === null) return "Relative relationship not yet resolved.";
+  if (basis === "between") return `${(value / 100).toFixed(2).replace(/\.00$/, "")}% of the way through the cycle.`;
+  return `${value} day(s) from ${ANCHOR_LABEL[basis]}.`;
 }
 
 // See docs/development-plan.md's Phase 39 — a phase spine an existing
 // Cycle's own dates resolve against. No rename/reorder here (phases,
 // once added, keep whatever name/order they were given) — this is for
 // editing an existing phase's dates plus (below) adding a new one.
-function PhaseDatesSection({ phases, cycleId, cycleScope }: { phases: PhaseRow[]; cycleId: string; cycleScope: string }) {
+function PhaseDatesSection({
+  phases,
+  cycleId,
+  cycleScope,
+  cycleStartDate,
+  cycleEndDate,
+}: {
+  phases: PhaseRow[];
+  cycleId: string;
+  cycleScope: string;
+  cycleStartDate: string | null;
+  cycleEndDate: string | null;
+}) {
   return (
     <section className="mt-6">
       <SectionHeading>Phase dates</SectionHeading>
       <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-        Each boundary is either an absolute date or relative to the cycle&rsquo;s own start/end —
-        type a new offset/percent directly, or pick a target date to drag it there (either way,
-        what&rsquo;s persisted is the recomputed offset/percent, never a bare date).
+        Each boundary is either an absolute date or relative to the cycle&rsquo;s own start/end. A date
+        inside the cycle is stored proportionally; a date outside is stored as a day offset from the
+        nearest edge.
       </p>
       {phases.length === 0 && <p className="mt-3 text-[13px] text-[var(--text-muted)]">None yet.</p>}
       <div className="mt-3 flex flex-col gap-3">
@@ -740,30 +755,28 @@ function PhaseDatesSection({ phases, cycleId, cycleScope }: { phases: PhaseRow[]
           <div key={p.id} className={`max-w-[500px] ${CARD}`}>
             <h3 className="text-[15px] font-medium text-[var(--text)]">{p.name}</h3>
             <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-              Start: {p.startDate ?? "unresolved"} — {describeBoundary("Start", p, p.startDateType, p.startRelativeMode)}
+              Start: {p.startDate ?? "unresolved"} — {describeBoundary("Start", p, p.startDateType, p.startRelativeBasis, p.startRelativeValue)}
               <br />
-              End: {p.endDate ?? "unresolved"} — {describeBoundary("End", p, p.endDateType, p.endRelativeMode)}
+              End: {p.endDate ?? "unresolved"} — {describeBoundary("End", p, p.endDateType, p.endRelativeBasis, p.endRelativeValue)}
             </p>
             {p.flags.orderInvalid && (
               <p className="mt-1 text-[13px] text-[var(--danger)]">This phase&rsquo;s end resolves before its own start.</p>
             )}
-            {p.flags.startDrifted && (
-              <p className="mt-1 text-[13px] text-[var(--warning)]">
-                Start was set relative to {p.startOffsetAnchor ? ANCHOR_LABEL[p.startOffsetAnchor] : "?"}, but it&rsquo;s
-                now closer to the other boundary.
-              </p>
-            )}
-            {p.flags.endDrifted && (
-              <p className="mt-1 text-[13px] text-[var(--warning)]">
-                End was set relative to {p.endOffsetAnchor ? ANCHOR_LABEL[p.endOffsetAnchor] : "?"}, but it&rsquo;s now
-                closer to the other boundary.
-              </p>
-            )}
             <form action={updatePhaseBoundaryAction} className="mt-3 flex flex-col gap-2">
               <input type="hidden" name="phaseId" value={p.id} />
               <input type="hidden" name="cycleScope" value={cycleScope} />
-              <PhaseBoundaryFields prefix="start" p={p} />
-              <PhaseBoundaryFields prefix="end" p={p} />
+              <PhaseBoundaryFields
+                prefix="start"
+                p={p}
+                cycleStartDate={cycleStartDate}
+                cycleEndDate={cycleEndDate}
+              />
+              <PhaseBoundaryFields
+                prefix="end"
+                p={p}
+                cycleStartDate={cycleStartDate}
+                cycleEndDate={cycleEndDate}
+              />
               <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                 Save dates
               </button>
@@ -799,8 +812,16 @@ function PhaseDatesSection({ phases, cycleId, cycleScope }: { phases: PhaseRow[]
             <span className={LABEL}>Name</span>
             <input type="text" name="name" required className={INPUT} />
           </label>
-          <PhaseBoundaryFields prefix="start" />
-          <PhaseBoundaryFields prefix="end" />
+          <PhaseBoundaryFields
+            prefix="start"
+            cycleStartDate={cycleStartDate}
+            cycleEndDate={cycleEndDate}
+          />
+          <PhaseBoundaryFields
+            prefix="end"
+            cycleStartDate={cycleStartDate}
+            cycleEndDate={cycleEndDate}
+          />
           <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
             Add
           </button>
@@ -814,35 +835,37 @@ function PhaseDatesSection({ phases, cycleId, cycleScope }: { phases: PhaseRow[]
 // phase has no existing row to default from) — mirrors how
 // tasks/[id]/page.tsx's MilestoneDateFields handles its own optional
 // `milestone` prop for the identical add-vs-edit dual use.
-function PhaseBoundaryFields({ prefix, p }: { prefix: "start" | "end"; p?: PhaseRow }) {
+function PhaseBoundaryFields({
+  prefix,
+  p,
+  cycleStartDate,
+  cycleEndDate,
+}: {
+  prefix: "start" | "end";
+  p?: PhaseRow;
+  cycleStartDate: string | null;
+  cycleEndDate: string | null;
+}) {
   const dateType = prefix === "start" ? p?.startDateType : p?.endDateType;
-  const relativeMode = prefix === "start" ? p?.startRelativeMode : p?.endRelativeMode;
-  const anchor = prefix === "start" ? p?.startOffsetAnchor : p?.endOffsetAnchor;
-  const offsetDays = prefix === "start" ? p?.startOffsetDays : p?.endOffsetDays;
-  const percent = prefix === "start" ? p?.startPercent : p?.endPercent;
-  const absoluteDate = prefix === "start" ? p?.startDate : p?.endDate;
-
+  const date = prefix === "start" ? p?.startDate : p?.endDate;
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const fieldNames: Record<DateFieldBase, string> = {
     mode: `${prefix}${cap("mode")}`,
-    absoluteDate: `${prefix}${cap("absoluteDate")}`,
-    anchor: `${prefix}${cap("anchor")}`,
-    offsetDays: `${prefix}${cap("offsetDays")}`,
-    percent: `${prefix}${cap("percent")}`,
-    targetDate: `${prefix}${cap("targetDate")}`,
+    date: `${prefix}${cap("date")}`,
+    parentType: `${prefix}${cap("parentType")}`,
     phaseId: `${prefix}${cap("phaseId")}`,
   };
+  const relativeAllowed = Boolean(cycleStartDate || cycleEndDate);
 
   return (
     <DateModeField
       legend={prefix === "start" ? "Start" : "End"}
       fieldNames={fieldNames}
-      mode={dateType}
-      relativeMode={relativeMode}
-      anchor={anchor}
-      absoluteDate={dateType === "absolute" ? absoluteDate : undefined}
-      offsetDays={relativeMode === "offset" ? offsetDays : undefined}
-      percent={relativeMode === "percent" ? percent : undefined}
+      mode={p ? (dateType === "relative" ? "relative" : "absolute") : undefined}
+      date={date}
+      relativeAllowed={relativeAllowed}
+      defaultMode={relativeAllowed ? "relative" : "absolute"}
+      relativeHint="Dates inside the cycle move proportionally; dates outside move by whole days from the nearest edge."
     />
   );
 }

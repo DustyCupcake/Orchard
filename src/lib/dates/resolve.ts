@@ -1,66 +1,50 @@
 import { z } from "zod";
+import { AppError } from "../errors";
 
-// The shared absolute/relative date shape — see docs/spec.md's "Absolute"
-// and "Relative" (under Phase/Cycle) and docs/development-plan.md's
-// Phase 39. One boundary (a Phase's start, or its end) is either:
-//   - absolute: a hand-typed date, or explicitly unset (null) — carries
-//     no anchor information at all.
-//   - relative, offset mode: a signed day count from one of the anchor's
-//     two boundaries, submitted either as the offset itself (typed
-//     directly) or as a target date to recompute the offset from (the
-//     "drag it to a new date" path — spec: what's actually persisted is
-//     always a recomputed offset/percent, never a bare date).
-//   - relative, percent mode: 0–100% of the way between the anchor's two
-//     boundaries, submitted the same two ways.
+export type RelativeBasis = "start" | "end" | "between";
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD");
+
+const relativeBasis = z.enum(["start", "end", "between"]);
+
+// The user-facing authoring shape is deliberately small: choose absolute
+// or relative, then choose a date. `basis`/`value` are optional escape
+// hatches for internal callers that already have a recipe to preserve or
+// migrate; ordinary forms submit only `type` and `date`.
 export const dateBoundaryInput = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("absolute"), date: z.string().min(1).nullable() }),
+  z.object({ type: z.literal("absolute"), date: isoDate.nullable() }),
   z
     .object({
-      type: z.literal("relative_offset"),
-      anchor: z.enum(["cycle_start", "cycle_end"]),
-      offsetDays: z.number().int().optional(),
-      targetDate: z.string().min(1).optional(),
+      type: z.literal("relative"),
+      date: isoDate,
+      basis: relativeBasis.optional(),
+      value: z.number().int().optional(),
     })
-    .refine((v) => v.offsetDays !== undefined || v.targetDate !== undefined, {
-      message: "relative_offset needs either offsetDays or targetDate",
-    }),
-  z
-    .object({
-      type: z.literal("relative_percent"),
-      percent: z.number().int().min(0).max(100).optional(),
-      targetDate: z.string().min(1).optional(),
-    })
-    .refine((v) => v.percent !== undefined || v.targetDate !== undefined, {
-      message: "relative_percent needs either percent or targetDate",
+    .refine((v) => (v.basis === undefined) === (v.value === undefined), {
+      message: "relative basis and value must be supplied together",
     }),
 ]);
 export type DateBoundaryInput = z.infer<typeof dateBoundaryInput>;
 
-// The column group a boundary resolves to — matches Phase's own
-// start_*/end_* columns (and, by design, whatever shape Task milestone
-// and CalendarEvent end up reusing this against).
 export interface StoredBoundary {
   dateType: "absolute" | "relative";
-  date: string | null; // authoritative in absolute mode; cached/resolved in relative mode
-  relativeMode: "offset" | "percent" | null;
-  offsetAnchor: "cycle_start" | "cycle_end" | null;
-  offsetDays: number | null;
-  percent: number | null;
+  /** Authoritative in absolute mode; eagerly cached/resolved in relative mode. */
+  date: string | null;
+  /** start/end = signed days; between = hundredths of a percent. */
+  relativeBasis: RelativeBasis | null;
+  relativeValue: number | null;
 }
 
 export const EMPTY_BOUNDARY: StoredBoundary = {
   dateType: "absolute",
   date: null,
-  relativeMode: null,
-  offsetAnchor: null,
-  offsetDays: null,
-  percent: null,
+  relativeBasis: null,
+  relativeValue: null,
 };
 
-// Plain YYYY-MM-DD day math — Drizzle's `date` columns round-trip as
-// this exact string shape (see src/lib/attention/job.ts's own note),
-// and every boundary in this shape is a calendar date, never a instant,
-// so this is done in UTC to avoid DST-related off-by-one drift.
+// Plain YYYY-MM-DD day math — Drizzle's date columns round-trip as this
+// exact string shape, and every boundary in this shape is a calendar date,
+// never an instant. UTC keeps day arithmetic stable across DST.
 export function addDays(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00.000Z`);
   d.setUTCDate(d.getUTCDate() + days);
@@ -73,11 +57,67 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((b - a) / (24 * 60 * 60 * 1000));
 }
 
-// Converts a validated DateBoundaryInput into stored columns, resolving
-// the cached `date` immediately against the given anchor Cycle dates
-// (either or both may be null — the anchor is "missing," not zero; see
-// docs/spec.md's "Event window" — a boundary that can't resolve yet
-// just gets a null cached date, not an error).
+function relativeDate(
+  basis: RelativeBasis,
+  value: number,
+  anchorStart: string | null,
+  anchorEnd: string | null,
+): StoredBoundary {
+  if (basis === "between") {
+    if (!anchorStart || !anchorEnd) {
+      throw new AppError("A between relationship needs both parent dates");
+    }
+    if (anchorEnd < anchorStart) {
+      throw new AppError("The parent period's end date cannot be before its start date");
+    }
+    if (value < 0 || value > 10_000) {
+      throw new AppError("A between relationship must be between 0 and 100 percent");
+    }
+    return {
+      dateType: "relative",
+      date: resolvePercent(anchorStart, anchorEnd, value),
+      relativeBasis: "between",
+      relativeValue: value,
+    };
+  }
+
+  const anchorDate = basis === "start" ? anchorStart : anchorEnd;
+  if (!anchorDate) {
+    throw new AppError(`A relative date based on the ${basis} needs that parent date`);
+  }
+  return {
+    dateType: "relative",
+    date: addDays(anchorDate, value),
+    relativeBasis: basis,
+    relativeValue: value,
+  };
+}
+
+function inferRelativeDate(date: string, anchorStart: string | null, anchorEnd: string | null): StoredBoundary {
+  if (anchorStart && anchorEnd) {
+    if (anchorEnd < anchorStart) {
+      throw new AppError("The parent period's end date cannot be before its start date");
+    }
+    if (date < anchorStart) {
+      return relativeDate("start", daysBetween(anchorStart, date), anchorStart, anchorEnd);
+    }
+    if (date > anchorEnd) {
+      return relativeDate("end", daysBetween(anchorEnd, date), anchorStart, anchorEnd);
+    }
+    return relativeDate("between", percentBetween(anchorStart, anchorEnd, date), anchorStart, anchorEnd);
+  }
+
+  if (anchorStart) {
+    return relativeDate("start", daysBetween(anchorStart, date), anchorStart, anchorEnd);
+  }
+  if (anchorEnd) {
+    return relativeDate("end", daysBetween(anchorEnd, date), anchorStart, anchorEnd);
+  }
+
+  throw new AppError("A relative date needs at least one parent boundary date");
+}
+
+/** Converts the small authoring input into the canonical stored recipe. */
 export function toStoredBoundary(
   input: DateBoundaryInput,
   anchorStart: string | null,
@@ -87,137 +127,128 @@ export function toStoredBoundary(
     return { ...EMPTY_BOUNDARY, dateType: "absolute", date: input.date };
   }
 
-  if (input.type === "relative_offset") {
-    const anchorDate = input.anchor === "cycle_start" ? anchorStart : anchorEnd;
-    const offsetDays =
-      input.offsetDays !== undefined
-        ? input.offsetDays
-        : anchorDate && input.targetDate
-          ? daysBetween(anchorDate, input.targetDate)
-          : null;
-    return {
-      dateType: "relative",
-      date: offsetDays !== null && anchorDate ? addDays(anchorDate, offsetDays) : null,
-      relativeMode: "offset",
-      offsetAnchor: input.anchor,
-      offsetDays,
-      percent: null,
-    };
+  if (input.basis !== undefined && input.value !== undefined) {
+    return relativeDate(input.basis, input.value, anchorStart, anchorEnd);
   }
 
-  // relative_percent
-  const percent =
-    input.percent !== undefined
-      ? input.percent
-      : anchorStart && anchorEnd && input.targetDate
-        ? percentBetween(anchorStart, anchorEnd, input.targetDate)
-        : null;
-  return {
-    dateType: "relative",
-    date: resolvePercent(anchorStart, anchorEnd, percent),
-    relativeMode: "percent",
-    offsetAnchor: null,
-    offsetDays: null,
-    percent,
-  };
+  return inferRelativeDate(input.date, anchorStart, anchorEnd);
 }
 
-// Exported — src/lib/tasks/milestones.ts reuses this exact pair of
-// primitives for its own percent-mode resolution (a 4-way phase-or-
-// cycle anchor, unlike this file's own 2-way cycle-only shape), rather
-// than re-deriving the same day math a second place.
+/**
+ * Editing a relative field should not silently rewrite its recipe when the
+ * user only saved the same resolved date again. If a newly supplied parent
+ * boundary makes the old recipe non-canonical, normalization still wins.
+ */
+export function boundaryForEditing(
+  existing: StoredBoundary,
+  input: DateBoundaryInput,
+  anchorStart: string | null,
+  anchorEnd: string | null,
+): StoredBoundary {
+  if (input.type === "relative" && existing.dateType === "relative") {
+    const normalizedExisting = normalizeBoundary(existing, anchorStart, anchorEnd);
+    if (normalizedExisting.date === input.date) return normalizedExisting;
+  }
+  return toStoredBoundary(input, anchorStart, anchorEnd);
+}
+
+/**
+ * Converts a target date to hundredths of a percent. The target is
+ * clamped because this helper is also useful when inspecting legacy data;
+ * normal authoring never sends an out-of-range target to it.
+ */
 export function percentBetween(anchorStart: string, anchorEnd: string, target: string): number {
   const span = daysBetween(anchorStart, anchorEnd);
   if (span <= 0) return 0;
-  return Math.min(100, Math.max(0, Math.round((daysBetween(anchorStart, target) / span) * 100)));
+  return Math.min(10_000, Math.max(0, Math.round((daysBetween(anchorStart, target) / span) * 10_000)));
 }
 
-export function resolvePercent(
-  anchorStart: string | null,
-  anchorEnd: string | null,
-  percent: number | null,
-): string | null {
-  if (!anchorStart || !anchorEnd || percent === null) return null;
+export function resolvePercent(anchorStart: string | null, anchorEnd: string | null, value: number | null): string | null {
+  if (!anchorStart || !anchorEnd || value === null || anchorEnd < anchorStart) return null;
   const span = daysBetween(anchorStart, anchorEnd);
-  return addDays(anchorStart, Math.round((span * percent) / 100));
+  return addDays(anchorStart, Math.round((span * value) / 10_000));
 }
 
-// Recomputes a boundary's cached `date` against (possibly new) anchor
-// dates, without changing its mode/anchor/offset/percent recipe — used
-// when the anchor Cycle's own start_date/end_date move and every
-// relative Phase boundary under it needs to track along. Absolute
-// boundaries are untouched (they carry no anchor relationship at all).
+/** Recomputes only the cached date; the recipe itself never changes. */
 export function recomputeBoundary(
   boundary: StoredBoundary,
   anchorStart: string | null,
   anchorEnd: string | null,
 ): StoredBoundary {
   if (boundary.dateType === "absolute") return boundary;
-  if (boundary.relativeMode === "offset") {
-    const anchorDate = boundary.offsetAnchor === "cycle_start" ? anchorStart : anchorEnd;
+  if (boundary.relativeBasis === "start") {
     return {
       ...boundary,
-      date: anchorDate && boundary.offsetDays !== null ? addDays(anchorDate, boundary.offsetDays) : null,
+      date:
+        anchorStart && boundary.relativeValue !== null
+          ? addDays(anchorStart, boundary.relativeValue)
+          : null,
     };
   }
-  return { ...boundary, date: resolvePercent(anchorStart, anchorEnd, boundary.percent) };
+  if (boundary.relativeBasis === "end") {
+    return {
+      ...boundary,
+      date:
+        anchorEnd && boundary.relativeValue !== null
+          ? addDays(anchorEnd, boundary.relativeValue)
+          : null,
+    };
+  }
+  return {
+    ...boundary,
+    date: resolvePercent(anchorStart, anchorEnd, boundary.relativeValue),
+  };
 }
 
-// The soft "drifted closer to the other boundary" flag — see
-// docs/spec.md's "A soft check worth having, not yet a hard one."
-// Offset-mode only: percent-mode items are defined against both ends
-// at once and scale automatically, so they're structurally immune.
-export function isBoundaryDrifted(
+/**
+ * Re-bases a recipe against the currently known parent span. This is used
+ * when the second boundary of a previously one-sided period appears, and
+ * by the one-time legacy cleanup for old in-range offsets.
+ */
+export function normalizeBoundary(
   boundary: StoredBoundary,
   anchorStart: string | null,
   anchorEnd: string | null,
-): boolean {
-  if (boundary.dateType !== "relative" || boundary.relativeMode !== "offset") return false;
-  if (!boundary.date || !anchorStart || !anchorEnd) return false;
-  const distToStart = Math.abs(daysBetween(boundary.date, anchorStart));
-  const distToEnd = Math.abs(daysBetween(boundary.date, anchorEnd));
-  const closerTo = distToStart <= distToEnd ? "cycle_start" : "cycle_end";
-  return closerTo !== boundary.offsetAnchor;
+): StoredBoundary {
+  if (boundary.dateType === "absolute") return boundary;
+  const current = recomputeBoundary(boundary, anchorStart, anchorEnd);
+  if (!current.date) return current;
+
+  if (anchorStart && anchorEnd) {
+    if (anchorEnd < anchorStart) return current;
+    if (current.date < anchorStart) {
+      return relativeDate("start", daysBetween(anchorStart, current.date), anchorStart, anchorEnd);
+    }
+    if (current.date > anchorEnd) {
+      return relativeDate("end", daysBetween(anchorEnd, current.date), anchorStart, anchorEnd);
+    }
+    return relativeDate("between", percentBetween(anchorStart, anchorEnd, current.date), anchorStart, anchorEnd);
+  }
+
+  // With one known boundary, the basis is already the only meaningful
+  // representation. Keep it stable until the opposite boundary arrives.
+  return current;
 }
 
-// "Cloning carries the recipe, not the date" — docs/spec.md's own
-// heading. A relative boundary's recipe (mode/anchor/offset-or-percent)
-// carries forward as-is — its cached `date` is dropped here and
-// recomputed fresh once the new Cycle gets its own dates (see
-// recomputeBoundary, called elsewhere once those are known). An
-// absolute boundary doesn't carry a bare date across a clone (a new
-// cycle's "opening day" isn't the old one's); instead it's converted
-// into a derived offset recipe (mode offset, anchor cycle_start)
-// measured against the *source* cycle's own start_date, so even a
-// cycle that was never relatively-dated still produces a usable
-// recommendation on its next clone. Un-derivable (no source start_date,
-// or the boundary was never set at all) falls back to a fully unset
-// boundary — the same "dates don't carry across a clone" behavior this
-// codebase had before Phase 39.
+/** Cloning carries the recipe, not the cached/resolved date. */
 export function deriveClonedBoundaryRecipe(
   boundary: StoredBoundary,
   sourceCycleStart: string | null,
+  sourceCycleEnd: string | null = null,
 ): StoredBoundary {
   if (boundary.dateType === "relative") {
     return { ...boundary, date: null };
   }
   if (boundary.date && sourceCycleStart) {
     return {
-      dateType: "relative",
+      ...toStoredBoundary({ type: "relative", date: boundary.date }, sourceCycleStart, sourceCycleEnd),
       date: null,
-      relativeMode: "offset",
-      offsetAnchor: "cycle_start",
-      offsetDays: daysBetween(sourceCycleStart, boundary.date),
-      percent: null,
     };
   }
   return { ...EMPTY_BOUNDARY };
 }
 
-// "An end can't resolve before its own start" — docs/spec.md's one
-// defined sanity check, applied here to a direct edit of one pair
-// (a Phase's own start/end, or a Cycle's own start_date/end_date).
-// Only meaningful when both sides actually resolve to something.
+/** The one direct-edit sanity check shared by Cycle and Phase boundaries. */
 export function violatesBoundaryOrder(startDate: string | null, endDate: string | null): boolean {
   if (!startDate || !endDate) return false;
   return endDate < startDate;

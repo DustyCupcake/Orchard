@@ -10,6 +10,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { tier } from "./tier";
+import { dateDisplayModeEnum } from "./date-display";
 
 export const membershipModelEnum = pgEnum("membership_model", ["cohort", "rolling", "fixed"]);
 export const branchMembershipModelEnum = pgEnum("branch_membership_model", ["emergent", "explicit"]);
@@ -28,6 +29,9 @@ export const community = pgTable("community", {
     (): AnyPgColumn => tier.id,
   ),
   phasesEnabled: boolean("phases_enabled").notNull().default(false),
+  // Community-wide default for read-only date labels. A Member can
+  // override this, or leave its own nullable override null to inherit it.
+  defaultDateDisplayMode: dateDisplayModeEnum("default_date_display_mode").notNull().default("exact"),
   onsiteModeEnabled: boolean("onsite_mode_enabled").notNull().default(false),
   // How long the conflict team has to acknowledge a new report before
   // it's shown as overdue — see docs/spec.md's Conflict management

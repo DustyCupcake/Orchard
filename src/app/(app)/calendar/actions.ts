@@ -30,26 +30,13 @@ function redirectWithError(err: unknown): never {
   throw err;
 }
 
-// Mirrors src/app/(app)/participation/actions.ts's own boundaryFromForm,
-// simplified to one field (an event has a single date, not a start/end
-// pair) — see src/app/(app)/calendar/page.tsx's EventDateFields.
+// Mirrors the Phase boundary parser: one date, with the server deriving
+// the canonical relative recipe from the event's selected Cycle.
 function dateFromForm(formData: FormData): DateBoundaryInput {
   const mode = String(formData.get("dateMode") ?? "absolute");
-  const targetDate = String(formData.get("targetDate") ?? "").trim();
-
-  if (mode === "relative_offset") {
-    const anchor = String(formData.get("anchor") ?? "cycle_start") as "cycle_start" | "cycle_end";
-    if (targetDate) return { type: "relative_offset", anchor, targetDate };
-    const offsetDaysRaw = String(formData.get("offsetDays") ?? "").trim();
-    return { type: "relative_offset", anchor, offsetDays: offsetDaysRaw ? Number(offsetDaysRaw) : 0 };
-  }
-  if (mode === "relative_percent") {
-    if (targetDate) return { type: "relative_percent", targetDate };
-    const percentRaw = String(formData.get("percent") ?? "").trim();
-    return { type: "relative_percent", percent: percentRaw ? Number(percentRaw) : 0 };
-  }
-  const absoluteDate = String(formData.get("absoluteDate") ?? "").trim();
-  return { type: "absolute", date: absoluteDate || null };
+  const date = String(formData.get("date") ?? "").trim();
+  if (!date) return { type: "absolute", date: null };
+  return mode === "relative" ? { type: "relative", date } : { type: "absolute", date };
 }
 
 function shareTargetFromForm(formData: FormData) {

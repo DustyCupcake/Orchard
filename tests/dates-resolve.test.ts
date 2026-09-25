@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays,
+  boundaryForEditing,
   daysBetween,
   deriveClonedBoundaryRecipe,
   EMPTY_BOUNDARY,
-  isBoundaryDrifted,
+  normalizeBoundary,
+  percentBetween,
   recomputeBoundary,
+  resolvePercent,
   toStoredBoundary,
   violatesBoundaryOrder,
   type StoredBoundary,
@@ -23,172 +26,215 @@ describe("addDays / daysBetween", () => {
   });
 
   it("survives a DST-transition month without off-by-one drift (UTC day math)", () => {
-    // US spring-forward 2027 falls in March — a naive local-time diff
-    // could lose or gain an hour here.
     expect(addDays("2027-03-10", 5)).toBe("2027-03-15");
   });
 });
 
 describe("toStoredBoundary", () => {
-  it("absolute: stores the date as-is, no anchor info", () => {
-    const b = toStoredBoundary({ type: "absolute", date: "2027-04-01" }, "2027-01-01", "2027-06-01");
-    expect(b).toEqual({
+  it("stores absolute dates without recipe fields", () => {
+    expect(toStoredBoundary({ type: "absolute", date: "2027-04-01" }, "2027-01-01", "2027-06-01")).toEqual({
       dateType: "absolute",
       date: "2027-04-01",
-      relativeMode: null,
-      offsetAnchor: null,
-      offsetDays: null,
-      percent: null,
+      relativeBasis: null,
+      relativeValue: null,
     });
   });
 
-  it("absolute: a null date is a valid, explicitly-unset boundary", () => {
-    const b = toStoredBoundary({ type: "absolute", date: null }, "2027-01-01", "2027-06-01");
-    expect(b.date).toBeNull();
+  it("allows an explicitly-unset absolute boundary", () => {
+    expect(toStoredBoundary({ type: "absolute", date: null }, "2027-01-01", "2027-06-01").date).toBeNull();
   });
 
-  it("relative_offset (typed): resolves against the named anchor", () => {
-    const b = toStoredBoundary(
-      { type: "relative_offset", anchor: "cycle_start", offsetDays: 14 },
-      "2027-01-01",
-      "2027-06-01",
-    );
-    expect(b.dateType).toBe("relative");
-    expect(b.relativeMode).toBe("offset");
-    expect(b.offsetDays).toBe(14);
-    expect(b.date).toBe("2027-01-15");
-  });
-
-  it("relative_offset anchored to cycle_end", () => {
-    const b = toStoredBoundary(
-      { type: "relative_offset", anchor: "cycle_end", offsetDays: -7 },
-      "2027-01-01",
-      "2027-06-01",
-    );
-    expect(b.date).toBe("2027-05-25");
-  });
-
-  it("relative_offset (dragged): reverse-computes the offset from a target date", () => {
-    const b = toStoredBoundary(
-      { type: "relative_offset", anchor: "cycle_start", targetDate: "2027-01-15" },
-      "2027-01-01",
-      "2027-06-01",
-    );
-    expect(b.offsetDays).toBe(14);
-    expect(b.date).toBe("2027-01-15");
-  });
-
-  it("relative_offset: unresolvable when the named anchor is missing", () => {
-    const b = toStoredBoundary(
-      { type: "relative_offset", anchor: "cycle_start", offsetDays: 14 },
-      null,
-      "2027-06-01",
-    );
-    expect(b.date).toBeNull();
-    expect(b.offsetDays).toBe(14); // the recipe itself is still stored
-  });
-
-  it("relative_percent (typed): resolves proportionally between both anchors", () => {
-    const b = toStoredBoundary({ type: "relative_percent", percent: 50 }, "2027-01-01", "2027-01-11");
-    expect(b.date).toBe("2027-01-06");
-  });
-
-  it("relative_percent (dragged): reverse-computes the percent from a target date", () => {
-    const b = toStoredBoundary(
-      { type: "relative_percent", targetDate: "2027-01-06" },
+  it("infers a percent recipe for a target inside both parent dates", () => {
+    const boundary = toStoredBoundary(
+      { type: "relative", date: "2027-01-06" },
       "2027-01-01",
       "2027-01-11",
     );
-    expect(b.percent).toBe(50);
-    expect(b.date).toBe("2027-01-06");
+    expect(boundary).toEqual({
+      dateType: "relative",
+      date: "2027-01-06",
+      relativeBasis: "between",
+      relativeValue: 5000,
+    });
   });
 
-  it("relative_percent: unresolvable without both anchors", () => {
-    const b = toStoredBoundary({ type: "relative_percent", percent: 50 }, "2027-01-01", null);
-    expect(b.date).toBeNull();
-    expect(b.percent).toBe(50);
+  it("infers a signed start offset for a target before the start", () => {
+    expect(toStoredBoundary({ type: "relative", date: "2026-12-28" }, "2027-01-01", "2027-06-01")).toEqual({
+      dateType: "relative",
+      date: "2026-12-28",
+      relativeBasis: "start",
+      relativeValue: -4,
+    });
+  });
+
+  it("infers a signed end offset for a target after the end", () => {
+    expect(toStoredBoundary({ type: "relative", date: "2027-06-08" }, "2027-01-01", "2027-06-01")).toEqual({
+      dateType: "relative",
+      date: "2027-06-08",
+      relativeBasis: "end",
+      relativeValue: 7,
+    });
+  });
+
+  it("keeps a one-sided start basis when only the start is known", () => {
+    expect(toStoredBoundary({ type: "relative", date: "2027-01-15" }, "2027-01-01", null)).toEqual({
+      dateType: "relative",
+      date: "2027-01-15",
+      relativeBasis: "start",
+      relativeValue: 14,
+    });
+  });
+
+  it("keeps a one-sided end basis when only the end is known", () => {
+    expect(toStoredBoundary({ type: "relative", date: "2027-05-25" }, null, "2027-06-01")).toEqual({
+      dateType: "relative",
+      date: "2027-05-25",
+      relativeBasis: "end",
+      relativeValue: -7,
+    });
+  });
+
+  it("rejects relative authoring with no parent boundary", () => {
+    expect(() => toStoredBoundary({ type: "relative", date: "2027-01-01" }, null, null)).toThrow(
+      "at least one parent boundary",
+    );
+  });
+
+  it("accepts an explicit basis/value for internal callers", () => {
+    expect(
+      toStoredBoundary(
+        { type: "relative", date: "2027-01-15", basis: "start", value: 14 },
+        "2027-01-01",
+        "2027-06-01",
+      ),
+    ).toEqual({
+      dateType: "relative",
+      date: "2027-01-15",
+      relativeBasis: "start",
+      relativeValue: 14,
+    });
+  });
+});
+
+describe("percent precision and resolution", () => {
+  it("stores percent as hundredths and rounds resolved dates to a calendar day", () => {
+    expect(percentBetween("2027-01-01", "2027-01-03", "2027-01-02")).toBe(5000);
+    expect(percentBetween("2027-01-01", "2027-01-03", "2027-01-01")).toBe(0);
+    expect(percentBetween("2027-01-01", "2027-01-03", "2027-01-03")).toBe(10000);
+    expect(resolvePercent("2027-01-01", "2027-01-03", 3333)).toBe("2027-01-02");
+  });
+
+  it("rejects a between value outside 0–100 percent", () => {
+    expect(() =>
+      toStoredBoundary(
+        { type: "relative", date: "2027-01-01", basis: "between", value: 10001 },
+        "2027-01-01",
+        "2027-01-03",
+      ),
+    ).toThrow("between 0 and 100 percent");
   });
 });
 
 describe("recomputeBoundary", () => {
-  it("absolute boundaries are untouched by an anchor moving", () => {
-    const abs: StoredBoundary = { ...EMPTY_BOUNDARY, dateType: "absolute", date: "2027-04-01" };
-    expect(recomputeBoundary(abs, "2027-02-01", "2027-08-01")).toEqual(abs);
+  it("leaves absolute boundaries untouched", () => {
+    const absolute: StoredBoundary = { ...EMPTY_BOUNDARY, dateType: "absolute", date: "2027-04-01" };
+    expect(recomputeBoundary(absolute, "2027-02-01", "2027-08-01")).toEqual(absolute);
   });
 
-  it("offset-mode boundaries track the anchor as it moves", () => {
-    const rel: StoredBoundary = {
+  it("moves a one-sided start offset when the known start moves", () => {
+    const relative: StoredBoundary = {
       dateType: "relative",
       date: "2027-01-15",
-      relativeMode: "offset",
-      offsetAnchor: "cycle_start",
-      offsetDays: 14,
-      percent: null,
+      relativeBasis: "start",
+      relativeValue: 14,
     };
-    const moved = recomputeBoundary(rel, "2027-02-01", null);
-    expect(moved.date).toBe("2027-02-15");
-    expect(moved.offsetDays).toBe(14); // the recipe itself never changes
+    expect(recomputeBoundary(relative, "2027-02-01", null)).toEqual({
+      ...relative,
+      date: "2027-02-15",
+    });
   });
 
-  it("percent-mode boundaries rescale as the span changes", () => {
-    const rel: StoredBoundary = {
+  it("rescales a between recipe when the parent span changes", () => {
+    const relative: StoredBoundary = {
       dateType: "relative",
       date: "2027-01-06",
-      relativeMode: "percent",
-      offsetAnchor: null,
-      offsetDays: null,
-      percent: 50,
+      relativeBasis: "between",
+      relativeValue: 5000,
     };
-    const rescaled = recomputeBoundary(rel, "2027-01-01", "2027-01-21");
-    expect(rescaled.date).toBe("2027-01-11");
+    expect(recomputeBoundary(relative, "2027-01-01", "2027-01-21").date).toBe("2027-01-11");
   });
 });
 
-describe("isBoundaryDrifted", () => {
-  const cycleStart = "2027-01-01";
-  const cycleEnd = "2027-01-31";
-
-  it("flags an offset-mode item that resolved closer to the opposite boundary", () => {
-    // Anchored to cycle_start with a huge offset that lands it right
-    // next to cycle_end instead.
-    const b: StoredBoundary = {
+describe("normalizeBoundary", () => {
+  it("turns a one-sided provisional offset into a percent when the missing boundary arrives", () => {
+    const provisional: StoredBoundary = {
       dateType: "relative",
-      date: "2027-01-30",
-      relativeMode: "offset",
-      offsetAnchor: "cycle_start",
-      offsetDays: 29,
-      percent: null,
+      date: "2027-01-15",
+      relativeBasis: "start",
+      relativeValue: 14,
     };
-    expect(isBoundaryDrifted(b, cycleStart, cycleEnd)).toBe(true);
+    expect(normalizeBoundary(provisional, "2027-01-01", "2027-01-31")).toEqual({
+      dateType: "relative",
+      date: "2027-01-15",
+      relativeBasis: "between",
+      relativeValue: 4667,
+    });
   });
 
-  it("does not flag an offset-mode item still closer to its own anchor", () => {
-    const b: StoredBoundary = {
+  it("turns an in-range legacy offset into a percent recipe", () => {
+    const legacy: StoredBoundary = {
       dateType: "relative",
-      date: "2027-01-05",
-      relativeMode: "offset",
-      offsetAnchor: "cycle_start",
-      offsetDays: 4,
-      percent: null,
+      date: "2027-01-10",
+      relativeBasis: "start",
+      relativeValue: 9,
     };
-    expect(isBoundaryDrifted(b, cycleStart, cycleEnd)).toBe(false);
+    expect(normalizeBoundary(legacy, "2027-01-01", "2027-01-31").relativeBasis).toBe("between");
   });
 
-  it("percent-mode is structurally immune", () => {
-    const b: StoredBoundary = {
+  it("re-bases an outside target onto the natural edge", () => {
+    const provisional: StoredBoundary = {
       dateType: "relative",
-      date: "2027-01-30",
-      relativeMode: "percent",
-      offsetAnchor: null,
-      offsetDays: null,
-      percent: 97,
+      date: "2027-02-05",
+      relativeBasis: "start",
+      relativeValue: 35,
     };
-    expect(isBoundaryDrifted(b, cycleStart, cycleEnd)).toBe(false);
+    expect(normalizeBoundary(provisional, "2027-01-01", "2027-01-31")).toEqual({
+      dateType: "relative",
+      date: "2027-02-05",
+      relativeBasis: "end",
+      relativeValue: 5,
+    });
+  });
+});
+
+describe("boundaryForEditing", () => {
+  it("keeps a canonical recipe when the same resolved date is saved", () => {
+    const existing: StoredBoundary = {
+      dateType: "relative",
+      date: "2027-01-15",
+      relativeBasis: "between",
+      relativeValue: 4667,
+    };
+    expect(
+      boundaryForEditing(existing, { type: "relative", date: "2027-01-15" }, "2027-01-01", "2027-01-31"),
+    ).toEqual(existing);
   });
 
-  it("absolute boundaries are never flagged", () => {
-    const b: StoredBoundary = { ...EMPTY_BOUNDARY, dateType: "absolute", date: "2027-01-30" };
-    expect(isBoundaryDrifted(b, cycleStart, cycleEnd)).toBe(false);
+  it("normalizes a newly bounded provisional recipe even when the date is unchanged", () => {
+    const existing: StoredBoundary = {
+      dateType: "relative",
+      date: "2027-01-15",
+      relativeBasis: "start",
+      relativeValue: 14,
+    };
+    expect(
+      boundaryForEditing(existing, { type: "relative", date: "2027-01-15" }, "2027-01-01", "2027-01-31"),
+    ).toEqual({
+      dateType: "relative",
+      date: "2027-01-15",
+      relativeBasis: "between",
+      relativeValue: 4667,
+    });
   });
 });
 
@@ -205,38 +251,45 @@ describe("violatesBoundaryOrder", () => {
 });
 
 describe("deriveClonedBoundaryRecipe", () => {
-  it("a relative boundary carries its recipe forward, cached date dropped", () => {
-    const rel: StoredBoundary = {
+  it("carries a relative recipe forward without its cached date", () => {
+    const relative: StoredBoundary = {
       dateType: "relative",
       date: "2027-01-15",
-      relativeMode: "offset",
-      offsetAnchor: "cycle_start",
-      offsetDays: 14,
-      percent: null,
+      relativeBasis: "between",
+      relativeValue: 5000,
     };
-    const derived = deriveClonedBoundaryRecipe(rel, "2027-01-01");
-    expect(derived).toEqual({ ...rel, date: null });
-  });
-
-  it("an absolute boundary derives an offset recipe against the source cycle's own start_date", () => {
-    const abs: StoredBoundary = { ...EMPTY_BOUNDARY, dateType: "absolute", date: "2027-01-15" };
-    const derived = deriveClonedBoundaryRecipe(abs, "2027-01-01");
-    expect(derived).toEqual({
-      dateType: "relative",
+    expect(deriveClonedBoundaryRecipe(relative, "2027-01-01", "2027-01-31")).toEqual({
+      ...relative,
       date: null,
-      relativeMode: "offset",
-      offsetAnchor: "cycle_start",
-      offsetDays: 14,
-      percent: null,
     });
   });
 
-  it("un-derivable (no source start_date) falls back to a fully unset boundary", () => {
-    const abs: StoredBoundary = { ...EMPTY_BOUNDARY, dateType: "absolute", date: "2027-01-15" };
-    expect(deriveClonedBoundaryRecipe(abs, null)).toEqual(EMPTY_BOUNDARY);
+  it("derives a canonical recipe for an absolute source date", () => {
+    const absolute: StoredBoundary = { ...EMPTY_BOUNDARY, dateType: "absolute", date: "2027-01-15" };
+    expect(deriveClonedBoundaryRecipe(absolute, "2027-01-01", "2027-01-31")).toEqual({
+      dateType: "relative",
+      date: null,
+      relativeBasis: "between",
+      relativeValue: 4667,
+    });
   });
 
-  it("a never-set boundary stays unset", () => {
-    expect(deriveClonedBoundaryRecipe(EMPTY_BOUNDARY, "2027-01-01")).toEqual(EMPTY_BOUNDARY);
+  it("uses the end basis when the source date is after the source cycle", () => {
+    const absolute: StoredBoundary = { ...EMPTY_BOUNDARY, dateType: "absolute", date: "2027-02-05" };
+    expect(deriveClonedBoundaryRecipe(absolute, "2027-01-01", "2027-01-31")).toEqual({
+      dateType: "relative",
+      date: null,
+      relativeBasis: "end",
+      relativeValue: 5,
+    });
+  });
+
+  it("falls back to an unset recipe without a source start date", () => {
+    const absolute: StoredBoundary = { ...EMPTY_BOUNDARY, dateType: "absolute", date: "2027-01-15" };
+    expect(deriveClonedBoundaryRecipe(absolute, null)).toEqual(EMPTY_BOUNDARY);
+  });
+
+  it("leaves a never-set boundary unset", () => {
+    expect(deriveClonedBoundaryRecipe(EMPTY_BOUNDARY, "2027-01-01", "2027-01-31")).toEqual(EMPTY_BOUNDARY);
   });
 });

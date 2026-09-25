@@ -55,6 +55,12 @@ export async function updateProfile(formData: FormData) {
     .filter(Boolean);
   const submittedTierIds = formData.getAll("tierIds").map(String);
   const emailNotificationsEnabled = formData.get("emailNotificationsEnabled") === "on";
+  const hasDateDisplayMode = formData.has("dateDisplayMode");
+  const dateDisplayModeRaw = String(formData.get("dateDisplayMode") ?? "inherit");
+  if (!["inherit", "exact", "period"].includes(dateDisplayModeRaw)) {
+    redirectWithError(new AppError("Invalid date display preference"));
+  }
+  const dateDisplayMode = dateDisplayModeRaw === "inherit" ? null : dateDisplayModeRaw === "period" ? "period" : "exact";
 
   if (!name) {
     return;
@@ -78,7 +84,7 @@ export async function updateProfile(formData: FormData) {
 
   await db
     .update(member)
-    .set({ name, tags, tierIds, emailNotificationsEnabled })
+    .set({ name, tags, tierIds, emailNotificationsEnabled, ...(hasDateDisplayMode && { dateDisplayMode }) })
     .where(eq(member.id, current.id));
   revalidatePath("/profile");
 }

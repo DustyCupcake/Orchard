@@ -1,4 +1,5 @@
 import type { member as memberTable } from "@/db/schema";
+import type { PeriodDateContext } from "../dates";
 import { getCurrentCycle, listOnceEverAnswers } from "../profile-questions";
 import { getCycle } from "../cycles";
 import { listMyTaskMilestones } from "../tasks";
@@ -34,7 +35,8 @@ export interface CalendarEntry {
   kind: CalendarEntryKind;
   label: string;
   href: string;
-  drifted?: boolean;
+  /** Optional display-only context; never used for sorting or identity. */
+  period?: PeriodDateContext | null;
 }
 
 function toDay(d: Date | string): string {
@@ -67,14 +69,36 @@ export async function getCalendarView(actor: Member) {
   const entries: CalendarEntry[] = [];
 
   const currentCycle = await getCurrentCycle(actor.communityId);
+  const currentCyclePeriod: PeriodDateContext | null =
+    currentCycle?.startDate && currentCycle.endDate
+      ? { name: currentCycle.name, startDate: currentCycle.startDate, endDate: currentCycle.endDate, cycleName: currentCycle.name }
+      : null;
+  const phasePeriods = new Map<string, PeriodDateContext>();
   if (currentCycle) {
     const withPhases = await getCycle(actor, currentCycle.id);
     for (const p of withPhases.phases) {
+      const period =
+        p.startDate && p.endDate
+          ? { name: p.name, startDate: p.startDate, endDate: p.endDate }
+          : null;
+      if (period) phasePeriods.set(p.id, period);
       if (p.startDate) {
-        entries.push({ date: p.startDate, kind: "phase_start", label: `${p.name} starts`, href: "/participation" });
+        entries.push({
+          date: p.startDate,
+          kind: "phase_start",
+          label: `${p.name} starts`,
+          href: "/participation",
+          ...(period ? { period } : {}),
+        });
       }
       if (p.endDate) {
-        entries.push({ date: p.endDate, kind: "phase_end", label: `${p.name} ends`, href: "/participation" });
+        entries.push({
+          date: p.endDate,
+          kind: "phase_end",
+          label: `${p.name} ends`,
+          href: "/participation",
+          ...(period ? { period } : {}),
+        });
       }
     }
   }
@@ -82,12 +106,14 @@ export async function getCalendarView(actor: Member) {
   const myMilestones = await listMyTaskMilestones(actor);
   for (const m of myMilestones) {
     if (m.resolvedDate) {
+      const parentPhase = m.parentType === "phase" ? phasePeriods.get(m.phaseId ?? m.taskPhaseId ?? "") : undefined;
+      const period = parentPhase ?? (m.parentType === "cycle" && m.taskCycleId === currentCycle?.id ? currentCyclePeriod : null);
       entries.push({
         date: m.resolvedDate,
         kind: "milestone",
         label: `${m.label} — ${m.taskTitle}`,
         href: `/tasks/${m.taskId}`,
-        drifted: m.drifted,
+        ...(period ? { period } : {}),
       });
     }
   }
@@ -95,7 +121,13 @@ export async function getCalendarView(actor: Member) {
   const myEvents = await listMyCalendarEvents(actor);
   for (const e of myEvents) {
     if (e.date) {
-      entries.push({ date: e.date, kind: "calendar_event", label: e.title, href: "/calendar", drifted: e.drifted });
+      entries.push({
+        date: e.date,
+        kind: "calendar_event",
+        label: e.title,
+        href: "/calendar",
+        ...(e.cycleId === currentCycle?.id && currentCyclePeriod ? { period: currentCyclePeriod } : {}),
+      });
     }
   }
 

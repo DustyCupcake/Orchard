@@ -15,7 +15,8 @@ import {
   listMyCalendarEventInvites,
   listMyCalendarEvents,
 } from "@/lib/calendar-events";
-import { listBranches } from "@/lib/settings";
+import { getCommunity, listBranches } from "@/lib/settings";
+import { effectiveDateDisplayMode, formatDateLabel } from "@/lib/dates";
 import { listCycles } from "@/lib/cycles";
 import { buildMonthGrid, getCalendarView, monthParam, parseMonthParam, shiftMonth, MONTH_LABEL, type CalendarEntry } from "@/lib/calendar";
 import {
@@ -127,13 +128,14 @@ export default async function CalendarPage({
   const newEventHref = `/calendar?compose=1&tab=your-events${month ? `&month=${month}` : ""}`;
   const cancelComposeHref = tabHref("your-events");
 
-  const [view, myEvents, myInvites, branches, cycles, communityMembers] = await Promise.all([
+  const [view, myEvents, myInvites, branches, cycles, communityMembers, communityRow] = await Promise.all([
     getCalendarView(viewing),
     listMyCalendarEvents(viewing),
     listMyCalendarEventInvites(viewing),
     listBranches(viewing),
     listCycles(viewing),
     db.select().from(member).where(eq(member.communityId, viewing.communityId)),
+    getCommunity(viewing),
   ]);
 
   const { year, month: monthNum } = parseMonthParam(month);
@@ -150,6 +152,21 @@ export default async function CalendarPage({
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const upcoming = view.entries.filter((e) => e.date >= todayStr).slice(0, 20);
+
+  const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
+  const cycleById = new Map(cycles.map((c) => [c.id, c]));
+  const calendarEntryDateLabel = (entry: CalendarEntry) =>
+    formatDateLabel(entry.date, dateDisplayMode, entry.period);
+  const eventDateLabel = (event: { date: string | null; cycleId: string | null }) => {
+    const cycle = event.cycleId ? cycleById.get(event.cycleId) : null;
+    return formatDateLabel(
+      event.date,
+      dateDisplayMode,
+      cycle?.startDate && cycle.endDate
+        ? { name: cycle.name, startDate: cycle.startDate, endDate: cycle.endDate, cycleName: cycle.name }
+        : null,
+    );
+  };
 
   const myOwnEvents = myEvents.filter((e) => e.memberId === viewing.id);
   const acceptedEvents = myEvents.filter((e) => e.memberId !== viewing.id);
@@ -269,12 +286,13 @@ export default async function CalendarPage({
               key={i}
               className="flex items-center gap-3 border-b border-[var(--border)] py-2 text-[13px] last:border-b-0"
             >
-              <span className="w-24 shrink-0 text-[var(--text-muted)]">{e.date}</span>
+              <span className="w-24 shrink-0 text-[var(--text-muted)]" title={calendarEntryDateLabel(e).exact}>
+                <time dateTime={e.date} aria-label={calendarEntryDateLabel(e).exact}>{calendarEntryDateLabel(e).visible}</time>
+              </span>
               <span className="shrink-0"><Tag tone={KIND_TONE[e.kind]}>{KIND_LABEL[e.kind]}</Tag></span>
               <a href={e.href} className="min-w-0 truncate text-[var(--text)] hover:text-[var(--accent-1)]">
                 {e.label}
               </a>
-              {e.drifted && <span className="shrink-0 text-[11px] text-[var(--warning)]">drifted</span>}
             </li>
           ))}
         </ul>
@@ -311,7 +329,7 @@ export default async function CalendarPage({
                 ))}
               </select>
             </label>
-            <EventDateFields />
+            <EventDateFields cycles={cycles} />
             <label className="flex flex-col gap-1">
               <span className={LABEL}>Share with</span>
               <select name="shareTarget" defaultValue="personal" className={INPUT}>
@@ -377,9 +395,8 @@ export default async function CalendarPage({
                 <p className="text-[14px] font-medium text-[var(--text)]">{e.title}</p>
                 <Tag>{SHARE_LABEL[e.shareTarget]}</Tag>
               </div>
-              <p className="mt-0.5 text-[13px] text-[var(--text-muted)]">
-                {e.date ?? "unresolved"}
-                {e.drifted && <span className="text-[var(--warning)]"> · drifted from its anchor</span>}
+              <p className="mt-0.5 text-[13px] text-[var(--text-muted)]" title={eventDateLabel(e).exact}>
+                <time dateTime={e.date ?? undefined} aria-label={eventDateLabel(e).exact}>{eventDateLabel(e).visible}</time>
               </p>
               {e.description && <p className="mt-2 text-[13px] text-[var(--text)]">{e.description}</p>}
 
@@ -412,7 +429,7 @@ export default async function CalendarPage({
                       ))}
                     </select>
                   </label>
-                  <EventDateFields event={e} />
+                  <EventDateFields event={e} cycles={cycles} />
                   <label className="flex flex-col gap-1">
                     <span className={LABEL}>Share with</span>
                     <select name="shareTarget" defaultValue={e.shareTarget} className={INPUT}>
@@ -498,7 +515,9 @@ export default async function CalendarPage({
             {acceptedEvents.map((e) => (
               <li key={e.id} className="border-b border-[var(--border)] py-2 text-[13px] last:border-b-0">
                 <span className="font-medium text-[var(--text)]">{e.title}</span>{" "}
-                <span className="text-[var(--text-muted)]">— {e.date ?? "unresolved"}</span>
+                <span className="text-[var(--text-muted)]" title={eventDateLabel(e).exact}>
+                  — <time dateTime={e.date ?? undefined} aria-label={eventDateLabel(e).exact}>{eventDateLabel(e).visible}</time>
+                </span>
               </li>
             ))}
           </ul>
@@ -520,24 +539,29 @@ type EventRow = Awaited<ReturnType<typeof listMyCalendarEvents>>[number] | Await
 // Cycle-relative are ever offered.
 const EVENT_DATE_FIELD_NAMES: Record<DateFieldBase, string> = {
   mode: "dateMode",
-  absoluteDate: "absoluteDate",
-  anchor: "anchor",
-  offsetDays: "offsetDays",
-  percent: "percent",
-  targetDate: "targetDate",
+  date: "date",
+  parentType: "parentType",
   phaseId: "phaseId",
 };
 
-function EventDateFields({ event }: { event?: EventRow }) {
+function EventDateFields({
+  event,
+  cycles,
+}: {
+  event?: EventRow;
+  cycles: Awaited<ReturnType<typeof listCycles>>;
+}) {
+  const relativeAllowed = event?.cycleId
+    ? true
+    : cycles.some((cycle) => cycle.startDate !== null || cycle.endDate !== null);
   return (
     <DateModeField
       fieldNames={EVENT_DATE_FIELD_NAMES}
-      mode={event?.dateType}
-      relativeMode={event?.relativeMode}
-      anchor={event?.anchorType}
-      absoluteDate={event?.dateType === "absolute" ? event.date : undefined}
-      offsetDays={event?.relativeMode === "offset" ? event.offsetDays : undefined}
-      percent={event?.relativeMode === "percent" ? event.percent : undefined}
+      mode={event ? (event.dateType === "relative" ? "relative" : "absolute") : undefined}
+      date={event?.date}
+      relativeAllowed={relativeAllowed}
+      defaultMode={event ? (event.cycleId ? "relative" : "absolute") : "absolute"}
+      relativeHint="A cycle-linked event inside the cycle moves proportionally; outside dates move by whole days from the nearest edge."
     />
   );
 }

@@ -150,6 +150,7 @@ export async function updateGeneralSettingsAction(formData: FormData) {
       name: String(formData.get("name") ?? "").trim() || undefined,
       cyclesEnabled: formData.get("cyclesEnabled") === "on",
       phasesEnabled: formData.get("phasesEnabled") === "on",
+      defaultDateDisplayMode: String(formData.get("defaultDateDisplayMode") ?? "exact") as "exact" | "period",
       cycleInitiationTierId: String(formData.get("cycleInitiationTierId") ?? "") || null,
       defaultCallHasAgenda: formData.get("defaultCallHasAgenda") === "on",
       defaultCallNeedsSummary: formData.get("defaultCallNeedsSummary") === "on",

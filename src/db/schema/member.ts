@@ -1,5 +1,6 @@
 import { boolean, pgTable, text, timestamp, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { community } from "./community";
+import { dateDisplayModeEnum } from "./date-display";
 
 // A Member belongs to exactly one Community. tierIds is a denormalized
 // cache (computed for automatic criteria, hand-edited for manual ones) —
@@ -56,6 +57,9 @@ export const member = pgTable("member", {
   // method, not whether the platform emails it — this gates delivery
   // itself, independent of any method's own visibility setting.
   emailNotificationsEnabled: boolean("email_notifications_enabled").notNull().default(true),
+  // null = inherit Community.defaultDateDisplayMode; explicit values
+  // override it for this member without changing anyone else's view.
+  dateDisplayMode: dateDisplayModeEnum("date_display_mode"),
   // Member onboarding & first session (docs/development-plan.md's
   // Phase 56) — a nudge, never a gate: cleared either by finishing the
   // tutorial/suggestions sequence or by explicitly skipping it, same

@@ -11,7 +11,7 @@ import {
   updateCycleSettings,
   updatePhaseHighlight,
 } from "@/lib/cycles";
-import { claimAsShadow, claimTask, createRequirement, createTaskMilestone } from "@/lib/tasks";
+import { claimAsShadow, claimTask, createRequirement } from "@/lib/tasks";
 import { ConflictError, ConfirmationRequiredError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
@@ -396,9 +396,9 @@ describe("previewClonePreviousCycle", () => {
       phaseId: build.id,
       label: "Halfway check-in",
       dateType: "relative",
-      relativeMode: "offset",
-      anchorType: "phase_start",
-      offsetDays: 5,
+      relativeBasis: "between",
+      relativeValue: 5000,
+      parentType: "phase",
       status: "confirmed",
       proposedBy: alice.id,
       createdBy: alice.id,
@@ -406,9 +406,9 @@ describe("previewClonePreviousCycle", () => {
 
     const preview = await previewClonePreviousCycle(alice, "2027-03-01", "2027-11-30");
     expect(preview?.sourceCycleName).toBe("2026 Season");
-    expect(preview?.phases).toEqual([{ name: "Build", order: 0, start: "2027-04-01", end: "2027-04-29" }]);
+    expect(preview?.phases).toEqual([{ name: "Build", order: 0, start: "2027-03-24", end: "2027-04-14" }]);
     expect(preview?.milestones).toEqual([
-      { taskTitle: "Build the arbor", label: "Halfway check-in", phaseName: "Build", date: "2027-04-06" },
+      { taskTitle: "Build the arbor", label: "Halfway check-in", phaseName: "Build", date: "2027-04-04" },
     ]);
 
     // The preview promises to match what a real clone + a real
@@ -436,9 +436,16 @@ describe("previewClonePreviousCycle", () => {
       proposedBy: alice.id,
       createdBy: alice.id,
     });
-    await createTaskMilestone(bob, t.id, {
+    await db.insert(taskMilestone).values({
+      taskId: t.id,
       label: "Unreviewed",
-      date: { type: "relative_offset", anchor: "cycle_start", offsetDays: 1 },
+      dateType: "relative",
+      relativeBasis: "start",
+      relativeValue: 1,
+      parentType: "cycle",
+      status: "pending",
+      proposedBy: bob.id,
+      createdBy: bob.id,
     });
 
     const preview = await previewClonePreviousCycle(alice, "2027-01-01", "2027-12-31");

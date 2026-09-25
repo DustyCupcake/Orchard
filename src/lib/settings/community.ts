@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { community, form, tier } from "@/db/schema";
+import { community, dateDisplayModeEnum, form, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
 import { recruitmentDecisionRulesSchema, requireValidDecisionRules } from "../recruitment/evaluations";
@@ -32,6 +32,7 @@ export const updateCommunityInput = z.object({
   name: z.string().min(1).optional(),
   cyclesEnabled: z.boolean().optional(),
   phasesEnabled: z.boolean().optional(),
+  defaultDateDisplayMode: z.enum(dateDisplayModeEnum.enumValues).optional(),
   cycleInitiationTierId: z.string().uuid().nullable().optional(),
   defaultCallHasAgenda: z.boolean().optional(),
   defaultCallNeedsSummary: z.boolean().optional(),
@@ -153,6 +154,7 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       ...(input.name !== undefined && { name: input.name }),
       ...(input.cyclesEnabled !== undefined && { cyclesEnabled: input.cyclesEnabled }),
       ...(input.phasesEnabled !== undefined && { phasesEnabled: input.phasesEnabled }),
+      ...(input.defaultDateDisplayMode !== undefined && { defaultDateDisplayMode: input.defaultDateDisplayMode }),
       ...(input.cycleInitiationTierId !== undefined && {
         cycleInitiationTierId: input.cycleInitiationTierId,
       }),

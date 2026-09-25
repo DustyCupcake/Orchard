@@ -179,30 +179,17 @@ export async function exportCycleAsTaskPackAction(formData: FormData) {
   redirect(`/task-packs?exported=${packId}`);
 }
 
-// Reads one boundary's worth of fields off the submitted form — see
-// src/app/(app)/[cycleScope]/participation/page.tsx's
-// PhaseBoundaryFields, which renders exactly this shape. A
-// `targetDate` (the "drag it to a new date" path) wins over a typed
-// offsetDays/percent when both are present — same precedence
-// src/lib/dates/resolve.ts's dateBoundaryInput already allows either
-// way, but the form only ever sends one at a time.
+// The form now submits one resolved date. Relative mode is intentionally
+// rejected here when the date is blank; a blank optional Phase boundary is
+// represented as an explicitly-unset absolute boundary, never as offset zero.
 function boundaryFromForm(formData: FormData, prefix: "start" | "end"): DateBoundaryInput {
   const mode = String(formData.get(`${prefix}Mode`) ?? "absolute");
-  const targetDate = String(formData.get(`${prefix}TargetDate`) ?? "").trim();
-
-  if (mode === "relative_offset") {
-    const anchor = String(formData.get(`${prefix}Anchor`) ?? "cycle_start") as "cycle_start" | "cycle_end";
-    if (targetDate) return { type: "relative_offset", anchor, targetDate };
-    const offsetDaysRaw = String(formData.get(`${prefix}OffsetDays`) ?? "").trim();
-    return { type: "relative_offset", anchor, offsetDays: offsetDaysRaw ? Number(offsetDaysRaw) : 0 };
+  const date = String(formData.get(`${prefix}Date`) ?? "").trim();
+  if (!date) return { type: "absolute", date: null };
+  if (mode === "relative") {
+    return { type: "relative", date };
   }
-  if (mode === "relative_percent") {
-    if (targetDate) return { type: "relative_percent", targetDate };
-    const percentRaw = String(formData.get(`${prefix}Percent`) ?? "").trim();
-    return { type: "relative_percent", percent: percentRaw ? Number(percentRaw) : 0 };
-  }
-  const absoluteDate = String(formData.get(`${prefix}AbsoluteDate`) ?? "").trim();
-  return { type: "absolute", date: absoluteDate || null };
+  return { type: "absolute", date: date || null };
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside updatePhaseBoundary

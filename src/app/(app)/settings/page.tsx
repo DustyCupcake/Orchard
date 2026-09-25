@@ -423,6 +423,16 @@ export default async function SettingsPage({
 
               <CheckField label="Cycles on (multiple named production runs over time)" name="cyclesEnabled" defaultChecked={communityRow.cyclesEnabled} />
               <CheckField label="Phases on (a cycle can define a named phase spine)" name="phasesEnabled" defaultChecked={communityRow.phasesEnabled} />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Default date display</span>
+                <select name="defaultDateDisplayMode" defaultValue={communityRow.defaultDateDisplayMode} className={INPUT}>
+                  <option value="exact">Exact calendar dates</option>
+                  <option value="period">Period name + weekday when available</option>
+                </select>
+                <span className="text-[12px] text-[var(--text-muted)]">
+                  Members can override this on their profile. Exact dates remain available in accessible labels and fallbacks.
+                </span>
+              </label>
               {communityRow.phasesEnabled && (
                 <CheckField
                   label="On-site mode (while on, structural changes across settings, branches, tiers, cycle types, starting a new Cycle, Requirement changes, publishing the Programme, and Spatial-planning edits are all locked; everyday task/wiki/shift work stays live)"

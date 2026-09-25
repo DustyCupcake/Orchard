@@ -37,6 +37,7 @@ import {
 } from "@/lib/permissions";
 import { getCycle, listCycles, resolveCrossCycleContext, scopeLabel } from "@/lib/cycles";
 import { isModuleEnabled } from "@/lib/modules";
+import { effectiveDateDisplayMode, formatDateLabel } from "@/lib/dates";
 import { isShiftManagerForScope } from "@/lib/shifts";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import CopyLinkButton from "@/components/CopyLinkButton";
@@ -220,6 +221,18 @@ export default async function TaskDetailPage({
     listTasks(viewing),
   ]);
   const cyclePhases = taskCycle?.phases ?? [];
+  const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
+  const phaseById = new Map(cyclePhases.map((p) => [p.id, p]));
+  const milestoneDateLabel = (m: (typeof milestones)[number]) => {
+    const parentPhase = m.parentType === "phase" ? phaseById.get(m.phaseId ?? taskRow.phaseId ?? "") : undefined;
+    const period =
+      m.dateType === "relative" && parentPhase?.startDate && parentPhase.endDate
+        ? { name: parentPhase.name, startDate: parentPhase.startDate, endDate: parentPhase.endDate }
+        : m.dateType === "relative" && taskCycle?.startDate && taskCycle.endDate
+          ? { name: taskCycle.name, startDate: taskCycle.startDate, endDate: taskCycle.endDate, cycleName: taskCycle.name }
+          : null;
+    return formatDateLabel(m.resolvedDate, dateDisplayMode, period);
+  };
   const crossCycle = await resolveCrossCycleContext(viewing, taskCycle, scopeParam ?? null);
   const taskPath = `/tasks/${taskRow.id}`;
   const tierOptions = [...tierNames.entries()].map(([tId, name]) => ({ id: tId, name }));
@@ -1372,9 +1385,8 @@ export default async function TaskDetailPage({
                   <Tag tone="warning">pending — proposed by {memberNameById.get(m.proposedBy) ?? "—"}</Tag>
                 )}
               </div>
-              <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
-                {m.resolvedDate ?? "unresolved"}
-                {m.drifted && <span style={{ color: "var(--warning)" }}> · drifted from its anchor</span>}
+              <div className="mt-0.5 text-[12px] text-[var(--text-muted)]" title={milestoneDateLabel(m).exact}>
+                <time dateTime={m.resolvedDate ?? undefined} aria-label={milestoneDateLabel(m).exact}>{milestoneDateLabel(m).visible}</time>
               </div>
 
               {holdsTask && (
@@ -1382,7 +1394,13 @@ export default async function TaskDetailPage({
                   <form action={updateMilestoneAction} className="mt-2 flex flex-col gap-2">
                     <input type="hidden" name="taskId" value={taskRow.id} />
                     <input type="hidden" name="milestoneId" value={m.id} />
-                    <MilestoneDateFields milestone={m} phases={cyclePhases} />
+                    <MilestoneDateFields
+                      milestone={m}
+                      phases={cyclePhases}
+                      cycleStartDate={taskCycle?.startDate ?? null}
+                      cycleEndDate={taskCycle?.endDate ?? null}
+                      taskPhaseId={taskRow.phaseId}
+                    />
                     <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
                       <input type="checkbox" name="isDeadline" defaultChecked={m.isDeadline} />
                       This is the deadline
@@ -1424,7 +1442,12 @@ export default async function TaskDetailPage({
           <form action={addMilestoneAction} className="mt-2 flex max-w-[420px] flex-col gap-2">
             <input type="hidden" name="taskId" value={taskRow.id} />
             <input type="text" name="label" required placeholder="Label (e.g. Deposit due)" className={INPUT} />
-            <MilestoneDateFields phases={cyclePhases} />
+            <MilestoneDateFields
+              phases={cyclePhases}
+              cycleStartDate={taskCycle?.startDate ?? null}
+              cycleEndDate={taskCycle?.endDate ?? null}
+              taskPhaseId={taskRow.phaseId}
+            />
             <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
               <input type="checkbox" name="isDeadline" />
               This is the deadline
@@ -1874,53 +1897,56 @@ export default async function TaskDetailPage({
 type MilestoneRow = Awaited<ReturnType<typeof listTaskMilestones>>[number];
 type CyclePhaseRow = Awaited<ReturnType<typeof getCycle>>["phases"][number];
 
-const ANCHOR_LABEL: Record<string, string> = {
-  phase_start: "a Phase's start",
-  phase_end: "a Phase's end",
-  cycle_start: "the Cycle's start",
-  cycle_end: "the Cycle's end",
-};
-
-// Shared by the "add" form (no `milestone`, all fields blank) and each
-// existing milestone's own "edit" form (prefilled from it) — mirrors
-// src/app/participation/page.tsx's PhaseBoundaryFields, generalized to
-// the 4-way phase-or-cycle anchor plus an optional Phase override.
-// Phase-relative is only offered when this Cycle actually has phases
-// (DateModeField hides that segment whenever `phases` is empty).
 const MILESTONE_DATE_FIELD_NAMES: Record<DateFieldBase, string> = {
   mode: "dateMode",
-  absoluteDate: "absoluteDate",
-  anchor: "anchor",
-  offsetDays: "offsetDays",
-  percent: "percent",
-  targetDate: "targetDate",
+  date: "date",
+  parentType: "parentType",
   phaseId: "milestonePhaseId",
 };
 
-function MilestoneDateFields({ milestone, phases }: { milestone?: MilestoneRow; phases: CyclePhaseRow[] }) {
+function MilestoneDateFields({
+  milestone,
+  phases,
+  cycleStartDate,
+  cycleEndDate,
+  taskPhaseId,
+}: {
+  milestone?: MilestoneRow;
+  phases: CyclePhaseRow[];
+  cycleStartDate: string | null;
+  cycleEndDate: string | null;
+  taskPhaseId: string | null;
+}) {
+  const taskPhase = taskPhaseId ? phases.find((p) => p.id === taskPhaseId) : undefined;
+  const defaultParentType = taskPhase?.startDate || taskPhase?.endDate ? "phase" : "cycle";
+  const relativeAllowed = Boolean(cycleStartDate || cycleEndDate || phases.some((p) => p.startDate || p.endDate));
+  const parentType = milestone?.parentType ?? defaultParentType;
+  const resolvedDate = milestone?.resolvedDate ?? (milestone?.dateType === "absolute" ? milestone.absoluteDate : null);
+
   return (
     <DateModeField
       fieldNames={MILESTONE_DATE_FIELD_NAMES}
-      mode={milestone?.dateType}
-      relativeMode={milestone?.relativeMode}
-      anchor={milestone?.anchorType}
-      absoluteDate={milestone?.dateType === "absolute" ? milestone.absoluteDate : undefined}
-      offsetDays={milestone?.relativeMode === "offset" ? milestone.offsetDays : undefined}
-      percent={milestone?.relativeMode === "percent" ? milestone.percent : undefined}
+      mode={milestone ? (milestone.dateType === "relative" ? "relative" : "absolute") : undefined}
+      date={resolvedDate}
+      parentType={parentType}
       phaseId={milestone?.phaseId}
       phases={phases}
       phaseSelectDefaultLabel="This task’s own Phase"
+      defaultParentType={defaultParentType}
+      relativeAllowed={relativeAllowed}
+      defaultMode={relativeAllowed ? "relative" : "absolute"}
+      relativeHint="The task’s own Phase is the default parent; choose another Phase when this milestone belongs to a different one."
       footer={
         milestone &&
-        milestone.resolvedDate && (
+        resolvedDate && (
           <p className="mt-2 text-[12px] text-[var(--text-muted)]">
-            Currently: {milestone.resolvedDate}
-            {milestone.dateType === "relative" && milestone.anchorType && (
+            Currently: {resolvedDate}
+            {milestone.dateType === "relative" && milestone.relativeBasis && milestone.relativeValue !== null && (
               <>
                 {" — "}
-                {milestone.relativeMode === "offset"
-                  ? `${milestone.offsetDays} day(s) from ${ANCHOR_LABEL[milestone.anchorType]}`
-                  : `${milestone.percent}% of the way through ${milestone.anchorType.startsWith("phase") ? "the Phase" : "the Cycle"}`}
+                {milestone.relativeBasis === "between"
+                  ? `${(milestone.relativeValue / 100).toFixed(2).replace(/\.00$/, "")}% through ${milestone.parentType === "phase" ? "the Phase" : "the Cycle"}`
+                  : `${milestone.relativeValue} day(s) from the ${milestone.relativeBasis === "start" ? "start" : "end"}`}
               </>
             )}
           </p>

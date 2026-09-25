@@ -21,6 +21,7 @@ import {
 import { listBackstopHoldersForScopes, listBackstopScopesForMember } from "@/lib/backstop";
 import { ATTENTION_STYLES } from "@/lib/format";
 import { canInitiateCycle, resolveDefaultScopeSegment, resolveViewScopeFromSegment } from "@/lib/cycles";
+import { effectiveDateDisplayMode } from "@/lib/dates";
 import { listTaskFitSuggestions } from "@/lib/onboarding";
 import { getCommunityRow } from "@/lib/recruitment";
 import BranchFilter from "./BranchFilter";
@@ -179,6 +180,7 @@ export default async function BoardPage({
   // degenerate view if `view=phase` is requested anyway (e.g. a stale
   // bookmark from when phases were on).
   const phaseViewAvailable = communityRow.phasesEnabled && phases.length > 0;
+  const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
   const visibleViews = VIEWS.filter((v) => {
     if (v === "phase") return phaseViewAvailable;
     return true;
@@ -615,6 +617,7 @@ export default async function BoardPage({
             <PhaseCard
               key={group.name}
               group={group}
+              dateDisplayMode={dateDisplayMode}
               tierNames={tierNames}
               branchNameById={branchNameById}
               currentMemberId={viewing.id}

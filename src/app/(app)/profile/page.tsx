@@ -220,6 +220,18 @@ export default async function ProfilePage({
 
       <form action={updateProfile} className="mt-6 flex flex-col gap-3">
         <label className="flex flex-col gap-1">
+          <span className={LABEL}>Date display</span>
+          <select name="dateDisplayMode" defaultValue={viewing.dateDisplayMode ?? "inherit"} className={INPUT}>
+            <option value="inherit">Use the Community default</option>
+            <option value="exact">Exact calendar dates</option>
+            <option value="period">Period name + weekday when available</option>
+          </select>
+          <span className="text-[12px] text-[var(--text-muted)]">
+            Read-only date labels only; date inputs and exact dates remain available.
+          </span>
+        </label>
+
+        <label className="flex flex-col gap-1">
           <span className={LABEL}>Name</span>
           <input type="text" name="name" defaultValue={viewing.name} required className={INPUT} />
         </label>

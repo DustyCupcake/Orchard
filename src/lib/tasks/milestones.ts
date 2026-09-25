@@ -3,49 +3,31 @@ import { z } from "zod";
 import { db, type Tx } from "@/db";
 import { cycle, phase, task, taskAssignment, taskMilestone } from "@/db/schema";
 import type { member as memberTable, task as taskTable, taskAssignment as taskAssignmentTable } from "@/db/schema";
-import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import { addDays, daysBetween, percentBetween, resolvePercent } from "../dates";
+import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { normalizeBoundary, recomputeBoundary, toStoredBoundary, type RelativeBasis, type StoredBoundary } from "../dates";
 import { getTask } from "./crud";
 
 type Member = typeof memberTable.$inferSelect;
 type TaskRow = typeof taskTable.$inferSelect & { assignments: (typeof taskAssignmentTable.$inferSelect)[] };
 type MilestoneRow = typeof taskMilestone.$inferSelect;
-type AnchorType = "phase_start" | "phase_end" | "cycle_start" | "cycle_end";
+type ParentType = "cycle" | "phase";
 
-const anchorTypeSchema = z.enum(["phase_start", "phase_end", "cycle_start", "cycle_end"]);
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD");
+const relativeBasis = z.enum(["start", "end", "between"]);
 
-// The shared absolute/relative date shape (docs/spec.md's Task
-// milestones), generalized from Phase 39's src/lib/dates/resolve.ts to
-// a 4-way anchor — a milestone's parent can be a Phase or the task's
-// own Cycle, unlike a Phase boundary's parent, which is always its own
-// Cycle. Both interaction paths spec calls for are supported: type an
-// offset/percent directly, or give a target date to reverse-compute it
-// from — never a bare date persisted either way.
 export const milestoneDateInput = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("absolute"), date: z.string().min(1) }),
+  z.object({ type: z.literal("absolute"), date: isoDate }),
   z
     .object({
-      type: z.literal("relative_offset"),
-      anchor: anchorTypeSchema,
-      // Only meaningful when anchor is phase_start/phase_end — null/
-      // omitted defaults to the task's own Phase.
+      type: z.literal("relative"),
+      date: isoDate,
+      parent: z.enum(["cycle", "phase"]),
       phaseId: z.string().uuid().nullable().optional(),
-      offsetDays: z.number().int().optional(),
-      targetDate: z.string().min(1).optional(),
+      basis: relativeBasis.optional(),
+      value: z.number().int().optional(),
     })
-    .refine((v) => v.offsetDays !== undefined || v.targetDate !== undefined, {
-      message: "relative_offset needs either offsetDays or targetDate",
-    }),
-  z
-    .object({
-      type: z.literal("relative_percent"),
-      anchor: anchorTypeSchema,
-      phaseId: z.string().uuid().nullable().optional(),
-      percent: z.number().int().min(0).max(100).optional(),
-      targetDate: z.string().min(1).optional(),
-    })
-    .refine((v) => v.percent !== undefined || v.targetDate !== undefined, {
-      message: "relative_percent needs either percent or targetDate",
+    .refine((v) => (v.basis === undefined) === (v.value === undefined), {
+      message: "relative basis and value must be supplied together",
     }),
 ]);
 export type MilestoneDateInput = z.infer<typeof milestoneDateInput>;
@@ -65,11 +47,8 @@ export const updateTaskMilestoneInput = z.object({
 export type UpdateTaskMilestoneInput = z.infer<typeof updateTaskMilestoneInput>;
 
 // At most one milestone per task carries isDeadline — auto-transferred,
-// not blocked with an error: unlike Form fields (a whole array
-// submitted and validated together, see src/lib/forms.ts's
-// tooManyTaggedFields/superRefine), milestones are added/edited one at
-// a time with no natural "unset the old one first" step for a holder to
-// take. Setting a new one just silently wins.
+// not blocked with an error: unlike Form fields, milestones are added/edited
+// one at a time with no natural "unset the old one first" step.
 async function clearOtherDeadlines(tx: Tx, taskId: string, keepMilestoneId: string | null) {
   await tx
     .update(taskMilestone)
@@ -81,20 +60,12 @@ async function clearOtherDeadlines(tx: Tx, taskId: string, keepMilestoneId: stri
     );
 }
 
-function isPhaseAnchor(anchor: AnchorType): anchor is "phase_start" | "phase_end" {
-  return anchor === "phase_start" || anchor === "phase_end";
-}
-
-// Plain lookup, no validation — safe to call at read time against an
-// already-stored (and previously-validated) milestone, even if its
-// Phase/Cycle has since vanished or drifted out of the constraint
-// resolveAndValidateAnchor enforces at write time.
 async function fetchParentBoundary(
   taskRow: { cycleId: string | null },
-  anchor: AnchorType,
+  parent: ParentType,
   effectivePhaseId: string | null,
 ): Promise<{ start: string | null; end: string | null }> {
-  if (isPhaseAnchor(anchor)) {
+  if (parent === "phase") {
     if (!effectivePhaseId) return { start: null, end: null };
     const [phaseRow] = await db
       .select({ startDate: phase.startDate, endDate: phase.endDate })
@@ -110,20 +81,15 @@ async function fetchParentBoundary(
   return { start: cycleRow?.startDate ?? null, end: cycleRow?.endDate ?? null };
 }
 
-// Write-time only: resolves the effective phaseId (defaulting to the
-// task's own) and enforces the one structural constraint spec names —
-// "a milestone's Phase, when set, should belong to the same Cycle as
-// the task's own" (the one exception: a task with no Cycle at all, per
-// spec's own carve-out). Read-time resolution uses the lighter
-// fetchParentBoundary above instead — a stored milestone should never
-// fail to resolve just because something drifted after the fact.
-async function resolveAndValidateAnchor(
+// Write-time only: resolves the effective Phase (defaulting to the task's
+// own) and enforces the one cross-Cycle constraint.
+async function resolveAndValidateParent(
   taskRow: { cycleId: string | null; phaseId: string | null },
-  anchor: AnchorType,
+  parent: ParentType,
   requestedPhaseId: string | null | undefined,
 ): Promise<{ start: string | null; end: string | null; phaseId: string | null }> {
-  if (!isPhaseAnchor(anchor)) {
-    const { start, end } = await fetchParentBoundary(taskRow, anchor, null);
+  if (parent === "cycle") {
+    const { start, end } = await fetchParentBoundary(taskRow, parent, null);
     return { start, end, phaseId: null };
   }
 
@@ -131,9 +97,7 @@ async function resolveAndValidateAnchor(
   if (!phaseId) return { start: null, end: null, phaseId: null };
 
   const [phaseRow] = await db.select().from(phase).where(eq(phase.id, phaseId));
-  if (!phaseRow) {
-    throw new NotFoundError("Phase not found");
-  }
+  if (!phaseRow) throw new NotFoundError("Phase not found");
   if (taskRow.cycleId && phaseRow.cycleId !== taskRow.cycleId) {
     throw new ConflictError("A milestone's Phase must belong to the task's own Cycle");
   }
@@ -143,10 +107,9 @@ async function resolveAndValidateAnchor(
 interface MilestoneColumns {
   dateType: "absolute" | "relative";
   absoluteDate: string | null;
-  relativeMode: "offset" | "percent" | null;
-  anchorType: AnchorType | null;
-  offsetDays: number | null;
-  percent: number | null;
+  relativeBasis: RelativeBasis | null;
+  relativeValue: number | null;
+  parentType: ParentType | null;
   phaseId: string | null;
 }
 
@@ -158,82 +121,60 @@ async function columnsFromInput(
     return {
       dateType: "absolute",
       absoluteDate: input.date,
-      relativeMode: null,
-      anchorType: null,
-      offsetDays: null,
-      percent: null,
+      relativeBasis: null,
+      relativeValue: null,
+      parentType: null,
       phaseId: null,
     };
   }
 
-  const { start, end, phaseId } = await resolveAndValidateAnchor(taskRow, input.anchor, input.phaseId);
-  let offsetDays: number | null = null;
-  let percent: number | null = null;
+  const { start, end } = await resolveAndValidateParent(taskRow, input.parent, input.phaseId);
+  const boundary = toStoredBoundary(
+    {
+      type: "relative",
+      date: input.date,
+      ...(input.basis !== undefined && input.value !== undefined
+        ? { basis: input.basis, value: input.value }
+        : {}),
+    },
+    start,
+    end,
+  );
+  return {
+    dateType: "relative",
+    absoluteDate: null,
+    relativeBasis: boundary.relativeBasis,
+    relativeValue: boundary.relativeValue,
+    parentType: input.parent,
+    // null means the task's own Phase; only an explicit cross-Phase
+    // choice is materialized as a live phaseId.
+    phaseId: input.parent === "phase" ? (input.phaseId ?? null) : null,
+  };
+}
 
-  if (input.type === "relative_offset") {
-    if (input.offsetDays !== undefined) {
-      offsetDays = input.offsetDays;
-    } else if (input.targetDate) {
-      const anchorDate = input.anchor === "phase_start" || input.anchor === "cycle_start" ? start : end;
-      if (!anchorDate) {
-        throw new AppError(
-          "Can't drag to a date — this milestone's anchor has no resolvable date yet; type the offset directly instead",
-        );
-      }
-      offsetDays = daysBetween(anchorDate, input.targetDate);
-    }
-  } else if (input.percent !== undefined) {
-    percent = input.percent;
-  } else if (input.targetDate) {
-    if (!start || !end) {
-      throw new AppError(
-        "Can't drag to a date — this milestone's parent has no resolvable start/end yet; type the percent directly instead",
-      );
-    }
-    percent = percentBetween(start, end, input.targetDate);
-  }
-
-  const relativeMode = input.type === "relative_offset" ? ("offset" as const) : ("percent" as const);
-  return { dateType: "relative", absoluteDate: null, relativeMode, anchorType: input.anchor, offsetDays, percent, phaseId };
+function storedBoundaryOf(m: MilestoneRow): StoredBoundary {
+  return {
+    dateType: m.dateType,
+    date: m.absoluteDate,
+    relativeBasis: m.relativeBasis,
+    relativeValue: m.relativeValue,
+  };
 }
 
 export interface MilestoneResolution {
   resolvedDate: string | null;
-  drifted: boolean;
 }
 
-function isMilestoneDrifted(resolvedDate: string, start: string, end: string, anchorType: AnchorType): boolean {
-  const distToStart = Math.abs(daysBetween(resolvedDate, start));
-  const distToEnd = Math.abs(daysBetween(resolvedDate, end));
-  const anchoredToStart = anchorType === "phase_start" || anchorType === "cycle_start";
-  return (distToStart <= distToEnd) !== anchoredToStart;
-}
-
-// Live-computed, never persisted — unlike Phase's own start_date/
-// end_date (Phase 39's deliberate, documented exception), nothing
-// pre-existing reads a TaskMilestone date expecting a plain column, so
-// this defaults back to this codebase's usual posture.
 export async function resolveMilestone(
   taskRow: { cycleId: string | null; phaseId: string | null },
   m: MilestoneRow,
 ): Promise<MilestoneResolution> {
-  if (m.dateType === "absolute" || !m.anchorType) {
-    return { resolvedDate: m.dateType === "absolute" ? m.absoluteDate : null, drifted: false };
-  }
+  if (m.dateType === "absolute") return { resolvedDate: m.absoluteDate };
+  if (!m.parentType || !m.relativeBasis || m.relativeValue === null) return { resolvedDate: null };
 
-  const effectivePhaseId = isPhaseAnchor(m.anchorType) ? (m.phaseId ?? taskRow.phaseId ?? null) : null;
-  const { start, end } = await fetchParentBoundary(taskRow, m.anchorType, effectivePhaseId);
-
-  if (m.relativeMode === "offset") {
-    const anchorDate = m.anchorType === "phase_start" || m.anchorType === "cycle_start" ? start : end;
-    if (!anchorDate || m.offsetDays === null) return { resolvedDate: null, drifted: false };
-    const resolvedDate = addDays(anchorDate, m.offsetDays);
-    return { resolvedDate, drifted: start && end ? isMilestoneDrifted(resolvedDate, start, end, m.anchorType) : false };
-  }
-
-  // percent mode is structurally immune to drift — see resolve.ts's
-  // isBoundaryDrifted.
-  return { resolvedDate: resolvePercent(start, end, m.percent), drifted: false };
+  const effectivePhaseId = m.parentType === "phase" ? (m.phaseId ?? taskRow.phaseId ?? null) : null;
+  const { start, end } = await fetchParentBoundary(taskRow, m.parentType, effectivePhaseId);
+  return { resolvedDate: recomputeBoundary(storedBoundaryOf(m), start, end).date };
 }
 
 function currentlyHolds(taskRow: TaskRow, actorId: string): boolean {
@@ -248,7 +189,6 @@ export async function listTaskMilestones(actor: Member, taskId: string) {
   const taskRow = await getTask(actor, taskId);
   const rows = await db.select().from(taskMilestone).where(eq(taskMilestone.taskId, taskId)).orderBy(taskMilestone.createdAt);
   const resolved = await Promise.all(rows.map(async (m) => ({ ...m, ...(await resolveMilestone(taskRow, m)) })));
-  // Date order for display — unresolved (null resolvedDate) last, creation order as tiebreak.
   resolved.sort((a, b) => {
     if (a.resolvedDate === null && b.resolvedDate === null) return a.createdAt.getTime() - b.createdAt.getTime();
     if (a.resolvedDate === null) return 1;
@@ -259,12 +199,6 @@ export async function listTaskMilestones(actor: Member, taskId: string) {
   return resolved;
 }
 
-// The Calendar view's own layer (docs/development-plan.md's Phase 44) —
-// "their own task milestones," read as every confirmed milestone on a
-// task the actor currently holds (non-shadow, not done), the same
-// currently-held scoping src/lib/dashboard.ts's getPersonalFeed already
-// uses for flaggedHeldTasks/upcomingCheckins. A still-pending milestone
-// doesn't belong on a read-only calendar — it isn't real yet.
 export async function listMyTaskMilestones(actor: Member) {
   const heldTasks = await db
     .select({ taskId: task.id, title: task.title, cycleId: task.cycleId, phaseId: task.phaseId })
@@ -289,61 +223,70 @@ export async function listMyTaskMilestones(actor: Member) {
   return Promise.all(
     rows.map(async (m) => {
       const t = taskById.get(m.taskId)!;
-      const resolution = await resolveMilestone(t, m);
-      return { ...m, taskTitle: t.title, ...resolution };
+      return {
+        ...m,
+        taskTitle: t.title,
+        taskCycleId: t.cycleId,
+        taskPhaseId: t.phaseId,
+        ...(await resolveMilestone(t, m)),
+      };
     }),
   );
 }
 
-// "Confirmation follows ownership" — reuses Phase 38's propose→pending→
-// approve pattern rather than reinventing it: the task's current
-// holder adds directly (confirmed immediately), an unclaimed task has
-// no holder to gate against (also confirmed immediately), and anyone
-// else's addition lands pending until a holder confirms or rejects it.
 export async function createTaskMilestone(actor: Member, taskId: string, rawInput: CreateTaskMilestoneInput) {
   const input = createTaskMilestoneInput.parse(rawInput);
   const taskRow = await getTask(actor, taskId);
   const columns = await columnsFromInput(taskRow, input.date);
-
   const status = currentlyHolds(taskRow, actor.id) || !hasAnyHolder(taskRow) ? "confirmed" : "pending";
   const isDeadline = input.isDeadline ?? false;
 
   const created = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(taskMilestone)
-      .values({
-        taskId,
-        label: input.label,
-        ...columns,
-        isDeadline,
-        status,
-        proposedBy: actor.id,
-        createdBy: actor.id,
-      })
+      .values({ taskId, label: input.label, ...columns, isDeadline, status, proposedBy: actor.id, createdBy: actor.id })
       .returning();
-    if (isDeadline) {
-      await clearOtherDeadlines(tx, taskId, row.id);
-    }
+    if (isDeadline) await clearOtherDeadlines(tx, taskId, row.id);
     return row;
   });
   return { ...created, ...(await resolveMilestone(taskRow, created)) };
 }
 
-// Holder-only, direct — per spec, only a first-time *add* from a
-// non-holder ever goes through the pending flow; editing or removing
-// an existing milestone is always the current holder's own call.
 export async function updateTaskMilestone(actor: Member, milestoneId: string, rawInput: UpdateTaskMilestoneInput) {
   const input = updateTaskMilestoneInput.parse(rawInput);
   const [existing] = await db.select().from(taskMilestone).where(eq(taskMilestone.id, milestoneId));
-  if (!existing) {
-    throw new NotFoundError("Milestone not found");
-  }
-  const taskRow = await getTask(actor, existing.taskId); // 404s a cross-community id
+  if (!existing) throw new NotFoundError("Milestone not found");
+  const taskRow = await getTask(actor, existing.taskId);
   if (!currentlyHolds(taskRow, actor.id)) {
     throw new ForbiddenError("Only a current holder of this task can edit a milestone");
   }
 
-  const columns = input.date ? await columnsFromInput(taskRow, input.date) : undefined;
+  let columns: MilestoneColumns | undefined;
+  if (input.date) {
+    const relativeInput = input.date.type === "relative" ? input.date : null;
+    let preserved: StoredBoundary | null = null;
+    if (relativeInput && existing.dateType === "relative" && relativeInput.parent === existing.parentType) {
+      const requestedPhase = relativeInput.parent === "phase" ? (relativeInput.phaseId ?? taskRow.phaseId) : null;
+      const existingPhase = existing.parentType === "phase" ? (existing.phaseId ?? taskRow.phaseId) : null;
+      if (requestedPhase === existingPhase) {
+        const parent = await resolveAndValidateParent(taskRow, relativeInput.parent, relativeInput.phaseId);
+        preserved = normalizeBoundary(storedBoundaryOf(existing), parent.start, parent.end);
+      }
+    }
+    const preserveRecipe =
+      preserved !== null && relativeInput?.date === preserved.date && relativeInput.basis === undefined;
+    columns = preserveRecipe
+      ? {
+          dateType: "relative",
+          absoluteDate: null,
+          relativeBasis: preserved!.relativeBasis,
+          relativeValue: preserved!.relativeValue,
+          parentType: existing.parentType,
+          phaseId: existing.phaseId,
+        }
+      : await columnsFromInput(taskRow, input.date);
+  }
+
   const updated = await db.transaction(async (tx) => {
     const [row] = await tx
       .update(taskMilestone)
@@ -354,45 +297,26 @@ export async function updateTaskMilestone(actor: Member, milestoneId: string, ra
       })
       .where(eq(taskMilestone.id, milestoneId))
       .returning();
-    if (input.isDeadline) {
-      await clearOtherDeadlines(tx, existing.taskId, row.id);
-    }
+    if (input.isDeadline) await clearOtherDeadlines(tx, existing.taskId, row.id);
     return row;
   });
   return { ...updated, ...(await resolveMilestone(taskRow, updated)) };
 }
 
-// Also how a holder rejects a still-pending proposal — "rejecting just
-// removes the row" (docs/spec.md), the identical operation as removing
-// a confirmed one, so one function covers both.
 export async function deleteTaskMilestone(actor: Member, milestoneId: string) {
   const [existing] = await db.select().from(taskMilestone).where(eq(taskMilestone.id, milestoneId));
-  if (!existing) {
-    throw new NotFoundError("Milestone not found");
-  }
+  if (!existing) throw new NotFoundError("Milestone not found");
   const taskRow = await getTask(actor, existing.taskId);
-  if (!currentlyHolds(taskRow, actor.id)) {
-    throw new ForbiddenError("Only a current holder of this task can remove a milestone");
-  }
+  if (!currentlyHolds(taskRow, actor.id)) throw new ForbiddenError("Only a current holder of this task can remove a milestone");
   await db.delete(taskMilestone).where(eq(taskMilestone.id, milestoneId));
 }
 
 export async function confirmTaskMilestone(actor: Member, milestoneId: string) {
   const [existing] = await db.select().from(taskMilestone).where(eq(taskMilestone.id, milestoneId));
-  if (!existing) {
-    throw new NotFoundError("Milestone not found");
-  }
-  if (existing.status !== "pending") {
-    throw new ConflictError("This milestone has no pending change to confirm");
-  }
+  if (!existing) throw new NotFoundError("Milestone not found");
+  if (existing.status !== "pending") throw new ConflictError("This milestone has no pending change to confirm");
   const taskRow = await getTask(actor, existing.taskId);
-  if (!currentlyHolds(taskRow, actor.id)) {
-    throw new ForbiddenError("Only a current holder of this task can confirm a milestone");
-  }
-
-  // createdBy is reassigned to the confirming holder here — see
-  // src/db/schema/task-milestone.ts's schema comment for why this
-  // differs from proposedBy, which never changes after creation.
+  if (!currentlyHolds(taskRow, actor.id)) throw new ForbiddenError("Only a current holder of this task can confirm a milestone");
   const [updated] = await db
     .update(taskMilestone)
     .set({ status: "confirmed", createdBy: actor.id })
@@ -401,13 +325,6 @@ export async function confirmTaskMilestone(actor: Member, milestoneId: string) {
   return { ...updated, ...(await resolveMilestone(taskRow, updated)) };
 }
 
-// The board's "deadline" concept (docs/spec.md's Views: "sort by
-// phase/deadline") — the task's own isDeadline-flagged milestone if it
-// has one, else the task's Phase's own end date, else null. Takes the
-// candidate milestone row rather than querying for it itself, so a
-// caller enriching many tasks at once (listTasksWithAssignments) can
-// batch-fetch every task's flagged milestone in one query instead of
-// one-per-task.
 export async function getTaskDeadline(
   taskRow: { cycleId: string | null; phaseId: string | null },
   deadlineMilestone: MilestoneRow | null,
@@ -418,4 +335,77 @@ export async function getTaskDeadline(
     if (resolvedDate) return resolvedDate;
   }
   return phaseEndDate;
+}
+
+// Re-canonicalize milestone recipes when a parent period gains its second
+// boundary. Ordinary moves of an already-bounded parent do not need this
+// call: percent and signed outside-offset recipes remain canonical.
+export async function normalizeTaskMilestonesForCycle(cycleId: string) {
+  const cyclePhases = await db.select({ id: phase.id }).from(phase).where(eq(phase.cycleId, cycleId));
+  const phaseIds = cyclePhases.map((p) => p.id);
+  const tasks = await db
+    .select({ id: task.id, cycleId: task.cycleId, phaseId: task.phaseId })
+    .from(task)
+    .where(eq(task.cycleId, cycleId));
+  const extraTasks = phaseIds.length
+    ? await db
+        .select({ id: task.id, cycleId: task.cycleId, phaseId: task.phaseId })
+        .from(task)
+        .where(inArray(task.phaseId, phaseIds))
+    : [];
+  const taskRows = [...tasks, ...extraTasks.filter((t) => !tasks.some((x) => x.id === t.id))];
+  if (taskRows.length === 0) return;
+  const rows = await db
+    .select()
+    .from(taskMilestone)
+    .where(and(inArray(taskMilestone.taskId, taskRows.map((t) => t.id)), eq(taskMilestone.dateType, "relative")));
+  for (const row of rows) {
+    const taskRow = taskRows.find((t) => t.id === row.taskId);
+    if (!taskRow) continue;
+    await normalizeMilestoneRow(taskRow, row);
+  }
+}
+
+export async function normalizeTaskMilestonesForPhase(phaseId: string) {
+  const taskRows = await db
+    .select({ id: task.id, cycleId: task.cycleId, phaseId: task.phaseId })
+    .from(task)
+    .where(eq(task.phaseId, phaseId));
+  const explicitRows = await db
+    .select({ taskId: taskMilestone.taskId })
+    .from(taskMilestone)
+    .where(and(eq(taskMilestone.phaseId, phaseId), eq(taskMilestone.dateType, "relative")));
+  const all = [...taskRows];
+  for (const { taskId } of explicitRows) {
+    if (all.some((t) => t.id === taskId)) continue;
+    const [row] = await db.select({ id: task.id, cycleId: task.cycleId, phaseId: task.phaseId }).from(task).where(eq(task.id, taskId));
+    if (row) all.push(row);
+  }
+  if (all.length === 0) return;
+  const rows = await db
+    .select()
+    .from(taskMilestone)
+    .where(and(inArray(taskMilestone.taskId, all.map((t) => t.id)), eq(taskMilestone.dateType, "relative")));
+  for (const row of rows) {
+    const taskRow = all.find((t) => t.id === row.taskId);
+    if (taskRow) await normalizeMilestoneRow(taskRow, row);
+  }
+}
+
+async function normalizeMilestoneRow(taskRow: { cycleId: string | null; phaseId: string | null }, row: MilestoneRow) {
+  if (!row.parentType || !row.relativeBasis || row.relativeValue === null) return;
+  const effectivePhaseId = row.parentType === "phase" ? (row.phaseId ?? taskRow.phaseId ?? null) : null;
+  const { start, end } = await fetchParentBoundary(taskRow, row.parentType, effectivePhaseId);
+  const normalized = normalizeBoundary(storedBoundaryOf(row), start, end);
+  if (
+    normalized.date === row.absoluteDate &&
+    normalized.relativeBasis === row.relativeBasis &&
+    normalized.relativeValue === row.relativeValue
+  ) {
+    return;
+  }
+  await db
+    .update(taskMilestone)
+    .set({ relativeBasis: normalized.relativeBasis, relativeValue: normalized.relativeValue })
+    .where(eq(taskMilestone.id, row.id));
 }

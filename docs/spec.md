@@ -267,7 +267,7 @@ This scales down cleanly for a light cycle — a reunion weekend might have one 
 
 **Phase auto-placement.** Each Phase's `start`/`end` can independently be absolute (a hand-typed date) or relative (the same offset/percent shape Task milestones use, anchored to this Cycle's own `start_date`/`end_date` — a Phase's parent is always its own Cycle, so there's no separate anchor to choose). A relative boundary is always resolved live, never snapshotted: to move it, edit the offset or percent — or just let the Cycle's own dates move and everything anchored to them follows automatically. Switching a boundary back to absolute is a deliberate, explicit act, not a side effect of editing a field.
 
-**Cloning carries the recipe, not the date.** Exporting a cycle as an implicit pack (see Task Pack) carries each relative boundary's mode/anchor/offset-or-percent forward; an absolute boundary doesn't carry. A phase that was only ever hand-dated has its offset *derived* at export time against that cycle's own `start_date` (mode `offset`, anchor `cycle_start`), so even a cycle that was never relatively-dated still produces a usable recommendation on its next clone.
+**Cloning carries the recipe, not the date.** Exporting a cycle as an implicit pack (see Task Pack) carries each canonical relative `basis/value` recipe forward; an absolute boundary doesn't carry. A phase that was only ever hand-dated has its recipe *derived* at export time against that cycle's own start/end dates, so even a cycle that was never relatively-dated still produces a usable recommendation on its next clone.
 
 **One basic sanity check is defined: an end can't resolve before its own start.** Applies to a Phase's own start/end pair, and to a Cycle's `start_date`/`end_date` when both are set. Editing a boundary directly is validated immediately — the edit is rejected if it would put that end before that start. A boundary drifting into violation because something *else* changed (the Cycle's own dates moving, say) can't be blocked the same way, since nothing was directly edited on the Phase itself — it surfaces as a live, standing flag instead. Left deliberately open beyond this one rule: whether sibling phases get checked against their own `order` sequence, and what the complete set of checks should be — a harder question for its own pass later.
 
@@ -347,6 +347,8 @@ A portable, importable bundle of tasks — the answer to "most tasks are specifi
 - An ordered list of phase definitions (`PackPhase`: name, order, an optional suggested relative duration) — the spine the pack's own tasks are rooted in, timeless like the rest of the pack's content (no absolute dates; those are set per-cycle, see Phase in the data model).
 - A list of tasks, each with the fields above minus Community-specific IDs (owner, actual dates), each referencing its phase directly by a pack-local key (`phase_ref` → the matching `PackPhase.order`) rather than by name — since the pack owns and defines its own phase list, there's no ambiguity to resolve the way there is for Branch.
 - Each task's relative Task milestones (see Task milestones, above) carry too, the same way a relative Phase boundary does — an absolute milestone doesn't travel, for the same reason an absolute Phase date never carried into a pack.
+
+The current portable file format is **version 2**. It stores the canonical `relative_basis`/`relative_value` recipe (with percent values in hundredths) and milestone `parent_type`; version-1 files are intentionally not accepted because the old offset/percent representation is not compatible.
 
 Packs are symmetric — a Community can export its own board (or a subset of it, or a whole past Cycle) as a pack at any time. This is the same mechanism for "give next year's coordinator a head start," "share this with a sister community," "clone last cycle into a new one," and "seed a brand-new install with a sensible starting board." No separate feature needed for each.
 
@@ -446,6 +448,7 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | cycles_enabled            | boolean                      | false = one permanent default Cycle, no cycle UI                                                                                                          |
 | cycle_initiation_tier_id  | uuid → Tier, nullable        | null = any member may start a cycle                                                                                                                        |
 | phases_enabled            | boolean                      |                                                                                                                                                            |
+| default_date_display_mode | enum(exact, period)          | Community default for read-only date labels; members may override or inherit it                      |
 | onsite_mode_enabled       | boolean                      | requires phases_enabled                                                                                                                                    |
 | conflict_team_task_id     | uuid → Task, nullable        | points at the standing critical task whose current TaskAssignment holders make up the conflict team; only relevant if the conflict-management module is on |
 | input_round_interval_days | int                          | default 7 — cadence for Input rounds (see Input rounds)                                                                                                    |
@@ -537,7 +540,7 @@ This is the concrete shape to build against. Field names are suggestions, not go
 
 **Phase**
 
-Each boundary (start and end) is stored with the shared date shape — either an absolute date, or a relative one expressed as an offset from an anchor point or a percent of the way between two anchor points. A Phase instance is always cycle-specific, never carried in a Pack (see Task Pack, below, for the PackPhase equivalent).
+Each boundary is either an absolute date or a canonical relative recipe. A relative recipe has one `relative_basis` and one integer `relative_value`: `start`/`end` use signed whole days from that Cycle boundary (including a one-sided parent), while `between` uses hundredths of a percent through the complete Cycle span. In-range dates therefore always use `between`; there is no separate offset/percent mode.
 
 | Field               | Type                                  | Notes                                                                                        |
 |---------------------|----------------------------------------|-------------------------------------------------------------------------------------------------|
@@ -546,17 +549,13 @@ Each boundary (start and end) is stored with the shared date shape — either an
 | name                | string                                |                                                                                              |
 | order               | int                                   | sequence position                                                                            |
 | start_date_type     | enum(absolute, relative)              | both boundaries independently optional, same "optional, not enforced" pattern as the rest of this spec |
-| start_date          | date, nullable                        | set when start_date_type = absolute, or resolved and cached here when relative — always recomputed live from the relative fields below, never treated as authoritative while relative |
-| start_relative_mode | enum(offset, percent), nullable       | offset = signed day count from a single anchor; percent = 0–100% of the way between the cycle's start and end (only meaningful for a "between" placement) |
-| start_offset_anchor | enum(cycle_start, cycle_end), nullable | which cycle boundary an offset-mode start is measured from                                    |
-| start_offset_days   | int, nullable                         | signed; negative = before the anchor                                                          |
-| start_percent       | int, nullable                         | 0–100, only used in percent mode                                                              |
+| start_date          | date, nullable                        | authoritative in absolute mode; resolved/cached in relative mode                                      |
+| start_relative_basis | enum(start, end, between), nullable   | start/end are signed day offsets; between is proportional through the Cycle                       |
+| start_relative_value | int, nullable                         | signed days, or hundredths of a percent for `between`                                               |
 | end_date_type       | enum(absolute, relative)              |                                                                                              |
-| end_date            | date, nullable                        | same resolution rule as start_date; optional — a gap between phases is real (e.g. a lull between Procurement and Build) rather than always contiguous |
-| end_relative_mode   | enum(offset, percent), nullable       |                                                                                              |
-| end_offset_anchor   | enum(cycle_start, cycle_end), nullable |                                                                                              |
-| end_offset_days     | int, nullable                         |                                                                                              |
-| end_percent         | int, nullable                         |                                                                                              |
+| end_date            | date, nullable                        | same resolution/caching rule; gaps between phases are valid                                        |
+| end_relative_basis  | enum(start, end, between), nullable   | same canonical basis semantics as the start                                                       |
+| end_relative_value  | int, nullable                         | signed days, or hundredths of a percent for `between`                                               |
 
 **Tier**
 
@@ -577,6 +576,7 @@ Each boundary (start and end) is stored with the shared date shape — either an
 | name         | string           |                                                                |
 | tags         | string\[\]       | skills, interests, free-form — search/filter, not the onboarding ranking signal (see MemberLanguage, MemberAxisValue below) |
 | tier_ids     | uuid\[\]         | computed or manually assigned depending on tier criterion_type |
+| date_display_mode | enum(exact, period), nullable | null = inherit the Community default; presentation only, never changes canonical dates |
 | joined_at    | timestamp        |                                                                |
 | referred_by_member_id | uuid → Member, nullable | set on invite-link redemption (see Recruitment: Invite links); powers the Accompaniment default suggestion |
 | joined_via_invite_id  | uuid → CommunityInvite, nullable | which specific link was redeemed, if any                                                            |
@@ -746,10 +746,8 @@ An event always has exactly one owner, its creator — there is no authority-bas
 | event.description     | text, nullable                            |                                                                                     |
 | event.date_type       | enum(absolute, relative)                  | same shared date shape as Phase boundaries and TaskMilestone                        |
 | event.date            | date, nullable                            | resolved/cached when relative — never authoritative while relative                  |
-| event.relative_mode   | enum(offset, percent), nullable           |                                                                                     |
-| event.anchor_type     | enum(cycle_start, cycle_end), nullable    | events anchor to the cycle, not a Phase — a Phase-scoped date belongs on a TaskMilestone instead |
-| event.offset_days     | int, nullable                             |                                                                                     |
-| event.percent         | int, nullable                             |                                                                                     |
+| event.relative_basis  | enum(start, end, between), nullable       | events anchor to their Cycle, not a Phase                                             |
+| event.relative_value  | int, nullable                             | signed days, or hundredths of a percent for `between`                               |
 | event.created_at      | timestamp                                 |                                                                                     |
 | invite.event_id       | uuid → CalendarEvent                      |                                                                                     |
 | invite.member_id      | uuid → Member                             |                                                                                     |
@@ -789,14 +787,12 @@ Reuses Spatial planning's propose→pending→approve/revert pattern: the task's
 | id            | uuid                                      |                                                                                          |
 | task_id       | uuid → Task                               |                                                                                          |
 | label         | string                                    | user-named, e.g. "Deposit due," "Order arrives," "Final headcount to caterer"           |
-| date_type     | enum(absolute, relative)                  | absolute milestones don't survive a Pack export — see Task Pack, above                   |
-| absolute_date | date, nullable                            |                                                                                          |
-| relative_mode | enum(offset, percent), nullable           |                                                                                          |
-| anchor_type   | enum(phase_start, phase_end, cycle_start, cycle_end), nullable | which boundary the offset/percent is measured from                 |
-| offset_days   | int, nullable                             | signed; negative = before the anchor                                                     |
-| span_type     | enum(single, between), nullable           | "between" pairs with percent mode across a phase's two boundaries                       |
-| percent       | int, nullable                             | 0–100, only used with span_type = between                                                |
-| phase_id      | uuid → Phase, nullable                    | set when anchor_type is phase_start/phase_end                                            |
+| date_type       | enum(absolute, relative)                  | absolute milestones don't survive a Pack export — see Task Pack, above                         |
+| absolute_date   | date, nullable                            |                                                                                                  |
+| relative_basis  | enum(start, end, between), nullable       | canonical basis for the selected parent; in-range always means `between`                             |
+| relative_value  | int, nullable                             | signed days, or hundredths of a percent for `between`                                                 |
+| parent_type     | enum(cycle, phase), nullable              | parent context; `phase` defaults to the task's own Phase                                               |
+| phase_id        | uuid → Phase, nullable                    | explicit cross-Phase reference; null means the task's own Phase                                           |
 | status        | enum(confirmed, pending)                  |                                                                                          |
 | proposed_by   | uuid → Member                             | who added it — may differ from created_by if a holder later confirms someone else's pending add |
 | created_by    | uuid → Member                             |                                                                                          |
@@ -899,15 +895,15 @@ Reuses Spatial planning's propose→pending→approve/revert pattern: the task's
 | phase.pack_id                                                                     | uuid → TaskPack      |                                                                                                   |
 | phase.name                                                                        | string               |                                                                                                   |
 | phase.order                                                                       | int                  | sequence position; also doubles as this phase's local reference key within the pack, so no separate id scheme is needed |
-| phase.start_offset_anchor, phase.start_offset_days, phase.start_percent           | enum, int, int — all nullable | relative-only recipe for this phase's start (no start_date_type — a pack never holds an absolute date, see Task Pack, above); mirrors Phase's start_* fields minus the absolute option |
-| phase.end_offset_anchor, phase.end_offset_days, phase.end_percent                 | enum, int, int — all nullable | same, for this phase's end                                                                        |
+| phase.start_relative_basis, phase.start_relative_value                             | enum, int — both nullable | canonical relative-only recipe for this phase's start (a pack never holds an absolute date) |
+| phase.end_relative_basis, phase.end_relative_value                                 | enum, int — both nullable | same, for this phase's end |
 | item.pack_id                                                                      | uuid → TaskPack      |                                                                                                   |
 | item.branch_name_hint                                                             | string               | matched or remapped against real branches on import                                               |
 | item.phase_ref                                                                    | int, nullable         | direct reference to a `PackPhase.order` within the *same* pack — resolved with certainty, not matched (see Task Pack, above) |
 | item.title, description, tags, effort, effort_magnitude, critical, capacity, openness, requirements |          | same shape as Task, minus Community/Cycle-specific fields                                         |
 | item.wiki_summary_seed                                                            | text, nullable       | carried from the source task's current wiki revision; pre-populates the new task's wiki on import |
 | item.resources                                                                    | json array, nullable | `[{label, url, tag}]` carried wholesale from the source task's resource list on import            |
-| item.milestones                                                                   | json array, nullable | `[{label, anchor_type, offset_days or percent, phase_ref}]` — only relative milestones carry forward; absolute ones don't survive export (see Task Pack, above) |
+| item.milestones                                                                   | json array, nullable | `[{label, parent_type, relative_basis, relative_value, phase_ref, is_deadline}]` — only relative milestones carry forward; absolute ones don't survive export (see Task Pack, above) |
 
 This is deliberately close to a straight relational schema — it maps onto Postgres tables with minimal translation, which matters for the [build order](#build-order) below.
 

@@ -4,143 +4,93 @@ import { useState } from "react";
 import { INPUT, LABEL } from "./ui/kit";
 import SegmentedControl from "./ui/SegmentedControl";
 
-type Anchor = "cycle_start" | "cycle_end" | "phase_start" | "phase_end";
-type RelativeMode = "offset" | "percent";
-type TopMode = "absolute" | "cycle_relative" | "phase_relative";
-export type DateFieldBase = "mode" | "absoluteDate" | "anchor" | "offsetDays" | "percent" | "targetDate" | "phaseId";
+type DateMode = "absolute" | "relative";
+type ParentType = "cycle" | "phase";
 
-function topModeOf(mode: "absolute" | "relative" | undefined, anchor: Anchor | null | undefined): TopMode {
-  if (mode === "absolute") return "absolute";
-  if (mode === "relative") return anchor === "phase_start" || anchor === "phase_end" ? "phase_relative" : "cycle_relative";
-  // No record at all (a fresh add/create form) — default to Cycle-relative,
-  // not Absolute, since that's what stays portable when a Cycle is cloned.
-  return "cycle_relative";
-}
+export type DateFieldBase = "mode" | "date" | "parentType" | "phaseId";
 
-// Shared "When" fieldset — replaces the three near-identical copies that
-// used to live in calendar/page.tsx's EventDateFields, tasks/[id]/page.tsx's
-// MilestoneDateFields, and [cycleScope]/participation/page.tsx's
-// PhaseBoundaryFields, all of which rendered every mode's fields at once
-// (absolute date + anchor + offset + percent + target date, all visible
-// regardless of which mode was actually selected). Modeled on
-// EffortFields.tsx's pattern: local useState swaps which *uncontrolled*
-// named fields render, so the server actions reading formData.get(...)
-// need no changes. The two fields that no longer have a native form
-// control backing them (the top mode and the anchor, both now button
-// groups instead of <select>s) are carried by hidden inputs instead;
-// every other field is either a real input/select or simply isn't
-// rendered — same "absent from formData is fine" convention EffortFields
-// already relies on.
+/**
+ * The deliberately small authoring surface: choose absolute/relative,
+ * then choose a date. The server derives the canonical relative recipe
+ * from the selected parent period. One date input remains mounted while
+ * switching modes, so a date is never accidentally discarded.
+ */
 export default function DateModeField({
   legend = "When",
   fieldNames,
   mode,
-  relativeMode,
-  anchor,
-  absoluteDate,
-  offsetDays,
-  percent,
+  date,
+  parentType,
   phaseId,
   phases,
   phaseSelectDefaultLabel = "This task’s own Phase",
+  defaultParentType,
+  relativeAllowed = true,
+  defaultMode = "relative",
+  relativeHint,
   footer,
 }: {
-  // Callers that already wrap this in their own labeled fieldset (e.g.
-  // Phase boundaries' "Start"/"End" pair) override this instead of
-  // nesting a second fieldset with its own legend.
   legend?: string;
-  // A plain object, not a function — this is a Client Component, and
-  // React can't serialize a closure across the server→client boundary
-  // (only a "use server" action can cross that way). Each call site
-  // computes this as a one-line Record literal instead of the mapper
-  // function this used to be.
   fieldNames: Record<DateFieldBase, string>;
-  mode?: "absolute" | "relative";
-  relativeMode?: RelativeMode | null;
-  anchor?: Anchor | null;
-  absoluteDate?: string | null;
-  offsetDays?: number | null;
-  percent?: number | null;
+  mode?: DateMode;
+  date?: string | null;
+  parentType?: ParentType | null;
   phaseId?: string | null;
-  // Omitted (or empty) entirely hides the Phase-relative option — Calendar
-  // events and Phase boundaries have no phase-anchor concept at all;
-  // Task milestones pass this, but only when the Cycle actually has phases.
   phases?: { id: string; name: string }[];
   phaseSelectDefaultLabel?: string;
+  defaultParentType?: ParentType;
+  relativeAllowed?: boolean;
+  defaultMode?: DateMode;
+  relativeHint?: React.ReactNode;
   footer?: React.ReactNode;
 }) {
-  const fieldName = (base: DateFieldBase) => fieldNames[base];
-  const [topMode, setTopMode] = useState<TopMode>(() => topModeOf(mode, anchor));
-  const [anchorEdge, setAnchorEdge] = useState<"start" | "end">(() =>
-    anchor === "phase_end" || anchor === "cycle_end" ? "end" : "start",
+  const initialMode: DateMode = mode === "relative" && !relativeAllowed ? "absolute" : mode ?? (relativeAllowed ? defaultMode : "absolute");
+  const [selectedMode, setSelectedMode] = useState<DateMode>(initialMode);
+  const [selectedParent, setSelectedParent] = useState<ParentType>(
+    parentType ?? defaultParentType ?? (phases?.length ? "phase" : "cycle"),
   );
-  const [relMode, setRelMode] = useState<RelativeMode>(relativeMode ?? "offset");
 
-  const showPhaseRelative = !!phases && phases.length > 0;
-  const computedAnchor: Anchor =
-    topMode === "phase_relative"
-      ? anchorEdge === "start"
-        ? "phase_start"
-        : "phase_end"
-      : anchorEdge === "start"
-        ? "cycle_start"
-        : "cycle_end";
-  const computedMode = topMode === "absolute" ? "absolute" : relMode === "offset" ? "relative_offset" : "relative_percent";
+  const options = relativeAllowed
+    ? [
+        { value: "absolute" as const, label: "Absolute" },
+        { value: "relative" as const, label: "Relative" },
+      ]
+    : [{ value: "absolute" as const, label: "Absolute" }];
 
   return (
     <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
       <legend className="px-1 text-[12px] text-[var(--text-muted)]">{legend}</legend>
-
-      <input type="hidden" name={fieldName("mode")} value={computedMode} />
+      <input type="hidden" name={fieldNames.mode} value={selectedMode} />
 
       <div className="flex flex-col gap-2.5">
-        <SegmentedControl
-          value={topMode}
-          onChange={setTopMode}
-          options={[
-            { value: "absolute", label: "Absolute" },
-            { value: "cycle_relative", label: "Cycle-relative" },
-            ...(showPhaseRelative ? [{ value: "phase_relative" as const, label: "Phase-relative" }] : []),
-          ]}
-        />
+        <SegmentedControl value={selectedMode} onChange={setSelectedMode} options={options} />
 
-        {topMode === "absolute" && (
-          <label className="flex flex-col gap-1">
-            <span className={LABEL}>Date</span>
-            <input type="date" name={fieldName("absoluteDate")} defaultValue={absoluteDate ?? ""} className={INPUT} />
-          </label>
-        )}
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Date</span>
+          <input type="date" name={fieldNames.date} defaultValue={date ?? ""} className={INPUT} />
+        </label>
 
-        {topMode !== "absolute" && (
+        {selectedMode === "relative" && phases && phases.length > 0 && (
           <>
-            <input type="hidden" name={fieldName("anchor")} value={computedAnchor} />
-            <div className="flex flex-wrap items-center gap-2">
-              <SegmentedControl
-                size="sm"
-                value={anchorEdge}
-                onChange={setAnchorEdge}
-                options={[
-                  { value: "start", label: topMode === "phase_relative" ? "Phase start" : "Cycle start" },
-                  { value: "end", label: topMode === "phase_relative" ? "Phase end" : "Cycle end" },
-                ]}
-              />
-              <SegmentedControl
-                size="sm"
-                value={relMode}
-                onChange={setRelMode}
-                options={[
-                  { value: "offset", label: "Days" },
-                  { value: "percent", label: "Percent" },
-                ]}
-              />
-            </div>
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Relative to</span>
+              <select
+                name={fieldNames.parentType}
+                value={selectedParent}
+                onChange={(e) => setSelectedParent(e.target.value as ParentType)}
+                className={INPUT}
+              >
+                <option value="phase">This task’s Phase</option>
+                <option value="cycle">The task’s Cycle</option>
+              </select>
+            </label>
 
-            {topMode === "phase_relative" && (
+            {selectedParent === "phase" && (
               <label className="flex flex-col gap-1">
                 <span className={LABEL}>Phase</span>
-                <select name={fieldName("phaseId")} defaultValue={phaseId ?? ""} className={INPUT}>
+                <select name={fieldNames.phaseId} defaultValue={phaseId ?? ""} className={INPUT}>
                   <option value="">{phaseSelectDefaultLabel}</option>
-                  {phases?.map((p) => (
+                  {phases.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
                     </option>
@@ -148,30 +98,20 @@ export default function DateModeField({
                 </select>
               </label>
             )}
-
-            {relMode === "offset" ? (
-              <label className="flex flex-col gap-1">
-                <span className={LABEL}>Offset days</span>
-                <input type="number" name={fieldName("offsetDays")} defaultValue={offsetDays ?? ""} className={INPUT} />
-              </label>
-            ) : (
-              <label className="flex flex-col gap-1">
-                <span className={LABEL}>Percent 0-100</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  name={fieldName("percent")}
-                  defaultValue={percent ?? ""}
-                  className={INPUT}
-                />
-              </label>
-            )}
-            <label className="flex flex-col gap-1">
-              <span className={LABEL}>Or set the exact date (recalculates the value above)</span>
-              <input type="date" name={fieldName("targetDate")} className={INPUT} />
-            </label>
           </>
+        )}
+
+        {selectedMode === "relative" && !phases?.length && (
+          <input type="hidden" name={fieldNames.parentType} value="cycle" />
+        )}
+
+        {selectedMode === "relative" && relativeHint && (
+          <p className="text-[12px] text-[var(--text-muted)]">{relativeHint}</p>
+        )}
+        {!relativeAllowed && (
+          <p className="text-[12px] text-[var(--text-muted)]">
+            A relative date needs at least one date on its parent period.
+          </p>
         )}
       </div>
       {footer}

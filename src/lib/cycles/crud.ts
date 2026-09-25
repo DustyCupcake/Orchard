@@ -25,12 +25,14 @@ import { memberHasTier } from "../eligibility";
 import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
 import { cloneSpatialPlanIntoNewCycle } from "../spatial-planning";
 import { recomputeCalendarEventDatesForCycle } from "../calendar-events";
+import { normalizeTaskMilestonesForCycle, normalizeTaskMilestonesForPhase } from "../tasks/milestones";
 import { copyPermissionGrants, type PermissionModuleKey } from "../permissions";
 import { requireCycleOpen } from "./lifecycle";
 import {
+  boundaryForEditing,
   dateBoundaryInput,
   deriveClonedBoundaryRecipe,
-  isBoundaryDrifted,
+  normalizeBoundary,
   recomputeBoundary,
   toStoredBoundary,
   violatesBoundaryOrder,
@@ -54,10 +56,8 @@ export function startBoundaryOf(p: Phase): StoredBoundary {
   return {
     dateType: p.startDateType,
     date: p.startDate,
-    relativeMode: p.startRelativeMode,
-    offsetAnchor: p.startOffsetAnchor,
-    offsetDays: p.startOffsetDays,
-    percent: p.startPercent,
+    relativeBasis: p.startRelativeBasis,
+    relativeValue: p.startRelativeValue,
   };
 }
 
@@ -65,10 +65,8 @@ export function endBoundaryOf(p: Phase): StoredBoundary {
   return {
     dateType: p.endDateType,
     date: p.endDate,
-    relativeMode: p.endRelativeMode,
-    offsetAnchor: p.endOffsetAnchor,
-    offsetDays: p.endOffsetDays,
-    percent: p.endPercent,
+    relativeBasis: p.endRelativeBasis,
+    relativeValue: p.endRelativeValue,
   };
 }
 
@@ -76,10 +74,8 @@ function startColumns(b: StoredBoundary) {
   return {
     startDateType: b.dateType,
     startDate: b.date,
-    startRelativeMode: b.relativeMode,
-    startOffsetAnchor: b.offsetAnchor,
-    startOffsetDays: b.offsetDays,
-    startPercent: b.percent,
+    startRelativeBasis: b.relativeBasis,
+    startRelativeValue: b.relativeValue,
   };
 }
 
@@ -87,10 +83,8 @@ function endColumns(b: StoredBoundary) {
   return {
     endDateType: b.dateType,
     endDate: b.date,
-    endRelativeMode: b.relativeMode,
-    endOffsetAnchor: b.offsetAnchor,
-    endOffsetDays: b.offsetDays,
-    endPercent: b.percent,
+    endRelativeBasis: b.relativeBasis,
+    endRelativeValue: b.relativeValue,
   };
 }
 
@@ -430,26 +424,18 @@ export interface ClonePreview {
   milestones: ClonePreviewMilestone[];
 }
 
-// A milestone's 4-way anchor (phase_start/phase_end/cycle_start/
-// cycle_end) reframed onto recomputeBoundary's own 2-way "which end of
-// the given pair" shape — the offset/percent math is identical either
-// way, only which start/end pair applies differs (see
-// src/lib/tasks/milestones.ts's own fetchParentBoundary for the
-// non-preview equivalent of this same split).
 function previewMilestoneDate(
-  m: Pick<typeof taskMilestone.$inferSelect, "relativeMode" | "anchorType" | "offsetDays" | "percent">,
+  m: Pick<typeof taskMilestone.$inferSelect, "relativeBasis" | "relativeValue" | "parentType">,
   phaseStart: string | null,
   phaseEnd: string | null,
   cycleStart: string | null,
   cycleEnd: string | null,
 ): string | null {
-  if (!m.anchorType || !m.relativeMode) return null;
-  const isPhaseAnchor = m.anchorType === "phase_start" || m.anchorType === "phase_end";
-  const start = isPhaseAnchor ? phaseStart : cycleStart;
-  const end = isPhaseAnchor ? phaseEnd : cycleEnd;
-  const directionalAnchor = m.anchorType === "phase_start" || m.anchorType === "cycle_start" ? "cycle_start" : "cycle_end";
+  if (!m.parentType || !m.relativeBasis || m.relativeValue === null) return null;
+  const start = m.parentType === "phase" ? phaseStart : cycleStart;
+  const end = m.parentType === "phase" ? phaseEnd : cycleEnd;
   return recomputeBoundary(
-    { dateType: "relative", date: null, relativeMode: m.relativeMode, offsetAnchor: directionalAnchor, offsetDays: m.offsetDays, percent: m.percent },
+    { dateType: "relative", date: null, relativeBasis: m.relativeBasis, relativeValue: m.relativeValue },
     start,
     end,
   ).date;
@@ -486,12 +472,12 @@ export async function previewClonePreviousCycle(
   const oldPhases = await db.select().from(phase).where(eq(phase.cycleId, previous.id)).orderBy(phase.order);
   const previewPhases: ClonePreviewPhase[] = oldPhases.map((p) => {
     const start = recomputeBoundary(
-      deriveClonedBoundaryRecipe(startBoundaryOf(p), previous.startDate),
+      deriveClonedBoundaryRecipe(startBoundaryOf(p), previous.startDate, previous.endDate),
       hypotheticalStart,
       hypotheticalEnd,
     );
     const end = recomputeBoundary(
-      deriveClonedBoundaryRecipe(endBoundaryOf(p), previous.startDate),
+      deriveClonedBoundaryRecipe(endBoundaryOf(p), previous.startDate, previous.endDate),
       hypotheticalStart,
       hypotheticalEnd,
     );
@@ -500,7 +486,7 @@ export async function previewClonePreviousCycle(
   const previewByOldPhaseId = new Map(oldPhases.map((p, i) => [p.id, previewPhases[i]]));
 
   const oldTasks = await db
-    .select({ id: task.id, title: task.title })
+    .select({ id: task.id, title: task.title, cycleId: task.cycleId, phaseId: task.phaseId })
     .from(task)
     .where(eq(task.cycleId, previous.id));
   const taskById = new Map(oldTasks.map((t) => [t.id, t]));
@@ -515,8 +501,8 @@ export async function previewClonePreviousCycle(
 
   const previewMilestones: ClonePreviewMilestone[] = carried.map((m) => {
     const t = taskById.get(m.taskId)!;
-    const isPhaseAnchor = m.anchorType === "phase_start" || m.anchorType === "phase_end";
-    const previewPhase = isPhaseAnchor && m.phaseId ? previewByOldPhaseId.get(m.phaseId) : undefined;
+    const isPhaseParent = m.parentType === "phase";
+    const previewPhase = isPhaseParent ? previewByOldPhaseId.get(m.phaseId ?? t.phaseId ?? "") : undefined;
     const date = previewMilestoneDate(m, previewPhase?.start ?? null, previewPhase?.end ?? null, hypotheticalStart, hypotheticalEnd);
     return { taskTitle: t.title, label: m.label, phaseName: previewPhase?.name ?? null, date };
   });
@@ -529,7 +515,7 @@ export async function previewClonePreviousCycle(
 // input order, and correctly mapping old ids to new ones depends on it.
 async function clonePhases(
   tx: Tx,
-  previousCycle: Pick<typeof cycle.$inferSelect, "id" | "startDate">,
+  previousCycle: Pick<typeof cycle.$inferSelect, "id" | "startDate" | "endDate">,
   newCycleId: string,
 ) {
   const oldPhases = await tx.select().from(phase).where(eq(phase.cycleId, previousCycle.id));
@@ -547,8 +533,8 @@ async function clonePhases(
     // that was never relatively-dated produces a usable recommendation
     // on its next clone; genuinely un-derivable (no previous start_date
     // set) falls back to the original "dates don't carry" behavior.
-    const start = deriveClonedBoundaryRecipe(startBoundaryOf(p), previousCycle.startDate);
-    const end = deriveClonedBoundaryRecipe(endBoundaryOf(p), previousCycle.startDate);
+    const start = deriveClonedBoundaryRecipe(startBoundaryOf(p), previousCycle.startDate, previousCycle.endDate);
+    const end = deriveClonedBoundaryRecipe(endBoundaryOf(p), previousCycle.startDate, previousCycle.endDate);
     const [newPhase] = await tx
       .insert(phase)
       .values({ cycleId: newCycleId, name: p.name, order: p.order, ...startColumns(start), ...endColumns(end) })
@@ -708,12 +694,12 @@ async function cloneTaskMilestones(tx: Tx, taskIdMap: Map<string, string>, phase
         label: m.label,
         dateType: "relative" as const,
         absoluteDate: null,
-        relativeMode: m.relativeMode,
-        anchorType: m.anchorType,
-        offsetDays: m.offsetDays,
-        percent: m.percent,
+        relativeBasis: m.relativeBasis,
+        relativeValue: m.relativeValue,
+        parentType: m.parentType,
         phaseId: newPhaseId ?? null,
         status: "confirmed" as const,
+        isDeadline: m.isDeadline,
         proposedBy: m.proposedBy,
         createdBy: m.createdBy,
       };
@@ -902,7 +888,7 @@ async function clonePermissionGrants(tx: Tx, taskIdMap: Map<string, string>) {
 async function cloneShiftRoster(
   tx: Tx,
   actor: Member,
-  previous: { id: string; startDate: string | null },
+  previous: { id: string; startDate: string | null; endDate: string | null },
   newCycle: { id: string; startDate: string | null; endDate: string | null },
 ) {
   const sourceSeries = await tx.select().from(shiftSeries).where(eq(shiftSeries.cycleId, previous.id));
@@ -942,6 +928,7 @@ async function cloneShiftRoster(
     const newStartsAt = derivedCloneOccurrenceStart(
       o.startsAt,
       previous.startDate,
+      previous.endDate,
       newCycle.startDate,
       newCycle.endDate,
     );
@@ -968,12 +955,14 @@ async function cloneShiftRoster(
 function derivedCloneOccurrenceStart(
   startsAt: Date,
   sourceCycleStart: string,
+  sourceCycleEnd: string | null,
   destCycleStart: string,
   destCycleEnd: string | null,
 ): Date | null {
   const recipe = deriveClonedBoundaryRecipe(
-    { dateType: "absolute", date: startsAt.toISOString().slice(0, 10), relativeMode: null, offsetAnchor: null, offsetDays: null, percent: null },
+    { dateType: "absolute", date: startsAt.toISOString().slice(0, 10), relativeBasis: null, relativeValue: null },
     sourceCycleStart,
+    sourceCycleEnd,
   );
   const resolved = recomputeBoundary(recipe, destCycleStart, destCycleEnd);
   if (!resolved.date) return null;
@@ -1003,20 +992,13 @@ export async function listOpenCycles(actor: Member) {
 
 export interface PhaseFlags {
   orderInvalid: boolean;
-  startDrifted: boolean;
-  endDrifted: boolean;
 }
 
 // Live, standing flags — never persisted, computed fresh whenever a
-// Phase is read alongside its Cycle. See docs/spec.md's "A soft check
-// worth having, not yet a hard one" and "One basic sanity check."
-function getPhaseFlags(cycleRow: { startDate: string | null; endDate: string | null }, phaseRow: Phase): PhaseFlags {
-  const start = startBoundaryOf(phaseRow);
-  const end = endBoundaryOf(phaseRow);
+// Phase is read alongside its Cycle.
+function getPhaseFlags(phaseRow: Phase): PhaseFlags {
   return {
-    orderInvalid: violatesBoundaryOrder(start.date, end.date),
-    startDrifted: isBoundaryDrifted(start, cycleRow.startDate, cycleRow.endDate),
-    endDrifted: isBoundaryDrifted(end, cycleRow.startDate, cycleRow.endDate),
+    orderInvalid: violatesBoundaryOrder(startBoundaryOf(phaseRow).date, endBoundaryOf(phaseRow).date),
   };
 }
 
@@ -1031,7 +1013,7 @@ export async function getCycle(actor: Member, cycleId: string) {
 
   const phases = await db.select().from(phase).where(eq(phase.cycleId, cycleId)).orderBy(phase.order);
   // Live flags computed fresh on every read — see getPhaseFlags above.
-  return { ...row, phases: phases.map((p) => ({ ...p, flags: getPhaseFlags(row, p) })) };
+  return { ...row, phases: phases.map((p) => ({ ...p, flags: getPhaseFlags(p) })) };
 }
 
 // Wires up the two fields that have sat unused on Cycle since Phase 6
@@ -1114,6 +1096,9 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
   if (input.startDate !== undefined || input.endDate !== undefined) {
     await recomputePhaseDatesForCycle(db, cycleId, nextStartDate, nextEndDate);
     await recomputeCalendarEventDatesForCycle(cycleId, nextStartDate, nextEndDate);
+    const gainedBoundary =
+      (!row.startDate && nextStartDate !== null) || (!row.endDate && nextEndDate !== null);
+    if (gainedBoundary) await normalizeTaskMilestonesForCycle(cycleId);
   }
 
   return updated;
@@ -1130,9 +1115,20 @@ async function recomputePhaseDatesForCycle(
 ) {
   const phases = await tx.select().from(phase).where(eq(phase.cycleId, cycleId));
   for (const p of phases) {
-    const nextStart = recomputeBoundary(startBoundaryOf(p), anchorStart, anchorEnd);
-    const nextEnd = recomputeBoundary(endBoundaryOf(p), anchorStart, anchorEnd);
-    if (nextStart.date === p.startDate && nextEnd.date === p.endDate) continue;
+    const nextStart = normalizeBoundary(startBoundaryOf(p), anchorStart, anchorEnd);
+    const nextEnd = normalizeBoundary(endBoundaryOf(p), anchorStart, anchorEnd);
+    if (
+      nextStart.date === p.startDate &&
+      nextStart.dateType === p.startDateType &&
+      nextStart.relativeBasis === p.startRelativeBasis &&
+      nextStart.relativeValue === p.startRelativeValue &&
+      nextEnd.date === p.endDate &&
+      nextEnd.dateType === p.endDateType &&
+      nextEnd.relativeBasis === p.endRelativeBasis &&
+      nextEnd.relativeValue === p.endRelativeValue
+    ) {
+      continue;
+    }
     await tx
       .update(phase)
       .set({ ...startColumns(nextStart), ...endColumns(nextEnd) })
@@ -1148,11 +1144,9 @@ export type UpdatePhaseBoundaryInput = z.infer<typeof updatePhaseBoundaryInput>;
 
 // Editing a Phase's dates is a cycle-configuration decision — same
 // authority gate as starting a cycle or setting its capacity (Phase
-// 31). See docs/development-plan.md's Phase 39's "Editing UI for a
-// relative item" — start/end can each independently be re-typed
-// (offsetDays/percent) or re-dragged to a target date (targetDate),
-// see src/lib/dates/resolve.ts's dateBoundaryInput; either path
-// recomputes and persists the offset/percent, never a bare date.
+// 31). Relative boundaries are authored as a resolved date; the server
+// infers the canonical basis/value recipe against the Cycle's dates.
+// Saving the same resolved date preserves the existing recipe.
 export async function updatePhaseBoundary(actor: Member, phaseId: string, input: UpdatePhaseBoundaryInput) {
   await requireCycleInitiationEligibility(actor);
 
@@ -1167,10 +1161,10 @@ export async function updatePhaseBoundary(actor: Member, phaseId: string, input:
   requireCycleOpen(cycleRow);
 
   const nextStart = input.start
-    ? toStoredBoundary(input.start, cycleRow.startDate, cycleRow.endDate)
+    ? boundaryForEditing(startBoundaryOf(phaseRow), input.start, cycleRow.startDate, cycleRow.endDate)
     : startBoundaryOf(phaseRow);
   const nextEnd = input.end
-    ? toStoredBoundary(input.end, cycleRow.startDate, cycleRow.endDate)
+    ? boundaryForEditing(endBoundaryOf(phaseRow), input.end, cycleRow.startDate, cycleRow.endDate)
     : endBoundaryOf(phaseRow);
 
   // docs/spec.md's one defined sanity check — only applied to a
@@ -1187,7 +1181,8 @@ export async function updatePhaseBoundary(actor: Member, phaseId: string, input:
     .set({ ...startColumns(nextStart), ...endColumns(nextEnd) })
     .where(eq(phase.id, phaseId))
     .returning();
-  return { ...updated, flags: getPhaseFlags(cycleRow, updated) };
+  await normalizeTaskMilestonesForPhase(phaseId);
+  return { ...updated, flags: getPhaseFlags(updated) };
 }
 
 // Which module (if any) getNavContext (src/lib/nav.ts) should pin for
@@ -1244,5 +1239,5 @@ export async function addPhase(actor: Member, cycleId: string, input: Omit<Phase
   });
 
   const [created] = await db.insert(phase).values(values).returning();
-  return { ...created, flags: getPhaseFlags(cycleRow, created) };
+  return { ...created, flags: getPhaseFlags(created) };
 }
