@@ -17,6 +17,7 @@ import { closeCycle, createCycle } from "@/lib/cycles";
 import { declareParticipation } from "@/lib/participation";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
 import { createBudgetCycle, submitBudgetVote } from "@/lib/budget";
+import { setPermissionGrant, type PermissionModuleKey } from "@/lib/permissions";
 import { closeProposalsToVoting } from "@/lib/budget";
 import { createEventProposal } from "@/lib/event-scheduling";
 import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
@@ -72,6 +73,9 @@ describe("getPersonalFeed", () => {
       shiftCoordinatorNeedsAction: [],
       myShiftsNeedingCompletion: [],
       conflictNeedsAction: [],
+      // Kitchen's own needs-action surface (docs/food-drinks-module-plan.md's
+      // D2/D5) — empty here because this member holds no kitchen grant.
+      kitchenNeedsAction: [],
       pendingNominations: [],
       expiredNominations: [],
       // The Communication Inbox surfaces, added when the feed became
@@ -354,7 +358,13 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     await resetDatabase();
   });
 
-  async function insertOwnerTask(communityId: string, branchId: string, createdBy: string, title: string) {
+  async function insertOwnerTask(
+    communityId: string,
+    branchId: string,
+    createdBy: string,
+    title: string,
+    grantModule?: PermissionModuleKey,
+  ) {
     const [row] = await db
       .insert(task)
       .values({
@@ -366,18 +376,20 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
         createdBy,
       })
       .returning();
+    if (grantModule) {
+      await setPermissionGrant(communityId, grantModule, row.id);
+    }
     return row;
   }
 
   it("Budget: owner sees close_to_voting once the deadline has passed", async () => {
     const { alice, branch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner");
+    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner", "budget");
     await claimTask(alice, ownerTask.id);
     const cycleRow = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: new Date(Date.now() - 1000).toISOString(),
-      ownerTaskId: ownerTask.id,
     });
 
     const feed = await getPersonalFeed(alice);
@@ -389,12 +401,11 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
   it("Budget: a non-owner member sees nothing while proposals are still open", async () => {
     const { alice, bob, branch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner");
+    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner", "budget");
     await claimTask(alice, ownerTask.id);
     await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: new Date(Date.now() + 7 * 86400000).toISOString(),
-      ownerTaskId: ownerTask.id,
     });
 
     const feed = await getPersonalFeed(bob);
@@ -404,12 +415,11 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
   it("Budget: owner sees confirm_funded_set during voting", async () => {
     const { alice, branch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner");
+    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner", "budget");
     await claimTask(alice, ownerTask.id);
     const cycleRow = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: new Date(Date.now() + 86400000).toISOString(),
-      ownerTaskId: ownerTask.id,
     });
     await closeProposalsToVoting(alice, cycleRow.id);
 
@@ -424,12 +434,11 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
   it("Budget: any member sees cast_vote during voting before they vote", async () => {
     const { alice, bob, branch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner");
+    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner", "budget");
     await claimTask(alice, ownerTask.id);
     const cycleRow = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: new Date(Date.now() + 86400000).toISOString(),
-      ownerTaskId: ownerTask.id,
     });
     await closeProposalsToVoting(alice, cycleRow.id);
 
@@ -444,12 +453,11 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
   it("Budget: cast_vote disappears once a member actually votes", async () => {
     const { alice, bob, branch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner");
+    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner", "budget");
     await claimTask(alice, ownerTask.id);
     const cycleRow = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: new Date(Date.now() + 86400000).toISOString(),
-      ownerTaskId: ownerTask.id,
     });
     await closeProposalsToVoting(alice, cycleRow.id);
     await submitBudgetVote(bob, cycleRow.id, { rankedProposalIds: [] });

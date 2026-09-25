@@ -4,7 +4,6 @@ import { community } from "./community";
 import { cycle } from "./cycle";
 import { member } from "./member";
 import { phase } from "./phase";
-import { task } from "./task";
 
 export const budgetCycleStatusEnum = pgEnum("budget_cycle_status", [
   "proposals_open",
@@ -37,17 +36,11 @@ export const budgetCycle = pgTable("budget_cycle", {
   fixedCosts: jsonb("fixed_costs").notNull().default([]),
   proposalDeadline: timestamp("proposal_deadline", { withTimezone: true }).notNull(),
   status: budgetCycleStatusEnum("status").notNull().default("proposals_open"),
-  // Whoever currently holds this task is "the budget owner" — the same
-  // task-is-the-authority pattern conflictTeamTaskId/
-  // feedbackReviewTaskId established on Community, just scoped per-
-  // cycle here instead: a fresh schema file can import task.ts
-  // directly with a real FK (no circular-import issue — task.ts has no
-  // reason to ever import budget.ts back — same reasoning Phase 22's
-  // SensitiveFieldAccessRule already relied on for its own task/tier
-  // pointers).
-  ownerTaskId: uuid("owner_task_id")
-    .notNull()
-    .references(() => task.id),
+  // Budget authority is not stored on this row. A single-cardinality
+  // `budget` PermissionGrant is configured under Settings → Access &
+  // permissions, and its task's placement must match this row's
+  // `cycleId` (including null === null) for its current holder to own
+  // this budget cycle.
   // Set only on confirming (status -> `confirmed`) — see
   // src/lib/budget/voting.ts's confirmBudgetCycle. "A human selection
   // informed by, not bound to, the ranked order" (docs/spec.md's

@@ -128,6 +128,8 @@ The default configuration reproduces exactly what exists today, so the migration
 
 Nomination and consensus are **deliberate upgrades** a community opts into; nothing changes until it does.
 
+> **One honest caveat to "behavior-preserving":** an *unmarked* invite (neither lane) used to redeem directly on a direct-mode cycle or as a general invite. Under §2.9 it is the **neither** lane — basic, application on, interview on — so it now routes through the evaluated application. Preserving that would contradict the lanes themselves; the changes are confined to unmarked invites, and inviters who want the instant path mark "I personally know this person."
+
 ---
 
 ## 4. Backend work
@@ -228,7 +230,7 @@ Objections render only to mediation-holders (shielded `raisedBy`), with recusal/
 
 ## Work plan (suggested order)
 
-1. **Lane model + migration** — §4.1, seeded with §2.9 defaults; old `joiningInviteMode` retired in the same migration; existing tests must pass unchanged.
+1. **Lane model + migration** — §4.1, seeded with §2.9 defaults; old `joiningInviteMode` retired in the same migration. *Deviation (implemented, see commit): "existing tests must pass unchanged" could not fully hold — the tests that named `joiningInviteMode`, and the many that created unmarked invites and redeemed them directly, were rewritten to the lane model (an unmarked invite is the neither lane and routes through the application, per the §2.9 caveat); every other test passes unchanged.*
 2. **The third door** — `interviewsOpen` on `cycle`/`community`, composed into the joining-state gates (a candidate submitting, an interview being scheduled, an invite redeeming each check their own door + period + capacity).
 3. **`recruitment_mediation` module** — §4.4 (module key, hint, resolver, settings/task-detail grant rows) — unblocks the objection machinery that hangs off it.
 4. **Support + nomination** — §4.2 (tokens, pokes, support records, fallback semantics).

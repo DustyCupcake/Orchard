@@ -12,11 +12,6 @@ export const cycleStatusEnum = pgEnum("cycle_status", [
   "archived",
 ]);
 export const cycleSourceTypeEnum = pgEnum("cycle_source_type", ["blank", "pack"]);
-// §4.3/D12 — how a cycle's own invite links behave: `direct` invites
-// redeem straight into membership (skipping /apply), `referral` invites
-// route through the evaluated application instead. Defaults direct.
-export const joiningInviteModeEnum = pgEnum("joining_invite_mode", ["direct", "referral"]);
-export const JOINING_INVITE_MODES = ["direct", "referral"] as const;
 
 // A discrete run of production (a season, a reunion weekend, a one-off
 // event). Optional — a Community with `cycles_enabled = false` runs one
@@ -47,13 +42,16 @@ export const cycle = pgTable("cycle", {
   // cycle closes). Both doors are shut outside that period and once
   // capacity is reached — see src/lib/recruitment/joining.ts.
   //
-  // Invites-only: joiningInviteMode (direct | referral) decides how this
-  // cycle's invite links behave; the invite plumbing itself is §4.3's
-  // work-plan step 8d.
+  // Invites-only: an invite's *lane* (fixed by the inviter's marks at
+  // creation) decides how it behaves — the community's per-lane rules
+  // live on `joining_lane` (docs/joining-admission-plan.md §2/§4.1),
+  // with per-cycle overrides falling back to the community-wide rows.
+  // The retired `joiningInviteMode` (direct | referral) that used to
+  // sit here was replaced by lanes × verification in the same migration
+  // that introduced the lane table.
   recruitmentApplicationFormId: uuid("recruitment_application_form_id"),
   applicationsOpen: boolean("applications_open").notNull().default(true),
   invitesOpen: boolean("invites_open").notNull().default(true),
-  joiningInviteMode: joiningInviteModeEnum("joining_invite_mode").notNull().default("direct"),
   joiningWindowClosesAt: timestamp("joining_window_closes_at", { withTimezone: true }),
   cycleTypeId: uuid("cycle_type_id").references(() => cycleType.id),
   // The event's own working dates — distinct from `started_at` (an

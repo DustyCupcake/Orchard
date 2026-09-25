@@ -200,6 +200,10 @@ export async function activateProposal(
   // from blocking the rest of an otherwise-legitimate activation.
   if (input.grantModuleKeys && input.grantModuleKeys.length > 0 && (await isAdmin(actor))) {
     for (const moduleKey of input.grantModuleKeys) {
+      // Budget is intentionally configurable only from Settings → Access &
+      // permissions. The broad schema remains useful for rejecting complete
+      // nonsense, while this runtime guard also covers forged form/API input.
+      if (moduleKey === "budget") continue;
       if (allowsMultipleGrants(moduleKey)) {
         await addPermissionGrant(actor.communityId, moduleKey, newTask.id);
       } else {

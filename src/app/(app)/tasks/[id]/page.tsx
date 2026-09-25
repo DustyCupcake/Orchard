@@ -31,8 +31,8 @@ import {
   allowsMultipleGrants,
   listGrantsWithTaskInfo,
   listModuleKeysGrantedByTask,
-  PERMISSION_MODULE_KEYS,
   PERMISSION_MODULE_LABELS,
+  TASK_GRANTABLE_PERMISSION_MODULE_KEYS,
   type PermissionModuleKey,
 } from "@/lib/permissions";
 import { getCycle, listCycles, resolveCrossCycleContext, scopeLabel } from "@/lib/cycles";
@@ -1222,11 +1222,12 @@ export default async function TaskDetailPage({
             the identical <code>PermissionGrant</code> rows the settings panel&rsquo;s Access &amp;
             permissions tab edits. A grant&rsquo;s scope comes from this task&rsquo;s own placement: a
             cycle-less task is the community-wide/evergreen role, a task placed in a cycle grants
-            that cycle&rsquo;s data only.
+            that cycle&rsquo;s data only. Budget authority is configured only in Settings → Access &amp;
+            permissions.
           </p>
           <form action={updateTaskPermissionGrantsAction} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="taskId" value={taskRow.id} />
-            {PERMISSION_MODULE_KEYS.map((moduleKey) => (
+            {TASK_GRANTABLE_PERMISSION_MODULE_KEYS.map((moduleKey) => (
               <div key={moduleKey}>
                 <CheckField
                   label={PERMISSION_MODULE_LABELS[moduleKey]}

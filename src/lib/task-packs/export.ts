@@ -113,17 +113,19 @@ export async function exportCycleAsTaskPack(actor: Member, cycleId: string, inpu
     carriedMilestonesByTask.set(m.taskId, list);
   }
 
-  // Which modules each exported task granted — carried so pack import
-  // can re-grant the imported task (docs/cycle-scope-remediation-plan.md
-  // §4.4: a pack is a cycle "in a box", and a cycle's authority tasks
-  // are part of what it carries). Only the module key travels, never a
-  // scope: the imported task's own placement decides that (§2.1).
+  // Which ordinary modules each exported task granted — carried so pack
+  // import can re-grant the imported task (docs/cycle-scope-remediation-plan.md
+  // §4.4: a pack is a cycle "in a box"). Budget is excluded because its
+  // owner is designated explicitly in Settings → Access & permissions, not
+  // inherited through cloning or a pack. Only the module key travels, never
+  // a scope: the imported task's own placement decides that (§2.1).
   const allGrants = await db
     .select({ taskId: permissionGrant.taskId, moduleKey: permissionGrant.moduleKey })
     .from(permissionGrant)
     .where(inArray(permissionGrant.taskId, taskIdsToExport));
   const grantModuleKeysByTask = new Map<string, string[]>();
   for (const g of allGrants) {
+    if (g.moduleKey === "budget") continue;
     const list = grantModuleKeysByTask.get(g.taskId) ?? [];
     list.push(g.moduleKey);
     grantModuleKeysByTask.set(g.taskId, list);

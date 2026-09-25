@@ -6,6 +6,7 @@ import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "./errors";
 import { requireModuleEnabled } from "./modules";
 import { getGatingPurposesForCommunity, hasActiveConsent, listMembersWithActiveConsent } from "./consent";
+import { listGrantingTaskIds, PERMISSION_MODULE_KEYS, type PermissionModuleKey } from "./permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -84,14 +85,21 @@ export async function updateOwnSensitiveData(actor: Member, input: UpdateOwnSens
   return updated;
 }
 
-// Rules: which task or tier unlocks a field for *other* members' data.
-// Exactly one of unlockedByTaskId/unlockedByTierId per rule — a field
-// can carry more than one rule (e.g. a task and a tier that each
-// independently unlock it).
+// Rules: which task, tier, or permission grant unlocks a field for
+// *other* members' data. Exactly one of unlockedByTaskId/
+// unlockedByTierId/unlockedByGrantModuleKey per rule — a field can
+// carry more than one rule (e.g. a task and a tier that each
+// independently unlock it). unlockedByGrantModuleKey is the third route
+// (docs/food-drinks-module-plan.md's D3): community-wide, deliberately
+// not narrowed by the granting task's placement, since a sensitive
+// field is one community record — the rule's scope is "any holder of
+// any task granting this module", exercised by matching grant-route
+// rules against the union of all that module's granting tasks.
 export const createSensitiveFieldAccessRuleInput = z.object({
   fieldKey: z.enum(SENSITIVE_FIELD_KEYS),
   unlockedByTaskId: z.string().uuid().nullable().optional(),
   unlockedByTierId: z.string().uuid().nullable().optional(),
+  unlockedByGrantModuleKey: z.enum(PERMISSION_MODULE_KEYS).nullable().optional(),
 });
 export type CreateSensitiveFieldAccessRuleInput = z.infer<typeof createSensitiveFieldAccessRuleInput>;
 
@@ -101,8 +109,10 @@ export async function createSensitiveFieldAccessRule(
 ) {
   const hasTask = Boolean(input.unlockedByTaskId);
   const hasTier = Boolean(input.unlockedByTierId);
-  if (hasTask === hasTier) {
-    throw new AppError("Pick exactly one of a task or a tier to unlock this field");
+  const hasGrantModule = Boolean(input.unlockedByGrantModuleKey);
+  const chosen = [hasTask, hasTier, hasGrantModule].filter(Boolean).length;
+  if (chosen !== 1) {
+    throw new AppError("Pick exactly one of a task, a tier, or a grant module to unlock this field");
   }
 
   if (input.unlockedByTaskId) {
@@ -131,6 +141,7 @@ export async function createSensitiveFieldAccessRule(
       fieldKey: input.fieldKey,
       unlockedByTaskId: input.unlockedByTaskId ?? null,
       unlockedByTierId: input.unlockedByTierId ?? null,
+      unlockedByGrantModuleKey: input.unlockedByGrantModuleKey ?? null,
     })
     .returning();
   return created;
@@ -159,14 +170,41 @@ export async function deleteSensitiveFieldAccessRule(actor: Member, ruleId: stri
 // Which fields the actor is currently unlocked for, via any matching
 // rule — a Tier rule checks the actor's own tierIds; a Task rule
 // checks whether they currently (really — a shadow doesn't count)
-// hold that task.
+// hold that task; a Grant-module rule checks whether they currently
+// hold ANY task granting that permission module in this community (the
+// community-wide third route — docs/food-drinks-module-plan.md's D3).
 export async function listUnlockedFields(actor: Member): Promise<SensitiveFieldKey[]> {
   const rules = await listSensitiveFieldAccessRules(actor);
   if (rules.length === 0) return [];
 
-  const taskIds = [...new Set(rules.map((r) => r.unlockedByTaskId).filter((id): id is string => Boolean(id)))];
-  let heldTaskIds = new Set<string>();
-  if (taskIds.length > 0) {
+  // Every task whose hold could satisfy some rule: the Task route's own
+  // ids, plus — for each Grant-module rule — every task currently
+  // granting that module. The module route is deliberately "whoever holds
+  // ANY task granting it", community-wide rather than narrowed to one
+  // task (D3), so this is an expansion, not a lookup of one id.
+  const interestingTaskIds = new Set(
+    rules.map((r) => r.unlockedByTaskId).filter((id): id is string => Boolean(id)),
+  );
+  const grantModuleKeys = [
+    ...new Set(
+      rules
+        .map((r) => r.unlockedByGrantModuleKey)
+        .filter((key): key is PermissionModuleKey => Boolean(key)),
+    ),
+  ];
+  // moduleKey -> the tasks that grant it. Kept per module (not flattened
+  // into one pool) because each rule has to be matched against *its own*
+  // module's granting tasks — a hold of a `budget` task must not satisfy
+  // a rule that names `kitchen`.
+  const grantTaskIdsByModule = new Map<PermissionModuleKey, string[]>();
+  for (const moduleKey of grantModuleKeys) {
+    const grantingTaskIds = await listGrantingTaskIds(actor.communityId, moduleKey);
+    grantTaskIdsByModule.set(moduleKey, grantingTaskIds);
+    for (const id of grantingTaskIds) interestingTaskIds.add(id);
+  }
+
+  const heldTaskIds = new Set<string>();
+  if (interestingTaskIds.size > 0) {
     const holdings = await db
       .select({ taskId: taskAssignment.taskId })
       .from(taskAssignment)
@@ -174,10 +212,10 @@ export async function listUnlockedFields(actor: Member): Promise<SensitiveFieldK
         and(
           eq(taskAssignment.memberId, actor.id),
           eq(taskAssignment.isShadow, false),
-          inArray(taskAssignment.taskId, taskIds),
+          inArray(taskAssignment.taskId, [...interestingTaskIds]),
         ),
       );
-    heldTaskIds = new Set(holdings.map((h) => h.taskId));
+    for (const holding of holdings) heldTaskIds.add(holding.taskId);
   }
 
   const unlocked = new Set<SensitiveFieldKey>();
@@ -187,6 +225,12 @@ export async function listUnlockedFields(actor: Member): Promise<SensitiveFieldK
     }
     if (rule.unlockedByTaskId && heldTaskIds.has(rule.unlockedByTaskId)) {
       unlocked.add(rule.fieldKey);
+    }
+    if (rule.unlockedByGrantModuleKey) {
+      const grantingTaskIds = grantTaskIdsByModule.get(rule.unlockedByGrantModuleKey) ?? [];
+      if (grantingTaskIds.some((id) => heldTaskIds.has(id))) {
+        unlocked.add(rule.fieldKey);
+      }
     }
   }
   return SENSITIVE_FIELD_KEYS.filter((k) => unlocked.has(k));

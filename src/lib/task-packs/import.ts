@@ -372,7 +372,9 @@ export async function commitPackImport(actor: Member, input: CommitPackImportInp
       // its source (export) or the file shape's own validation — re-
       // granted below via the shared copy helper alongside every other
       // imported task's, not here one-by-one.
-      const grantModuleKeys = item.grantModuleKeys as PermissionModuleKey[];
+      const grantModuleKeys = (item.grantModuleKeys as PermissionModuleKey[]).filter(
+        (moduleKey) => moduleKey !== "budget",
+      );
       if (grantModuleKeys.length > 0) {
         grantModuleKeysByTask.set(newTask.id, grantModuleKeys);
       }

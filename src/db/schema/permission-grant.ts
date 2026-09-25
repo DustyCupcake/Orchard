@@ -34,6 +34,8 @@ export const permissionGrantModuleEnum = pgEnum("permission_grant_module", [
   "support",
   "backstop",
   "shift_management",
+  "budget",
+  "kitchen",
 ]);
 
 // A plain new table, not a Community column — no circular-import

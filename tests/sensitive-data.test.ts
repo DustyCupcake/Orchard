@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, member, task } from "@/db/schema";
+import { community, cycle, member, task, taskAssignment } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { createTier, updateCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
@@ -15,7 +15,7 @@ import {
 } from "@/lib/sensitive-data";
 import { AppError, NotFoundError } from "@/lib/errors";
 import { createConsentPurpose, grantConsent, withdrawConsent } from "@/lib/consent";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertTask(communityId: string, branchId: string, createdBy: string) {
   const [row] = await db
@@ -284,5 +284,125 @@ describe("Phase 46: consent gating of sensitive fields", () => {
 
     const afterWithdraw = await getSensitiveDataTable(refetchedAlice);
     expect(afterWithdraw.rows.find((r) => r.id === bob.id)?.values.allergies).toBeNull();
+  });
+});
+
+// The third unlock route (docs/food-drinks-module-plan.md's D3): a field
+// can be unlocked by "whoever currently holds ANY task granting module
+// X" rather than one named task or tier. Kitchen's allergies link rides
+// it. Deliberately community-wide — a sensitive field is one community
+// record, so the rule names the module and the granting task's own
+// placement (its cycle) does NOT narrow the unlock.
+describe("unlocking via a permission-grant module", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("rejects a rule that mixes the grant-module route with a task or a tier", async () => {
+    const { alice, branch } = await createFixtures();
+    const t = await insertTask(alice.communityId, branch.id, alice.id);
+    await expect(
+      createSensitiveFieldAccessRule(alice, {
+        fieldKey: "allergies",
+        unlockedByGrantModuleKey: "kitchen",
+        unlockedByTaskId: t.id,
+      }),
+    ).rejects.toThrow(AppError);
+
+    const tierRow = await createTier(alice, { name: "Kitchen" });
+    await expect(
+      createSensitiveFieldAccessRule(alice, {
+        fieldKey: "allergies",
+        unlockedByGrantModuleKey: "kitchen",
+        unlockedByTierId: tierRow.id,
+      }),
+    ).rejects.toThrow(AppError);
+  });
+
+  it("unlocks for the holder of a task granting that module, and only for them", async () => {
+    const { alice, bob, branch } = await createFixtures();
+    const grantTask = await insertTask(alice.communityId, branch.id, alice.id);
+    await grantPermission(alice.communityId, "kitchen", grantTask.id);
+    await claimTask(alice, grantTask.id);
+    await createSensitiveFieldAccessRule(alice, {
+      fieldKey: "allergies",
+      unlockedByGrantModuleKey: "kitchen",
+    });
+
+    const refetchedAlice = (await db.select().from(member).where(eq(member.id, alice.id)))[0];
+    expect(await listUnlockedFields(refetchedAlice)).toEqual(["allergies"]);
+    // Bob holds nothing, and a grant nobody holds unlocks nobody.
+    expect(await listUnlockedFields(bob)).toEqual([]);
+  });
+
+  it("is community-wide: a grant placed in a cycle still unlocks, ignoring the task's placement", async () => {
+    const { alice, branch } = await createFixtures();
+    const [scopeCycle] = await db
+      .insert(cycle)
+      .values({ communityId: alice.communityId, name: "Spring" })
+      .returning();
+    const [cycleGrantTask] = await db
+      .insert(task)
+      .values({
+        communityId: alice.communityId,
+        branchId: branch.id,
+        cycleId: scopeCycle.id,
+        title: "Kitchen for Spring",
+        effort: "owns_a_thing",
+        effortMagnitude: { hours_per_week: 2 },
+        createdBy: alice.id,
+      })
+      .returning();
+    await grantPermission(alice.communityId, "kitchen", cycleGrantTask.id);
+    await claimTask(alice, cycleGrantTask.id);
+    await createSensitiveFieldAccessRule(alice, {
+      fieldKey: "allergies",
+      unlockedByGrantModuleKey: "kitchen",
+    });
+
+    // A cycle-placed grant does not make this a cycle-scoped unlock —
+    // compare the task route, which IS scoped to that one task.
+    const refetchedAlice = (await db.select().from(member).where(eq(member.id, alice.id)))[0];
+    expect(await listUnlockedFields(refetchedAlice)).toEqual(["allergies"]);
+  });
+
+  it("unlocks via whichever of several granting tasks the member holds, and a shadow claim doesn't count", async () => {
+    const { alice, bob, branch } = await createFixtures();
+    // kitchen is multi-cardinality, so the community may grant it on
+    // several tasks; each holder gets the same unlock.
+    const first = await insertTask(alice.communityId, branch.id, alice.id);
+    const [second] = await db
+      .insert(task)
+      .values({
+        communityId: alice.communityId,
+        branchId: branch.id,
+        title: "Weeknight cook",
+        effort: "owns_a_thing",
+        effortMagnitude: { hours_per_week: 2 },
+        createdBy: alice.id,
+      })
+      .returning();
+    await grantPermission(alice.communityId, "kitchen", first.id);
+    await grantPermission(alice.communityId, "kitchen", second.id);
+    await claimTask(bob, second.id);
+    await createSensitiveFieldAccessRule(alice, {
+      fieldKey: "allergies",
+      unlockedByGrantModuleKey: "kitchen",
+    });
+
+    // Bob holds the *second* grant — the rule is about the module, not
+    // the first task named in any list.
+    expect(await listUnlockedFields(bob)).toEqual(["allergies"]);
+
+    // A shadow of a granting task is not a real hold (same rule as the
+    // task route: the resolver only counts non-shadow assignments).
+    const [shadowBob] = await db
+      .insert(member)
+      .values({ communityId: alice.communityId, name: "Shadow Bob" })
+      .returning();
+    await db
+      .insert(taskAssignment)
+      .values({ taskId: first.id, memberId: shadowBob.id, isShadow: true });
+    expect(await listUnlockedFields(shadowBob)).toEqual([]);
   });
 });

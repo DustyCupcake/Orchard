@@ -188,6 +188,21 @@ describe("activating a proposal", () => {
     expect(await listGrantingTaskIds(testCommunity.id, "recruitment")).toEqual([created.id]);
   });
 
+  it("never configures Budget authority through proposal activation", async () => {
+    const { branch, alice, bob, community: testCommunity } = await createFixtures();
+    const proposal = await createProposal(bob, { title: "Fix the gate latch" });
+
+    const { task: created } = await activateProposal(alice, proposal.id, {
+      branchId: branch.id,
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+      grantModuleKeys: ["budget"],
+    });
+
+    expect(created.id).toBeTruthy();
+    expect(await listGrantingTaskIds(testCommunity.id, "budget")).toEqual([]);
+  });
+
   it("silently skips grantModuleKeys for a non-Admin activator, without blocking activation itself", async () => {
     const { branch, alice, bob, community: testCommunity } = await createFixtures();
     const [adminsTask] = await db

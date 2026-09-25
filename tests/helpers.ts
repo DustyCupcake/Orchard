@@ -2,7 +2,12 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { branch, community, member, task } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { setPermissionGrant, addPermissionGrant, type PermissionModuleKey } from "@/lib/permissions";
+import {
+  addPermissionGrant,
+  allowsMultipleGrants,
+  setPermissionGrant,
+  type PermissionModuleKey,
+} from "@/lib/permissions";
 import { claimTask } from "@/lib/tasks";
 
 type FixtureMember = typeof memberTable.$inferSelect;
@@ -11,13 +16,15 @@ type FixtureMember = typeof memberTable.$inferSelect;
 // now (docs/development-plan.md's Phase 63) — this is the direct-DB
 // equivalent of what used to be `db.update(community).set({
 // conflictTeamTaskId: t.id })` or `.set({ adminsTag: "x" })` plus
-// tagging a task with that string. addPermissionGrant works fine even
-// for the six single-cardinality modules in ordinary test setup (one
-// grant per module is the common case); use setPermissionGrant
-// directly from "@/lib/permissions" instead if a test genuinely needs
-// to replace an existing single grant.
+// tagging a task with that string. Route through the domain function for
+// the module's cardinality so fixtures cannot create duplicates that the
+// real Settings action would reject.
 export async function grantPermission(communityId: string, moduleKey: PermissionModuleKey, taskId: string) {
-  await addPermissionGrant(communityId, moduleKey, taskId);
+  if (allowsMultipleGrants(moduleKey)) {
+    await addPermissionGrant(communityId, moduleKey, taskId);
+  } else {
+    await setPermissionGrant(communityId, moduleKey, taskId);
+  }
 }
 
 // Makes `member` the current shift_management holder for a scope —
@@ -78,4 +85,25 @@ export async function createFixtures() {
     .returning();
 
   return { community: testCommunity, branch: testBranch, alice, bob };
+}
+
+export async function insertTask(
+  communityId: string,
+  branchId: string,
+  createdBy: string,
+  overrides: Partial<typeof task.$inferInsert> = {},
+) {
+  const [row] = await db
+    .insert(task)
+    .values({
+      communityId,
+      branchId,
+      title: "A task",
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+      createdBy,
+      ...overrides,
+    })
+    .returning();
+  return row;
 }

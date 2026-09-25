@@ -1,7 +1,7 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { budgetCycle, budgetVote, member, task, taskAssignment } from "@/db/schema";
+import { budgetCycle, budgetVote, member, permissionGrant, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import {
@@ -18,31 +18,34 @@ import { listBudgetProposals } from "./proposals";
 type Member = typeof memberTable.$inferSelect;
 type BudgetCycleRow = typeof budgetCycle.$inferSelect;
 
-// "Whoever holds this task is the budget owner" — the same access-
-// follows-the-task check Forms' isFeedbackReviewHolder already
-// established, baked into the lib functions below rather than gated by
-// the caller (unlike createBudgetCycle's requireAdmins, which lives at
-// the Server Action/API layer — this authority is well-defined once a
-// cycle exists, the way conflictTeamTaskId/feedbackReviewTaskId's is).
-// Excludes shadow slots, same reasoning forms.ts's own check uses.
-export async function isBudgetOwner(actor: Member, cycleRow: Pick<BudgetCycleRow, "ownerTaskId">) {
+// Whoever currently holds a `budget` PermissionGrant task whose own
+// placement matches this BudgetCycle's scope is its owner. The task's
+// `cycleId` is the authority's only scope read: a Cycle-placed grant
+// owns that Cycle's budget, while a cycle-less grant owns budgets whose
+// `cycleId` is also null. Excludes shadow slots, matching the other
+// task-is-the-authority checks throughout the app.
+export async function isBudgetOwner(actor: Member, cycleRow: Pick<BudgetCycleRow, "cycleId">) {
   const [holding] = await db
-    .select({ id: task.id })
-    .from(task)
+    .select({ id: permissionGrant.id })
+    .from(permissionGrant)
+    .innerJoin(task, eq(task.id, permissionGrant.taskId))
     .innerJoin(taskAssignment, eq(taskAssignment.taskId, task.id))
     .where(
       and(
-        eq(task.id, cycleRow.ownerTaskId),
+        eq(permissionGrant.communityId, actor.communityId),
+        eq(permissionGrant.moduleKey, "budget"),
+        eq(task.communityId, actor.communityId),
         eq(taskAssignment.memberId, actor.id),
         eq(taskAssignment.isShadow, false),
+        cycleRow.cycleId === null ? isNull(task.cycleId) : eq(task.cycleId, cycleRow.cycleId),
       ),
     );
   return Boolean(holding);
 }
 
-async function requireBudgetOwner(actor: Member, cycleRow: Pick<BudgetCycleRow, "ownerTaskId">) {
+async function requireBudgetOwner(actor: Member, cycleRow: Pick<BudgetCycleRow, "cycleId">) {
   if (!(await isBudgetOwner(actor, cycleRow))) {
-    throw new ForbiddenError("Only the current budget-owner task holder can do this");
+    throw new ForbiddenError("Only the current Budget owner can do this");
   }
 }
 

@@ -117,7 +117,7 @@ export async function exportTaskPackToFile(actor: Member, packId: string): Promi
       wikiSummarySeed: i.wikiSummarySeed,
       resources: i.resources as PackFile["items"][number]["resources"],
       milestones: i.milestones as PackFile["items"][number]["milestones"],
-      grantModuleKeys: i.grantModuleKeys,
+      grantModuleKeys: i.grantModuleKeys.filter((moduleKey) => moduleKey !== "budget"),
     })),
   };
 }

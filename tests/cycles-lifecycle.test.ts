@@ -6,6 +6,7 @@ import { closeCycle, createCycle } from "@/lib/cycles";
 import { createBudgetCycle, markBudgetCycleDone } from "@/lib/budget";
 import { claimTask } from "@/lib/tasks";
 import { grantPermission, createFixtures, resetDatabase } from "./helpers";
+import { setPermissionGrant } from "@/lib/permissions";
 import { ConfirmationRequiredError, ConflictError, ForbiddenError } from "@/lib/errors";
 
 async function enableCycles(communityId: string) {
@@ -81,13 +82,13 @@ describe("closeCycle", () => {
     await db.update(community).set({ modulesEnabled: ["budget"] }).where(eq(community.id, testCommunity.id));
     const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
 
-    const ownerTask = await insertTask(testCommunity.id, branch.id, alice.id);
+    const ownerTask = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cyc.id });
+    await setPermissionGrant(testCommunity.id, "budget", ownerTask.id);
     await claimTask(alice, ownerTask.id);
     const budgetCycleRow = await createBudgetCycle(alice, {
       title: "Season budget",
       cycleId: cyc.id,
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
 
     await expect(closeCycle(alice, cyc.id)).rejects.toThrow(ConfirmationRequiredError);
@@ -101,13 +102,13 @@ describe("closeCycle", () => {
     await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, budgetCycleRow.id));
     await markBudgetCycleDone(alice, budgetCycleRow.id);
     const cyc2 = await createCycle(alice, { source: "blank", name: "2028 Season" });
-    const ownerTask2 = await insertTask(testCommunity.id, branch.id, alice.id);
+    const ownerTask2 = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cyc2.id });
+    await setPermissionGrant(testCommunity.id, "budget", ownerTask2.id);
     await claimTask(alice, ownerTask2.id);
     const budgetCycle2 = await createBudgetCycle(alice, {
       title: "Next season budget",
       cycleId: cyc2.id,
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask2.id,
     });
     await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, budgetCycle2.id));
     await markBudgetCycleDone(alice, budgetCycle2.id);
@@ -124,15 +125,13 @@ describe("closeCycle", () => {
 
     // Budget enabled, but its one active cycle isn't tied to *this*
     // real Cycle (cycleId null, or tied to a different one).
-    const { community: otherCommunity, branch: otherBranch, alice: otherAlice } = await createFixtures();
+    const { community: otherCommunity, alice: otherAlice } = await createFixtures();
     await enableCycles(otherCommunity.id);
     await db.update(community).set({ modulesEnabled: ["budget"] }).where(eq(community.id, otherCommunity.id));
     const otherCycle = await createCycle(otherAlice, { source: "blank", name: "Untied cycle" });
-    const ownerTask = await insertTask(otherCommunity.id, otherBranch.id, otherAlice.id);
     await createBudgetCycle(otherAlice, {
       title: "Untied budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
 
     await expect(closeCycle(otherAlice, otherCycle.id)).resolves.toMatchObject({ closedAt: expect.any(Date) });

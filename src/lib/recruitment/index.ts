@@ -4,6 +4,7 @@ export * from "./inquiries";
 export * from "./evaluations";
 export * from "./applications";
 export * from "./joining";
+export * from "./joining-lanes";
 export * from "./subscriptions";
 export * from "./decisions";
 export * from "./objections";

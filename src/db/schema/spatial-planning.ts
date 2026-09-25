@@ -133,7 +133,7 @@ export const placement = pgTable("placement", {
   category: placementCategoryEnum("category").notNull(),
   // A fresh schema file — task.ts has no reason to ever import
   // spatial-planning.ts back, so this gets a real FK, the same
-  // reasoning Budget's ownerTaskId and Event scheduling's cycleId
+  // reasoning the Budget module and Event scheduling's cycleId
   // already relied on, unlike Community's own non-FK task pointers
   // (community.ts genuinely does get imported back by task.ts's
   // siblings). Null = no linked Task — an individual member's own tent,

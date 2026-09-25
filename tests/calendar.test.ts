@@ -13,6 +13,7 @@ import { createBudgetCycle } from "@/lib/budget";
 import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
 import { updateCommunity } from "@/lib/settings";
 import { getCalendarView } from "@/lib/calendar";
+import { setPermissionGrant } from "@/lib/permissions";
 import { createFixtures, grantPermission, grantShiftManagementTo, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string) {
@@ -271,11 +272,11 @@ describe("getCalendarView", () => {
         createdBy: alice.id,
       })
       .returning();
+    await setPermissionGrant(alice.communityId, "budget", ownerTask.id);
     await claimTask(alice, ownerTask.id);
     await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: slot(48),
-      ownerTaskId: ownerTask.id,
     });
 
     const view = await getCalendarView(alice);

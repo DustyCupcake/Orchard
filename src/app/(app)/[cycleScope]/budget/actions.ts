@@ -59,8 +59,9 @@ function redirectWithError(cycleScope: string, err: unknown): never {
 }
 
 // Admin-gated — see src/app/api/budget-cycles/route.ts's POST for the
-// same reasoning (entering fixed costs/a deadline/the owner task is a
-// real configuration decision, not an open one).
+// same reasoning (entering fixed costs and a deadline is a real
+// configuration decision, not an open one). Budget authority itself is
+// configured only under Settings → Access & permissions.
 
 // Phase 54 (View-as): every write in this file goes through
 // requireMember() below rather than the raw @/lib/api import
@@ -91,7 +92,6 @@ export async function createBudgetCycleAction(formData: FormData) {
       cycleId,
       fixedCosts: parseLineItemsJson(String(formData.get("fixedCostsJson") ?? "")),
       proposalDeadline: deadlineRaw ? new Date(deadlineRaw).toISOString() : "",
-      ownerTaskId: String(formData.get("ownerTaskId") ?? "").trim(),
     });
     await createBudgetCycle(actor, input);
   } catch (err) {

@@ -15,6 +15,7 @@ import { requireModuleEnabled } from "../modules";
 import { getForm, submitPublicFormResponse } from "../forms";
 import { computeRecruitmentOutcome } from "./evaluations";
 import { getCycleJoiningState, type CycleJoiningState } from "./joining";
+import { getInviteRedemptionKind } from "./joining-lanes";
 import { getCommunityRow, isRecruitmentTaskHolder, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
 import { computeWiderDiscussionStatus, getRecruitmentDecision } from "./decisions";
 import { listObjections } from "./objections";
@@ -87,9 +88,12 @@ export async function submitRecruitmentApplication(
   // Which door does this submission knock on (§4.3/8c)? A cycle-targeted
   // application gates on the cycle's own joining state (period + door +
   // capacity room); the general application gates on the community-wide
-  // door toggle. A cycle-scoped *referral* invite defines the target
-  // cycle itself — its token is the vouch, routing the application
-  // onto that cycle's pipeline (§4.3/8d).
+  // door toggle. An invite's *lane* — fixed at creation by the
+  // inviter's marks, docs/joining-admission-plan.md §2 — decides whether
+  // its token belongs here at all: a direct lane redeems on
+  // /invite/[token] and is rejected on /apply; every process lane routes
+  // through this funnel (the token is the vouch, tagging the
+  // application with the invite's cycle — §4.3/8d).
   let targetCycleId = input.cycleId ?? null;
   if (invite?.cycleId) {
     if (input.cycleId && input.cycleId !== invite.cycleId) {
@@ -97,13 +101,15 @@ export async function submitRecruitmentApplication(
     }
     targetCycleId = invite.cycleId;
   }
-  const joining = targetCycleId ? await getCycleJoiningState(communityId, targetCycleId) : null;
-  if (joining) {
-    if (invite?.cycleId && joining.cycle.joiningInviteMode === "direct") {
-      // A direct invite skips the funnel entirely — it redeems on
+  if (invite) {
+    if ((await getInviteRedemptionKind(communityId, invite)) === "direct") {
+      // A direct-lane invite skips the funnel entirely — it redeems on
       // /invite/[token], not through the evaluated application.
       throw new AppError("This invite redeems directly — open its join link instead of applying");
     }
+  }
+  const joining = targetCycleId ? await getCycleJoiningState(communityId, targetCycleId) : null;
+  if (joining) {
     if (joining.atCapacity) {
       throw new AppError("This cycle is full — no capacity left for new applications");
     }

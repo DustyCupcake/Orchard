@@ -1,9 +1,28 @@
-import { and, arrayContains, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, arrayContains, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/db";
-import { branch, member, phase, requirement, task, taskAssignment, taskDependency, taskMilestone } from "@/db/schema";
+import { db, type Tx } from "@/db";
+import {
+  branch,
+  cycle,
+  member,
+  permissionGrant,
+  phase,
+  requirement,
+  task,
+  taskAssignment,
+  taskDependency,
+  taskMilestone,
+} from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import {
+  allowsMultipleGrants,
+  lockPermissionGrantTask,
+  lockSingleCardinalityGrantScopes,
+  PERMISSION_MODULE_LABELS,
+  PermissionModuleKey,
+  SingleCardinalityGrantScope,
+} from "../permissions";
 import { computeRequirementFitScore, getGroupCoverageStatus, getUnmetRequirements } from "./requirements";
 import { getTaskDeadline } from "./milestones";
 
@@ -55,6 +74,98 @@ function requireEndorsementFields(openness: string, browsePeriodEnd: Date | null
   }
 }
 
+// Helper: validate that a cycleId (if provided) belongs to the actor's community.
+// Returns the cycle row when cycleId is non-null, otherwise returns null.
+async function validateCycleBelongsToCommunity(
+  actor: Member,
+  cycleId: string | null | undefined,
+): Promise<{ id: string } | null> {
+  if (!cycleId) return null;
+  const [cycleRow] = await db
+    .select({ id: cycle.id })
+    .from(cycle)
+    .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, actor.communityId)));
+  if (!cycleRow) {
+    throw new NotFoundError("Cycle not found in your community");
+  }
+  return cycleRow;
+}
+
+// Helper: validate that a phaseId (if provided) belongs to the resulting cycle.
+async function validatePhaseBelongsToCycle(
+  actor: Member,
+  cycleId: string | null,
+  phaseId: string | null | undefined,
+): Promise<void> {
+  if (!phaseId) return;
+  const [phaseRow] = await db
+    .select({ cycleId: phase.cycleId })
+    .from(phase)
+    .where(eq(phase.id, phaseId));
+  if (!phaseRow) {
+    throw new NotFoundError("Phase not found");
+  }
+  if (phaseRow.cycleId !== cycleId) {
+    throw new AppError("Phase does not belong to the task's cycle");
+  }
+}
+
+// Helper: check if a task carries any single-cardinality permission grants.
+async function getSingleCardinalityGrantScopesForTask(
+  communityId: string,
+  taskId: string,
+): Promise<readonly SingleCardinalityGrantScope[]> {
+  const rows = await db
+    .select({
+      moduleKey: permissionGrant.moduleKey,
+      taskId: permissionGrant.taskId,
+    })
+    .from(permissionGrant)
+    .where(
+      and(
+        eq(permissionGrant.communityId, communityId),
+        eq(permissionGrant.taskId, taskId),
+      ),
+    );
+  return rows
+    .filter((r) => !allowsMultipleGrants(r.moduleKey))
+    .map((r) => ({
+      communityId,
+      moduleKey: r.moduleKey as PermissionModuleKey,
+      cycleId: null as string | null, // placeholder; filled by caller with task's actual cycleId
+    }));
+}
+
+// Helper: check if any single-cardinality grant scope is already occupied in the destination.
+async function checkDestinationScopeCollision(
+  tx: Tx,
+  communityId: string,
+  destinationCycleId: string | null,
+  moduleKeys: PermissionModuleKey[],
+  excludeTaskId: string,
+): Promise<void> {
+  for (const moduleKey of moduleKeys) {
+    const [existing] = await tx
+      .select({ taskId: permissionGrant.taskId })
+      .from(permissionGrant)
+      .innerJoin(task, eq(task.id, permissionGrant.taskId))
+      .where(
+        and(
+          eq(permissionGrant.communityId, communityId),
+          eq(permissionGrant.moduleKey, moduleKey),
+          destinationCycleId === null ? isNull(task.cycleId) : eq(task.cycleId, destinationCycleId),
+          ne(task.id, excludeTaskId),
+        ),
+      )
+      .limit(1);
+    if (existing) {
+      throw new ConflictError(
+        `Cannot move task: scope ${destinationCycleId ? `cycle ${destinationCycleId}` : "community"} already has a ${PERMISSION_MODULE_LABELS[moduleKey]} grant`,
+      );
+    }
+  }
+}
+
 // createdByMemberId defaults to the actor — the one exception is
 // activating a proposal, where the task should credit whoever originally
 // proposed it, not whoever happened to activate it (see
@@ -71,6 +182,9 @@ export async function createTask(
   if (!branchRow) {
     throw new NotFoundError("Branch not found in your community");
   }
+
+  await validateCycleBelongsToCommunity(actor, input.cycleId);
+  await validatePhaseBelongsToCycle(actor, input.cycleId ?? null, input.phaseId);
 
   const openness = input.openness ?? "request";
   const browsePeriodEnd = input.browsePeriodEnd ? new Date(input.browsePeriodEnd) : null;
@@ -325,7 +439,8 @@ export async function updateTask(actor: Member, taskId: string, input: UpdateTas
   // cycle's phases), but this guard lives here so the invariant holds
   // for every updater, REST PATCH included. When the cycle changes: an
   // unnamed phase is dropped, and a named phase that isn't in the new
-  // cycle is dropped too.
+  // cycle is dropped too. This runs BEFORE validation so the resulting
+  // phase is used for validation.
   if (input.cycleId !== undefined && input.cycleId !== existing.cycleId) {
     if (input.phaseId === undefined) {
       input.phaseId = null;
@@ -337,6 +452,13 @@ export async function updateTask(actor: Member, taskId: string, input: UpdateTas
       if (!phaseRow || phaseRow.phaseCycleId !== input.cycleId) input.phaseId = null;
     }
   }
+
+  const resultingCycleId = input.cycleId !== undefined ? input.cycleId : existing.cycleId;
+  const resultingPhaseId = input.phaseId !== undefined ? input.phaseId : existing.phaseId;
+
+  // Validate destination cycle and phase
+  await validateCycleBelongsToCommunity(actor, resultingCycleId);
+  await validatePhaseBelongsToCycle(actor, resultingCycleId, resultingPhaseId);
 
   const resultingOpenness = input.openness ?? existing.openness;
   const resultingBrowsePeriodEnd =
@@ -350,6 +472,39 @@ export async function updateTask(actor: Member, taskId: string, input: UpdateTas
       ? input.endorsementThreshold
       : existing.endorsementThreshold;
   requireEndorsementFields(resultingOpenness, resultingBrowsePeriodEnd, resultingThreshold);
+
+  // If the task's cycle is changing and it carries single-cardinality grants,
+  // require Admin authorization and check for destination collisions.
+  const cycleIsChanging = input.cycleId !== undefined && input.cycleId !== existing.cycleId;
+  if (cycleIsChanging) {
+    const grantScopes = await getSingleCardinalityGrantScopesForTask(actor.communityId, taskId);
+    if (grantScopes.length > 0) {
+      // Require Admin to move a task that carries authority
+      await db.transaction(async (tx) => {
+        // Acquire locks on the task and affected scopes in deterministic order
+        await lockPermissionGrantTask(tx, taskId);
+        await lockSingleCardinalityGrantScopes(
+          tx,
+          grantScopes.map((s) => ({ ...s, cycleId: existing.cycleId })).concat(
+            grantScopes.map((s) => ({ ...s, cycleId: resultingCycleId })),
+          ),
+        );
+
+        // Re-check grants under lock
+        const currentGrants = await getSingleCardinalityGrantScopesForTask(actor.communityId, taskId);
+        const moduleKeys = currentGrants.map((s) => s.moduleKey);
+
+        // Check for collisions in the destination scope
+        await checkDestinationScopeCollision(
+          tx,
+          actor.communityId,
+          resultingCycleId,
+          moduleKeys,
+          taskId,
+        );
+      });
+    }
+  }
 
   const [updated] = await db
     .update(task)

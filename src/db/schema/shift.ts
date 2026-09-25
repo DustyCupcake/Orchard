@@ -45,8 +45,8 @@ export const shiftSeries = pgTable("shift_series", {
   // Real FK, not the non-FK pointer pattern Community's own task
   // pointers need — shift.ts is a fresh schema file task.ts has no
   // reason to ever import back, same reasoning Phase 22's
-  // SensitiveFieldAccessRule and Phase 26's BudgetCycle.ownerTaskId
-  // already relied on. Null = created directly, no originating task.
+  // SensitiveFieldAccessRule and the Budget module already relied on. Null
+  // = created directly, no originating task.
   sourceTaskId: uuid("source_task_id").references(() => task.id),
   createdBy: uuid("created_by")
     .notNull()

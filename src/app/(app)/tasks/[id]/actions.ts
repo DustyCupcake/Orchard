@@ -64,9 +64,9 @@ import {
   addPermissionGrant,
   allowsMultipleGrants,
   listModuleKeysGrantedByTask,
-  PERMISSION_MODULE_KEYS,
   removePermissionGrant,
   setPermissionGrant,
+  TASK_GRANTABLE_PERMISSION_MODULE_KEYS,
 } from "@/lib/permissions";
 import { AppError } from "@/lib/errors";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
@@ -764,13 +764,12 @@ export async function removeDependencyAction(formData: FormData) {
   revalidatePath(`/tasks/${taskId}`);
 }
 
-// The task-side entry point onto the exact same PermissionGrant rows
-// the settings panel's Access & permissions tab edits
-// (docs/development-plan.md's Phase 64) — one code path
-// (setPermissionGrant/addPermissionGrant/removePermissionGrant), two
-// entry points, never two sources of truth. Admin-gated here too
-// (requireAdmins), a genuinely stricter check than the rest of this
-// file's own actions — the page only renders these checkboxes for an
+// The task-side entry point onto the PermissionGrant rows the settings
+// panel's Access & permissions tab edits (docs/development-plan.md's
+// Phase 64). One underlying code path, with Budget deliberately absent:
+// its only configuration surface is Settings → Access & permissions.
+// Admin-gated here too (requireAdmins), a genuinely stricter check than
+// the rest of this file's own actions — the page only renders these checkboxes for an
 // Admin in the first place, but this re-checks server-side regardless,
 // since a forged POST could otherwise reach this code path without
 // ever seeing the UI. Diffs against a fresh DB read of what this task
@@ -789,7 +788,7 @@ export async function updateTaskPermissionGrantsAction(formData: FormData) {
   try {
     await requireAdmins(actor);
     const currentModuleKeys = await listModuleKeysGrantedByTask(actor.communityId, taskId);
-    for (const moduleKey of PERMISSION_MODULE_KEYS) {
+    for (const moduleKey of TASK_GRANTABLE_PERMISSION_MODULE_KEYS) {
       const selected = selectedModuleKeys.has(moduleKey);
       const current = currentModuleKeys.has(moduleKey);
       if (selected && !current) {

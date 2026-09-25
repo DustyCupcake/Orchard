@@ -2,12 +2,13 @@ import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { member, task } from "@/db/schema";
+import { member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity, listBranches, requireAdmins } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import {
   getBudgetCycleAttendeeCount,
+  getBudgetCycleForScope,
   getBudgetVotingView,
   getCurrentBudgetCycle,
   isBudgetOwner,
@@ -147,16 +148,13 @@ export default async function BudgetPage({
     if (!(err instanceof ForbiddenError)) throw err;
   }
 
-  // Resolved purely to (a) prompt when the aggregate scope genuinely
-  // covers 2+ open cycles, and (b) tie a *newly created* BudgetCycle to
-  // the real Cycle being viewed. The BudgetCycle actually displayed
-  // below still reads via the existing community-wide
-  // getCurrentBudgetCycle, completely unchanged — this phase doesn't
-  // touch createBudgetCycle's own "one active cycle at a time"
-  // constraint, so full per-real-Cycle Budget concurrency isn't
-  // guaranteed yet. With 0 or 1 open real Cycles (Cycles off entirely,
-  // or just one running — by far the common case) this resolves
-  // exactly as Budget has always behaved.
+  // Resolve the URL's exact view scope. A concrete Cycle id is looked up
+  // in the actor's Community by resolveSingleCycleScope; the aggregate
+  // "active" segment resolves to its one candidate or falls back to the
+  // evergreen (cycle-less) Budget when there is no active Cycle. The
+  // displayed Budget is always selected by that exact scope — never by
+  // the Community's most recently-created row. The latter is retained
+  // only for the one-active-Budget creation check below.
   const resolution = moduleOn ? await resolveSingleCycleScope(viewing, cycleScope) : ({ kind: "none" } as const);
 
   if (moduleOn && resolution.kind === "ambiguous") {
@@ -176,8 +174,17 @@ export default async function BudgetPage({
   }
   const resolvedCycleId = resolution.kind === "resolved" ? resolution.cycle.id : null;
 
-  const currentCycle = moduleOn ? await getCurrentBudgetCycle(viewing) : null;
-  const canStartNewCycle = moduleOn && (!currentCycle || currentCycle.status === "confirmed");
+  // The page's object is scope-derived. Keep the community-current row
+  // separate: createBudgetCycle still has a deliberate one-active-Budget
+  // invariant, and that check must not be weakened just because the page
+  // is displaying a different Cycle's historical Budget.
+  const [currentCycle, communityCurrentCycle] = moduleOn
+    ? await Promise.all([
+        getBudgetCycleForScope(viewing, resolvedCycleId),
+        getCurrentBudgetCycle(viewing),
+      ])
+    : [null, null];
+  const canStartNewCycle = moduleOn && (!communityCurrentCycle || communityCurrentCycle.status === "confirmed");
   const isOwner = currentCycle ? await isBudgetOwner(viewing, currentCycle) : false;
 
   const [branches, proposals, votingView, attendeeCount] = await Promise.all([
@@ -191,14 +198,6 @@ export default async function BudgetPage({
     currentCycle ? getBudgetCycleAttendeeCount(viewing, currentCycle) : Promise.resolve(null),
   ]);
   const branchNameById = new Map(branches.map((b) => [b.id, b.name] as const));
-
-  const ownerTask = currentCycle
-    ? await db
-        .select({ id: task.id, title: task.title })
-        .from(task)
-        .where(eq(task.id, currentCycle.ownerTaskId))
-        .then((r) => r[0])
-    : null;
 
   const memberNameById = currentCycle
     ? new Map(
@@ -298,8 +297,7 @@ export default async function BudgetPage({
               <p className="mt-1 text-[13px] text-[var(--text-muted)]">
                 Proposal deadline {new Date(currentCycle.proposalDeadline).toLocaleString()}
                 <br />
-                Owner task: {ownerTask ? `"${ownerTask.title}"` : "—"} — whoever holds it is the
-                budget owner.
+                Budget authority is configured separately under Settings → Access &amp; permissions.
               </p>
 
               {isOwner && currentCycle.status === "proposals_open" && (
@@ -521,23 +519,9 @@ export default async function BudgetPage({
                   <span className={LABEL}>Proposal deadline</span>
                   <input type="datetime-local" name="proposalDeadline" required className={`${INPUT} w-fit`} />
                 </label>
-                <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Owner task ID</span>
-                  <input
-                    type="text"
-                    name="ownerTaskId"
-                    required
-                    defaultValue={currentCycle?.ownerTaskId ?? ""}
-                    placeholder="paste the task's ID from its /tasks/… URL"
-                    className={INPUT}
-                  />
-                  <span className="text-[12px] text-[var(--text-muted)]">
-                    Whoever holds this task is the budget owner.
-                    {ownerTask && (
-                      <> Pre-filled from the last cycle&rsquo;s owner task (&ldquo;{ownerTask.title}&rdquo;) — change it if that&rsquo;s not right this time.</>
-                    )}
-                  </span>
-                </label>
+                <p className="text-[12px] text-[var(--text-muted)]">
+                  Designate this scope&rsquo;s Budget owner under Settings → Access &amp; permissions.
+                </p>
                 <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                   Start cycle
                 </button>

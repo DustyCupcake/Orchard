@@ -130,7 +130,7 @@ describe("getCycleParticipationSummary", () => {
     expect(summary.remainingCapacity).toBe(-1);
   });
 
-  it("outstanding direct invites hold a capacity slot alongside coming members (§4.3/8d)", async () => {
+  it("outstanding direct-lane invites hold a capacity slot alongside coming members; process-lane ones hold nothing (§4.3/8d)", async () => {
     const { community: testCommunity, alice, bob } = await createFixtures();
     await enableCycles(testCommunity.id);
     const [communityRow] = await db.select().from(community).where(eq(community.id, testCommunity.id));
@@ -142,9 +142,11 @@ describe("getCycleParticipationSummary", () => {
     await updateCycleSettings(alice, cyc.id, { capacity: 3 });
 
     await declareParticipation(bob, cyc.id, { status: "coming" });
-    // A direct invite into a capacity-capped cycle needs a future expiry.
+    // A direct-lane invite into a capacity-capped cycle needs a future
+    // expiry — and it holds a slot until redeemed, revoked, or expired.
     await createCommunityInvite(alice, {
       cycleId: cyc.id,
+      inviterKnowsPersonally: true,
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
     });
 
@@ -153,13 +155,18 @@ describe("getCycleParticipationSummary", () => {
     expect(summary.holds).toBe(1);
     expect(summary.remainingCapacity).toBe(1);
 
-    // The same invites hold nothing once the cycle's mode is referral —
-    // an invite's meaning follows the cycle, never moved when the
-    // invites themselves were issued.
-    await updateCycleSettings(alice, cyc.id, { joiningInviteMode: "referral" });
-    const referralSummary = await getCycleParticipationSummary(alice, cyc.id);
-    expect(referralSummary.holds).toBe(0);
-    expect(referralSummary.remainingCapacity).toBe(2);
+    // The inviter's marks fix the lane at creation — an unmarked invite
+    // is the invited_neither process lane and holds nothing, never
+    // following what the cycle does afterwards (§2.9).
+    await createCommunityInvite(alice, {
+      cycleId: cyc.id,
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    });
+
+    const afterProcessLaneSummary = await getCycleParticipationSummary(alice, cyc.id);
+    expect(afterProcessLaneSummary.comingCount).toBe(1);
+    expect(afterProcessLaneSummary.holds).toBe(1);
+    expect(afterProcessLaneSummary.remainingCapacity).toBe(1);
   });
 
   it("returning window is open before the close time and closed after, purely time-computed", async () => {

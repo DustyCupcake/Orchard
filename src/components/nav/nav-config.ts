@@ -182,6 +182,13 @@ export const NAV_GROUPS: NavGroup[] = [
         moduleKey: "eventScheduling",
       },
       { key: "shifts", label: "Shifts", href: "/shifts", icon: "clipboardText", moduleKey: "shifts" },
+      {
+        key: "kitchen",
+        label: "Kitchen",
+        href: "/kitchen",
+        icon: "forkknife",
+        moduleKey: "kitchen",
+      },
     ],
   },
 ];

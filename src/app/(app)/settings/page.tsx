@@ -1007,10 +1007,10 @@ export default async function SettingsPage({
             <section>
               <h2 className="text-[18px] font-semibold text-[var(--text)]">Sensitive data access</h2>
               <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-                Purpose-bound, not role-bound: pick which task or tier unlocks each field for <em>other</em>{" "}
-                members&rsquo; values on <code>/sensitive-data</code>. A member can always see and edit their own
-                values regardless of these rules. Only takes effect once &ldquo;Sensitive data&rdquo; is checked
-                under the Modules tab.
+                Purpose-bound, not role-bound: pick which task, tier, or permission grant unlocks each field for{" "}
+                <em>other</em> members&rsquo; values on <code>/sensitive-data</code>. A member can always see and
+                edit their own values regardless of these rules. Only takes effect once &ldquo;Sensitive
+                data&rdquo; is checked under the Modules tab.
               </p>
               {sensitiveFieldRules.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">No rules yet.</p>}
               <div className="mt-3 flex flex-col gap-2">
@@ -1020,7 +1020,9 @@ export default async function SettingsPage({
                       {SENSITIVE_FIELD_LABELS[r.fieldKey]} — unlocked by{" "}
                       {r.unlockedByTaskId
                         ? `holding "${ruleTaskNameById.get(r.unlockedByTaskId) ?? "—"}"`
-                        : `Tier "${tierNameById.get(r.unlockedByTierId!) ?? "—"}"`}
+                        : r.unlockedByTierId
+                          ? `Tier "${tierNameById.get(r.unlockedByTierId) ?? "—"}"`
+                          : `any holder of a "${PERMISSION_MODULE_LABELS[r.unlockedByGrantModuleKey!]}" grant`}
                     </span>
                     <form action={deleteSensitiveFieldAccessRuleAction}>
                       <input type="hidden" name="ruleId" value={r.id} />
@@ -1051,7 +1053,18 @@ export default async function SettingsPage({
                     ))}
                   </select>
                 </label>
-                <TextField label="Or unlock via a Task ID (pick exactly one of Tier/Task)" name="unlockedByTaskId" placeholder="paste the task's ID from its /tasks/… URL" />
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Or unlock via a permission grant</span>
+                  <select name="unlockedByGrantModuleKey" defaultValue="" className={INPUT}>
+                    <option value="">— none —</option>
+                    {PERMISSION_MODULE_KEYS.map((k) => (
+                      <option key={k} value={k}>
+                        {PERMISSION_MODULE_LABELS[k]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <TextField label="Or unlock via a Task ID (pick exactly one of Tier/Grant/Task)" name="unlockedByTaskId" placeholder="paste the task's ID from its /tasks/… URL" />
                 <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                   Add rule
                 </button>

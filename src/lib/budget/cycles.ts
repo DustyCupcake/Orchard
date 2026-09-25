@@ -1,7 +1,7 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { branch, budgetCycle, community, cycle, task } from "@/db/schema";
+import { branch, budgetCycle, community, cycle } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
@@ -109,7 +109,6 @@ export const createBudgetCycleInput = z.object({
   cycleId: z.string().uuid().nullable().optional(),
   fixedCosts: z.array(lineItemInput).optional(),
   proposalDeadline: z.string().datetime(),
-  ownerTaskId: z.string().uuid(),
 });
 export type CreateBudgetCycleInput = z.infer<typeof createBudgetCycleInput>;
 
@@ -128,14 +127,6 @@ async function getCommunityRow(communityId: string) {
 export async function createBudgetCycle(actor: Member, input: CreateBudgetCycleInput) {
   const communityRow = await getCommunityRow(actor.communityId);
   requireModuleEnabled(communityRow, "budget");
-
-  const [taskRow] = await db
-    .select({ id: task.id })
-    .from(task)
-    .where(and(eq(task.id, input.ownerTaskId), eq(task.communityId, actor.communityId)));
-  if (!taskRow) {
-    throw new NotFoundError("Task not found in your community");
-  }
 
   if (input.cycleId) {
     const [cycleRow] = await db
@@ -164,7 +155,6 @@ export async function createBudgetCycle(actor: Member, input: CreateBudgetCycleI
       title: input.title,
       fixedCosts: input.fixedCosts ?? [],
       proposalDeadline: new Date(input.proposalDeadline),
-      ownerTaskId: input.ownerTaskId,
       createdBy: actor.id,
     })
     .returning();
@@ -197,19 +187,35 @@ export async function getBudgetCycle(actor: Member, budgetCycleId: string) {
   return row;
 }
 
+// Resolve a BudgetCycle for one exact placement scope. `null` is a
+// real scope — the evergreen/community Budget — rather than a shorthand
+// for "no filter"; use an explicit IS NULL so a cycle-less Budget can
+// never be confused with a Cycle-linked one. The newest row wins when a
+// Community has retained more than one BudgetCycle for the same scope.
+export async function getBudgetCycleForScope(actor: Member, scopeCycleId: string | null) {
+  const [row] = await db
+    .select()
+    .from(budgetCycle)
+    .where(
+      and(
+        eq(budgetCycle.communityId, actor.communityId),
+        scopeCycleId === null ? isNull(budgetCycle.cycleId) : eq(budgetCycle.cycleId, scopeCycleId),
+      ),
+    )
+    .orderBy(desc(budgetCycle.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
 // Unlike getCurrentBudgetCycle above (community-wide, cycle-agnostic —
 // still used as-is by callers like src/lib/nav.ts's isAnyBudgetOwner),
 // this scopes to one specific real Cycle — what a cycle-scoped /budget
 // page (docs/development-plan.md's Phase 65) and closeCycle's own
-// owner-warning check both need.
+// owner-warning check both need. Keep the non-null wrapper for callers
+// that already have a real Cycle id; the nullable-safe implementation
+// above is the single scope-matching path.
 export async function getBudgetCycleForCycle(actor: Member, cycleId: string) {
-  const [row] = await db
-    .select()
-    .from(budgetCycle)
-    .where(and(eq(budgetCycle.communityId, actor.communityId), eq(budgetCycle.cycleId, cycleId)))
-    .orderBy(desc(budgetCycle.createdAt))
-    .limit(1);
-  return row ?? null;
+  return getBudgetCycleForScope(actor, cycleId);
 }
 
 // Opt-in convenience for "start a Cycle and also start its Budget" —
@@ -220,20 +226,19 @@ export async function getBudgetCycleForCycle(actor: Member, cycleId: string) {
 // on the create-Cycle form — see .../participation/actions.ts's
 // createCycleAction.
 //
-// Carries the previous BudgetCycle's ownerTaskId and fixedCosts
-// forward as a starting point — a nudge, never an inheritance of
-// authority, the same "recipe not the date" posture Cycle cloning
-// already takes elsewhere: whoever currently holds that task is still
-// the real owner regardless of how it got set here, and it still needs
-// claiming like any other task. proposalDeadline has no repeatable
-// recipe to carry forward (a point in time, not a shape) — two weeks
-// out is a visible placeholder the owner is expected to revise with
-// updateBudgetCycle before relying on it.
+// Carries the previous BudgetCycle's fixed costs forward as a starting
+// point — a recipe, not an inheritance of authority. Budget ownership
+// is configured independently for the new Cycle's scope under Settings →
+// Access & permissions; this convenience never reuses the previous
+// Cycle's owner task. proposalDeadline has no repeatable recipe to carry
+// forward (a point in time, not a shape) — two weeks out is a visible
+// placeholder the owner is expected to revise with updateBudgetCycle
+// before relying on it.
 //
 // Returns null (not an error) rather than creating anything when
-// there's no previous BudgetCycle to carry an owner task forward from
-// yet, or the community's last one is still active — the "one active
-// cycle at a time" invariant createBudgetCycle itself enforces. Either
+// there's no previous BudgetCycle to carry fixed costs forward from yet,
+// or the community's last one is still active — the "one active cycle at
+// a time" invariant createBudgetCycle itself enforces. Either
 // way the admin can still start one by hand from /budget.
 export async function startBudgetCycleForNewCycle(actor: Member, newCycle: { id: string; name: string }) {
   const previous = await getCurrentBudgetCycle(actor);
@@ -244,6 +249,5 @@ export async function startBudgetCycleForNewCycle(actor: Member, newCycle: { id:
     cycleId: newCycle.id,
     fixedCosts: previous.fixedCosts as BudgetLineItem[],
     proposalDeadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-    ownerTaskId: previous.ownerTaskId,
   });
 }

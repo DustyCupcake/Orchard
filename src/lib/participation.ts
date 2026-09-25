@@ -1,11 +1,12 @@
 import { and, desc, eq, gt, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { communityInvite, cycle, participation } from "@/db/schema";
+import { communityInvite, cycle, JOINING_LANE_KINDS, participation } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { NotFoundError } from "./errors";
 import { syncComputedTiers } from "./settings/tiers";
 import { requireCycleOpen } from "./cycles/lifecycle";
+import { getJoinLaneRulesForContext, laneRedemptionKind, redemptionKindForInvite } from "./recruitment/joining-lanes";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -101,11 +102,11 @@ export async function getMyParticipation(actor: Member, cycleId: string) {
 // returningWindowClosesAt, the same no-scheduler-job pattern Assemblies'
 // computeAssemblyPhase already established — null when the Community
 // hasn't set one (most communities never will, per spec, unless
-// Recruitment is on). As of §4.3/8d the outstanding direct invites
-// "hold" capacity slots too, so they count against what's left here
-// the same way getCycleJoiningState counts them at the door (a
-// referral-mode cycle's invites hold nothing; the mode follows the
-// cycle, never the invite).
+// Recruitment is on). Outstanding invite links whose lane resolves to
+// the direct path (docs/joining-admission-plan.md §2/§4.1) "hold"
+// capacity slots too, so they count against what's left here the same
+// way getCycleJoiningState counts them at the door; any lane that
+// routes through the evaluated application holds nothing.
 export async function getCycleParticipationSummary(actor: Member, cycleId: string) {
   const cycleRow = await requireCycleInCommunity(actor, cycleId);
 
@@ -116,10 +117,15 @@ export async function getCycleParticipationSummary(actor: Member, cycleId: strin
   const comingCount = comingRows.length;
 
   let holds = 0;
-  if (cycleRow.joiningInviteMode === "direct") {
+  const laneRules = await getJoinLaneRulesForContext(cycleRow.communityId, cycleId);
+  if (JOINING_LANE_KINDS.some((lane) => laneRedemptionKind(laneRules.get(lane)!) === "direct")) {
     const now = new Date();
     const heldRows = await db
-      .select({ id: communityInvite.id })
+      .select({
+        id: communityInvite.id,
+        inviterThinksGoodFit: communityInvite.inviterThinksGoodFit,
+        inviterKnowsPersonally: communityInvite.inviterKnowsPersonally,
+      })
       .from(communityInvite)
       .where(
         and(
@@ -130,7 +136,7 @@ export async function getCycleParticipationSummary(actor: Member, cycleId: strin
           or(isNull(communityInvite.expiresAt), gt(communityInvite.expiresAt, now)),
         ),
       );
-    holds = heldRows.length;
+    holds = heldRows.filter((row) => redemptionKindForInvite(row, laneRules) === "direct").length;
   }
   const usedCapacity = comingCount + holds;
 

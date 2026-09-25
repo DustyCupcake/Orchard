@@ -112,7 +112,7 @@ describe("revokeCommunityInvite", () => {
   it("rejects revoking an invite that's already redeemed", async () => {
     const { alice } = await createFixtures();
     await enableRecruitment(alice.communityId);
-    const invite = await createCommunityInvite(alice, {});
+    const invite = await createCommunityInvite(alice, { inviterKnowsPersonally: true });
     await redeemCommunityInvite(invite.token, { email: "newperson@example.com" });
 
     await expect(revokeCommunityInvite(alice, invite.id)).rejects.toThrow(ConflictError);
@@ -171,7 +171,7 @@ describe("redeemCommunityInvite", () => {
   it("creates a Member with referredByMemberId/joinedViaInviteId set, and marks the invite redeemed", async () => {
     const { alice } = await createFixtures();
     await enableRecruitment(alice.communityId);
-    const invite = await createCommunityInvite(alice, {});
+    const invite = await createCommunityInvite(alice, { inviterKnowsPersonally: true });
 
     const newMember = await redeemCommunityInvite(invite.token, { email: "dana@example.com" });
     expect(newMember.communityId).toBe(alice.communityId);
@@ -200,7 +200,7 @@ describe("redeemCommunityInvite", () => {
   it("rejects redeeming twice", async () => {
     const { alice } = await createFixtures();
     await enableRecruitment(alice.communityId);
-    const invite = await createCommunityInvite(alice, {});
+    const invite = await createCommunityInvite(alice, { inviterKnowsPersonally: true });
     await redeemCommunityInvite(invite.token, { email: "dana@example.com" });
 
     await expect(redeemCommunityInvite(invite.token, { email: "someoneelse@example.com" })).rejects.toThrow(
@@ -236,7 +236,7 @@ describe("redeemCommunityInvite", () => {
   it("rejects when the email already belongs to an existing member", async () => {
     const { alice } = await createFixtures();
     await enableRecruitment(alice.communityId);
-    const invite = await createCommunityInvite(alice, {});
+    const invite = await createCommunityInvite(alice, { inviterKnowsPersonally: true });
     await db.insert(memberIdentity).values({
       memberId: alice.id,
       provider: "magic_link",

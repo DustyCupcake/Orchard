@@ -230,6 +230,7 @@ export default async function DashboardPage({
     feed.shiftCoordinatorNeedsAction.length > 0 ||
     feed.myShiftsNeedingCompletion.length > 0 ||
     feed.conflictNeedsAction.length > 0 ||
+    feed.kitchenNeedsAction.length > 0 ||
     feed.expiredNominations.length > 0;
   const now = Date.now();
 
@@ -587,6 +588,28 @@ export default async function DashboardPage({
                 tag={<Tag tone="danger">past the acknowledgment window</Tag>}
               />
             ))}
+          </FeedSection>
+        )}
+
+        {feed.kitchenNeedsAction.length > 0 && (
+          <FeedSection title="Kitchen needs your attention">
+            {feed.kitchenNeedsAction.map((k) =>
+              k.kind === "draft_unpublished" ? (
+                <FeedRow
+                  key={`draft-${k.menuPlanId}`}
+                  href="/kitchen"
+                  title={`Draft menu “${k.title}” isn’t published yet`}
+                  tag={<Tag tone="warning">draft awaiting publish</Tag>}
+                />
+              ) : (
+                <FeedRow
+                  key={`ideas-${k.menuPlanId}`}
+                  href="/kitchen"
+                  title={`${k.openCount} food ${k.openCount === 1 ? "idea" : "ideas"} awaiting review on “${k.title}”`}
+                  tag={<Tag tone="warning">ideas awaiting review</Tag>}
+                />
+              ),
+            )}
           </FeedSection>
         )}
       </section>

@@ -251,16 +251,14 @@ async function requireTaskInActorCommunity(taskId: string, communityId: string) 
   }
 }
 
-// Single-cardinality modules (conflict_team, feedback_review,
-// event_scheduling_owner, recruitment, spatial_planning, announcements)
-// — makes the typed task *the* task granting this module, replacing a
-// sibling grant in the same scope (the granted task's own placement,
-// task.cycleId — docs/cycle-scope-remediation-plan.md §2.1), or adding
-// a coexisting grant when the scope is new. Every one of these six
-// previously had its own bespoke Community column/action; this generic
-// action now backs every one of their settings-tab forms. Clearing a
-// grant is the per-row Remove button (removePermissionGrantAction), not
-// an empty taskId — a grant always names a real task.
+// Single-cardinality modules — makes the typed task *the* task granting
+// this module, replacing a sibling grant in the same scope (the granted
+// task's own placement, task.cycleId — docs/cycle-scope-remediation-plan.md
+// §2.1), or adding a coexisting grant when the scope is new. Budget is one
+// of these and is deliberately configurable only from this Settings action;
+// generic task/proposal surfaces omit it. Clearing a grant is the per-row
+// Remove button (removePermissionGrantAction), not an empty taskId — a grant
+// always names a real task.
 export async function setPermissionGrantAction(formData: FormData) {
   const actor = await requireMember();
   const tab = String(formData.get("tab") ?? "") || undefined;
@@ -696,6 +694,7 @@ export async function createSensitiveFieldAccessRuleAction(formData: FormData) {
       fieldKey: String(formData.get("fieldKey") ?? ""),
       unlockedByTaskId: String(formData.get("unlockedByTaskId") ?? "").trim() || null,
       unlockedByTierId: String(formData.get("unlockedByTierId") ?? "").trim() || null,
+      unlockedByGrantModuleKey: String(formData.get("unlockedByGrantModuleKey") ?? "").trim() || null,
     });
     await createSensitiveFieldAccessRule(actor, input);
   } catch (err) {

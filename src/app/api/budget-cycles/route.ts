@@ -19,8 +19,9 @@ export async function GET() {
 }
 
 // Admin-gated, same reasoning Forms' own creation route uses: entering
-// fixed costs, a deadline, and designating the owner task is a real
-// configuration decision, not an open one.
+// fixed costs and a deadline is a real configuration decision, not an
+// open one. Budget authority is configured separately under Settings →
+// Access & permissions.
 export async function POST(request: NextRequest) {
   try {
     const actor = await requireMember();

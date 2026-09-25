@@ -170,8 +170,7 @@ export default async function ParticipationPage({
       {budgetNotStarted && (
         <div className="mt-4">
           <Banner tone="warning">
-            Couldn&rsquo;t auto-start this cycle&rsquo;s Budget (the carried-forward owner task may no
-            longer exist) — start one by hand from /budget.
+            Couldn&rsquo;t auto-start this cycle&rsquo;s Budget — start one by hand from /budget.
           </Banner>
         </div>
       )}
@@ -261,11 +260,10 @@ async function StartNewCycleSection({
   ]);
   const packNameById = new Map(packs.map((p) => [p.id, p.name]));
   // Only offer the auto-start checkbox when startBudgetCycleForNewCycle
-  // (src/lib/budget/cycles.ts) would actually succeed — Budget on, and
-  // a previous BudgetCycle to carry the owner task forward from that
-  // isn't itself still active. Otherwise this Community's very first
-  // Budget cycle still has to be started by hand from /budget, same as
-  // always — there's no owner task to guess at yet.
+  // (src/lib/budget/cycles.ts) would actually succeed — Budget on, and a
+  // previous BudgetCycle whose fixed costs can be carried forward isn't
+  // itself still active. Otherwise this Community's very first Budget
+  // cycle still has to be started by hand from /budget.
   const canAutoStartBudget =
     isModuleEnabled(communityRow, "budget") && previousBudgetCycle?.status === "confirmed";
   // "Correctly pre-selects that pack when starting a new Cycle of that
@@ -381,7 +379,7 @@ async function StartNewCycleSection({
         </p>
         {canAutoStartBudget && (
           <CheckField
-            label={`Also start a Budget cycle for this Cycle (owner task carried forward from "${previousBudgetCycle!.title}")`}
+            label={`Also start a Budget cycle for this Cycle (fixed costs carried forward from "${previousBudgetCycle!.title}")`}
             name="startBudget"
             defaultChecked
           />
@@ -623,20 +621,6 @@ async function ParticipationForCycle({
               defaultChecked={withPhases?.applicationsOpen ?? true}
             />
             <CheckField label="Invites open" name="invitesOpen" defaultChecked={withPhases?.invitesOpen ?? true} />
-            <label className="flex flex-col gap-1">
-              <span className={LABEL}>Invite mode</span>
-              <select
-                name="joiningInviteMode"
-                className={`${INPUT} w-fit`}
-                defaultValue={withPhases?.joiningInviteMode ?? "direct"}
-              >
-                <option value="direct">Direct — invite redeems straight into membership</option>
-                <option value="referral">Referral — invite routes through the evaluated application</option>
-              </select>
-              <span className="text-[12px] text-[var(--text-muted)]">
-                How this cycle&rsquo;s invite links behave — the invite plumbing itself lands in §4.3&rsquo;s step 8d.
-              </span>
-            </label>
             <label className="flex flex-col gap-1">
               <span className={LABEL}>Joining window closes at (optional — blank = until the cycle closes)</span>
               <input

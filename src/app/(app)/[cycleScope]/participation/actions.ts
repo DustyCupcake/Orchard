@@ -108,8 +108,7 @@ export async function createCycleAction(formData: FormData) {
   }
 
   // Best-effort and opt-in only (the checkbox above) — a Budget hiccup
-  // here (e.g. the carried-forward owner task got deleted since) never
-  // means the Cycle itself failed to start; see
+  // here never means the Cycle itself failed to start; see
   // src/lib/budget/cycles.ts's startBudgetCycleForNewCycle.
   let budgetStarted = false;
   if (startBudget) {
@@ -135,7 +134,6 @@ export async function updateCycleSettingsAction(formData: FormData) {
   const startDateRaw = String(formData.get("startDate") ?? "").trim();
   const endDateRaw = String(formData.get("endDate") ?? "").trim();
   const applicationFormId = String(formData.get("recruitmentApplicationFormId") ?? "").trim() || null;
-  const joiningModeRaw = String(formData.get("joiningInviteMode") ?? "").trim();
   const joiningWindowRaw = String(formData.get("joiningWindowClosesAt") ?? "").trim();
 
   try {
@@ -147,7 +145,6 @@ export async function updateCycleSettingsAction(formData: FormData) {
       recruitmentApplicationFormId: applicationFormId,
       applicationsOpen: formData.get("applicationsOpen") === "on",
       invitesOpen: formData.get("invitesOpen") === "on",
-      joiningInviteMode: joiningModeRaw === "referral" ? "referral" : "direct",
       joiningWindowClosesAt: joiningWindowRaw ? new Date(joiningWindowRaw).toISOString() : null,
     });
     await updateCycleSettings(actor, cycleId, input);

@@ -17,7 +17,7 @@ import { member } from "./member";
 // non-FK side of the Member↔CommunityInvite pair lives on
 // member.joinedViaInviteId instead, since member.ts is the earlier,
 // more-core file (same "the newer module file holds the real FK"
-// convention Budget's ownerTaskId already established).
+// convention the Budget module already established).
 export const communityInvite = pgTable("community_invite", {
   id: uuid("id").primaryKey().defaultRandom(),
   communityId: uuid("community_id")
@@ -27,10 +27,11 @@ export const communityInvite = pgTable("community_invite", {
     .notNull()
     .references(() => member.id),
   token: text("token").notNull().unique(),
-  // §4.3/8d — the cycle this invite is for (null = today's general
-  // community invite). An invite's meaning follows its cycle's
-  // joiningInviteMode (direct | referral); the mode is never snapshotted
-  // on the row, so a mode switch on the cycle re-reads the same link.
+  // §4.3/8d — the cycle this invite is for (null = a general community
+  // invite). An invite's *lane* is fixed at creation by the inviter's
+  // marks below (docs/joining-admission-plan.md §2.1); its redemption
+  // resolves through `joining_lane` — the community's rule for that
+  // lane, with per-cycle overrides falling back to community-wide.
   cycleId: uuid("cycle_id").references(() => cycle.id),
   label: text("label"),
   inviterThinksGoodFit: boolean("inviter_thinks_good_fit").notNull().default(false),

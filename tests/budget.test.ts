@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { branch, budgetCycle, task } from "@/db/schema";
+import { branch, budgetCycle, task, taskAssignment } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { updateCommunity } from "@/lib/settings";
 import {
@@ -10,9 +10,11 @@ import {
   createBudgetCycle,
   getBudgetCycle,
   getBudgetCycleForCycle,
+  getBudgetCycleForScope,
   getBudgetProposal,
   getBudgetVotingView,
   getCurrentBudgetCycle,
+  isBudgetOwner,
   listBudgetProposals,
   markBudgetCycleDone,
   startBudgetCycleForNewCycle,
@@ -23,21 +25,29 @@ import {
 } from "@/lib/budget";
 import { createCycle } from "@/lib/cycles";
 import { declareParticipation } from "@/lib/participation";
+import { removePermissionGrant, setPermissionGrant } from "@/lib/permissions";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
 
-async function insertOwnerTask(communityId: string, branchId: string, createdBy: string) {
+async function insertOwnerTask(
+  communityId: string,
+  branchId: string,
+  createdBy: string,
+  cycleId: string | null = null,
+) {
   const [row] = await db
     .insert(task)
     .values({
       communityId,
       branchId,
+      cycleId,
       title: "Budget owner",
       effort: "owns_a_thing",
       effortMagnitude: { hours_per_week: 2 },
       createdBy,
     })
     .returning();
+  await setPermissionGrant(communityId, "budget", row.id);
   return row;
 }
 
@@ -55,27 +65,23 @@ describe("BudgetCycle creation", () => {
   });
 
   it("rejects while the module is off", async () => {
-    const { alice, branch: testBranch } = await createFixtures();
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    const { alice } = await createFixtures();
     await expect(
       createBudgetCycle(alice, {
         title: "Season budget",
         proposalDeadline: inOneWeek(),
-        ownerTaskId: ownerTask.id,
       }),
     ).rejects.toThrow(AppError);
   });
 
   it("creates a cycle with fixed costs once the module is on", async () => {
-    const { alice, branch: testBranch } = await createFixtures();
+    const { alice } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
 
     const created = await createBudgetCycle(alice, {
       title: "Season budget",
       fixedCosts: [{ label: "Site fee", amount: 2000 }],
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     expect(created.title).toBe("Season budget");
     expect(created.status).toBe("proposals_open");
@@ -85,37 +91,19 @@ describe("BudgetCycle creation", () => {
     expect(current?.id).toBe(created.id);
   });
 
-  it("rejects an owner task from another community", async () => {
+  it("rejects starting a second cycle while one is still active", async () => {
     const { alice } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const { alice: strangerAlice, branch: strangerBranch } = await createFixtures();
-    const strangerTask = await insertOwnerTask(strangerAlice.communityId, strangerBranch.id, strangerAlice.id);
-
-    await expect(
-      createBudgetCycle(alice, {
-        title: "Season budget",
-        proposalDeadline: inOneWeek(),
-        ownerTaskId: strangerTask.id,
-      }),
-    ).rejects.toThrow(NotFoundError);
-  });
-
-  it("rejects starting a second cycle while one is still active", async () => {
-    const { alice, branch: testBranch } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
 
     await createBudgetCycle(alice, {
       title: "First",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
 
     await expect(
       createBudgetCycle(alice, {
         title: "Second",
         proposalDeadline: inOneWeek(),
-        ownerTaskId: ownerTask.id,
       }),
     ).rejects.toThrow(ConflictError);
   });
@@ -133,13 +121,11 @@ describe("BudgetProposal submission", () => {
 
   async function setUpOpenCycle() {
     const fixtures = await createFixtures();
-    const { alice, branch: testBranch } = fixtures;
+    const { alice } = fixtures;
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     return { ...fixtures, cycle };
   }
@@ -182,13 +168,11 @@ describe("BudgetProposal submission", () => {
 
   it("rejects once the proposal deadline has passed", async () => {
     const fixtures = await createFixtures();
-    const { alice, bob, branch: testBranch } = fixtures;
+    const { alice, bob } = fixtures;
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     // Backdate the deadline directly — createBudgetCycle itself won't
     // accept a past deadline as input, but a cycle can age past its own
@@ -220,13 +204,11 @@ describe("BudgetProposal editing", () => {
   });
 
   it("lets the submitter edit and recomputes totalAmount", async () => {
-    const { alice, bob, branch: testBranch } = await createFixtures();
+    const { alice, bob } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     const proposal = await submitBudgetProposal(bob, cycle.id, {
       title: "Original",
@@ -242,13 +224,11 @@ describe("BudgetProposal editing", () => {
   });
 
   it("rejects an edit from anyone but the submitter", async () => {
-    const { alice, bob, branch: testBranch } = await createFixtures();
+    const { alice, bob } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     const proposal = await submitBudgetProposal(bob, cycle.id, {
       title: "Original",
@@ -261,13 +241,11 @@ describe("BudgetProposal editing", () => {
   });
 
   it("rejects fetching or editing a proposal from another community", async () => {
-    const { alice, bob, branch: testBranch } = await createFixtures();
+    const { alice, bob } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     const proposal = await submitBudgetProposal(bob, cycle.id, {
       title: "Original",
@@ -290,7 +268,6 @@ async function setUpVotingCycle() {
     title: "Season budget",
     fixedCosts: [{ label: "Site fee", amount: 500 }],
     proposalDeadline: inOneWeek(),
-    ownerTaskId: ownerTask.id,
   });
   const p1 = await submitBudgetProposal(bob, cycle.id, {
     title: "P1",
@@ -398,7 +375,6 @@ describe("Confirmation", () => {
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     const p1 = await submitBudgetProposal(bob, cycle.id, {
       title: "P1",
@@ -468,6 +444,114 @@ describe("Confirmation", () => {
   });
 });
 
+describe("Budget owner authority", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("requires the granted task's current non-shadow holder", async () => {
+    const { alice, bob, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const cycle = await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: inOneWeek(),
+    });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+
+    expect(await isBudgetOwner(alice, cycle)).toBe(false);
+    await claimTask(alice, ownerTask.id);
+    expect(await isBudgetOwner(alice, cycle)).toBe(true);
+
+    // A shadow assignment is learning/observing the task, not holding
+    // the authority that comes with it.
+    await db.insert(taskAssignment).values({
+      taskId: ownerTask.id,
+      memberId: bob.id,
+      isShadow: true,
+    });
+    expect(await isBudgetOwner(bob, cycle)).toBe(false);
+  });
+
+  it("matches a cycle-less grant only to a cycle-less BudgetCycle", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    await claimTask(alice, ownerTask.id);
+
+    const untied = await createBudgetCycle(alice, {
+      title: "Untied budget",
+      proposalDeadline: inOneWeek(),
+    });
+    // Confirm untied so we can create more
+    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, untied.id));
+    const cycleA = await createCycle(alice, { source: "blank", name: "Season A", confirmed: true });
+    const cycleB = await createCycle(alice, { source: "blank", name: "Season B", confirmed: true });
+
+    const tiedA = await createBudgetCycle(alice, {
+      title: "Season A budget",
+      cycleId: cycleA.id,
+      proposalDeadline: inOneWeek(),
+    });
+    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, tiedA.id));
+    const tiedB = await createBudgetCycle(alice, {
+      title: "Season B budget",
+      cycleId: cycleB.id,
+      proposalDeadline: inOneWeek(),
+    });
+
+    expect(await isBudgetOwner(alice, untied)).toBe(true);
+    expect(await isBudgetOwner(alice, tiedA)).toBe(false);
+    expect(await isBudgetOwner(alice, tiedB)).toBe(false);
+  });
+
+  it("replaces one grant only within the same exact scope", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const cycleA = await createCycle(alice, { source: "blank", name: "Season A", confirmed: true });
+    const cycleB = await createCycle(alice, { source: "blank", name: "Season B", confirmed: true });
+
+    const oldOwner = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, cycleA.id);
+    await claimTask(alice, oldOwner.id);
+    const newOwner = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, cycleA.id);
+    const otherScopeOwner = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, cycleB.id);
+    await claimTask(alice, otherScopeOwner.id);
+
+    const budgetA = await createBudgetCycle(alice, {
+      title: "Season A budget",
+      cycleId: cycleA.id,
+      proposalDeadline: inOneWeek(),
+    });
+    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, budgetA.id));
+    const budgetB = await createBudgetCycle(alice, {
+      title: "Season B budget",
+      cycleId: cycleB.id,
+      proposalDeadline: inOneWeek(),
+    });
+
+    expect(await isBudgetOwner(alice, budgetA)).toBe(false);
+    expect(await isBudgetOwner(alice, budgetB)).toBe(true);
+
+    await claimTask(alice, newOwner.id);
+    expect(await isBudgetOwner(alice, budgetA)).toBe(true);
+    expect(await isBudgetOwner(alice, budgetB)).toBe(true);
+  });
+
+  it("revokes authority when its grant is cleared", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const cycle = await createBudgetCycle(alice, {
+      title: "Season budget",
+      proposalDeadline: inOneWeek(),
+    });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    await claimTask(alice, ownerTask.id);
+    expect(await isBudgetOwner(alice, cycle)).toBe(true);
+
+    await removePermissionGrant(alice.communityId, "budget", ownerTask.id);
+    expect(await isBudgetOwner(alice, cycle)).toBe(false);
+  });
+});
+
 // docs/development-plan.md's Phase 65 — the owner's own small
 // confirmation that lets closeCycle skip its warning.
 describe("markBudgetCycleDone", () => {
@@ -484,7 +568,6 @@ describe("markBudgetCycleDone", () => {
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     const p1 = await submitBudgetProposal(bob, cycle.id, {
       title: "P1",
@@ -509,7 +592,6 @@ describe("markBudgetCycleDone", () => {
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     await expect(markBudgetCycleDone(alice, cycle.id)).rejects.toThrow(ConflictError);
   });
@@ -578,29 +660,28 @@ describe("startBudgetCycleForNewCycle", () => {
   });
 
   it("returns null — the community's last BudgetCycle is still active", async () => {
-    const { alice, branch: testBranch } = await createFixtures();
+    const { alice } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
     await createBudgetCycle(alice, {
       title: "Still open",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     const newCycle = await createCycle(alice, { source: "blank", name: "Next season" });
 
     expect(await startBudgetCycleForNewCycle(alice, newCycle)).toBeNull();
   });
 
-  it("carries the previous cycle's ownerTaskId and fixedCosts forward, linked to the new Cycle", async () => {
+  it("carries fixed costs forward but never inherits the previous Cycle's owner authority", async () => {
     const { alice, bob, branch: testBranch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    const previousCycle = await createCycle(alice, { source: "blank", name: "Last season" });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, previousCycle.id);
     await claimTask(alice, ownerTask.id);
     const previous = await createBudgetCycle(alice, {
       title: "Last season's budget",
+      cycleId: previousCycle.id,
       fixedCosts: [{ label: "Site fee", amount: 2000 }],
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     const p1 = await submitBudgetProposal(bob, previous.id, {
       title: "P1",
@@ -609,15 +690,18 @@ describe("startBudgetCycleForNewCycle", () => {
     await closeProposalsToVoting(alice, previous.id);
     await submitBudgetVote(alice, previous.id, { rankedProposalIds: [p1.id] });
     await confirmBudgetCycle(alice, previous.id, { confirmedProposalIds: [p1.id] });
+    expect(await isBudgetOwner(alice, previous)).toBe(true);
 
-    const newCycle = await createCycle(alice, { source: "blank", name: "Next season" });
+    // Explicitly confirm starting a new cycle despite previous being open
+    const newCycle = await createCycle(alice, { source: "blank", name: "Next season", confirmed: true });
     const started = await startBudgetCycleForNewCycle(alice, newCycle);
     expect(started).not.toBeNull();
     expect(started!.cycleId).toBe(newCycle.id);
     expect(started!.title).toBe("Next season Budget");
-    expect(started!.ownerTaskId).toBe(ownerTask.id);
+    expect(started).not.toHaveProperty("ownerTaskId");
     expect(started!.fixedCosts).toEqual([{ label: "Site fee", amount: 2000 }]);
     expect(started!.status).toBe("proposals_open");
+    expect(await isBudgetOwner(alice, started!)).toBe(false);
 
     const linked = await getBudgetCycleForCycle(alice, newCycle.id);
     expect(linked?.id).toBe(started!.id);
@@ -630,14 +714,12 @@ describe("getBudgetCycleForCycle", () => {
   });
 
   it("finds the BudgetCycle tied to a specific real Cycle, ignoring ones tied to another or none", async () => {
-    const { alice, branch: testBranch } = await createFixtures();
+    const { alice } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
     const realCycle = await createCycle(alice, { source: "blank", name: "2027 Season" });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
     const untied = await createBudgetCycle(alice, {
       title: "Untied budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     expect(await getBudgetCycleForCycle(alice, realCycle.id)).toBeNull();
 
@@ -647,19 +729,76 @@ describe("getBudgetCycleForCycle", () => {
   });
 });
 
+describe("getBudgetCycleForScope exact scope resolution", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("matches null scope to cycle-less BudgetCycle, not cycle-linked ones", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const realCycle = await createCycle(alice, { source: "blank", name: "2027 Season" });
+
+    const cycleBudget = await createBudgetCycle(alice, {
+      title: "Cycle budget",
+      cycleId: realCycle.id,
+      proposalDeadline: inOneWeek(),
+    });
+    // Confirm cycle budget so we can create another
+    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, cycleBudget.id));
+    const evergreenBudget = await createBudgetCycle(alice, {
+      title: "Evergreen budget",
+      proposalDeadline: inOneWeek(),
+    });
+
+    // null scope should find the evergreen (cycle-less) budget
+    const foundNull = await getBudgetCycleForScope(alice, null);
+    expect(foundNull?.id).toBe(evergreenBudget.id);
+    expect(foundNull?.id).not.toBe(cycleBudget.id);
+
+    // real cycle scope should find the cycle-linked budget
+    const foundCycle = await getBudgetCycleForScope(alice, realCycle.id);
+    expect(foundCycle?.id).toBe(cycleBudget.id);
+    expect(foundCycle?.id).not.toBe(evergreenBudget.id);
+  });
+
+  it("newest BudgetCycle wins when multiple exist for same scope", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const realCycle = await createCycle(alice, { source: "blank", name: "2027 Season" });
+
+    const older = await createBudgetCycle(alice, {
+      title: "Older cycle budget",
+      cycleId: realCycle.id,
+      proposalDeadline: inOneWeek(),
+    });
+    // Confirm older so we can create newer
+    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, older.id));
+    // Small delay to ensure different createdAt
+    await new Promise((r) => setTimeout(r, 10));
+    const newer = await createBudgetCycle(alice, {
+      title: "Newer cycle budget",
+      cycleId: realCycle.id,
+      proposalDeadline: inOneWeek(),
+    });
+
+    const found = await getBudgetCycleForScope(alice, realCycle.id);
+    expect(found?.id).toBe(newer.id);
+    expect(found?.id).not.toBe(older.id);
+  });
+});
+
 describe("Line item multipliers", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
   it("multiplies amount by a fixed quantity", async () => {
-    const { alice, bob, branch: testBranch } = await createFixtures();
+    const { alice, bob } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
 
     const created = await submitBudgetProposal(bob, cycle.id, {
@@ -670,13 +809,11 @@ describe("Line item multipliers", () => {
   });
 
   it("rejects a line item that's both a fixed quantity and per-attendee", async () => {
-    const { alice, bob, branch: testBranch } = await createFixtures();
+    const { alice, bob } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
 
     await expect(
@@ -688,16 +825,15 @@ describe("Line item multipliers", () => {
   });
 
   it("scales a perAttendee line item off Participation `coming` for the linked Cycle, live, not just at submission time", async () => {
-    const { alice, bob, community: testCommunity, branch: testBranch } = await createFixtures();
+    const { alice, bob, branch: testBranch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
     const realCycle = await createCycle(alice, { source: "blank", name: "Reunion" });
     await declareParticipation(alice, realCycle.id, { status: "coming" });
-    const ownerTask = await insertOwnerTask(testCommunity.id, testBranch.id, alice.id);
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, realCycle.id);
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       cycleId: realCycle.id,
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
 
     const created = await submitBudgetProposal(bob, cycle.id, {
@@ -719,13 +855,11 @@ describe("Line item multipliers", () => {
   });
 
   it("treats a perAttendee item as contributing 0 when the BudgetCycle isn't linked to a real Cycle", async () => {
-    const { alice, bob, branch: testBranch } = await createFixtures();
+    const { alice, bob } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
 
     const created = await submitBudgetProposal(bob, cycle.id, {
@@ -744,11 +878,9 @@ describe("Line item branches", () => {
   it("stores a per-line-item branch, independent of the proposal's own branch", async () => {
     const { alice, bob, branch: fruit } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, fruit.id, alice.id);
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     const [veg] = await db
       .insert(branch)
@@ -768,13 +900,11 @@ describe("Line item branches", () => {
   });
 
   it("rejects a line item naming a Branch from another community", async () => {
-    const { alice, bob, branch: testBranch } = await createFixtures();
+    const { alice, bob } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
     const cycle = await createBudgetCycle(alice, {
       title: "Season budget",
       proposalDeadline: inOneWeek(),
-      ownerTaskId: ownerTask.id,
     });
     const { branch: strangerBranch } = await createFixtures();
 
@@ -787,9 +917,8 @@ describe("Line item branches", () => {
   });
 
   it("rejects a fixed cost naming a Branch from another community", async () => {
-    const { alice, branch: testBranch } = await createFixtures();
+    const { alice } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
     const { branch: strangerBranch } = await createFixtures();
 
     await expect(
@@ -797,8 +926,7 @@ describe("Line item branches", () => {
         title: "Season budget",
         fixedCosts: [{ label: "X", amount: 10, branchId: strangerBranch.id }],
         proposalDeadline: inOneWeek(),
-        ownerTaskId: ownerTask.id,
-      }),
+        }),
     ).rejects.toThrow(AppError);
   });
 });

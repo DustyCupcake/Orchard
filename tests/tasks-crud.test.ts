@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { branch, community, phase, task, taskDependency } from "@/db/schema";
+import { branch, community, cycle, phase, task, taskDependency } from "@/db/schema";
 import { claimTask, createTask, deleteTask, listDistinctTags, listTasks, updateTask } from "@/lib/tasks";
 import { createCycle } from "@/lib/cycles";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
+import { listGrantingTaskIdsForScope } from "@/lib/permissions";
 
 describe("task CRUD", () => {
   beforeEach(async () => {
@@ -288,6 +289,176 @@ describe("task CRUD", () => {
     await expect(
       updateTask(alice, created.id, { openness: "community_endorsed" }),
     ).rejects.toThrow(AppError);
+  });
+});
+
+describe("task placement validation and grant collision protection", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("rejects creating a task with a cycle from another community", async () => {
+    const { alice } = await createFixtures();
+    const { community: otherCommunity } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, otherCommunity.id));
+    const [otherBranch] = await db
+      .insert(branch)
+      .values({ communityId: otherCommunity.id, name: "Other Branch" })
+      .returning();
+    const [otherCycle] = await db
+      .insert(cycle)
+      .values({ communityId: otherCommunity.id, name: "Other Cycle" })
+      .returning();
+
+    await expect(
+      createTask(alice, {
+        branchId: otherBranch.id,
+        cycleId: otherCycle.id,
+        title: "Cross-community cycle",
+        effort: "one_off",
+        effortMagnitude: { duration: "few_hours" },
+      }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("rejects creating a task with a phase from another community's cycle", async () => {
+    const { alice } = await createFixtures();
+    const { community: otherCommunity } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, otherCommunity.id));
+    const [otherBranch] = await db
+      .insert(branch)
+      .values({ communityId: otherCommunity.id, name: "Other Branch" })
+      .returning();
+    const [otherCycle] = await db
+      .insert(cycle)
+      .values({ communityId: otherCommunity.id, name: "Other Cycle" })
+      .returning();
+    const [otherPhase] = await db
+      .insert(phase)
+      .values({ cycleId: otherCycle.id, name: "Other Phase", order: 0 })
+      .returning();
+
+    await expect(
+      createTask(alice, {
+        branchId: otherBranch.id,
+        cycleId: otherCycle.id,
+        phaseId: otherPhase.id,
+        title: "Cross-community phase",
+        effort: "one_off",
+        effortMagnitude: { duration: "few_hours" },
+      }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("rejects updating a task to a cycle from another community", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    const created = await createTask(alice, {
+      branchId: testBranch.id,
+      title: "Task to move",
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+    });
+
+    const { community: otherCommunity } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, otherCommunity.id));
+    const [otherCycle] = await db
+      .insert(cycle)
+      .values({ communityId: otherCommunity.id, name: "Other Cycle" })
+      .returning();
+
+    await expect(
+      updateTask(alice, created.id, { cycleId: otherCycle.id }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("rejects updating a task to a phase not belonging to the resulting cycle", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, alice.communityId));
+    const [cycleA] = await db
+      .insert(cycle)
+      .values({ communityId: alice.communityId, name: "Cycle A" })
+      .returning();
+    const [cycleB] = await db
+      .insert(cycle)
+      .values({ communityId: alice.communityId, name: "Cycle B" })
+      .returning();
+    const [phaseA] = await db
+      .insert(phase)
+      .values({ cycleId: cycleA.id, name: "Phase A", order: 0 })
+      .returning();
+
+    const created = await createTask(alice, {
+      branchId: testBranch.id,
+      cycleId: cycleA.id,
+      phaseId: phaseA.id,
+      title: "Task in A",
+      effort: "one_off",
+      effortMagnitude: { duration: "few_hours" },
+    });
+
+    // Try to move to cycle B but keep phase from cycle A — phase is silently dropped
+    const moved = await updateTask(alice, created.id, { cycleId: cycleB.id, phaseId: phaseA.id });
+    expect(moved.cycleId).toBe(cycleB.id);
+    expect(moved.phaseId).toBeNull();
+  });
+
+  it("rejects moving a Budget-granted task into an occupied Budget scope", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true, modulesEnabled: ["budget"] }).where(eq(community.id, alice.communityId));
+    const cycleA = await createCycle(alice, { source: "blank", name: "A" });
+    const cycleB = await createCycle(alice, { source: "blank", name: "B", confirmed: true });
+
+    // Task currently owns Budget in cycle A
+    const budgetTaskA = await insertTask(alice.communityId, testBranch.id, alice.id, { cycleId: cycleA.id, title: "Budget owner A" });
+    await grantPermission(alice.communityId, "budget", budgetTaskA.id);
+
+    // Task in cycle B with Budget grant (different task)
+    const budgetTaskB = await insertTask(alice.communityId, testBranch.id, alice.id, { cycleId: cycleB.id, title: "Budget owner B" });
+    await grantPermission(alice.communityId, "budget", budgetTaskB.id);
+
+    // Try to move budgetTaskA into cycle B (which already has a Budget owner)
+    await expect(
+      updateTask(alice, budgetTaskA.id, { cycleId: cycleB.id }),
+    ).rejects.toThrow(ConflictError);
+  });
+
+  it("rejects moving a Budget-granted task into an occupied community/evergreen Budget scope", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true, modulesEnabled: ["budget"] }).where(eq(community.id, alice.communityId));
+
+    // Community Budget owner
+    const communityBudgetTask = await insertTask(alice.communityId, testBranch.id, alice.id, { title: "Community budget owner" });
+    await grantPermission(alice.communityId, "budget", communityBudgetTask.id);
+
+    // Task in cycle A with Budget grant
+    const cycleA = await createCycle(alice, { source: "blank", name: "A", confirmed: true });
+    const budgetTaskA = await insertTask(alice.communityId, testBranch.id, alice.id, { cycleId: cycleA.id, title: "Budget owner A" });
+    await grantPermission(alice.communityId, "budget", budgetTaskA.id);
+
+    // Try to move budgetTaskA to community scope (null) which already has a Budget owner
+    await expect(
+      updateTask(alice, budgetTaskA.id, { cycleId: null }),
+    ).rejects.toThrow(ConflictError);
+  });
+
+  it("allows moving a granted task to an empty scope", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true, modulesEnabled: ["budget"] }).where(eq(community.id, alice.communityId));
+    const cycleA = await createCycle(alice, { source: "blank", name: "A" });
+    const cycleB = await createCycle(alice, { source: "blank", name: "B", confirmed: true });
+
+    // Task in cycle A with Budget grant
+    const budgetTaskA = await insertTask(alice.communityId, testBranch.id, alice.id, { cycleId: cycleA.id, title: "Budget owner A" });
+    await grantPermission(alice.communityId, "budget", budgetTaskA.id);
+
+    // Move to empty cycle B - should succeed
+    const moved = await updateTask(alice, budgetTaskA.id, { cycleId: cycleB.id });
+    expect(moved.cycleId).toBe(cycleB.id);
+
+    // The grant should now apply to cycle B
+    const grants = await listGrantingTaskIdsForScope(alice.communityId, "budget", cycleB.id);
+    expect(grants).toEqual([budgetTaskA.id]);
+    expect(await listGrantingTaskIdsForScope(alice.communityId, "budget", cycleA.id)).toEqual([]);
   });
 });
 

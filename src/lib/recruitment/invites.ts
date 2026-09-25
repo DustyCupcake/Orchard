@@ -1,13 +1,21 @@
-import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { communityInvite, cycle, member, memberIdentity, participation } from "@/db/schema";
-import type { member as memberTable } from "@/db/schema";
+import type { member as memberTable, JoinLaneKind } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
 import { generateToken } from "../token";
 import { getCycleJoiningState } from "./joining";
 import { getCommunityRow, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
+import {
+  getInviteRedemptionKind,
+  getJoinLaneRulesForContext,
+  joiningLaneForInvite,
+  laneRedemptionKind,
+  redemptionKindForInvite,
+  type JoiningLaneRule,
+} from "./joining-lanes";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityInviteRow = typeof communityInvite.$inferSelect;
@@ -17,8 +25,10 @@ export const createCommunityInviteInput = z.object({
   inviterThinksGoodFit: z.boolean().optional(),
   inviterKnowsPersonally: z.boolean().optional(),
   expiresAt: z.string().min(1).nullable().optional(),
-  // §4.3/8d — the cycle this invite is for (null = a general community
-  // invite). An invite's meaning follows the cycle's joiningInviteMode.
+  // docs/joining-admission-plan.md §2.1 — the marks below fix the
+  // invite's *lane* at send time (knows-personally, good-fit, neither);
+  // the cycle this invite is for (null = a general community invite)
+  // picks the context its lane rule resolves in.
   cycleId: z.string().uuid().nullable().optional(),
 });
 export type CreateCommunityInviteInput = z.infer<typeof createCommunityInviteInput>;
@@ -26,15 +36,23 @@ export type CreateCommunityInviteInput = z.infer<typeof createCommunityInviteInp
 // Open to any member — generating an invite is a unilateral act, the
 // same posture Shifts' createShiftSeries already takes for "rotate a
 // task into a shift." Always single-use, no multi-use variant per
-// spec's explicit CampTool callout. As of §4.3/8d an invite can be
-// scoped to a cycle, where its meaning follows the cycle's
-// joiningInviteMode (direct | referral) and creating it gates on that
-// mode's door plus the joining period and capacity room; a general
-// invite (no cycle) gates on the community-wide invites toggle.
+// spec's explicit CampTool callout. As of docs/joining-admission-plan.md
+// §2/§4.1 the inviter's marks fix the lane; creating a cycle invite
+// gates on that lane's own rules (the cycle's `joining_lane` row, else
+// the community-wide one) plus the joining period and capacity room — a
+// direct lane gates on the invites door, every process lane on the
+// applications door. A general invite (no cycle) gates on the
+// community-wide doors: the invites door always, plus the applications
+// door when the lane would funnel through /apply.
 export async function createCommunityInvite(actor: Member, input: CreateCommunityInviteInput) {
   const communityRow = await getCommunityRow(actor.communityId);
   requireModuleEnabled(communityRow, "recruitment");
 
+  const declaration = {
+    inviterThinksGoodFit: input.inviterThinksGoodFit ?? false,
+    inviterKnowsPersonally: input.inviterKnowsPersonally ?? false,
+  };
+  const lane = joiningLaneForInvite(declaration);
   const cycleId = input.cycleId ?? null;
   if (cycleId) {
     // Validates the cycle is in-community (throws NotFoundError
@@ -46,19 +64,16 @@ export async function createCommunityInvite(actor: Member, input: CreateCommunit
     if (!joining.periodOpen) {
       throw new ConflictError("This cycle's joining period isn't open");
     }
-    if (joining.cycle.joiningInviteMode === "referral") {
-      // Referral invites route through the evaluated application — the
-      // applications door is the one that matters.
-      if (!joining.cycle.applicationsOpen) {
-        throw new ConflictError("Applications for this cycle are closed");
-      }
-    } else {
+    const laneRules = await getJoinLaneRulesForContext(actor.communityId, cycleId);
+    const rule = laneRules.get(lane)!;
+    if (laneRedemptionKind(rule) === "direct") {
+      // A direct-lane invite redeems straight into membership and holds
+      // a capacity slot until redeemed, revoked, or expired — so into a
+      // capacity-capped cycle it must carry a non-past expiry: no
+      // immortal holds (docs §4.3/8d).
       if (!joining.cycle.invitesOpen) {
         throw new ConflictError("Invites for this cycle are closed");
       }
-      // A direct invite holds a capacity slot until redeemed, revoked,
-      // or expired — so into a capacity-capped cycle it must carry a
-      // non-past expiry: no immortal holds (docs §4.3/8d).
       if (joining.cycle.capacity !== null) {
         if (!input.expiresAt) {
           throw new AppError("Direct invites into a capacity-capped cycle need an expiry date");
@@ -67,9 +82,31 @@ export async function createCommunityInvite(actor: Member, input: CreateCommunit
           throw new AppError("The expiry must be in the future — no immortal capacity holds");
         }
       }
+    } else {
+      // A process-lane invite routes through the evaluated application —
+      // the applications door is the one that matters; it holds nothing.
+      if (!joining.cycle.applicationsOpen) {
+        throw new ConflictError("Applications for this cycle are closed");
+      }
     }
-  } else if (!communityRow.recruitmentInvitesOpen) {
-    throw new AppError("This community isn't accepting invite-based joins right now");
+  } else {
+    const laneRules = await getJoinLaneRulesForContext(actor.communityId, null);
+    const rule = laneRules.get(lane)!;
+    if (laneRedemptionKind(rule) === "direct") {
+      if (!communityRow.recruitmentInvitesOpen) {
+        throw new AppError("This community isn't accepting invite-based joins right now");
+      }
+    } else {
+      // A process-lane general invite still funnels through /apply, so
+      // both community doors must be open — it is an invite link *and*
+      // its path is the application funnel.
+      if (!communityRow.recruitmentInvitesOpen) {
+        throw new AppError("This community isn't accepting invite-based joins right now");
+      }
+      if (!communityRow.recruitmentApplicationsOpen) {
+        throw new AppError("This community isn't accepting applications right now");
+      }
+    }
   }
 
   const [created] = await db
@@ -80,25 +117,25 @@ export async function createCommunityInvite(actor: Member, input: CreateCommunit
       token: generateToken(),
       cycleId,
       label: input.label ?? null,
-      inviterThinksGoodFit: input.inviterThinksGoodFit ?? false,
-      inviterKnowsPersonally: input.inviterKnowsPersonally ?? false,
+      inviterThinksGoodFit: declaration.inviterThinksGoodFit,
+      inviterKnowsPersonally: declaration.inviterKnowsPersonally,
       expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
     })
     .returning();
   return created;
 }
 
-// "An invite's meaning follows its cycle's joiningInviteMode" (§4.3/8d):
-// a cycle invite is direct or referral per the cycle's *current* mode —
-// never snapshotted on the row, so a mode switch on the cycle re-reads
-// the same link. An invite with no cycle is today's general,
-// direct-redeemable community invite.
-export type CommunityInviteJoiningMode = "general" | "direct" | "referral";
+// An invite's meaning follows its *lane* — fixed at creation by the
+// inviter's marks, resolved live through the community's per-lane rules
+// (docs/joining-admission-plan.md §2): a direct lane (basic, no
+// process) redeems straight into membership; every process lane routes
+// through the evaluated application. The rule is read at resolution
+// time — the cycle's own `joining_lane` row, else the community-wide
+// one — never snapshotted on the invite row.
+export type CommunityInviteRedemptionKind = "direct" | "process";
 
-export async function getCommunityInviteJoiningMode(row: CommunityInviteRow): Promise<CommunityInviteJoiningMode> {
-  if (!row.cycleId) return "general";
-  const [cycleRow] = await db.select().from(cycle).where(eq(cycle.id, row.cycleId));
-  return cycleRow?.joiningInviteMode === "referral" ? "referral" : "direct";
+export async function getCommunityInviteRedemptionKind(row: CommunityInviteRow): Promise<CommunityInviteRedemptionKind> {
+  return getInviteRedemptionKind(row.communityId, row);
 }
 
 export async function listMyCommunityInvites(actor: Member) {
@@ -158,27 +195,21 @@ export async function getCommunityInviteByToken(token: string) {
   return row;
 }
 
-// §4.3/8d pipeline visibility: outstanding *referral* invites — valid
-// (not redeemed/revoked/expired) cycle invites whose cycle is in
-// referral mode — belong on the recruitment pipeline alongside the
-// applications themselves. Scope-filtering follows
-// listApplicationsForEvaluation exactly: a cycle-placed holder sees
-// only their own cycle's outstanding referral invites; the cycle-less
-// community/evergreen holder sees all of them. General (cycle-less)
-// invites redeem directly and are not part of this count.
+// §4.3/8d + docs/joining-admission-plan.md §2 pipeline visibility:
+// outstanding *cycle* invites whose lane routes through the evaluated
+// application (a process lane) belong on the recruitment pipeline
+// alongside the applications themselves, because that is where they
+// funnel. The lane is fixed at creation; resolution reads the cycle's
+// own `joining_lane` row, else the community-wide one. Scope-filtering
+// follows listApplicationsForEvaluation exactly: a cycle-placed holder
+// sees only their own cycle's outstanding process invites; the
+// cycle-less community/evergreen holder sees all of them. General
+// (cycle-less) invites resolve like any lane but are not part of this
+// count.
 export async function listOutstandingReferralInvites(actor: Member) {
   await requireRecruitmentTaskHolder(actor);
   const heldScopes = await listHeldRecruitmentScopes(actor);
   if (heldScopes.size === 0) return [];
-
-  const cycleRows = await db
-    .select({ id: cycle.id, name: cycle.name, joiningInviteMode: cycle.joiningInviteMode })
-    .from(cycle)
-    .where(eq(cycle.communityId, actor.communityId));
-  const referralCycles = new Map(
-    cycleRows.filter((c) => c.joiningInviteMode === "referral").map((c) => [c.id, c.name]),
-  );
-  if (referralCycles.size === 0) return [];
 
   const now = new Date();
   const rows = await db
@@ -186,22 +217,49 @@ export async function listOutstandingReferralInvites(actor: Member) {
       cycleId: communityInvite.cycleId,
       label: communityInvite.label,
       createdAt: communityInvite.createdAt,
+      inviterThinksGoodFit: communityInvite.inviterThinksGoodFit,
+      inviterKnowsPersonally: communityInvite.inviterKnowsPersonally,
     })
     .from(communityInvite)
     .where(
       and(
         eq(communityInvite.communityId, actor.communityId),
-        inArray(communityInvite.cycleId, [...referralCycles.keys()]),
+        isNotNull(communityInvite.cycleId),
         isNull(communityInvite.redeemedAt),
         isNull(communityInvite.revokedAt),
         or(isNull(communityInvite.expiresAt), gt(communityInvite.expiresAt, now)),
       ),
     )
     .orderBy(desc(communityInvite.createdAt));
+  if (rows.length === 0) return [];
 
-  return rows
-    .filter((r) => r.cycleId && (heldScopes.has(null) || heldScopes.has(r.cycleId)))
-    .map((r) => ({ ...r, cycleId: r.cycleId as string, cycleName: referralCycles.get(r.cycleId as string) ?? "" }));
+  const cycleRows = await db
+    .select({ id: cycle.id, name: cycle.name })
+    .from(cycle)
+    .where(
+      and(
+        eq(cycle.communityId, actor.communityId),
+        inArray(cycle.id, [...new Set(rows.filter((r) => r.cycleId).map((r) => r.cycleId as string))]),
+      ),
+    );
+  const cycleNames = new Map(cycleRows.map((c) => [c.id, c.name]));
+  const rulesByCycle = new Map<string, Map<JoinLaneKind, JoiningLaneRule>>();
+  const rulesFor = async (cycleId: string) => {
+    if (!rulesByCycle.has(cycleId)) {
+      rulesByCycle.set(cycleId, await getJoinLaneRulesForContext(actor.communityId, cycleId));
+    }
+    return rulesByCycle.get(cycleId)!;
+  };
+
+  const processInvites = [];
+  for (const r of rows) {
+    if (!r.cycleId) continue;
+    if (!(heldScopes.has(null) || heldScopes.has(r.cycleId))) continue;
+    const rules = await rulesFor(r.cycleId);
+    if (redemptionKindForInvite(r, rules) !== "process") continue;
+    processInvites.push({ ...r, cycleId: r.cycleId, cycleName: cycleNames.get(r.cycleId) ?? "" });
+  }
+  return processInvites;
 }
 
 export const redeemCommunityInviteInput = z.object({
@@ -236,11 +294,12 @@ export async function redeemCommunityInvite(token: string, input: RedeemCommunit
   const communityRow = await getCommunityRow(invite.communityId);
   requireModuleEnabled(communityRow, "recruitment");
 
-  // §4.3/8d — a referral invite never redeems directly; it routes
-  // through the evaluated application (/apply?invite=<token>). The
-  // /invite/[token] page redirects there, and the lib guards too.
-  const mode = await getCommunityInviteJoiningMode(invite);
-  if (mode === "referral") {
+  // docs/joining-admission-plan.md §2 — a process-lane invite never
+  // redeems directly; it routes through the evaluated application
+  // (/apply?invite=<token>). The /invite/[token] page redirects there,
+  // and the lib guards too.
+  const kind = await getCommunityInviteRedemptionKind(invite);
+  if (kind === "process") {
     throw new ConflictError("This invite routes through the application process — open its apply link instead");
   }
 

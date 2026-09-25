@@ -14,6 +14,7 @@ import {
   ClipboardTextIcon,
   CompassIcon,
   EnvelopeSimpleIcon,
+  ForkKnifeIcon,
   GearSixIcon,
   HandHeartIcon,
   HandshakeIcon,
@@ -64,6 +65,7 @@ const PHOSPHOR_ICONS: Record<string, PhosphorIconType> = {
   chatsCircle: ChatsCircleIcon,
   chatCircle: ChatCircleIcon,
   bookOpen: BookOpenIcon,
+  forkknife: ForkKnifeIcon,
   // Tasks streamline icons — each pinnable Tasks sub-item keeps its
   // own glyph now that the sub-list no longer shares the board's.
   stack: StackIcon,

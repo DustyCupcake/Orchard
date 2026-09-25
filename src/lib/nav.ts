@@ -12,6 +12,7 @@ import { isSpatialPlanningHolder } from "./spatial-planning";
 import { getCurrentBudgetCycle } from "./budget/cycles";
 import { isBudgetOwner } from "./budget/voting";
 import { listShiftSeries, isShiftCoordinator } from "./shifts/series";
+import { isKitchenOwner } from "./kitchen";
 import { getPersonalFeed } from "./dashboard";
 import { getCurrentPhase } from "./profile-questions";
 import { getMyParticipation } from "./participation";
@@ -32,6 +33,7 @@ const MODULE_NAV_ITEM_KEY = {
   budget: "budget",
   conflictReports: "conflict-reports",
   feedback: "feedback",
+  kitchen: "kitchen",
 } as const;
 export type VisibleModuleKey = keyof typeof MODULE_NAV_ITEM_KEY;
 
@@ -50,6 +52,7 @@ export const HIGHLIGHTABLE_MODULES: { key: VisibleModuleKey; label: string }[] =
   { key: "conflictReports", label: "Conflict reports" },
   { key: "sensitiveData", label: "Sensitive data" },
   { key: "feedback", label: "Feedback" },
+  { key: "kitchen", label: "Kitchen" },
 ];
 
 // Whether the current viewer currently holds a task granting the given
@@ -115,6 +118,7 @@ export type NavContext = {
     budget: boolean;
     conflictReports: boolean;
     feedback: boolean;
+    kitchen: boolean;
   };
   pinnedKeys: string[];
   // Raw member.pinnedModuleKeys, unfiltered — separate from pinnedKeys
@@ -170,6 +174,7 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     budget: isModuleEnabled(community, "budget"),
     conflictReports: conflictTeamGrantingTaskIds.length > 0,
     feedback: community.postCycleFeedbackFormId !== null,
+    kitchen: isModuleEnabled(community, "kitchen"),
   };
 
   const [
@@ -181,6 +186,7 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     isSpatialHolder,
     isBudgetOwnerNow,
     isShiftCoordinatorNow,
+    isKitchenOwnerNow,
     feed,
     openCycles,
     defaultScopeSegment,
@@ -194,6 +200,7 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     visibleModules.spatialPlanning ? isSpatialPlanningHolder(actor, community) : Promise.resolve(false),
     visibleModules.budget ? isAnyBudgetOwner(actor) : Promise.resolve(false),
     visibleModules.shifts ? isAnyShiftCoordinator(actor) : Promise.resolve(false),
+    visibleModules.kitchen ? isKitchenOwner(actor) : Promise.resolve(false),
     getPersonalFeed(actor),
     listOpenCycles(actor),
     resolveDefaultScopeSegment(actor),
@@ -214,6 +221,7 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
   if (visibleModules.spatialPlanning && isSpatialHolder) pinnedKeys.push("spatial-planning");
   if (visibleModules.budget && isBudgetOwnerNow) pinnedKeys.push("budget");
   if (visibleModules.shifts && isShiftCoordinatorNow) pinnedKeys.push("shifts");
+  if (visibleModules.kitchen && isKitchenOwnerNow) pinnedKeys.push("kitchen");
 
   // "While this Phase is current, pin its highlighted module for
   // everyone actually coming" — e.g. Recruitment during a Recruitment
@@ -277,6 +285,7 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     feed.shiftCoordinatorNeedsAction.length +
     feed.myShiftsNeedingCompletion.length +
     feed.conflictNeedsAction.length +
+    feed.kitchenNeedsAction.length +
     feed.expiredNominations.length;
 
   return {

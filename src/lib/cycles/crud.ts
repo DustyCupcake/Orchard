@@ -7,7 +7,6 @@ import {
   cycle,
   cycleType,
   form,
-  JOINING_INVITE_MODES,
   permissionGrant,
   phase,
   requirement,
@@ -1059,7 +1058,6 @@ export const updateCycleSettingsInput = z.object({
   recruitmentApplicationFormId: z.string().uuid().nullable().optional(),
   applicationsOpen: z.boolean().optional(),
   invitesOpen: z.boolean().optional(),
-  joiningInviteMode: z.enum(JOINING_INVITE_MODES).optional(),
   joiningWindowClosesAt: z.string().min(1).nullable().optional(),
 });
 export type UpdateCycleSettingsInput = z.infer<typeof updateCycleSettingsInput>;
@@ -1104,7 +1102,6 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
       }),
       ...(input.applicationsOpen !== undefined && { applicationsOpen: input.applicationsOpen }),
       ...(input.invitesOpen !== undefined && { invitesOpen: input.invitesOpen }),
-      ...(input.joiningInviteMode !== undefined && { joiningInviteMode: input.joiningInviteMode }),
       ...(input.joiningWindowClosesAt !== undefined && {
         joiningWindowClosesAt: input.joiningWindowClosesAt ? new Date(input.joiningWindowClosesAt) : null,
       }),

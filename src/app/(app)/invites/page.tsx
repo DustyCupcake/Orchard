@@ -69,7 +69,7 @@ export default async function InvitesPage({
     // The cycle picker — open cycles only: closed ones admit no one.
     moduleOn
       ? db
-          .select({ id: cycle.id, name: cycle.name, joiningInviteMode: cycle.joiningInviteMode })
+          .select({ id: cycle.id, name: cycle.name })
           .from(cycle)
           .where(and(eq(cycle.communityId, viewing.communityId), isNull(cycle.closedAt)))
           .orderBy(cycle.name)
@@ -119,14 +119,14 @@ export default async function InvitesPage({
                   <option value="">— general invite —</option>
                   {cycles.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} ({c.joiningInviteMode})
+                      {c.name}
                     </option>
                   ))}
                 </select>
                 <span className="text-[12px] text-[var(--text-muted)]">
-                  A cycle invite&rsquo;s meaning follows that cycle&rsquo;s join mode — direct redeems on the spot
-                  and holds a capacity slot until used (an expiry is required for capacity-capped cycles);
-                  referral routes through the evaluated application instead and holds nothing (§4.3/8d).
+                  An invite&rsquo;s lane is fixed by your marks: marked as known personally, it redeems on the spot
+                  and holds a capacity slot until used (an expiry is required for capacity-capped cycles); otherwise
+                  it routes through the evaluated application instead and holds nothing (docs/joining-admission-plan.md §2).
                 </span>
               </label>
               <label className="flex flex-col gap-1">

@@ -1,4 +1,8 @@
-import { communityInviteStatus, getCommunityInviteByToken, getCommunityInviteJoiningMode } from "@/lib/recruitment";
+import {
+  communityInviteStatus,
+  getCommunityInviteByToken,
+  getCommunityInviteRedemptionKind,
+} from "@/lib/recruitment";
 import { redirect } from "next/navigation";
 import { Banner, BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
 import { redeemInviteAction } from "./actions";
@@ -30,11 +34,12 @@ export default async function InvitePage({
   const invite = await getCommunityInviteByToken(token);
   const status = communityInviteStatus(invite);
 
-  // §4.3/8d — a referral-mode cycle invite never redeems here; it
-  // routes through the evaluated application on /apply, with the token
-  // carried through as the referral link (which then tags the
-  // application with the invite's cycle).
-  if (invite && status === "valid" && (await getCommunityInviteJoiningMode(invite)) === "referral") {
+  // docs/joining-admission-plan.md §2 — a process-lane invite never
+  // redeems here; it routes through the evaluated application on /apply,
+  // with the token carried through as the vouch (which then tags the
+  // application with the invite's cycle). Every other lane — direct by
+  // the community's rule for the inviter's declaration — redeems below.
+  if (invite && status === "valid" && (await getCommunityInviteRedemptionKind(invite)) === "process") {
     redirect(`/apply?invite=${encodeURIComponent(token)}`);
   }
 

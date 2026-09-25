@@ -1,7 +1,11 @@
 import EffortFields from "@/components/EffortFields";
 import AxisScaleField from "@/components/AxisScaleField";
 import { Tag, BUTTON_PRIMARY, BUTTON_SECONDARY, CheckField, INPUT, LABEL } from "@/components/ui/kit";
-import { PERMISSION_MODULE_KEYS, PERMISSION_MODULE_LABELS, type PermissionModuleKey } from "@/lib/permissions";
+import {
+  PERMISSION_MODULE_LABELS,
+  TASK_GRANTABLE_PERMISSION_MODULE_KEYS,
+  type PermissionModuleKey,
+} from "@/lib/permissions";
 import { activateProposalAction, declineProposalAction } from "./actions";
 
 type Proposal = {
@@ -306,10 +310,11 @@ export default function ProposalCard({
                 <p className="mt-1 text-[12px] text-[var(--text-muted)]">
                   One rule, same as everywhere grants are edited (docs/cycle-scope-remediation-plan.md
                   §5.4): a task grants what it sits in — wherever this proposal lands on the board,
-                  each checked module is granted for that task&rsquo;s own scope only.
+                  each checked module is granted for that task&rsquo;s own scope only. Budget authority
+                  is configured only in Settings → Access &amp; permissions.
                 </p>
                 <div className="mt-3 flex flex-col gap-1">
-                  {PERMISSION_MODULE_KEYS.map((moduleKey) => (
+                  {TASK_GRANTABLE_PERMISSION_MODULE_KEYS.map((moduleKey) => (
                     <div key={moduleKey}>
                       <CheckField label={PERMISSION_MODULE_LABELS[moduleKey]} name="grantModuleKeys" value={moduleKey} />
                       {elsewhereHolderByModule[moduleKey] && (

@@ -1,7 +1,7 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, type Tx } from "@/db";
 import { permissionGrant, task } from "@/db/schema";
-import { NotFoundError } from "./errors";
+import { AppError, NotFoundError } from "./errors";
 
 export const PERMISSION_MODULE_KEYS = [
   "admin",
@@ -15,14 +15,23 @@ export const PERMISSION_MODULE_KEYS = [
   "support",
   "backstop",
   "shift_management",
+  "budget",
+  "kitchen",
 ] as const;
 export type PermissionModuleKey = (typeof PERMISSION_MODULE_KEYS)[number];
 
+// Task and proposal flows may attach the ordinary module grants inline,
+// but Budget authority is deliberately settings-only. Keeping that
+// exception in one named list prevents a generic task/proposal checkbox
+// or forged POST from becoming a second Budget-owner configuration path.
+export const TASK_GRANTABLE_PERMISSION_MODULE_KEYS = PERMISSION_MODULE_KEYS.filter(
+  (moduleKey) => moduleKey !== "budget",
+);
+
 // Human-readable label/description per module — the single source of
-// truth for both the settings panel's Access & permissions tab and a
-// task's own "Permissions granted by this task" checkboxes
-// (docs/development-plan.md's Phase 64), so the two entry points never
-// drift into describing the same gate two different ways.
+// truth for the settings panel's Access & permissions tab and the task
+// and proposal grant controls where applicable (docs/development-plan.md's
+// Phase 64), so those surfaces never describe a gate two different ways.
 export const PERMISSION_MODULE_LABELS: Record<PermissionModuleKey, string> = {
   admin: "Admin",
   branch_coordination: "Branch coordination",
@@ -35,6 +44,8 @@ export const PERMISSION_MODULE_LABELS: Record<PermissionModuleKey, string> = {
   support: "Support (View-as)",
   backstop: "Backstop",
   shift_management: "Shift management",
+  budget: "Budget",
+  kitchen: "Kitchen",
 };
 
 // Each hint leads with its module's scope rule now (docs/cycle-scope-
@@ -66,6 +77,10 @@ export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
     "Cycle-shaped, like Announcements: a task placed in a cycle is that cycle's backstop (covering its critical tasks); a cycle-less task is the community/evergreen backstop (covering cycle-less criticals only, D1). Unclaimed criticals stay open and claimable for anyone — being the backstop is about being named responsible, not closing the task off.",
   shift_management:
     "Cycle-shaped like Announcements: a task placed in a cycle manages that cycle's roster; a cycle-less task manages the community's standing series. Whoever holds it opens sign-ups, confirms proposals, and re-places series. Placing a series in a collecting cycle is open to any member; managing (and adding standing series) is not. A roster with no grant-backed manager stays visibly closed.",
+  budget:
+    "Cycle-shaped — placed in a Cycle, it owns that Cycle's Budget; cycle-less, it owns Budgets not tied to a Cycle. Whoever currently holds the designated task can edit the BudgetCycle while proposals are open, close proposals, confirm the funded set, and mark it done. Configure this here under Access & permissions.",
+  kitchen:
+    "Cycle-shaped, like the rest of the schedule-shaped modules — placed in a cycle, it owns that cycle's menu; cycle-less, it's the community's standing menu role. Whoever currently holds any task granted here exercises the whole Kitchen for that scope: builds and publishes the menu, reviews the food-ideas inbox, and — once the community links the allergies field to this grant (Sensitive data) — reads member constraints while planning. Members can still file food ideas without this set, but nobody can build or publish the menu until it is.",
 };
 
 // The §2.2 tier table made concrete — how each module's authority
@@ -80,7 +95,7 @@ export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
 //                     → cycle C; cycle-less → the community/evergreen
 //                     scope (branch_coordination, event_scheduling_owner,
 //                     spatial_planning, backstop, shift_management,
-//                     feedback_review, recruitment).
+//                     feedback_review, recruitment, budget).
 //   "cycle_variant" — community-shaped base with an optional per-cycle
 //                     variant: cycle-less → community-wide; cycle-placed
 //                     → that cycle (announcements).
@@ -98,6 +113,8 @@ export const PERMISSION_MODULE_SCOPE_TIER: Record<PermissionModuleKey, Permissio
   support: "community",
   backstop: "cycle",
   shift_management: "cycle",
+  budget: "cycle",
+  kitchen: "cycle",
 };
 
 // The derived-scope label a grant row shows (§5.1): the cycle the
@@ -129,6 +146,11 @@ const MULTI_CARDINALITY_MODULES = new Set<PermissionModuleKey>([
   "admin",
   "branch_coordination",
   "support",
+  // D2 — one `kitchen` grant = full module access wherever granted; the
+  // community may put it on however many tasks work in the module, none
+  // of them replacing the others (branch_coordination's shape, not
+  // budget's single-owner shape).
+  "kitchen",
 ]);
 
 export function allowsMultipleGrants(moduleKey: PermissionModuleKey): boolean {
@@ -231,6 +253,56 @@ export async function listModuleKeysGrantedByTask(
   return new Set(rows.map((r) => r.moduleKey));
 }
 
+// Placement-derived scope has no database row of its own to lock, and
+// PermissionGrant has no unique key from which PostgreSQL can derive the
+// Cycle scope. These transaction-scoped advisory locks are the concurrency
+// boundary instead:
+//
+//   - the task lock serializes grant changes with a placement change on that
+//     same task (src/lib/tasks/crud.ts uses this same helper);
+//   - the scope lock serializes replacements between different tasks in one
+//     exact `(community, module, cycle-or-NULL)` scope.
+//
+// Hash collisions only over-serialize two unrelated scopes; they can never
+// let two replacements into the same scope run concurrently. The scope keys
+// are sorted before acquisition so two task moves involving several modules
+// cannot deadlock by taking the same locks in opposite orders.
+const TASK_LOCK_NAMESPACE = "orchard:permission-grant:task:v1";
+const SCOPE_LOCK_NAMESPACE = "orchard:permission-grant:scope:v1";
+
+function grantScopeLockIdentity(scope: SingleCardinalityGrantScope) {
+  return JSON.stringify([scope.communityId, scope.moduleKey, scope.cycleId]);
+}
+
+async function acquireAdvisoryTransactionLock(tx: Tx, namespace: string, identity: string) {
+  await tx.execute(sql`
+    SELECT pg_advisory_xact_lock(hashtext(${namespace}), hashtext(${identity}))
+  `);
+}
+
+// Shared with task placement updates. All cooperating operations take this
+// before reading the task's current placement, then take any affected scope
+// locks in sorted order.
+export async function lockPermissionGrantTask(tx: Tx, taskId: string) {
+  await acquireAdvisoryTransactionLock(tx, TASK_LOCK_NAMESPACE, taskId);
+}
+
+export type SingleCardinalityGrantScope = {
+  communityId: string;
+  moduleKey: PermissionModuleKey;
+  cycleId: string | null;
+};
+
+export async function lockSingleCardinalityGrantScopes(
+  tx: Tx,
+  scopes: readonly SingleCardinalityGrantScope[],
+) {
+  const identities = [...new Set(scopes.map(grantScopeLockIdentity))].sort();
+  for (const identity of identities) {
+    await acquireAdvisoryTransactionLock(tx, SCOPE_LOCK_NAMESPACE, identity);
+  }
+}
+
 // Defense in depth, not just a UI-layer check — the same "the lib
 // function re-validates, it doesn't just trust whatever the caller
 // already checked" posture this codebase's other write paths already
@@ -238,8 +310,8 @@ export async function listModuleKeysGrantedByTask(
 // caller with direct programmatic access (a test, a future script)
 // should get the same real NotFoundError a cross-community task ID
 // would have thrown under the old updateCommunity validation.
-async function requireTaskInCommunity(communityId: string, taskId: string) {
-  const [row] = await db
+async function requireTaskInCommunity(tx: Tx, communityId: string, taskId: string) {
+  const [row] = await tx
     .select({ id: task.id })
     .from(task)
     .where(and(eq(task.id, taskId), eq(task.communityId, communityId)));
@@ -271,37 +343,50 @@ export async function setPermissionGrant(
   moduleKey: PermissionModuleKey,
   taskId: string,
 ): Promise<void> {
-  await requireTaskInCommunity(communityId, taskId);
+  if (allowsMultipleGrants(moduleKey)) {
+    throw new AppError(`${PERMISSION_MODULE_LABELS[moduleKey]} grants may coexist; use addPermissionGrant`);
+  }
 
-  // The one scope read (§2.1): the granted task's own placement.
-  const [grantingTask] = await db
-    .select({ cycleId: task.cycleId })
-    .from(task)
-    .where(eq(task.id, taskId));
-  const scopeCycleId = grantingTask.cycleId;
+  await db.transaction(async (tx) => {
+    // Freeze this task's placement before deriving its scope. updateTask
+    // takes this same lock before changing cycleId, so the placement read
+    // below and the scope lock cannot disagree with a concurrent move.
+    await lockPermissionGrantTask(tx, taskId);
+    await requireTaskInCommunity(tx, communityId, taskId);
 
-  const sameScopeTaskIds = await db
-    .select({ id: task.id })
-    .from(task)
-    .where(
-      and(
-        eq(task.communityId, communityId),
-        scopeCycleId === null ? isNull(task.cycleId) : eq(task.cycleId, scopeCycleId),
-      ),
-    );
-  await db
-    .delete(permissionGrant)
-    .where(
-      and(
-        eq(permissionGrant.communityId, communityId),
-        eq(permissionGrant.moduleKey, moduleKey),
-        inArray(
-          permissionGrant.taskId,
-          sameScopeTaskIds.map((r) => r.id),
+    // The one scope read (§2.1): the granted task's own placement.
+    const [grantingTask] = await tx
+      .select({ cycleId: task.cycleId })
+      .from(task)
+      .where(and(eq(task.id, taskId), eq(task.communityId, communityId)));
+    const scopeCycleId = grantingTask.cycleId;
+    await lockSingleCardinalityGrantScopes(tx, [
+      { communityId, moduleKey, cycleId: scopeCycleId },
+    ]);
+
+    const sameScopeTaskIds = await tx
+      .select({ id: task.id })
+      .from(task)
+      .where(
+        and(
+          eq(task.communityId, communityId),
+          scopeCycleId === null ? isNull(task.cycleId) : eq(task.cycleId, scopeCycleId),
         ),
-      ),
-    );
-  await db.insert(permissionGrant).values({ communityId, moduleKey, taskId });
+      );
+    await tx
+      .delete(permissionGrant)
+      .where(
+        and(
+          eq(permissionGrant.communityId, communityId),
+          eq(permissionGrant.moduleKey, moduleKey),
+          inArray(
+            permissionGrant.taskId,
+            sameScopeTaskIds.map((r) => r.id),
+          ),
+        ),
+      );
+    await tx.insert(permissionGrant).values({ communityId, moduleKey, taskId });
+  });
 }
 
 // Multi-cardinality modules — adds one more granting task without
@@ -312,20 +397,27 @@ export async function addPermissionGrant(
   moduleKey: PermissionModuleKey,
   taskId: string,
 ): Promise<void> {
-  await requireTaskInCommunity(communityId, taskId);
-  const existing = await db
-    .select({ id: permissionGrant.id })
-    .from(permissionGrant)
-    .where(
-      and(
-        eq(permissionGrant.communityId, communityId),
-        eq(permissionGrant.moduleKey, moduleKey),
-        eq(permissionGrant.taskId, taskId),
-      ),
-    );
-  if (existing.length === 0) {
-    await db.insert(permissionGrant).values({ communityId, moduleKey, taskId });
+  if (!allowsMultipleGrants(moduleKey)) {
+    throw new AppError(`${PERMISSION_MODULE_LABELS[moduleKey]} allows one granting task per scope; use setPermissionGrant`);
   }
+
+  await db.transaction(async (tx) => {
+    await lockPermissionGrantTask(tx, taskId);
+    await requireTaskInCommunity(tx, communityId, taskId);
+    const existing = await tx
+      .select({ id: permissionGrant.id })
+      .from(permissionGrant)
+      .where(
+        and(
+          eq(permissionGrant.communityId, communityId),
+          eq(permissionGrant.moduleKey, moduleKey),
+          eq(permissionGrant.taskId, taskId),
+        ),
+      );
+    if (existing.length === 0) {
+      await tx.insert(permissionGrant).values({ communityId, moduleKey, taskId });
+    }
+  });
 }
 
 // Remove a specific task's grant of this module — the plain inverse of
@@ -338,28 +430,40 @@ export async function removePermissionGrant(
   moduleKey: PermissionModuleKey,
   taskId: string,
 ): Promise<void> {
-  await db
-    .delete(permissionGrant)
-    .where(
-      and(
-        eq(permissionGrant.communityId, communityId),
-        eq(permissionGrant.moduleKey, moduleKey),
-        eq(permissionGrant.taskId, taskId),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    await lockPermissionGrantTask(tx, taskId);
+    await requireTaskInCommunity(tx, communityId, taskId);
+
+    // Read the task's placement to derive the scope for locking
+    const [grantingTask] = await tx
+      .select({ cycleId: task.cycleId })
+      .from(task)
+      .where(and(eq(task.id, taskId), eq(task.communityId, communityId)));
+    const scopeCycleId = grantingTask.cycleId;
+    await lockSingleCardinalityGrantScopes(tx, [
+      { communityId, moduleKey, cycleId: scopeCycleId },
+    ]);
+
+    await tx
+      .delete(permissionGrant)
+      .where(
+        and(
+          eq(permissionGrant.communityId, communityId),
+          eq(permissionGrant.moduleKey, moduleKey),
+          eq(permissionGrant.taskId, taskId),
+        ),
+      );
+  });
 }
 
 // The shared core of cycle clone and task-pack import
 // (docs/cycle-scope-remediation-plan.md §4.4): a copied task keeps the
-// module grants its source had, as new bare { communityId, moduleKey,
-// taskId } rows keyed by the copy's task id. No scope is copied — the
-// copy's own placement re-scopes everything (§2.1): clone-previous-cycle
-// places the copied task in the brand-new cycle, pack import places it in
-// the imported cycle, so the grant rows already point at the right cycle's
-// data before this is even called. Both that clone path
-// (src/lib/cycles/crud.ts's clonePermissionGrants) and commitPackImport
-// build their moduleKeysByTask map from their own source and call this
-// once, so the two copy paths can never drift.
+// ordinary module grants its source had, as new bare { communityId,
+// moduleKey, taskId } rows keyed by the copy's task id. No scope is copied
+// — the copy's own placement re-scopes everything (§2.1). Budget is the
+// deliberate exception: it is a settings-only, cycle-scoped authority, so
+// cloning/importing must never appoint an owner for the destination scope;
+// an Admin designates it explicitly in Settings → Access & permissions.
 export async function copyPermissionGrants(
   tx: Tx,
   communityId: string,
@@ -368,6 +472,7 @@ export async function copyPermissionGrants(
   const rows: { communityId: string; moduleKey: PermissionModuleKey; taskId: string }[] = [];
   for (const [taskId, moduleKeys] of moduleKeysByTask) {
     for (const moduleKey of moduleKeys) {
+      if (moduleKey === "budget") continue;
       rows.push({ communityId, moduleKey, taskId });
     }
   }

@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { community, task } from "@/db/schema";
 import { createCycle } from "@/lib/cycles";
 import {
+  addPermissionGrant,
+  copyPermissionGrants,
   describeGrantScope,
   isMisplacedCommunityGrant,
   listGrantingTaskIds,
@@ -13,36 +15,16 @@ import {
   removePermissionGrant,
   setPermissionGrant,
 } from "@/lib/permissions";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
 }
 
-async function insertTask(
-  communityId: string,
-  branchId: string,
-  createdBy: string,
-  overrides: Partial<typeof task.$inferInsert> = {},
-) {
-  const [row] = await db
-    .insert(task)
-    .values({
-      communityId,
-      branchId,
-      title: "A task",
-      effort: "one_off",
-      effortMagnitude: { duration: "few_hours" },
-      createdBy,
-      ...overrides,
-    })
-    .returning();
-  return row;
-}
-
-// Both functions here are what the settings panel's Access &
-// permissions tab, the task detail view, and the proposal-activation
-// screen all read to render — see docs/development-plan.md's Phase 64.
+// Both functions here are what the settings panel's Access & permissions
+// tab, the task detail view, and the proposal-activation screen read to
+// render (Budget remains settings-only) — see docs/development-plan.md's
+// Phase 64.
 describe("listGrantsWithTaskInfo", () => {
   beforeEach(async () => {
     await resetDatabase();
@@ -102,6 +84,21 @@ describe("listModuleKeysGrantedByTask", () => {
 describe("placement-derived scopes (cycle-scope remediation)", () => {
   beforeEach(async () => {
     await resetDatabase();
+  });
+
+  it("never copies Budget authority through a cycle clone or task-pack import", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const ownerTask = await insertTask(testCommunity.id, branch.id, alice.id);
+
+    await db.transaction((tx) =>
+      copyPermissionGrants(
+        tx,
+        testCommunity.id,
+        new Map([[ownerTask.id, ["budget"] as const]]),
+      ),
+    );
+
+    expect(await listGrantingTaskIds(testCommunity.id, "budget")).toEqual([]);
   });
 
   it("listGrantingTaskIds returns every grant; listGrantingTaskIdsForScope filters by the granting task's placement", async () => {
@@ -185,7 +182,7 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
     const cycleTask = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id, title: "Owns A" });
     const communityTask = await insertTask(testCommunity.id, branch.id, alice.id, { title: "Owns community" });
     await setPermissionGrant(testCommunity.id, "spatial_planning", cycleTask.id);
-    await setPermissionGrant(testCommunity.id, "branch_coordination", communityTask.id);
+    await addPermissionGrant(testCommunity.id, "branch_coordination", communityTask.id);
 
     const grants = await listGrantsWithTaskInfo(testCommunity.id);
     // The cycle's auto-created Backstop task (docs/cycle-scope-
@@ -239,6 +236,7 @@ describe("describeGrantScope / isMisplacedCommunityGrant", () => {
       "shift_management",
       "feedback_review",
       "recruitment",
+      "budget",
     ] as const) {
       expect(describeGrantScope(moduleKey, null, null)).toBe("Evergreen");
     }
@@ -253,8 +251,98 @@ describe("describeGrantScope / isMisplacedCommunityGrant", () => {
     expect(isMisplacedCommunityGrant("spatial_planning", "cycle-1")).toBe(false);
     expect(isMisplacedCommunityGrant("announcements", "cycle-1")).toBe(false);
     expect(isMisplacedCommunityGrant("shift_management", "cycle-1")).toBe(false);
+    expect(isMisplacedCommunityGrant("budget", "cycle-1")).toBe(false);
 
     // A cycle-less community-shaped grant is exactly right.
     expect(isMisplacedCommunityGrant("admin", null)).toBe(false);
+  });
+});
+
+describe("cardinality enforcement in grant functions", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("setPermissionGrant rejects multi-cardinality modules", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const t = await insertTask(testCommunity.id, branch.id, alice.id);
+    await expect(
+      setPermissionGrant(testCommunity.id, "admin", t.id),
+    ).rejects.toThrow(/grants may coexist/);
+    await expect(
+      setPermissionGrant(testCommunity.id, "branch_coordination", t.id),
+    ).rejects.toThrow(/grants may coexist/);
+    await expect(
+      setPermissionGrant(testCommunity.id, "support", t.id),
+    ).rejects.toThrow(/grants may coexist/);
+    await expect(
+      setPermissionGrant(testCommunity.id, "kitchen", t.id),
+    ).rejects.toThrow(/grants may coexist/);
+  });
+
+  it("addPermissionGrant rejects single-cardinality modules", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const t = await insertTask(testCommunity.id, branch.id, alice.id);
+    await expect(
+      addPermissionGrant(testCommunity.id, "spatial_planning", t.id),
+    ).rejects.toThrow(/allows one granting task per scope/);
+    await expect(
+      addPermissionGrant(testCommunity.id, "budget", t.id),
+    ).rejects.toThrow(/allows one granting task per scope/);
+  });
+});
+
+describe("atomic setPermissionGrant replacement", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("concurrent replacements in the same scope finish with exactly one grant", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cycleA = await createCycle(alice, { source: "blank", name: "A" });
+    const taskA = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
+    const taskB = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
+    const taskC = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
+
+    // Initial grant
+    await setPermissionGrant(testCommunity.id, "spatial_planning", taskA.id);
+
+    // Simulate concurrent replacements - both should run and end with exactly one grant
+    const [result1, result2] = await Promise.allSettled([
+      setPermissionGrant(testCommunity.id, "spatial_planning", taskB.id),
+      setPermissionGrant(testCommunity.id, "spatial_planning", taskC.id),
+    ]);
+
+    // Both should succeed (no throw)
+    expect(result1.status).toBe("fulfilled");
+    expect(result2.status).toBe("fulfilled");
+
+    // Exactly one grant remains in the scope
+    const grants = await listGrantingTaskIdsForScope(
+      testCommunity.id,
+      "spatial_planning",
+      cycleA.id,
+    );
+    expect(grants).toHaveLength(1);
+    expect([taskB.id, taskC.id]).toContain(grants[0]);
+  });
+});
+
+describe("removePermissionGrant transactional behavior", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("removePermissionGrant succeeds and clears the grant", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cycleA = await createCycle(alice, { source: "blank", name: "A" });
+    const t = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
+    await setPermissionGrant(testCommunity.id, "spatial_planning", t.id);
+
+    await removePermissionGrant(testCommunity.id, "spatial_planning", t.id);
+
+    expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", cycleA.id)).toEqual([]);
   });
 });
