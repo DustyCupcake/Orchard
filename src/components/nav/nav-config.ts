@@ -195,6 +195,15 @@ export const NAV_GROUPS: NavGroup[] = [
 
 export const ALL_ITEMS: NavItem[] = [DASHBOARD_ITEM, CALENDAR_ITEM, ...NAV_GROUPS.flatMap((g) => g.items)];
 
+/**
+ * Header-only groups (notably Library) intentionally have no sub-items.
+ * They must still survive the visibility filter when their header link
+ * is present; an ordinary empty group should not create a dead toggle.
+ */
+export function isNavGroupRenderable(group: NavGroup): boolean {
+  return group.items.length > 0 || Boolean(group.headerIsLink && group.href);
+}
+
 export function isItemVisible(item: NavItem, ctx: NavContext): boolean {
   if (item.coordinatorOnly && !ctx.isCoordinator) return false;
   if (item.moduleKey && !ctx.visibleModules[item.moduleKey]) return false;

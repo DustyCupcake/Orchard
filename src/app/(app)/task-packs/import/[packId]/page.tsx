@@ -9,6 +9,7 @@ import {
 } from "@/lib/task-packs";
 import { NotFoundError } from "@/lib/errors";
 import { ClonePreviewGrid, ClonePreviewList } from "@/components/ClonePreview";
+import ReassignmentBulkSelect from "./ReassignmentBulkSelect";
 import { decodeImportState } from "./state";
 import { finalizePackImportAction, reviewPackImportAction } from "./actions";
 
@@ -90,22 +91,38 @@ export default async function ImportTaskPackPage({
           <input type="hidden" name="state" value={stateRaw} />
           <input type="hidden" name="declinedItemIds" value={JSON.stringify(declinedItemIds)} />
 
-          {declinedItems.map((item) => (
-            <label key={item.id} style={{ display: "block", fontSize: "0.9rem" }}>
-              {item.title} <span style={{ color: "#666" }}>(was &ldquo;{item.branchNameHint}&rdquo;)</span>
-              <br />
-              <select name={`itemBranch__${item.id}`} required defaultValue="" style={{ padding: "0.3rem" }}>
-                <option value="" disabled>
-                  Pick a branch
-                </option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
+          <ReassignmentBulkSelect
+            items={declinedItems.map((item) => ({
+              id: item.id,
+              title: item.title,
+              branchNameHint: item.branchNameHint,
+            }))}
+            branches={branches.map((branch) => ({ id: branch.id, name: branch.name }))}
+          />
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            {declinedItems.map((item) => (
+              <label key={item.id} style={{ display: "block", fontSize: "0.9rem" }}>
+                {item.title} <span style={{ color: "#666" }}>(was &ldquo;{item.branchNameHint}&rdquo;)</span>
+                <br />
+                <select
+                  id={`item-branch-${item.id}`}
+                  name={`itemBranch__${item.id}`}
+                  defaultValue=""
+                  style={{ padding: "0.3rem" }}
+                >
+                  <option value="" disabled>
+                    Pick a branch
                   </option>
-                ))}
-              </select>
-            </label>
-          ))}
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
 
           <button type="submit" style={{ padding: "0.4rem 1rem", width: "fit-content" }}>
             Confirm import

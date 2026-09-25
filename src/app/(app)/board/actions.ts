@@ -12,6 +12,7 @@ import {
   parkTask,
   releaseTask,
   resumeTask,
+  updateTask,
   withdrawJoinRequest,
 } from "@/lib/tasks";
 import { exportCycleAsTaskPack } from "@/lib/task-packs";
@@ -27,6 +28,18 @@ async function runAction(fn: () => Promise<unknown>) {
     throw err;
   }
   revalidatePath("/board");
+}
+
+function safeBoardReturnPath(value: FormDataEntryValue | null): string {
+  const raw = String(value ?? "");
+  if (!raw.startsWith("/board")) return "/board";
+  try {
+    const url = new URL(raw, "http://orchard.local");
+    if (url.origin !== "http://orchard.local" || url.pathname !== "/board") return "/board";
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return "/board";
+  }
 }
 
 // Phase 54 (View-as): every write in this file goes through
@@ -55,6 +68,15 @@ export async function claimAction(formData: FormData) {
 export async function bulkClaimAction(formData: FormData) {
   const actor = await requireMember();
   const taskIds = formData.getAll("taskIds").map(String);
+  const returnTo = safeBoardReturnPath(formData.get("returnTo"));
+  const errorHref = (message: string) => {
+    const separator = returnTo.includes("?") ? "&" : "?";
+    return `${returnTo}${separator}error=${encodeURIComponent(message)}`;
+  };
+
+  if (taskIds.length === 0) {
+    redirect(errorHref("Select at least one task to claim."));
+  }
 
   let claimed = 0;
   const failures: string[] = [];
@@ -75,7 +97,66 @@ export async function bulkClaimAction(formData: FormData) {
     failures.length === 0
       ? `Claimed ${claimed} task(s).`
       : `Claimed ${claimed} task(s); ${failures.length} failed: ${failures.join("; ")}`;
-  redirect(`/board?notice=${encodeURIComponent(summary)}`);
+  const separator = returnTo.includes("?") ? "&" : "?";
+  redirect(`${returnTo}${separator}notice=${encodeURIComponent(summary)}`);
+}
+
+// Placement edits are already a first-class task operation (the task
+// detail Edit panel writes branch/cycle/phase through updateTask). The
+// board's shared selection island reuses that same domain function so a
+// bulk move gets the same community/phase/grant checks as an individual
+// edit, while still reporting per-task failures instead of pretending a
+// mixed selection moved atomically.
+export async function bulkMoveTasksAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskIds = formData.getAll("taskIds").map(String);
+  const branchId = String(formData.get("branchId") ?? "").trim();
+  const cycleIdRaw = String(formData.get("cycleId") ?? "").trim();
+  const phaseIdRaw = String(formData.get("phaseId") ?? "").trim();
+
+  const returnTo = safeBoardReturnPath(formData.get("returnTo"));
+  const errorHref = (message: string) => {
+    const separator = returnTo.includes("?") ? "&" : "?";
+    return `${returnTo}${separator}error=${encodeURIComponent(message)}`;
+  };
+
+  if (taskIds.length === 0) {
+    redirect(errorHref("Select at least one task to move."));
+  }
+  if (!branchId && !cycleIdRaw && !phaseIdRaw) {
+    redirect(errorHref("Choose a destination branch, cycle, or phase."));
+  }
+
+  const input = {
+    ...(branchId ? { branchId } : {}),
+    ...(cycleIdRaw ? { cycleId: cycleIdRaw === "__none__" ? null : cycleIdRaw } : {}),
+    ...(phaseIdRaw ? { phaseId: phaseIdRaw === "__none__" ? null : phaseIdRaw } : {}),
+  };
+
+  let moved = 0;
+  const failures: string[] = [];
+  for (const taskId of taskIds) {
+    try {
+      // updateTask normalizes an incompatible phase while it resolves a
+      // cycle move. Pass a fresh object per item so one task's
+      // normalization cannot leak into the next task in the batch.
+      await updateTask(actor, taskId, { ...input });
+      moved++;
+    } catch (err) {
+      if (err instanceof AppError) {
+        failures.push(err.message);
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  const summary =
+    failures.length === 0
+      ? `Moved ${moved} task(s).`
+      : `Moved ${moved} task(s); ${failures.length} failed: ${failures.join("; ")}`;
+  const separator = returnTo.includes("?") ? "&" : "?";
+  redirect(`${returnTo}${separator}notice=${encodeURIComponent(summary)}`);
 }
 
 // The board's own bulk-selection mechanism, reused for a partial
@@ -87,6 +168,18 @@ export async function exportSelectedTasksAsPackAction(formData: FormData) {
   const cycleId = String(formData.get("cycleId"));
   const name = String(formData.get("name") ?? "").trim();
   const taskIds = formData.getAll("taskIds").map(String);
+  const returnTo = safeBoardReturnPath(formData.get("returnTo"));
+  const errorHref = (message: string) => {
+    const separator = returnTo.includes("?") ? "&" : "?";
+    return `${returnTo}${separator}error=${encodeURIComponent(message)}`;
+  };
+
+  // The board action is the hand-picked subset path. The library treats
+  // an empty list as "export the whole cycle", which would turn a user
+  // mistake (an empty selection) into an unexpectedly broad export.
+  if (taskIds.length === 0) {
+    redirect(errorHref("Select at least one task to export."));
+  }
 
   let packId: string;
   try {
@@ -94,7 +187,7 @@ export async function exportSelectedTasksAsPackAction(formData: FormData) {
     packId = created.id;
   } catch (err) {
     if (err instanceof AppError) {
-      redirect(`/board?error=${encodeURIComponent(err.message)}`);
+      redirect(errorHref(err.message));
     }
     throw err;
   }

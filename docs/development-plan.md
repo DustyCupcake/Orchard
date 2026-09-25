@@ -18,27 +18,21 @@ See `docs/roadmap.md` for what's deliberately not built yet — both the stretch
 
 ## Board views: by-phase layout and deadline milestones — shipped
 
-Built, tested, and committed — see `CHANGELOG.md`'s entry for the full record (schema, files touched, real bugs found, manual verification). Left here only as a one-line pointer since the next feature below depends on what it built: a `view=kanban|phase` switcher on `/board`, a by-phase card layout (`src/lib/tasks/board-views.ts`'s `groupTasksByPhase`, `PhaseCard.tsx`), and `TaskMilestone.isDeadline` (a flagged-milestone deadline concept, resolved by `getTaskDeadline` and surfaced as `listTasksWithAssignments`'s new `deadlineDate` field).
+The by-phase foundation is committed — see `CHANGELOG.md`'s entry for the full record (schema, files touched, real bugs found, manual verification). The current board follow-up below adds the remaining view/filter and selection behavior on top of that foundation: the `view=kanban|phase|coverage` switcher, by-phase cards (`src/lib/tasks/board-views.ts`'s `groupTasksByPhase`, `PhaseCard.tsx`), and `TaskMilestone.isDeadline` (a flagged-milestone deadline concept, resolved by `getTaskDeadline` and surfaced by `listTasksWithAssignments`'s new `deadlineDate` field).
 
 ---
 
 ## Branch coverage view + advanced filters
 
-Not a phase — every numbered phase (0-69) is done, and per the user, we no longer number what comes after; this is just the next feature, picked off `docs/roadmap.md`/`spec.md`'s Views section the same way the by-phase view above was.
+**Status:** Built and verified in the board revamp. The historical audit/remediation documents still describe this as missing; use this section and `docs/BOARD-HANDOFF.md`'s current follow-up for the present state.
 
-**Goal:** `spec.md`'s Views section also calls for "group by branch → coordinator coverage" — never built. `getCommunitySnapshot`'s branch-health rollup (`src/lib/dashboard.ts`) already computes almost exactly this signal for the Dashboard's summary panel; this turns it into a real board drill-down, plus rounds out the board's filtering with an advanced-filters disclosure.
+**Implemented:**
+- `/board?view=coverage` groups active tasks by branch and shows a public health status for every branch.
+- Detailed task lists, soft/hard/escalated counts, and worst-first ordering are limited to the coordination scope that actually covers the task: branch-column holders see the whole branch; cycle-row holders see their cycle's tasks. Everyone else sees only the public status.
+- The advanced-filters disclosure combines attention, phase, one-off duration, open slots, assigned-to-me, and due-within-N-days with the existing board filters. `capacity = null` is treated as genuinely uncapped when evaluating open slots.
+- Selection is shared across the Unclaimed, Kanban, By phase, and Branch coverage card renderings. Claim, Task Pack export, and bulk placement moves use that shared selection; export is scoped to the active filtered view.
 
-**Scope:**
-- `deriveBranchHealthStatus` exported from `dashboard.ts` for reuse (was module-private).
-- `getBranchCoverage` — per-branch `{status, counts, tasks}`, `status` public to everyone, `counts`/`tasks` gated to that specific branch's coordination holders (`listCoordinationBranchIds`, already on the board) — deliberately per-branch, tighter than Dashboard's own community-wide `isCoordinationHolder(actor, null)` gate, which is left unchanged.
-- `BranchCoverageCard` — same card/show-more shape as `PhaseCard`; `view=coverage` renders one per branch.
-- An "Advanced filters" disclosure (collapsed by default): needs-attention, phase (as a filter, independent of the by-phase view), duration bucket (one-off tasks only), has-open-slots, assigned-to-me, due-within-N-days. All computed as an in-memory filter chain over the already-fetched task list, not pushed into `listTasksWithAssignments`'s SQL.
-
-**Depends on:** the by-phase view above (`board-views.ts`, the view switcher, `deadlineDate`).
-
-**Out of scope:** any change to Dashboard's own existing branch-health panel or its community-wide coordination gate.
-
-**Done when:** `/board?view=coverage` shows every branch as a card with a publicly-visible health status and task list; a branch's actual coordination holder additionally sees real soft/hard/escalated counts and a worst-first task ordering that nobody else sees; each advanced filter narrows the board correctly, in combination with the basic filters and each other, without resetting any other active filter.
+**Validation:** `npx tsc --noEmit`, `npm run lint -- --no-warn-ignored`, `npx vitest run tests/board-views.test.ts tests/nav-config.test.ts tests/task-pack-reassignment.test.ts`, and `npm run build` pass. Full DB-backed integration suites still require the repository's local Postgres credentials.
 
 ---
 

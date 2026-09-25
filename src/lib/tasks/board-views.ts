@@ -8,6 +8,27 @@ import { deriveBranchHealthStatus, type BranchHealthStatus } from "@/lib/dashboa
 
 export { BranchHealthStatus };
 
+export const BOARD_VIEWS = ["unclaimed", "kanban", "phase", "coverage"] as const;
+export type BoardView = (typeof BOARD_VIEWS)[number];
+export const DEFAULT_BOARD_VIEW: BoardView = "unclaimed";
+
+/** Whether a task still has a real (non-shadow) holder slot available. */
+export function hasOpenTaskSlot(task: {
+  capacity: number | null;
+  assignments: readonly { isShadow: boolean }[];
+}): boolean {
+  const held = task.assignments.filter((assignment) => !assignment.isShadow).length;
+  return task.capacity === null || held < task.capacity;
+}
+
+// The board's tabs are URL-driven. Keep the omission rule next to the
+// canonical list so changing the default landing cannot silently make a
+// non-default tab link back to the queue (the old `view=kanban` tab
+// had exactly that bug after Unclaimed became the default).
+export function boardViewParam(view: BoardView): string | null {
+  return view === DEFAULT_BOARD_VIEW ? null : view;
+}
+
 export interface PhaseGroupTask {
   id: string;
   phaseId: string | null;
@@ -91,13 +112,16 @@ export interface BranchCoverageGroup<T extends BranchCoverageTask> {
 }
 
 // "group by branch → coordinator coverage" — docs/spec.md's Views.
-// Public status (on_track/attention_needed/struggling) for everyone;
-// real counts and worst-first task ordering only for that branch's
-// coordination holders. A branch with no active tasks is on_track.
+// Public status (on_track/attention_needed/struggling) is for everyone;
+// detailed task lists, counts, and triage ordering are limited to the
+// coordination authority that covers the task. A cycle-row coordinator
+// sees that cycle's tasks; a branch-column coordinator sees the whole
+// branch. A branch with no active tasks is on_track.
 export function groupTasksByBranchCoverage<T extends BranchCoverageTask>(
   tasks: T[],
   branches: { id: string; name: string }[],
   coordinationBranchIds: Set<string>,
+  coordinationTaskIds?: ReadonlySet<string>,
 ): BranchCoverageGroup<T>[] {
   const groups = new Map<string, BranchCoverageGroup<T>>();
   for (const b of branches) {
@@ -119,17 +143,33 @@ export function groupTasksByBranchCoverage<T extends BranchCoverageTask>(
   }
 
   for (const group of groups.values()) {
-    const counts = {
+    const hasBranchAuthority = coordinationBranchIds.has(group.branchId);
+    const isCoordinatorTask = (task: T) =>
+      coordinationTaskIds
+        ? coordinationTaskIds.has(task.id)
+        : hasBranchAuthority;
+    const coordinatorTasks = group.tasks.filter(isCoordinatorTask);
+    const publicCounts = {
       soft: group.tasks.filter((t) => t.attentionLevel === "soft").length,
       hard: group.tasks.filter((t) => t.attentionLevel === "hard").length,
       escalated: group.tasks.filter((t) => t.attentionLevel === "escalated").length,
     };
-    group.status = deriveBranchHealthStatus(counts);
-    // Counts only for coordination holders of this branch
-    if (coordinationBranchIds.has(group.branchId)) {
-      group.counts = counts;
+    group.status = deriveBranchHealthStatus(publicCounts);
+
+    // A branch-column coordinator sees every active task in the branch;
+    // a cycle-row coordinator sees only the tasks in the cycle(s) they
+    // hold. Everyone else receives the public status without the task
+    // list or its detailed attention ordering.
+    group.tasks = hasBranchAuthority ? group.tasks : coordinatorTasks;
+
+    if (hasBranchAuthority || coordinatorTasks.length > 0) {
+      group.counts = {
+        soft: coordinatorTasks.filter((t) => t.attentionLevel === "soft").length,
+        hard: coordinatorTasks.filter((t) => t.attentionLevel === "hard").length,
+        escalated: coordinatorTasks.filter((t) => t.attentionLevel === "escalated").length,
+      };
     }
-    // Worst-first ordering for coordination holders
+
     const attentionOrder: Record<string, number> = { escalated: 0, hard: 1, soft: 2, ok: 3 };
     group.tasks.sort((a, b) => {
       const ao = attentionOrder[a.attentionLevel] ?? 99;

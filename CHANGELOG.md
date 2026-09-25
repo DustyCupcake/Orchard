@@ -2,6 +2,13 @@
 
 The build history behind [`README.md`](README.md)'s feature list — what each addition built and why it's shaped the way it is. Every numbered phase (0-69) of the original development plan is complete, covering the full original build plan; nothing after that is numbered — real, scoped-but-unbuilt work continues to get picked up off [`docs/roadmap.md`](docs/roadmap.md) as its own standalone feature entry, not a phase. For the full technical spec, see [`docs/spec.md`](docs/spec.md).
 
+## Unreleased: board selection, navigation, and import follow-up
+
+- The board's Unclaimed/Kanban/phase/coverage views now share card-level selection with Claim, filtered Task Pack export, and bulk placement Move actions. A tag filter can define a selectable cluster; uncapped tasks correctly count as having open slots.
+- Branch coverage keeps its health status public while limiting detailed task lists, counts, and triage ordering to the relevant branch/cycle coordination scope.
+- The Library header-only nav destination renders, `/community` is the single Community hub, and `/members` is directory-only.
+- Pack-import reassignment supports selecting multiple declined tasks and applying one existing branch while retaining per-task overrides.
+
 Phases 0-45 are in place. Phases 0-15 are the full original phase list; Phases 16-19 close out the rest of what the tech spec treats as "core, not optional"; Phases 20-42 and 44 begin the next slice — real, designed modules from `docs/spec.md` scoped after the codebase already existed; Phases 43 and 45 are cross-cutting UI infrastructure, not spec.md modules, picked up ahead of the still-scoped-but-unbuilt Phases 46-47. Phases 0-10 cover the tech spec's full MVP scope:
 
 - Deployable skeleton (Next.js + Drizzle + Postgres, Docker Compose, Caddy) and the core schema

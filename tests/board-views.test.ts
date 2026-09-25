@@ -14,6 +14,45 @@ if (!sorterKey) throw new Error("sortUnclaimedQueue export not found in @/lib/ta
 type QueueRow = { id: string; status: string; attentionLevel: string; critical: boolean; deadlineDate: string | null; phaseId: string | null };
 const sortUnclaimedQueue = (BoardViews as Record<string, unknown>)[sorterKey] as (tasks: QueueRow[], phaseEndDateById?: Map<string, string>) => QueueRow[];
 
+describe("board view URL parameters", () => {
+  it("omits the default Unclaimed view", () => {
+    expect(BoardViews.boardViewParam("unclaimed")).toBeNull();
+    expect(BoardViews.boardViewParam(BoardViews.DEFAULT_BOARD_VIEW)).toBeNull();
+  });
+
+  it("keeps an explicit value for every non-default view", () => {
+    expect(BoardViews.boardViewParam("kanban")).toBe("kanban");
+    expect(BoardViews.boardViewParam("phase")).toBe("phase");
+    expect(BoardViews.boardViewParam("coverage")).toBe("coverage");
+  });
+});
+
+describe("open task slots", () => {
+  it("treats an explicitly uncapped task as always having room", () => {
+    expect(
+      BoardViews.hasOpenTaskSlot({
+        capacity: null,
+        assignments: [{ isShadow: false }],
+      }),
+    ).toBe(true);
+  });
+
+  it("counts real holders but not shadow holders against capacity", () => {
+    expect(
+      BoardViews.hasOpenTaskSlot({
+        capacity: 1,
+        assignments: [{ isShadow: true }],
+      }),
+    ).toBe(true);
+    expect(
+      BoardViews.hasOpenTaskSlot({
+        capacity: 1,
+        assignments: [{ isShadow: false }],
+      }),
+    ).toBe(false);
+  });
+});
+
 function task(overrides: {
   id: string;
   title?: string;
@@ -135,7 +174,8 @@ const groups = groupTasksByBranchCoverage(tasks, branches, new Set(["b2"]));
     expect(groups).toHaveLength(2);
     const fruit = groups.find((g) => g.branchId === "b1")!;
     expect(fruit.status).toBe("struggling");
-    expect(fruit.tasks.map((t) => t.id)).toEqual(["t1", "t2"]);
+    expect(fruit.tasks).toEqual([]);
+    expect(fruit.counts).toBeNull();
     const wood = groups.find((g) => g.branchId === "b2")!;
     expect(wood.status).toBe("on_track");
     expect(wood.tasks.map((t) => t.id)).toEqual(["t3"]);
@@ -178,6 +218,35 @@ const groups = groupTasksByBranchCoverage(tasks, branches, new Set(["b1","b2","b
 
 const groups = groupTasksByBranchCoverage(tasks, branches, new Set(["b1"]));
     expect(groups[0].tasks.map((t) => t.id)).toEqual(["t2", "t3", "t1"]);
+  });
+
+  it("hides task details from non-coordinators", () => {
+    const branches = [{ id: "b1", name: "Fruit" }];
+    const tasks = [
+      coverageTask({ id: "t1", branchId: "b1", title: "Alpha", attentionLevel: "ok" }),
+      coverageTask({ id: "t2", branchId: "b1", title: "Zulu", attentionLevel: "escalated" }),
+    ];
+
+    const groups = groupTasksByBranchCoverage(tasks, branches, new Set(), new Set());
+    expect(groups[0].tasks).toEqual([]);
+    expect(groups[0].counts).toBeNull();
+  });
+
+  it("scopes detailed counts to the tasks a cycle coordinator covers", () => {
+    const branches = [{ id: "b1", name: "Fruit" }];
+    const tasks = [
+      coverageTask({ id: "t1", branchId: "b1", attentionLevel: "hard" }),
+      coverageTask({ id: "t2", branchId: "b1", attentionLevel: "soft" }),
+    ];
+
+    const groups = groupTasksByBranchCoverage(
+      tasks,
+      branches,
+      new Set(),
+      new Set(["t2"]),
+    );
+    expect(groups[0].counts).toEqual({ soft: 1, hard: 0, escalated: 0 });
+    expect(groups[0].tasks.map((t) => t.id)).toEqual(["t2"]);
   });
 
   it("excludes done tasks from health computation", () => {

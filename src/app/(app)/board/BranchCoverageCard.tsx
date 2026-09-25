@@ -81,7 +81,13 @@ export default function BranchCoverageCard({
       </div>
 
       <div className="mt-3">
-        {group.tasks.length === 0 && <p className="text-[13px] text-[var(--text-muted)]">No active tasks.</p>}
+        {group.tasks.length === 0 && (
+          <p className="text-[13px] text-[var(--text-muted)]">
+            {group.counts
+              ? "No active tasks in your coordination scope."
+              : "Task details are visible to the branch coordination holder."}
+          </p>
+        )}
         {shown.map(renderTask)}
         {rest.length > 0 && (
           <details>

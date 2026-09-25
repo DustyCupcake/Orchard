@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
 // The Community group's hub (nav-config.ts's "Community" headerIsLink →
 // /community) — the group's own destination row plus the same snapshot
 // stats the Dashboard feed already computes, the board's role for
-// Tasks. Pass 1 shell: real hub links + at-a-glance counts; the deeper
-// community dashboard surface lands in the hub-bodied follow-up pass.
+// Tasks. The directory itself stays at /members; this is the single
+// community-wide landing surface.
 const HUB_LINKS = [
   { href: "/members", label: "Members" },
   { href: "/assemblies", label: "Assemblies" },

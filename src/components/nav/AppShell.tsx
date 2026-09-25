@@ -12,6 +12,7 @@ import {
   DASHBOARD_ITEM,
   NAV_GROUPS,
   isItemVisible,
+  isNavGroupRenderable,
   type NavGroup,
   type NavItem,
 } from "./nav-config";
@@ -551,7 +552,7 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,
     items: group.items.filter((item) => isItemVisible(item, ctx) && isCycleGated(item)),
-  })).filter((group) => group.items.length > 0);
+  })).filter(isNavGroupRenderable);
 
   const navListProps = {
     visibleGroups,

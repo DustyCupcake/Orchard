@@ -5,13 +5,18 @@ import { db } from "@/db";
 import { branch, phase } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import {
+  BOARD_VIEWS,
+  DEFAULT_BOARD_VIEW,
+  boardViewParam,
   groupTasksByBranchCoverage,
   groupTasksByPhase,
+  hasOpenTaskSlot,
   listDistinctTags,
   listMyPendingJoinRequests,
   listTasksWithAssignments,
   sortUnclaimedQueue,
   tierNameLookup,
+  type BoardView,
 } from "@/lib/tasks";
 import {
   listCoordinationScopeIds,
@@ -20,7 +25,7 @@ import {
 } from "@/lib/coordination";
 import { listBackstopHoldersForScopes, listBackstopScopesForMember } from "@/lib/backstop";
 import { ATTENTION_STYLES } from "@/lib/format";
-import { canInitiateCycle, resolveDefaultScopeSegment, resolveViewScopeFromSegment } from "@/lib/cycles";
+import { canInitiateCycle, listCycles, resolveDefaultScopeSegment, resolveViewScopeFromSegment } from "@/lib/cycles";
 import { effectiveDateDisplayMode } from "@/lib/dates";
 import { listTaskFitSuggestions } from "@/lib/onboarding";
 import { getCommunityRow } from "@/lib/recruitment";
@@ -30,19 +35,21 @@ import TaskCard from "./TaskCard";
 import PhaseCard from "./PhaseCard";
 import BranchCoverageCard from "./BranchCoverageCard";
 import FilterSelect from "./FilterSelect";
-import { Tag, Banner, BUTTON_SECONDARY, BUTTON_PRIMARY, ATTENTION_TONE } from "@/components/ui/kit";
+import { Tag, Banner, BUTTON_PRIMARY, ATTENTION_TONE } from "@/components/ui/kit";
 import ActionMenu from "@/components/ui/ActionMenu";
-import BulkClaimSelect from "@/components/tasks/BulkClaimSelect";
+import {
+  TaskSelectionProvider,
+  TaskSelectionActionMenu,
+  TaskSelectionBar,
+} from "@/components/tasks/BulkClaimSelect";
 import PageHeader from "@/components/ui/PageHeader";
 import Tabs from "@/components/ui/Tabs";
-import { exportSelectedTasksAsPackAction } from "./actions";
 
 type BoardTask = Awaited<ReturnType<typeof listTasksWithAssignments>>[number];
 
 export const dynamic = "force-dynamic";
 
-const VIEWS = ["unclaimed", "kanban", "phase", "coverage"] as const;
-type BoardView = (typeof VIEWS)[number];
+const VIEWS = BOARD_VIEWS;
 const VIEW_LABEL: Record<BoardView, string> = { unclaimed: "Unclaimed", kanban: "Kanban", phase: "By phase", coverage: "Branch coverage" };
 
 const COLUMNS = [
@@ -58,7 +65,6 @@ const STATUS_LABEL = Object.fromEntries(COLUMNS.map((c) => [c.status, c.label]))
 // destinations are reachable from here as buttons, with the sidebar's
 // own expandable sub-list as the alternate way to get there.
 const HUB_LINKS = [
-  { href: "/propose", label: "Propose a task" },
   { href: "/proposals", label: "Proposals" },
   { href: "/contribution", label: "My contribution" },
   { href: "/input-rounds", label: "Input rounds" },
@@ -132,6 +138,7 @@ export default async function BoardPage({
     isCoordinator,
     communityRow,
     phases,
+    allCycles,
     backstopHolders,
     myBackstopScopes,
   ] = await Promise.all([
@@ -150,12 +157,24 @@ export default async function BoardPage({
     isCoordinationHolder(viewing, null),
     getCommunityRow(viewing.communityId),
     scopeCycleIds.length === 0 ? Promise.resolve([]) : db.select().from(phase).where(inArray(phase.cycleId, scopeCycleIds)),
+    listCycles(viewing),
     listBackstopHoldersForScopes(
       viewing.communityId,
       hidingCycleless ? scopeCycleIds : [...scopeCycleIds, null],
     ),
     listBackstopScopesForMember(viewing),
   ]);
+
+  // Bulk move mirrors the task detail editor, which can place a task in
+  // any branch/cycle/phase in the Community, not only the board's
+  // currently filtered scope. Keep those options available in the move
+  // disclosure while the normal board phase groups remain scoped.
+  const allPhases = allCycles.length === 0
+    ? []
+    : await db
+        .select({ id: phase.id, name: phase.name, cycleId: phase.cycleId })
+        .from(phase)
+        .where(inArray(phase.cycleId, allCycles.map((c) => c.id)));
 
   // §5.3 (docs/cycle-scope-remediation-plan.md) — resolve coordination
   // from both dimensions: the viewer's own coverage (branch column OR
@@ -176,16 +195,16 @@ export default async function BoardPage({
 
   // "By phase" only makes sense once there's a real phase spine to show
   // — otherwise every task lands in one "No phase" card, no better than
-  // kanban. Falls back to kanban server-side rather than rendering a
-  // degenerate view if `view=phase` is requested anyway (e.g. a stale
-  // bookmark from when phases were on).
+  // the other views. Falls back to the default Unclaimed queue server-side
+  // rather than rendering a degenerate view if `view=phase` is requested
+  // anyway (e.g. a stale bookmark from when phases were on).
   const phaseViewAvailable = communityRow.phasesEnabled && phases.length > 0;
   const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
   const visibleViews = VIEWS.filter((v) => {
     if (v === "phase") return phaseViewAvailable;
     return true;
   });
-  const activeView: BoardView = visibleViews.includes(view as BoardView) ? (view as BoardView) : "unclaimed";
+  const activeView: BoardView = visibleViews.includes(view as BoardView) ? (view as BoardView) : DEFAULT_BOARD_VIEW;
   // Export only ever targets one real cycle — same "the current one"
   // scoping /participation's own whole-cycle export always used, now
   // reading the switcher's own resolved single-cycle state instead of
@@ -195,7 +214,6 @@ export default async function BoardPage({
   // 65 already established for Budget/Event scheduling/Spatial
   // planning.
   const exportCycle = activeScope?.kind === "single" ? activeScope.cycle : null;
-  const exportableInView = exportCycle ? tasks.filter((t) => t.cycleId === exportCycle.id) : [];
 
   // Advanced filters — applied in-memory over the already-fetched task
   // list, not pushed into listTasksWithAssignments's SQL. Each filter
@@ -206,11 +224,7 @@ export default async function BoardPage({
     if (phaseId && t.phaseId !== phaseId) return false;
     if (duration && t.effort !== "one_off") return false; // duration bucket only for one-off
     if (duration && (t.effortMagnitude as { duration?: string })?.duration !== duration) return false;
-    if (hasSlots === "1") {
-      const held = t.assignments.filter((a) => !a.isShadow).length;
-      const cap = t.capacity ?? 1;
-      if (held >= cap) return false;
-    }
+    if (hasSlots === "1" && !hasOpenTaskSlot(t)) return false;
     if (assignedToMe === "1" && !t.assignments.some((a) => a.memberId === viewing.id && !a.isShadow)) return false;
     if (dueWithin) {
       const days = parseInt(dueWithin, 10);
@@ -221,6 +235,16 @@ export default async function BoardPage({
     }
     return true;
   });
+  // Card selection starts from the task set the active view can actually
+  // show. Coverage intentionally omits done tasks, and the default
+  // Unclaimed queue is unclaimed-only; the coverage-specific visibility
+  // filter below narrows this further for viewers without detail access.
+  const tasksInActiveView =
+    activeView === "unclaimed"
+      ? filteredTasks.filter((t) => t.status === "unclaimed")
+      : activeView === "coverage"
+        ? filteredTasks.filter((t) => t.status !== "done")
+        : filteredTasks;
 
   // Shared query-preserving link builder for the fit/cycle-less/view
   // toggles below — a plain link, same "no client JS needed for
@@ -252,7 +276,11 @@ export default async function BoardPage({
     const nextDueWithin = overrides.dueWithin !== undefined ? overrides.dueWithin : dueWithin;
     if (nextFit) params.set("fit", "1");
     if (nextHideCycleless) params.set("hideCycleless", "1");
-    if (nextView !== "kanban") params.set("view", nextView);
+    // The default landing is the unclaimed queue. Omitting `view` for
+    // the default is intentional, but every other tab needs an explicit
+    // value (especially Kanban).
+    const viewParam = boardViewParam(nextView);
+    if (viewParam) params.set("view", viewParam);
     if (nextAttention) params.set("attention", nextAttention);
     if (nextPhaseId) params.set("phaseId", nextPhaseId);
     if (nextDuration) params.set("duration", nextDuration);
@@ -264,9 +292,30 @@ export default async function BoardPage({
   }
   const fitToggleHref = boardHref({ fit: !sortByFit });
   const cyclelessToggleHref = boardHref({ hideCycleless: !hidingCycleless });
+  const boardReturnHref = boardHref({});
   const viewTabs = visibleViews.map((v) => ({ key: v, label: VIEW_LABEL[v] }));
   const phaseGroups = activeView === "phase" ? groupTasksByPhase(filteredTasks, phases) : [];
-  const branchCoverageGroups = activeView === "coverage" ? groupTasksByBranchCoverage(filteredTasks, branches, coordinationScope.branchIds) : [];
+  const coordinationTaskIds = new Set(
+    filteredTasks.filter(isCoordinationHolderForTask).map((t) => t.id),
+  );
+  const branchCoverageGroups = activeView === "coverage"
+    ? groupTasksByBranchCoverage(filteredTasks, branches, coordinationScope.branchIds, coordinationTaskIds)
+    : [];
+
+  // Coverage deliberately hides task details from viewers without the
+  // relevant coordination scope. Selection and export must use the cards
+  // that are actually available to this viewer, not the hidden source
+  // rows that still feed the public health status.
+  const renderedTaskIds = new Set(
+    activeView === "coverage"
+      ? branchCoverageGroups.flatMap((group) => group.tasks.map((task) => task.id))
+      : tasksInActiveView.map((task) => task.id),
+  );
+  const selectionTasks = tasksInActiveView.filter((task) => renderedTaskIds.has(task.id));
+  const exportableInView = exportCycle
+    ? selectionTasks.filter((task) => task.cycleId === exportCycle.id)
+    : [];
+
   const phaseEndDateById = new Map(
     phases.map((p) => [p.id, p.endDate] as const).filter(([, d]) => d !== null) as Array<readonly [string, string]>,
   );
@@ -283,7 +332,7 @@ export default async function BoardPage({
   // selectable (defaulted on, like everything else) — they just fail
   // individually in the summary if actually claimed that way, same as
   // any other per-task failure, rather than silently skipping the check.
-  const bulkClaimable = filteredTasks.filter(
+  const bulkClaimable = selectionTasks.filter(
     (t) => t.status === "unclaimed" && t.openness !== "community_endorsed" && t.unmetRequirements.length === 0,
   );
 
@@ -303,8 +352,25 @@ export default async function BoardPage({
     ? tasks.filter((t) => t.critical && myVisibleBackstopScopes.has(t.cycleId))
     : [];
 
+  // One small client island owns the shared checkbox state while the
+  // board, grouping, and task actions below stay server-rendered.
   return (
-    <main className="mx-auto max-w-[1180px] px-6 py-10 md:px-12 md:py-14">
+    <TaskSelectionProvider
+      claimableTaskIds={bulkClaimable.map((t) => t.id)}
+      movableTaskIds={selectionTasks.map((t) => t.id)}
+      exportableTasks={exportableInView.map((t) => ({
+        id: t.id,
+        title: t.title,
+        branchName: branchNameById.get(t.branchId) ?? "—",
+      }))}
+      exportCycleId={exportCycle?.id ?? null}
+      canExport={canExport}
+      branches={branches.map((b) => ({ id: b.id, name: b.name }))}
+      cycles={communityRow.cyclesEnabled ? allCycles.map((c) => ({ id: c.id, name: c.name })) : []}
+      phases={communityRow.cyclesEnabled ? allPhases : []}
+      returnTo={boardReturnHref}
+    >
+      <main className="mx-auto max-w-[1180px] px-6 py-10 md:px-12 md:py-14">
       <PageHeader
         title="Board"
         actions={
@@ -312,7 +378,7 @@ export default async function BoardPage({
             <Link href="/propose" className={BUTTON_PRIMARY}>
               Propose a task
             </Link>
-            <ActionMenu>
+            <ActionMenu label="Board actions">
               {HUB_LINKS.map((l) => (
                 <Link key={l.href} href={l.href}>
                   {l.label}
@@ -324,6 +390,7 @@ export default async function BoardPage({
                     {l.label}
                   </Link>
                 ))}
+              <TaskSelectionActionMenu />
             </ActionMenu>
           </>
         }
@@ -384,9 +451,7 @@ export default async function BoardPage({
         </p>
       )}
 
-      {bulkClaimable.length > 1 && (
-        <BulkClaimSelect claimable={bulkClaimable} branchNameById={branchNameById} />
-      )}
+      <TaskSelectionBar />
 
       {canExport && !exportCycle && (
         <p className="mt-4 text-[13px] text-[var(--text-muted)]">
@@ -394,35 +459,6 @@ export default async function BoardPage({
           doesn&rsquo;t guess which cycle you mean while it&rsquo;s scoped to &ldquo;All active
           cycles&rdquo;.
         </p>
-      )}
-
-      {canExport && exportCycle && exportableInView.length > 0 && (
-        <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
-            Export selected as a Task Pack ({exportableInView.length} in this view)
-          </summary>
-          <form action={exportSelectedTasksAsPackAction} className="mt-3 flex max-w-[420px] flex-col gap-2">
-            <input type="hidden" name="cycleId" value={exportCycle.id} />
-            <label className="flex flex-col gap-1 text-[13px] text-[var(--text-muted)]">
-              Pack name
-              <input
-                type="text"
-                name="name"
-                required
-                className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none"
-              />
-            </label>
-            {exportableInView.map((t) => (
-              <label key={t.id} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
-                <input type="checkbox" name="taskIds" value={t.id} defaultChecked />
-                {t.title} <span className="text-[var(--text-muted)]">({branchNameById.get(t.branchId) ?? "—"})</span>
-              </label>
-            ))}
-            <button type="submit" className={`${BUTTON_PRIMARY} mt-1 w-fit`}>
-              Export selected
-            </button>
-          </form>
-        </details>
       )}
 
       {/* Advanced filters — collapsed by default, in-memory over fetched list */}
@@ -456,9 +492,9 @@ export default async function BoardPage({
             param="duration"
             placeholder="Any duration"
             options={[
-              { value: "few_hours", label: "Few hours" },
-              { value: "half_day", label: "Half day" },
-              { value: "full_day", label: "Full day" },
+              { value: "under_hour", label: "Under an hour" },
+              { value: "few_hours", label: "A few hours" },
+              { value: "half_day", label: "Half a day" },
               { value: "multi_day", label: "Multi-day" },
             ]}
           />
@@ -647,6 +683,7 @@ export default async function BoardPage({
           ))}
         </div>
       )}
-    </main>
+      </main>
+    </TaskSelectionProvider>
   );
 }

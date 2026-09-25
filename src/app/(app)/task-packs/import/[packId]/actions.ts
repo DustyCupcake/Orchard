@@ -5,6 +5,7 @@ import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import { commitPackImport, type CommitPackImportInput } from "@/lib/task-packs";
 import { AppError } from "@/lib/errors";
+import { resolveReassignmentBranches } from "./reassignment";
 import { encodeImportState, decodeImportState, type StagedImportState } from "./state";
 
 // Phase 54 (View-as) — see participation/actions.ts's identical comment.
@@ -19,6 +20,15 @@ function redirectWithError(packId: string, err: unknown): never {
     redirect(`/task-packs/import/${packId}?error=${encodeURIComponent(err.message)}`);
   }
   throw err;
+}
+
+function redirectReassignWithError(packId: string, stateRaw: string, message: string): never {
+  const params = new URLSearchParams({
+    stage: "reassign",
+    state: stateRaw,
+    error: message,
+  });
+  redirect(`/task-packs/import/${packId}?${params.toString()}`);
 }
 
 // Screen one's submit — see docs/spec.md's "Pack import review." If
@@ -75,10 +85,19 @@ export async function finalizePackImportAction(formData: FormData) {
     redirect(`/task-packs/import/${packId}?error=${encodeURIComponent("That review session expired — start over")}`);
   }
 
-  const itemBranchOverrides: Record<string, string> = {};
-  for (const itemId of declinedItemIds) {
-    const branchId = String(formData.get(`itemBranch__${itemId}`) ?? "");
-    if (branchId) itemBranchOverrides[itemId] = branchId;
+  const { overrides: itemBranchOverrides, missingItemIds: missingBranchItems } =
+    resolveReassignmentBranches({
+      declinedItemIds,
+      individualBranchForItem: (itemId) => String(formData.get(`itemBranch__${itemId}`) ?? ""),
+      bulkItemIds: formData.getAll("bulkItemIds").map(String),
+      bulkBranchId: String(formData.get("bulkBranchId") ?? ""),
+    });
+  if (missingBranchItems.length > 0) {
+    redirectReassignWithError(
+      packId,
+      stateRaw,
+      `Choose a branch for ${missingBranchItems.length} reassigned task${missingBranchItems.length === 1 ? "" : "s"} before confirming.`,
+    );
   }
 
   const input: CommitPackImportInput = {
@@ -92,7 +111,10 @@ export async function finalizePackImportAction(formData: FormData) {
   try {
     await commitPackImport(actor, input);
   } catch (err) {
-    redirectWithError(packId, err);
+    if (err instanceof AppError) {
+      redirectReassignWithError(packId, stateRaw, err.message);
+    }
+    throw err;
   }
 
   redirect("/participation?cycleCreated=1");

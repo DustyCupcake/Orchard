@@ -1,4 +1,32 @@
-# Board declaration — handoff (Blitz: Unclaimed queue landing)
+# Board declaration — historical handoff (Unclaimed queue landing)
+
+> **Superseded by the current working-tree follow-up below.** The original
+> session notes are retained for archaeology; their TypeScript faults and
+> 17-test counts are not the current state of the board revamp.
+
+## Current follow-up (2026-09-25)
+
+The board overhaul is now implemented in the working tree, including:
+
+- `view=kanban` and all other non-default board tabs are explicit in URLs.
+- Selection is shared by rendered task cards across Unclaimed, Kanban, By phase,
+  and Branch coverage; Claim, Task Pack export, and bulk move are available from
+  the board overflow.
+- Uncapped (`capacity: null`) tasks correctly satisfy **Has open slots**.
+- Branch coverage limits detailed task lists/counts/ordering to the relevant
+  coordination scope while retaining public health status.
+- The Library header-only nav group survives visibility filtering; `/community`
+  is the Community hub and `/members` is directory-only.
+- Pack-import screen two supports selecting multiple declined tasks and applying
+  one branch to them, with per-task overrides still available.
+
+Verification for the current changes: `npx tsc --noEmit`,
+`npm run lint -- --no-warn-ignored`, the 27 targeted board/navigation/import
+Vitest tests, and `npm run build` pass.
+The local DB-backed suite remains environment-blocked by the placeholder Postgres
+password, so this is not a claim that every integration test ran.
+
+## Original session state (historical)
 
 Session state at handoff. The **render layer garbles identifiers on read** (German
 words, `godzin`, board_views/board-views spellings drift across reads). **Trust
@@ -6,7 +34,7 @@ words, `godzin`, board_views/board-views spellings drift across reads). **Trust
 render text.** All edits below are pure server logic; zero new client JS beyond the
 one locked client slice.
 
-## Done — committed, gated green (`tsc: 0`, `vitest: 17 pass`)
+## Done — committed at the time of the original handoff (`tsc: 0`, `vitest: 17 pass`)
 
 1. **Pure queue sorter** — `src/lib/tasks/board-views.ts`:
    `sortUnclaimedQueue<T extends QueueTask>(tasks, phaseEndDateById?)` — worst-first:
@@ -25,7 +53,7 @@ one locked client slice.
    (54 lines, exists): per-task checkbox select mode reusing the page's bulk claim server
    action. **`string|null` fault at line 44** (see below).
 
-## Not done / broken — the exact remaining work (all byte-anchored)
+## Original remaining-work list (historical; superseded)
 
 `tsc --noEmit` currently fails on **exactly three** byte-anchored faults — all
 deterministic, no derivations needed:

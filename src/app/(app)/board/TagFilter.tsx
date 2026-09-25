@@ -15,7 +15,7 @@ export default function TagFilter({
 
   return (
     <label className="flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
-      Tag
+      <span title="Use a tag to define a selectable task cluster">Tag / cluster</span>
       <select
         defaultValue={selectedTag ?? ""}
         onChange={(e) => {

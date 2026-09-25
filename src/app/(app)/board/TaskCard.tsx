@@ -5,6 +5,7 @@ import { describeRequirement } from "@/lib/tasks";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import { Tag, ATTENTION_TONE, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT } from "@/components/ui/kit";
 import ActionMenu from "@/components/ui/ActionMenu";
+import { TaskSelectionCheckbox } from "@/components/tasks/BulkClaimSelect";
 import { BranchChip, CapacityChip, DateChip, EffortChip } from "@/components/tasks/MetaChips";
 import {
   claimAction,
@@ -237,6 +238,7 @@ export default function TaskCard({
       }}
     >
       <div className="flex flex-wrap items-center gap-1.5">
+        <TaskSelectionCheckbox taskId={task.id} title={task.title} />
         {task.critical && (
           <span className="text-[var(--danger)]" title="Critical" aria-label="Critical" role="img">
             <FlameIcon size={14} weight="fill" />

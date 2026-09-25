@@ -41,7 +41,9 @@ Generated from `docs/task-board-views-spec-audit.md` — a systematic audit of `
 ## 🟠 High (core workflow gaps)
 
 ### 4. Branch coverage view + advanced filters
-**Gap:** Only `kanban` and `phase` views exist. The spec calls for a branch-coverage view (group by branch → show coordinator coverage) plus filters: needs-attention, duration bucket, has-open-slots, assigned-to-me, due-within-N-days.
+**Status:** Implemented in the current working tree. `/board?view=coverage`, the advanced filters, uncapped-slot semantics, and coordination-scoped detail visibility are covered by the board regression tests and build verification. The original gap text below is retained as the historical audit finding.
+
+**Historical gap:** Only `kanban` and `phase` views existed. The spec calls for a branch-coverage view (group by branch → show coordinator coverage) plus filters: needs-attention, duration bucket, has-open-slots, assigned-to-me, due-within-N-days.
 **Fix:** Add `view=coverage` to `VIEWS`, build `getBranchCoverage()` in `board-views.ts`, add filter controls to the board page.
 **Files:** `src/lib/tasks/board-views.ts`, `src/app/(app)/board/page.tsx`
 **Effort:** Medium–Large (2–3 sessions)
@@ -210,7 +212,9 @@ Generated from `docs/task-board-views-spec-audit.md` — a systematic audit of `
 **Disposition:** These are speculative coordination strategies. Document as deferred or remove from spec.
 
 ### 33. Bulk-select-and-assign in pack import screen two
-**Gap:** Individual selects only; no checkbox/apply-to-selected control.
+**Status:** Implemented in the current working tree. Screen two now has multi-select checkboxes, a destination branch, an apply-to-selected control, and server-side bulk overrides with per-task precedence.
+
+**Historical gap:** Individual selects only; no checkbox/apply-to-selected control.
 **Disposition:** Small UX improvement. Can be added when the pack import flow gets attention.
 
 ### 34. Cloned-from task link not surfaced in UI

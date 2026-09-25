@@ -4,29 +4,17 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member } from "@/db/schema";
 import { getViewingContext, isSupportHolder } from "@/lib/view-as";
-import { getCommunity } from "@/lib/settings";
-import { Banner, BUTTON_SECONDARY, BUTTON_GHOST } from "@/components/ui/kit";
+import { Banner, BUTTON_GHOST } from "@/components/ui/kit";
 import { activateViewAsAction } from "./actions";
 
 export const dynamic = "force-dynamic";
-
-// "The main community view" — mirrors board/page.tsx's own hub-button
-// row for Tasks: most of the Community nav group's other destinations
-// are also reachable as buttons from here, with the sidebar's own
-// sub-list as the alternate way to get to them.
-const HUB_LINKS = [
-  { href: "/messages", label: "Messages" },
-  { href: "/assemblies", label: "Assemblies" },
-  { href: "/documentation", label: "Library" },
-  { href: "/participation", label: "Events" },
-  { href: "/settings", label: "Settings" },
-] as const;
 
 // Core, not module-gated — every Community needs some version of a
 // member directory to reach another member's visible contact methods
 // or activate Emergency access (see docs/spec.md's "Member contact &
 // privacy" and docs/development-plan.md's Phase 46). Plain name list;
 // each member's own visible-to-you methods live on /members/[id].
+// Community-wide navigation belongs to /community, not this directory.
 export default async function MembersPage({
   searchParams,
 }: {
@@ -42,38 +30,20 @@ export default async function MembersPage({
   // status, and only show at all when nothing's currently being viewed
   // as — starting a second View-as session mid-session isn't a case
   // this phase supports (see src/lib/view-as.ts).
-  const [canActivateViewAs, communityRow, members] = await Promise.all([
+  const [canActivateViewAs, members] = await Promise.all([
     !viewAs ? isSupportHolder(real) : Promise.resolve(false),
-    getCommunity(viewing),
     db
       .select({ id: member.id, name: member.name })
       .from(member)
       .where(eq(member.communityId, viewing.communityId))
       .orderBy(member.name),
   ]);
-  // Feedback only makes sense as a hub button once a standing form is
-  // actually configured — same gate src/lib/nav.ts's own visibleModules
-  // uses for the sidebar's Feedback item.
-  const feedbackOn = communityRow.postCycleFeedbackFormId !== null;
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
       <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Members</h1>
 
       {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
-
-      <div className="mt-6 flex flex-wrap gap-2">
-        {HUB_LINKS.map((l) => (
-          <Link key={l.href} href={l.href} className={BUTTON_SECONDARY}>
-            {l.label}
-          </Link>
-        ))}
-        {feedbackOn && (
-          <Link href="/feedback" className={BUTTON_SECONDARY}>
-            Feedback
-          </Link>
-        )}
-      </div>
 
       <p className="mt-6 text-[13px] text-[var(--text-muted)]">
         Contact info shown per member follows their own visibility choice. Emergency-only methods
