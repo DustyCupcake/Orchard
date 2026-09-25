@@ -10,6 +10,10 @@ export default defineConfig({
     // file truncates the DB between tests, so files can't run in
     // parallel without racing each other's truncates.
     fileParallelism: false,
+    // Test environment needs SESSION_SECRET for token-based email functionality
+    env: {
+      SESSION_SECRET: "test-secret-not-for-production-1234567890abcdef",
+    },
   },
   resolve: {
     alias: {
