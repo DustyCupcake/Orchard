@@ -130,7 +130,7 @@ export default async function ParticipationPage({
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Participation</h1>
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Events</h1>
 
       {error && (
         <div className="mt-4">

@@ -38,7 +38,7 @@ export default async function DocumentationPage() {
 
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Documentation</h1>
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Library</h1>
       <p className="mt-2 text-[13px] text-[var(--text-muted)]">
         General reference, platform how-to, camp policy or lore, and FAQs that don&rsquo;t belong
         to any single task — plus a browsable index of every task&rsquo;s own wiki content below.

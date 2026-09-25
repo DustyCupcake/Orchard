@@ -74,6 +74,13 @@ describe("getPersonalFeed", () => {
       conflictNeedsAction: [],
       pendingNominations: [],
       expiredNominations: [],
+      // The Communication Inbox surfaces, added when the feed became
+      // the single source for both sidebar badges (see src/lib/nav.ts).
+      inboxUnansweredQuestions: [],
+      inboxVisibleMessages: [],
+      inboxFeedbackOpen: false,
+      inboxFeedbackReviewCount: 0,
+      inboxPollsNeedingMe: [],
     });
   });
 

@@ -425,7 +425,7 @@ export default async function SettingsPage({
               <CheckField label="Phases on (a cycle can define a named phase spine)" name="phasesEnabled" defaultChecked={communityRow.phasesEnabled} />
               {communityRow.phasesEnabled && (
                 <CheckField
-                  label="On-site mode (while on, structural changes across settings, branches, tiers, cycle types, starting a new Cycle, Requirement changes, publishing the Event schedule, and Spatial-planning edits are all locked; everyday task/wiki/shift work stays live)"
+                  label="On-site mode (while on, structural changes across settings, branches, tiers, cycle types, starting a new Cycle, Requirement changes, publishing the Programme, and Spatial-planning edits are all locked; everyday task/wiki/shift work stays live)"
                   name="onsiteModeEnabled"
                   defaultChecked={communityRow.onsiteModeEnabled}
                 />

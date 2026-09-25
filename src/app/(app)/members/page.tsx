@@ -17,8 +17,8 @@ export const dynamic = "force-dynamic";
 const HUB_LINKS = [
   { href: "/messages", label: "Messages" },
   { href: "/assemblies", label: "Assemblies" },
-  { href: "/documentation", label: "Documentation" },
-  { href: "/participation", label: "Cycles" },
+  { href: "/documentation", label: "Library" },
+  { href: "/participation", label: "Events" },
   { href: "/settings", label: "Settings" },
 ] as const;
 

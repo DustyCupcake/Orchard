@@ -13,7 +13,6 @@ import AxisScaleField from "@/components/AxisScaleField";
 import PrefilledAnswersReview from "./PrefilledAnswersReview";
 import {
   completeOnboardingAction,
-  respondToNominationAction,
   submitOnboardingAnswerAction,
   submitOnboardingAxisAction,
   submitOnboardingPrefilledAnswersAction,
@@ -226,13 +225,11 @@ export default async function DashboardPage({
     feed.myLinkedPendingPlacements.length > 0 ||
     feed.placementRevertNotices.length > 0 ||
     feed.placementPendingReviews.length > 0 ||
-    feed.calendarEventInvites.length > 0 ||
     feed.budgetNeedsAction.length > 0 ||
     feed.eventSchedulingNeedsAction.length > 0 ||
     feed.shiftCoordinatorNeedsAction.length > 0 ||
     feed.myShiftsNeedingCompletion.length > 0 ||
     feed.conflictNeedsAction.length > 0 ||
-    feed.pendingNominations.length > 0 ||
     feed.expiredNominations.length > 0;
   const now = Date.now();
 
@@ -375,54 +372,6 @@ export default async function DashboardPage({
               Browse the board
             </Link>
           </div>
-        )}
-
-        {feed.pendingNominations.length > 0 && (
-          <FeedSection title="Tasks someone thinks fit you">
-            <p className="-mt-0.5 mb-2 text-[13px] text-[var(--text-muted)]">
-              You&rsquo;re already holding these — a yes, no, or not-now are all fine. No response
-              by the deadline releases it back automatically.
-            </p>
-            {feed.pendingNominations.map(({ nomination, taskTitle, nominatorName }) => (
-              <li key={nomination.id} className="border-b border-[var(--border)] px-1 py-2.5 last:border-b-0">
-                <Link href={`/tasks/${nomination.taskId}`} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
-                  {taskTitle}
-                </Link>{" "}
-                <span className="text-[13px] text-[var(--text-muted)]">
-                  — {nominatorName} thinks this is a fit, respond by{" "}
-                  {new Date(nomination.respondByDeadline).toLocaleString()}
-                  {nomination.message && <>: &ldquo;{nomination.message}&rdquo;</>}
-                </span>
-                <form action={respondToNominationAction} className="mt-2 flex gap-2">
-                  <input type="hidden" name="nominationId" value={nomination.id} />
-                  <button
-                    type="submit"
-                    name="response"
-                    value="accepted"
-                    className="rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3 py-1.5 text-[12px] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)]"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    type="submit"
-                    name="response"
-                    value="declined"
-                    className="rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)]"
-                  >
-                    Not for me
-                  </button>
-                  <button
-                    type="submit"
-                    name="response"
-                    value="not_now"
-                    className="rounded-[var(--radius-md)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--accent-1)] hover:bg-[var(--accent-1-softer)]"
-                  >
-                    Not right now
-                  </button>
-                </form>
-              </li>
-            ))}
-          </FeedSection>
         )}
 
         {feed.expiredNominations.length > 0 && (
@@ -636,19 +585,6 @@ export default async function DashboardPage({
                 href="/conflict-reports"
                 title={`Report from ${new Date(r.createdAt).toLocaleDateString()}`}
                 tag={<Tag tone="danger">past the acknowledgment window</Tag>}
-              />
-            ))}
-          </FeedSection>
-        )}
-
-        {feed.calendarEventInvites.length > 0 && (
-          <FeedSection title="Event invites waiting on you">
-            {feed.calendarEventInvites.map((i) => (
-              <FeedRow
-                key={i.eventId}
-                href="/calendar"
-                title={i.eventTitle}
-                meta={`invited by ${i.invitedByName}, ${new Date(i.invitedAt).toLocaleDateString()}`}
               />
             ))}
           </FeedSection>

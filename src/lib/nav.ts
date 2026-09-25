@@ -45,7 +45,7 @@ export const HIGHLIGHTABLE_MODULES: { key: VisibleModuleKey; label: string }[] =
   { key: "recruitment", label: "Recruitment" },
   { key: "shifts", label: "Shifts" },
   { key: "budget", label: "Budget" },
-  { key: "eventScheduling", label: "Event schedule" },
+  { key: "eventScheduling", label: "Programme" },
   { key: "spatialPlanning", label: "Spatial planning" },
   { key: "conflictReports", label: "Conflict reports" },
   { key: "sensitiveData", label: "Sensitive data" },
@@ -97,7 +97,14 @@ export type NavContext = {
   // back to communityName in that case.
   communityName: string;
   communityLogoUrl: string | null;
-  badgeCount: number;
+  // The two-center attention split (Communication Inbox vs the task
+  // feed): the old single badgeCount split into two scoped counts so
+  // each sidebar surface's badge reflects exactly its own center's
+  // items — taskBadgeCount rides the Dashboard nav item (the home of
+  // the task feed), communicationBadgeCount the Communication group
+  // header (the Inbox). See nav-config.ts + AppShell.tsx.
+  communicationBadgeCount: number;
+  taskBadgeCount: number;
   isCoordinator: boolean;
   visibleModules: {
     eventScheduling: boolean;
@@ -235,7 +242,27 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     if (!pinnedKeys.includes(key)) pinnedKeys.push(key);
   }
 
-  const badgeCount =
+  // "The count on communication should include everything that is
+  // included in communication" — the six Inbox types (input rounds,
+  // messages, feedback, nominations, date invites, scheduling polls).
+  // Every one of them is carried on the feed itself (see
+  // src/lib/dashboard.ts), so this sum can never drift from what
+  // /communication actually shows.
+  const communicationBadgeCount =
+    feed.pendingNominations.length +
+    feed.calendarEventInvites.length +
+    feed.inboxUnansweredQuestions.length +
+    feed.inboxVisibleMessages.length +
+    (feed.inboxFeedbackOpen ? 1 : 0) +
+    feed.inboxFeedbackReviewCount +
+    feed.inboxPollsNeedingMe.length;
+
+  // Everything else on the feed is task-side — "your held-task
+  // obligations": check-ins, attention flags, join requests into tasks
+  // you hold (person-initiated but answered on the task page, so it
+  // lives here), module-holder upkeep, and the coordinator-facing
+  // expired-nomination notices. Rides the Dashboard nav item.
+  const taskBadgeCount =
     feed.pendingJoinRequests.length +
     feed.upcomingCheckins.length +
     feed.flaggedHeldTasks.length +
@@ -244,29 +271,20 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     feed.myLinkedPendingPlacements.length +
     feed.placementRevertNotices.length +
     feed.placementPendingReviews.length +
-    feed.calendarEventInvites.length +
-    // Phase 46's own feed section — missed when it was first added
-    // here, caught while touching this same return block for Phase 47.
     feed.emergencyAccessActivity.length +
-    // Phase 49's four new sections — added at the same time as the
-    // feed fields themselves this time, per Phase 47's own "caught
-    // while touching this same return block" lesson.
     feed.budgetNeedsAction.length +
     feed.eventSchedulingNeedsAction.length +
     feed.shiftCoordinatorNeedsAction.length +
     feed.myShiftsNeedingCompletion.length +
     feed.conflictNeedsAction.length +
-    // Phase 51's own two new feed sections — added at the same time as
-    // the feed fields themselves, same discipline Phase 49 established
-    // after Phase 46/47's own miss here.
-    feed.pendingNominations.length +
     feed.expiredNominations.length;
 
   return {
     memberName: actor.name,
     communityName: community.name,
     communityLogoUrl: community.logoUrl,
-    badgeCount,
+    communicationBadgeCount,
+    taskBadgeCount,
     isCoordinator,
     visibleModules,
     pinnedKeys,

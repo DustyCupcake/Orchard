@@ -118,6 +118,7 @@ function NavGroupBlock({
   onToggleOpen,
   manualPinnedKeys,
   onTogglePin,
+  badge,
 }: {
   group: NavGroup;
   collapsed: boolean;
@@ -126,6 +127,10 @@ function NavGroupBlock({
   onToggleOpen: () => void;
   manualPinnedKeys: string[];
   onTogglePin?: (key: string) => void;
+  // Needs-you count for the group's header link — only the
+  // Communication group carries one (the Communication side of the
+  // two-center split; the task side rides the Dashboard item).
+  badge?: number;
 }) {
   if (collapsed) {
     const primaryHref = group.href ?? group.items[0].href;
@@ -142,7 +147,14 @@ function NavGroupBlock({
                 : "text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
             }`}
           >
-            <NavIcon name={group.icon} weight={groupActive ? "fill" : "regular"} />
+            <span className="relative shrink-0">
+              <NavIcon name={group.icon} weight={groupActive ? "fill" : "regular"} />
+              {Boolean(badge) && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[10px] font-semibold leading-none text-white">
+                  {badge}
+                </span>
+              )}
+            </span>
           </Link>
         </li>
       </ul>
@@ -168,19 +180,28 @@ function NavGroupBlock({
           }`}
         >
           <Link href={groupHref} className="flex flex-1 items-center gap-3 px-2.5 py-2 text-[13px]">
-            <NavIcon name={group.icon} weight={groupActive ? "fill" : "regular"} />
+            <span className="relative shrink-0">
+              <NavIcon name={group.icon} weight={groupActive ? "fill" : "regular"} />
+              {Boolean(badge) && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[10px] font-semibold leading-none text-white">
+                  {badge}
+                </span>
+              )}
+            </span>
             <span className="truncate">{group.label}</span>
           </Link>
-          <button
-            onClick={onToggleOpen}
-            aria-expanded={open}
-            aria-label={open ? `Collapse ${group.label}` : `Expand ${group.label}`}
-            className="mr-1 shrink-0 rounded-[var(--radius-sm)] p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
-          >
-            <NavIcon name="chevronDown" size={12} className={`transition-transform ${open ? "" : "-rotate-90"}`} />
-          </button>
+          {group.items.length > 0 && (
+            <button
+              onClick={onToggleOpen}
+              aria-expanded={open}
+              aria-label={open ? `Collapse ${group.label}` : `Expand ${group.label}`}
+              className="mr-1 shrink-0 rounded-[var(--radius-sm)] p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
+            >
+              <NavIcon name="chevronDown" size={12} className={`transition-transform ${open ? "" : "-rotate-90"}`} />
+            </button>
+          )}
         </div>
-        {open && (
+        {open && group.items.length > 0 && (
           // No pin toggle here — these items are lightweight views into
           // one domain, not individually meaningful destinations to
           // pin (see nav-config.ts's NavGroup.headerIsLink); pinning
@@ -223,7 +244,8 @@ function SidebarNavList({
   collapsed,
   visibleGroups,
   pinnedItems,
-  badgeCount,
+  communicationBadgeCount,
+  taskBadgeCount,
   isActive,
   closedGroups,
   onToggleGroup,
@@ -233,7 +255,13 @@ function SidebarNavList({
   collapsed: boolean;
   visibleGroups: NavGroup[];
   pinnedItems: NavItem[];
-  badgeCount: number;
+  // The two-center attention split — each badge reflects exactly its
+  // own center's items (see nav-config.ts's relevant group comments +
+  // src/lib/nav.ts): taskBadgeCount rides this list's Dashboard item
+  // (home of the task feed), communicationBadgeCount the Communication
+  // group's header link (the Inbox).
+  communicationBadgeCount: number;
+  taskBadgeCount: number;
   isActive: (href: string) => boolean;
   closedGroups: Set<string>;
   onToggleGroup: (key: string) => void;
@@ -249,6 +277,9 @@ function SidebarNavList({
   const otherGroups = visibleGroups.filter((g) => g.key !== "modules");
 
   function renderGroup(group: NavGroup) {
+    // The Communication group's header link carries its own needs-you
+    // badge (see nav-config.ts); other groups carry none.
+    const isAttentionGroup = group.key === "communication";
     return (
       <NavGroupBlock
         key={group.key}
@@ -259,6 +290,7 @@ function SidebarNavList({
         onToggleOpen={() => onToggleGroup(group.key)}
         manualPinnedKeys={manualPinnedKeys}
         onTogglePin={onTogglePin}
+        badge={isAttentionGroup ? communicationBadgeCount : undefined}
       />
     );
   }
@@ -266,7 +298,12 @@ function SidebarNavList({
   return (
     <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-2 py-3">
       <ul className="space-y-0.5">
-        <NavLink item={DASHBOARD_ITEM} collapsed={collapsed} active={isActive(DASHBOARD_ITEM.href)} badge={badgeCount} />
+        <NavLink
+          item={DASHBOARD_ITEM}
+          collapsed={collapsed}
+          active={isActive(DASHBOARD_ITEM.href)}
+          badge={taskBadgeCount}
+        />
         <NavLink item={CALENDAR_ITEM} collapsed={collapsed} active={isActive(CALENDAR_ITEM.href)} />
       </ul>
 
@@ -500,12 +537,10 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
       : "participation"
     : null;
 
-  // Budget is the one single-owner-per-cycle module this phase touches
-  // (docs/development-plan.md's Phase 65 — Event scheduling/Spatial
-  // planning ownership is Phase 68's job) — hidden entirely with no
-  // cycle open at all to be scoped to, rather than a generic
-  // moduleKey-style visibility rule on nav-config.ts's own NavItem
-  // shape, since this is the only item this narrow.
+  // Budget is hidden entirely with no cycle open at all to be scoped
+  // to, rather than using the generic moduleKey-style visibility rule
+  // on nav-config.ts's own NavItem shape, since this is the only item
+  // this narrow.
   const isCycleGated = (item: NavItem) => item.key !== "budget" || ctx.cycleSwitcher.hasAnyOpenCycle;
 
   const pinnedItems = ctx.pinnedKeys
@@ -521,7 +556,8 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
   const navListProps = {
     visibleGroups,
     pinnedItems,
-    badgeCount: ctx.badgeCount,
+    communicationBadgeCount: ctx.communicationBadgeCount,
+    taskBadgeCount: ctx.taskBadgeCount,
     isActive,
     closedGroups,
     onToggleGroup: toggleGroup,
@@ -605,7 +641,7 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
             <Warning size={16} weight="regular" className="shrink-0" />
             <span>
               On-site mode is on — settings, branches, tiers, cycle types, starting a new Cycle,
-              Requirement changes, publishing the Event schedule, and Spatial-planning edits are all
+              Requirement changes, publishing the Programme, and Spatial-planning edits are all
               locked until it&rsquo;s turned off from Settings.
             </span>
           </div>

@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { db } from "@/db";
-import { branch, member, participation, task, taskAssignment, taskJoinRequest } from "@/db/schema";
+import { branch, member, participation, schedulingEntry, task, taskAssignment, taskJoinRequest } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { listOpenCycles } from "./cycles";
 import { isCoordinationHolder } from "./coordination";
@@ -9,6 +9,11 @@ import { getCompositionBreakdown } from "./composition";
 import { listMyCalendarEventInvites } from "./calendar-events";
 import { isModuleEnabled } from "./modules";
 import { getCommunityRow, isRecruitmentTaskHolder, listRecruitmentActionItems } from "./recruitment";
+import { listCurrentRoundQuestions } from "./input-rounds/rounds";
+import { listOutboundMessagesVisibleTo } from "./messages";
+import { listPostCycleFeedbackResponses } from "./forms";
+import { listPolls } from "./scheduling-polls";
+import { ForbiddenError } from "./errors";
 import {
   isSpatialPlanningHolder,
   listMyLinkedPendingPlacements,
@@ -166,6 +171,66 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
     listMyExpiredNominations(actor),
   ]);
 
+  // The Communication Inbox's own needs-you surfaces — added here to
+  // the one cache()'d feed so the sidebar's Communication badge
+  // ("include everything that is included in communication") and the
+  // /communication page both read from the same source and can never
+  // drift apart. The page used to query these itself; it now consumes
+  // these fields (see src/app/(app)/communication/page.tsx).
+  //
+  // Input rounds — the current round's questions the actor hasn't
+  // answered yet (answered ones drop off; no open round → empty).
+  const inboxUnansweredQuestions = (await listCurrentRoundQuestions(actor)).questions
+    .filter((q) => !q.myResponse)
+    .map(({ question, taskTitle, branchName }) => ({
+      id: question.id,
+      text: question.text,
+      taskTitle,
+      branchName,
+      deadline: question.deadline,
+    }));
+
+  // Messages — everything outbound logged this actor can see: their
+  // own sends, community-wide announcements, and targeted sends whose
+  // live-resolved audience includes them (see src/lib/messages.ts).
+  const inboxVisibleMessages = (await listOutboundMessagesVisibleTo(actor)).map((m) => ({
+    id: m.id,
+    subject: m.subject,
+    scope: m.scope,
+    sentAt: m.sentAt,
+  }));
+
+  // Feedback — the section appears whenever a post-cycle form is
+  // configured at all (the Inbox's "give your feedback" row is the
+  // same for every member); the reviewer's pending count rides on top.
+  // listPostCycleFeedbackResponses throws ForbiddenError for everyone
+  // else, caught here the same way the page used to catch it.
+  const inboxFeedbackOpen = communityRow.postCycleFeedbackFormId !== null;
+  let inboxFeedbackReviewCount = 0;
+  if (inboxFeedbackOpen) {
+    try {
+      inboxFeedbackReviewCount = (await listPostCycleFeedbackResponses(actor)).length;
+    } catch (err) {
+      if (!(err instanceof ForbiddenError)) throw err;
+    }
+  }
+
+  // Scheduling polls — polls still open for availability (no confirmed
+  // slot yet) where the actor has submitted no availability at all.
+  const polls = await listPolls(actor);
+  const openPollIds = polls.filter((p) => !p.confirmedSlotStart).map((p) => p.id);
+  const myPollEntries =
+    openPollIds.length === 0
+      ? []
+      : await db
+          .select({ pollId: schedulingEntry.pollId })
+          .from(schedulingEntry)
+          .where(and(eq(schedulingEntry.memberId, actor.id), inArray(schedulingEntry.pollId, openPollIds)));
+  const answeredPollIds = new Set(myPollEntries.map((e) => e.pollId));
+  const inboxPollsNeedingMe = polls
+    .filter((p) => !p.confirmedSlotStart && !answeredPollIds.has(p.id))
+    .map((p) => ({ id: p.id, title: p.title, branchId: p.branchId }));
+
   return {
     pendingJoinRequests,
     upcomingCheckins,
@@ -184,6 +249,11 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
     conflictNeedsAction,
     pendingNominations,
     expiredNominations,
+    inboxUnansweredQuestions,
+    inboxVisibleMessages,
+    inboxFeedbackOpen,
+    inboxFeedbackReviewCount,
+    inboxPollsNeedingMe,
   };
 });
 

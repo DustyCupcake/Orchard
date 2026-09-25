@@ -20,9 +20,7 @@ export type NavGroup = {
   items: NavItem[];
   // Only meaningful when headerIsLink is true: names the group's "main
   // view" explicitly (Tasks → /board, a genuine hub page with its own
-  // button row to the rest of the group). Falls back to the group's
-  // first item when headerIsLink is true but this is absent (Community
-  // → /members — no real hub page, just "whatever's first").
+  // button row to the rest of the group).
   href?: string;
   // Two distinct header styles, picked per group by what its items
   // actually are — see AppShell.tsx's NavGroupBlock:
@@ -31,7 +29,7 @@ export type NavGroup = {
   //    a real link (icon + label) with a separate chevron for expand/
   //    collapse, and items lose their own icons (indented text only),
   //    since the header's icon already stands for the whole category.
-  //    Tasks and Community use this.
+  //    Tasks, Community, Communication and Library use this.
   //  - false/absent: items are substantial, independently pinnable
   //    destinations (each a full module) — the header stays a plain
   //    uppercase toggle-only label, and each item keeps its own icon so
@@ -61,44 +59,84 @@ export const NAV_GROUPS: NavGroup[] = [
     href: "/board",
     headerIsLink: true,
     items: [
-      { key: "board", label: "Board", href: "/board", icon: "check" },
-      { key: "propose", label: "Propose a task", href: "/propose", icon: "check" },
-      { key: "proposals", label: "Proposals", href: "/proposals", icon: "check" },
-      { key: "contribution", label: "My contribution", href: "/contribution", icon: "check" },
-      { key: "coordination", label: "Coordination", href: "/coordination", icon: "check", coordinatorOnly: true },
-      { key: "escalation", label: "Escalation", href: "/escalation", icon: "check", coordinatorOnly: true },
-      // An input round is questions posed against a task — a task-side
-      // mechanic, unlike Scheduling polls (moved to a button on
-      // /calendar instead: it's about when things happen, not the task
-      // itself).
-      { key: "input-rounds", label: "Input rounds", href: "/input-rounds", icon: "check" },
+      // The sub-list carries only the three real destinations this
+      // group's header hub (/board) routes to from its own button row —
+      // Board is the header link itself, "Propose a task" is the board's
+      // primary button, and Escalation lives in the board's coordinator
+      // overflow, so none of them need a duplicate sidebar row.
+      { key: "proposals", label: "Proposals", href: "/proposals", icon: "stack" },
+      { key: "contribution", label: "My contribution", href: "/contribution", icon: "handheart" },
+      { key: "coordination", label: "Coordination", href: "/coordination", icon: "compass", coordinatorOnly: true },
+      // Input rounds moved to the Communication group — it's an ask-me
+      // interaction, not a task mechanic (see that group's comment).
     ],
   },
   {
     key: "community",
     label: "Community",
     icon: "people",
+    // The community dashboard (src/app/(app)/community/page.tsx) is
+    // the group's real hub — a page with its own hub-link row and
+    // "Invite a member" primary, the board's role for Tasks. Previously
+    // the header fell back to "whatever's first" (/members).
+    href: "/community",
     headerIsLink: true,
     items: [
       { key: "members", label: "Members", href: "/members", icon: "people" },
-      { key: "messages", label: "Messages", href: "/messages", icon: "mail" },
-      { key: "assemblies", label: "Assemblies", href: "/assemblies", icon: "people" },
-      { key: "documentation", label: "Documentation", href: "/documentation", icon: "people" },
-      { key: "feedback", label: "Feedback", href: "/feedback", icon: "people", moduleKey: "feedback" },
+      { key: "assemblies", label: "Assemblies", href: "/assemblies", icon: "chatsCircle" },
       // The community's relationship to Cycles over time — history,
-      // current-cycle composition/participation stats — with a
-      // member's own participation declaration as one part of that,
-      // not a separate destination. Cycle-scoped data (who's part of
-      // it), as distinct from Calendar's when-things-happen dates.
-      { key: "cycles", label: "Cycles", href: "/participation", icon: "cycle" },
+      // current-cycle composition/participation stats — with a member's
+      // own participation declaration as one part of that, not a
+      // separate destination. Presented to members as "Events" (the
+      // Cycle → Event relabel; schema, routes and URLs keep "cycle").
+      // Cycle-scoped data (who's part of it), as distinct from
+      // Calendar's when-things-happen dates.
+      { key: "cycles", label: "Events", href: "/participation", icon: "cycle" },
       // Community-wide config (branches, tiers, modules, ...) — moved
       // out of its old fixed bottom-of-sidebar slot: that position
       // reads as "your own stuff" (it sits right above the profile/
       // logout block), which fits personal settings, not the rarely-
-      // touched admin config this actually is. Reachable here and as a
-      // button on /members (the Community hub) instead.
+      // touched admin config this actually is. Reachable here and from
+      // /community. Resolved as "stays in Community for now" — there
+      // are also personal settings, and no better home has emerged yet.
       { key: "settings", label: "Settings", href: "/settings", icon: "gear" },
     ],
+  },
+  {
+    key: "communication",
+    label: "Communication",
+    icon: "chatCircle",
+    // The attention/needs-you family — everything "someone is asking me
+    // to answer" (messages, input rounds, feedback reviews, nominations,
+    // date invites, scheduling polls). The header links to the Inbox
+    // dashboard (/communication), which aggregates every type into
+    // per-kind sections (hidden when empty); each subheading below is a
+    // working surface in its own right, reachable directly for the
+    // focused view + its send action. Carries the Communication side of
+    // the two-center attention split (see AppShell.tsx); the task side
+    // rides the Dashboard item.
+    href: "/communication",
+    headerIsLink: true,
+    items: [
+      { key: "messages", label: "Messages", href: "/messages", icon: "mail" },
+      // An input round is questions posed against a task — "people
+      // asking me things," an interaction surface, not a task mechanic.
+      { key: "input-rounds", label: "Input rounds", href: "/input-rounds", icon: "question" },
+      { key: "feedback", label: "Feedback", href: "/feedback", icon: "chatCircleDots", moduleKey: "feedback" },
+    ],
+  },
+  {
+    key: "library",
+    label: "Library",
+    icon: "bookOpen",
+    // A single top-level destination, the same way Calendar is — the
+    // community's documentation (wiki pages + task-doc browse),
+    // relabeled "Library" and given its own hub. Header links straight
+    // to the existing /documentation page (label-only change; route
+    // and URLs unchanged). No sub-list: the header *is* the link.
+    href: "/documentation",
+    headerIsLink: true,
+    items: [],
   },
   {
     key: "modules",
@@ -136,7 +174,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: "shield",
         moduleKey: "sensitiveData",
       },
-      { key: "schedule", label: "Event schedule", href: "/schedule", icon: "calendarHeart", moduleKey: "eventScheduling" },
+      {
+        key: "schedule",
+        label: "Programme",
+        href: "/schedule",
+        icon: "calendarHeart",
+        moduleKey: "eventScheduling",
+      },
       { key: "shifts", label: "Shifts", href: "/shifts", icon: "clipboardText", moduleKey: "shifts" },
     ],
   },

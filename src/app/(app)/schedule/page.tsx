@@ -69,7 +69,7 @@ export default async function SchedulePage({
   if (moduleOn && resolution.kind === "ambiguous") {
     return (
       <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Schedule</h1>
+        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Programme</h1>
         <p className="mt-2 text-[13px] text-[var(--text-muted)]">
           Scoped to multiple active cycles — pick one to see its programme:
         </p>
@@ -117,7 +117,7 @@ export default async function SchedulePage({
 
   return (
     <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Schedule</h1>
+      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Programme</h1>
 
       {!moduleOn && (
         <p className="mt-4 text-[13px] text-[var(--text-muted)]">
@@ -160,12 +160,12 @@ export default async function SchedulePage({
           )}
           {published && (
             <div className="mt-4">
-              <Banner tone="success">Schedule published.</Banner>
+              <Banner tone="success">Programme published.</Banner>
             </div>
           )}
 
           <section className="mt-6">
-            <SectionHeading>Published schedule</SectionHeading>
+            <SectionHeading>Published programme</SectionHeading>
             {publishedSchedule.filter((p) => p.status === "confirmed").length === 0 && (
               <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nothing published yet.</p>
             )}
