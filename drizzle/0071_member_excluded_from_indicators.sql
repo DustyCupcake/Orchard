@@ -1,0 +1,1 @@
+ALTER TABLE "member" ADD COLUMN "excluded_from_indicators" boolean DEFAULT false NOT NULL;

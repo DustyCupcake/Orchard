@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { eventProposal, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ForbiddenError } from "../errors";
-import { listGrantingTaskIds } from "../permissions";
+import { isModuleOpenToEveryone, listGrantingTaskIds } from "../permissions";
 import { cycleScopeCondition } from "./crud";
 import type { EventSlot } from "./crud";
 
@@ -25,6 +25,17 @@ type EventProposalRow = typeof eventProposal.$inferSelect;
 // owner — required by every function acting on one particular proposal
 // or review/publish batch below.
 export async function isEventSchedulingOwner(actor: Member, cycleId?: string | null) {
+  // An open module short-circuits *before* the cycleId tri-state is
+  // consulted: open means the community/evergreen scope, which is already a
+  // superset for a `cycle`-tier module (docs/open-permissions-plan.md D3),
+  // so it answers true for every scope — `undefined`, `null`, and any real
+  // cycle id alike. That is why isEventSchedulingOwner does not grow an
+  // `open` path per scope and why listGrantingTaskIdsForScope stays
+  // task-only (D15).
+  if (await isModuleOpenToEveryone(actor.communityId, "event_scheduling_owner")) {
+    return true;
+  }
+
   const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "event_scheduling_owner");
   if (grantingTaskIds.length === 0) return false;
 

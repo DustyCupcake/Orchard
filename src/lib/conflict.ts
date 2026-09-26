@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { community, conflictReport, conflictReportExclusion, member, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "./errors";
-import { listGrantingTaskIds } from "./permissions";
+import { isModuleOpenToEveryone, listGrantingTaskIds } from "./permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -15,7 +15,22 @@ type Member = typeof memberTable.$inferSelect;
 // Community.conflictTeamTaskId, a single scalar pointer). See
 // docs/spec.md's "The conflict team is just a task, reusing what
 // already exists."
+//
+// An open `conflict_team` module puts every member on the team
+// (docs/open-permissions-plan.md D7). That is deliberately *not* narrowed:
+// open membership already confers the larger power, since
+// acknowledgeConflictReport admits anyone on the team and
+// resolveConflictReport has no team check at all beyond having been the one
+// to acknowledge — so gating recusal harder than acknowledgement would
+// protect nothing. The companion change is in fileConflictReport, whose
+// "is conflict management set up" check used grant existence as a proxy for
+// "is this module configured" and would otherwise leave an open Community
+// unable to *file* a report at all.
 export async function isConflictTeamMemberId(communityId: string, memberId: string) {
+  if (await isModuleOpenToEveryone(communityId, "conflict_team")) {
+    return true;
+  }
+
   const grantingTaskIds = await listGrantingTaskIds(communityId, "conflict_team");
   if (grantingTaskIds.length === 0) return false;
 
@@ -47,7 +62,22 @@ export async function requireConflictTeamMember(actor: Member) {
 // For the reporter's exclude-at-creation picker and the peer-recuse
 // picker — who's currently eligible to be excluded from a report at
 // all.
+//
+// An open team makes *every* member eligible (D7), and it has to return them
+// rather than an empty list: `recusePeer` validates its target through
+// isConflictTeamMemberId, which is open-aware, so an empty roster would leave
+// the recusal UI with nobody to pick while the action itself works — the
+// feature silently disappearing from the page. The ids are the same set the
+// predicate accepts, so the picker and the gate can't disagree.
 export async function listConflictTeamMemberIds(communityId: string) {
+  if (await isModuleOpenToEveryone(communityId, "conflict_team")) {
+    const everyone = await db
+      .select({ memberId: member.id })
+      .from(member)
+      .where(eq(member.communityId, communityId));
+    return everyone.map((m) => m.memberId);
+  }
+
   const grantingTaskIds = await listGrantingTaskIds(communityId, "conflict_team");
   if (grantingTaskIds.length === 0) return [];
 
@@ -76,9 +106,18 @@ export const fileConflictReportInput = z.object({
 export type FileConflictReportInput = z.infer<typeof fileConflictReportInput>;
 
 export async function fileConflictReport(actor: Member, input: FileConflictReportInput) {
-  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "conflict_team");
-  if (grantingTaskIds.length === 0) {
-    throw new AppError("Conflict management isn't set up for this Community yet");
+  // "Is conflict management set up" is a *configured* question, and grant
+  // existence was standing in for it. With an open `conflict_team` and no
+  // granting task — the most natural way to use the flag, since the whole
+  // point is not to need a task — that check refuses and leaves a Community
+  // able to *handle* conflicts but unable to *raise* one, which is worse than
+  // either state alone. Configured-or-open is the right guard (D7).
+  const open = await isModuleOpenToEveryone(actor.communityId, "conflict_team");
+  if (!open) {
+    const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "conflict_team");
+    if (grantingTaskIds.length === 0) {
+      throw new AppError("Conflict management isn't set up for this Community yet");
+    }
   }
 
   const [created] = await db
@@ -183,6 +222,7 @@ export async function listConflictNeedsAction(actor: Member): Promise<ConflictNe
   return reports
     .filter((r) => !r.acknowledgedAt && r.createdAt < cutoff)
     .map((r) => ({ reportId: r.id, createdAt: r.createdAt }));
+
 }
 
 export async function getConflictReport(actor: Member, reportId: string) {

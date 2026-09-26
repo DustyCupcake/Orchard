@@ -4,7 +4,7 @@ import { member, task, taskAssignment, viewAsLog } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { getCurrentSession, setViewAsOverlay } from "./session";
 import { ForbiddenError, NotFoundError } from "./errors";
-import { listGrantingTaskIds } from "./permissions";
+import { isModuleOpenToEveryone, listGrantingTaskIds } from "./permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -17,7 +17,18 @@ type Member = typeof memberTable.$inferSelect;
 // categorization tag could silently grant real View-as access if it
 // collided with the configured string). Shadows don't count, same as
 // everywhere else this pattern is used.
+//
+// An open `support` module means every member may View-as any other
+// (docs/open-permissions-plan.md D13 — the settings UI warns and confirms
+// before allowing it, because it is the highest-blast-radius module there
+// is). The re-verification in getActiveViewAs is what makes that safe
+// enough to offer: it runs on every call, so losing the task ends an
+// in-flight overlay immediately.
 export async function isSupportHolder(actor: Member) {
+  if (await isModuleOpenToEveryone(actor.communityId, "support")) {
+    return true;
+  }
+
   const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "support");
   if (grantingTaskIds.length === 0) return false;
 

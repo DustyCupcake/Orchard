@@ -22,9 +22,24 @@ import { task } from "./task";
 // community/evergreen role. `permission_grant.cycleId` was retired in
 // a single migration (D8) once task placement became the one scope
 // read.
+//
+// The one dimension task placement *can't* express is whole-community
+// coordination: `task.branchId` is NOT NULL, so every cycle-less task
+// lands in exactly one branch, and a granted `branch_coordination`
+// task can therefore only ever be branch-wide. Rather than reintroduce
+// a second scope column on this table (the thing D8 just retired),
+// community-wide coordination is its own module key
+// (`community_coordination`) — one more capability in the same
+// capability-per-module-key shape the whole table already uses. It is
+// cycle_variant, not a community-only role: a grant placed in an event
+// is that event's coordinator exactly as `branch_coordination` would be,
+// and only the branch is dropped, so a community that does want
+// per-branch coordinators and also a community-wide one can have both.
+// See src/lib/coordination.ts, which resolves both keys as one family.
 export const permissionGrantModuleEnum = pgEnum("permission_grant_module", [
   "admin",
   "branch_coordination",
+  "community_coordination",
   "conflict_team",
   "feedback_review",
   "event_scheduling_owner",

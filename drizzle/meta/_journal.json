@@ -442,6 +442,97 @@
       "when": 1790335650408,
       "tag": "0062_canonical_relative_dates",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1790356849503,
+      "tag": "0063_profile_question_required_by",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1790357427106,
+      "tag": "0064_profile_question_allow_deferral",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1790358699433,
+      "tag": "0065_profile_question_prefer_not_to_say",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1790359719040,
+      "tag": "0066_assembly_template_and_founders_prompt",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1790362038929,
+      "tag": "0067_profile_question_field_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1790365448791,
+      "tag": "0068_question_field_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1790368699967,
+      "tag": "0069_community_coordination_module",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1790369090458,
+      "tag": "0070_profile_question_indicators",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1790380427159,
+      "tag": "0071_member_excluded_from_indicators",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1790414843825,
+      "tag": "0072_indicator_consent",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1790416912469,
+      "tag": "0073_drop_indicator_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1790429446459,
+      "tag": "0074_cycle_indicators_setting",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1790435570069,
+      "tag": "0075_open_permission_grant",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ForbiddenError } from "../errors";
-import { listGrantingTaskIds } from "../permissions";
+import { isModuleOpenToEveryone, listGrantingTaskIds } from "../permissions";
 import { getCommunity } from "./community";
 
 type Member = typeof memberTable.$inferSelect;
@@ -17,7 +17,27 @@ type Member = typeof memberTable.$inferSelect;
 // to "any member" — otherwise a fresh install would lock itself out of
 // the one screen that could grant an Admins task into existence in the
 // first place.
+//
+// The open-flag check goes **first, above the bootstrap** (D2). Both the
+// bootstrap and an explicit open flag mean "every member may", so the
+// order between them cannot change the answer today — but putting the
+// deliberate setting first means a Community that opens Admin has said so
+// explicitly and doesn't read as an artefact of never having claimed the
+// task. It also means opening Admin is a way to *stop* relying on the
+// bootstrap: a Community whose Admins task is unclaimed and unopen keeps
+// the lockout guard, and one that opens Admin has chosen its state.
+//
+// Worth remembering when reading the rest of this gate: `admin` was never
+// really single-holder. The granting task must be `community_endorsed`,
+// and a community_endorsed task is created with `capacity: null`
+// (tasks/crud.ts) — which is *unlimited* holders, since the capacity check
+// is skipped for a null. So several people can already hold Admins
+// simultaneously, and any one of them passes this gate.
 export async function requireAdmins(actor: Member) {
+  if (await isModuleOpenToEveryone(actor.communityId, "admin")) {
+    return;
+  }
+
   const communityRow = await getCommunity(actor);
   if (!communityRow.adminsEverClaimed) {
     return;

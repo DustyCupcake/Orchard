@@ -4,7 +4,7 @@ import { community, placementMember, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable, placement as placementTable } from "@/db/schema";
 import { ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
-import { listGrantingTaskIds } from "../permissions";
+import { isModuleOpenToEveryone, listGrantingTaskIds } from "../permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -31,6 +31,19 @@ export async function isSpatialPlanningHolder(
   communityRow: { id: string },
   cycleId?: string | null,
 ) {
+  // Open short-circuits before the cycleId tri-state, for the same reason as
+  // isEventSchedulingOwner: an open module is the community/evergreen
+  // scope, already a superset (docs/open-permissions-plan.md D3/D15).
+  //
+  // Note this is the capability half only. `isPlacementEditor` is a
+  // *different* authority — a member-linked placement's own editor, or the
+  // holder of a linked task — and is deliberately left alone; an open
+  // Spatial-planning module says anyone may draw and edit Zones, not that
+  // anyone may take over someone else's saved placement.
+  if (await isModuleOpenToEveryone(communityRow.id, "spatial_planning")) {
+    return true;
+  }
+
   const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "spatial_planning");
   if (grantingTaskIds.length === 0) return false;
   const conditions = [

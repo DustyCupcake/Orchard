@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { member, permissionGrant, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ForbiddenError } from "../errors";
+import { isModuleOpenToEveryone } from "../permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -47,7 +48,20 @@ export async function resolveShiftManager(
 // gating, open act, proposal confirmation, re-placing) and the UI
 // (which roster sections render, whether a series counts as "mine" for
 // needs-action) funnel through.
+//
+// An open `shift_management` module answers true for every scope
+// (docs/open-permissions-plan.md D3). Note this is checked *before*
+// resolveShiftManager, and that is not a workaround: resolveShiftManager
+// picks one holder with `.limit(1)`, and the four
+// requireShiftManagerForScope call sites all discard that member — the check
+// is "is the actor one of the managers", so an arbitrary pick among several
+// is harmless. Compare backstop, where the picked member is the person
+// emailed, and which is therefore the one module that is not openable (D11).
 export async function isShiftManagerForScope(actor: Member, cycleId: string | null): Promise<boolean> {
+  if (await isModuleOpenToEveryone(actor.communityId, "shift_management")) {
+    return true;
+  }
+
   const manager = await resolveShiftManager(actor.communityId, cycleId);
   return manager?.id === actor.id;
 }

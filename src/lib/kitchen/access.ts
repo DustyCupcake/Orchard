@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ForbiddenError } from "../errors";
-import { listGrantingTaskIds } from "../permissions";
+import { isModuleOpenToEveryone, listGrantingTaskIds } from "../permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -15,7 +15,19 @@ type Member = typeof memberTable.$inferSelect;
 // cycle-less task owns the community's standing menu. Mirror of
 // isEventSchedulingOwner (src/lib/event-scheduling/conflicts.ts) — same
 // resolver, applied to a multi-cardinality module.
+//
+// An open `kitchen` module short-circuits before the cycleId tri-state —
+// open is the community/evergreen scope, already a superset
+// (docs/open-permissions-plan.md D3/D15). This is the capability half only:
+// `sensitive-data.ts`'s `unlockedByGrantModuleKey` rules are unaffected, so
+// opening Kitchen does **not** unlock a field gated to the Kitchen role
+// (D9, deferred — and the reason the safe outcome holds without anyone
+// deciding it).
 export async function isKitchenOwner(actor: Member, cycleId?: string | null): Promise<boolean> {
+  if (await isModuleOpenToEveryone(actor.communityId, "kitchen")) {
+    return true;
+  }
+
   const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "kitchen");
   if (grantingTaskIds.length === 0) return false;
 

@@ -91,6 +91,25 @@ export const community = pgTable("community", {
   // opens (per-cycle doors live on the cycle itself). Default true — a
   // community that has never touched these keeps working exactly as
   // before.
+  // Whether published community indicators may be read for a single
+  // cycle's attendees rather than the whole community, and the floor
+  // below which they may not.
+  //
+  // This exists because an event population is both *small* and
+  // *identifiable*: you know exactly who is coming, so "1 of 8 · 13%" is
+  // one person, whereas "1 of 40" is a rounding error. With indicators
+  // deliberately never permission-gated, consent is what protects an
+  // individual answer, and consent can't stop someone being the only
+  // member in a category — so the remaining lever is a community-level
+  // decision about when a population is big enough to break out at all.
+  //
+  // Defaults are chosen, not derived. Off, because a per-cycle view is a
+  // new exposure surface and every comparable sharing switch in this
+  // codebase opts in (`contributionVisible`, `cyclesEnabled`). And 10 is
+  // not meaningfully safer than 8 — the value of the floor is that the
+  // Community *made a decision and recorded it*, not the specific number.
+  cycleIndicatorsEnabled: boolean("cycle_indicators_enabled").notNull().default(false),
+  cycleIndicatorsMinMembers: integer("cycle_indicators_min_members").notNull().default(10),
   recruitmentApplicationsOpen: boolean("recruitment_applications_open").notNull().default(true),
   recruitmentInvitesOpen: boolean("recruitment_invites_open").notNull().default(true),
   // "However many evaluators the Community assigns (two, in the
@@ -189,4 +208,14 @@ export const community = pgTable("community", {
   // that's the behavior a Community configuring OIDC at all most likely
   // wants — flip it off for a softer transition.
   oidcPrimary: boolean("oidc_primary").notNull().default(true),
+  // When the /settings nudge offering to decide the community's settings
+  // together through an Assembly was first shown. This is the nudge's own
+  // clock anchor, not a community setting: the prompt is offered while
+  // this is null and fewer than two weeks have passed since it was
+  // stamped, and it never comes back once stamped — a community that
+  // ignored it, or that ran one by hand, shouldn't be nagged forever.
+  // The "or until the settings Assembly actually exists" half of that
+  // rule needs no column here: it's read off assembly.templateKey, so
+  // the truth stays with the Assembly rather than being mirrored.
+  foundersAssemblyPromptedAt: timestamp("founders_assembly_prompted_at", { withTimezone: true }),
 });

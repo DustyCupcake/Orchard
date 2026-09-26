@@ -1,0 +1,1 @@
+ALTER TABLE "profile_question" ADD COLUMN "allow_deferral" boolean DEFAULT true NOT NULL;

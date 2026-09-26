@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
-import { listGrantingTaskIds } from "@/lib/permissions";
+import { isModuleOpenToEveryone, listGrantingTaskIds } from "@/lib/permissions";
 import {
   isConflictTeamMember,
   listConflictReportExclusions,
@@ -40,8 +40,13 @@ export default async function ConflictReportsPage({
   const { error } = await searchParams;
 
   const communityRow = await getCommunity(viewing);
-  const conflictTeamGrantingTaskIds = await listGrantingTaskIds(communityRow.id, "conflict_team");
-  const moduleOn = conflictTeamGrantingTaskIds.length > 0;
+  // "Set up" means configured *or* open (D7) — the same predicate
+  // fileConflictReport now uses. Deriving it from grant existence alone would
+  // show an open Community "Conflict management isn't set up yet" while its
+  // members can in fact review, acknowledge, recuse and resolve.
+  const moduleOn =
+    (await isModuleOpenToEveryone(communityRow.id, "conflict_team")) ||
+    (await listGrantingTaskIds(communityRow.id, "conflict_team")).length > 0;
 
   const [isTeamMember, teamMemberIds, reports, communityMembers] = await Promise.all([
     moduleOn ? isConflictTeamMember(viewing) : false,

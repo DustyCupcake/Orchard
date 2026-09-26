@@ -1,11 +1,12 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, type Tx } from "@/db";
-import { permissionGrant, task } from "@/db/schema";
+import { member, openPermissionGrant, permissionGrant, task, taskAssignment } from "@/db/schema";
 import { AppError, NotFoundError } from "./errors";
 
 export const PERMISSION_MODULE_KEYS = [
   "admin",
   "branch_coordination",
+  "community_coordination",
   "conflict_team",
   "feedback_review",
   "event_scheduling_owner",
@@ -35,9 +36,10 @@ export const TASK_GRANTABLE_PERMISSION_MODULE_KEYS = PERMISSION_MODULE_KEYS.filt
 export const PERMISSION_MODULE_LABELS: Record<PermissionModuleKey, string> = {
   admin: "Admin",
   branch_coordination: "Branch coordination",
+  community_coordination: "Community coordination",
   conflict_team: "Conflict team",
   feedback_review: "Feedback review",
-  event_scheduling_owner: "Event scheduling owner",
+  event_scheduling_owner: "Programme owner",
   recruitment: "Recruitment",
   spatial_planning: "Spatial planning",
   announcements: "Announcements",
@@ -48,39 +50,43 @@ export const PERMISSION_MODULE_LABELS: Record<PermissionModuleKey, string> = {
   kitchen: "Kitchen",
 };
 
-// Each hint leads with its module's scope rule now (docs/cycle-scope-
-// remediation-plan.md §5.1/§2.2): "a task grants what it sits in." The
-// tier table below (PERMISSION_MODULE_SCOPE_TIER) is the same rule made
-// concrete per module; these hints state it in words so the settings
-// panel and the task-detail form never describe the same gate two
-// different ways.
+// What each capability *is* — deliberately no scope rule restated per
+// module. The scope rule is the one sentence every module in a section
+// shares, and the settings panel states it once in the section header
+// (see PERMISSION_MODULE_SECTIONS); a hint that repeated "placed in a
+// cycle, it covers that cycle" thirteen times was pure repetition that
+// buried the part that actually differs — what holding the role lets you
+// do. Kept here (rather than inline in the panel) so the settings page
+// stays the only place that has to know about sectioning.
 export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
   admin:
-    "A community-wide role — keep its cycle unset. A cycle-placed Admin task is a contradiction (it would still grant community-wide Admins), so the interface warns rather than silently ignoring it. Whoever currently holds any task granted here gates this whole settings screen — see its own candidacy/endorsement flow on the task itself.",
+    "Gates the whole settings screen. Holders must be endorsed by the community on the task itself, not just assigned.",
   branch_coordination:
-    "Cycle-shaped — placed in a cycle, it coordinates that cycle; cycle-less, it's a branch-wide coordinator at the community/evergreen scope. Whoever currently holds a task granted here does that task's branch's coordination — waiving requirements, seeing escalations and talk-to-coordinator pings for that branch.",
+    "Per branch, across every event. Waives requirements, sees escalations and talk-to-coordinator pings, approves join requests and nominations.",
+  community_coordination:
+    "The same as Branch coordination, except the branch never narrows it. Placed in an event, it coordinates that event; left outside one, it coordinates the whole community at once — the option for a small event that doesn't need a coordinator per branch.",
   conflict_team:
-    "A community-wide role — keep its cycle unset; conflicts are relationship-shaped, not cycle-shaped. Whoever holds a task granted here is on the conflict team — a critical, multi-slot coordination task like any other. Reports can still be filed with nobody set, but nobody can review or acknowledge them until it is.",
+    "Reviews and acknowledges conflict reports. Reports can be filed with nobody set; nobody can review until it is.",
   feedback_review:
-    "Cycle-shaped — placed in a cycle, it reviews that cycle's post-cycle feedback responses; cycle-less, the community/evergreen scope covering every response (each response carries the cycle it's about, §4.3). Whoever holds it sees feedback responses on /feedback.",
+    "Sees feedback responses on /feedback.",
   event_scheduling_owner:
-    "Cycle-shaped — placed in a cycle, it owns that cycle's event scheduling; cycle-less, the community/evergreen scope. Members can still submit proposals without this set, but nobody can review, confirm, or publish until it is.",
+    "Reviews, confirms and publishes the Programme. Members can still submit proposals without this set.",
   recruitment:
-    "Cycle-shaped — placed in a cycle, it evaluates that cycle's applications; cycle-less, the community/evergreen scope covering every application (each application carries the cycle it's for, §4.3). Whoever holds it sees applications on /applications and the inquiry inbox on /invites.",
+    "Evaluates applications on /applications and the inquiry inbox on /invites.",
   spatial_planning:
-    "Cycle-shaped — placed in a cycle, it owns that cycle's Zones; cycle-less, the community/evergreen scope. Nobody can draw or edit Zones until this is set — see /spatial-planning.",
+    "Draws and edits Zones. Nobody can until this is set — see /spatial-planning.",
   announcements:
-    "Cycle-less, it gates community-wide announcements; placed in a cycle, it gates messages to that cycle's roster (coming and/or maybe) instead. Targeted messages (branch/task-holders/arrival-window) work without this.",
+    "Flips meaning by placement: unset, it gates community-wide announcements; in an event, it gates messages to that event's roster instead. Targeted messages work either way.",
   support:
-    "A community-wide role — keep its cycle unset. Whoever currently holds a task granted here can view the platform exactly as another member would, read-only — see docs/spec.md's View-as (support).",
+    "View the platform exactly as another member would, read-only — see docs/spec.md's View-as.",
   backstop:
-    "Cycle-shaped, like Announcements: a task placed in a cycle is that cycle's backstop (covering its critical tasks); a cycle-less task is the community/evergreen backstop (covering cycle-less criticals only, D1). Unclaimed criticals stay open and claimable for anyone — being the backstop is about being named responsible, not closing the task off.",
+    "Named responsible for a scope's critical tasks — covering them, not closing them off. Unclaimed criticals stay claimable by anyone.",
   shift_management:
-    "Cycle-shaped like Announcements: a task placed in a cycle manages that cycle's roster; a cycle-less task manages the community's standing series. Whoever holds it opens sign-ups, confirms proposals, and re-places series. Placing a series in a collecting cycle is open to any member; managing (and adding standing series) is not. A roster with no grant-backed manager stays visibly closed.",
+    "Opens sign-ups, confirms proposals and re-places series. A roster with no grant-backed manager stays visibly closed.",
   budget:
-    "Cycle-shaped — placed in a Cycle, it owns that Cycle's Budget; cycle-less, it owns Budgets not tied to a Cycle. Whoever currently holds the designated task can edit the BudgetCycle while proposals are open, close proposals, confirm the funded set, and mark it done. Configure this here under Access & permissions.",
+    "Edits the budget period while proposals are open, closes proposals, confirms the funded set and marks it done. Settings-only — never granted from a task or proposal.",
   kitchen:
-    "Cycle-shaped, like the rest of the schedule-shaped modules — placed in a cycle, it owns that cycle's menu; cycle-less, it's the community's standing menu role. Whoever currently holds any task granted here exercises the whole Kitchen for that scope: builds and publishes the menu, reviews the food-ideas inbox, and — once the community links the allergies field to this grant (Sensitive data) — reads member constraints while planning. Members can still file food ideas without this set, but nobody can build or publish the menu until it is.",
+    "Builds and publishes the menu, reviews the food-ideas inbox, and — once the allergies field is linked to this grant — reads member constraints. Members can still file food ideas without it.",
 };
 
 // The §2.2 tier table made concrete — how each module's authority
@@ -90,7 +96,8 @@ export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
 // than hard-coding per-module exceptions at each surface:
 //   "community"     — community-shaped: cycle-less only. A cycle-placed
 //                     instance is a contradiction the interface warns
-//                     about (admin, conflict_team, support).
+//                     about (admin, conflict_team, support,
+//                     community_coordination).
 //   "cycle"         — cycle-shaped: placement *is* the scope. In cycle C
 //                     → cycle C; cycle-less → the community/evergreen
 //                     scope (branch_coordination, event_scheduling_owner,
@@ -104,6 +111,14 @@ export type PermissionModuleScopeTier = "community" | "cycle" | "cycle_variant";
 export const PERMISSION_MODULE_SCOPE_TIER: Record<PermissionModuleKey, PermissionModuleScopeTier> = {
   admin: "community",
   branch_coordination: "cycle",
+  // The same rule as Branch coordination — placement is the scope, and a
+  // task in an event is that event's coordinator — with exactly one
+  // difference: the cycle-less form covers the *whole community* rather
+  // than one branch. So it's cycle_variant: cycle-less → community-wide,
+  // cycle-placed → that cycle. The branch is never part of the scope for
+  // this module, so a granted task sitting in a branch has that branch
+  // ignored.
+  community_coordination: "cycle_variant",
   conflict_team: "community",
   feedback_review: "cycle",
   event_scheduling_owner: "cycle",
@@ -116,6 +131,51 @@ export const PERMISSION_MODULE_SCOPE_TIER: Record<PermissionModuleKey, Permissio
   budget: "cycle",
   kitchen: "cycle",
 };
+
+// How the settings panel groups the modules (the "Community-wide" and
+// "Per-event" sections). The split is *derived* from the tier table
+// rather than hand-listed, so a new module can never end up in no
+// section or in two — the same one-source-of-truth discipline the rest
+// of this file keeps. Only "community" earns its own section — those
+// roles are whole-community *by definition* and an event placement is a
+// contradiction, which is a genuinely different rule to explain. The
+// "cycle" and "cycle_variant" tiers share the per-event section because
+// the rule a reader needs is identical for both: placement is the scope,
+// and leaving the event out means the community as a whole. The only
+// difference between the two tiers is the wording of the derived label
+// on the row, which describeGrantScope already states exactly.
+export interface PermissionModuleSection {
+  key: "community" | "cycle";
+  title: string;
+  // Stated once per section instead of once per module — the rule every
+  // module in the section shares, which is what the per-module hints
+  // used to each restate in full.
+  rule: string;
+  moduleKeys: PermissionModuleKey[];
+}
+
+function moduleKeysInSection(tier: PermissionModuleScopeTier): PermissionModuleKey[] {
+  // Filtered off PERMISSION_MODULE_KEYS, so display order inside each
+  // section always matches the declaration order above.
+  return PERMISSION_MODULE_KEYS.filter((moduleKey) => PERMISSION_MODULE_SCOPE_TIER[moduleKey] === tier);
+}
+
+export const PERMISSION_MODULE_SECTIONS: readonly PermissionModuleSection[] = [
+  {
+    key: "community",
+    title: "Community-wide",
+    rule:
+      "These roles cover the whole community, so keep the event unset. Whoever holds the task holds the role everywhere — a task placed in an event is a contradiction here, and the panel warns about it rather than silently ignoring it.",
+    moduleKeys: moduleKeysInSection("community"),
+  },
+  {
+    key: "cycle",
+    title: "Per-event",
+    rule:
+      "Placement is the scope: a task in an event owns that event. The same task left outside every event covers the community as a whole — each row below shows which of the two it is.",
+    moduleKeys: [...moduleKeysInSection("cycle"), ...moduleKeysInSection("cycle_variant")],
+  },
+];
 
 // The derived-scope label a grant row shows (§5.1): the cycle the
 // granting task is placed in, or — for a cycle-less task — "Community-
@@ -145,6 +205,11 @@ export function isMisplacedCommunityGrant(moduleKey: PermissionModuleKey, cycleI
 const MULTI_CARDINALITY_MODULES = new Set<PermissionModuleKey>([
   "admin",
   "branch_coordination",
+  // A community can run both a community-wide coordinator and
+  // per-branch coordinators at once — the small-event case wants the
+  // former, a large one the latter, and plenty want the first as a
+  // floor under the second. Same shape as branch_coordination.
+  "community_coordination",
   "support",
   // D2 — one `kitchen` grant = full module access wherever granted; the
   // community may put it on however many tasks work in the module, none
@@ -185,6 +250,165 @@ export async function listPermissionGrants(communityId: string, moduleKey: Permi
     .from(permissionGrant)
     .where(and(eq(permissionGrant.communityId, communityId), eq(permissionGrant.moduleKey, moduleKey)));
 }
+
+// ---------------------------------------------------------------------------
+// "Everyone has this permission" — the open-flag reads
+// (docs/open-permissions-plan.md §2.2)
+//
+// The whole open-permissions mechanism rests on this file NOT changing how
+// authority is resolved today. listGrantingTaskIds above is still the only
+// thing that produces a task id for a module, and every resolver still
+// reaches a person through a taskAssignment join — so an open module adds
+// capability at the *front* of a resolver, it never rewrites the grant path.
+// That is what makes a mistake here fail closed (a flag nothing reads) rather
+// than open.
+//
+// Reads here are unfiltered by scope on purpose. An open module *is* the
+// community/evergreen scope, which under the §2.1 rule is already a superset
+// for the nine `cycle`-tier modules — so "is this open" needs no cycleId
+// argument, and listGrantingTaskIdsForScope stays task-only (D15).
+
+// Every module this Community has declared open to all its members. The one
+// read a per-page settings view wants (the Access & permissions tab renders
+// all 14 checkboxes from a single call), and cheap enough to be safe to call
+// on any page that needs to know "is anything open at all" — notably
+// src/lib/nav.ts, which would otherwise probe a module per page load.
+export async function listOpenModuleKeys(communityId: string): Promise<Set<PermissionModuleKey>> {
+  const rows = await db
+    .select({ moduleKey: openPermissionGrant.moduleKey })
+    .from(openPermissionGrant)
+    .where(eq(openPermissionGrant.communityId, communityId));
+  return new Set(rows.map((r) => r.moduleKey));
+}
+
+// The single enforcement call. A composite-PK lookup, so it is safe to call
+// as the first line of any resolver — which is exactly how Step 4/5 of the
+// plan intend to use it: open short-circuits, and the grant path is reached
+// only when the module is closed.
+export async function isModuleOpenToEveryone(
+  communityId: string,
+  moduleKey: PermissionModuleKey,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ moduleKey: openPermissionGrant.moduleKey })
+    .from(openPermissionGrant)
+    .where(
+      and(eq(openPermissionGrant.communityId, communityId), eq(openPermissionGrant.moduleKey, moduleKey)),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
+// Who currently *holds* a set of granting tasks — the distinct, non-shadow
+// members on them. `isShadow: false` is the same filter every resolver
+// applies: a shadow is a placeholder learning the work, not someone doing it,
+// so counting one as a holder would overstate who can actually act.
+//
+// This is deliberately a task-id list and not a
+// (communityId, moduleKey, scope) signature. Scope-awareness comes from
+// *which* id-list the caller passes — listGrantingTaskIds for the
+// community-wide case, listGrantingTaskIdsForScope for one scope — rather
+// than from a parameter that would have to mean branch for coordination,
+// cycle for most modules, and nothing for the `community` tier. Reusing the
+// scope split the codebase already has beats adding a second one.
+//
+// Distinct by member, not by assignment: two grants held by the same person
+// are one holder, and that is the number the plan's D12/D14 both need — the
+// settings tab's "N people hold this" and "resolves to more than one person"
+// are the same count.
+export async function listHoldersOfTasks(taskIds: readonly string[]): Promise<{ memberId: string; name: string }[]> {
+  if (taskIds.length === 0) return [];
+  const rows = await db
+    .select({ memberId: member.id, name: member.name })
+    .from(taskAssignment)
+    .innerJoin(member, eq(member.id, taskAssignment.memberId))
+    .where(and(inArray(taskAssignment.taskId, [...taskIds]), eq(taskAssignment.isShadow, false)));
+  const byMember = new Map(rows.map((r) => [r.memberId, r]));
+  return [...byMember.values()];
+}
+
+// The count form, for the callers that only need "is it more than one?" —
+// the plan's D12 shared/personal decision and the nav short-circuit. Derived
+// from listHoldersOfTasks rather than issued as a second COUNT query so the
+// number can't disagree with the names the settings tab renders beside it.
+export async function countHoldersOfTasks(taskIds: readonly string[]): Promise<number> {
+  return (await listHoldersOfTasks(taskIds)).length;
+}
+
+// Writes the open flag, or clears it when `open` is false. One upsert/delete
+// rather than a separate set/clear pair: the row's whole existence is the
+// fact, so there is nothing for a "replace" to distinguish (contrast
+// setPermissionGrant, where a *task* can move between scopes while the grant
+// row persists).
+//
+// Returns false when the module cannot be opened, so the caller can report
+// the refusal rather than silently doing nothing.
+export async function setModuleOpen(
+  communityId: string,
+  moduleKey: PermissionModuleKey,
+  open: boolean,
+  openedBy: string,
+): Promise<boolean> {
+  if (open && !isOpenableModule(moduleKey)) return false;
+  if (open) {
+    await db
+      .insert(openPermissionGrant)
+      .values({ communityId, moduleKey, openedBy })
+      .onConflictDoNothing();
+  } else {
+    await db
+      .delete(openPermissionGrant)
+      .where(
+        and(eq(openPermissionGrant.communityId, communityId), eq(openPermissionGrant.moduleKey, moduleKey)),
+      );
+  }
+  return true;
+}
+
+// The one module with no open path (D11). `backstop`'s authority is a *named
+// person* to notify — notifyBackstopOfHardFlag emails the single member
+// resolveBackstopHolder picked — and the task detail page names the same one,
+// so a backstop with no name has nothing to do. Enforced here, at the write,
+// and again in the settings UI (which renders no checkbox) so the two can't
+// drift; deliberately NOT in the schema, since the enum has to keep carrying
+// the key for the rest of the module to work.
+//
+// D11 is the only exclusion. It was originally reasoned as a *power* problem —
+// that excluding another person should stay task-gated — and that reasoning
+// was wrong: an open conflict_team already lets any member acknowledge a
+// report and then resolve it (resolveConflictReport has no team check at all),
+// which is strictly more authority than recusal, so gating recusal harder
+// would have protected nothing.
+export const NON_OPENABLE_MODULE_KEYS: ReadonlySet<PermissionModuleKey> = new Set(["backstop"]);
+
+export function isOpenableModule(moduleKey: PermissionModuleKey): boolean {
+  return !NON_OPENABLE_MODULE_KEYS.has(moduleKey);
+}
+
+// Holder counts for the settings tab's Access & permissions rows (D14).
+// Keyed by task id, deliberately *not* the distinct-member form
+// listHoldersOfTasks uses: each row has to answer "who holds *this* task",
+// and a member holding two of the same module's tasks appears in both rows —
+// whereas the D12 count needs them once.
+export async function listHoldersByTaskId(
+  taskIds: readonly string[],
+): Promise<Map<string, { memberId: string; name: string }[]>> {
+  type Holder = { memberId: string; name: string };
+  const byTask = new Map<string, Map<string, Holder>>();
+  if (taskIds.length === 0) return new Map();
+  const rows = await db
+    .select({ taskId: taskAssignment.taskId, memberId: member.id, name: member.name })
+    .from(taskAssignment)
+    .innerJoin(member, eq(member.id, taskAssignment.memberId))
+    .where(and(inArray(taskAssignment.taskId, [...taskIds]), eq(taskAssignment.isShadow, false)));
+  for (const r of rows) {
+    const forTask = byTask.get(r.taskId) ?? new Map<string, Holder>();
+    forTask.set(r.memberId, { memberId: r.memberId, name: r.name });
+    byTask.set(r.taskId, forTask);
+  }
+  return new Map([...byTask].map(([taskId, m]) => [taskId, [...m.values()] as Holder[]]));
+}
+
 
 // Every grant across every module for a Community, with just enough
 // task info (title, branchId, and the granted task's *placement*) to

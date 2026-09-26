@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { budgetCycle, budgetVote, member, permissionGrant, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { isModuleOpenToEveryone } from "../permissions";
 import {
   getBudgetCycle,
   getBudgetCycleAttendeeCount,
@@ -25,6 +26,29 @@ type BudgetCycleRow = typeof budgetCycle.$inferSelect;
 // `cycleId` is also null. Excludes shadow slots, matching the other
 // task-is-the-authority checks throughout the app.
 export async function isBudgetOwner(actor: Member, cycleRow: Pick<BudgetCycleRow, "cycleId">) {
+  // An open `budget` module answers true for every budget period
+  // (docs/open-permissions-plan.md D3) — open is the community/evergreen
+  // scope, which is already the superset for a `cycle`-tier module, so the
+  // cycleRow.cycleId comparison below is skipped rather than extended.
+  //
+  // The visible consequence is in listBudgetNeedsAction, which uses this to
+  // decide who gets the two management rows (close the period, confirm the
+  // funded set). With Budget open, every member qualifies for those — which
+  // is the "collaborative decision rather than one person managing it" case
+  // D12 handles by marking those rows shared instead of personal. `cast_vote`
+  // is unaffected and already applied to anyone.
+  if (await isModuleOpenToEveryone(actor.communityId, "budget")) {
+    return true;
+  }
+  return holdsBudgetGrant(actor, cycleRow);
+}
+
+// The task-holding half of isBudgetOwner, kept separate because
+// listBudgetNeedsAction needs to tell the two apart: an open module makes
+// every member a budget *owner*, but only a real holder is on the hook for
+// closing the period. Splitting here is what lets that list label the
+// management rows shared without re-deriving ownership a second way.
+export async function holdsBudgetGrant(actor: Member, cycleRow: Pick<BudgetCycleRow, "cycleId">) {
   const [holding] = await db
     .select({ id: permissionGrant.id })
     .from(permissionGrant)
@@ -121,7 +145,7 @@ function requireValidRanking(rankedProposalIds: string[], validProposalIds: stri
   const seen = new Set<string>();
   for (const id of rankedProposalIds) {
     if (!validSet.has(id)) {
-      throw new AppError("Your ranking references a proposal that isn't part of this cycle");
+      throw new AppError("Your ranking references a proposal that isn't part of this budget period");
     }
     if (seen.has(id)) {
       throw new AppError("Your ranking lists the same proposal more than once");
@@ -306,7 +330,7 @@ export async function confirmBudgetCycle(
   const seen = new Set<string>();
   for (const id of input.confirmedProposalIds) {
     if (!validIds.has(id)) {
-      throw new NotFoundError("Confirmed proposal isn't part of this cycle");
+      throw new NotFoundError("Confirmed proposal isn't part of this budget period");
     }
     if (seen.has(id)) {
       throw new AppError("confirmedProposalIds lists the same proposal more than once");

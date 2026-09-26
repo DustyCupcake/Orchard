@@ -18,7 +18,7 @@ import { isCoordinationHolder, listCoordinationScopeIds } from "./coordination";
 import { requireCycleInitiationEligibility, resolveViewScopeCycleForMember } from "./cycles";
 import { branchRosterMemberIds } from "./calendar-events";
 import { sendOutboundMessageEmail } from "./mailer";
-import { listGrantingTaskIdsForScope } from "./permissions";
+import { isModuleOpenToEveryone, listGrantingTaskIdsForScope } from "./permissions";
 
 type Member = typeof memberTable.$inferSelect;
 type OutboundMessageRow = typeof outboundMessageTable.$inferSelect;
@@ -55,15 +55,31 @@ async function holdsAnyGrantingTask(actor: Member, grantingTaskIds: string[]): P
 // Scope follows the granted task's own placement (§2.1/D1): a
 // *cycle-less* announcements task gates community-wide sends, and only
 // those; a task placed in cycle C gates sends to cycle C's roster
-// (§4.5/D3) and never community-wide. The two authorities never cross.
+// (§4.5/D3) and never community-wide. The two authorities never cross —
+// with one deliberate exception. An **open** module opens both halves
+// together (docs/open-permissions-plan.md D8): opening only one would give
+// a Community that can post to its own event roster but not to everyone
+// (or the reverse), which is a surprising half-state this module's whole
+// two-authority shape exists to prevent. Open is checked in both
+// resolvers rather than in the shared holdsAnyGrantingTask helper, so each
+// one is independently readable at its call site — and because open is the
+// community/evergreen scope and already a superset, it needs no cycleId
+// variant, so listGrantingTaskIdsForScope stays task-only (D15).
 export async function isAnnouncementTaskHolder(actor: Member): Promise<boolean> {
+  if (await isModuleOpenToEveryone(actor.communityId, "announcements")) {
+    return true;
+  }
   const grantingTaskIds = await listGrantingTaskIdsForScope(actor.communityId, "announcements", null);
   return holdsAnyGrantingTask(actor, grantingTaskIds);
 }
 
 // The cycle's announcement authority — the holder of an
-// `announcements`-granted task *placed in that cycle* (§4.5).
+// `announcements`-granted task *placed in that cycle* (§4.5). Open answers
+// true here too, so both halves move together (D8).
 export async function isAnnouncementHolderForCycle(actor: Member, cycleId: string): Promise<boolean> {
+  if (await isModuleOpenToEveryone(actor.communityId, "announcements")) {
+    return true;
+  }
   const grantingTaskIds = await listGrantingTaskIdsForScope(actor.communityId, "announcements", cycleId);
   return holdsAnyGrantingTask(actor, grantingTaskIds);
 }
@@ -384,7 +400,17 @@ export async function listOutboundMessagesVisibleTo(actor: Member): Promise<Outb
 // offer this actor, without duplicating resolveScopeForSend's own
 // authority checks.
 export async function listMyCoordinatedBranches(actor: Member) {
-  const { branchIds } = await listCoordinationScopeIds(actor);
+  const { communityWide, branchIds } = await listCoordinationScopeIds(actor);
+  // A community_coordination holder can message any branch, so offer
+  // them all rather than none (or, worse, only the one their own
+  // community_coordination task happens to sit in — that module has no
+  // branch, so there is no single branch to read off).
+  if (communityWide) {
+    return db
+      .select({ id: branch.id, name: branch.name })
+      .from(branch)
+      .where(eq(branch.communityId, actor.communityId));
+  }
   if (branchIds.size === 0) return [];
   return db
     .select({ id: branch.id, name: branch.name })

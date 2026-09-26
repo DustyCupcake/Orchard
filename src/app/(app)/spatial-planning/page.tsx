@@ -5,7 +5,7 @@ import { member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
-import { listGrantingTaskIdsForScope } from "@/lib/permissions";
+import { isModuleOpenToEveryone, listGrantingTaskIdsForScope } from "@/lib/permissions";
 import { resolveDefaultScopeSegment, resolveSingleCycleScope } from "@/lib/cycles";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import {
@@ -103,6 +103,11 @@ export default async function SpatialPlanningPage({
     "spatial_planning",
     cycleId,
   );
+  // The "nobody can draw or edit" warning below is only true when the module
+  // is neither granted *nor* open (D3). listGrantingTaskIdsForScope stays
+  // task-only (D15) — the open check is its caller's, which is why it has to
+  // be made here rather than inside the helper.
+  const spatialPlanningOpen = await isModuleOpenToEveryone(communityRow.id, "spatial_planning");
 
   const plotRow = moduleOn ? await getPlotForCycle(viewing, cycleId) : null;
   const [zones, placements, templates, canEdit, cloneCandidates, communityMembers, mySpacePreference] =
@@ -154,7 +159,7 @@ export default async function SpatialPlanningPage({
         </p>
       )}
 
-      {moduleOn && spatialPlanningGrantingTaskIds.length === 0 && (
+      {moduleOn && spatialPlanningGrantingTaskIds.length === 0 && !spatialPlanningOpen && (
         <p className="mt-4 text-[13px] text-[var(--text-muted)]">
           No Spatial-planning task designated yet — anyone can view once a Plot exists, but nobody
           can draw or edit until a current Admins holder sets one under Settings.

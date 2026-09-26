@@ -7,6 +7,7 @@ import {
   formResponse,
   member,
   memberIdentity,
+  evaluation,
   objection,
   participation,
   recruitmentApplicationInvite,
@@ -72,6 +73,15 @@ export function computeWiderDiscussionStatus(decision: RecruitmentDecisionRow): 
 // resolution job). Synchronous, evaluator-triggered creation instead
 // uses the filing evaluator directly, a real person taking a real
 // action.
+// Not an authority question: the scheduled auto-resolution job needs a real
+// actor to create the Accompaniment Task *as*, since a Task needs a real
+// creator. The holder of the granting task was the obvious stand-in, which
+// was fine while the module was necessarily granted — but an open module may
+// have no granting task at all, and the job still has to run. Hence the
+// fallback chain (docs/open-permissions-plan.md §4.2): the converted member's
+// referrer (a real person with a real stake in this applicant), then the
+// earliest-claimed evaluator, and only then give up. Never a random member —
+// the Accompaniment task is visible, and its creator is part of the record.
 async function getRecruitmentTaskHolderMember(communityRow: CommunityRow): Promise<Member | null> {
   const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "recruitment");
   if (grantingTaskIds.length === 0) return null;
@@ -84,6 +94,34 @@ async function getRecruitmentTaskHolderMember(communityRow: CommunityRow): Promi
   if (!holding) return null;
   const [holder] = await db.select().from(member).where(eq(member.id, holding.memberId));
   return holder ?? null;
+}
+
+// The author's own fallback, for the open-with-no-granting-task case: the
+// converted member's referrer, else the earliest evaluator who filed on this
+// application. Returns null when there is genuinely nobody to be.
+async function resolveAccompanimentAuthor(
+  communityRow: CommunityRow,
+  decision: RecruitmentDecisionRow,
+): Promise<Member | null> {
+  if (decision.convertedMemberId) {
+    const [converted] = await db.select().from(member).where(eq(member.id, decision.convertedMemberId));
+    const referrerId = converted?.referredByMemberId;
+    if (referrerId) {
+      const [referrer] = await db.select().from(member).where(eq(member.id, referrerId));
+      if (referrer) return referrer;
+    }
+  }
+
+  const [earliestEvaluation] = await db
+    .select({ evaluatorId: evaluation.evaluatorId })
+    .from(evaluation)
+    .where(eq(evaluation.formResponseId, decision.formResponseId))
+    .orderBy(evaluation.filedAt)
+    .limit(1);
+  if (!earliestEvaluation) return null;
+
+  const [evaluator] = await db.select().from(member).where(eq(member.id, earliestEvaluation.evaluatorId));
+  return evaluator ?? null;
 }
 
 function isoDate(d: Date) {
@@ -101,6 +139,16 @@ function isoDate(d: Date) {
 // comment), and getPollAggregate's participant key already falls back
 // to formResponseId when memberId is null, so must-overlap resolution
 // needs no further special-casing to treat the two uniformly.
+//
+// Returns null when no task grants Recruitment, because the Poll's branchId
+// comes from that task and there is nowhere else to file it: a member has no
+// branch column, and a cycle has none either. That was a pre-existing
+// degradation for the never-granted case, but an open module makes it
+// reachable *deliberately* — so it is reported rather than papered over (see
+// RecruitmentAuthority.needsTaskToFileUnder), and picking an arbitrary
+// branch is deliberately avoided: a real Poll under an unrelated branch is
+// worse than a visible gap. The decision itself is already recorded by
+// recordDecisionIfReached before this is called.
 async function createIntroCallPoll(
   actor: Member,
   communityRow: CommunityRow,
@@ -266,6 +314,9 @@ async function maybeConvertApplicantToMember(
 // the suggestion entirely.
 async function maybeCreateAccompanimentTask(actor: Member, communityRow: CommunityRow, decision: RecruitmentDecisionRow) {
   if (decision.accompanimentTaskId) return null;
+  // Same branchId dependency as createIntroCallPoll, and the same reasoning:
+  // a Task cannot be created without a branchId, and an open module with no
+  // granting task has none to borrow. Reported, not guessed.
   const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "recruitment");
   if (grantingTaskIds.length === 0) return null;
   const [recruitmentTaskRow] = await db.select().from(task).where(inArray(task.id, grantingTaskIds));
@@ -471,7 +522,15 @@ export async function resolveWiderDiscussionWindows() {
       // actor to create a Task as, so that part alone stays gated on
       // one existing.
       const converted = await maybeConvertApplicantToMember(communityRow, updated);
-      const actorMember = await getRecruitmentTaskHolderMember(communityRow);
+      // The job needs a real actor to create a Task as, so it resolves one:
+      // the recruitment task's holder when there is a granting task, else the
+      // fallback chain (the converted member's referrer, then the earliest
+      // evaluator). Without the second path an open module with no granting
+      // task would resolve wider-discussion windows but never create the
+      // Accompaniment task that resolution is supposed to produce.
+      const actorMember =
+        (await getRecruitmentTaskHolderMember(communityRow)) ??
+        (await resolveAccompanimentAuthor(communityRow, converted));
       if (actorMember) {
         const withTask = await maybeCreateAccompanimentTask(actorMember, communityRow, converted);
         if (withTask?.accompanimentTaskId) accompanimentsCreated++;

@@ -1,0 +1,1 @@
+ALTER TABLE "profile_question" ADD COLUMN "required_by" date;
