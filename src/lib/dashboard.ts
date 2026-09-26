@@ -51,6 +51,7 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
       status: task.status,
       attentionLevel: task.attentionLevel,
       nextCheckinAt: task.nextCheckinAt,
+      cycleId: task.cycleId,
       branchName: branch.name,
     })
     .from(taskAssignment)
@@ -64,6 +65,32 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
         ne(task.status, "done"),
       ),
     );
+
+  // The plain "what am I actually holding" list — every not-Done
+  // assignment, flagged or not. Not a needs-action signal like the
+  // sections around it: a member shouldn't have to reconstruct their own
+  // workload out of the flagged/check-in slices, which by construction
+  // only ever surface a fraction of it. Derived from the query those two
+  // already read, so the list costs no extra round trip.
+  //
+  // Deliberately community-wide, not view-scoped: this feed is cache()'d
+  // on the actor alone (the nav reads it on every page for its badges),
+  // so folding in the view scope would mean a second argument and
+  // therefore a second full run of the whole feed on /dashboard. Carries
+  // cycleId so the page can narrow it to the viewer's own current scope —
+  // the same split Board's own cycleScope filter and getCommunitySnapshot
+  // already use, where the page resolves the nav scope and the data is
+  // read against the ids given.
+  const heldTasks = heldTaskRows
+    .map((t) => ({
+      id: t.taskId,
+      title: t.title,
+      status: t.status,
+      cycleId: t.cycleId,
+      branchName: t.branchName,
+      attentionLevel: t.attentionLevel,
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title));
 
   const flaggedHeldTasks = heldTaskRows
     .filter((t) => t.attentionLevel !== "ok")
@@ -238,6 +265,7 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
     .map((p) => ({ id: p.id, title: p.title, branchId: p.branchId }));
 
   return {
+    heldTasks,
     pendingJoinRequests,
     upcomingCheckins,
     flaggedHeldTasks,

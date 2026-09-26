@@ -58,6 +58,10 @@ describe("getPersonalFeed", () => {
     const { alice } = await createFixtures();
     const feed = await getPersonalFeed(alice);
     expect(feed).toEqual({
+      // The plain "what am I holding" inventory — every not-Done
+      // assignment, flagged or not. Nothing here for a member holding
+      // nothing; see the tests below for the populated shape.
+      heldTasks: [],
       pendingJoinRequests: [],
       upcomingCheckins: [],
       flaggedHeldTasks: [],
@@ -135,6 +139,67 @@ describe("getPersonalFeed", () => {
 
     const feed = await getPersonalFeed(alice);
     expect(feed.upcomingCheckins.map((c) => c.title)).toEqual(["Sooner check-in", "Later check-in"]);
+  });
+
+  it("lists every not-Done assignment as a held task, flagged or not", async () => {
+    const { alice, branch } = await createFixtures();
+    const calm = await insertTask(alice.communityId, branch.id, alice.id, { title: "A calm task" });
+    const flagged = await insertTask(alice.communityId, branch.id, alice.id, {
+      title: "B flagged task",
+      attentionLevel: "soft",
+    });
+    await db.insert(taskAssignment).values([
+      { taskId: calm.id, memberId: alice.id },
+      { taskId: flagged.id, memberId: alice.id },
+    ]);
+
+    const feed = await getPersonalFeed(alice);
+    expect(feed.heldTasks).toEqual([
+      { id: calm.id, title: "A calm task", status: "unclaimed", cycleId: null, branchName: branch.name, attentionLevel: "ok" },
+      { id: flagged.id, title: "B flagged task", status: "unclaimed", cycleId: null, branchName: branch.name, attentionLevel: "soft" },
+    ]);
+    // The unflagged half is the point: the old needs-action-only surface
+    // would have shown just the second of these two.
+    expect(feed.flaggedHeldTasks.map((t) => t.id)).toEqual([flagged.id]);
+  });
+
+  it("excludes done tasks and shadow assignments from heldTasks", async () => {
+    const { alice, branch } = await createFixtures();
+    const done = await insertTask(alice.communityId, branch.id, alice.id, { status: "done", title: "Finished" });
+    const shadowed = await insertTask(alice.communityId, branch.id, alice.id, { title: "Shadowed" });
+    await db.insert(taskAssignment).values([
+      { taskId: done.id, memberId: alice.id },
+      { taskId: shadowed.id, memberId: alice.id, isShadow: true },
+    ]);
+
+    const feed = await getPersonalFeed(alice);
+    expect(feed.heldTasks).toEqual([]);
+  });
+
+  // The feed is community-wide on purpose (it feeds the nav on every
+  // page, so it can't take a per-view-scope argument without re-running
+  // the whole feed); the Dashboard narrows it to the viewer's current
+  // scope. This test fixes the data the narrowing depends on — every
+  // held task's cycleId, including null for an unscoped one.
+  it("carries each held task's cycleId so the page can narrow to the view scope", async () => {
+    const { alice, branch } = await createFixtures();
+    await enableCycles(alice.communityId);
+    const cyc = await createCycle(alice, { source: "blank", name: "Season" });
+
+    const cycleless = await insertTask(alice.communityId, branch.id, alice.id, { title: "Not event-scoped" });
+    const scoped = await insertTask(alice.communityId, branch.id, alice.id, {
+      title: "In the season",
+      cycleId: cyc.id,
+    });
+    await db.insert(taskAssignment).values([
+      { taskId: cycleless.id, memberId: alice.id },
+      { taskId: scoped.id, memberId: alice.id },
+    ]);
+
+    const feed = await getPersonalFeed(alice);
+    const byTitle = new Map(feed.heldTasks.map((t) => [t.title, t.cycleId]));
+    expect(byTitle.get("Not event-scoped")).toBeNull();
+    expect(byTitle.get("In the season")).toBe(cyc.id);
   });
 
   it("lists pending join requests only on tasks the actor currently holds", async () => {

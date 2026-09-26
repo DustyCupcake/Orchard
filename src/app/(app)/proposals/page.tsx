@@ -50,6 +50,9 @@ export default async function ProposalsPage({
     ]);
   const traitAxes = traitAxesRaw.filter((a) => a.key !== COMMITMENT_PREFERENCE_AXIS_KEY);
   const communityTasks = communityTasksRaw.map((t) => ({ id: t.id, title: t.title }));
+  // Already loaded for the form's own "depends on" / "completed task"
+  // selects, so naming an activated proposal's task costs nothing extra.
+  const taskTitleById = new Map(communityTasks.map((t) => [t.id, t.title] as const));
 
   const memberNameById = new Map(members.map((m) => [m.id, m.name]));
 
@@ -116,6 +119,7 @@ export default async function ProposalsPage({
             defaultCycleId={defaultCycleId}
             tagSuggestions={tagSuggestions}
             traitAxes={traitAxes}
+            activatedTaskTitle={p.activatedTaskId ? (taskTitleById.get(p.activatedTaskId) ?? null) : null}
           />
         ))}
       </div>

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { member } from "@/db/schema";
@@ -635,7 +636,12 @@ export default async function KitchenPage({
             {supplyTasks.map((t) => (
               <div key={t.id} className={CARD}>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[14px] font-medium text-[var(--text)]">{t.title}</span>
+                  <Link
+                    href={`/tasks/${t.id}`}
+                    className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]"
+                  >
+                    {t.title}
+                  </Link>
                   <div className="flex gap-1">
                     {t.tags.map((tag) => (
                       <Tag key={tag}>{tag}</Tag>

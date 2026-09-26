@@ -215,6 +215,16 @@ export default async function DashboardPage({
         listOnceEverAnswers(viewing, { surface: "onboarding" }),
       ]);
 
+  // The held-tasks count the one-liner below reports, narrowed to what
+  // the nav switcher is actually pointed at. Same rule as Board's own
+  // cycleScope filter (src/lib/tasks/crud.ts's CycleScopeFilter): a task
+  // that isn't scoped to any event is always in view, plus anything in
+  // the scope's own cycle(s) — so with no resolved cycle in scope this
+  // is the cycleless tasks alone, exactly as the board reads it.
+  const heldTasksInView = feed.heldTasks.filter(
+    (t) => t.cycleId === null || scopeCycleIds.includes(t.cycleId),
+  );
+
   const hasFeedItems =
     feed.pendingJoinRequests.length > 0 ||
     feed.upcomingCheckins.length > 0 ||
@@ -358,6 +368,53 @@ export default async function DashboardPage({
             </button>
           </form>
         </section>
+      )}
+
+      {/* How much you're carrying, and the two ways in — deliberately one
+          line, not a list. This page is the app's attention surface (the
+          sidebar's Dashboard badge counts obligations, not held tasks,
+          see src/lib/nav.ts's taskBadgeCount), and four of the feed
+          sections below are already slices of these same tasks with the
+          urgency and the reason attached. A full list here would push
+          those down and repeat them without either. */}
+      {heldTasksInView.length > 0 ? (
+        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+          You hold {heldTasksInView.length} task{heldTasksInView.length === 1 ? "" : "s"} —{" "}
+          <Link href="/board?assignedToMe=1&view=kanban" className="font-medium text-[var(--accent-1)] hover:underline">
+            see them on the board
+          </Link>{" "}
+          or{" "}
+          <Link href="/contribution" className="font-medium text-[var(--accent-1)] hover:underline">
+            your contribution picture
+          </Link>
+          .
+        </p>
+      ) : feed.heldTasks.length > 0 ? (
+        /* Holding work that simply isn't in the event the switcher is
+           pointed at reads very differently from holding nothing — say
+           so, or the "not holding any tasks" line would be a lie and
+           would send someone off to claim more work they already have. */
+        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+          You hold {feed.heldTasks.length} task{feed.heldTasks.length === 1 ? "" : "s"}, none of them in the
+          event you&rsquo;ve got in view —{" "}
+          <Link href="/board?assignedToMe=1&view=kanban" className="font-medium text-[var(--accent-1)] hover:underline">
+            see them all on the board
+          </Link>
+          .
+        </p>
+      ) : (
+        /* Holding nothing is the state where this line earns its keep
+           most: a plain /board link is the unclaimed queue, which is
+           exactly the "go pick something up" surface. Rendered even
+           during onboarding, so the page has one obvious next step
+           rather than an empty corner. */
+        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+          You&rsquo;re not holding any tasks right now —{" "}
+          <Link href="/board" className="font-medium text-[var(--accent-1)] hover:underline">
+            see what&rsquo;s unclaimed
+          </Link>{" "}
+          and pick one up.
+        </p>
       )}
 
       <section className="mt-8">

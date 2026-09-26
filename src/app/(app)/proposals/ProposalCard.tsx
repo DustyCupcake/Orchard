@@ -1,5 +1,6 @@
 import EffortFields from "@/components/EffortFields";
 import AxisScaleField from "@/components/AxisScaleField";
+import Link from "next/link";
 import { Tag, BUTTON_PRIMARY, BUTTON_SECONDARY, CheckField, INPUT, LABEL } from "@/components/ui/kit";
 import {
   PERMISSION_MODULE_LABELS,
@@ -16,6 +17,9 @@ type Proposal = {
   suggestedMemberNote: string | null;
   status: string;
   declineReason: string | null;
+  // The real Task this proposal became, written on activation
+  // (src/lib/proposals/crud.ts). Null while pending or declined.
+  activatedTaskId: string | null;
   createdAt: Date;
   // Optional extras a proposer volunteered on /propose's own Advanced
   // section (src/app/(app)/propose/page.tsx) — every review field below
@@ -77,6 +81,7 @@ export default function ProposalCard({
   defaultCycleId,
   tagSuggestions,
   traitAxes,
+  activatedTaskTitle,
 }: {
   proposal: Proposal;
   branches: { id: string; name: string }[];
@@ -94,6 +99,10 @@ export default function ProposalCard({
   defaultCycleId: string | null;
   tagSuggestions: string[];
   traitAxes: { id: string; lowLabel: string; highLabel: string; optionLabels: string[] }[];
+  // The activated task's own title, which the reviewer is free to have
+  // edited away from the proposal's during activation — so the link's
+  // name has to come from the task, not from `proposal.title`.
+  activatedTaskTitle: string | null;
 }) {
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
   const cycleNameById = new Map(cycles.map((c) => [c.id, c.name]));
@@ -110,6 +119,17 @@ export default function ProposalCard({
       <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
         Proposed by {submitterName} · {new Date(proposal.createdAt).toLocaleDateString()}
       </div>
+      {proposal.activatedTaskId && (
+        <p className="mt-1.5 text-[13px] text-[var(--text)]">
+          Now on the board as{" "}
+          <Link
+            href={`/tasks/${proposal.activatedTaskId}`}
+            className="font-medium text-[var(--accent-1)] hover:underline"
+          >
+            {activatedTaskTitle ?? proposal.title}
+          </Link>
+        </p>
+      )}
       {proposal.description && <p className="mt-1.5 text-[13px] text-[var(--text)]">{proposal.description}</p>}
       {proposal.wantsToClaim && (
         <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">{submitterName} would like to claim this themselves.</p>
