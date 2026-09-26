@@ -221,7 +221,7 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
 describe("describeGrantScope / isMisplacedCommunityGrant", () => {
   it("labels a cycle-placed grant with its cycle name, falling back when it can't be resolved", () => {
     expect(describeGrantScope("spatial_planning", "cycle-1", "Spring 2026")).toBe("Spring 2026");
-    expect(describeGrantScope("spatial_planning", "cycle-1", null)).toBe("that cycle");
+    expect(describeGrantScope("spatial_planning", "cycle-1", null)).toBe("that event");
   });
 
   it("labels a cycle-less grant Community-wide for community-shaped modules, Evergreen for cycle-shaped ones", () => {
