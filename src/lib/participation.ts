@@ -6,6 +6,7 @@ import type { member as memberTable } from "@/db/schema";
 import { NotFoundError } from "./errors";
 import { syncComputedTiers } from "./settings/tiers";
 import { requireCycleOpen } from "./cycles/lifecycle";
+import { listOpenCycles } from "./cycles/crud";
 import { getJoinLaneRulesForContext, laneRedemptionKind, redemptionKindForInvite } from "./recruitment/joining-lanes";
 
 type Member = typeof memberTable.$inferSelect;
@@ -36,11 +37,21 @@ export async function declareParticipation(actor: Member, cycleId: string, input
   const cycleRow = await requireCycleInCommunity(actor, cycleId);
   requireCycleOpen(cycleRow);
 
+  // An omitted arrivalDate/departureDate/note leaves whatever is already
+  // stored alone; an explicit null still clears it. This is what lets the
+  // Dashboard's/Community's one-click status buttons (src/components/
+  // EventParticipation.tsx) submit `status` and nothing else without
+  // silently wiping the dates and note someone typed into /participation's
+  // own full form. Every pre-existing caller parses its form into explicit
+  // nulls — the Events form always sends a value, even an empty one, which
+  // parses to null — so no existing call site changes behavior, and
+  // /api/cycles/[id]/participation still clears on a body that omits them
+  // only if it sends them as explicit nulls, same as before.
   const values = {
     status: input.status,
-    arrivalDate: input.arrivalDate ?? null,
-    departureDate: input.departureDate ?? null,
-    note: input.note ?? null,
+    ...(input.arrivalDate !== undefined && { arrivalDate: input.arrivalDate }),
+    ...(input.departureDate !== undefined && { departureDate: input.departureDate }),
+    ...(input.note !== undefined && { note: input.note }),
     updatedAt: new Date(),
   };
 
@@ -206,4 +217,68 @@ export async function getMemberDeclaredCycleId(actor: Member): Promise<string | 
     .from(cycle)
     .where(and(eq(cycle.communityId, actor.communityId), isNull(cycle.closedAt)));
   return openCycles.length === 1 ? openCycles[0].id : null;
+}
+
+export type OpenEventParticipationCard = {
+  id: string;
+  name: string;
+  startDate: string | null;
+  endDate: string | null;
+  capacity: number | null;
+  comingCount: number;
+  holds: number;
+  remainingCapacity: number | null;
+  myStatus: "unknown" | "coming" | "maybe" | "not_coming";
+};
+
+// "What's open, and am I in it" — the bulk counterpart to
+// getCycleParticipationSummary/getMyParticipation above, for the
+// Dashboard's and Community's declare-joining cards
+// (src/components/EventParticipation.tsx).
+//
+// Deliberately assembled from those two per-cycle functions rather than a
+// hand-rolled group-by COUNT: outstanding direct-lane invitees "hold"
+// capacity slots just like a declaration does (docs/joining-admission-plan.md
+// §2/§4.1), so a second counting path here would be a second thing to keep
+// honest against the Events page. The query count is bounded by the number
+// of open cycles, which is near-always 1 — starting a second one while one's
+// already open already takes an explicit confirmation (createCycle).
+export async function listOpenEventParticipationCards(actor: Member): Promise<OpenEventParticipationCard[]> {
+  const open = await listOpenCycles(actor);
+  const cards = await Promise.all(
+    open.map(async (c) => {
+      const [summary, mine] = await Promise.all([
+        getCycleParticipationSummary(actor, c.id),
+        getMyParticipation(actor, c.id),
+      ]);
+      return {
+        id: c.id,
+        name: c.name,
+        startDate: c.startDate,
+        endDate: c.endDate,
+        capacity: summary.capacity,
+        comingCount: summary.comingCount,
+        holds: summary.holds,
+        remainingCapacity: summary.remainingCapacity,
+        myStatus: mine.status,
+      };
+    }),
+  );
+  return sortEventsForDisplay(cards);
+}
+
+// Display order for the "current and upcoming" cards: soonest first, with
+// undated events last (a community that hasn't set dates yet has no
+// "upcoming" to speak of), then by name so the order is deterministic
+// rather than whatever order rows came back in. listOpenCycles' own
+// startedAt-desc order is the right order for an admin list, not this one.
+function sortEventsForDisplay(cards: OpenEventParticipationCard[]): OpenEventParticipationCard[] {
+  return [...cards].sort((a, b) => {
+    if (a.startDate && b.startDate && a.startDate !== b.startDate) {
+      return a.startDate < b.startDate ? -1 : 1;
+    }
+    if (a.startDate && !b.startDate) return -1;
+    if (!a.startDate && b.startDate) return 1;
+    return a.name.localeCompare(b.name);
+  });
 }

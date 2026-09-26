@@ -10,6 +10,7 @@ import {
   getMemberDeclaredCycleId,
   getMyParticipation,
   listComingCycleIds,
+  listOpenEventParticipationCards,
 } from "@/lib/participation";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, resetDatabase } from "./helpers";
@@ -84,6 +85,106 @@ describe("declareParticipation / getMyParticipation", () => {
     await expect(declareParticipation(strangerAlice, cyc.id, { status: "coming" })).rejects.toThrow(
       NotFoundError,
     );
+  });
+
+  // The Dashboard's and Community's declare-joining controls submit status
+  // and nothing else, so an omitted field has to mean "leave the stored
+  // value alone" rather than "clear it" — otherwise one click of "Coming"
+  // silently wipes the arrival date, departure date and note someone typed
+  // into this page's own form.
+  it("a status-only declaration leaves an existing arrival/departure date and note untouched", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
+
+    await declareParticipation(alice, cyc.id, {
+      status: "maybe",
+      arrivalDate: "2027-06-01",
+      departureDate: "2027-06-10",
+      note: "Depends on work",
+    });
+
+    await declareParticipation(alice, cyc.id, { status: "coming" });
+
+    const mine = await getMyParticipation(alice, cyc.id);
+    expect(mine).toMatchObject({
+      status: "coming",
+      arrivalDate: "2027-06-01",
+      departureDate: "2027-06-10",
+      note: "Depends on work",
+    });
+  });
+
+  // ...while an explicit null still clears, which is how this page's own
+  // form clears a field the member emptied.
+  it("an explicit null still clears the date and note", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
+
+    await declareParticipation(alice, cyc.id, {
+      status: "maybe",
+      arrivalDate: "2027-06-01",
+      note: "Depends on work",
+    });
+    await declareParticipation(alice, cyc.id, { status: "maybe", arrivalDate: null, note: null });
+
+    const mine = await getMyParticipation(alice, cyc.id);
+    expect(mine.arrivalDate).toBeNull();
+    expect(mine.note).toBeNull();
+  });
+});
+
+describe("listOpenEventParticipationCards", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("returns only open cycles, ordered soonest-first with undated ones last", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const undated = await createCycle(alice, { source: "blank", name: "Undated" });
+    const later = await createCycle(alice, { source: "blank", name: "Later", startDate: "2027-08-01", endDate: "2027-08-10", confirmed: true });
+    const sooner = await createCycle(alice, { source: "blank", name: "Sooner", startDate: "2027-06-01", endDate: "2027-06-05", confirmed: true });
+    const closed = await createCycle(alice, { source: "blank", name: "Closed", confirmed: true });
+    await closeCycle(alice, closed.id);
+
+    const cards = await listOpenEventParticipationCards(alice);
+
+    expect(cards.map((c) => c.name)).toEqual(["Sooner", "Later", "Undated"]);
+    expect(cards[0]).toMatchObject({ id: sooner.id, startDate: "2027-06-01", endDate: "2027-06-05" });
+    expect(cards[1]).toMatchObject({ id: later.id, startDate: "2027-08-01", endDate: "2027-08-10" });
+    expect(cards.map((c) => c.id)).not.toContain(closed.id);
+    expect(cards.some((c) => c.id === undated.id)).toBe(true);
+  });
+
+  it("carries capacity, the coming count and the viewer's own status", async () => {
+    const { community: testCommunity, alice, bob } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    await updateCycleSettings(alice, cyc.id, { capacity: 10 });
+
+    await declareParticipation(alice, cyc.id, { status: "coming" });
+    await declareParticipation(bob, cyc.id, { status: "coming" });
+    await declareParticipation(bob, cyc.id, { status: "maybe" });
+
+    const [card] = await listOpenEventParticipationCards(bob);
+    expect(card).toMatchObject({
+      name: "2027 Season",
+      capacity: 10,
+      comingCount: 1,
+      remainingCapacity: 9,
+      myStatus: "maybe",
+    });
+  });
+
+  it("reports 'unknown' for a member who hasn't declared on the event at all", async () => {
+    const { community: testCommunity, alice, bob } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
+
+    const [card] = await listOpenEventParticipationCards(bob);
+    expect(card).toMatchObject({ id: cyc.id, myStatus: "unknown", capacity: null, comingCount: 0 });
   });
 });
 
