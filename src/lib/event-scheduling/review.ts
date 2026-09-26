@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { eventProposal, eventProposalConflictPing } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError } from "../errors";
+import { isSharedByOpenness, type NeedsAction } from "../needs-action";
+import { listGrantingTaskIds } from "../permissions";
 import { cycleScopeCondition, getEventProposal } from "./crud";
 import { isEventSchedulingOwner, recomputeEventConflicts, requireEventSchedulingOwner } from "./conflicts";
 
@@ -108,8 +110,8 @@ export interface EventSchedulingNeedsAction {
 // just the owner's. Still recomputes conflicts fresh first — "flags
 // proposals ... on owner review" (spec), and a Dashboard load is
 // exactly that kind of look, same posture as the real review list.
-export async function listEventSchedulingNeedsAction(actor: Member): Promise<EventSchedulingNeedsAction[]> {
-  if (!(await isEventSchedulingOwner(actor))) return [];
+export async function listEventSchedulingNeedsAction(actor: Member): Promise<NeedsAction<EventSchedulingNeedsAction>> {
+  if (!(await isEventSchedulingOwner(actor))) return { personal: [], shared: [] };
   await recomputeEventConflicts(actor);
 
   const proposals = await db
@@ -117,9 +119,20 @@ export async function listEventSchedulingNeedsAction(actor: Member): Promise<Eve
     .from(eventProposal)
     .where(and(eq(eventProposal.communityId, actor.communityId), isNull(eventProposal.publishedAt)));
 
-  return proposals
+  const items = proposals
     .filter((p) => p.status === "conflict" || (p.status === "proposed" && !p.confirmedSlot))
     .map((p) => ({ proposalId: p.id, title: p.title, status: p.status as "conflict" | "proposed" }));
+
+  // Split per D12 — an open module hands these to every member, and
+  // reviewing the Programme is a named person's job, not a bystander's.
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "event_scheduling_owner");
+  const shared = await isSharedByOpenness(
+    actor.communityId,
+    "event_scheduling_owner",
+    actor.id,
+    grantingTaskIds,
+  );
+  return shared ? { personal: [], shared: items } : { personal: items, shared: [] };
 }
 
 // The submitter's own view — "you've been pinged about this" on their

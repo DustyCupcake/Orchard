@@ -1,6 +1,7 @@
 import { boolean, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
 import { member } from "./member";
+import { profileQuestion } from "./profile-question";
 import { sensitiveFieldKeyEnum } from "./sensitive-field-access-rule";
 
 // docs/spec.md's "Member contact & privacy" — core, not optional, unlike
@@ -68,7 +69,15 @@ export const consentPurpose = pgTable("consent_purpose", {
   noticeVersion: integer("notice_version").notNull().default(1),
   noticeText: text("notice_text").notNull(),
   requiresExplicit: boolean("requires_explicit").notNull().default(false),
+  // Exactly one of gatesSensitiveField / gatesQuestionId, same
+  // application-layer rule as the access rule's two targets. Consent is
+  // still keyed by legal purpose — that is the whole shape of
+  // consent_record and it is not changing — so this only widens *what a
+  // purpose can gate* from the four fixed member columns to the
+  // community's own sensitive questions. ConsentRecord rows are
+  // untouched: a purpose is a purpose whatever it gates.
   gatesSensitiveField: sensitiveFieldKeyEnum("gates_sensitive_field"),
+  gatesQuestionId: uuid("gates_question_id").references(() => profileQuestion.id),
 });
 
 export const consentMethodEnum = pgEnum("consent_method", ["explicit_action", "form_submission"]);

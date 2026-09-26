@@ -1,5 +1,16 @@
 "use client";
 
+import {
+  RESPONSE_TYPE_LABELS,
+  TEXT_VALIDATION_LABELS,
+  TEXT_VALIDATIONS,
+  isChoiceType,
+  toFieldShape,
+  type EditableFieldShape,
+  type ResponseType,
+  type TextValidation,
+} from "@/lib/field-shape";
+
 // The one reusable "edit a field's shape" row — docs/development-
 // plan.md's Phase 58: "the exact same field shape" Form.fields and
 // ProfileQuestion already share. Pure controlled component: no local
@@ -8,26 +19,15 @@
 // single row) each own how their own surrounding <form> actually
 // serializes the result, so this same row works for both without
 // knowing which one it's in.
-export type EditableFieldShape = {
-  label: string;
-  responseType: "free_text" | "single_choice" | "multi_choice" | "date";
-  options: string[];
-  required: boolean;
-  isNameField?: boolean;
-  isEmailField?: boolean;
-  mapsToProfileQuestionId?: string;
-};
+//
+// The EditableFieldShape type and the helpers that build one live in
+// src/lib/field-shape.ts rather than here, and that's not tidiness: this
+// file is "use client", so anything exported from it becomes a client
+// reference that a Server Component cannot *call*. settings/page.tsx
+// needs toConvert a stored row into an editable shape before rendering
+// this, and doing that from here crashed the whole settings page.
+export type { EditableFieldShape };
 
-const RESPONSE_TYPE_LABELS: Record<EditableFieldShape["responseType"], string> = {
-  free_text: "Free text",
-  single_choice: "Single choice",
-  multi_choice: "Multi choice",
-  date: "Date",
-};
-
-function isChoiceType(responseType: EditableFieldShape["responseType"]) {
-  return responseType === "single_choice" || responseType === "multi_choice";
-}
 
 export default function FieldShapeEditor({
   value,
@@ -64,13 +64,16 @@ export default function FieldShapeEditor({
         />
         <select
           value={value.responseType}
-          onChange={(e) =>
-            onChange({
-              ...value,
-              responseType: e.target.value as EditableFieldShape["responseType"],
-              options: isChoiceType(e.target.value as EditableFieldShape["responseType"]) ? value.options : [],
-            })
-          }
+          onChange={(e) => {
+            const next = e.target.value as ResponseType;
+            // Re-derive every flag against the new type here rather than
+            // only on save: switching to a single_choice and seeing
+            // "one line / email check" still checked underneath would be
+            // the builder lying about what it just did. toFieldShape is
+            // what zeroes them, so the editor and the saved row agree by
+            // construction.
+            onChange({ ...toFieldShape({ ...value, responseType: next }), responseType: next, label: value.label, required: value.required });
+          }}
           className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px] text-[var(--text)]"
         >
           {allowedResponseTypes.map((rt) => (
@@ -175,11 +178,83 @@ export default function FieldShapeEditor({
           >
             + Add option
           </button>
-          {optionsError && (
+          {optionsError && !value.allowOther && (
             <p className="mt-0.5 text-[12px] text-[var(--danger)]">
               A {RESPONSE_TYPE_LABELS[value.responseType].toLowerCase()} field needs at least one option.
             </p>
           )}
+          {/* The escape hatch, and the reason this is worth having at
+              all: a closed list is the only kind you can count, but a
+              closed list with no way out either excludes people or
+              forces them into a wrong answer. This keeps the vocabulary
+              aggregatable while capturing the tail as text. */}
+          <label className="mt-1 flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+            <input
+              type="checkbox"
+              checked={value.allowOther}
+              onChange={(e) => onChange({ ...value, allowOther: e.target.checked })}
+            />
+            let people write their own answer instead
+          </label>
+          {value.allowOther && (
+            <p className="text-[11px] text-[var(--text-muted)]">
+              They pick &ldquo;Other&rdquo; and type it. Their words are kept with the option they
+              didn&rsquo;t choose, so the list still counts cleanly.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Per-type options. Each block only renders for the type it
+          belongs to, and toFieldShape has already zeroed the others —
+          so switching types can't strand a stale setting behind a hidden
+          control. */}
+      {value.responseType === "text" && (
+        <div className="mt-2 flex flex-wrap items-center gap-3 pl-1">
+          <label className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+            <input
+              type="checkbox"
+              checked={value.multiline}
+              onChange={(e) => onChange({ ...value, multiline: e.target.checked })}
+            />
+            long answer (a paragraph, not a line)
+          </label>
+          <label className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+            check the format
+            <select
+              value={value.validation}
+              onChange={(e) => onChange({ ...value, validation: e.target.value as TextValidation })}
+              className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[12px] text-[var(--text)]"
+            >
+              {TEXT_VALIDATIONS.map((v) => (
+                <option key={v} value={v}>
+                  {TEXT_VALIDATION_LABELS[v]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {value.responseType === "number" && (
+        <div className="mt-2 flex flex-wrap items-center gap-3 pl-1">
+          {(
+            [
+              ["min", "at least"],
+              ["max", "at most"],
+              ["step", "in steps of"],
+            ] as const
+          ).map(([key, labelText]) => (
+            <label key={key} className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+              {labelText}
+              <input
+                type="number"
+                value={value[key] ?? ""}
+                onChange={(e) => onChange({ ...value, [key]: e.target.value === "" ? null : Number(e.target.value) })}
+                className="w-24 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[12px] text-[var(--text)]"
+              />
+            </label>
+          ))}
         </div>
       )}
 

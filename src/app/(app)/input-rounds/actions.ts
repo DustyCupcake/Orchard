@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
-import { submitQuestionResponse } from "@/lib/input-rounds";
+import { getQuestionForShape, submitQuestionResponse } from "@/lib/input-rounds";
+import { fieldValueFromFormData, toFieldShape } from "@/lib/field-shape";
 import { AppError } from "@/lib/errors";
 
 // Phase 54 (View-as): every write in this file goes through
@@ -22,9 +23,14 @@ async function requireMember() {
 export async function submitQuestionResponseAction(formData: FormData) {
   const actor = await requireMember();
   const questionId = String(formData.get("questionId"));
-  const multi = formData.getAll("value_multi").map(String);
-  const single = formData.get("value");
-  const value = multi.length > 0 ? multi : (single ?? "");
+
+  // Read against the question's own shape, the same way every other
+  // question system does it — a multi_choice submits several values
+  // under one name, and a choice with an escape hatch has a second
+  // sibling input. Was the old "value_multi vs value" pair, which
+  // couldn't express the new types at all.
+  const question = await getQuestionForShape(actor, questionId);
+  const value = fieldValueFromFormData(toFieldShape(question), formData, "value");
 
   try {
     await submitQuestionResponse(actor, questionId, { value });

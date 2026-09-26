@@ -1,12 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import FieldPreview from "@/components/FieldPreview";
-import FieldShapeEditor, { type EditableFieldShape } from "./FieldShapeEditor";
+import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
+import FieldShapeEditor from "./FieldShapeEditor";
+import { RESPONSE_TYPES, emptyFieldShape, type EditableFieldShape, type ResponseType } from "@/lib/field-shape";
 
 type BuilderField = EditableFieldShape & { key: string };
 
-const FORM_RESPONSE_TYPES: EditableFieldShape["responseType"][] = ["free_text", "single_choice", "multi_choice"];
+// Forms previously offered only three of the six types and no `date` at
+// all, despite already sharing this exact editor with ProfileQuestion.
+// Now the same six, from the same list — a Form field and a ProfileQuestion
+// can answer the same question the same way.
+const FORM_RESPONSE_TYPES: ResponseType[] = [...RESPONSE_TYPES];
 
 // A field's key is generated once, here, when it's added — and never
 // touched again for the life of the field, even as its label/type/
@@ -23,7 +28,7 @@ function generateFieldKey(): string {
 }
 
 function emptyField(): BuilderField {
-  return { key: generateFieldKey(), label: "", responseType: "free_text", options: [], required: false };
+  return { key: generateFieldKey(), ...emptyFieldShape() };
 }
 
 export default function FormBuilder({
@@ -172,7 +177,7 @@ export default function FormBuilder({
         {description && <p style={{ color: "#666", margin: "0 0 0.75rem" }}>{description}</p>}
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           {fields.map((f) => (
-            <FieldPreview key={f.key} field={f} disabled />
+            <FieldPreview key={f.key} field={toPreviewShape(f)} disabled />
           ))}
         </div>
       </div>

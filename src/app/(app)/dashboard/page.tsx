@@ -4,15 +4,25 @@ import { CheckCircle, Tree, Users, ChartLineUp, Warning } from "@phosphor-icons/
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
 import { resolveDefaultScopeSegment, resolveViewScopeFromSegment } from "@/lib/cycles";
-import { listOnceEverAnswers, listOutstandingQuestions } from "@/lib/profile-questions";
+import {
+  listOnceEverAnswers,
+  listOutstandingQuestions,
+  listOutstandingRequiredQuestions,
+} from "@/lib/profile-questions";
 import { listTaskFitSuggestions, ONBOARDING_CARDS } from "@/lib/onboarding";
+import { toFieldShape } from "@/lib/field-shape";
 import { listOutstandingOnboardingAxes } from "@/lib/trait-axes";
 import { ATTENTION_STYLES } from "@/lib/format";
-import { Tag, type Tone, ATTENTION_TONE } from "@/components/ui/kit";
+import { Tag, type Tone, ATTENTION_TONE, Banner, BUTTON_PRIMARY } from "@/components/ui/kit";
 import AxisScaleField from "@/components/AxisScaleField";
+import ProfileQuestionForm from "@/components/ProfileQuestionForm";
+import { EventComingRibbon, EventParticipationCards } from "@/components/EventParticipation";
+import CommunityIndicators from "@/components/CommunityIndicators";
+import { listCommunityIndicators } from "@/lib/profile-questions/indicators";
 import PrefilledAnswersReview from "./PrefilledAnswersReview";
 import {
   completeOnboardingAction,
+  declareEventStatusAction,
   submitOnboardingAnswerAction,
   submitOnboardingAxisAction,
   submitOnboardingPrefilledAnswersAction,
@@ -66,12 +76,167 @@ function StatRow({ label, value }: { label: React.ReactNode; value: React.ReactN
   );
 }
 
-function FeedSection({ title, children }: { title: string; children: React.ReactNode }) {
+// `shared` marks a section whose items are outstanding for the Community
+// rather than for this member — which is the case exactly when the module is
+// open to everyone and they hold nothing (docs/open-permissions-plan.md D12).
+// The two are rendered in separate passes, personal first, so "yours" never
+// has to compete with "theirs" for attention; the tag is there so the
+// distinction survives the reordering rather than being merely implied by
+// position.
+function FeedSection({
+  title,
+  shared = false,
+  children,
+}: {
+  title: string;
+  shared?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <div className="mb-5">
-      <h3 className="mb-1 text-[15px] font-medium text-[var(--text)]">{title}</h3>
+      <h3 className="mb-1 flex flex-wrap items-center gap-2 text-[15px] font-medium text-[var(--text)]">
+        {title}
+        {shared && <Tag tone="neutral">open to everyone</Tag>}
+      </h3>
       <ul>{children}</ul>
     </div>
+  );
+}
+
+// Hoisted to module scope so ModuleNeedsActionSections can read them — the
+// six module sections moved out of the page body for D12's two-pass render,
+// and these three label maps are the only thing they needed from in there.
+const NEEDS_ACTION_LABEL: Record<string, string> = {
+  call_pending: "evaluated, call not scheduled yet",
+  decision_pending: "call happened, decision still pending",
+};
+
+const BUDGET_LABEL: Record<string, string> = {
+  close_to_voting: "proposal deadline passed — close to voting",
+  confirm_funded_set: "voting is in, confirm the funded set",
+  cast_vote: "voting is open — cast your vote",
+};
+
+const EVENT_STATUS_LABEL: Record<string, string> = {
+  conflict: "flagged conflicting",
+  proposed: "awaiting your review",
+};
+
+// The six module needs-action sections, defined once and rendered twice: the
+// `personal` pass first, then the `shared` pass
+// (docs/open-permissions-plan.md D12). They were previously six inline
+// blocks interleaved with the task-side sections; hoisting them here is what
+// makes "personal above shared" expressible at all, and it means the row
+// rendering for each module is written once rather than duplicated per pass.
+//
+// A `shared` section is one whose module is open to everyone and which this
+// member holds nothing of. Its rows are rendered exactly as before — the
+// items themselves are unchanged, and the data is the same; only the framing
+// differs, so an outstanding item is never merely hidden. The titles keep
+// their second-person phrasing because with an open module the person who
+// ends up doing it *is* whoever reads this ("open to everyone" says the
+// standing invitation, and the tag distinguishes it from an obligation).
+function ModuleNeedsActionSections({
+  feed,
+  shared,
+}: {
+  feed: Awaited<ReturnType<typeof getPersonalFeed>>;
+  shared: boolean;
+}) {
+  const pick = <T,>(list: { personal: T[]; shared: T[] }) => (shared ? list.shared : list.personal);
+  return (
+    <>
+      {pick(feed.recruitmentNeedsAction).length > 0 && (
+        <FeedSection title="Recruitment candidates stuck waiting on you" shared={shared}>
+          {pick(feed.recruitmentNeedsAction).map((c) => (
+            <FeedRow
+              key={c.id}
+              href="/recruitment"
+              title={`Application from ${new Date(c.submittedAt).toLocaleDateString()}`}
+              tag={<Tag tone="warning">{NEEDS_ACTION_LABEL[c.stage] ?? c.stage}</Tag>}
+            />
+          ))}
+        </FeedSection>
+      )}
+
+      {pick(feed.budgetNeedsAction).length > 0 && (
+        <FeedSection title="Budget needs your attention" shared={shared}>
+          {pick(feed.budgetNeedsAction).map((b, i) => (
+            <FeedRow
+              key={`${b.cycleId}-${b.kind}-${i}`}
+              href="/budget"
+              title={b.cycleTitle}
+              tag={<Tag tone="warning">{BUDGET_LABEL[b.kind] ?? b.kind}</Tag>}
+            />
+          ))}
+        </FeedSection>
+      )}
+
+      {pick(feed.eventSchedulingNeedsAction).length > 0 && (
+        <FeedSection title="Programme proposals awaiting review" shared={shared}>
+          {pick(feed.eventSchedulingNeedsAction).map((p) => (
+            <FeedRow
+              key={p.proposalId}
+              href="/schedule"
+              title={p.title}
+              tag={
+                <Tag tone={p.status === "conflict" ? "danger" : "warning"}>
+                  {EVENT_STATUS_LABEL[p.status] ?? p.status}
+                </Tag>
+              }
+            />
+          ))}
+        </FeedSection>
+      )}
+
+      {pick(feed.shiftCoordinatorNeedsAction).length > 0 && (
+        <FeedSection title="Shift occurrences needing completion marks" shared={shared}>
+          {pick(feed.shiftCoordinatorNeedsAction).map((o) => (
+            <FeedRow
+              key={o.occurrenceId}
+              href="/shifts"
+              title={o.seriesTitle}
+              meta={`${new Date(o.startsAt).toLocaleDateString()}, ${o.unresolvedCount} signup${o.unresolvedCount === 1 ? "" : "s"} still unresolved`}
+            />
+          ))}
+        </FeedSection>
+      )}
+
+      {pick(feed.conflictNeedsAction).length > 0 && (
+        <FeedSection title="Conflict reports needing acknowledgment" shared={shared}>
+          {pick(feed.conflictNeedsAction).map((r) => (
+            <FeedRow
+              key={r.reportId}
+              href="/conflict-reports"
+              title={`Report from ${new Date(r.createdAt).toLocaleDateString()}`}
+              tag={<Tag tone="danger">past the acknowledgment window</Tag>}
+            />
+          ))}
+        </FeedSection>
+      )}
+
+      {pick(feed.kitchenNeedsAction).length > 0 && (
+        <FeedSection title="Kitchen needs your attention" shared={shared}>
+          {pick(feed.kitchenNeedsAction).map((k) =>
+            k.kind === "draft_unpublished" ? (
+              <FeedRow
+                key={`draft-${k.menuPlanId}`}
+                href="/kitchen"
+                title={`Draft menu “${k.title}” isn’t published yet`}
+                tag={<Tag tone="warning">draft awaiting publish</Tag>}
+              />
+            ) : (
+              <FeedRow
+                key={`ideas-${k.menuPlanId}`}
+                href="/kitchen"
+                title={`${k.openCount} food ${k.openCount === 1 ? "idea" : "ideas"} awaiting review on “${k.title}”`}
+                tag={<Tag tone="warning">ideas awaiting review</Tag>}
+              />
+            ),
+          )}
+        </FeedSection>
+      )}
+    </>
   );
 }
 
@@ -95,78 +260,53 @@ function SnapshotSection({
   );
 }
 
+// The shared ProfileQuestionForm, wrapped in this panel's own boxed
+// chrome. The wrapper stays here rather than moving into the shared
+// component because /profile and /questions both render that form
+// directly on a CARD and would get a second, redundant box.
 function OnboardingQuestionForm({
   questionId,
-  responseType,
-  options,
+  question,
+  allowDeferral,
+  allowPreferNotToSay,
 }: {
   questionId: string;
-  responseType: "free_text" | "single_choice" | "multi_choice" | "date";
-  options: string[];
+  // The whole question rather than loose shape props, so this wrapper
+  // stays a wrapper — FieldShapeEditor-shaped props here would be a
+  // second place to forget a new type.
+  question: Parameters<typeof toFieldShape>[0] & {
+    allowDeferral: boolean;
+    allowPreferNotToSay: boolean;
+    sensitive: boolean;
+  };
+  allowDeferral: boolean;
+  allowPreferNotToSay: boolean;
 }) {
   return (
-    <form
-      action={submitOnboardingAnswerAction}
-      className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--border)] p-3"
-    >
-      <input type="hidden" name="questionId" value={questionId} />
-      {responseType === "free_text" && (
-        <input type="text" name="value" className="rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1.5 text-[13px]" />
-      )}
-      {responseType === "date" && (
-        <input type="date" name="value" className="rounded-[var(--radius-sm)] border border-[var(--border)] px-2 py-1.5 text-[13px]" />
-      )}
-      {responseType === "single_choice" && (
-        <div className="flex flex-col gap-1">
-          {options.map((o) => (
-            <label key={o} className="flex items-center gap-1.5 text-[13px]">
-              <input type="radio" name="value" value={o} /> {o}
-            </label>
-          ))}
-        </div>
-      )}
-      {responseType === "multi_choice" && (
-        <div className="flex flex-col gap-1">
-          {options.map((o) => (
-            <label key={o} className="flex items-center gap-1.5 text-[13px]">
-              <input type="checkbox" name="value_multi" value={o} /> {o}
-            </label>
-          ))}
-        </div>
-      )}
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          name="status"
-          value="answered"
-          className="rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3 py-1.5 text-[12px] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)]"
-        >
-          Save
-        </button>
-        <button
-          type="submit"
-          name="status"
-          value="deferred"
-          className="rounded-[var(--radius-md)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--accent-1)] hover:bg-[var(--accent-1-softer)]"
-        >
-          I don&rsquo;t know yet
-        </button>
-      </div>
-    </form>
+    <div className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+      <ProfileQuestionForm
+        action={submitOnboardingAnswerAction}
+        questionId={questionId}
+        shape={toFieldShape(question)}
+        allowDeferral={allowDeferral}
+        allowPreferNotToSay={allowPreferNotToSay}
+        sensitive={question.sensitive}
+      />
+    </div>
   );
 }
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ memberCount?: string }>;
+  searchParams: Promise<{ memberCount?: string; error?: string }>;
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
   }
 
-  const { memberCount } = await searchParams;
+  const { memberCount, error } = await searchParams;
 
   // The same off-URL nav-switcher resolution the Board (Phase 67) and
   // Spatial planning/Schedule (Phase 68) already read, since Dashboard
@@ -182,21 +322,42 @@ export default async function DashboardPage({
     : [];
   const singleScopeCycle = activeScope?.kind === "single" ? activeScope.cycle : null;
 
-  const [feed, snapshot] = await Promise.all([
-    getPersonalFeed(viewing),
-    getCommunitySnapshot(viewing, { cycleIds: scopeCycleIds, singleCycleId: singleScopeCycle?.id ?? null }),
-  ]);
-
-  // "This cycle" is only ever a real option once the switcher actually
+  // "This event" is only ever a real option once the switcher actually
   // resolves to one specific cycle — default to it then (closest to
   // this page's old single-cycle-only behavior), otherwise there's
-  // nothing to default to but "general".
+  // nothing to default to but "general". Resolved *above* the queries
+  // below because the indicators read it too, and they must land on the
+  // same answer as the member count they sit under.
   const memberCountView: "general" | "cycle" =
     memberCount === "general" || memberCount === "cycle"
       ? memberCount
       : singleScopeCycle
         ? "cycle"
         : "general";
+
+  const [feed, snapshot, indicatorResult] = await Promise.all([
+    getPersonalFeed(viewing),
+    getCommunitySnapshot(viewing, { cycleIds: scopeCycleIds, singleCycleId: singleScopeCycle?.id ?? null }),
+    // The indicators follow the *same* "This event / All open events"
+    // choice as the member count, rather than getting a second control.
+    // Two controls for one underlying question ("who are we talking
+    // about?") is two things that can disagree, and a reader would have
+    // no way to tell which population a proportion described.
+    listCommunityIndicators(viewing, {
+      // Not narrowed without a single selected event: there'd be no
+      // event to be about, and the widest population is the honest
+      // answer rather than a guess at which one was meant.
+      requested:
+        memberCountView === "cycle" && singleScopeCycle
+          ? { kind: "event", cycleId: singleScopeCycle.id, cycleName: singleScopeCycle.name }
+          : { kind: "community" },
+      // The Community's own policy on breaking indicators out per event
+      // is read inside listCommunityIndicators — it already knows which
+      // Community it's reading. It resolves the request and reports back
+      // if it narrows it, so the section can say so rather than quietly
+      // showing all-member figures under a toggle that reads "This event".
+    }),
+  ]);
   const showingThisCycle = memberCountView === "cycle" && snapshot.activeMemberCount.thisCycle !== null;
   const displayedMemberCount = showingThisCycle
     ? snapshot.activeMemberCount.thisCycle
@@ -215,6 +376,14 @@ export default async function DashboardPage({
         listOnceEverAnswers(viewing, { surface: "onboarding" }),
       ]);
 
+  // Required questions this member still owes a real answer to. Lives
+  // here rather than on a nav item or a shell-wide banner: every other
+  // outstanding thing in this app already surfaces on this page, and
+  // /questions is a supporting page, not a destination in its own right.
+  // Same source as the count folded into the Dashboard's nav badge
+  // (src/lib/nav.ts's taskBadgeCount), so the two can't disagree.
+  const outstandingRequiredQuestions = await listOutstandingRequiredQuestions(viewing);
+
   // The held-tasks count the one-liner below reports, narrowed to what
   // the nav switcher is actually pointed at. Same rule as Board's own
   // cycleScope filter (src/lib/tasks/crud.ts's CycleScopeFilter): a task
@@ -225,44 +394,76 @@ export default async function DashboardPage({
     (t) => t.cycleId === null || scopeCycleIds.includes(t.cycleId),
   );
 
+  // The six module lists are split (D12), so "does this feed have anything"
+  // asks both halves, and the shared half gets its own flag so the whole
+  // section can be suppressed when there is nothing at all.
+  const hasSharedModuleNeedsAction =
+    feed.recruitmentNeedsAction.shared.length > 0 ||
+    feed.budgetNeedsAction.shared.length > 0 ||
+    feed.eventSchedulingNeedsAction.shared.length > 0 ||
+    feed.shiftCoordinatorNeedsAction.shared.length > 0 ||
+    feed.conflictNeedsAction.shared.length > 0 ||
+    feed.kitchenNeedsAction.shared.length > 0;
+
   const hasFeedItems =
     feed.pendingJoinRequests.length > 0 ||
     feed.upcomingCheckins.length > 0 ||
     feed.flaggedHeldTasks.length > 0 ||
     feed.emergencyAccessActivity.length > 0 ||
-    feed.recruitmentNeedsAction.length > 0 ||
+    feed.recruitmentNeedsAction.personal.length > 0 ||
     feed.placementInvites.length > 0 ||
     feed.myLinkedPendingPlacements.length > 0 ||
     feed.placementRevertNotices.length > 0 ||
     feed.placementPendingReviews.length > 0 ||
-    feed.budgetNeedsAction.length > 0 ||
-    feed.eventSchedulingNeedsAction.length > 0 ||
-    feed.shiftCoordinatorNeedsAction.length > 0 ||
+    feed.budgetNeedsAction.personal.length > 0 ||
+    feed.eventSchedulingNeedsAction.personal.length > 0 ||
+    feed.shiftCoordinatorNeedsAction.personal.length > 0 ||
     feed.myShiftsNeedingCompletion.length > 0 ||
-    feed.conflictNeedsAction.length > 0 ||
-    feed.kitchenNeedsAction.length > 0 ||
-    feed.expiredNominations.length > 0;
+    feed.conflictNeedsAction.personal.length > 0 ||
+    feed.kitchenNeedsAction.personal.length > 0 ||
+    feed.expiredNominations.length > 0 ||
+    hasSharedModuleNeedsAction;
   const now = Date.now();
-
-  const NEEDS_ACTION_LABEL: Record<string, string> = {
-    call_pending: "evaluated, call not scheduled yet",
-    decision_pending: "call happened, decision still pending",
-  };
-
-  const BUDGET_LABEL: Record<string, string> = {
-    close_to_voting: "proposal deadline passed — close to voting",
-    confirm_funded_set: "voting is in, confirm the funded set",
-    cast_vote: "voting is open — cast your vote",
-  };
-
-  const EVENT_STATUS_LABEL: Record<string, string> = {
-    conflict: "flagged conflicting",
-    proposed: "awaiting your review",
-  };
 
   return (
     <main className="mx-auto max-w-[820px] px-6 py-10 md:px-12 md:py-14">
       <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Dashboard</h1>
+
+      {error && (
+        <div className="mt-4">
+          <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
+
+      {outstandingRequiredQuestions.length > 0 && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--warning-border)] bg-[var(--warning-soft)] px-4 py-3">
+          <p className="text-[14px] text-[var(--warning)]">
+            {outstandingRequiredQuestions.length === 1
+              ? "You have a question you still need to answer."
+              : `You have ${outstandingRequiredQuestions.length} questions you still need to answer.`}{" "}
+            <span className="text-[13px]">
+              Your community needs these to run the event.
+            </span>
+          </p>
+          <Link href="/questions" className={BUTTON_PRIMARY}>
+            Answer {outstandingRequiredQuestions.length === 1 ? "it" : "them"}
+          </Link>
+        </div>
+      )}
+
+      {/* The one place a member says whether they're coming, at the top
+          of their home view. Which of the two renders is decided by
+          whether the nav switcher is already narrowed to a single event
+          (singleScopeCycle above): inside an event's own view, the
+          one-event ribbon is the honest prompt and repeating every open
+          event above it would be noise; outside one, the cards strip is
+          what makes the other open events — the ones not yet declared on
+          — visible at all. */}
+      {singleScopeCycle ? (
+        <EventComingRibbon viewing={viewing} cycle={singleScopeCycle} action={declareEventStatusAction} />
+      ) : (
+        <EventParticipationCards viewing={viewing} action={declareEventStatusAction} />
+      )}
 
       {!viewing.hasCompletedOnboarding && (
         <section className="mt-8 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-5">
@@ -298,8 +499,9 @@ export default async function DashboardPage({
                     </p>
                     <OnboardingQuestionForm
                       questionId={question.id}
-                      responseType={question.responseType}
-                      options={question.options}
+                      question={question}
+                      allowDeferral={question.allowDeferral}
+                      allowPreferNotToSay={question.allowPreferNotToSay}
                     />
                   </div>
                 ))}
@@ -519,18 +721,7 @@ export default async function DashboardPage({
           </FeedSection>
         )}
 
-        {feed.recruitmentNeedsAction.length > 0 && (
-          <FeedSection title="Recruitment candidates stuck waiting on you">
-            {feed.recruitmentNeedsAction.map((c) => (
-              <FeedRow
-                key={c.id}
-                href="/recruitment"
-                title={`Application from ${new Date(c.submittedAt).toLocaleDateString()}`}
-                tag={<Tag tone="warning">{NEEDS_ACTION_LABEL[c.stage] ?? c.stage}</Tag>}
-              />
-            ))}
-          </FeedSection>
-        )}
+        
 
         {feed.placementInvites.length > 0 && (
           <FeedSection title="Spatial planning invites waiting on you">
@@ -579,48 +770,11 @@ export default async function DashboardPage({
           </FeedSection>
         )}
 
-        {feed.budgetNeedsAction.length > 0 && (
-          <FeedSection title="Budget needs your attention">
-            {feed.budgetNeedsAction.map((b, i) => (
-              <FeedRow
-                key={`${b.cycleId}-${b.kind}-${i}`}
-                href="/budget"
-                title={b.cycleTitle}
-                tag={<Tag tone="warning">{BUDGET_LABEL[b.kind] ?? b.kind}</Tag>}
-              />
-            ))}
-          </FeedSection>
-        )}
+        
 
-        {feed.eventSchedulingNeedsAction.length > 0 && (
-          <FeedSection title="Event proposals awaiting review">
-            {feed.eventSchedulingNeedsAction.map((p) => (
-              <FeedRow
-                key={p.proposalId}
-                href="/schedule"
-                title={p.title}
-                tag={
-                  <Tag tone={p.status === "conflict" ? "danger" : "warning"}>
-                    {EVENT_STATUS_LABEL[p.status] ?? p.status}
-                  </Tag>
-                }
-              />
-            ))}
-          </FeedSection>
-        )}
+        
 
-        {feed.shiftCoordinatorNeedsAction.length > 0 && (
-          <FeedSection title="Shift occurrences needing completion marks">
-            {feed.shiftCoordinatorNeedsAction.map((o) => (
-              <FeedRow
-                key={o.occurrenceId}
-                href="/shifts"
-                title={o.seriesTitle}
-                meta={`${new Date(o.startsAt).toLocaleDateString()}, ${o.unresolvedCount} signup${o.unresolvedCount === 1 ? "" : "s"} still unresolved`}
-              />
-            ))}
-          </FeedSection>
-        )}
+        
 
         {feed.myShiftsNeedingCompletion.length > 0 && (
           <FeedSection title="Your own past shifts">
@@ -635,40 +789,28 @@ export default async function DashboardPage({
           </FeedSection>
         )}
 
-        {feed.conflictNeedsAction.length > 0 && (
-          <FeedSection title="Conflict reports needing acknowledgment">
-            {feed.conflictNeedsAction.map((r) => (
-              <FeedRow
-                key={r.reportId}
-                href="/conflict-reports"
-                title={`Report from ${new Date(r.createdAt).toLocaleDateString()}`}
-                tag={<Tag tone="danger">past the acknowledgment window</Tag>}
-              />
-            ))}
-          </FeedSection>
+        {/* The six module sections, personal pass. Anything `shared` renders
+            after every task-side section instead — see the note on
+            ModuleNeedsActionSections. */}
+        <ModuleNeedsActionSections feed={feed} shared={false} />
+
+        {/* The shared pass. Deliberately last in the feed and deliberately
+            not conditional on there being a personal section at all: an open
+            module with nothing personal for this member is exactly the case
+            where the Community's outstanding work still needs saying. */}
+        {hasSharedModuleNeedsAction && (
+          <>
+            <p className="mb-3 mt-6 text-[13px] text-[var(--text-muted)]">
+              Open to everyone — nobody in particular is on the hook for these, so they&rsquo;re
+              here rather than in your count.
+            </p>
+            <ModuleNeedsActionSections feed={feed} shared />
+          </>
         )}
 
-        {feed.kitchenNeedsAction.length > 0 && (
-          <FeedSection title="Kitchen needs your attention">
-            {feed.kitchenNeedsAction.map((k) =>
-              k.kind === "draft_unpublished" ? (
-                <FeedRow
-                  key={`draft-${k.menuPlanId}`}
-                  href="/kitchen"
-                  title={`Draft menu “${k.title}” isn’t published yet`}
-                  tag={<Tag tone="warning">draft awaiting publish</Tag>}
-                />
-              ) : (
-                <FeedRow
-                  key={`ideas-${k.menuPlanId}`}
-                  href="/kitchen"
-                  title={`${k.openCount} food ${k.openCount === 1 ? "idea" : "ideas"} awaiting review on “${k.title}”`}
-                  tag={<Tag tone="warning">ideas awaiting review</Tag>}
-                />
-              ),
-            )}
-          </FeedSection>
-        )}
+        
+
+        
       </section>
 
       <div className="my-9 h-px bg-[var(--border)]" />
@@ -712,10 +854,20 @@ export default async function DashboardPage({
                       : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"
                   }
                 >
-                  All open cycles
+                  All open events
                 </Link>
               </div>
             )}
+          </div>
+        )}
+
+        {indicatorResult.indicators.length > 0 && (
+          <div className="mb-5">
+            <CommunityIndicators
+              scope={indicatorResult.scope}
+              indicators={indicatorResult.indicators}
+              scopeFallback={indicatorResult.scopeFallback}
+            />
           </div>
         )}
 

@@ -4,11 +4,25 @@ import { db } from "@/db";
 import { community, cycle, form, formResponse, profileQuestion, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "./errors";
-import { listGrantingTaskIds } from "./permissions";
+import {
+  RESPONSE_TYPES,
+  TEXT_VALIDATIONS,
+  isBlankValue,
+  isChoiceType,
+  otherInputName,
+  toFieldShape,
+  validateFieldValue,
+  type FieldShape,
+} from "./field-shape";
+import { isModuleOpenToEveryone, listGrantingTaskIds } from "./permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
-const responseTypes = ["free_text", "single_choice", "multi_choice"] as const;
+// One definition of a question's answer shape, shared with
+// ProfileQuestion — see src/lib/field-shape.ts. Forms get the full set
+// of six (they previously had three, and no `date` at all, despite
+// FormBuilder and ProfileQuestionEditor already sharing one editor).
+const responseTypes = RESPONSE_TYPES;
 
 // isNameField/isEmailField: a Form stays a generic, Recruitment-
 // unaware primitive (docs/spec.md's Forms — "the mechanism doesn't
@@ -45,12 +59,70 @@ const formFieldInput = z.object({
   label: z.string().min(1),
   responseType: z.enum(responseTypes),
   options: z.array(z.string().min(1)).optional(),
+  // The field-shape flags, same set and same meaning as
+  // ProfileQuestion's columns — read through field-shape.ts's
+  // toFieldShape wherever a field is rendered or validated.
+  multiline: z.boolean().optional(),
+  validation: z.enum(TEXT_VALIDATIONS).optional(),
+  allowOther: z.boolean().optional(),
+  min: z.number().int().nullable().optional(),
+  max: z.number().int().nullable().optional(),
+  step: z.number().int().nullable().optional(),
   required: z.boolean().optional(),
   isNameField: z.boolean().optional(),
   isEmailField: z.boolean().optional(),
   mapsToProfileQuestionId: z.string().uuid().optional(),
 });
 export type FormField = z.infer<typeof formFieldInput>;
+
+// A stored field — possibly one written before any of the above flags
+// existed, and always missing the ones that don't apply to it — read
+// into a complete shape. Every Form renderer and validator goes through
+// this rather than reaching into the raw jsonb entry, which is what
+// keeps a Form field and a ProfileQuestion row honestly the same thing.
+export function formFieldShape(field: FormField): FieldShape {
+  return toFieldShape(field);
+}
+
+// The submitted form's fields read back out of a FormData into the
+// values blob a FormResponse stores. Extracted here rather than in each
+// page's action because the rules are field-shape rules, not page rules:
+// a multi_choice needs getAll rather than get, and a choice field with
+// an escape hatch has to reconcile its ticked options against the
+// sibling text input. /apply and /feedback previously each had their own
+// near-identical copy of a version that only knew the first of those two
+// cases, so adding a type here would have meant remembering two places —
+// and forgetting one is a silent data bug rather than a visible failure.
+//
+// The free text only counts when the option list doesn't already cover
+// what was typed, so someone who ticks a real option *and* leaves text
+// in the "other" box gets the option they actually chose.
+export function formValuesFromFormData(
+  fields: FormField[],
+  formData: FormData,
+  namePrefix = "field_",
+): Record<string, unknown> {
+  const values: Record<string, unknown> = {};
+  for (const f of fields) {
+    const name = `${namePrefix}${f.key}`;
+    if (isChoiceType(f.responseType)) {
+      const shape = formFieldShape(f);
+      const ticked = formData.getAll(name).map(String);
+      const chosen = ticked.filter((v) => shape.options.includes(v));
+      const otherText = String(formData.get(otherInputName(name)) ?? "").trim();
+      const freeText = otherText && shape.allowOther ? [otherText] : [];
+      if (f.responseType === "multi_choice") {
+        values[f.key] = [...chosen, ...freeText];
+      } else {
+        // A single choice is one value; a ticked option outranks any text.
+        values[f.key] = chosen[0] ?? freeText[0] ?? "";
+      }
+      continue;
+    }
+    values[f.key] = String(formData.get(name) ?? "");
+  }
+  return values;
+}
 
 function tooManyTaggedFields(fields: FormField[], tag: "isNameField" | "isEmailField") {
   return fields.filter((f) => f[tag]).length > 1;
@@ -101,10 +173,7 @@ async function requireValidMappedProfileQuestions(communityId: string, fields: F
 // too, so both need the identical check, not two drifting copies).
 function addFieldShapeIssues(fields: FormField[], ctx: z.RefinementCtx) {
   fields.forEach((f, i) => {
-    if (
-      (f.responseType === "single_choice" || f.responseType === "multi_choice") &&
-      (!f.options || f.options.length === 0)
-    ) {
+    if (isChoiceType(f.responseType) && (!f.options || f.options.length === 0)) {
       ctx.addIssue({
         code: "custom",
         message: "options are required for a choice-based response type",
@@ -147,7 +216,7 @@ export type CreateFormInput = z.infer<typeof createFormInput>;
 // precedent as profile-questions/questions.ts's requireValidShape.
 function requireValidFields(fields: FormField[]) {
   for (const f of fields) {
-    if ((f.responseType === "single_choice" || f.responseType === "multi_choice") && (!f.options || f.options.length === 0)) {
+    if (isChoiceType(f.responseType) && (!f.options || f.options.length === 0)) {
       throw new AppError("options are required for a choice-based response type");
     }
   }
@@ -289,7 +358,30 @@ export const submitFormResponseInput = z.object({
 export type SubmitFormResponseInput = z.infer<typeof submitFormResponseInput>;
 
 function isBlank(value: unknown) {
-  return value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
+  return isBlankValue(value);
+}
+
+// Every submitted value, checked against its own field's shape, and
+// normalised for storage. This used to be a required-fields-and-blank
+// check only, which was fine when a field could only be text or a choice
+// and was not fine the moment a Form could hold a number with bounds or
+// an email — the form would have accepted "banana" for a number and
+// "not-an-email" for an email and stored both. Routed through
+// field-shape.ts's validateFieldValue, the same function a ProfileQuestion
+// answer goes through, so the two can't disagree about what a legal
+// answer is. All-or-nothing, like the required check it replaces: one bad
+// value rejects the whole submission, since a partially-validated form
+// response is worse than a rejected one.
+function validateSubmission(fields: FormField[], values: Record<string, unknown>): Record<string, unknown> {
+  const checked: Record<string, unknown> = { ...values };
+  for (const f of fields) {
+    const shape = formFieldShape(f);
+    // Required-ness is the Form's own rule and is enforced here, so
+    // validateFieldValue can be told "blank is fine" for the optional
+    // fields and handle the required ones itself.
+    checked[f.key] = validateFieldValue(shape, values[f.key], { allowBlank: !f.required });
+  }
+  return checked;
 }
 
 // A response can name the cycle it's about — the cycle must be this
@@ -315,17 +407,21 @@ export async function submitFormResponse(actor: Member, formId: string, input: S
   }
 
   const fields = formRow.fields as FormField[];
+  // Required-and-blank first, so a missing required field is reported as
+  // missing rather than as whatever validateFieldValue would say about
+  // an empty value for its type.
   for (const f of fields) {
     if (f.required && isBlank(input.values[f.key])) {
       throw new AppError(`"${f.label}" is required`);
     }
   }
+  const checkedValues = validateSubmission(fields, input.values);
 
   const submittedBy = input.anonymous && formRow.allowAnonymous ? null : actor.id;
 
   const [created] = await db
     .insert(formResponse)
-    .values({ formId, submittedBy, values: input.values, cycleId: input.cycleId ?? null })
+    .values({ formId, submittedBy, values: checkedValues, cycleId: input.cycleId ?? null })
     .returning();
   return created;
 }
@@ -358,10 +454,11 @@ export async function submitPublicFormResponse(formId: string, input: SubmitForm
       throw new AppError(`"${f.label}" is required`);
     }
   }
+  const checkedValues = validateSubmission(fields, input.values);
 
   const [created] = await db
     .insert(formResponse)
-    .values({ formId, submittedBy: null, values: input.values })
+    .values({ formId, submittedBy: null, values: checkedValues })
     .returning();
   return created;
 }
@@ -393,7 +490,17 @@ async function getCommunityRow(communityId: string) {
 // a cycle-less (community/evergreen) review task, which covers every
 // response — cycle-tagged or not, mirroring how spatial-planning's
 // cycle-less task is the community-wide owner.
+//
+// An open module answers `{null}` — the community/evergreen scope, which is
+// already the superset (docs/open-permissions-plan.md D3), so the
+// `heldScopes.size === 0` throw below and the `has(null)` /
+// `inArray(cycleId, heldScopes)` narrowing further down both behave as
+// though the reviewer held a cycle-less task, with no event knowledge here.
 async function listHeldFeedbackReviewScopes(actor: Member): Promise<Set<string | null>> {
+  if (await isModuleOpenToEveryone(actor.communityId, "feedback_review")) {
+    return new Set([null]);
+  }
+
   const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "feedback_review");
   if (grantingTaskIds.length === 0) return new Set();
 

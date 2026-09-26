@@ -44,6 +44,7 @@ import {
 } from "@/components/tasks/BulkClaimSelect";
 import PageHeader from "@/components/ui/PageHeader";
 import Tabs from "@/components/ui/Tabs";
+import { needsNamedCoordinator } from "./coordination-tag";
 
 type BoardTask = Awaited<ReturnType<typeof listTasksWithAssignments>>[number];
 
@@ -177,21 +178,34 @@ export default async function BoardPage({
         .where(inArray(phase.cycleId, allCycles.map((c) => c.id)));
 
   // §5.3 (docs/cycle-scope-remediation-plan.md) — resolve coordination
-  // from both dimensions: the viewer's own coverage (branch column OR
-  // cycle row) drives the per-task markers and actions, and the
-  // covering holder per scope in view feeds the task cards'
-  // "Coordinated by {name}" tag for every viewer.
+  // from both dimensions. The viewer's own coverage (branch column OR
+  // cycle row OR the community_coordination grant) drives the per-task
+  // markers and actions; the covering holder per scope in view feeds
+  // the task cards' "Coordinated by {name}" tag for every viewer.
   const coordHolders = await listCoordinationHoldersForScopes(
     viewing.communityId,
     branches.map((b) => b.id),
     scopeCycleIds,
   );
   const isCoordinationHolderForTask = (t: BoardTask) =>
+    coordinationScope.communityWide ||
     coordinationScope.branchIds.has(t.branchId) ||
     (t.cycleId !== null && coordinationScope.cycleIds.has(t.cycleId));
-  const coordinationNameFor = (t: BoardTask) =>
-    coordHolders.byBranch.get(t.branchId)?.memberName ??
-    (t.cycleId === null ? null : coordHolders.byCycle.get(t.cycleId)?.memberName ?? null);
+
+  // "Coordinated by {name}" is an *attention* signal, not a restatement
+  // of the coverage fact above — see needsNamedCoordinator for why the
+  // two are deliberately different predicates. Everything else keeps the
+  // coverage fact, which is what actually gates the Escalate action and
+  // self-assign confirmation above.
+  const coordinationNameFor = (t: BoardTask) => {
+    if (!needsNamedCoordinator(t)) return null;
+    return (
+      coordHolders.byBranch.get(t.branchId)?.memberName ??
+      (t.cycleId === null ? null : coordHolders.byCycle.get(t.cycleId)?.memberName ?? null) ??
+      coordHolders.community?.memberName ??
+      null
+    );
+  };
 
   // "By phase" only makes sense once there's a real phase spine to show
   // — otherwise every task lands in one "No phase" card, no better than

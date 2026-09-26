@@ -6,7 +6,12 @@ import { isModuleEnabled } from "@/lib/modules";
 import { getCommunitySnapshot } from "@/lib/dashboard";
 import ActionMenu from "@/components/ui/ActionMenu";
 import PageHeader from "@/components/ui/PageHeader";
-import { BUTTON_PRIMARY } from "@/components/ui/kit";
+import { Banner, BUTTON_PRIMARY } from "@/components/ui/kit";
+import { EventParticipationCards } from "@/components/EventParticipation";
+import CommunityIndicators from "@/components/CommunityIndicators";
+import CommunityAssembliesSection from "./CommunityAssembliesSection";
+import { declareEventStatusAction } from "./actions";
+import { listCommunityIndicators } from "@/lib/profile-questions/indicators";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +23,6 @@ export const dynamic = "force-dynamic";
 const HUB_LINKS = [
   { href: "/members", label: "Members" },
   { href: "/assemblies", label: "Assemblies" },
-  { href: "/participation", label: "Events" },
   { href: "/settings", label: "Settings" },
 ] as const;
 
@@ -31,15 +35,28 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-export default async function CommunityPage() {
+export default async function CommunityPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
   }
 
-  const [communityRow, snapshot] = await Promise.all([
+  const { error } = await searchParams;
+
+  const [communityRow, snapshot, indicatorResult] = await Promise.all([
     getCommunity(viewing),
     getCommunitySnapshot(viewing),
+    // Loaded here rather than inside getCommunitySnapshot: an indicator
+    // is a ProfileQuestion aggregate, and folding it into the dashboard
+    // snapshot would put profile-question reads behind every Dashboard
+    // render for a card only two pages show. No scope on this page —
+    // /community isn't under /[cycleScope], so it has no event view to
+    // narrow to, and every indicator here describes every member.
+    listCommunityIndicators(viewing),
   ]);
   const recruitmentOn = isModuleEnabled(communityRow, "recruitment");
 
@@ -66,6 +83,12 @@ export default async function CommunityPage() {
         }
       />
 
+      {error && (
+        <div className="mt-4">
+          <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
+
       <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat
           label="Active members"
@@ -78,6 +101,15 @@ export default async function CommunityPage() {
         />
         <Stat label="Tiers" value={snapshot.tierCounts.length} />
       </div>
+
+      <EventParticipationCards viewing={viewing} action={declareEventStatusAction} />
+
+      <CommunityIndicators
+        scope={indicatorResult.scope}
+        indicators={indicatorResult.indicators}
+      />
+
+      <CommunityAssembliesSection viewing={viewing} />
 
       {snapshot.tierCounts.length > 0 && (
         <div className="mt-6">

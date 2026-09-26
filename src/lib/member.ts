@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
+import { maybeSeedDefaultProfileQuestions } from "./profile-questions/defaults";
 import { member, memberIdentity, community as communityTable } from "@/db/schema";
 import { isModuleEnabled } from "./modules";
 import { isOidcConfigured } from "./oidc";
@@ -59,20 +60,31 @@ export async function findOrCreateMemberByEmail(community: typeof communityTable
     return null;
   }
 
-  return db.transaction(async (tx) => {
-    const [newMember] = await tx
+  const newMember = await db.transaction(async (tx) => {
+    const [created] = await tx
       .insert(member)
       .values({ communityId: community.id, name: email.split("@")[0] })
       .returning();
 
     await tx.insert(memberIdentity).values({
-      memberId: newMember.id,
+      memberId: created.id,
       provider: "magic_link",
       loginEmail: email,
     });
 
-    return newMember;
+    return created;
   });
+
+  // The first person through this door is the community's first Admin,
+  // and the moment it makes sense to give them a starting set of
+  // questions — it's the only moment there is, since a question has to
+  // belong to somebody and until now there was nobody. Deliberately
+  // outside the transaction: the member must exist even if seeding
+  // doesn't, and a community with no questions and a settings button
+  // beats a failed login.
+  await maybeSeedDefaultProfileQuestions(newMember);
+
+  return newMember;
 }
 
 // Resolves or creates a Member from a verified OIDC login (Phase 57) —
@@ -109,8 +121,8 @@ export async function findOrCreateMemberByOidcSubject(
     return existing.member;
   }
 
-  return db.transaction(async (tx) => {
-    const [newMember] = await tx
+  const newMember = await db.transaction(async (tx) => {
+    const [created] = await tx
       .insert(member)
       .values({
         communityId: community.id,
@@ -119,12 +131,18 @@ export async function findOrCreateMemberByOidcSubject(
       .returning();
 
     await tx.insert(memberIdentity).values({
-      memberId: newMember.id,
+      memberId: created.id,
       provider: "oidc",
       providerSubject: input.sub,
       loginEmail: input.email,
     });
 
-    return newMember;
+    return created;
   });
+
+  // Same reasoning as the magic-link path above: first member through
+  // the door, so first chance to give the community its questions.
+  await maybeSeedDefaultProfileQuestions(newMember);
+
+  return newMember;
 }

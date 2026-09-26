@@ -6,7 +6,7 @@ import {
 } from "@/lib/recruitment";
 import { NotFoundError } from "@/lib/errors";
 import type { FormField } from "@/lib/forms";
-import FieldPreview from "@/components/FieldPreview";
+import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
 import { Banner, BUTTON_PRIMARY } from "@/components/ui/kit";
 import { submitApplicationAction } from "./actions";
 
@@ -102,7 +102,7 @@ export default async function ApplyPage({
             {fields.map((f) => (
               <FieldPreview
                 key={f.key}
-                field={{ label: f.label, responseType: f.responseType, options: f.options ?? [], required: f.required ?? false }}
+                field={toPreviewShape({ ...f, label: f.label, required: f.required ?? false })}
                 name={`field_${f.key}`}
               />
             ))}

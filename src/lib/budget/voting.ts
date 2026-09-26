@@ -5,6 +5,7 @@ import { budgetCycle, budgetVote, member, permissionGrant, task, taskAssignment 
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { isModuleOpenToEveryone } from "../permissions";
+import type { NeedsAction } from "../needs-action";
 import {
   getBudgetCycle,
   getBudgetCycleAttendeeCount,
@@ -400,18 +401,36 @@ export interface BudgetNeedsAction {
 // returns [] rather than throwing for a non-owner, unlike
 // requireBudgetOwner's own gate — this is read for every member's
 // Dashboard, not just the owner's, since cast_vote applies to anyone.
-export async function listBudgetNeedsAction(actor: Member): Promise<BudgetNeedsAction[]> {
+export async function listBudgetNeedsAction(actor: Member): Promise<NeedsAction<BudgetNeedsAction>> {
   const cycleRow = await getCurrentBudgetCycle(actor);
-  if (!cycleRow || cycleRow.status === "confirmed") return [];
+  if (!cycleRow || cycleRow.status === "confirmed") return { personal: [], shared: [] };
 
-  const items: BudgetNeedsAction[] = [];
+  // The one needs-action list that genuinely contains both kinds of item, and
+  // so the only one that can't be all-or-nothing (D12):
+  //
+  //   cast_vote            personal to anyone who hasn't voted. "You haven't
+  //                        voted" is true of *you* and only you, and it is
+  //                        already ungated by ownership today.
+  //   close_to_voting      a management act. With Budget open every member
+  //   confirm_funded_set   qualifies, but nobody is on the hook for it — so
+  //                        it is shared unless the actor really holds the
+  //                        budget grant, in which case it is genuinely
+  //                        theirs and stays personal.
+  const personal: BudgetNeedsAction[] = [];
+  const shared: BudgetNeedsAction[] = [];
+
   if (await isBudgetOwner(actor, cycleRow)) {
+    // The distinction the open flag makes invisible from outside: being an
+    // owner by openness is not the same as holding the task.
+    const reallyHolds = await holdsBudgetGrant(actor, cycleRow);
+    const management: BudgetNeedsAction[] = [];
     if (cycleRow.status === "proposals_open" && cycleRow.proposalDeadline < new Date()) {
-      items.push({ cycleId: cycleRow.id, cycleTitle: cycleRow.title, kind: "close_to_voting" });
+      management.push({ cycleId: cycleRow.id, cycleTitle: cycleRow.title, kind: "close_to_voting" });
     }
     if (cycleRow.status === "voting" && !cycleRow.confirmedProposalIds) {
-      items.push({ cycleId: cycleRow.id, cycleTitle: cycleRow.title, kind: "confirm_funded_set" });
+      management.push({ cycleId: cycleRow.id, cycleTitle: cycleRow.title, kind: "confirm_funded_set" });
     }
+    (reallyHolds ? personal : shared).push(...management);
   }
 
   if (cycleRow.status === "voting") {
@@ -420,9 +439,9 @@ export async function listBudgetNeedsAction(actor: Member): Promise<BudgetNeedsA
       .from(budgetVote)
       .where(and(eq(budgetVote.budgetCycleId, cycleRow.id), eq(budgetVote.memberId, actor.id)));
     if (!myVote) {
-      items.push({ cycleId: cycleRow.id, cycleTitle: cycleRow.title, kind: "cast_vote" });
+      personal.push({ cycleId: cycleRow.id, cycleTitle: cycleRow.title, kind: "cast_vote" });
     }
   }
 
-  return items;
+  return { personal, shared };
 }

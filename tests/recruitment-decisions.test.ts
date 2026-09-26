@@ -36,7 +36,7 @@ import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
-  { key: "name", label: "Name", responseType: "free_text", required: true },
+  { key: "name", label: "Name", responseType: "text", required: true },
 ];
 
 const DEFAULT_RULES: RecruitmentDecisionRule[] = [

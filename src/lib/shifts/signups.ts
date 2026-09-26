@@ -3,6 +3,8 @@ import { db } from "@/db";
 import { cycle, shiftOccurrence, shiftSeries, shiftSignup } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { type NeedsAction } from "../needs-action";
+import { listShiftManagerScopesForMember } from "./management";
 import { isShiftCoordinator, listShiftSeries, requireShiftCoordinator } from "./series";
 import { effectiveCapacity, getShiftOccurrence } from "./occurrences";
 
@@ -191,13 +193,13 @@ export interface ShiftCoordinatorNeedsAction {
 // phase's other three needs-action functions. A scope with no filled
 // manager surfaces as an unmanaged gap on the roster views instead of
 // a per-person dashboard entry.
-export async function listShiftCoordinatorNeedsAction(actor: Member): Promise<ShiftCoordinatorNeedsAction[]> {
+export async function listShiftCoordinatorNeedsAction(actor: Member): Promise<NeedsAction<ShiftCoordinatorNeedsAction>> {
   const allSeries = await listShiftSeries(actor);
   const coordinated: string[] = [];
   for (const s of allSeries) {
     if (await isShiftCoordinator(actor, s)) coordinated.push(s.id);
   }
-  if (coordinated.length === 0) return [];
+  if (coordinated.length === 0) return { personal: [], shared: [] };
 
   const rows = await db
     .select({ occurrence: shiftOccurrence, seriesTitle: shiftSeries.title })
@@ -226,5 +228,15 @@ export async function listShiftCoordinatorNeedsAction(actor: Member): Promise<Sh
       });
     }
   }
-  return [...byOccurrence.values()].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  const items = [...byOccurrence.values()].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+
+  // Split per D12. Note the *coordinated* list above was built by
+  // isShiftCoordinator, which an open module makes true for every series in
+  // every scope — so without this, marking up a past occurrence's shifts
+  // would appear as a personal chore on every member's dashboard. The
+  // manager ids are the same ones isSharedByOpenness checks, and
+  // resolveShiftManager is a `.limit(1)` among them, so "is this member one
+  // of the managers" is the right test, not "is this the picked manager".
+  const reallyHolds = (await listShiftManagerScopesForMember(actor)).length > 0;
+  return reallyHolds ? { personal: items, shared: [] } : { personal: [], shared: items };
 }

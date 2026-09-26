@@ -38,6 +38,13 @@ export const updateCommunityInput = z.object({
   defaultCallNeedsSummary: z.boolean().optional(),
   defaultCallRequireRead: z.boolean().optional(),
   conflictAckWindowHours: z.number().int().positive().optional(),
+  // Per-cycle indicator policy — see community.ts's own comment on the
+  // two columns. Bounded below at 1 rather than 0 so "no minimum" isn't
+  // expressible: a floor of zero is indistinguishable from the
+  // population being unknown, and the whole point is that an event
+  // small enough to identify someone must not be broken out.
+  cycleIndicatorsEnabled: z.boolean().optional(),
+  cycleIndicatorsMinMembers: z.number().int().min(1).max(1000).optional(),
   modulesEnabled: z.array(z.string()).optional(),
   // Null turns off the standing post-cycle feedback ask — see
   // src/db/schema/community.ts's schema comment and src/lib/forms.ts.

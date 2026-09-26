@@ -53,9 +53,9 @@ export default async function CycleScopeCoordinationPage({
   // before this page ever renders — this is just satisfying the type.
   if (!scope) redirect("/active/coordination");
 
-  const { branchIds, cycleIds } = await listCoordinationScopeIds(viewing);
+  const { communityWide, branchIds, cycleIds } = await listCoordinationScopeIds(viewing);
   const scopeCycleIds = scope.kind === "single" ? [scope.cycle.id] : scope.cycles.map((c) => c.id);
-  const isCommunityWide = branchIds.size > 0;
+  const isCommunityWide = communityWide || branchIds.size > 0;
   const authorized =
     scope.kind === "single"
       ? isCommunityWide || cycleIds.has(scope.cycle.id)
@@ -67,8 +67,8 @@ export default async function CycleScopeCoordinationPage({
         <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Coordination</h1>
         <div className="mt-4">
           <Banner tone="danger">
-            Only a current coordination holder can see this — cycle-less coordination covers the
-            whole community, while a task placed in a cycle coordinates that cycle only. Ask a
+            Only a current coordination holder can see this — event-independent coordination covers the
+            whole community, while a task placed in an event coordinates that event only. Ask a
             coordinator of this scope.
           </Banner>
         </div>
@@ -143,13 +143,14 @@ export default async function CycleScopeCoordinationPage({
                     <td className="border-b border-[var(--border)] px-2 py-2">
                       {!e.hasAnswer && <span className="text-[var(--danger)]">no answer</span>}
                       {e.hasAnswer && e.deferred && <span className="text-[var(--warning)]">doesn&rsquo;t know yet</span>}
-                      {e.hasAnswer && !e.deferred && e.capacityVisibility === "open" && (
+                      {e.hasAnswer && e.declined && <span className="text-[var(--text-muted)]">declined to say</span>}
+                      {e.hasAnswer && !e.deferred && !e.declined && e.capacityVisibility === "open" && (
                         <span className="text-[var(--text)]">
                           {e.declaredHours ?? "—"} hrs/wk declared
                           {e.loadHours !== null ? ` (${e.loadHours} hrs/wk currently held)` : ""}
                         </span>
                       )}
-                      {e.hasAnswer && !e.deferred && e.capacityVisibility === "flag_only" && (
+                      {e.hasAnswer && !e.deferred && !e.declined && e.capacityVisibility === "flag_only" && (
                         <span className="text-[var(--text)]">{e.flag ? FLAG_LABEL[e.flag] : "declared, not comparable"}</span>
                       )}
                     </td>

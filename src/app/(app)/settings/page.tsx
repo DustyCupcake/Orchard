@@ -10,15 +10,25 @@ import {
   allowsMultipleGrants,
   describeGrantScope,
   isMisplacedCommunityGrant,
+  isOpenableModule,
   listGrantsWithTaskInfo,
-  PERMISSION_MODULE_KEYS,
+  listHoldersByTaskId,
+  listOpenModuleKeys,
   PERMISSION_MODULE_HINTS,
+  PERMISSION_MODULE_KEYS,
   PERMISSION_MODULE_LABELS,
+  PERMISSION_MODULE_SECTIONS,
   type PermissionModuleKey,
 } from "@/lib/permissions";
 import { listTasks } from "@/lib/tasks";
 import { listCycles } from "@/lib/cycles";
 import { listProfileQuestions } from "@/lib/profile-questions";
+import {
+  INDICATOR_FAMILY_LABELS,
+  canPublishAsIndicator,
+  indicatorBlocker,
+  indicatorFamilyFor,
+} from "@/lib/profile-questions/indicators";
 import { listTraitAxes } from "@/lib/trait-axes";
 import { listTaskPacks } from "@/lib/task-packs";
 import { MODULE_DEFINITIONS } from "@/lib/modules";
@@ -27,6 +37,7 @@ import { listForms } from "@/lib/forms";
 import type { FormField } from "@/lib/forms";
 import { listConsentPurposes } from "@/lib/consent";
 import { ForbiddenError } from "@/lib/errors";
+import { getFoundersAssemblyPromptState } from "@/lib/assemblies";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CheckField, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import {
   addPermissionGrantAction,
@@ -40,6 +51,7 @@ import {
   createCycleTypeAction,
   createFormAction,
   createProfileQuestionAction,
+  seedDefaultProfileQuestionsAction,
   createSensitiveFieldAccessRuleAction,
   createTierAction,
   createTraitAxisAction,
@@ -50,6 +62,7 @@ import {
   deleteTierAction,
   rejectPendingBranchAction,
   removePermissionGrantAction,
+  setModuleOpenAction,
   reviewBulkMemberImportAction,
   setPermissionGrantAction,
   unarchiveFormAction,
@@ -67,7 +80,9 @@ import {
   updateTraitAxisAction,
 } from "./actions";
 import { decodeBulkMemberState } from "./bulk-members-state";
+import FoundersAssemblyPrompt from "./FoundersAssemblyPrompt";
 import FormBuilder from "./FormBuilder";
+import { toEditableFieldShape } from "@/lib/field-shape";
 import ProfileQuestionEditor from "./ProfileQuestionEditor";
 
 export const dynamic = "force-dynamic";
@@ -143,7 +158,10 @@ function TextField({
 // granting task's own placement *is* the scope, so there is nothing
 // else to pick). A community-shaped module's task that sits in a cycle
 // renders a warning rather than being silently ignored
-// (isMisplacedCommunityGrant). The Add input's `list`
+// (isMisplacedCommunityGrant). The field itself carries no scope
+// language — the section header it sits under (PERMISSION_MODULE_SECTIONS)
+// states the placement rule for every module in it, and this module's
+// hint only says what holding the role does. The Add input's `list`
 // attribute wires it to the shared task datalist rendered once for the
 // whole tab (see the "permissions" tab body below) — a zero-JS "search
 // by title" picker; the datalist's own <option value> is still the raw
@@ -154,18 +172,105 @@ function TextField({
 function GrantField({
   moduleKey,
   grants,
+  open,
+  openable,
+  holdersByTaskId,
+  sensitiveFieldsGatedByThisModule,
 }: {
   moduleKey: PermissionModuleKey;
   grants: { taskId: string; title: string; branchName: string; cycleId: string | null; cycleName: string | null }[];
+  open: boolean;
+  openable: boolean;
+  holdersByTaskId: Map<string, { memberId: string; name: string }[]>;
+  // Which sensitive fields are unlocked by *this module's* grant — surfaced
+  // so the person ticking the box can see the coupling exists. Opening a
+  // module does NOT unlock them (D9), so this is information, not a warning
+  // about behaviour change.
+  sensitiveFieldsGatedByThisModule: string[];
 }) {
   const multi = allowsMultipleGrants(moduleKey);
+  const label = PERMISSION_MODULE_LABELS[moduleKey];
+  // D13: the two highest-blast-radius modules, which stay openable because a
+  // small Community may genuinely want them, but say plainly what ticking
+  // the box means. Warn rather than hard-confirm — this surface is
+  // deliberately zero-JS (the grant picker is a datalist, Remove is a plain
+  // form), and a real confirm() would be the one control here that changes
+  // access the instant it's pressed.
+  const blastRadius =
+    moduleKey === "support"
+      ? "Every member will be able to view the platform exactly as any other member would, read-only — including as the people who hold sensitive-data and permission access."
+      : moduleKey === "admin"
+        ? "Every member will be able to change every Community setting, including who holds which permissions."
+        : null;
+  const holders = grants.reduce((n, g) => n + (holdersByTaskId.get(g.taskId)?.length ?? 0), 0);
+  const unheld = open && grants.length > 0 && holders === 0;
+
   return (
-    <FieldSet legend={PERMISSION_MODULE_LABELS[moduleKey]}>
+    <FieldSet legend={label}>
       <p className="text-[12px] text-[var(--text-muted)]">{PERMISSION_MODULE_HINTS[moduleKey]}</p>
-      {grants.length === 0 && <p className="text-[13px] text-[var(--text-muted)]">No task grants this yet.</p>}
+
+      {/* The open checkbox, above the grant list so it reads as the primary
+          fact when set and as a relaxation of the task list when not. */}
+      {openable ? (
+        <form action={setModuleOpenAction} className="flex flex-col gap-1.5">
+          <input type="hidden" name="moduleKey" value={moduleKey} />
+          <input type="hidden" name="tab" value="permissions" />
+          <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+            <input type="checkbox" name="open" defaultChecked={open} className="mt-0.5" />
+            <span>
+              Everyone has this permission
+              {open ? (
+                <span className="block text-[12px] text-[var(--text-muted)]">
+                  Every member can do this. The task below is no longer required — keep it if you
+                  want someone named as responsible.
+                </span>
+              ) : null}
+            </span>
+          </label>
+          {blastRadius && (
+            <p className="text-[12px] text-[var(--text-muted)]">{blastRadius}</p>
+          )}
+          {sensitiveFieldsGatedByThisModule.length > 0 && (
+            <p className="text-[12px] text-[var(--text-muted)]">
+              Unlocking {sensitiveFieldsGatedByThisModule.join(", ")} is a separate setting, keyed
+              to whoever <em>holds</em> this module&apos;s task. Opening the module does not change
+              that.
+            </p>
+          )}
+          <div>
+            <button type="submit" className={BUTTON_SECONDARY}>
+              {open ? "Turn off" : "Turn on"}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <p className="text-[12px] text-[var(--text-muted)]">
+          This one can&rsquo;t be open to everyone — when nobody is named, there is nobody to
+          notify. It needs a holder.
+        </p>
+      )}
+
+      {unheld && (
+        <Banner tone="warning">
+          {label} is open to everyone and no task grants it, so nobody is named as responsible —
+          anything that routes work to a named person has no one to route to.
+        </Banner>
+      )}
+
+      {grants.length === 0 && !open && (
+        <p className="text-[13px] text-[var(--text-muted)]">No task grants this yet.</p>
+      )}
+      {grants.length === 0 && open && (
+        <p className="text-[13px] text-[var(--text-muted)]">
+          No task grants this — which is fine while it&rsquo;s open, since no one needs to be
+          named for it to work.
+        </p>
+      )}
       {grants.length > 0 && (
         <ul className="flex flex-col gap-1.5">
-          {grants.map((g) => (
+          {grants.map((g) => {
+            const taskHolders = holdersByTaskId.get(g.taskId) ?? [];
+            return (
             <li key={g.taskId} className="flex flex-col gap-1 text-[13px] text-[var(--text)]">
               <div className="flex flex-wrap items-center gap-2">
                 {g.title} — {g.branchName}
@@ -182,6 +287,39 @@ function GrantField({
                   </button>
                 </form>
               </div>
+              {/* D14. `capacity` is the real control on how many people hold a
+                  role and nothing in the permission layer read it, so a
+                  single-cardinality module could be handed to five people with
+                  no indication here. Names at three or fewer, count above, and
+                  the count always links to the task — which already renders
+                  "Held by …" ungated, so it resolves for any admin here. */}
+              {taskHolders.length === 0 ? (
+                <p className="text-[12px] text-[var(--text-muted)]">
+                  Nobody is holding this{" "}
+                  <Link href={`/tasks/${g.taskId}`} className="text-[var(--accent-1)] hover:underline">
+                    open the task
+                  </Link>{" "}
+                  to put yourself forward.
+                </p>
+              ) : (
+                <p className="text-[12px] text-[var(--text-muted)]">
+                  {taskHolders.length <= 3 ? (
+                    <>
+                      Held by {taskHolders.map((h) => h.name).join(", ")} ({taskHolders.length})
+                    </>
+                  ) : (
+                    <>
+                      Held by{" "}
+                      <Link
+                        href={`/tasks/${g.taskId}`}
+                        className="text-[var(--accent-1)] hover:underline"
+                      >
+                        {taskHolders.length} people
+                      </Link>
+                    </>
+                  )}
+                </p>
+              )}
               {isMisplacedCommunityGrant(moduleKey, g.cycleId) && (
                 <Banner tone="warning">
                   This task sits in an event, but {PERMISSION_MODULE_LABELS[moduleKey]} is a community-wide
@@ -190,13 +328,14 @@ function GrantField({
                 </Banner>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
       {!multi && grants.length > 0 && (
         <p className="text-[12px] text-[var(--text-muted)]">
           Only one task can hold this per scope — adding a task placed in the same scope (the same
-          cycle, or community-wide for a cycle-less task) moves it here instead of alongside it.
+          event, or community-wide for an event-independent task) moves it here instead of alongside it.
         </p>
       )}
       <form
@@ -220,6 +359,176 @@ function GrantField({
   );
 }
 
+/**
+ * The "publish this as a community indicator" control for one profile
+ * question, with the rule that governs it attached.
+ *
+ * The display form is deliberately *not* offered as a choice. It's
+ * derived from the question's answer type in indicators.ts, because the
+ * alternatives are worse in a specific way each: a hand-picked chart
+ * option lets someone put a pick-any question in a pie, and a pie of
+ * "who picked what" implies slices of one whole when five people choosing
+ * three options each is fifteen slices over five people. So this control
+ * says what the answer *will* look like rather than offering a menu of
+ * ways to misdescribe it.
+ */
+function IndicatorToggle({
+  question,
+  canPublish,
+  blocker,
+}: {
+  question: {
+    id: string;
+    responseType: string;
+    scope: string;
+    publishedAsIndicator: boolean;
+  };
+  canPublish: boolean;
+  blocker: { reason: string; remedy: string } | null;
+}) {
+  const family = indicatorFamilyFor(question.responseType);
+  return (
+    <div className="flex flex-col gap-1">
+      <label
+        className={`flex items-center gap-2 text-[13px] ${canPublish ? "text-[var(--text)]" : "text-[var(--text-muted)]"}`}
+      >
+        <input
+          type="checkbox"
+          name="publishedAsIndicator"
+          defaultChecked={question.publishedAsIndicator}
+          disabled={!canPublish}
+        />{" "}
+        show the answers on the Community page
+      </label>
+      {canPublish ? (
+        <p className="text-[12px] text-[var(--text-muted)]">
+          Shown as {INDICATOR_FAMILY_LABELS[family!].toLowerCase()} &mdash; the form follows from the
+          answer type, so it can&rsquo;t end up describing the answers wrongly.
+        </p>
+      ) : (
+        /* The reason *and* its remedy, so the disabled checkbox teaches
+           the rule instead of just refusing. A member who can't work out
+           why an option is greyed out concludes the app is broken. */
+        blocker && (
+          <p className="text-[12px] text-[var(--text-muted)]">
+            Not available here, because {blocker.reason}. {blocker.remedy}
+          </p>
+        )
+      )}
+    </div>
+  );
+}
+
+/**
+ * The two privacy attributes for one profile question.
+ *
+ * Both are offered as ordinary checkboxes with the consequence spelled
+ * out, because both are only meaningful alongside a default that does the
+ * work. "Sensitive" is not a label to apply to anything that feels
+ * private — it is the thing you must tick *in order to restrict* who may
+ * read the answer, and that framing is the entire safety property. An
+ * admin who forgets it doesn't get a private-looking question nobody can
+ * read; they get a public one, which is a mistake they will see.
+ */
+function PrivacyToggles({
+  question,
+  emergencyBlocked,
+  emergencyNeedsSensitive,
+  ruleCount,
+}: {
+  question: { sensitive: boolean; emergencyAccess: boolean; publishedAsIndicator: boolean };
+  emergencyBlocked: boolean;
+  // Emergency access overrides a restriction, so the box waits for the
+  // sensitive tick. Un-ticking emergency is never blocked — same escape
+  // hatch as the sensitive box, and for the same reason.
+  emergencyNeedsSensitive: boolean;
+  ruleCount: number;
+}) {
+  // Turning sensitive ON is gated on a rule existing, so the box is
+  // disabled until one does. Ticking it *off* is never blocked, including
+  // on a question that somehow ended up sensitive with no rule — an admin
+  // has to be able to fix that state, and a disabled box would leave one
+  // way out: deleting the question.
+  const needsRule = !question.sensitive && ruleCount === 0;
+  const emergencyDisabled = emergencyBlocked || emergencyNeedsSensitive;
+  return (
+    <div className="flex flex-col gap-2">
+      <label className={`flex items-center gap-2 text-[13px] ${needsRule ? "text-[var(--text-muted)]" : "text-[var(--text)]"}`}>
+        <input type="checkbox" name="sensitive" defaultChecked={question.sensitive} disabled={needsRule} /> sensitive
+        <span className="text-[var(--text-muted)]">
+          &mdash; restrict who may read the answer to this
+        </span>
+      </label>
+      {needsRule && (
+        <p className="text-[12px] text-[var(--text-muted)]">
+          Not available until this question has an access rule, because the rule <em>is</em> the restriction
+          &mdash; sensitive only says which questions the rules apply to. Add one under Sensitive data access
+          below, then tick this.
+        </p>
+      )}
+      <label
+        className={`flex items-center gap-2 text-[13px] ${emergencyDisabled ? "text-[var(--text-muted)]" : "text-[var(--text)]"}`}
+      >
+        <input
+          type="checkbox"
+          name="emergencyAccess"
+          defaultChecked={question.emergencyAccess}
+          disabled={emergencyDisabled}
+        />
+        emergency access
+        <span className="text-[var(--text-muted)]">
+          &mdash; readable by whoever turns on emergency mode, and they&rsquo;re notified
+        </span>
+      </label>
+      {emergencyBlocked ? (
+        /* Published and emergency are each a claim about who can read the
+           answer, and this question can't be making both. The *sensitive*
+           tick would have caught it too, but the emergency box is the one
+           somebody is looking at, so it explains itself. */
+        <p className="text-[12px] text-[var(--text-muted)]">
+          Not available while this question is published on the Community page. An indicator is
+          already readable by the whole community, so there&rsquo;s nothing for an emergency
+          override to reach &mdash; and this isn&rsquo;t the kind of question anyone needs in an
+          emergency. Unpublish it first, or leave this off.
+        </p>
+      ) : emergencyNeedsSensitive ? (
+        <p className="text-[12px] text-[var(--text-muted)]">
+          Not available until this question is marked sensitive. Emergency access overrides a
+          restriction, so it needs one to override &mdash; and on a question everyone can already
+          read there&rsquo;s nothing to reveal, which would put a read of public data in the log as
+          though it had been protected.
+        </p>
+      ) : (
+        <p className="text-[12px] text-[var(--text-muted)]">
+          A question that is <em>not</em> sensitive is readable by the whole community by default,
+          so marking it sensitive is the only way to restrict it at all &mdash; and forgetting to
+          makes the answers public, visibly. Answering an emergency question <em>is</em> agreeing to
+          emergency reads: there&rsquo;s no separate box to tick, and not answering is the only way
+          to decline. Every emergency read notifies the member it was about.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Every question an access rule or a consent purpose is allowed to name.
+//
+// Not filtered to the sensitive ones, and that is the point: the rule is
+// the half that gets built first. `sensitive` is refused until a rule
+// exists, so a rule that also demanded the flag would leave the state
+// unreachable. An admin builds the audience here, then ticks the box on
+// the question, and the rule starts restricting the moment they do.
+//
+// So a rule against a plain question is a *staged* rule — it changes
+// nothing today, because the question is readable by everyone, and it is
+// visibly waiting rather than silently ineffective, since the question's
+// own sensitive box is right there above with its own explanation.
+function questionRuleTargets(questions: { id: string; label: string; archivedAt: Date | null }[]) {
+  return questions
+    .filter((q) => !q.archivedAt)
+    .map((q) => ({ id: q.id, label: q.label }));
+}
+
 export default async function SettingsPage({
   searchParams,
 }: {
@@ -232,6 +541,13 @@ export default async function SettingsPage({
 
   const { error, bulkStage, bulkState: bulkStateRaw, bulkAdded, tab: tabRaw } = await searchParams;
   const activeTab: TabKey = TAB_KEYS.includes(tabRaw ?? "") ? (tabRaw as TabKey) : "general";
+  // Only offered on the un-tabbed landing view, not repeated above every
+  // one of the ten tabs. Someone clicking "Settings" in the sidebar is
+  // arriving with a question; someone who deep-linked to
+  // /settings?tab=recruitment already knows what they came for, and a
+  // banner above that form is just noise. It's also time-limited anyway
+  // (see getFoundersAssemblyPromptState).
+  const showFoundersPrompt = tabRaw === undefined || tabRaw === "";
   const bulkReview = bulkStage === "review" && bulkStateRaw ? decodeBulkMemberState(bulkStateRaw) : null;
 
   let authorized = true;
@@ -277,6 +593,20 @@ export default async function SettingsPage({
   const confirmedBranches = branches.filter((b) => b.status === "confirmed");
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
 
+  // Question-keyed access rules and consent gates need a label, and need
+  // to only offer questions they're allowed to name. ruleCountByQuestion
+  // is what disables the "sensitive" checkbox on a question with no rule
+  // yet — the write side refuses that combination, so a checkbox that
+  // quietly accepts it would be a lie about what the settings do.
+  const sensitiveQuestionOptions = questionRuleTargets(profileQuestions);
+  const questionLabelById = new Map(profileQuestions.map((q) => [q.id, q.label]));
+  const ruleCountByQuestion = new Map<string, number>();
+  for (const r of sensitiveFieldRules) {
+    if (r.questionId) {
+      ruleCountByQuestion.set(r.questionId, (ruleCountByQuestion.get(r.questionId) ?? 0) + 1);
+    }
+  }
+
   // Every access gate this screen configures reads from one real table
   // now (docs/development-plan.md's Phase 63) — one query, grouped by
   // module in JS, rather than nine separate lookups. Branch name is
@@ -300,6 +630,28 @@ export default async function SettingsPage({
     grantsByModule.set(g.moduleKey, list);
   }
   const grantsFor = (moduleKey: PermissionModuleKey) => grantsByModule.get(moduleKey) ?? [];
+
+  // The open flags, and who holds each granting task (D14). Both are one
+  // query for the whole tab rather than per-row: the holder map is keyed by
+  // task id precisely so a member holding two of the same module's tasks shows
+  // up on both rows, which the distinct-member form used by D12 deliberately
+  // does not do.
+  const openModuleKeys = await listOpenModuleKeys(communityRow.id);
+  const holdersByTaskId = await listHoldersByTaskId(allGrants.map((g) => g.taskId));
+
+  // Which sensitive fields are unlocked by a *grant* to each module. Opening a
+  // module does not unlock them (D9 — deliberately deferred), so this is
+  // shown as information about an existing, separate setting rather than as a
+  // warning about the checkbox: the coupling is real and invisible, and the
+  // person deciding should be able to see it exists.
+  const sensitiveFieldsByModule = new Map<PermissionModuleKey, string[]>();
+  for (const rule of sensitiveFieldRules) {
+    if (!rule.unlockedByGrantModuleKey) continue;
+    const existing = sensitiveFieldsByModule.get(rule.unlockedByGrantModuleKey) ?? [];
+    if (rule.fieldKey) existing.push(rule.fieldKey.replace(/_/g, " "));
+    if (rule.questionId) existing.push("a profile question");
+    sensitiveFieldsByModule.set(rule.unlockedByGrantModuleKey, existing);
+  }
   const communityTasksForPicker = communityTasksRaw.map((t) => ({
     id: t.id,
     title: t.title,
@@ -335,6 +687,11 @@ export default async function SettingsPage({
             detail page to put yourself forward or endorse a candidate.
           </Banner>
         </div>
+        {showFoundersPrompt && (await getFoundersAssemblyPromptState(viewing.communityId)) === "show" && (
+          <div className="mt-3">
+            <FoundersAssemblyPrompt />
+          </div>
+        )}
       </main>
     );
   }
@@ -349,6 +706,12 @@ export default async function SettingsPage({
       </p>
 
       {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
+
+      {showFoundersPrompt && (await getFoundersAssemblyPromptState(viewing.communityId)) === "show" && (
+        <div className="mt-4">
+          <FoundersAssemblyPrompt />
+        </div>
+      )}
 
       <div className="mt-6">
         <TabBar active={activeTab} />
@@ -467,12 +830,12 @@ export default async function SettingsPage({
         )}
 
         {activeTab === "permissions" && (
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-7">
             <p className="text-[13px] text-[var(--text-muted)]">
-              Every access-gated capability in the app, in one place. One rule covers them all:{" "}
-              <span className="text-[var(--text)]">a task grants what it sits in</span> — placed in a
-              cycle, it covers that cycle; cycle-less, it covers the community/evergreen scope. Add or
-              replace a grant with the search-by-title picker. See a task&rsquo;s own detail or
+              Every access-gated capability in the app, in one place, grouped by how far each one
+              reaches. One rule covers them all:{" "}
+              <span className="text-[var(--text)]">a task grants what it sits in</span>. Add or replace a
+              grant with the search-by-title picker. See a task&rsquo;s own detail or
               proposal-activation screen for the identical checkbox-driven equivalent.
             </p>
             <datalist id="permissions-community-tasks">
@@ -482,8 +845,28 @@ export default async function SettingsPage({
                 </option>
               ))}
             </datalist>
-            {PERMISSION_MODULE_KEYS.map((moduleKey) => (
-              <GrantField key={moduleKey} moduleKey={moduleKey} grants={grantsFor(moduleKey)} />
+            {/* One section per PERMISSION_MODULE_SECTIONS, each stating the
+                placement rule its modules share once — the per-module hints
+                used to each restate that rule in full, which is what made
+                this tab read as a wall of near-identical paragraphs. */}
+            {PERMISSION_MODULE_SECTIONS.map((section) => (
+              <section key={section.key} className="flex flex-col gap-3">
+                <div>
+                  <h2 className="text-[18px] font-semibold text-[var(--text)]">{section.title}</h2>
+                  <p className="mt-1 text-[13px] text-[var(--text-muted)]">{section.rule}</p>
+                </div>
+                {section.moduleKeys.map((moduleKey) => (
+                  <GrantField
+                    key={moduleKey}
+                    moduleKey={moduleKey}
+                    grants={grantsFor(moduleKey)}
+                    open={openModuleKeys.has(moduleKey)}
+                    openable={isOpenableModule(moduleKey)}
+                    holdersByTaskId={holdersByTaskId}
+                    sensitiveFieldsGatedByThisModule={sensitiveFieldsByModule.get(moduleKey) ?? []}
+                  />
+                ))}
+              </section>
             ))}
           </div>
         )}
@@ -500,6 +883,23 @@ export default async function SettingsPage({
               type="number"
               defaultValue={communityRow.taskNominationResponseDays}
               hint="How long a nominated member has to accept, decline, or say not-now before it auto-releases back to Unclaimed."
+            />
+            {/* A visibility-adjacent decision, so it lives here rather
+                than with the profile questions. The floor is the whole
+                point: an event's attendees are a small, nameable group,
+                so at low numbers a single bar identifies one person in a
+                way the community-wide chart never does. */}
+            <CheckField
+              label="Break community indicators out for one event&rsquo;s attendees"
+              name="cycleIndicatorsEnabled"
+              defaultChecked={communityRow.cycleIndicatorsEnabled}
+            />
+            <TextField
+              label="Smallest event to break indicators out for (members)"
+              name="cycleIndicatorsMinMembers"
+              type="number"
+              defaultValue={communityRow.cycleIndicatorsMinMembers}
+              hint="Below this, indicators stay community-wide and the page says so rather than showing all-member figures under an event heading. There is no obviously right number — the value is having decided one."
             />
 
             <FieldSet legend="Response tracking">
@@ -624,8 +1024,8 @@ export default async function SettingsPage({
                 defaultChecked={communityRow.recruitmentInvitesOpen}
               />
               <span className="text-[12px] text-[var(--text-muted)]">
-                Close the community&rsquo;s general cycle-less doors to run fully closed except for the cycles
-                or periods you open — per-cycle doors live on each cycle&rsquo;s own settings (§4.3/D13).
+                Close the community&rsquo;s general event-independent doors to run fully closed except for the events
+                or periods you open — per-event doors live on each event&rsquo;s own settings (§4.3/D13).
               </span>
             </FieldSet>
 
@@ -878,11 +1278,54 @@ export default async function SettingsPage({
           <div className="flex flex-col gap-8">
             <section>
               <h2 className="text-[18px] font-semibold text-[var(--text)]">Profile questions</h2>
+              {profileQuestions.length === 0 && (
+                /* Offered only when there's genuinely nothing to edit. Once
+                   a community has even one question it has decided what its
+                   questions are, and silently adding twenty more over the top
+                   would be the wrong kind of helpful. */
+                <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <p className="text-[13px] text-[var(--text)]">
+                    This Community has no questions yet.
+                  </p>
+                  <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                    Add the starter set &mdash; twenty questions covering who someone is, what they can
+                    do, what an event needs, and a few restricted answers that come with an audience
+                    already attached. Every one of them is yours to retitle, re-shape, archive or delete
+                    afterwards; nothing is a commitment.
+                  </p>
+                  <form action={seedDefaultProfileQuestionsAction} className="mt-3">
+                    <button type="submit" className={BUTTON_SECONDARY}>
+                      Add the starter set
+                    </button>
+                  </form>
+                </div>
+              )}
               <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-                Standing facts about a member — once-ever (e.g. emergency contact), per-cycle, or tied to one phase
+                Standing facts about a member — once-ever (e.g. emergency contact), per-event, or tied to one phase
                 name (e.g. &ldquo;Availability &mdash; Build&rdquo;). A phase-scoped question with &ldquo;feeds
                 capacity signal&rdquo; on powers the Coordination view&rsquo;s fitted-ask flags and non-response list
-                for whichever cycle phase matches its name.
+                for whichever event phase matches its name.
+              </p>
+              <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+                Everyone&rsquo;s outstanding questions are answered at{" "}
+                <a href="/questions" className="text-[var(--accent-1)] hover:underline">
+                  /questions
+                </a>
+                , which is also where a member lands after saying they&rsquo;re coming to an event from their
+                Dashboard or Community dashboard. Marking one <strong>required</strong> means anyone who hasn&rsquo;t
+                answered it yet gets a count on their Dashboard until they do — so reserve it for what you genuinely
+                can&rsquo;t run the event without. &ldquo;I don&rsquo;t know yet&rdquo; counts as an answer, but add
+                a <strong>needed by</strong> date if you need a real answer by a real time: past that date the
+                deferral stops counting and the question comes back. Leave it blank for a standing fact like an
+                emergency contact, where a deferral should really be permanent.
+                <br />
+                The two &ldquo;not answering&rdquo; buttons are deliberately different. <strong>Allow &ldquo;I
+                don&rsquo;t know yet&rdquo;</strong> is on by default and means &ldquo;ask me again later&rdquo;.
+                <strong>Allow &ldquo;prefer not to say&rdquo;</strong> is off by default and means{" "}
+                <em>this question is optional for everyone</em> — turning it on makes the question stop being
+                required in practice, because picking it is a permanent, unchased answer. Turn it on for
+                questions about someone&rsquo;s own identity or circumstances, and leave it off for questions the
+                community genuinely needs a real answer to from everyone.
               </p>
               {profileQuestions.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None yet.</p>}
               <div className="mt-3 flex flex-col gap-2">
@@ -895,17 +1338,94 @@ export default async function SettingsPage({
                         {q.scope === "phase" ? ` (${q.phaseNameHint})` : ""} — scope is set at creation, not editable here.
                       </span>
                       <ProfileQuestionEditor
-                        initial={{ label: q.label, responseType: q.responseType, options: q.options, required: q.required }}
+                        initial={toEditableFieldShape({
+                          label: q.label,
+                          responseType: q.responseType,
+                          options: q.options,
+                          required: q.required,
+                          multiline: q.multiline,
+                          validation: q.validation,
+                          allowOther: q.allowOther,
+                          min: q.min,
+                          max: q.max,
+                          step: q.step,
+                        })}
                       />
                       <div className="flex flex-wrap items-center gap-3">
                         {q.scope === "phase" && (
                           <CheckField label="feeds capacity signal" name="feedsCapacitySignal" defaultChecked={q.feedsCapacitySignal} />
                         )}
-                        <CheckField label="surface during onboarding" name="onboardingSurface" defaultChecked={q.surfaces.includes("onboarding")} />
+                        <CheckField label="also ask during a new member's first-week onboarding" name="onboardingSurface" defaultChecked={q.surfaces.includes("onboarding")} />
+                        <CheckField
+                          label="allow &ldquo;I don&rsquo;t know yet&rdquo;"
+                          name="allowDeferral"
+                          defaultChecked={q.allowDeferral}
+                        />
+                        <CheckField
+                          label="allow &ldquo;prefer not to say&rdquo;"
+                          name="allowPreferNotToSay"
+                          defaultChecked={q.allowPreferNotToSay}
+                        />
+                        {/* The indicator toggle is disabled with its
+                            reason attached, rather than hidden or
+                            silently ignored. Two things are being
+                            protected here: a member's expectation that
+                            a fact about them is private unless the
+                            community said otherwise, and the
+                            aggregate's ability to render whatever it
+                            ends up pointed at. A checkbox that
+                            refuses to tick and says why teaches the
+                            rule; one that just isn't there leaves
+                            someone wondering where the option went. */}
+                        <IndicatorToggle
+                          question={q}
+                          canPublish={canPublishAsIndicator(q)}
+                          blocker={indicatorBlocker(q)}
+                        />
+                        <PrivacyToggles
+                          question={q}
+                          emergencyBlocked={q.emergencyAccess && q.publishedAsIndicator}
+                          // Only blocks turning it ON. A question that is
+                          // somehow already emergency-marked without being
+                          // sensitive must still be tickable-off, or the
+                          // state would be unescapable except by deleting
+                          // the question.
+                          emergencyNeedsSensitive={!q.sensitive && !q.emergencyAccess}
+                          ruleCount={ruleCountByQuestion.get(q.id) ?? 0}
+                        />
+                        {q.required && q.allowDeferral && (
+                          <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                            needed by
+                            <input type="date" name="requiredBy" defaultValue={q.requiredBy ?? ""} className={`${INPUT} py-1`} />
+                          </label>
+                        )}
                         <button type="submit" className={BUTTON_PRIMARY}>
                           Save
                         </button>
                       </div>
+                      {(!q.allowDeferral || q.allowPreferNotToSay) && (
+                        <p className="text-[12px] text-[var(--text-muted)]">
+                          {!q.allowDeferral && (
+                            <>
+                              No &ldquo;I don&rsquo;t know yet&rdquo; button is offered for this one — it stays
+                              outstanding until it&rsquo;s really answered.
+                            </>
+                          )}
+                          {q.allowPreferNotToSay && (
+                            <>
+                              {!q.allowDeferral && " "}
+                              &ldquo;Prefer not to say&rdquo; is a permanent answer here: whoever picks it is
+                              done with this question, and no due date or reminder will chase them.
+                            </>
+                          )}
+                        </p>
+                      )}
+                      {q.requiredBy && (
+                        <p className="text-[12px] text-[var(--text-muted)]">
+                          After {new Date(q.requiredBy).toLocaleDateString()}, anyone who answered
+                          &ldquo;I don&rsquo;t know yet&rdquo; counts as still owing an answer.
+                        </p>
+                      )}
                     </form>
                     <form action={q.archivedAt ? unarchiveProfileQuestionAction : archiveProfileQuestionAction} className="mt-2">
                       <input type="hidden" name="questionId" value={q.id} />
@@ -922,15 +1442,28 @@ export default async function SettingsPage({
                   <PlusIcon /> Add profile question
                 </summary>
                 <form action={createProfileQuestionAction} className="mt-2 flex max-w-[600px] flex-col gap-2">
-                  <ProfileQuestionEditor initial={{ label: "", responseType: "free_text", options: [], required: false }} />
+                  <ProfileQuestionEditor
+                    initial={toEditableFieldShape({ label: "", responseType: "text", required: false })}
+                  />
                   <select name="scope" defaultValue="once_ever" className={INPUT}>
                     <option value="once_ever">Once ever</option>
-                    <option value="per_cycle">Per cycle</option>
+                    <option value="per_cycle">Per event</option>
                     <option value="phase">Tied to one phase name</option>
                   </select>
                   <input type="text" name="phaseNameHint" placeholder="phase name (only if scope is 'phase'), e.g. Build" className={INPUT} />
                   <CheckField label="feeds capacity signal (phase-scoped only)" name="feedsCapacitySignal" />
-                  <CheckField label="surface during onboarding" name="onboardingSurface" />
+                  <CheckField label="also ask during a new member's first-week onboarding" name="onboardingSurface" />
+                  <CheckField label="allow &ldquo;I don&rsquo;t know yet&rdquo;" name="allowDeferral" defaultChecked />
+                  <CheckField label="allow &ldquo;prefer not to say&rdquo;" name="allowPreferNotToSay" />
+                  <p className="text-[12px] text-[var(--text-muted)]">
+                    You can turn a question into a community indicator after adding it &mdash; tick
+                    &ldquo;show the answers on the Community page&rdquo; on its row. Only a once-ever
+                    question with a countable answer type can be one.
+                  </p>
+                  <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                    needed by (optional — only applies if required and deferrable)
+                    <input type="date" name="requiredBy" className={`${INPUT} py-1`} />
+                  </label>
                   <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                     Add
                   </button>
@@ -1027,7 +1560,10 @@ export default async function SettingsPage({
                 {sensitiveFieldRules.map((r) => (
                   <div key={r.id} className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
                     <span className="flex-1 text-[13px] text-[var(--text)]">
-                      {SENSITIVE_FIELD_LABELS[r.fieldKey]} — unlocked by{" "}
+                      {r.questionId
+                        ? `“${questionLabelById.get(r.questionId) ?? "an archived question"}” — unlocked by `
+                        : `${SENSITIVE_FIELD_LABELS[r.fieldKey!]} — unlocked by `}
+                      {""}
                       {r.unlockedByTaskId
                         ? `holding "${ruleTaskNameById.get(r.unlockedByTaskId) ?? "—"}"`
                         : r.unlockedByTierId
@@ -1045,13 +1581,34 @@ export default async function SettingsPage({
               </div>
 
               <form action={createSensitiveFieldAccessRuleAction} className="mt-3 flex max-w-[420px] flex-col gap-2">
-                <select name="fieldKey" defaultValue={SENSITIVE_FIELD_KEYS[0]} className={INPUT}>
-                  {SENSITIVE_FIELD_KEYS.map((k) => (
-                    <option key={k} value={k}>
-                      {SENSITIVE_FIELD_LABELS[k]}
-                    </option>
-                  ))}
-                </select>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>What does this rule unlock?</span>
+                  <select name="fieldKey" defaultValue={SENSITIVE_FIELD_KEYS[0]} className={INPUT}>
+                    {SENSITIVE_FIELD_KEYS.map((k) => (
+                      <option key={k} value={k}>
+                        {SENSITIVE_FIELD_LABELS[k]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Or a profile question ID (pick exactly one target)</span>
+                  <select name="questionId" defaultValue="" className={INPUT}>
+                    <option value="">— none —</option>
+                    {sensitiveQuestionOptions.map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {sensitiveQuestionOptions.length === 0 && (
+                  <p className="text-[12px] text-[var(--text-muted)]">
+                    No questions are marked sensitive yet, so there&rsquo;s nothing here to unlock. Mark one
+                    sensitive under Profile questions first — its <em>sensitive</em> box stays disabled until it
+                    has a rule, which is what makes the flag mean something.
+                  </p>
+                )}
                 <label className="flex flex-col gap-1">
                   <span className={LABEL}>Unlock via a Tier</span>
                   <select name="unlockedByTierId" defaultValue="" className={INPUT}>
@@ -1099,6 +1656,12 @@ export default async function SettingsPage({
                       {p.gatesSensitiveField && (
                         <span className="text-[12px] text-[var(--text-muted)]"> — gates {SENSITIVE_FIELD_LABELS[p.gatesSensitiveField]}</span>
                       )}
+                      {p.gatesQuestionId && (
+                        <span className="text-[12px] text-[var(--text-muted)]">
+                          {" "}
+                          — gates &ldquo;{questionLabelById.get(p.gatesQuestionId) ?? "an archived question"}&rdquo;
+                        </span>
+                      )}
                       {p.requiresExplicit && <span className="text-[12px] text-[var(--text-muted)]"> (explicit)</span>}
                       <div className="text-[12px] text-[var(--text-muted)]">{p.noticeText}</div>
                     </div>
@@ -1123,6 +1686,15 @@ export default async function SettingsPage({
                     {SENSITIVE_FIELD_KEYS.map((k) => (
                       <option key={k} value={k}>
                         {SENSITIVE_FIELD_LABELS[k]}
+                      </option>
+                    ))}
+                  </select>
+                  <span className={LABEL}>Or gates a sensitive profile question (optional)</span>
+                  <select name="gatesQuestionId" defaultValue="" className={INPUT}>
+                    <option value="">— none —</option>
+                    {sensitiveQuestionOptions.map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.label}
                       </option>
                     ))}
                   </select>
@@ -1166,13 +1738,21 @@ export default async function SettingsPage({
                       initialAllowAnonymous={f.allowAnonymous}
                       initialFields={(f.fields as FormField[]).map((field) => ({
                         key: field.key,
-                        label: field.label,
-                        responseType: field.responseType,
-                        options: field.options ?? [],
-                        required: field.required ?? false,
-                        isNameField: field.isNameField,
-                        isEmailField: field.isEmailField,
-                        mapsToProfileQuestionId: field.mapsToProfileQuestionId,
+                        ...toEditableFieldShape({
+                          label: field.label,
+                          responseType: field.responseType,
+                          options: field.options,
+                          required: field.required,
+                          multiline: field.multiline,
+                          validation: field.validation,
+                          allowOther: field.allowOther,
+                          min: field.min,
+                          max: field.max,
+                          step: field.step,
+                          isNameField: field.isNameField,
+                          isEmailField: field.isEmailField,
+                          mapsToProfileQuestionId: field.mapsToProfileQuestionId,
+                        }),
                       }))}
                       profileQuestionOptions={onceEverProfileQuestionOptions}
                       submitLabel="Save"

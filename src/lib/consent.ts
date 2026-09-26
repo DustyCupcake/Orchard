@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { consentMethodEnum, consentPurpose, consentRecord } from "@/db/schema";
+import { consentMethodEnum, consentPurpose, consentRecord, profileQuestion } from "@/db/schema";
 import { sensitiveFieldKeyEnum } from "@/db/schema/sensitive-field-access-rule";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, NotFoundError } from "./errors";
@@ -30,7 +30,12 @@ export const createConsentPurposeInput = z.object({
   label: z.string().min(1),
   noticeText: z.string().min(1),
   requiresExplicit: z.boolean().optional(),
+  // Exactly one of the two, checked below. A purpose gates either one of
+  // docs/spec.md's four fixed member columns or one of the community's own
+  // sensitive questions — same legal machinery either way, which is why
+  // this is a second target rather than a second table.
   gatesSensitiveField: z.enum(sensitiveFieldKeyEnum.enumValues).nullable().optional(),
+  gatesQuestionId: z.string().uuid().nullable().optional(),
 });
 export type CreateConsentPurposeInput = z.infer<typeof createConsentPurposeInput>;
 
@@ -41,8 +46,15 @@ export async function createConsentPurpose(actor: Member, input: CreateConsentPu
   // requireValidFields/Budget's requireLineItems already set: don't
   // trust only the zod shape (which allows either value here) to carry
   // a rule this important.
-  if (input.gatesSensitiveField && !requiresExplicit) {
+  const gatesAnything = Boolean(input.gatesSensitiveField) || Boolean(input.gatesQuestionId);
+  if (gatesAnything && !requiresExplicit) {
     throw new AppError("A purpose gating a Sensitive-data field must require explicit consent");
+  }
+  const gateTargets = [Boolean(input.gatesSensitiveField), Boolean(input.gatesQuestionId)].filter(
+    Boolean,
+  ).length;
+  if (gateTargets > 1) {
+    throw new AppError("A purpose can gate either a fixed Sensitive-data field or a profile question, not both");
   }
 
   const existingByKey = await db
@@ -68,6 +80,47 @@ export async function createConsentPurpose(actor: Member, input: CreateConsentPu
     }
   }
 
+  // At most one purpose per community may gate a given question, the same
+  // rule as the fixed fields and for the same reason: two purposes gating
+  // one answer means the member has to work out which notice authorises
+  // the read, and a stale grant against the wrong one becomes
+  // indistinguishable from a live one.
+  if (input.gatesQuestionId) {
+    const [target] = await db
+      .select({ archivedAt: profileQuestion.archivedAt })
+      .from(profileQuestion)
+      .where(
+        and(
+          eq(profileQuestion.id, input.gatesQuestionId),
+          eq(profileQuestion.communityId, actor.communityId),
+        ),
+      );
+    if (!target) {
+      throw new NotFoundError("Profile question not found in your community");
+    }
+    if (target.archivedAt) {
+      throw new ConflictError("That question is archived, so there is nothing left to gate");
+    }
+    // Staged, like an access rule: the purpose is written first and the
+    // question marked sensitive second, because the flag is refused until
+    // an audience exists. A purpose pointed at a not-yet-sensitive
+    // question gates nothing today and starts gating the moment the flag
+    // goes on — which is also when a notice about it starts meaning
+    // something, so the ordering is the safe one either way.
+    const existingGate = await db
+      .select({ id: consentPurpose.id })
+      .from(consentPurpose)
+      .where(
+        and(
+          eq(consentPurpose.communityId, actor.communityId),
+          eq(consentPurpose.gatesQuestionId, input.gatesQuestionId),
+        ),
+      );
+    if (existingGate.length > 0) {
+      throw new ConflictError("Another purpose already gates that question");
+    }
+  }
+
   const [created] = await db
     .insert(consentPurpose)
     .values({
@@ -77,6 +130,7 @@ export async function createConsentPurpose(actor: Member, input: CreateConsentPu
       noticeText: input.noticeText,
       requiresExplicit,
       gatesSensitiveField: input.gatesSensitiveField ?? null,
+      gatesQuestionId: input.gatesQuestionId ?? null,
       noticeVersion: 1,
     })
     .returning();
@@ -189,6 +243,25 @@ export async function getGatingPurposesForCommunity(communityId: string) {
   for (const r of rows) {
     if (r.gatesSensitiveField) {
       map.set(r.gatesSensitiveField, r);
+    }
+  }
+  return map;
+}
+
+// The same wiring for question-keyed gates. Kept beside the field map
+// rather than merged into it: two key spaces, and merging them would need
+// a sentinel value to mean "this question has no gating purpose", which is
+// the kind of sentinel that eventually gets returned by accident.
+export async function getGatingPurposesForQuestions(communityId: string) {
+  const rows = await db
+    .select()
+    .from(consentPurpose)
+    .where(and(eq(consentPurpose.communityId, communityId), isNotNull(consentPurpose.gatesQuestionId)));
+
+  const map = new Map<string, (typeof rows)[number]>();
+  for (const r of rows) {
+    if (r.gatesQuestionId) {
+      map.set(r.gatesQuestionId, r);
     }
   }
   return map;

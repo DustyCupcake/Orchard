@@ -27,9 +27,13 @@ type Member = typeof memberTable.$inferSelect;
 // of view. A backstop that isn't also a coordinator sees only their
 // own scope's segment.
 export async function listEscalatedTasks(actor: Member, viewCycleIds: string[]) {
-  const { branchIds, cycleIds } = await listCoordinationScopeIds(actor);
+  const { communityWide, branchIds, cycleIds } = await listCoordinationScopeIds(actor);
   const backstopScopes = await listBackstopScopesForMember(actor);
-  const isCommunityWideCoordinator = branchIds.size > 0;
+  // A community_coordination holder covers every branch by definition,
+  // and a cycle-less branch_coordination task carries column authority
+  // across every cycle of its branch — either keeps the whole
+  // community-wide queue.
+  const isCommunityWideCoordinator = communityWide || branchIds.size > 0;
   if (!isCommunityWideCoordinator && cycleIds.size === 0 && backstopScopes.length === 0) {
     throw new ForbiddenError("Only a coordination or backstop holder can see the escalated queue");
   }

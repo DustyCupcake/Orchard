@@ -5,7 +5,7 @@ import { cycle, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getPostCycleFeedbackForm, listPostCycleFeedbackResponses } from "@/lib/forms";
 import type { FormField } from "@/lib/forms";
-import FieldPreview from "@/components/FieldPreview";
+import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
 import { ForbiddenError } from "@/lib/errors";
 import { Banner, BUTTON_PRIMARY, CARD, CheckField, SELECT } from "@/components/ui/kit";
 import { submitFeedbackAction } from "./actions";
@@ -108,7 +108,7 @@ export default async function FeedbackPage({
               {fields.map((f) => (
                 <FieldPreview
                   key={f.key}
-                  field={{ label: f.label, responseType: f.responseType, options: f.options ?? [], required: f.required ?? false }}
+                  field={toPreviewShape({ ...f, label: f.label, required: f.required ?? false })}
                   name={`field_${f.key}`}
                 />
               ))}

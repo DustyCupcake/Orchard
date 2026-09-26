@@ -1,17 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import FieldPreview from "@/components/FieldPreview";
-import FieldShapeEditor, { type EditableFieldShape } from "./FieldShapeEditor";
+import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
+import FieldShapeEditor from "./FieldShapeEditor";
+import { RESPONSE_TYPES, type EditableFieldShape, type ResponseType } from "@/lib/field-shape";
 
-const PROFILE_QUESTION_RESPONSE_TYPES: EditableFieldShape["responseType"][] = [
-  "free_text",
-  "single_choice",
-  "multi_choice",
-  "date",
-];
+const PROFILE_QUESTION_RESPONSE_TYPES: ResponseType[] = [...RESPONSE_TYPES];
 
-export default function ProfileQuestionEditor({ initial }: { initial: EditableFieldShape }) {
+export default function ProfileQuestionEditor({
+  initial,
+}: {
+  initial: Omit<EditableFieldShape, "isNameField" | "isEmailField" | "mapsToProfileQuestionId">;
+}) {
   const [field, setField] = useState<EditableFieldShape>(initial);
 
   return (
@@ -20,6 +20,16 @@ export default function ProfileQuestionEditor({ initial }: { initial: EditableFi
       {field.options.map((o, i) => (
         <input type="hidden" key={i} name="options" value={o} />
       ))}
+      {/* The field-shape flags are serialized here rather than inside
+          FieldShapeEditor, which is deliberately presentation-only (value
+          in, onChange out) so FormBuilder can drive N rows of it. This
+          component owns exactly one field, so it owns the form. */}
+      <input type="hidden" name="multiline" value={field.multiline ? "on" : ""} />
+      <input type="hidden" name="validation" value={field.validation} />
+      <input type="hidden" name="allowOther" value={field.allowOther ? "on" : ""} />
+      <input type="hidden" name="min" value={field.min ?? ""} />
+      <input type="hidden" name="max" value={field.max ?? ""} />
+      <input type="hidden" name="step" value={field.step ?? ""} />
 
       <div className="min-w-[16rem] flex-1">
         <input
@@ -46,7 +56,7 @@ export default function ProfileQuestionEditor({ initial }: { initial: EditableFi
         <p className="mb-2 text-[11px] uppercase tracking-wide text-[var(--text-muted)]">
           Preview — not submittable
         </p>
-        <FieldPreview field={field} disabled />
+        <FieldPreview field={toPreviewShape(field)} disabled />
       </div>
     </div>
   );

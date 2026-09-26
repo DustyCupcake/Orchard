@@ -14,12 +14,17 @@ export const form = pgTable("form", {
     .references(() => community.id),
   title: text("title").notNull(),
   description: text("description"),
-  // Array of {key, label, responseType, options, required} — the exact
-  // same shape Question/ProfileQuestion already use (free_text/
-  // single_choice/multi_choice + options), per spec's "Forms made of
-  // Questions? Partly." Kept as jsonb rather than a child table: a
-  // Form's fields are opaque to the platform and submitted together as
-  // one event, never individually queried the way a Question row is.
+  // Array of {key, label, responseType, options, required} plus the
+  // field-shape flags (multiline, validation, allowOther, min/max/step)
+  // — the exact same shape ProfileQuestion uses, per spec's "Forms made
+  // of Questions? Partly." Both project into src/lib/field-shape.ts's
+  // FieldShape, which is the one definition of how a question is
+  // answered; this row and ProfileQuestion's only add what Form owns
+  // (the key, the name/email role tags, mapsToProfileQuestionId) or what
+  // ProfileQuestion owns (scope, required, deferral, due date). Kept as
+  // jsonb rather than a child table: a Form's fields are opaque to the
+  // platform and submitted together as one event, never individually
+  // queried the way a Question row is.
   fields: jsonb("fields").notNull().default([]),
   allowAnonymous: boolean("allow_anonymous").notNull().default(false),
   createdBy: uuid("created_by")

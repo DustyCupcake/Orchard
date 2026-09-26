@@ -9,7 +9,7 @@ import {
   submitRecruitmentApplication,
   submitRecruitmentApplicationInput,
 } from "@/lib/recruitment";
-import type { FormField } from "@/lib/forms";
+import { formValuesFromFormData, type FormField } from "@/lib/forms";
 import { AppError } from "@/lib/errors";
 
 export async function submitApplicationAction(formData: FormData) {
@@ -34,14 +34,7 @@ export async function submitApplicationAction(formData: FormData) {
     }
 
     const fields = resolution.form.fields as FormField[];
-    const values: Record<string, unknown> = {};
-    for (const f of fields) {
-      if (f.responseType === "multi_choice") {
-        values[f.key] = formData.getAll(`field_${f.key}`).map(String);
-      } else {
-        values[f.key] = String(formData.get(`field_${f.key}`) ?? "");
-      }
-    }
+    const values = formValuesFromFormData(fields, formData);
 
     const input = submitRecruitmentApplicationInput.parse({
       values,

@@ -33,9 +33,11 @@ import {
 } from "@/lib/recruitment";
 import {
   createForm,
-  } from "@/lib/forms";
-import { isKitchenOwner } from "@/lib/kitchen";
-import { isBudgetOwner } from "@/lib/budget";
+  listPostCycleFeedbackResponses,
+  submitPostCycleFeedback,
+} from "@/lib/forms";
+import { listKitchenNeedsAction, isKitchenOwner } from "@/lib/kitchen";
+import { closeProposalsToVoting, createBudgetCycle, isBudgetOwner, listBudgetNeedsAction, submitBudgetVote } from "@/lib/budget";
 import { isShiftManagerForScope } from "@/lib/shifts";
 import { isEventSchedulingOwner } from "@/lib/event-scheduling";
 import { isSpatialPlanningHolder } from "@/lib/spatial-planning";
@@ -53,6 +55,7 @@ import {
 import { listUnlockedFields } from "@/lib/sensitive-data";
 import { isAdmin, requireAdmins } from "@/lib/settings/admins";
 import { updateCommunity } from "@/lib/settings";
+import { getNavContext } from "@/lib/nav";
 import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
 
 // Step 1 of docs/open-permissions-plan.md: the storage. Nothing reads this
@@ -487,6 +490,47 @@ describe("open scope-sets (Step 3)", () => {
     expect(await listHeldRecruitmentScopes(bob)).toEqual(new Set());
     await expect(requireRecruitmentScopeForCycle(bob, null)).rejects.toThrow();
   });
+
+  // The one module Step 3 completes on its own.
+  it("feedback_review: a non-holder can read every response once open", async () => {
+    const { community: testCommunity, alice, bob } = await createFixtures();
+    const survey = await createForm(alice, {
+      title: "Survey",
+      fields: [{ key: "overall", label: "Overall", responseType: "text", required: true }],
+      allowAnonymous: true,
+    });
+    await updateCommunity(alice, { postCycleFeedbackFormId: survey.id });
+    await submitPostCycleFeedback(bob, { values: { overall: "Went well" } });
+
+    // Closed: refused.
+    await expect(listPostCycleFeedbackResponses(bob)).rejects.toThrow();
+
+    // Open: bob reads it, with no task and no grant anywhere in the picture.
+    await openModule(testCommunity.id, "feedback_review", alice.id);
+    const responses = await listPostCycleFeedbackResponses(bob);
+    expect(responses).toHaveLength(1);
+    expect(responses[0].values).toEqual({ overall: "Went well" });
+  });
+
+  // Originally pinned as an INTERIM boundary: at Step 3 the scope-set half
+  // of Kitchen was open but the Class 1 gate in front of it was not. Both
+  // have since landed (Step 4 made isKitchenOwner open-aware, Step 6 gave
+  // the list a personal/shared split), so this now asserts the *settled*
+  // behaviour — kept rather than deleted, because "kitchen open ⇒ the
+  // scope-set is {null}" is the thing worth holding onto.
+  it("kitchen: an open module's scope-set is {null} and its items are shared", async () => {
+    const { community: testCommunity, alice, bob } = await createFixtures();
+    await db
+      .update(community)
+      .set({ modulesEnabled: [...testCommunity.modulesEnabled, "kitchen"] })
+      .where(eq(community.id, testCommunity.id));
+    await openModule(testCommunity.id, "kitchen", alice.id);
+
+    expect(await isModuleOpenToEveryone(testCommunity.id, "kitchen")).toBe(true);
+    // No task, no grant: the module is reachable purely by being open.
+    expect(await listKitchenNeedsAction(bob)).toEqual({ personal: [], shared: [] });
+  });
+
   // Interim, same reasoning. This is the test that makes the
   // unsatisfiable-decision fix (docs/recruitment-access-plan.md §1) a Step 4
   // change rather than a Step 3 one: submitEvaluation and
@@ -666,7 +710,7 @@ describe("open capability resolvers (Step 4)", () => {
       .where(eq(community.id, testCommunity.id));
     const form = await createForm(alice, {
       title: "Application",
-      fields: [{ key: "name", label: "Name", responseType: "free_text", required: true }],
+      fields: [{ key: "name", label: "Name", responseType: "text", required: true }],
     });
     await updateCommunity(alice, {
       recruitmentApplicationFormId: form.id,
@@ -863,6 +907,26 @@ describe("open modules are not misconfigured (Step 5)", () => {
       expect.arrayContaining([alice.id, bob.id]),
     );
   });
+
+  it("the Conflict-reports nav item survives an open team with no grant", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    const communityRow = (await db.select().from(community).where(eq(community.id, testCommunity.id)))[0];
+
+    // Closed and ungranted: hidden, as before.
+    let ctx = await getNavContext(alice);
+    expect(ctx.visibleModules.conflictReports).toBe(false);
+
+    await db
+      .insert(openPermissionGrant)
+      .values({ communityId: testCommunity.id, moduleKey: "conflict_team", openedBy: alice.id });
+
+    // Open: visible. Previously this was the bug — a Community able to file
+    // and handle reports with no way to reach the page.
+    ctx = await getNavContext(alice);
+    expect(ctx.visibleModules.conflictReports).toBe(true);
+    expect(communityRow.id).toBe(testCommunity.id);
+  });
+
   // The false warning: "nobody can draw or edit" on a Community where
   // everyone can.
   it("the Spatial-planning 'nobody can draw' warning is suppressed when open", async () => {
@@ -938,8 +1002,8 @@ describe("open modules are not misconfigured (Step 5)", () => {
     const form = await createForm(alice, {
       title: "Application",
       fields: [
-        { key: "name", label: "Name", responseType: "free_text", required: true },
-        { key: "email", label: "Email", responseType: "free_text", required: true, isEmailField: true },
+        { key: "name", label: "Name", responseType: "text", required: true },
+        { key: "email", label: "Email", responseType: "text", required: true, isEmailField: true },
       ],
     });
     await updateCommunity(alice, {

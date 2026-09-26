@@ -629,7 +629,7 @@ export async function createQuestionAction(formData: FormData) {
   const taskId = String(formData.get("taskId"));
 
   try {
-    const responseType = String(formData.get("responseType") ?? "free_text");
+    const responseType = String(formData.get("responseType") ?? "text");
     const options = String(formData.get("options") ?? "")
       .split(",")
       .map((o) => o.trim())
@@ -639,6 +639,10 @@ export async function createQuestionAction(formData: FormData) {
       text: String(formData.get("text") ?? ""),
       responseType,
       options: options.length > 0 ? options : undefined,
+      // The composer on the task page is a plain one-line form, so it
+      // carries only the long/written flag; the rest default off and are
+      // editable through the richer surfaces.
+      multiline: formData.get("multiline") === "on",
       deadline: deadline ? new Date(deadline).toISOString() : undefined,
       priority: formData.get("priority") === "on",
     });

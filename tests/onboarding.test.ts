@@ -61,13 +61,13 @@ describe("Onboarding", () => {
       const { alice } = await createFixtures();
       const onboardingQ = await createProfileQuestion(alice, {
         label: "What are you hoping to get out of this?",
-        responseType: "free_text",
+        responseType: "text",
         scope: "once_ever",
         surfaces: ["onboarding"],
       });
       const otherQ = await createProfileQuestion(alice, {
         label: "Emergency contact",
-        responseType: "free_text",
+        responseType: "text",
         scope: "once_ever",
       });
 
@@ -84,7 +84,7 @@ describe("Onboarding", () => {
       const { alice } = await createFixtures();
       const q = await createProfileQuestion(alice, {
         label: "Strengths",
-        responseType: "free_text",
+        responseType: "text",
         scope: "once_ever",
       });
       expect(q.surfaces).toEqual([]);

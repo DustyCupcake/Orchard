@@ -4,7 +4,12 @@ import { cycle, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { getCommunity } from "./settings/community";
 import { isModuleEnabled } from "./modules";
-import { listGrantingTaskIds, type PermissionModuleKey } from "./permissions";
+import {
+  isModuleOpenToEveryone,
+  listGrantingTaskIds,
+  listOpenModuleKeys,
+  type PermissionModuleKey,
+} from "./permissions";
 import { isCoordinationHolder } from "./coordination";
 import { isRecruitmentTaskHolder } from "./recruitment";
 import { isEventSchedulingOwner } from "./event-scheduling/conflicts";
@@ -15,8 +20,10 @@ import { listShiftSeries, isShiftCoordinator } from "./shifts/series";
 import { isKitchenOwner } from "./kitchen";
 import { getPersonalFeed } from "./dashboard";
 import { getCurrentPhase } from "./profile-questions";
+import { listOutstandingRequiredQuestions } from "./profile-questions";
 import { getMyParticipation } from "./participation";
 import { canInitiateCycle, listOpenCycles, resolveDefaultScopeSegment } from "./cycles";
+import { listOpenAssemblies } from "./assemblies";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -108,6 +115,14 @@ export type NavContext = {
   // header (the Inbox). See nav-config.ts + AppShell.tsx.
   communicationBadgeCount: number;
   taskBadgeCount: number;
+  // Open Assemblies this member still owes an answer to — rides the
+  // Community group header, alongside the other two centers' badges.
+  // Counted by isAwaitingMyAnswer, so it is strictly "voting is open and
+  // you haven't finished answering", never "an Assembly exists": see
+  // that function's comment for why a badge for every open Assembly
+  // would work against spec.md's "no built-in urgent notification, on
+  // purpose" rule, and get ignored inside a week.
+  communityBadgeCount: number;
   isCoordinator: boolean;
   visibleModules: {
     eventScheduling: boolean;
@@ -164,6 +179,11 @@ export type NavContext = {
 export async function getNavContext(actor: Member): Promise<NavContext> {
   const community = await getCommunity(actor);
   const conflictTeamGrantingTaskIds = await listGrantingTaskIds(community.id, "conflict_team");
+  // An open `conflict_team` makes the module configured even with no granting
+  // task (D7). Keying this off grant existence alone — as this did — hid the
+  // Conflict-reports nav item for exactly the Community that had opened the
+  // team, leaving it able to file and handle reports with nowhere to go.
+  const conflictTeamOpen = await isModuleOpenToEveryone(community.id, "conflict_team");
 
   const visibleModules = {
     eventScheduling: isModuleEnabled(community, "event_scheduling"),
@@ -172,10 +192,24 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     spatialPlanning: isModuleEnabled(community, "spatial_planning"),
     sensitiveData: isModuleEnabled(community, "sensitive_data"),
     budget: isModuleEnabled(community, "budget"),
-    conflictReports: conflictTeamGrantingTaskIds.length > 0,
+    conflictReports: conflictTeamGrantingTaskIds.length > 0 || conflictTeamOpen,
     feedback: community.postCycleFeedbackFormId !== null,
     kitchen: isModuleEnabled(community, "kitchen"),
   };
+
+  // The Community's open modules, fetched once (docs/open-permissions-plan.md
+  // D5). Two jobs, and both are about *not* doing work:
+  //
+  //  1. A pin means "you have outstanding work here". An open module has no
+  //     such person — everyone can act, no one is on the hook — so an open
+  //     module must not pin. Without this, Step 4's open-aware resolvers
+  //     would have made every member's sidebar change identically, losing
+  //     the signal for whoever is actually doing the work.
+  //  2. The holder probes below are then skipped outright for an open
+  //     module, so an open Community doesn't pay nine resolver queries per
+  //     page load to compute pins nobody receives.
+  const openModuleKeys = await listOpenModuleKeys(actor.communityId);
+  const isOpen = (moduleKey: PermissionModuleKey) => openModuleKeys.has(moduleKey);
 
   const [
     isCoordinator,
@@ -191,20 +225,41 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     openCycles,
     defaultScopeSegment,
     canInitiate,
+    openAssemblies,
   ] = await Promise.all([
+    // NOT gated on open, unlike the eight below. isCoordinator is two things:
+    // the Coordination *pin*, and — via NavContext.isCoordinator — the
+    // `coordinatorOnly` nav items' visibility (nav-config.ts's isItemVisible).
+    // Suppressing it for an open module would hide the Coordination
+    // destination from everyone rather than merely unpinning it, so the pin
+    // below is suppressed instead and this stays an accurate capability
+    // answer.
     isCoordinationHolder(actor, null),
-    holdsGrantedTask(actor, "conflict_team"),
-    holdsGrantedTask(actor, "feedback_review"),
-    visibleModules.eventScheduling ? isEventSchedulingOwner(actor) : Promise.resolve(false),
-    visibleModules.recruitment ? isRecruitmentTaskHolder(actor) : Promise.resolve(false),
-    visibleModules.spatialPlanning ? isSpatialPlanningHolder(actor, community) : Promise.resolve(false),
-    visibleModules.budget ? isAnyBudgetOwner(actor) : Promise.resolve(false),
-    visibleModules.shifts ? isAnyShiftCoordinator(actor) : Promise.resolve(false),
-    visibleModules.kitchen ? isKitchenOwner(actor) : Promise.resolve(false),
+    isOpen("conflict_team") ? Promise.resolve(false) : holdsGrantedTask(actor, "conflict_team"),
+    isOpen("feedback_review") ? Promise.resolve(false) : holdsGrantedTask(actor, "feedback_review"),
+    visibleModules.eventScheduling && !isOpen("event_scheduling_owner")
+      ? isEventSchedulingOwner(actor)
+      : Promise.resolve(false),
+    visibleModules.recruitment && !isOpen("recruitment")
+      ? isRecruitmentTaskHolder(actor)
+      : Promise.resolve(false),
+    visibleModules.spatialPlanning && !isOpen("spatial_planning")
+      ? isSpatialPlanningHolder(actor, community)
+      : Promise.resolve(false),
+    visibleModules.budget && !isOpen("budget") ? isAnyBudgetOwner(actor) : Promise.resolve(false),
+    visibleModules.shifts && !isOpen("shift_management")
+      ? isAnyShiftCoordinator(actor)
+      : Promise.resolve(false),
+    visibleModules.kitchen && !isOpen("kitchen") ? isKitchenOwner(actor) : Promise.resolve(false),
     getPersonalFeed(actor),
     listOpenCycles(actor),
     resolveDefaultScopeSegment(actor),
     canInitiateCycle(actor),
+    // The Community group's badge. One extra query pair (assemblies +
+    // their per-member participation), and it's the same call the
+    // /community hub page makes for its own listing — so the badge is
+    // always exactly a count of what that page shows.
+    listOpenAssemblies(actor),
   ]);
 
   const defaultScopeName =
@@ -213,7 +268,11 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
       : ((await db.select({ name: cycle.name }).from(cycle).where(eq(cycle.id, defaultScopeSegment)))[0]?.name ?? null);
 
   const pinnedKeys: string[] = [];
-  if (isCoordinator) pinnedKeys.push("coordination");
+  // An open coordination module still satisfies isCoordinator — it just
+  // doesn't earn a pin, for the reason above.
+  const coordinationIsOpen =
+    isOpen("branch_coordination") || isOpen("community_coordination");
+  if (isCoordinator && !coordinationIsOpen) pinnedKeys.push("coordination");
   if (visibleModules.conflictReports && holdsConflictTeamTask) pinnedKeys.push("conflict-reports");
   if (visibleModules.feedback && holdsFeedbackReviewTask) pinnedKeys.push("feedback");
   if (visibleModules.eventScheduling && isEventOwner) pinnedKeys.push("schedule");
@@ -231,6 +290,8 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
   // established for Availability's phase-scoped question) rather than
   // a second "what's the current phase" resolution. Never bypasses
   // Community.modulesEnabled — only promotes an already-visible module.
+  const outstandingRequiredQuestions = await listOutstandingRequiredQuestions(actor);
+
   const currentPhase = await getCurrentPhase(actor.communityId);
   if (currentPhase?.highlightModuleKey) {
     const highlightKey = currentPhase.highlightModuleKey as VisibleModuleKey;
@@ -241,7 +302,6 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
       }
     }
   }
-
   // Manual "pin this for me" overrides — validated for visibility by
   // the caller (src/components/nav/AppShell.tsx), since a stale key
   // (a disabled module, a coordinator-only item after losing that
@@ -265,27 +325,45 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     feed.inboxFeedbackReviewCount +
     feed.inboxPollsNeedingMe.length;
 
+  // Required profile questions this member still owes a real answer to.
+  // Folded into taskBadgeCount below (so it rides the Dashboard badge
+  // rather than earning a nav item of its own) but computed separately,
+  // because the Dashboard's own element needs the real number to say "N
+  // questions" rather than a task-feed total. This is also what makes the
+  // one-click "I'm coming" on the Dashboard/Community event cards safe to
+  // offer as a single click: recording participation without walking
+  // someone through that event's questions would otherwise drop required
+  // information on the floor with nothing chasing it. See
+  // listOutstandingRequiredQuestions for exactly what counts.
   // Everything else on the feed is task-side — "your held-task
   // obligations": check-ins, attention flags, join requests into tasks
   // you hold (person-initiated but answered on the task page, so it
   // lives here), module-holder upkeep, and the coordinator-facing
   // expired-nomination notices. Rides the Dashboard nav item.
+  //
+  // The six module needs-action lists contribute their **personal** items
+  // only (docs/open-permissions-plan.md D12). A `shared` item — outstanding
+  // for the Community because its module is open, which nobody in particular
+  // opted into — is not one of *your* held-task obligations, and summing both
+  // would multiply the badge for every member of an open Community while
+  // meaning something different for each of them.
   const taskBadgeCount =
+    outstandingRequiredQuestions.length +
     feed.pendingJoinRequests.length +
     feed.upcomingCheckins.length +
     feed.flaggedHeldTasks.length +
-    feed.recruitmentNeedsAction.length +
+    feed.recruitmentNeedsAction.personal.length +
     feed.placementInvites.length +
     feed.myLinkedPendingPlacements.length +
     feed.placementRevertNotices.length +
     feed.placementPendingReviews.length +
     feed.emergencyAccessActivity.length +
-    feed.budgetNeedsAction.length +
-    feed.eventSchedulingNeedsAction.length +
-    feed.shiftCoordinatorNeedsAction.length +
+    feed.budgetNeedsAction.personal.length +
+    feed.eventSchedulingNeedsAction.personal.length +
+    feed.shiftCoordinatorNeedsAction.personal.length +
     feed.myShiftsNeedingCompletion.length +
-    feed.conflictNeedsAction.length +
-    feed.kitchenNeedsAction.length +
+    feed.conflictNeedsAction.personal.length +
+    feed.kitchenNeedsAction.personal.length +
     feed.expiredNominations.length;
 
   return {
@@ -294,6 +372,7 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     communityLogoUrl: community.logoUrl,
     communicationBadgeCount,
     taskBadgeCount,
+    communityBadgeCount: openAssemblies.filter((a) => a.needsMyAnswer).length,
     isCoordinator,
     visibleModules,
     pinnedKeys,

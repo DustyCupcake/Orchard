@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { emergencyAccessLog, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getVisibleContactMethods, listEmergencyOnlyContactMethods } from "@/lib/contact-methods";
-import { getMostRecentActivation } from "@/lib/emergency-access";
+import { getMostRecentActivation, listEmergencyAnswers } from "@/lib/emergency-access";
 import { Banner, BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
 import { activateEmergencyAccessAction, addEmergencyAccessExplanationAction } from "./actions";
 
@@ -56,6 +56,13 @@ export default async function MemberPage({
   }
 
   const visibleMethods = await getVisibleContactMethods(viewing, target.id);
+  // Counted up front so the form can label the reason field as required
+  // rather than letting the server bounce the submit — a refusal the
+  // person can't see coming reads as a broken button, and the field is
+  // the whole accountability mechanism, so it has to be asked for
+  // deliberately rather than discovered.
+  const emergencyAnswers = await listEmergencyAnswers(target.id);
+  const explanationRequired = emergencyAnswers.length > 0;
 
   // Reveal emergency-only methods only right after a real, fresh
   // activation this member just performed — proven by a recent
@@ -63,12 +70,14 @@ export default async function MemberPage({
   // itself (the redirect after activating only ever passes a plain
   // `activated=1` marker, not the contact values).
   let revealedMethods: Awaited<ReturnType<typeof listEmergencyOnlyContactMethods>> = [];
+  let revealedAnswers: Awaited<ReturnType<typeof listEmergencyAnswers>> = [];
   let recentLog: EmergencyAccessLogRow | null = null;
   if (activated === "1") {
     const mostRecent = await getMostRecentActivation(viewing, target.id);
     if (mostRecent && Date.now() - mostRecent.activatedAt.getTime() < ACTIVATION_WINDOW_MS) {
       recentLog = mostRecent;
       revealedMethods = await listEmergencyOnlyContactMethods(target.id);
+      revealedAnswers = emergencyAnswers;
     }
   }
 
@@ -104,6 +113,14 @@ export default async function MemberPage({
           Any member can activate this to reveal {target.name}&rsquo;s emergency-only contact info
           when it&rsquo;s genuinely needed. Both of you are notified, and every activation is
           logged — see your <Link href="/dashboard" className="text-[var(--accent-1)] hover:underline">Dashboard</Link> for recent activity.
+          {explanationRequired && (
+            <>
+              {" "}
+              {target.name} has {emergencyAnswers.length === 1 ? "a question" : `${emergencyAnswers.length} questions`}{" "}
+              marked for emergency access, so the reason is required before activating —{" "}
+              {viewing.name === target.name ? "they" : "they"}&rsquo;ll be told it was read.
+            </>
+          )}
         </p>
 
         {recentLog && (
@@ -120,6 +137,27 @@ export default async function MemberPage({
                     </li>
                   ))}
                 </ul>
+              )}
+              {revealedAnswers.length > 0 && (
+                <>
+                  <p className="mt-2 font-medium">
+                    {target.name}&rsquo;s emergency answers ({revealedAnswers.length}):
+                  </p>
+                  {/* Answering one of these is what consented to this read
+                      — there's no separate box anyone ticked, exactly as a
+                      filled-in emergency contact method has no opt-out from
+                      being reachable. Not answering was the only refusal. */}
+                  <p className="mt-1 text-[12px] opacity-80">
+                    Answering these is what agreed to them being readable in an emergency.
+                  </p>
+                  <ul className="mt-1 flex flex-col gap-1">
+                    {revealedAnswers.map((a) => (
+                      <li key={a.questionId}>
+                        {a.label}: <span className="font-medium">{a.value}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
               <form action={addEmergencyAccessExplanationAction} className="mt-2">
                 <input type="hidden" name="targetMemberId" value={target.id} />
@@ -139,8 +177,21 @@ export default async function MemberPage({
         <form action={activateEmergencyAccessAction} className="mt-3 flex flex-col gap-2">
           <input type="hidden" name="targetMemberId" value={target.id} />
           <label className="flex flex-col gap-1">
-            <span className={LABEL}>Why (optional — can be added after the fact instead)</span>
-            <input type="text" name="explanation" className={INPUT} />
+            <span className={LABEL}>
+              {explanationRequired
+                ? "Why — required, because a member's answer is about to be read"
+                : "Why (optional — can be added after the fact instead)"}
+            </span>
+            <input
+              type="text"
+              name="explanation"
+              className={INPUT}
+              // Required in the HTML too, not only on the server. The
+              // server check is the one that matters, but a field the
+              // browser lets you skip and the server then rejects is the
+              // worst of both.
+              required={explanationRequired}
+            />
           </label>
           <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
             Activate emergency access

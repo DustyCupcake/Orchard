@@ -4,28 +4,46 @@ import { db } from "@/db";
 import { question, questionResponse } from "@/db/schema";
 import type { member as memberTable, question as questionTable } from "@/db/schema";
 import { AppError, ConflictError, NotFoundError } from "../errors";
+import {
+  RESPONSE_TYPES,
+  TEXT_VALIDATIONS,
+  fieldShapeColumnValues,
+  isChoiceType,
+  toFieldShape,
+  validateFieldValue,
+} from "../field-shape";
 import { requireTaskInCommunity } from "../tasks/shared";
 import { getCurrentRound } from "./rounds";
 
 type Member = typeof memberTable.$inferSelect;
 type Question = typeof questionTable.$inferSelect;
 
-const responseTypes = ["free_text", "single_choice", "multi_choice"] as const;
+// The same six shapes every other question system uses, from the same
+// list — see src/lib/field-shape.ts. This was its own three-value list
+// with its own validator below, which is exactly the duplication that
+// made a task question unable to ask "when could you do this".
+const responseTypes = RESPONSE_TYPES;
+
+const fieldShapeInput = {
+  multiline: z.boolean().optional(),
+  validation: z.enum(TEXT_VALIDATIONS).optional(),
+  allowOther: z.boolean().optional(),
+  min: z.number().int().nullable().optional(),
+  max: z.number().int().nullable().optional(),
+  step: z.number().int().nullable().optional(),
+};
 
 export const createQuestionInput = z
   .object({
     text: z.string().min(1),
     responseType: z.enum(responseTypes).optional(),
     options: z.array(z.string().min(1)).optional(),
+    ...fieldShapeInput,
     deadline: z.string().datetime().nullable().optional(),
     priority: z.boolean().optional(),
   })
   .superRefine((input, ctx) => {
-    const responseType = input.responseType ?? "free_text";
-    if (
-      (responseType === "single_choice" || responseType === "multi_choice") &&
-      (!input.options || input.options.length === 0)
-    ) {
+    if (isChoiceType(input.responseType ?? "text") && (!input.options || input.options.length === 0)) {
       ctx.addIssue({
         code: "custom",
         message: "options are required for a choice-based response type",
@@ -41,11 +59,8 @@ export type CreateQuestionInput = z.infer<typeof createQuestionInput>;
 export async function createQuestion(actor: Member, taskId: string, input: CreateQuestionInput) {
   await requireTaskInCommunity(actor, taskId);
 
-  const responseType = input.responseType ?? "free_text";
-  if (
-    (responseType === "single_choice" || responseType === "multi_choice") &&
-    (!input.options || input.options.length === 0)
-  ) {
+  const responseType = input.responseType ?? "text";
+  if (isChoiceType(responseType) && (!input.options || input.options.length === 0)) {
     throw new AppError("options are required for a choice-based response type");
   }
 
@@ -56,7 +71,9 @@ export async function createQuestion(actor: Member, taskId: string, input: Creat
       askedBy: actor.id,
       text: input.text,
       responseType,
-      options: input.options ?? [],
+      // Field-shape flags, with the ones that don't apply to this type
+      // zeroed in one place — same rule as ProfileQuestion and Form.
+      ...fieldShapeColumnValues(toFieldShape({ responseType, ...input, options: input.options ?? [] })),
       deadline: input.deadline ? new Date(input.deadline) : null,
       priority: input.priority ?? false,
     })
@@ -107,26 +124,60 @@ export async function listTaskQuestions(
   }));
 }
 
+// One question by id, for a caller that has to read a submitted value
+// against the shape it was rendered from. Mirrors getProfileQuestion on
+// the ProfileQuestion side; a second lookup on the write path is the
+// price of keeping the form-data interpretation in the action, and it's
+// a single indexed row either way.
+export async function getQuestionForShape(actor: Member, questionId: string) {
+  const [row] = await db.select().from(question).where(eq(question.id, questionId));
+  if (!row) {
+    throw new NotFoundError("Question not found");
+  }
+  // Community scoping comes from the task the question hangs off, so
+  // there's no community column to filter on here — go through the task
+  // to check it, which is the same gate createQuestion/listTaskQuestions
+  // use. This exists to interpret submitted input, not to authorize;
+  // submitQuestionResponse still re-checks the round and lifecycle rules.
+  await requireTaskInCommunity(actor, row.taskId);
+  return row;
+}
+
 export const submitQuestionResponseInput = z.object({ value: z.unknown() });
 export type SubmitQuestionResponseInput = z.infer<typeof submitQuestionResponseInput>;
 
+// The one validator, shared with ProfileQuestion, Form submissions and
+// Assemblies — see src/lib/field-shape.ts. Was a per-responseType
+// if/else chain here that knew about three types; a fourth question
+// system has to be able to ask about a date or a number without writing
+// its own copy of this.
+//
+// A blank submission is rejected rather than stored, but the wording is
+// ours: a member who leaves an input-round question alone has answered
+// perfectly well by not answering, so "this answer is required" would be
+// both false and a bit of a telling-off for pressing the button on an
+// empty box. `question_response.value` is NOT NULL, so there is also no
+// honest way to store a blank — the alternatives are deleting the
+// response (a silent no-op that leaves "Update answer" doing nothing)
+// and the database error this avoids.
 function validateValue(q: Question, value: unknown) {
-  if (q.responseType === "free_text") {
-    if (typeof value !== "string" || value.trim() === "") {
-      throw new ConflictError("A text answer is required");
-    }
-    return value.trim();
-  }
-  if (q.responseType === "single_choice") {
-    if (typeof value !== "string" || !q.options.includes(value)) {
-      throw new ConflictError("Answer must be one of this question's options");
-    }
-    return value;
-  }
-  if (!Array.isArray(value) || value.length === 0 || !value.every((v) => q.options.includes(v))) {
-    throw new ConflictError("Answer must be a non-empty subset of this question's options");
-  }
-  return value;
+  return validateFieldValue(
+    toFieldShape({
+      responseType: q.responseType,
+      options: q.options,
+      multiline: q.multiline,
+      validation: q.validation,
+      allowOther: q.allowOther,
+      min: q.min,
+      max: q.max,
+      step: q.step,
+    }),
+    value,
+    {
+      allowBlank: false,
+      blankMessage: "Fill this in to answer the question, or leave it for now",
+    },
+  );
 }
 
 // Only answerable while the question is in the Community's *current*

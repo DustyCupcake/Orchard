@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -14,6 +15,8 @@ import { listOwnMemberLanguages, MEMBER_LANGUAGE_LEVELS, type MemberLanguageLeve
 import { listMemberAxisValues, listTraitAxes } from "@/lib/trait-axes";
 import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL } from "@/components/ui/kit";
 import AxisScaleField from "@/components/AxisScaleField";
+import ProfileQuestionForm from "@/components/ProfileQuestionForm";
+import { toFieldShape } from "@/lib/field-shape";
 import ThemeToggle from "./ThemeToggle";
 import {
   addMemberLanguageAction,
@@ -25,6 +28,7 @@ import {
   updateContactMethodAction,
   updateMemberAxisAction,
   updateProfile,
+  updateIndicatorConsentAction,
   updateSensitiveDataAction,
   withdrawConsentAction,
 } from "./actions";
@@ -75,75 +79,6 @@ function ConsentCheckbox({
         <input type="checkbox" name={`consent_${formKey}`} /> I consent to &ldquo;{purpose.label}&rdquo;
       </label>
     </div>
-  );
-}
-
-function QuestionForm({
-  questionId,
-  responseType,
-  options,
-  feedsCapacitySignal,
-  defaultValue,
-  defaultCapacityVisibility,
-}: {
-  questionId: string;
-  responseType: "free_text" | "single_choice" | "multi_choice" | "date";
-  options: string[];
-  feedsCapacitySignal: boolean;
-  defaultValue?: unknown;
-  defaultCapacityVisibility?: "flag_only" | "open";
-}) {
-  return (
-    <form action={submitProfileAnswerAction} className="mt-2 flex flex-col gap-2">
-      <input type="hidden" name="questionId" value={questionId} />
-      {responseType === "free_text" && (
-        <input type="text" name="value" defaultValue={typeof defaultValue === "string" ? defaultValue : ""} className={INPUT} />
-      )}
-      {responseType === "date" && (
-        <input type="date" name="value" defaultValue={typeof defaultValue === "string" ? defaultValue : ""} className={`${INPUT} w-fit`} />
-      )}
-      {responseType === "single_choice" && (
-        <div className="flex flex-col gap-1">
-          {options.map((o) => (
-            <label key={o} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
-              <input type="radio" name="value" value={o} defaultChecked={defaultValue === o} /> {o}
-            </label>
-          ))}
-        </div>
-      )}
-      {responseType === "multi_choice" && (
-        <div className="flex flex-col gap-1">
-          {options.map((o) => (
-            <label key={o} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
-              <input
-                type="checkbox"
-                name="value_multi"
-                value={o}
-                defaultChecked={Array.isArray(defaultValue) && defaultValue.includes(o)}
-              />{" "}
-              {o}
-            </label>
-          ))}
-        </div>
-      )}
-      {feedsCapacitySignal && (
-        <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
-          Visible to coordinators as
-          <select name="capacityVisibility" defaultValue={defaultCapacityVisibility ?? "flag_only"} className={`${INPUT} py-1`}>
-            <option value="flag_only">a coarse flag only</option>
-            <option value="open">the exact number</option>
-          </select>
-        </label>
-      )}
-      <div className="flex gap-2">
-        <button type="submit" name="status" value="answered" className={BUTTON_PRIMARY}>
-          Save
-        </button>
-        <button type="submit" name="status" value="deferred" className={BUTTON_SECONDARY}>
-          I don&rsquo;t know yet
-        </button>
-      </div>
-    </form>
   );
 }
 
@@ -355,24 +290,25 @@ export default async function ProfilePage({
       {outstanding.length > 0 && (
         <section className="mt-8">
           <SectionHeading>Questions for you</SectionHeading>
-          <div className="mt-2 flex flex-col gap-2">
-            {outstanding.map(({ question, existingAnswer }) => (
-              <div key={question.id} className={CARD}>
-                <p className="text-[14px] font-medium text-[var(--text)]">
-                  {question.label}
-                  {question.required ? " *" : ""}
-                </p>
-                {existingAnswer?.status === "deferred" && (
-                  <p className="mt-1 text-[12px] text-[var(--text-muted)]">You said you didn&rsquo;t know yet.</p>
-                )}
-                <QuestionForm
-                  questionId={question.id}
-                  responseType={question.responseType}
-                  options={question.options}
-                  feedsCapacitySignal={question.feedsCapacitySignal}
-                />
-              </div>
-            ))}
+          {/* A pointer, not a second copy of the forms. /questions is
+              now the canonical place outstanding questions are answered
+              from — it groups them by scope (once-ever vs. this event
+              vs. this phase) and is where the Dashboard's and
+              Community's declare-joining controls send someone. Two
+              divergent renderings of the same list would drift, and this
+              one couldn't even reach questions for an event the member
+              hasn't declared on. The "Your answers" section below still
+              edits already-given answers in place, which /questions
+              deliberately doesn't cover. */}
+          <div className={`mt-2 ${CARD}`}>
+            <p className="text-[13px] text-[var(--text)]">
+              {outstanding.length === 1
+                ? "You have 1 question still to answer."
+                : `You have ${outstanding.length} questions still to answer.`}
+            </p>
+            <Link href="/questions" className={BUTTON_PRIMARY + " mt-3 inline-block"}>
+              Answer {outstanding.length === 1 ? "it" : "them"}
+            </Link>
           </div>
         </section>
       )}
@@ -384,19 +320,78 @@ export default async function ProfilePage({
             {onceEverAnswers.map(({ question, answer }) => (
               <div key={question.id} className={CARD}>
                 <p className="text-[14px] font-medium text-[var(--text)]">{question.label}</p>
-                <QuestionForm
+                {/* A stored deferral or decline needs saying out loud here
+                    — the form below is a blank "Save" box otherwise, which
+                    reads as though nothing is on record. */}
+                {answer.status === "deferred" && (
+                  <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                    You said you didn&rsquo;t know yet. Save a value below if you&rsquo;ve since worked it out.
+                  </p>
+                )}
+                {answer.status === "declined" && (
+                  <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                    You chose not to answer this. Save a value below if you&rsquo;d like to change that.
+                  </p>
+                )}
+                <ProfileQuestionForm
+                  action={submitProfileAnswerAction}
                   questionId={question.id}
-                  responseType={question.responseType}
-                  options={question.options}
+                  shape={toFieldShape(question)}
                   feedsCapacitySignal={question.feedsCapacitySignal}
+                  allowDeferral={question.allowDeferral}
+                  allowPreferNotToSay={question.allowPreferNotToSay}
+                  sensitive={question.sensitive}
                   defaultValue={answer.value}
                   defaultCapacityVisibility={answer.capacityVisibility}
+                  defaultShareWithAudience={answer.shareWithAudience}
                 />
               </div>
             ))}
           </div>
         </section>
       )}
+
+      {/*
+          Its own section rather than tucked into "Your answers", which
+          only renders once there's something to show. The whole point of
+          a standing opt-out is that it can be set *before* answering
+          anything — a member who wants to be in the questions but out of
+          the aggregates has to be able to say so first, and a control
+          that appears only after you've already answered is a control
+          that informed nobody.
+      */}
+      <section className="mt-8">
+        <SectionHeading>Community indicators</SectionHeading>
+        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          Some standing questions can be published as a collective picture on{" "}
+          <Link href="/community" className="text-[var(--accent-1)] hover:underline">
+            the Community page
+          </Link>{" "}
+          &mdash; a proportion, a distribution or a range, never anybody&rsquo;s individual answer. The
+          consent below is given once for the whole section rather than per question, and covers
+          every answer you give to a question in it, including questions a Community adds later.
+        </p>
+        <form action={updateIndicatorConsentAction} className="mt-3 flex flex-col gap-2">
+          <CheckField
+            label="My answers to published questions may be counted in community indicators"
+            name="consentsToCommunityIndicators"
+            defaultChecked={viewing.consentsToCommunityIndicators}
+          />
+          <p className="text-[12px] text-[var(--text-muted)]">
+            {/* Real apostrophes rather than &rsquo; here: this is a
+                JavaScript string inside a prop, and HTML entities are
+                only decoded in JSX text and string *literals*, not in a
+                JS expression — `&rsquo;` would render as those seven
+                characters. */}
+            {viewing.consentsToCommunityIndicators
+              ? "Your answers to published questions are included. Each one also offers “prefer not to say” when you’d rather answer but not be counted, and declining a question keeps it out entirely."
+              : "You’re out of every published indicator. Your questions still work exactly as they did, and you’re not counted in the coverage figures either — you’re simply not part of the group they describe."}
+          </p>
+          <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
+            Save
+          </button>
+        </form>
+      </section>
 
       {sensitiveDataOn && (
         <section className="mt-8">

@@ -56,7 +56,7 @@ describe("createQuestion", () => {
 
     const q = await createQuestion(alice, t.id, { text: "Pancakes or eggs?" });
     expect(q.roundId).toBeNull();
-    expect(q.responseType).toBe("free_text");
+    expect(q.responseType).toBe("text");
   });
 
   it("rejects a choice-type question with no options", async () => {
@@ -166,6 +166,61 @@ describe("submitQuestionResponse", () => {
     await expect(submitQuestionResponse(alice, q.id, { value: "anything" })).rejects.toThrow(
       ConflictError,
     );
+  });
+
+  // A task question can now ask about a date or a number, and answers
+  // validate through the one shared field-shape validator every other
+  // question system uses — a "when could you do this" question used to
+  // have no honest way to be expressed at all.
+  it("accepts the answer types a task question previously couldn't ask, and validates them", async () => {
+    const { alice, branch: testBranch, community: testCommunity } = await createFixtures();
+    const t = await insertTask(testCommunity.id, testBranch.id, alice.id);
+    // A question is queued for the *next* round, so they all have to
+    // exist before the round is resolved or they'd still be closed.
+    const when = await createQuestion(alice, t.id, { text: "When could you do it?", responseType: "date" });
+    const hours = await createQuestion(alice, t.id, {
+      text: "How many hours could you give?",
+      responseType: "number",
+      min: 1,
+      max: 20,
+    });
+    const canDrive = await createQuestion(alice, t.id, { text: "Could you drive?", responseType: "boolean" });
+    await setCutoff(testCommunity.id, new Date(Date.now() - 1000));
+    await resolveInputRounds();
+
+    expect((await submitQuestionResponse(alice, when.id, { value: "2027-05-04" })).value).toBe("2027-05-04");
+    await expect(submitQuestionResponse(alice, when.id, { value: "next tuesday" })).rejects.toThrow(ConflictError);
+
+    // Stored as a number, not the string "5" — a tally can sum it.
+    expect((await submitQuestionResponse(alice, hours.id, { value: "5" })).value).toBe(5);
+    await expect(submitQuestionResponse(alice, hours.id, { value: "99" })).rejects.toThrow(/at most/);
+
+    // "no" is an answer, not an absence — the blank check must not treat
+    // a false boolean as unanswered.
+    expect((await submitQuestionResponse(alice, canDrive.id, { value: "false" })).value).toBe(false);
+  });
+
+  // A choice question with the escape hatch: the list stays countable and
+  // the tail is still captured as words.
+  it("accepts free text on a choice question that offers an escape hatch", async () => {
+    const { alice, branch: testBranch, community: testCommunity } = await createFixtures();
+    const t = await insertTask(testCommunity.id, testBranch.id, alice.id);
+    const open = await createQuestion(alice, t.id, {
+      text: "What do you know?",
+      responseType: "single_choice",
+      options: ["welding", "carpentry"],
+      allowOther: true,
+    });
+    const closed = await createQuestion(alice, t.id, {
+      text: "What do you know?",
+      responseType: "single_choice",
+      options: ["welding", "carpentry"],
+    });
+    await setCutoff(testCommunity.id, new Date(Date.now() - 1000));
+    await resolveInputRounds();
+
+    expect((await submitQuestionResponse(alice, open.id, { value: "solder" })).value).toBe("solder");
+    await expect(submitQuestionResponse(alice, closed.id, { value: "solder" })).rejects.toThrow(ConflictError);
   });
 
   it("validates value against responseType/options, and upserts on resubmission", async () => {

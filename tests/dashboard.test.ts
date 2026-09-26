@@ -65,21 +65,21 @@ describe("getPersonalFeed", () => {
       pendingJoinRequests: [],
       upcomingCheckins: [],
       flaggedHeldTasks: [],
-      recruitmentNeedsAction: [],
+      recruitmentNeedsAction: { personal: [], shared: [] },
       placementInvites: [],
       myLinkedPendingPlacements: [],
       placementRevertNotices: [],
       placementPendingReviews: [],
       calendarEventInvites: [],
       emergencyAccessActivity: [],
-      budgetNeedsAction: [],
-      eventSchedulingNeedsAction: [],
-      shiftCoordinatorNeedsAction: [],
+      budgetNeedsAction: { personal: [], shared: [] },
+      eventSchedulingNeedsAction: { personal: [], shared: [] },
+      shiftCoordinatorNeedsAction: { personal: [], shared: [] },
       myShiftsNeedingCompletion: [],
-      conflictNeedsAction: [],
+      conflictNeedsAction: { personal: [], shared: [] },
       // Kitchen's own needs-action surface (docs/food-drinks-module-plan.md's
       // D2/D5) — empty here because this member holds no kitchen grant.
-      kitchenNeedsAction: [],
+      kitchenNeedsAction: { personal: [], shared: [] },
       pendingNominations: [],
       expiredNominations: [],
       // The Communication Inbox surfaces, added when the feed became
@@ -458,7 +458,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     });
 
     const feed = await getPersonalFeed(alice);
-    expect(feed.budgetNeedsAction).toEqual([
+    expect(feed.budgetNeedsAction.personal).toEqual([
       { cycleId: cycleRow.id, cycleTitle: "Season budget", kind: "close_to_voting" },
     ]);
   });
@@ -474,7 +474,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     });
 
     const feed = await getPersonalFeed(bob);
-    expect(feed.budgetNeedsAction).toEqual([]);
+    expect(feed.budgetNeedsAction.personal).toEqual([]);
   });
 
   it("Budget: owner sees confirm_funded_set during voting", async () => {
@@ -489,7 +489,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     await closeProposalsToVoting(alice, cycleRow.id);
 
     const feed = await getPersonalFeed(alice);
-    expect(feed.budgetNeedsAction).toContainEqual({
+    expect(feed.budgetNeedsAction.personal).toContainEqual({
       cycleId: cycleRow.id,
       cycleTitle: "Season budget",
       kind: "confirm_funded_set",
@@ -508,7 +508,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     await closeProposalsToVoting(alice, cycleRow.id);
 
     const feed = await getPersonalFeed(bob);
-    expect(feed.budgetNeedsAction).toContainEqual({
+    expect(feed.budgetNeedsAction.personal).toContainEqual({
       cycleId: cycleRow.id,
       cycleTitle: "Season budget",
       kind: "cast_vote",
@@ -528,7 +528,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     await submitBudgetVote(bob, cycleRow.id, { rankedProposalIds: [] });
 
     const feed = await getPersonalFeed(bob);
-    expect(feed.budgetNeedsAction).toEqual([]);
+    expect(feed.budgetNeedsAction.personal).toEqual([]);
   });
 
   it("Event scheduling: owner sees an unresolved proposal, a non-owner sees nothing", async () => {
@@ -547,12 +547,12 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     });
 
     const ownerFeed = await getPersonalFeed(alice);
-    expect(ownerFeed.eventSchedulingNeedsAction).toEqual([
+    expect(ownerFeed.eventSchedulingNeedsAction.personal).toEqual([
       { proposalId: expect.any(String), title: "Fire circle", status: "proposed" },
     ]);
 
     const nonOwnerFeed = await getPersonalFeed(bob);
-    expect(nonOwnerFeed.eventSchedulingNeedsAction).toEqual([]);
+    expect(nonOwnerFeed.eventSchedulingNeedsAction).toEqual({ personal: [], shared: [] });
   });
 
   it("Shifts: a coordinator sees an ended occurrence with an unresolved signup", async () => {
@@ -571,7 +571,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
       .where(eq(shiftOccurrence.id, occurrence.id));
 
     const coordinatorFeed = await getPersonalFeed(alice);
-    expect(coordinatorFeed.shiftCoordinatorNeedsAction).toEqual([
+    expect(coordinatorFeed.shiftCoordinatorNeedsAction.personal).toEqual([
       { occurrenceId: occurrence.id, seriesTitle: "Dish duty", startsAt: expect.any(Date), unresolvedCount: 1 },
     ]);
   });
@@ -592,7 +592,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
       .where(eq(shiftOccurrence.id, occurrence.id));
 
     const bobFeed = await getPersonalFeed(bob);
-    expect(bobFeed.shiftCoordinatorNeedsAction).toEqual([]);
+    expect(bobFeed.shiftCoordinatorNeedsAction.personal).toEqual([]);
     expect(bobFeed.myShiftsNeedingCompletion).toEqual([
       { signupId: expect.any(String), seriesTitle: "Dish duty", endsAt: expect.any(Date) },
     ]);
@@ -610,7 +610,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     await fileConflictReport(bob, {});
 
     const feed = await getPersonalFeed(alice);
-    expect(feed.conflictNeedsAction).toEqual([]);
+    expect(feed.conflictNeedsAction.personal).toEqual([]);
   });
 
   it("Conflict management: a team member sees a report once it's past the acknowledgment window", async () => {
@@ -629,7 +629,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
       .where(eq(conflictReport.id, stale.id));
 
     const feed = await getPersonalFeed(alice);
-    expect(feed.conflictNeedsAction).toEqual([{ reportId: stale.id, createdAt: expect.any(Date) }]);
+    expect(feed.conflictNeedsAction.personal).toEqual([{ reportId: stale.id, createdAt: expect.any(Date) }]);
   });
 
   async function makeCoordinationHolder(communityId: string, branchId: string, actor: typeof member.$inferSelect) {

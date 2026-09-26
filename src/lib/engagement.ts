@@ -81,8 +81,8 @@ export async function computeEngagementPattern(
 // noise" posture every other needs-action list in this codebase
 // already takes.
 export async function listEngagementPatternsForCoordinator(actor: Member) {
-  const { branchIds } = await listCoordinationScopeIds(actor);
-  if (branchIds.size === 0) return [];
+  const { communityWide, branchIds } = await listCoordinationScopeIds(actor);
+  if (!communityWide && branchIds.size === 0) return [];
 
   const holders = await db
     .selectDistinct({ memberId: taskAssignment.memberId, memberName: member.name })
@@ -91,7 +91,7 @@ export async function listEngagementPatternsForCoordinator(actor: Member) {
     .innerJoin(member, eq(taskAssignment.memberId, member.id))
     .where(
       and(
-        inArray(task.branchId, [...branchIds]),
+        communityWide ? undefined : inArray(task.branchId, [...branchIds]),
         eq(taskAssignment.isShadow, false),
         eq(task.communityId, actor.communityId),
       ),

@@ -8,7 +8,9 @@ import { db } from "@/db";
 import { member, tier } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { assertNotViewingAs } from "@/lib/view-as";
-import { answerProfileQuestion } from "@/lib/profile-questions";
+import { answerProfileQuestion, getProfileQuestion } from "@/lib/profile-questions";
+import { updateIndicatorConsent } from "@/lib/profile-questions/indicators";
+import { fieldValueFromFormData, toFieldShape } from "@/lib/field-shape";
 import {
   SensitiveFieldKey,
   updateOwnSensitiveData,
@@ -89,21 +91,60 @@ export async function updateProfile(formData: FormData) {
   revalidatePath("/profile");
 }
 
+// Self-service, on the page that already says "these are your answers":
+// how *your* answers get read is yours to decide, and no Admin gets a
+// button for it. Mirrors updateContributionVisibility's own shape.
+export async function updateIndicatorConsentAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await updateIndicatorConsent(actor, formData.get("consentsToCommunityIndicators") === "on");
+  } catch (err) {
+    redirectWithError(err);
+  }
+  // The only readers are /community and /dashboard, neither of which
+  // this page revalidates.
+  revalidatePath("/profile");
+  revalidatePath("/community");
+  revalidatePath("/dashboard");
+}
+
 export async function submitProfileAnswerAction(formData: FormData) {
   const current = await requireMember();
 
   const questionId = String(formData.get("questionId"));
   const status = String(formData.get("status")) === "deferred" ? "deferred" : "answered";
-  const multi = formData.getAll("value_multi").map(String);
-  const single = formData.get("value");
-  const value = multi.length > 0 ? multi : (single ?? "");
+  // "declined" is deliberately not honoured here: this is /profile's own
+  // "Your answers" editor, where someone is revisiting a value they gave.
+  // Retracting consent about your own information is done on /questions,
+  // where the question is actually being asked of you.
+  //
+  // The question row is read here only to know how to interpret the
+  // submitted input — a multi_choice submits several values under one
+  // name, a choice field with an escape hatch has a second sibling input,
+  // and the rest submit one value. Same read the Form path uses.
+  // The question row is read here only to know how to interpret the
+  // submitted input — a multi_choice submits several values under one
+  // name, a choice field with an escape hatch has a second sibling input,
+  // and the rest submit one value. Same read the Form path uses.
+  const question = await getProfileQuestion(current, questionId);
+  const value = fieldValueFromFormData(toFieldShape(question), formData, "value");
   const capacityVisibility = formData.get("capacityVisibility") === "open" ? "open" : "flag_only";
 
-  await answerProfileQuestion(current, questionId, {
-    status,
-    value: status === "answered" ? value : undefined,
-    capacityVisibility,
-  });
+  // A rejected value has to come back as a message on /profile, not as a
+  // 500 — this action never routed through redirectWithError, so a
+  // malformed answer here (a bad date, an out-of-range number, a
+  // mistyped email) surfaced as an unhandled throw. Same handling every
+  // other answer action in the app already had.
+  try {
+    await answerProfileQuestion(current, questionId, {
+      status,
+      value: status === "answered" ? value : undefined,
+      capacityVisibility,
+      shareWithAudience: formData.get("shareWithAudience") === "on",
+    });
+  } catch (err) {
+    redirectWithError(err);
+  }
   revalidatePath("/profile");
 }
 

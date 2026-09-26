@@ -127,8 +127,15 @@ function parseDeclaredHours(value: unknown): number | null {
 export type CapacitySignalEntry = {
   memberId: string;
   memberName: string;
+  // A row exists at all, i.e. this member has responded in some form.
+  // `deferred` and `declined` then say *how*, because all three states
+  // read differently and none of them implies a declared number — a
+  // declined member in particular has no hours and never will from this
+  // question, so reporting them as "answered with no hours" would be
+  // both wrong and a nudge toward persuading them otherwise.
   hasAnswer: boolean;
   deferred: boolean;
+  declined: boolean;
   capacityVisibility: "flag_only" | "open";
   declaredHours: number | null;
   loadHours: number | null;
@@ -167,12 +174,20 @@ export async function listCapacitySignal(actor: Member): Promise<{
   const entries: CapacitySignalEntry[] = [];
   for (const m of communityMembers) {
     const answer = answerByMember.get(m.id);
-    if (!answer || answer.status === "deferred") {
+    // A decline gets its own branch alongside the deferral one rather
+    // than falling through to parseDeclaredHours: a `declined` row
+    // carries a null value, so it would otherwise be reported as a
+    // member who answered with no declared hours — implying a response
+    // they deliberately withheld. This is the view that chases people for
+    // a capacity signal, so it has to be able to say "they declined"
+    // plainly and leave it there.
+    if (!answer || answer.status === "deferred" || answer.status === "declined") {
       entries.push({
         memberId: m.id,
         memberName: m.name,
         hasAnswer: Boolean(answer),
         deferred: answer?.status === "deferred",
+        declined: answer?.status === "declined",
         capacityVisibility: answer?.capacityVisibility ?? "flag_only",
         declaredHours: null,
         loadHours: null,
@@ -199,6 +214,7 @@ export async function listCapacitySignal(actor: Member): Promise<{
       memberName: m.name,
       hasAnswer: true,
       deferred: false,
+      declined: false,
       capacityVisibility: answer.capacityVisibility,
       declaredHours,
       loadHours,

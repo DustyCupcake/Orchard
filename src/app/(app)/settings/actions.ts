@@ -11,7 +11,9 @@ import { assertNotViewingAs } from "@/lib/view-as";
 import {
   addPermissionGrant,
   PERMISSION_MODULE_KEYS,
+  PERMISSION_MODULE_LABELS,
   removePermissionGrant,
+  setModuleOpen,
   setPermissionGrant,
 } from "@/lib/permissions";
 import { NotFoundError } from "@/lib/errors";
@@ -45,6 +47,8 @@ import {
   archiveProfileQuestion,
   createProfileQuestion,
   createProfileQuestionInput,
+  hasProfileQuestions,
+  seedDefaultProfileQuestions,
   unarchiveProfileQuestion,
   updateProfileQuestion,
   updateProfileQuestionInput,
@@ -187,11 +191,21 @@ export async function updateCoordinationSettingsAction(formData: FormData) {
         Number(formData.get("engagementPatternThreshold") ?? NaN) || undefined,
       callSummaryReadWindowDays:
         Number(formData.get("callSummaryReadWindowDays") ?? NaN) || undefined,
+      // A checked box submits "on" and an unchecked one submits nothing,
+      // so absent has to mean false here or the setting could never be
+      // turned back off.
+      cycleIndicatorsEnabled: formData.get("cycleIndicatorsEnabled") === "on",
+      cycleIndicatorsMinMembers:
+        Number(formData.get("cycleIndicatorsMinMembers") ?? NaN) || undefined,
     });
     await updateCommunity(actor, input);
   } catch (err) {
     redirectWithError(err, "coordination");
   }
+
+  // The two readers are the Dashboard (scoped) and /community (not).
+  revalidatePath("/community");
+  revalidatePath("/dashboard");
 
   revalidatePath("/settings");
 }
@@ -241,6 +255,48 @@ const permissionGrantFields = z.object({
   moduleKey: z.enum(PERMISSION_MODULE_KEYS),
   taskId: z.string().uuid(),
 });
+
+// "Everyone has this permission" (docs/open-permissions-plan.md). A checkbox
+// plus Save, not a toggle-on-change: this whole tab is deliberately zero-JS
+// (the grant picker is a datalist, Remove is a plain form), and a control that
+// flipped on click would be the one thing here that silently changed a
+// Community's access the instant it was pressed.
+//
+// The open/closed state is a single fact — the row's existence — so this is
+// one upsert or one delete rather than a set/clear pair. No task id is
+// involved, so unlike the three grant actions above there is nothing for
+// requireTaskInActorCommunity to check: the only inputs are a module key the
+// caller may only name from the enum, and the acting member.
+const moduleOpenFields = z.object({
+  moduleKey: z.enum(PERMISSION_MODULE_KEYS),
+  open: z.boolean(),
+});
+
+export async function setModuleOpenAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    await requireAdmins(actor);
+    const { moduleKey, open } = moduleOpenFields.parse({
+      moduleKey: String(formData.get("moduleKey") ?? ""),
+      // An unchecked box submits nothing at all, so absence is the negative
+      // case rather than an error.
+      open: formData.get("open") === "on",
+    });
+
+    // setModuleOpen refuses the one non-openable module (D11) and reports it,
+    // so a forged POST gets the same answer the UI would have given.
+    if (!(await setModuleOpen(actor.communityId, moduleKey, open, actor.id))) {
+      throw new AppError(
+        `${PERMISSION_MODULE_LABELS[moduleKey]} can't be open to everyone — it needs someone named to notify.`,
+      );
+    }
+  } catch (err) {
+    redirectWithError(err, "permissions");
+  }
+
+  revalidatePath("/settings");
+}
 
 async function requireTaskInActorCommunity(taskId: string, communityId: string) {
   const [row] = await db
@@ -605,9 +661,18 @@ export async function unarchiveTraitAxisAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
+// A number field's min/max/step, or null when the builder left it blank.
+// Shared by both profile-question actions; the same "blank means unset"
+// rule the requiredBy date uses.
+function numberOrNull(raw: FormDataEntryValue | null): number | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
 export async function createProfileQuestionAction(formData: FormData) {
   const actor = await requireMember();
-
   try {
     await requireAdmins(actor);
     const scope = String(formData.get("scope") ?? "once_ever");
@@ -618,12 +683,25 @@ export async function createProfileQuestionAction(formData: FormData) {
     const options = formData.getAll("options").map(String).map((o) => o.trim()).filter(Boolean);
     const input = createProfileQuestionInput.parse({
       label: String(formData.get("label") ?? ""),
-      responseType: String(formData.get("responseType") ?? "free_text"),
+      responseType: String(formData.get("responseType") ?? "text"),
       options: options.length > 0 ? options : undefined,
+      // Field-shape flags, serialized as hidden inputs by
+      // ProfileQuestionEditor. Blank means "off" for the booleans
+      // (it emits "on"/"" rather than omitting), and null for the
+      // number bounds.
+      multiline: formData.get("multiline") === "on",
+      validation: String(formData.get("validation") || "none"),
+      allowOther: formData.get("allowOther") === "on",
+      min: numberOrNull(formData.get("min")),
+      max: numberOrNull(formData.get("max")),
+      step: numberOrNull(formData.get("step")),
       scope,
       phaseNameHint:
         scope === "phase" ? String(formData.get("phaseNameHint") ?? "").trim() || undefined : undefined,
       required: formData.get("required") === "on",
+      requiredBy: String(formData.get("requiredBy") ?? "").trim() || null,
+      allowDeferral: formData.get("allowDeferral") === "on",
+      allowPreferNotToSay: formData.get("allowPreferNotToSay") === "on",
       feedsCapacitySignal: formData.get("feedsCapacitySignal") === "on",
       surfaces: formData.get("onboardingSurface") === "on" ? ["onboarding"] : [],
     });
@@ -646,11 +724,49 @@ export async function updateProfileQuestionAction(formData: FormData) {
       label: String(formData.get("label") ?? "") || undefined,
       responseType: String(formData.get("responseType") ?? "") || undefined,
       options,
+      multiline: formData.get("multiline") === "on",
+      validation: String(formData.get("validation") || "none") as "none" | "email" | "phone" | "url",
+      allowOther: formData.get("allowOther") === "on",
+      min: numberOrNull(formData.get("min")),
+      max: numberOrNull(formData.get("max")),
+      step: numberOrNull(formData.get("step")),
       required: formData.get("required") === "on",
+      requiredBy: String(formData.get("requiredBy") ?? "").trim() || null,
+      allowDeferral: formData.get("allowDeferral") === "on",
+      allowPreferNotToSay: formData.get("allowPreferNotToSay") === "on",
       feedsCapacitySignal: formData.get("feedsCapacitySignal") === "on",
+      publishedAsIndicator: formData.get("publishedAsIndicator") === "on",
+      sensitive: formData.get("sensitive") === "on",
+      emergencyAccess: formData.get("emergencyAccess") === "on",
       surfaces: formData.get("onboardingSurface") === "on" ? ["onboarding"] : [],
     });
     await updateProfileQuestion(actor, questionId, input);
+  } catch (err) {
+    redirectWithError(err, "profile-privacy");
+  }
+
+  revalidatePath("/settings");
+  // The published aggregate is rendered on /community, not here, so a
+  // publish/unpublish/re-gate has to invalidate that page too — a stale
+  // /community would keep showing (or keep hiding) a breakdown the
+  // community just changed its mind about.
+  revalidatePath("/community");
+}
+
+export async function seedDefaultProfileQuestionsAction(formData: FormData) {
+  const actor = await requireMember();
+
+  try {
+    await requireAdmins(actor);
+    // The same guard the first-member path uses, and for the same reason:
+    // a second run would silently double every question, which is the
+    // kind of bug that looks like a data problem for ever afterwards.
+    if (await hasProfileQuestions(actor.communityId)) {
+      throw new AppError(
+        "This Community already has questions, so the default set wasn't added. Edit or archive what you have instead — a second set would be a duplicate of every one of them.",
+      );
+    }
+    await seedDefaultProfileQuestions(actor);
   } catch (err) {
     redirectWithError(err, "profile-privacy");
   }
@@ -692,7 +808,8 @@ export async function createSensitiveFieldAccessRuleAction(formData: FormData) {
   try {
     await requireAdmins(actor);
     const input = createSensitiveFieldAccessRuleInput.parse({
-      fieldKey: String(formData.get("fieldKey") ?? ""),
+      fieldKey: String(formData.get("fieldKey") ?? "").trim() || null,
+      questionId: String(formData.get("questionId") ?? "").trim() || null,
       unlockedByTaskId: String(formData.get("unlockedByTaskId") ?? "").trim() || null,
       unlockedByTierId: String(formData.get("unlockedByTierId") ?? "").trim() || null,
       unlockedByGrantModuleKey: String(formData.get("unlockedByGrantModuleKey") ?? "").trim() || null,
@@ -800,6 +917,7 @@ export async function createConsentPurposeAction(formData: FormData) {
       noticeText: String(formData.get("noticeText") ?? "").trim(),
       requiresExplicit: formData.get("requiresExplicit") === "on",
       gatesSensitiveField: gatesSensitiveField || null,
+      gatesQuestionId: String(formData.get("gatesQuestionId") ?? "").trim() || null,
     });
     await createConsentPurpose(actor, input);
   } catch (err) {

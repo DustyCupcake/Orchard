@@ -12,6 +12,10 @@ import {
   listGrantingTaskIdsForScope,
   listGrantsWithTaskInfo,
   listModuleKeysGrantedByTask,
+  PERMISSION_MODULE_HINTS,
+  PERMISSION_MODULE_KEYS,
+  PERMISSION_MODULE_LABELS,
+  PERMISSION_MODULE_SECTIONS,
   removePermissionGrant,
   setPermissionGrant,
 } from "@/lib/permissions";
@@ -225,7 +229,15 @@ describe("describeGrantScope / isMisplacedCommunityGrant", () => {
   });
 
   it("labels a cycle-less grant Community-wide for community-shaped modules, Evergreen for cycle-shaped ones", () => {
-    for (const moduleKey of ["admin", "conflict_team", "support", "announcements"] as const) {
+    for (const moduleKey of [
+      "admin",
+      "conflict_team",
+      "support",
+      "announcements",
+      // cycle_variant: no event means the whole community, same as
+      // announcements — not "Evergreen", which would imply one branch.
+      "community_coordination",
+    ] as const) {
       expect(describeGrantScope(moduleKey, null, null)).toBe("Community-wide");
     }
     for (const moduleKey of [
@@ -248,6 +260,9 @@ describe("describeGrantScope / isMisplacedCommunityGrant", () => {
     expect(isMisplacedCommunityGrant("support", "cycle-1")).toBe(true);
 
     // Cycle-shaped and cycle-variant modules legitimately sit in a cycle.
+    // community_coordination is cycle_variant: a cycle-placed grant is
+    // that event's coordinator, not a contradiction.
+    expect(isMisplacedCommunityGrant("community_coordination", "cycle-1")).toBe(false);
     expect(isMisplacedCommunityGrant("spatial_planning", "cycle-1")).toBe(false);
     expect(isMisplacedCommunityGrant("announcements", "cycle-1")).toBe(false);
     expect(isMisplacedCommunityGrant("shift_management", "cycle-1")).toBe(false);
@@ -255,6 +270,60 @@ describe("describeGrantScope / isMisplacedCommunityGrant", () => {
 
     // A cycle-less community-shaped grant is exactly right.
     expect(isMisplacedCommunityGrant("admin", null)).toBe(false);
+  });
+});
+
+// The settings tab's "Community-wide" / "Per-event" sections. The point
+// of deriving these from the tier table is that a new module can never
+// be silently dropped from the page, so the completeness assertions
+// below are the actual regression guard.
+describe("PERMISSION_MODULE_SECTIONS", () => {
+  it("puts every module in exactly one section", () => {
+    const seen = PERMISSION_MODULE_SECTIONS.flatMap((s) => s.moduleKeys);
+    expect(seen.length).toBe(PERMISSION_MODULE_KEYS.length);
+    expect(new Set(seen).size).toBe(PERMISSION_MODULE_KEYS.length);
+    expect([...seen].sort()).toEqual([...PERMISSION_MODULE_KEYS].sort());
+  });
+
+  it("groups by the tier table — community-shaped in one, everything else in the other", () => {
+    const byKey = new Map(PERMISSION_MODULE_SECTIONS.map((s) => [s.key, new Set(s.moduleKeys)]));
+    const community = byKey.get("community")!;
+    const cycle = byKey.get("cycle")!;
+
+    for (const moduleKey of ["admin", "conflict_team", "support"] as const) {
+      expect(community.has(moduleKey)).toBe(true);
+      expect(cycle.has(moduleKey)).toBe(false);
+    }
+    for (const moduleKey of [
+      "branch_coordination",
+      "spatial_planning",
+      "budget",
+      // Both cycle_variant modules go with the per-event section, whose
+      // rule ("placement is the scope, no event means the community as a
+      // whole") is the one that actually governs them. For
+      // community_coordination the community-wide form also ignores the
+      // branch — a distinction the section shares, not a reason to split
+      // it out.
+      "announcements",
+      "community_coordination",
+    ] as const) {
+      expect(cycle.has(moduleKey)).toBe(true);
+      expect(community.has(moduleKey)).toBe(false);
+    }
+  });
+
+  it("gives both sections a rule to state once instead of per module", () => {
+    for (const section of PERMISSION_MODULE_SECTIONS) {
+      expect(section.title.length).toBeGreaterThan(0);
+      expect(section.rule.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps a hint for every module so none renders an empty description", () => {
+    for (const moduleKey of PERMISSION_MODULE_KEYS) {
+      expect(PERMISSION_MODULE_HINTS[moduleKey].length).toBeGreaterThan(0);
+      expect(PERMISSION_MODULE_LABELS[moduleKey].length).toBeGreaterThan(0);
+    }
   });
 });
 

@@ -10,6 +10,7 @@ import {
   ALL_ITEMS,
   CALENDAR_ITEM,
   DASHBOARD_ITEM,
+  EVENTS_ITEM,
   NAV_GROUPS,
   isItemVisible,
   isNavGroupRenderable,
@@ -21,6 +22,10 @@ import { toggleFavoriteNavItem, endViewAsAction } from "@/app/(app)/nav-actions"
 
 const COLLAPSE_KEY = "orchard.sidebar.collapsed";
 const CLOSED_GROUPS_KEY = "orchard.sidebar.closedGroups";
+// v2: the chosen open/closed state per group, not the closed set. See
+// AppShell's groupOpenOverrides state for why the representation had to
+// change rather than just the default.
+const GROUP_OPEN_KEY = "orchard.sidebar.groupOpen.v2";
 const PINNED_GROUP_KEY = "__pinned";
 
 // Standalone icon-button chrome (collapse toggle, mobile open/close,
@@ -246,9 +251,10 @@ function SidebarNavList({
   visibleGroups,
   pinnedItems,
   communicationBadgeCount,
+  communityBadgeCount,
   taskBadgeCount,
   isActive,
-  closedGroups,
+  groupOpenOverrides,
   onToggleGroup,
   manualPinnedKeys,
   onTogglePin,
@@ -256,16 +262,23 @@ function SidebarNavList({
   collapsed: boolean;
   visibleGroups: NavGroup[];
   pinnedItems: NavItem[];
-  // The two-center attention split — each badge reflects exactly its
-  // own center's items (see nav-config.ts's relevant group comments +
-  // src/lib/nav.ts): taskBadgeCount rides this list's Dashboard item
-  // (home of the task feed), communicationBadgeCount the Communication
-  // group's header link (the Inbox).
+  // The attention split across the three centers that carry a badge —
+  // each reflects exactly its own center's outstanding items (see
+  // nav-config.ts's group comments + src/lib/nav.ts):
+  // communicationBadgeCount rides the Communication group's header link
+  // (the Inbox), communityBadgeCount the Community group header (open
+  // Assemblies you still owe an answer on), and taskBadgeCount the
+  // Dashboard item (home of the task feed, plus any outstanding
+  // required questions).
   communicationBadgeCount: number;
+  communityBadgeCount: number;
   taskBadgeCount: number;
   isActive: (href: string) => boolean;
-  closedGroups: Set<string>;
-  onToggleGroup: (key: string) => void;
+  // Explicit open/closed choices this member has made, keyed by group.
+  // Absent = fall back to the group's own defaultOpen, so the shipped
+  // default is data in nav-config rather than logic here.
+  groupOpenOverrides: Record<string, boolean>;
+  onToggleGroup: (key: string, group?: NavGroup) => void;
   manualPinnedKeys: string[];
   onTogglePin?: (key: string) => void;
 }) {
@@ -278,20 +291,28 @@ function SidebarNavList({
   const otherGroups = visibleGroups.filter((g) => g.key !== "modules");
 
   function renderGroup(group: NavGroup) {
-    // The Communication group's header link carries its own needs-you
-    // badge (see nav-config.ts); other groups carry none.
-    const isAttentionGroup = group.key === "communication";
+    // Each group's own header carries the badge for its own center:
+    // Communication's is the Inbox, Community's is open Assemblies this
+    // member still owes an answer to. Tasks and Modules have no needs-you
+    // badge — task-side obligations ride the Dashboard item, and a
+    // module is never "waiting on" anyone. See src/lib/nav.ts.
+    const badge =
+      group.key === "communication"
+        ? communicationBadgeCount
+        : group.key === "community"
+          ? communityBadgeCount
+          : undefined;
     return (
       <NavGroupBlock
         key={group.key}
         group={group}
         collapsed={collapsed}
         isActive={isActive}
-        open={!closedGroups.has(group.key)}
-        onToggleOpen={() => onToggleGroup(group.key)}
+        open={groupOpenOverrides[group.key] ?? group.defaultOpen ?? true}
+        onToggleOpen={() => onToggleGroup(group.key, group)}
         manualPinnedKeys={manualPinnedKeys}
         onTogglePin={onTogglePin}
-        badge={isAttentionGroup ? communicationBadgeCount : undefined}
+        badge={badge}
       />
     );
   }
@@ -306,6 +327,7 @@ function SidebarNavList({
           badge={taskBadgeCount}
         />
         <NavLink item={CALENDAR_ITEM} collapsed={collapsed} active={isActive(CALENDAR_ITEM.href)} />
+        <NavLink item={EVENTS_ITEM} collapsed={collapsed} active={isActive(EVENTS_ITEM.href)} />
       </ul>
 
       {otherGroups.map(renderGroup)}
@@ -315,11 +337,14 @@ function SidebarNavList({
           {!collapsed && (
             <GroupLabel
               label="Pinned for you"
-              open={!closedGroups.has(PINNED_GROUP_KEY)}
-              onToggle={() => onToggleGroup(PINNED_GROUP_KEY)}
+              open={groupOpenOverrides[PINNED_GROUP_KEY] ?? true}
+              // Pinned-for-you isn't a real nav-config group, so it has
+              // no defaultOpen to read — it always starts open, and a
+              // heading with nothing under it is just a wasted row.
+              onToggle={() => onToggleGroup(PINNED_GROUP_KEY, undefined)}
             />
           )}
-          {(collapsed || !closedGroups.has(PINNED_GROUP_KEY)) && (
+          {(collapsed || (groupOpenOverrides[PINNED_GROUP_KEY] ?? true)) && (
             <ul className="space-y-0.5">
               {pinnedItems.map((item) => (
                 <NavLink key={item.key} item={item} collapsed={collapsed} active={isActive(item.href)} />
@@ -429,15 +454,39 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
+  // Explicit open/closed choices this member has made, per group. Key
+  // absent = never touched = the group's own `defaultOpen` decides
+  // (nav-config.ts).
+  //
+  // This replaced an earlier `closedGroups: Set<string>` whose default
+  // was "everything open". The two aren't interchangeable: with a
+  // closed-set you can only ever *add* to the closed list, so a group
+  // that now defaults to closed could never be opened again — clicking
+  // its chevron would have meant "close it" no matter what the user
+  // wanted. Storing the chosen state directly (open or closed) rather
+  // than the delta against a default is what makes a per-group default
+  // possible at all.
+  const [groupOpenOverrides, setGroupOpenOverrides] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     try {
       if (window.localStorage.getItem(COLLAPSE_KEY) === "1") setCollapsed(true);
-      const storedClosed = window.localStorage.getItem(CLOSED_GROUPS_KEY);
-      if (storedClosed) setClosedGroups(new Set(JSON.parse(storedClosed)));
+      const stored = window.localStorage.getItem(GROUP_OPEN_KEY);
+      if (stored) setGroupOpenOverrides(JSON.parse(stored));
+      // v1 stored the *closed* group keys. Converting rather than
+      // discarding: an existing member who closed a group meant it, and
+      // their sidebar shouldn't silently spring back open because the
+      // storage format changed. Group keys themselves are unchanged, so
+      // every stored entry maps across as { [key]: false }.
+      const legacyClosed = window.localStorage.getItem(CLOSED_GROUPS_KEY);
+      if (legacyClosed && !stored) {
+        setGroupOpenOverrides(
+          Object.fromEntries((JSON.parse(legacyClosed) as string[]).map((k) => [k, false])),
+        );
+      }
     } catch {
-      // localStorage unavailable (private browsing, etc.) — default expanded/open.
+      // localStorage unavailable (private browsing, etc.) — fall back to
+      // each group's own default.
     }
   }, []);
 
@@ -448,6 +497,14 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
       // ignore — nothing to persist to
     }
   }, [collapsed]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(GROUP_OPEN_KEY, JSON.stringify(groupOpenOverrides));
+    } catch {
+      // ignore — nothing to persist to
+    }
+  }, [groupOpenOverrides]);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -492,17 +549,14 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
     return () => observer?.disconnect();
   }, [ctx.viewAs, pathname]);
 
-  function toggleGroup(key: string) {
-    setClosedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      try {
-        window.localStorage.setItem(CLOSED_GROUPS_KEY, JSON.stringify([...next]));
-      } catch {
-        // ignore — nothing to persist to
-      }
-      return next;
+  // Flips a group to the opposite of whatever it currently is, and
+  // records the *result* as an explicit choice. Recording the choice
+  // rather than the toggle direction is what lets a group default to
+  // closed and still be opened by a click.
+  function toggleGroup(key: string, group?: NavGroup) {
+    setGroupOpenOverrides((prev) => {
+      const current = prev[key] ?? group?.defaultOpen ?? true;
+      return { ...prev, [key]: !current };
     });
   }
 
@@ -517,6 +571,12 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
   }
 
   function isActive(href: string) {
+    // The Events destination is the /[cycleScope]/participation family;
+    // its bare /participation link is only a redirect shim, so a plain
+    // prefix check would never light up the top-level row on the real page.
+    if (href === "/participation" && /^\/[^/]+\/participation(?:\/|$)/.test(pathname)) {
+      return true;
+    }
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 
@@ -558,9 +618,10 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
     visibleGroups,
     pinnedItems,
     communicationBadgeCount: ctx.communicationBadgeCount,
+    communityBadgeCount: ctx.communityBadgeCount,
     taskBadgeCount: ctx.taskBadgeCount,
     isActive,
-    closedGroups,
+    groupOpenOverrides,
     onToggleGroup: toggleGroup,
     manualPinnedKeys: ctx.manualPinnedKeys,
     // Pinning writes to the *real* member's own pinnedModuleKeys (see

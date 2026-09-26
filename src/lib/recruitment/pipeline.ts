@@ -7,6 +7,8 @@ import { getCurrentCycle } from "../profile-questions";
 import { getCycleParticipationSummary } from "../participation";
 import { requireModuleEnabled } from "../modules";
 import { getCommunityRow, requireRecruitmentTaskHolder } from "./access";
+import { isSharedByOpenness, type NeedsAction } from "../needs-action";
+import { listGrantingTaskIds } from "../permissions";
 import { computeRecruitmentOutcome } from "./evaluations";
 import { getRecruitmentDecision } from "./decisions";
 
@@ -151,11 +153,19 @@ export async function getRecruitmentPipeline(actor: Member) {
 // docs/development-plan.md's Phase 35. A thin filter over the same
 // listCandidates the full pipeline view uses, skipping the
 // capacity/composition context the dashboard doesn't need.
-export async function listRecruitmentActionItems(actor: Member): Promise<RecruitmentCandidate[]> {
+export async function listRecruitmentActionItems(actor: Member): Promise<NeedsAction<RecruitmentCandidate>> {
   await requireRecruitmentTaskHolder(actor);
   const communityRow = await getCommunityRow(actor.communityId);
   requireModuleEnabled(communityRow, "recruitment");
 
   const candidates = await listCandidates(communityRow);
-  return candidates.filter((c) => c.stage === "call_pending" || c.stage === "decision_pending");
+  const items = candidates.filter((c) => c.stage === "call_pending" || c.stage === "decision_pending");
+
+  // An open module reaches this gate for every member, so the same
+  // outstanding candidates land in every member's feed. Split them
+  // (docs/open-permissions-plan.md D12): a real holder is on the hook, a
+  // member who is only in the module because it is open is not.
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "recruitment");
+  const shared = await isSharedByOpenness(actor.communityId, "recruitment", actor.id, grantingTaskIds);
+  return shared ? { personal: [], shared: items } : { personal: items, shared: [] };
 }

@@ -26,9 +26,12 @@ export async function proposeAssemblyAction(formData: FormData) {
     const input = createAssemblyInput.parse({
       title: String(formData.get("title") ?? ""),
       description: String(formData.get("description") ?? "") || undefined,
+      // These are the hidden fields DurationFields derives from its
+      // number-plus-unit boxes; the boxes themselves submit no name.
       agendaMinutes: Number(formData.get("agendaMinutes") ?? NaN),
       noticeMinutes: Number(formData.get("noticeMinutes") ?? NaN),
       votingMinutes: Number(formData.get("votingMinutes") ?? NaN),
+      templateKey: String(formData.get("templateKey") ?? "") || undefined,
     });
     created = await createAssembly(actor, input);
   } catch (err) {

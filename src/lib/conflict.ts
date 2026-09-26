@@ -5,6 +5,7 @@ import { community, conflictReport, conflictReportExclusion, member, task, taskA
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "./errors";
 import { isModuleOpenToEveryone, listGrantingTaskIds } from "./permissions";
+import { isSharedByOpenness, type NeedsAction } from "./needs-action";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -212,17 +213,25 @@ export interface ConflictNeedsAction {
 // "Past the acknowledgment window" per Community.conflictAckWindowHours
 // (already read elsewhere for the same purpose, just never surfaced as
 // a Dashboard nudge until now).
-export async function listConflictNeedsAction(actor: Member): Promise<ConflictNeedsAction[]> {
-  if (!(await isConflictTeamMember(actor))) return [];
+export async function listConflictNeedsAction(actor: Member): Promise<NeedsAction<ConflictNeedsAction>> {
+  if (!(await isConflictTeamMember(actor))) return { personal: [], shared: [] };
 
   const [communityRow] = await db.select().from(community).where(eq(community.id, actor.communityId));
   const cutoff = new Date(Date.now() - (communityRow?.conflictAckWindowHours ?? 24) * 3600_000);
 
   const reports = await listConflictReports(actor);
-  return reports
+  const items = reports
     .filter((r) => !r.acknowledgedAt && r.createdAt < cutoff)
     .map((r) => ({ reportId: r.id, createdAt: r.createdAt }));
 
+  // Split per D12 (docs/open-permissions-plan.md §3.2). The *content* is
+  // unchanged either way — an open team already made these visible to every
+  // member, and listConflictReports is still the only path they come
+  // through, so an excluded member still sees nothing. D7 widened the team,
+  // not the visibility rule.
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "conflict_team");
+  const shared = await isSharedByOpenness(actor.communityId, "conflict_team", actor.id, grantingTaskIds);
+  return shared ? { personal: [], shared: items } : { personal: items, shared: [] };
 }
 
 export async function getConflictReport(actor: Member, reportId: string) {

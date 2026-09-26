@@ -37,12 +37,12 @@ import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 // the applicant's name/email, per src/lib/forms.ts's
 // isNameField/isEmailField.
 const taggedFields: CreateFormInput["fields"] = [
-  { key: "name", label: "Name", responseType: "free_text", required: true, isNameField: true },
-  { key: "email", label: "Email", responseType: "free_text", required: true, isEmailField: true },
+  { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
+  { key: "email", label: "Email", responseType: "text", required: true, isEmailField: true },
 ];
 
 const untaggedFields: CreateFormInput["fields"] = [
-  { key: "name", label: "Name", responseType: "free_text", required: true },
+  { key: "name", label: "Name", responseType: "text", required: true },
 ];
 
 const PROCEED_RULES: RecruitmentDecisionRule[] = [
@@ -111,8 +111,8 @@ describe("Form fields: isNameField/isEmailField tagging", () => {
       createForm(fixtures.alice, {
         title: "Bad form",
         fields: [
-          { key: "a", label: "A", responseType: "free_text", isNameField: true },
-          { key: "b", label: "B", responseType: "free_text", isNameField: true },
+          { key: "a", label: "A", responseType: "text", isNameField: true },
+          { key: "b", label: "B", responseType: "text", isNameField: true },
         ],
       }),
     ).rejects.toThrow(/at most one field can be tagged as the name field/);
@@ -124,8 +124,8 @@ describe("Form fields: isNameField/isEmailField tagging", () => {
       createForm(fixtures.alice, {
         title: "Bad form",
         fields: [
-          { key: "a", label: "A", responseType: "free_text", isEmailField: true },
-          { key: "b", label: "B", responseType: "free_text", isEmailField: true },
+          { key: "a", label: "A", responseType: "text", isEmailField: true },
+          { key: "b", label: "B", responseType: "text", isEmailField: true },
         ],
       }),
     ).rejects.toThrow(/at most one field can be tagged as the email field/);
@@ -178,13 +178,13 @@ describe("Recruitment: applicant→Member conversion", () => {
     const fixtures = await createFixtures();
     const pronouns = await createProfileQuestion(fixtures.alice, {
       label: "Pronouns",
-      responseType: "free_text",
+      responseType: "text",
       scope: "once_ever",
       surfaces: ["onboarding"],
     });
     const fieldsWithMapping: CreateFormInput["fields"] = [
       ...taggedFields,
-      { key: "pronouns", label: "Pronouns", responseType: "free_text", mapsToProfileQuestionId: pronouns.id },
+      { key: "pronouns", label: "Pronouns", responseType: "text", mapsToProfileQuestionId: pronouns.id },
     ];
     const setupResult = await setUp(fixtures, fieldsWithMapping);
 
@@ -218,7 +218,7 @@ describe("Recruitment: applicant→Member conversion", () => {
     });
     const fieldsWithMapping: CreateFormInput["fields"] = [
       ...taggedFields,
-      { key: "vibe", label: "Vibe", responseType: "free_text", mapsToProfileQuestionId: vibe.id },
+      { key: "vibe", label: "Vibe", responseType: "text", mapsToProfileQuestionId: vibe.id },
     ];
     const setupResult = await setUp(fixtures, fieldsWithMapping);
 

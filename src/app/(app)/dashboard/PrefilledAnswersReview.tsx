@@ -2,20 +2,32 @@
 
 import { useState } from "react";
 import { PencilSimple } from "@phosphor-icons/react";
-import { BUTTON_ICON, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT } from "@/components/ui/kit";
+import { BUTTON_ICON, BUTTON_PRIMARY, BUTTON_SECONDARY } from "@/components/ui/kit";
+import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
+import type { ResponseType } from "@/lib/field-shape";
 
 type PrefilledAnswer = {
   question: {
     id: string;
     label: string;
-    responseType: "free_text" | "single_choice" | "multi_choice" | "date";
+    responseType: ResponseType;
     options: string[];
+    multiline: boolean;
+    validation: "none" | "email" | "phone" | "url";
+    allowOther: boolean;
+    min: number | null;
+    max: number | null;
+    step: number | null;
   };
   answer: { value: unknown };
 };
 
 function formatValue(value: unknown): string {
   if (Array.isArray(value)) return value.join(", ");
+  // A boolean and a number are both real answers now that the field
+  // shapes include them, and "—" would be a lie for either.
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") return String(value);
   return typeof value === "string" && value.trim() ? value : "—";
 }
 
@@ -71,47 +83,16 @@ export default function PrefilledAnswersReview({
       {answers.map(({ question, answer }) => (
         <div key={question.id}>
           <input type="hidden" name="questionId" value={question.id} />
-          <p className="mb-1 text-[13px] text-[var(--text)]">{question.label}</p>
-          {question.responseType === "free_text" && (
-            <input
-              type="text"
-              name={`value_${question.id}`}
-              defaultValue={typeof answer.value === "string" ? answer.value : ""}
-              className={INPUT}
-            />
-          )}
-          {question.responseType === "date" && (
-            <input
-              type="date"
-              name={`value_${question.id}`}
-              defaultValue={typeof answer.value === "string" ? answer.value : ""}
-              className={`${INPUT} w-fit`}
-            />
-          )}
-          {question.responseType === "single_choice" && (
-            <div className="flex flex-col gap-1">
-              {question.options.map((o) => (
-                <label key={o} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
-                  <input type="radio" name={`value_${question.id}`} value={o} defaultChecked={answer.value === o} /> {o}
-                </label>
-              ))}
-            </div>
-          )}
-          {question.responseType === "multi_choice" && (
-            <div className="flex flex-col gap-1">
-              {question.options.map((o) => (
-                <label key={o} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
-                  <input
-                    type="checkbox"
-                    name={`value_multi_${question.id}`}
-                    value={o}
-                    defaultChecked={Array.isArray(answer.value) && answer.value.includes(o)}
-                  />{" "}
-                  {o}
-                </label>
-              ))}
-            </div>
-          )}
+          {/* The same FieldPreview every other field renders through, and
+              the reason this component doesn't need its own per-type
+              branch: it used to have a fourth copy of this switch, which
+              is exactly the kind of thing that silently stops covering
+              new types. */}
+          <FieldPreview
+            field={toPreviewShape({ ...question, label: question.label, required: false })}
+            name={`value_${question.id}`}
+            defaultValue={answer.value}
+          />
         </div>
       ))}
       <div className="flex gap-2">

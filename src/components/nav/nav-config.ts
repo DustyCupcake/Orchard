@@ -36,17 +36,39 @@ export type NavGroup = {
   //    it reads the same whether reached via this list or via a pin.
   //    Modules uses this.
   headerIsLink?: boolean;
+  // Whether this group starts expanded for a member who has never
+  // touched its chevron. Absent = open.
+  //
+  // The split follows headerIsLink, for the same underlying reason that
+  // flag exists: a headerIsLink group is a *link* first and a container
+  // second, so its own destination is the row you click and the
+  // sub-list is only alternate routes into it. Expanding all of those
+  // by default turned the sidebar into a wall of indented text that
+  // duplicated hubs each header already links to, and made the one row
+  // you actually wanted the same visual size as everything beneath it.
+  // Modules is the opposite shape — its header isn't a destination at
+  // all, so its items *are* the group, and collapsing it by default
+  // would hide the only content it has.
+  //
+  // AppShell.tsx reads this as the fallback behind each member's own
+  // explicit per-group choice, so changing a default here never
+  // overrides someone who has already opened or closed it themselves.
+  defaultOpen?: boolean;
 };
 
 export const DASHBOARD_ITEM: NavItem = { key: "dashboard", label: "Dashboard", href: "/dashboard", icon: "home" };
 export const CALENDAR_ITEM: NavItem = { key: "calendar", label: "Calendar", href: "/calendar", icon: "calendar" };
+// Event is the member-facing name for the domain's former Cycle concept.
+// Keep the persisted key, route, and icon key stable; only the visible label
+// and its top-level placement change here.
+export const EVENTS_ITEM: NavItem = { key: "cycles", label: "Events", href: "/participation", icon: "cycle" };
 
 // Calendar is a single aggregating read view (Phase 44) — it has no
 // sub-pages of its own, unlike the groups below, so it sits at the top
 // level alongside Dashboard/Settings rather than as a group. Everything
 // that used to live under a "Calendar" group but is actually its own
 // working surface (submit a poll response, sign up for a shift, review
-// an event proposal, answer an input round) moved to whichever group
+// a Programme proposal, answer an input round) moved to whichever group
 // matches what kind of surface it is — see each item's new home below.
 export const NAV_GROUPS: NavGroup[] = [
   {
@@ -58,6 +80,7 @@ export const NAV_GROUPS: NavGroup[] = [
     // sub-list is the alternate way to get to them. See board/page.tsx.
     href: "/board",
     headerIsLink: true,
+    defaultOpen: false,
     items: [
       // The sub-list carries only the three real destinations this
       // group's header hub (/board) routes to from its own button row —
@@ -81,17 +104,10 @@ export const NAV_GROUPS: NavGroup[] = [
     // the header fell back to "whatever's first" (/members).
     href: "/community",
     headerIsLink: true,
+    defaultOpen: false,
     items: [
       { key: "members", label: "Members", href: "/members", icon: "people" },
       { key: "assemblies", label: "Assemblies", href: "/assemblies", icon: "chatsCircle" },
-      // The community's relationship to Cycles over time — history,
-      // current-cycle composition/participation stats — with a member's
-      // own participation declaration as one part of that, not a
-      // separate destination. Presented to members as "Events" (the
-      // Cycle → Event relabel; schema, routes and URLs keep "cycle").
-      // Cycle-scoped data (who's part of it), as distinct from
-      // Calendar's when-things-happen dates.
-      { key: "cycles", label: "Events", href: "/participation", icon: "cycle" },
       // Community-wide config (branches, tiers, modules, ...) — moved
       // out of its old fixed bottom-of-sidebar slot: that position
       // reads as "your own stuff" (it sits right above the profile/
@@ -117,6 +133,7 @@ export const NAV_GROUPS: NavGroup[] = [
     // rides the Dashboard item.
     href: "/communication",
     headerIsLink: true,
+    defaultOpen: false,
     items: [
       { key: "messages", label: "Messages", href: "/messages", icon: "mail" },
       // An input round is questions posed against a task — "people
@@ -193,7 +210,22 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-export const ALL_ITEMS: NavItem[] = [DASHBOARD_ITEM, CALENDAR_ITEM, ...NAV_GROUPS.flatMap((g) => g.items)];
+// /questions deliberately has NO nav item. It began as one, on the
+// reasoning that a destination needs somewhere to be found from — but
+// every outstanding thing else in this app already surfaces on the
+// Dashboard (the feed, the snapshot, the onboarding panel), and a
+// top-level row is expensive real estate: it sits beside Dashboard,
+// Calendar and Events for every member on every request, most of whom
+// will never have a single outstanding question. The count rides the
+// Dashboard badge instead (nav.ts's questionsBadgeCount) and the page is
+// reachable from the Dashboard element, the /profile pointer, the event
+// page's own link, and the post-declaration handover.
+export const ALL_ITEMS: NavItem[] = [
+  DASHBOARD_ITEM,
+  CALENDAR_ITEM,
+  EVENTS_ITEM,
+  ...NAV_GROUPS.flatMap((g) => g.items),
+];
 
 /**
  * Header-only groups (notably Library) intentionally have no sub-items.

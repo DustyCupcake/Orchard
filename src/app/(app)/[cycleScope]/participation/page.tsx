@@ -19,6 +19,7 @@ import {
   openCycleShiftSignupsAction,
 } from "../../shifts/actions";
 import { getCommunity, isAdmin, listCycleTypes } from "@/lib/settings";
+import { listOutstandingQuestions } from "@/lib/profile-questions";
 import { isModuleEnabled } from "@/lib/modules";
 import { describeBoundaryWindow, formatDateRange } from "@/lib/dates";
 import { listTaskPacks } from "@/lib/task-packs";
@@ -435,6 +436,12 @@ async function ParticipationForCycle({
       ? await getBudgetCycleForCycle(viewing, cycleId)
       : null;
   const needsBudgetDoneWarning = Boolean(budgetCycleRow && !budgetCycleRow.ownerMarkedDoneAt);
+  // The same "questions for this event" the Dashboard's and Community's
+  // declare-joining controls route to on submit — linked from here too so
+  // the full form's submitter isn't left wondering where to answer them.
+  const eventQuestions = (
+    await listOutstandingQuestions(viewing, { cycleId })
+  ).filter((q) => q.question.scope !== "once_ever");
 
   return (
     <>
@@ -532,6 +539,17 @@ async function ParticipationForCycle({
       {!closed && (
         <section className="mt-6">
           <SectionHeading>Your plans</SectionHeading>
+          {eventQuestions.length > 0 && (
+            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              Your community also asks{" "}
+              {eventQuestions.length === 1 ? "one question" : `${eventQuestions.length} questions`} about this
+              event —{" "}
+              <Link href={`/questions?cycle=${cycleId}`} className="text-[var(--accent-1)] hover:underline">
+                answer {eventQuestions.length === 1 ? "it" : "them"} here
+              </Link>
+              .
+            </p>
+          )}
           <form action={declareParticipationAction} className="mt-3 flex max-w-[400px] flex-col gap-2">
             <input type="hidden" name="cycleId" value={cycleId} />
             <input type="hidden" name="cycleScope" value={cycleScope} />
@@ -713,19 +731,6 @@ async function ParticipationForCycle({
 
 type CycleWithPhases = Awaited<ReturnType<typeof getCycle>>;
 type PhaseRow = CycleWithPhases["phases"][number];
-
-const ANCHOR_LABEL: Record<string, string> = {
-  start: "the cycle's start",
-  end: "the cycle's end",
-  between: "the cycle's span",
-};
-
-function describeBoundary(prefix: "Start" | "End", p: PhaseRow, dateType: string, basis: string | null, value: number | null) {
-  if (dateType === "absolute") return "Absolute date, hand-typed.";
-  if (!basis || value === null) return "Relative relationship not yet resolved.";
-  if (basis === "between") return `${(value / 100).toFixed(2).replace(/\.00$/, "")}% of the way through the cycle.`;
-  return `${value} day(s) from ${ANCHOR_LABEL[basis]}.`;
-}
 
 // See docs/development-plan.md's Phase 39 — a phase spine an existing
 // Cycle's own dates resolve against. No rename/reorder here (phases,

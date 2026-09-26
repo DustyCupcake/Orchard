@@ -526,9 +526,9 @@ describe("needs-action and the supply lens", () => {
 
     // The holder has one live draft and nothing else to decide.
     const action = await listKitchenNeedsAction(alice);
-    expect(action).toHaveLength(1);
-    expect(action[0].kind).toBe("draft_unpublished");
-    expect(await listKitchenNeedsAction(bob)).toEqual([]);
+    expect(action.personal).toHaveLength(1);
+    expect(action.personal[0].kind).toBe("draft_unpublished");
+    expect(await listKitchenNeedsAction(bob)).toEqual({ personal: [], shared: [] });
   });
 
   it("surfaces an unpublished draft and any open ideas, then goes quiet once published", async () => {
@@ -539,12 +539,12 @@ describe("needs-action and the supply lens", () => {
     await fileFoodIdea(bob, { menuPlanId: plan.id, kind: "preference", title: "More aubergine" });
 
     const before = await listKitchenNeedsAction(alice);
-    expect(before.map((k) => k.kind).sort()).toEqual(["draft_unpublished", "ideas_awaiting_review"]);
-    const ideas = before.find((k) => k.kind === "ideas_awaiting_review")!;
+    expect(before.personal.map((k) => k.kind).sort()).toEqual(["draft_unpublished", "ideas_awaiting_review"]);
+    const ideas = before.personal.find((k) => k.kind === "ideas_awaiting_review")!;
     expect(ideas.openCount).toBe(1);
 
     await publishMenuPlan(alice, plan.id);
-    expect(await listKitchenNeedsAction(alice)).toEqual([]);
+    expect(await listKitchenNeedsAction(alice)).toEqual({ personal: [], shared: [] });
   });
 
   it("only surfaces drafts in scopes the holder actually owns", async () => {
@@ -570,8 +570,8 @@ describe("needs-action and the supply lens", () => {
       .returning();
 
     const action = await listKitchenNeedsAction(alice);
-    expect(action.map((k) => k.menuPlanId)).toEqual([springPlan.id]);
-    expect(action).not.toContainEqual(expect.objectContaining({ menuPlanId: standingPlan.id }));
+    expect(action.personal.map((k) => k.menuPlanId)).toEqual([springPlan.id]);
+    expect(action.personal).not.toContainEqual(expect.objectContaining({ menuPlanId: standingPlan.id }));
   });
 
   it("lists supply-tagged tasks with their resources for the holder only", async () => {

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { getNextCutoffAt, listCurrentRoundQuestions } from "@/lib/input-rounds";
-import { Banner, BUTTON_PRIMARY, INPUT, Tag } from "@/components/ui/kit";
+import { Banner, BUTTON_PRIMARY, Tag } from "@/components/ui/kit";
+import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
 import { submitQuestionResponseAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -81,38 +82,16 @@ export default async function InputRoundsPage({
 
             <form action={submitQuestionResponseAction} className="mt-2 flex flex-col gap-2">
               <input type="hidden" name="questionId" value={question.id} />
-              {question.responseType === "free_text" && (
-                <input
-                  type="text"
-                  name="value"
-                  defaultValue={typeof myResponse?.value === "string" ? myResponse.value : ""}
-                  className={INPUT}
-                />
-              )}
-              {question.responseType === "single_choice" && (
-                <div className="flex flex-col gap-1">
-                  {question.options.map((o) => (
-                    <label key={o} className="flex items-center gap-1.5 text-[13px] text-[var(--text)]">
-                      <input type="radio" name="value" value={o} defaultChecked={myResponse?.value === o} /> {o}
-                    </label>
-                  ))}
-                </div>
-              )}
-              {question.responseType === "multi_choice" && (
-                <div className="flex flex-col gap-1">
-                  {question.options.map((o) => (
-                    <label key={o} className="flex items-center gap-1.5 text-[13px] text-[var(--text)]">
-                      <input
-                        type="checkbox"
-                        name="value_multi"
-                        value={o}
-                        defaultChecked={Array.isArray(myResponse?.value) && myResponse.value.includes(o)}
-                      />{" "}
-                      {o}
-                    </label>
-                  ))}
-                </div>
-              )}
+              {/* The shared renderer, so a task question can ask about a
+                  date or a number without this page growing a fourth
+                  copy of the type switch. The question text is rendered
+                  above, so the field renders inputs only. */}
+              <FieldPreview
+                field={toPreviewShape({ ...question, label: "", required: false })}
+                name="value"
+                defaultValue={myResponse?.value}
+                hideLabel
+              />
               <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                 {myResponse ? "Update answer" : "Answer"}
               </button>

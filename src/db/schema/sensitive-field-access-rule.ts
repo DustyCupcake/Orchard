@@ -1,5 +1,6 @@
 import { pgEnum, pgTable, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
+import { profileQuestion } from "./profile-question";
 import { task } from "./task";
 import { tier } from "./tier";
 import { permissionGrantModuleEnum } from "./permission-grant";
@@ -31,7 +32,22 @@ export const sensitiveFieldAccessRule = pgTable("sensitive_field_access_rule", {
   communityId: uuid("community_id")
     .notNull()
     .references(() => community.id),
-  fieldKey: sensitiveFieldKeyEnum("field_key").notNull(),
+  // Exactly one of fieldKey / questionId per row, enforced at the
+  // application layer the same way the three unlock routes below are.
+  // The table went from "a rule names one of four fixed member columns"
+  // to "a rule names a fixed member column *or* a profile question",
+  // because a community's own questions are where the sensitive data
+  // actually lives, and an enum can't name one. fieldKey therefore
+  // becomes nullable rather than disappearing: the four member columns
+  // are docs/spec.md's fixed set and stay exactly as they were, and the
+  // questions are additive beside them.
+  fieldKey: sensitiveFieldKeyEnum("field_key"),
+  // A rule naming a question rather than a column. Same three unlock
+  // routes, same union-of-holders resolution, and the same
+  // consent-purpose gate as the member columns — so a community can
+  // treat "medication on site" exactly as it treats "allergies" without
+  // a second access model existing.
+  questionId: uuid("question_id").references(() => profileQuestion.id),
   unlockedByTaskId: uuid("unlocked_by_task_id").references(() => task.id),
   unlockedByTierId: uuid("unlocked_by_tier_id").references(() => tier.id),
   unlockedByGrantModuleKey: permissionGrantModuleEnum("unlocked_by_grant_module_key"),

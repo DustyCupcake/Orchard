@@ -41,6 +41,23 @@ export const member = pgTable("member", {
   // above and contact-method visibility. Only gates *others'* view of
   // this member's breakdown; their own is always visible to themselves.
   contributionVisible: boolean("contribution_visible").notNull().default(false),
+  // Standing consent to have this member's answers counted in published
+  // community indicators, given once for the whole publishable-questions
+  // section rather than per question — a question can only enter that
+  // section at creation, so the consent always predates the answer and is
+  // never re-asked. Un-ticking is immediate and retroactive: the
+  // aggregate recomputes per request, so there's no stored tally to
+  // unwind.
+  //
+  // Default TRUE, deliberately the opposite of contributionVisible above,
+  // and for the same asymmetry: a contribution record is generated
+  // passively from task history, so sharing it has to be asked for, while
+  // an indicator is an aggregate of answers the member gave knowing
+  // "this section may appear in community indicators". Answering *is*
+  // consenting, in the same way it is for emergency access.
+  consentsToCommunityIndicators: boolean("consents_to_community_indicators")
+    .notNull()
+    .default(true),
   // Manual "pin this for me" nav overrides — module/nav-item keys (see
   // src/components/nav/nav-config.ts) a member chose to pin themselves,
   // on top of whatever auto-pins from task-holdership or the current

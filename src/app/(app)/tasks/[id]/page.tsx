@@ -5,6 +5,12 @@ import { db } from "@/db";
 import { branch, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import {
+  RESPONSE_TYPES,
+  RESPONSE_TYPE_LABELS,
+  formatFieldValue,
+  isChoiceType,
+} from "@/lib/field-shape";
+import {
   getGroupCoverageStatus,
   getParentTaskSummary,
   getTask,
@@ -29,6 +35,8 @@ import {
 import { getCommunity, isAdmin, listBranches } from "@/lib/settings";
 import {
   allowsMultipleGrants,
+  describeGrantScope,
+  isMisplacedCommunityGrant,
   listGrantsWithTaskInfo,
   listModuleKeysGrantedByTask,
   PERMISSION_MODULE_LABELS,
@@ -925,16 +933,34 @@ export default async function TaskDetailPage({
             {questions.length === 0 && <p className="mt-3 text-[13px] text-[var(--text-muted)]">No questions yet.</p>}
             <div className="mt-3">
               {questions.map((q) => {
-                const tally =
-                  q.responseType !== "free_text"
-                    ? q.options.map((o) => ({
+                // Answers that aren't any listed option — only reachable
+                // when a question has the escape hatch on. Counted as
+                // their own row rather than dropped, for the same reason
+                // the Assembly tally does it: a member reading
+                // "north: 1, south: 0" would otherwise conclude two
+                // people hadn't answered when in fact one had, in their
+                // own words.
+                const otherCount = q.allowOther
+                  ? q.responses.filter((r) =>
+                      (Array.isArray(r.value) ? r.value : [r.value]).some(
+                        (x) => typeof x === "string" && !q.options.includes(x),
+                      ),
+                    ).length
+                  : 0;
+                const tally = isChoiceType(q.responseType)
+                  ? [
+                      ...q.options.map((o) => ({
                         option: o,
                         count: q.responses.filter((r) => {
                           const v = r.value as string | string[];
                           return Array.isArray(v) ? v.includes(o) : v === o;
                         }).length,
-                      }))
-                    : null;
+                      })),
+                      ...(otherCount > 0
+                        ? [{ option: "wrote their own answer", count: otherCount }]
+                        : []),
+                    ]
+                  : null;
                 return (
                   <div key={q.id} className="mb-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-3.5">
                     <p className="flex flex-wrap items-center gap-1.5 text-[13px]">
@@ -965,7 +991,7 @@ export default async function TaskDetailPage({
                     {!tally && q.responses.length > 0 && (
                       <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
                         {q.responses.map((r) => (
-                          <li key={r.id}>{String(r.value)}</li>
+                          <li key={r.id}>{formatFieldValue(r.value, q.responseType)}</li>
                         ))}
                       </ul>
                     )}
@@ -977,12 +1003,20 @@ export default async function TaskDetailPage({
             <form action={createQuestionAction} className="mt-3 flex flex-col gap-2">
               <input type="hidden" name="taskId" value={taskRow.id} />
               <input type="text" name="text" required placeholder="Ask something" className={INPUT} />
-              <select name="responseType" defaultValue="free_text" className={INPUT}>
-                <option value="free_text">Free text</option>
-                <option value="single_choice">Single choice</option>
-                <option value="multi_choice">Multi choice</option>
+              {/* The same six shapes as every other question system, with
+                  the labels from src/lib/field-shape.ts rather than a
+                  second set of wording here. A task question could
+                  always ask three things; now it can ask "when could
+                  you do this" or "how many hours" too. */}
+              <select name="responseType" defaultValue="text" className={INPUT}>
+                {RESPONSE_TYPES.map((rt) => (
+                  <option key={rt} value={rt}>
+                    {RESPONSE_TYPE_LABELS[rt]}
+                  </option>
+                ))}
               </select>
               <input type="text" name="options" placeholder="options for choice types, comma-separated" className={INPUT} />
+              <input type="hidden" name="multiline" value="on" />
               <label className="flex items-center gap-2 text-[13px] text-[var(--text-muted)]">
                 Deadline (optional)
                 <input type="date" name="deadline" className={INPUT} />
@@ -1233,10 +1267,9 @@ export default async function TaskDetailPage({
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             Check which module-level access gate(s) whoever currently holds this task should get —
             the identical <code>PermissionGrant</code> rows the settings panel&rsquo;s Access &amp;
-            permissions tab edits. A grant&rsquo;s scope comes from this task&rsquo;s own placement: a
-            cycle-less task is the community-wide/evergreen role, a task placed in a cycle grants
-            that cycle&rsquo;s data only. Budget authority is configured only in Settings → Access &amp;
-            permissions.
+            permissions tab edits, grouped there by how far each reaches. A grant&rsquo;s scope comes
+            from this task&rsquo;s own placement, so each row below shows what you&rsquo;d be granting
+            here. Budget authority is configured only in Settings → Access &amp; permissions.
           </p>
           <form action={updateTaskPermissionGrantsAction} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="taskId" value={taskRow.id} />
@@ -1248,6 +1281,16 @@ export default async function TaskDetailPage({
                   value={moduleKey}
                   defaultChecked={grantedByThisTask.has(moduleKey)}
                 />
+                <p className="ml-6 text-[12px] text-[var(--text-muted)]">
+                  {describeGrantScope(moduleKey, taskRow.cycleId, taskCycle?.name ?? null)}
+                  {isMisplacedCommunityGrant(moduleKey, taskRow.cycleId) && (
+                    <>
+                      {" "}
+                      &mdash; but this task sits in an event, which contradicts a community-wide role.
+                      The grant still counts community-wide.
+                    </>
+                  )}
+                </p>
                 {elsewhereHolderByModule.has(moduleKey) && (
                   <p className="ml-6 text-[12px] text-[var(--text-muted)]">
                     Currently held by &ldquo;{elsewhereHolderByModule.get(moduleKey)}&rdquo; — checking this

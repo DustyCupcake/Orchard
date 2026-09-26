@@ -2,7 +2,8 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { foodIdea, menuPlan, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { listGrantingTaskIds } from "../permissions";
+import { isModuleOpenToEveryone, listGrantingTaskIds } from "../permissions";
+import { isSharedByOpenness, type NeedsAction } from "../needs-action";
 import { isKitchenOwner } from "./access";
 
 type Member = typeof memberTable.$inferSelect;
@@ -14,7 +15,16 @@ export type KitchenNeedsAction =
 // The scopes this holder actually owns, derived once from their held
 // granting tasks' placements — the difference between "is a kitchen
 // holder somewhere" (isKitchenOwner) and "can act on THIS plan".
+//
+// An open module answers `{null}` — the community/evergreen scope, already
+// the superset (docs/open-permissions-plan.md D3) — so every scope in the
+// list below matches and an open Kitchen Community still gets its
+// draft-publish and ideas-review rows on the Dashboard.
 async function ownedKitchenScopeIds(actor: Member): Promise<Set<string | null>> {
+  if (await isModuleOpenToEveryone(actor.communityId, "kitchen")) {
+    return new Set([null]);
+  }
+
   const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "kitchen");
   if (grantingTaskIds.length === 0) return new Set();
   const rows = await db
@@ -38,8 +48,8 @@ async function ownedKitchenScopeIds(actor: Member): Promise<Set<string | null>> 
 // queued on a draft the holder can still act on (published plans lock
 // adoption, so their ideas don't resurface here — the holder starts a
 // new draft for them).
-export async function listKitchenNeedsAction(actor: Member): Promise<KitchenNeedsAction[]> {
-  if (!(await isKitchenOwner(actor))) return [];
+export async function listKitchenNeedsAction(actor: Member): Promise<NeedsAction<KitchenNeedsAction>> {
+  if (!(await isKitchenOwner(actor))) return { personal: [], shared: [] };
 
   const ownedScopes = await ownedKitchenScopeIds(actor);
   const plans = await db.select().from(menuPlan).where(eq(menuPlan.communityId, actor.communityId));
@@ -68,5 +78,10 @@ export async function listKitchenNeedsAction(actor: Member): Promise<KitchenNeed
     }
   }
 
-  return results;
+  // Split per D12. `ownedScopes` is already `{null}` for an open module, so
+  // every draft matches; this is what stops "publish this menu" and "review
+  // these ideas" from landing on every member's dashboard as their chore.
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "kitchen");
+  const shared = await isSharedByOpenness(actor.communityId, "kitchen", actor.id, grantingTaskIds);
+  return shared ? { personal: [], shared: results } : { personal: results, shared: [] };
 }

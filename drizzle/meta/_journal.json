@@ -533,6 +533,27 @@
       "when": 1790435570069,
       "tag": "0075_open_permission_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1790438602043,
+      "tag": "0076_question_attributes",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1790438612890,
+      "tag": "0077_drop_per_question_indicator_consent",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1790440402291,
+      "tag": "0078_question_access_rules",
+      "breakpoints": true
     }
   ]
 }

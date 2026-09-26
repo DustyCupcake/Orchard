@@ -34,8 +34,8 @@ import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/er
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
-  { key: "name", label: "Name", responseType: "free_text", required: true },
-  { key: "why", label: "Why do you want to join?", responseType: "free_text", required: false },
+  { key: "name", label: "Name", responseType: "text", required: true },
+  { key: "why", label: "Why do you want to join?", responseType: "text", required: false },
 ];
 
 async function enableRecruitment(communityId: string) {

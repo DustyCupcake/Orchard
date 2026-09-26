@@ -21,7 +21,7 @@ import { ForbiddenError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
-  { key: "name", label: "Name", responseType: "free_text", required: true },
+  { key: "name", label: "Name", responseType: "text", required: true },
 ];
 
 const DEFAULT_RULES: RecruitmentDecisionRule[] = [
@@ -279,7 +279,7 @@ describe("listRecruitmentActionItems", () => {
     const { application: stuck } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
     const { application: declined } = await submitAndDecide(fixtures, setupResult, ["decline", "decline"]);
 
-    const actionItems = await listRecruitmentActionItems(setupResult.alice);
+    const actionItems = (await listRecruitmentActionItems(setupResult.alice)).personal;
     const ids = actionItems.map((c) => c.id);
     expect(ids).toContain(stuck.id);
     expect(ids).not.toContain(appliedOnly.id);

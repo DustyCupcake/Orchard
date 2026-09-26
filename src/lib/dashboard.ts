@@ -141,7 +141,7 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
   const recruitmentNeedsAction =
     isModuleEnabled(communityRow, "recruitment") && (await isRecruitmentTaskHolder(actor))
       ? await listRecruitmentActionItems(actor)
-      : [];
+      : { personal: [], shared: [] };
 
   // Same "check the gate here, not inside a try/catch" posture as
   // recruitmentNeedsAction just above — a non-holder's feed simply
@@ -178,14 +178,19 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
   // check at all, since it's gated purely by whether a real
   // `conflict_team` PermissionGrant exists (see src/lib/conflict.ts),
   // not a modulesEnabled entry.
-  const budgetNeedsAction = isModuleEnabled(communityRow, "budget") ? await listBudgetNeedsAction(actor) : [];
+  const budgetNeedsAction = isModuleEnabled(communityRow, "budget")
+    ? await listBudgetNeedsAction(actor)
+    : { personal: [], shared: [] };
   const eventSchedulingNeedsAction = isModuleEnabled(communityRow, "event_scheduling")
     ? await listEventSchedulingNeedsAction(actor)
-    : [];
+    : { personal: [], shared: [] };
   const shiftsOn = isModuleEnabled(communityRow, "shifts");
   const [shiftCoordinatorNeedsAction, myPastShiftsWithOccurrence] = shiftsOn
     ? await Promise.all([listShiftCoordinatorNeedsAction(actor), listMySignupsWithOccurrence(actor)])
-    : [[], []];
+    : [
+        { personal: [], shared: [] },
+        [],
+      ];
   const myShiftsNeedingCompletion = myPastShiftsWithOccurrence
     .filter((s) => s.signup.status === "signed_up" && new Date(s.occurrence.endsAt) < new Date())
     .map((s) => ({ signupId: s.signup.id, seriesTitle: s.series.title, endsAt: s.occurrence.endsAt }));
@@ -194,7 +199,9 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
   // Step 4) — module-gated, and listKitchenNeedsAction itself degrades
   // to [] for a non-holder, so a member who's neither enabled-for nor
   // holding just gets no section.
-  const kitchenNeedsAction = isModuleEnabled(communityRow, "kitchen") ? await listKitchenNeedsAction(actor) : [];
+  const kitchenNeedsAction = isModuleEnabled(communityRow, "kitchen")
+    ? await listKitchenNeedsAction(actor)
+    : { personal: [], shared: [] };
 
   // Core, not module-gated — task nomination is part of ordinary task
   // coordination, same footing as claim/release itself. See

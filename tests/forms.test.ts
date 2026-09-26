@@ -14,6 +14,8 @@ import {
   listPostCycleFeedbackResponses,
   submitFormResponse,
   submitPostCycleFeedback,
+  formValuesFromFormData,
+  type FormField,
   unarchiveForm,
   updateForm,
 } from "@/lib/forms";
@@ -45,7 +47,7 @@ async function insertReviewTask(
 }
 
 const surveyFields = [
-  { key: "overall", label: "How did this cycle go?", responseType: "free_text" as const, required: true },
+  { key: "overall", label: "How did this cycle go?", responseType: "text" as const, required: true },
   {
     key: "again",
     label: "Would you do it again?",
@@ -104,7 +106,7 @@ describe("Form CRUD", () => {
       const newFields = [
         { ...surveyFields[1], label: "Would you do it again? (renamed)" },
         surveyFields[0],
-        { key: "new_field", label: "Anything else?", responseType: "free_text" as const, required: false },
+        { key: "new_field", label: "Anything else?", responseType: "text" as const, required: false },
       ];
       const updated = await updateForm(alice, created.id, { fields: newFields });
       expect(updated.fields).toEqual(newFields);
@@ -126,8 +128,8 @@ describe("Form CRUD", () => {
       await expect(
         updateForm(alice, created.id, {
           fields: [
-            { key: "dup", label: "One", responseType: "free_text" },
-            { key: "dup", label: "Two", responseType: "free_text" },
+            { key: "dup", label: "One", responseType: "text" },
+            { key: "dup", label: "Two", responseType: "text" },
           ],
         }),
       ).rejects.toThrow();
@@ -139,8 +141,8 @@ describe("Form CRUD", () => {
       await expect(
         updateForm(alice, created.id, {
           fields: [
-            { key: "a", label: "A", responseType: "free_text", isNameField: true },
-            { key: "b", label: "B", responseType: "free_text", isNameField: true },
+            { key: "a", label: "A", responseType: "text", isNameField: true },
+            { key: "b", label: "B", responseType: "text", isNameField: true },
           ],
         }),
       ).rejects.toThrow();
@@ -152,7 +154,7 @@ describe("Form CRUD", () => {
       await submitFormResponse(alice, created.id, { values: { overall: "Great", again: "Yes" } });
 
       await updateForm(alice, created.id, {
-        fields: [{ key: "overall", label: "Renamed label", responseType: "free_text", required: true }],
+        fields: [{ key: "overall", label: "Renamed label", responseType: "text", required: true }],
       });
 
       const [response] = await listFormResponses(alice, created.id);
@@ -183,6 +185,92 @@ describe("Form CRUD", () => {
   });
 });
 
+// A Form submission used to be checked for required-and-blank and
+// nothing else, which was survivable when a field could only be text or
+// a choice and was not survivable the moment a form could hold a number
+// with bounds, a yes/no, or an email. These cover the validation that now
+// runs on every submission, through the same validateFieldValue a
+// ProfileQuestion answer goes through.
+describe("Form submissions validate against their fields", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("rejects a non-numeric answer to a number field", async () => {
+    const { alice } = await createFixtures();
+    const form = await createForm(alice, {
+      title: "Crew details",
+      fields: [{ key: "hours", label: "Hours a week", responseType: "number", required: true, max: 40 }],
+    });
+
+    const ok = await submitFormResponse(alice, form.id, { values: { hours: "12" } });
+    expect(ok.values).toEqual({ hours: 12 });
+
+    await expect(submitFormResponse(alice, form.id, { values: { hours: "banana" } })).rejects.toThrow(ConflictError);
+    await expect(submitFormResponse(alice, form.id, { values: { hours: "60" } })).rejects.toThrow(/at most/);
+  });
+
+  it("rejects a malformed answer to a field with a format check", async () => {
+    const { alice } = await createFixtures();
+    const form = await createForm(alice, {
+      title: "Contact",
+      fields: [{ key: "email", label: "Email", responseType: "text", validation: "email", required: true }],
+    });
+
+    await expect(submitFormResponse(alice, form.id, { values: { email: "sam@example.com" } })).resolves.toBeTruthy();
+    await expect(submitFormResponse(alice, form.id, { values: { email: "sam at example" } })).rejects.toThrow(/email/);
+  });
+
+  it("stores a boolean submission as a real boolean", async () => {
+    const { alice } = await createFixtures();
+    const form = await createForm(alice, {
+      title: "Site needs",
+      fields: [{ key: "bed", label: "Need a bed?", responseType: "boolean" }],
+    });
+
+    const no = await submitFormResponse(alice, form.id, { values: { bed: "false" } });
+    expect(no.values).toEqual({ bed: false });
+  });
+
+  it("reads a choice field's escape-hatch text from its sibling input", async () => {
+    const { alice } = await createFixtures();
+    const form = await createForm(alice, {
+      title: "About you",
+      fields: [
+        { key: "pronouns", label: "Pronouns", responseType: "single_choice", options: ["she/her", "they/them"], allowOther: true },
+        { key: "needs", label: "What do you need?", responseType: "multi_choice", options: ["bed", "power"], allowOther: true },
+      ],
+    });
+
+    // What a browser posts for "they/them" plus text in the other box.
+    const fd = new FormData();
+    fd.append("field_pronouns", "they/them");
+    fd.append("field_pronouns__other", "xe/xem");
+    fd.append("field_needs", "bed");
+    fd.append("field_needs__other", "a tent pole");
+    const values = formValuesFromFormData(form.fields as FormField[], fd);
+
+    expect(values).toEqual({ pronouns: "they/them", needs: ["bed", "a tent pole"] });
+
+    // A ticked real option outranks leftover text in the other box.
+    const onlyOption = new FormData();
+    onlyOption.append("field_pronouns", "they/them");
+    onlyOption.append("field_pronouns__other", "leftover typing");
+    expect(formValuesFromFormData(form.fields as FormField[], onlyOption)).toMatchObject({
+      pronouns: "they/them",
+    });
+  });
+
+  it("rejects free text on a choice field with no escape hatch", async () => {
+    const { alice } = await createFixtures();
+    const form = await createForm(alice, {
+      title: "About you",
+      fields: [{ key: "pronouns", label: "Pronouns", responseType: "single_choice", options: ["she/her"] }],
+    });
+    await expect(submitFormResponse(alice, form.id, { values: { pronouns: "xe/xem" } })).rejects.toThrow(ConflictError);
+  });
+});
+
 // mapsToProfileQuestionId: a Form field can name which once-ever
 // ProfileQuestion its own answer should seed at applicant→Member
 // conversion (src/lib/recruitment/decisions.ts's
@@ -197,15 +285,15 @@ describe("Form fields: mapsToProfileQuestionId", () => {
     const { alice } = await createFixtures();
     const pronouns = await createProfileQuestion(alice, {
       label: "Pronouns",
-      responseType: "free_text",
+      responseType: "text",
       scope: "once_ever",
     });
     const created = await createForm(alice, {
       title: "Application",
-      fields: [{ key: "pronouns", label: "Pronouns", responseType: "free_text", mapsToProfileQuestionId: pronouns.id }],
+      fields: [{ key: "pronouns", label: "Pronouns", responseType: "text", mapsToProfileQuestionId: pronouns.id }],
     });
     expect(created.fields).toEqual([
-      { key: "pronouns", label: "Pronouns", responseType: "free_text", mapsToProfileQuestionId: pronouns.id },
+      { key: "pronouns", label: "Pronouns", responseType: "text", mapsToProfileQuestionId: pronouns.id },
     ]);
   });
 
@@ -213,15 +301,15 @@ describe("Form fields: mapsToProfileQuestionId", () => {
     const { alice } = await createFixtures();
     const pronouns = await createProfileQuestion(alice, {
       label: "Pronouns",
-      responseType: "free_text",
+      responseType: "text",
       scope: "once_ever",
     });
     await expect(
       createForm(alice, {
         title: "Bad form",
         fields: [
-          { key: "a", label: "A", responseType: "free_text", mapsToProfileQuestionId: pronouns.id },
-          { key: "b", label: "B", responseType: "free_text", mapsToProfileQuestionId: pronouns.id },
+          { key: "a", label: "A", responseType: "text", mapsToProfileQuestionId: pronouns.id },
+          { key: "b", label: "B", responseType: "text", mapsToProfileQuestionId: pronouns.id },
         ],
       }),
     ).rejects.toThrow(/at most one field can map to the same profile question/);
@@ -231,13 +319,13 @@ describe("Form fields: mapsToProfileQuestionId", () => {
     const { alice } = await createFixtures();
     const availability = await createProfileQuestion(alice, {
       label: "Availability",
-      responseType: "free_text",
+      responseType: "text",
       scope: "per_cycle",
     });
     await expect(
       createForm(alice, {
         title: "Bad form",
-        fields: [{ key: "a", label: "A", responseType: "free_text", mapsToProfileQuestionId: availability.id }],
+        fields: [{ key: "a", label: "A", responseType: "text", mapsToProfileQuestionId: availability.id }],
       }),
     ).rejects.toThrow(/once-ever/);
   });
@@ -246,14 +334,14 @@ describe("Form fields: mapsToProfileQuestionId", () => {
     const { alice } = await createFixtures();
     const pronouns = await createProfileQuestion(alice, {
       label: "Pronouns",
-      responseType: "free_text",
+      responseType: "text",
       scope: "once_ever",
     });
     await archiveProfileQuestion(alice, pronouns.id);
     await expect(
       createForm(alice, {
         title: "Bad form",
-        fields: [{ key: "a", label: "A", responseType: "free_text", mapsToProfileQuestionId: pronouns.id }],
+        fields: [{ key: "a", label: "A", responseType: "text", mapsToProfileQuestionId: pronouns.id }],
       }),
     ).rejects.toThrow(/no longer exists/);
   });
@@ -263,13 +351,13 @@ describe("Form fields: mapsToProfileQuestionId", () => {
     const { alice: strangerAlice } = await createFixtures();
     const strangerQuestion = await createProfileQuestion(strangerAlice, {
       label: "Pronouns",
-      responseType: "free_text",
+      responseType: "text",
       scope: "once_ever",
     });
     await expect(
       createForm(alice, {
         title: "Bad form",
-        fields: [{ key: "a", label: "A", responseType: "free_text", mapsToProfileQuestionId: strangerQuestion.id }],
+        fields: [{ key: "a", label: "A", responseType: "text", mapsToProfileQuestionId: strangerQuestion.id }],
       }),
     ).rejects.toThrow(/no longer exists/);
   });
@@ -279,7 +367,7 @@ describe("Form fields: mapsToProfileQuestionId", () => {
     const created = await createForm(alice, { title: "Original", fields: surveyFields });
     await expect(
       updateForm(alice, created.id, {
-        fields: [{ key: "x", label: "X", responseType: "free_text", mapsToProfileQuestionId: crypto.randomUUID() }],
+        fields: [{ key: "x", label: "X", responseType: "text", mapsToProfileQuestionId: crypto.randomUUID() }],
       }),
     ).rejects.toThrow(/no longer exists/);
   });

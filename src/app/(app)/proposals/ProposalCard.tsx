@@ -337,6 +337,16 @@ export default function ProposalCard({
                   {TASK_GRANTABLE_PERMISSION_MODULE_KEYS.map((moduleKey) => (
                     <div key={moduleKey}>
                       <CheckField label={PERMISSION_MODULE_LABELS[moduleKey]} name="grantModuleKeys" value={moduleKey} />
+                      {/* The one check here whose reach the branch
+                          dropdown above can't narrow — worth saying at
+                          the point of ticking it, since the branch and
+                          event selects sit right there. */}
+                      {moduleKey === "community_coordination" && (
+                        <p className="ml-6 text-[12px] text-[var(--text-muted)]">
+                          Ignores the branch. Placed in an event, it coordinates that event; left
+                          outside one, it coordinates the whole community.
+                        </p>
+                      )}
                       {elsewhereHolderByModule[moduleKey] && (
                         <p className="ml-6 text-[12px] text-[var(--text-muted)]">
                           Currently held by &ldquo;{elsewhereHolderByModule[moduleKey]}&rdquo; — checking this

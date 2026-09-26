@@ -5,7 +5,12 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
-import { getPostCycleFeedbackForm, submitFormResponseInput, submitPostCycleFeedback } from "@/lib/forms";
+import {
+  formValuesFromFormData,
+  getPostCycleFeedbackForm,
+  submitFormResponseInput,
+  submitPostCycleFeedback,
+} from "@/lib/forms";
 import type { FormField } from "@/lib/forms";
 import { AppError } from "@/lib/errors";
 
@@ -26,18 +31,11 @@ export async function submitFeedbackAction(formData: FormData) {
   try {
     const form = await getPostCycleFeedbackForm(actor);
     if (!form) {
-      throw new AppError("No post-cycle feedback form is configured for this Community yet");
+      throw new AppError("No post-event feedback form is configured for this Community yet");
     }
 
     const fields = form.fields as FormField[];
-    const values: Record<string, unknown> = {};
-    for (const f of fields) {
-      if (f.responseType === "multi_choice") {
-        values[f.key] = formData.getAll(`field_${f.key}`).map(String);
-      } else {
-        values[f.key] = String(formData.get(`field_${f.key}`) ?? "");
-      }
-    }
+    const values = formValuesFromFormData(fields, formData);
 
     const input = submitFormResponseInput.parse({
       values,

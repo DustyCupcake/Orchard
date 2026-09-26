@@ -44,7 +44,7 @@ export default async function CycleScopeEscalationPage({
     listBackstopScopesForMember(viewing),
   ]);
   const scopeCycleIds = scope.kind === "single" ? [scope.cycle.id] : scope.cycles.map((c) => c.id);
-  const isCommunityWide = coordination.branchIds.size > 0;
+  const isCommunityWide = coordination.communityWide || coordination.branchIds.size > 0;
   const isEvergreenBackstop = backstopScopes.includes(null);
   const coversCycle = (cid: string) => coordination.cycleIds.has(cid) || backstopScopes.includes(cid);
   const authorized =
@@ -60,7 +60,7 @@ export default async function CycleScopeEscalationPage({
         <div className="mt-4">
           <Banner tone="danger">
             Only a current coordination holder, or the backstop of a scope, can see this — you&rsquo;re
-            viewing a cycle only its own coordinator (or backstop) reaches. Cycle-less coordination
+            viewing an event only its own coordinator (or backstop) reaches. Event-independent coordination
             keeps the community-wide view.
           </Banner>
         </div>
