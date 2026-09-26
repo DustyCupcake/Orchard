@@ -66,6 +66,7 @@
   - [Outbound communications](#outbound-communications)
 - [👁️ Transparency & access](#transparency--access)
   - [View-as (support)](#view-as-support)
+  - [Open permissions — when the task isn't the point](#open-permissions)
 - [📈 Contribution tracking](#contribution-tracking)
 - [🎯 MVP scope](#mvp-scope)
 - [🏗️ Suggested architecture](#suggested-architecture)
@@ -1367,6 +1368,20 @@ Delivery respects each member's stated contact preference. Any bridge to an exte
 **Default: open.** The task board, schedule, owners, flags, and aggregate community progress are visible to all members unless a specific field has a reason to be restricted.
 
 **Access follows the task, not the role.** Claiming a task that needs a sensitive field unlocks that field for the claimant — not membership in a branch, not a title. Stop working the task, lose the access. This is the same principle the Sensitive-data module above applies at the field level.
+
+### <a id="open-permissions"></a>Open permissions — when the task isn't the point
+
+Access-follows-the-task is the right default because it keeps authority pointed at a person you can name, and it goes away when they stop. But it has one failure mode with no way out of it: a Community that genuinely wants *everyone* to be able to evaluate applications, or draw the Zone plan, or close the budget, has no way to say so. The workaround — invent a task and claim it so a resolver returns true — is not a setting anyone would find, and it makes a real task board carry a fact that isn't a real job.
+
+So a Community can mark a permission module **open to everyone**: a one-row-per-module fact saying this capability is deliberately everyone's. It's a *floor*, not a replacement. Holding a task stays exactly as meaningful as it was — it still decides who is on the hook, who gets notified, and whose queue an item lands in — and a Community can hold both, so an open module with a named person responsible is a normal and useful state rather than a contradiction.
+
+Two consequences worth stating, because both are places where the obvious implementation is the wrong one:
+
+**Opening a permission does not unlock a sensitive field.** Sensitive fields are unlocked by Tier, by task, or by permission module, and the module route is about *who holds* the module, not whether the module is open. A Community that links `allergies` to the `kitchen` grant and then opens Kitchen has not decided to make everyone's dietary data readable — that would be a disclosure decision, and it has to be made separately. Keeping the two settings independent is what stops "anyone can cook" from silently becoming "everyone reads everyone's medical data."
+
+**One module can't be opened: the Backstop.** A backstop's authority isn't a capability, it's a *named person to notify* when something critical goes unclaimed, and the task page names them. A backstop with no name has nothing to do, so it keeps its holder requirement and says so where the setting would otherwise be.
+
+Everything else — including the two with the widest blast radius, Admin and View-as — can be opened, with the consequence stated plainly at the point of decision. The default is off everywhere, so no Community gains a capability by upgrading.
 
 **Tiered views**, generalized from three levels that hold up across domains:
 

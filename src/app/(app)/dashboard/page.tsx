@@ -801,8 +801,9 @@ export default async function DashboardPage({
         {hasSharedModuleNeedsAction && (
           <>
             <p className="mb-3 mt-6 text-[13px] text-[var(--text-muted)]">
-              Open to everyone — nobody in particular is on the hook for these, so they&rsquo;re
-              here rather than in your count.
+              Open to everyone — outstanding for the Community rather than assigned to you, so
+              they&rsquo;re here rather than in your count. Whoever does hold the task sees
+              these as their own.
             </p>
             <ModuleNeedsActionSections feed={feed} shared />
           </>

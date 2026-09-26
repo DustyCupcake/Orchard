@@ -2,6 +2,18 @@
 
 The build history behind [`README.md`](README.md)'s feature list — what each addition built and why it's shaped the way it is. Every numbered phase (0-69) of the original development plan is complete, covering the full original build plan; nothing after that is numbered — real, scoped-but-unbuilt work continues to get picked up off [`docs/roadmap.md`](docs/roadmap.md) as its own standalone feature entry, not a phase. For the full technical spec, see [`docs/spec.md`](docs/spec.md).
 
+## Unreleased: closing the gaps in open permissions — what travels, and what a shared item says
+
+The open-permissions work landed in two commits; this is the part that turned out not to be finished by them, and all of it is small.
+
+**An open flag doesn't travel, and now that's a test rather than a comment.** Cycle clone and Task Pack import both carry *grants* between communities and events, and both go through one function — `copyPermissionGrants` — so a Community's open modules travel nowhere, deliberately: a capability someone decided for their own members shouldn't follow a cloned event into a different set of members. That was true when written, and true now, but it was true by *omission*, which is the kind of thing that quietly stops being true. It's pinned now, along with the converse — clearing an open flag leaves the task grant alone, because the two are independent facts, not two states of one.
+
+**`backstop` can't be opened, and the refusal is enforced at the write.** Its authority is a named person to notify, so there is nothing for "everyone" to be. The settings tab renders no checkbox and says why; `setModuleOpen` refuses it too, so a forged POST gets the same answer the UI would have given rather than a capability the interface promises doesn't exist. Thirteen other modules are openable, and opening one twice is one row.
+
+**A shared needs-action section was claiming something false.** It said "nobody in particular is on the hook for these", which holds when a module is open and unheld and is wrong the moment it's open *and* three people hold it. It now says the item is outstanding for the Community rather than assigned to *you*, and adds that whoever holds the task sees it as their own — true in both cases. The related question of whether a shared section should *name* those holders is settled as no: a member lookup per open module on every dashboard render, to serve the readers least likely to need it, in a section whose heading already says "open to everyone".
+
+Also: a spec section for the whole mechanic under Transparency & access, since it's a principle a reader of the spec would otherwise not know existed, and the plan document marked through to done — including the one item where the plan's own advice turned out to be wrong, recorded as withdrawn rather than quietly deleted.
+
 ## Unreleased: permissions a Community can open to everyone, and a Recruitment pipeline that can finish
 
 Every permission in the system was task-gated: a capability existed because whoever currently held a task carrying a `permission_grant` row could do it, and nobody else could. That is a good default — authority you can point at, that goes away when the person leaves. But it has one failure mode with no way out. A Community that wants everyone to be able to evaluate applications, or draw the Zone plan, or close the budget has no way to say so, and the alternative — inventing tasks and claiming them so a resolver returns true — is not a setting anyone would find.

@@ -709,15 +709,25 @@ Two things this turned up that the design hadn't anticipated:
 plus the copy rules in §5a. Include the D13 warn-and-confirm for `admin`/`support`, the
 open-but-unheld "nobody is named" banner, and **no** claim that opening a module widens a
 sensitive field's visibility (D9). `backstop` renders no checkbox at all (D11) — the field
-should say why, so it doesn't look like an oversight.
+should say why, so it doesn't look like an oversight. **DONE** — `setModuleOpenAction`, the
+per-module checkbox, the D13 blast-radius lines, the D9 "that is a separate setting" note, and
+the open-but-unheld banner.
 
 **Step 8 — Class 4, deliberately untouched.** Task-scoped readers stay as they are. Cycle
 clone and Task Pack export already carry grants only and need no edit, since open flags do
-not travel (§2.4) — record that as decided rather than as an oversight.
+not travel (§2.4) — record that as decided rather than as an oversight. **DONE and verified.**
+`copyPermissionGrants` is the single chokepoint both clone (`cycles/crud.ts:869`) and pack
+import (`task-packs/import.ts:374`) go through, and it writes only `permission_grant` rows;
+none of `tasks/endorsements.ts`, `task-packs/export.ts`, `cycles/crud.ts` or `tasks/crud.ts`
+references the open table at all. That is now pinned by a test rather than left as a comment,
+because "a Community silently gained a capability because someone cloned an event" is exactly
+the drift §2.1's separate table exists to prevent.
 
 **Step 9 — Tests.** One open/closed pair per module, plus the specific cases already listed.
 The closed half is the regression net for the other thirteen, so it matters more than the
-open half: 13 modules' worth of existing behaviour must survive this change untouched.
+open half: 13 modules' worth of existing behaviour must survive this change untouched. **DONE**
+— all fourteen modules have an open test; the closed halves are the pre-existing suites, which
+stay green untouched.
 
 **Deliberately last:** nothing in Steps 1–2 changes behaviour, so they can ship together and
 early; nothing in Step 5 can ship before Step 4, because "open but misconfigured" is worse
@@ -904,10 +914,22 @@ not rediscovered mid-build:
    plan's actual intent (no drift) is met by an anti-drift test pinning
    `evaluatorCount` to `countHoldersOfTasks` — see `tests/open-permissions.test.ts`,
    "agrees with describeRecruitmentAuthority's evaluatorCount".
-4. **Whether a shared section should show who is already on it.** If a module is open *and*
-   held, D12 gives holders personal items and everyone else a shared one — the shared section
-   could name those holders, which is the one place it would genuinely help. Not required, and
-   it means a member list the shared section has to fetch.
+4. **Whether a shared section should show who is already on it — decided: no.** If a module is
+   open *and* held, D12 gives holders personal items and everyone else a shared one, and the
+   shared section could name those holders. It is not done, for two reasons. It costs a member
+   lookup per open module on **every** dashboard render to serve a minority of readers — a
+   shared section is by definition read by people who are *not* on the hook, and the one
+   question they'd ask ("can I do this, or is it mine?") is already answered by D12: their copy
+   is here, the holder's copy is personal. And naming people in a section whose heading is
+   "open to everyone" is slightly at odds with the heading; the tag is a statement about the
+   module, not a roster.
+
+   The one thing that *was* wrong is fixed: the shared block's copy said "nobody in
+   particular is on the hook for these", which is only true when the module is open and
+   unheld, and is false when it is open and held by three people. It now says the item is
+   outstanding for the Community rather than assigned to *you*, and adds that whoever holds
+   the task sees it as their own — accurate in both cases, and it is the reader's own
+   position that matters.
 
 Settled and needing no further input: `listGrantingTaskIdsForScope` stays task-only (**D15**);
 `countHoldersOfTasks` takes a task-id list rather than a scope parameter (§2.2); cycle clone

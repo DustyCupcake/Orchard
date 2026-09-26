@@ -1,22 +1,26 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, task } from "@/db/schema";
+import { community, openPermissionGrant, task } from "@/db/schema";
 import { createCycle } from "@/lib/cycles";
 import {
   addPermissionGrant,
   copyPermissionGrants,
   describeGrantScope,
   isMisplacedCommunityGrant,
+  isModuleOpenToEveryone,
+  isOpenableModule,
   listGrantingTaskIds,
   listGrantingTaskIdsForScope,
   listGrantsWithTaskInfo,
   listModuleKeysGrantedByTask,
+  listOpenModuleKeys,
   PERMISSION_MODULE_HINTS,
   PERMISSION_MODULE_KEYS,
   PERMISSION_MODULE_LABELS,
   PERMISSION_MODULE_SECTIONS,
   removePermissionGrant,
+  setModuleOpen,
   setPermissionGrant,
 } from "@/lib/permissions";
 import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
@@ -103,6 +107,72 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
     );
 
     expect(await listGrantingTaskIds(testCommunity.id, "budget")).toEqual([]);
+  });
+
+  // docs/open-permissions-plan.md §2.4: an open flag is a Community's
+  // local decision about *its own* members, so a cloned cycle or an imported
+  // pack arrives closed. This is the one place that decision is enforced in
+  // code, and it is enforced by *omission* — copyPermissionGrants is the
+  // single chokepoint both paths go through, and it copies only
+  // permission_grant rows. Worth pinning explicitly: the alternative failure
+  // mode is a Community silently gaining (or losing) a capability because
+  // someone cloned an event, which is exactly the kind of drift the
+  // separate-table design in §2.1 exists to prevent.
+  it("never carries an open permission through a cycle clone or task-pack import", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const source = await insertTask(testCommunity.id, branch.id, alice.id);
+    const copied = await insertTask(testCommunity.id, branch.id, alice.id, { title: "Copy" });
+
+    // Open on the source side, and granted, so both facts exist to be copied.
+    await setModuleOpen(testCommunity.id, "recruitment", true, alice.id);
+    await db.transaction((tx) =>
+      copyPermissionGrants(
+        tx,
+        testCommunity.id,
+        new Map([[copied.id, ["recruitment"] as const]]),
+      ),
+    );
+
+    // The grant travelled...
+    expect(await listGrantingTaskIds(testCommunity.id, "recruitment")).toEqual([copied.id]);
+    // ...and the open flag did not. Still exactly the one row it started with.
+    expect(await listOpenModuleKeys(testCommunity.id)).toEqual(new Set(["recruitment"]));
+    const openRows = await db.select().from(openPermissionGrant);
+    expect(openRows).toHaveLength(1);
+    expect(source.communityId).toBe(testCommunity.id);
+  });
+
+  it("clearing an open flag leaves the task grant alone — the two facts are independent", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const t = await insertTask(testCommunity.id, branch.id, alice.id);
+    await grantPermission(testCommunity.id, "recruitment", t.id);
+
+    await setModuleOpen(testCommunity.id, "recruitment", true, alice.id);
+    expect(await isModuleOpenToEveryone(testCommunity.id, "recruitment")).toBe(true);
+
+    await setModuleOpen(testCommunity.id, "recruitment", false, alice.id);
+    // Closed again, and the named holder is untouched.
+    expect(await isModuleOpenToEveryone(testCommunity.id, "recruitment")).toBe(false);
+    expect(await listGrantingTaskIds(testCommunity.id, "recruitment")).toEqual([t.id]);
+  });
+
+  // D11 at the write, not just the UI: a forged POST gets the same answer the
+  // settings tab would have given, so the exclusion cannot be bypassed by
+  // skipping the checkbox.
+  it("refuses to open the one module that needs someone named (D11)", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+
+    expect(isOpenableModule("backstop")).toBe(false);
+    expect(await setModuleOpen(testCommunity.id, "backstop", true, alice.id)).toBe(false);
+    expect(await isModuleOpenToEveryone(testCommunity.id, "backstop")).toBe(false);
+
+    // Every other module is openable, and opening twice is idempotent.
+    for (const moduleKey of PERMISSION_MODULE_KEYS.filter((k) => k !== "backstop")) {
+      expect(await setModuleOpen(testCommunity.id, moduleKey, true, alice.id)).toBe(true);
+      expect(await setModuleOpen(testCommunity.id, moduleKey, true, alice.id)).toBe(true);
+    }
+    const open = await db.select().from(openPermissionGrant);
+    expect(open).toHaveLength(PERMISSION_MODULE_KEYS.length - 1);
   });
 
   it("listGrantingTaskIds returns every grant; listGrantingTaskIdsForScope filters by the granting task's placement", async () => {
