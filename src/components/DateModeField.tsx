@@ -81,7 +81,7 @@ export default function DateModeField({
                 className={INPUT}
               >
                 <option value="phase">This task’s Phase</option>
-                <option value="cycle">The task’s Cycle</option>
+                <option value="cycle">The task’s Event</option>
               </select>
             </label>
 

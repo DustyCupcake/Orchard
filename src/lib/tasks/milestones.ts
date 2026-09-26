@@ -99,7 +99,7 @@ async function resolveAndValidateParent(
   const [phaseRow] = await db.select().from(phase).where(eq(phase.id, phaseId));
   if (!phaseRow) throw new NotFoundError("Phase not found");
   if (taskRow.cycleId && phaseRow.cycleId !== taskRow.cycleId) {
-    throw new ConflictError("A milestone's Phase must belong to the task's own Cycle");
+    throw new ConflictError("A milestone's Phase must belong to the task's own event");
   }
   return { start: phaseRow.startDate, end: phaseRow.endDate, phaseId };
 }

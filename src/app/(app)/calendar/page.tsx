@@ -42,7 +42,7 @@ const KIND_LABEL: Record<CalendarEntry["kind"], string> = {
   phase_start: "Phase start",
   phase_end: "Phase end",
   milestone: "Milestone",
-  calendar_event: "Event",
+  calendar_event: "Calendar entry",
   input_round_cutoff: "Input round",
   assembly_agenda_ends: "Assembly agenda",
   assembly_notice_ends: "Assembly notice",
@@ -80,16 +80,16 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
-// The page used to stack Month grid / Upcoming / Invites / Your events /
+// The page used to stack Month grid / Upcoming / Invites / Your calendar entries /
 // On your calendar all at once — split into tabs (same zero-JS `?tab=`
 // pattern as settings/page.tsx and tasks/[id]/page.tsx) so it reads as
-// one view at a time. "Create an event" moves behind the header's "New
-// event" action (a `?compose=1` link, same technique as the month nav
+// one view at a time. "Create a calendar entry" moves behind the header's "New
+// calendar entry" action (a `?compose=1` link, same technique as the month nav
 // already uses) instead of always rendering at the bottom of the page.
 const CAL_TABS = [
   { key: "month", label: "Month" },
   { key: "upcoming", label: "Upcoming" },
-  { key: "your-events", label: "Your events" },
+  { key: "your-events", label: "Your calendar entries" },
 ] as const;
 type CalTabKey = (typeof CAL_TABS)[number]["key"];
 const CAL_TAB_KEYS = CAL_TABS.map((t) => t.key) as readonly string[];
@@ -182,8 +182,8 @@ export default async function CalendarPage({
         title="Calendar"
         description={
           <>
-            {view.currentCycle ? `Current cycle: ${view.currentCycle.name}. ` : ""}
-            Phase boundaries, your task milestones, your calendar events, and every other module
+            {view.currentCycle ? `Current event: ${view.currentCycle.name}. ` : ""}
+            Phase boundaries, your task milestones, your calendar entries, and every other module
             deadline in one place — a read layer only, nothing here changes what any of those pages do.
           </>
         }
@@ -193,7 +193,7 @@ export default async function CalendarPage({
               Scheduling polls
             </Link>
             <Link href={newEventHref} className={BUTTON_PRIMARY}>
-              New event
+              New calendar entry
             </Link>
           </>
         }
@@ -201,9 +201,9 @@ export default async function CalendarPage({
       />
 
       {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
-      {created && <div className="mt-4"><Banner tone="success">Event created.</Banner></div>}
-      {updated && <div className="mt-4"><Banner tone="success">Event updated.</Banner></div>}
-      {deleted && <div className="mt-4"><Banner tone="success">Event deleted.</Banner></div>}
+      {created && <div className="mt-4"><Banner tone="success">Calendar entry created.</Banner></div>}
+      {updated && <div className="mt-4"><Banner tone="success">Calendar entry updated.</Banner></div>}
+      {deleted && <div className="mt-4"><Banner tone="success">Calendar entry deleted.</Banner></div>}
       {invited && <div className="mt-4"><Banner tone="success">Invites sent.</Banner></div>}
       {responded && <div className="mt-4"><Banner tone="success">Your response is saved.</Banner></div>}
 
@@ -304,7 +304,7 @@ export default async function CalendarPage({
       {composeOpen && (
         <section className="mt-4">
           <div className="flex items-center justify-between">
-            <SectionHeading>Create an event</SectionHeading>
+            <SectionHeading>Create a calendar entry</SectionHeading>
             <Link href={cancelComposeHref} className={BUTTON_GHOST}>
               Cancel
             </Link>
@@ -319,9 +319,9 @@ export default async function CalendarPage({
               <textarea name="description" rows={2} placeholder="Description (optional)" className={INPUT} />
             </label>
             <label className="flex flex-col gap-1">
-              <span className={LABEL}>Cycle</span>
+              <span className={LABEL}>Event</span>
               <select name="cycleId" defaultValue="" className={INPUT}>
-                <option value="">Cycle-independent</option>
+                <option value="">Not linked to an event</option>
                 {cycles.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -385,7 +385,7 @@ export default async function CalendarPage({
       )}
 
       <section className="mt-8">
-        <SectionHeading>Your events</SectionHeading>
+        <SectionHeading>Your calendar entries</SectionHeading>
         {myOwnEvents.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
         {myOwnEvents.map((e) => {
           const eventInvites = inviteListsByEventId.get(e.id) ?? [];
@@ -419,9 +419,9 @@ export default async function CalendarPage({
                     <textarea name="description" rows={2} defaultValue={e.description ?? ""} className={INPUT} />
                   </label>
                   <label className="flex flex-col gap-1">
-                    <span className={LABEL}>Cycle</span>
+                    <span className={LABEL}>Event</span>
                     <select name="cycleId" defaultValue={e.cycleId ?? ""} className={INPUT}>
-                      <option value="">Cycle-independent</option>
+                      <option value="">Not linked to an event</option>
                       {cycles.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.name}
@@ -534,7 +534,7 @@ type EventRow = Awaited<ReturnType<typeof listMyCalendarEvents>>[number] | Await
 // A single date, not a start/end pair — see src/app/(app)/participation/
 // page.tsx's PhaseBoundaryFields for the two-boundary sibling of this,
 // and src/lib/dates/resolve.ts's dateBoundaryInput for the shared shape
-// both forms submit. Calendar events have no phase-anchor concept, so
+// both forms submit. Calendar entries have no phase-anchor concept, so
 // DateModeField never gets a `phases` list here — only Absolute/
 // Cycle-relative are ever offered.
 const EVENT_DATE_FIELD_NAMES: Record<DateFieldBase, string> = {
@@ -561,7 +561,7 @@ function EventDateFields({
       date={event?.date}
       relativeAllowed={relativeAllowed}
       defaultMode={event ? (event.cycleId ? "relative" : "absolute") : "absolute"}
-      relativeHint="A cycle-linked event inside the cycle moves proportionally; outside dates move by whole days from the nearest edge."
+      relativeHint="A calendar entry linked to an event moves proportionally with that event; outside dates move by whole days from the nearest edge."
     />
   );
 }

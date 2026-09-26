@@ -41,10 +41,10 @@ export default function CycleSwitcher({
       <div className="border-b border-[var(--border)] px-3 py-2.5 text-[12px] text-[var(--text-muted)]">
         {ctx.canInitiateCycle ? (
           <Link href="/active/participation" className="text-[var(--accent-1)] hover:underline">
-            Start a cycle
+            Start an event
           </Link>
         ) : (
-          "No cycle open yet"
+          "No event open yet"
         )}
       </div>
     );
@@ -62,10 +62,10 @@ export default function CycleSwitcher({
 
   const currentLabel =
     currentScope === "active"
-      ? "All active cycles"
+      ? "All active events"
       : (ctx.openCycles.find((c) => c.id === currentScope)?.name ??
         (currentScope === ctx.defaultScopeSegment ? ctx.defaultScopeName : null) ??
-        "Cycle");
+        "Event");
 
   return (
     <div className="relative border-b border-[var(--border)] px-2 py-2">
@@ -92,7 +92,7 @@ export default function CycleSwitcher({
               currentScope === "active" ? "font-medium text-[var(--accent-1)]" : "text-[var(--text)]"
             }`}
           >
-            All active cycles
+            All active events
           </button>
           {ctx.openCycles.map((c) => (
             <div key={c.id} className="group/cycleitem flex items-center">
@@ -106,7 +106,7 @@ export default function CycleSwitcher({
               </button>
               <Link
                 href={`/${c.id}/participation#cycle-settings`}
-                title="Cycle settings"
+                title="Event settings"
                 onClick={() => setOpen(false)}
                 className="mr-1 shrink-0 rounded-[var(--radius-sm)] p-1.5 text-[var(--text-muted)] opacity-0 hover:bg-[var(--surface-sunken)] hover:text-[var(--text)] group-hover/cycleitem:opacity-100"
               >
@@ -119,7 +119,7 @@ export default function CycleSwitcher({
             onClick={() => setOpen(false)}
             className="block px-3 py-1.5 text-[13px] text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
           >
-            Other…
+            Find a closed event
           </Link>
         </div>
       )}

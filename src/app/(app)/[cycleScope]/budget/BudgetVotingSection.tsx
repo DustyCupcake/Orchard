@@ -112,7 +112,7 @@ export default function BudgetVotingSection({
             {ranked.length === 0 && (
               <tr className="hover:bg-[var(--surface-sunken)]">
                 <td className={TD} colSpan={currentCycle.status === "confirmed" ? 7 : 6}>
-                  No proposals were submitted for this cycle.
+                  No proposals were submitted for this budget period.
                 </td>
               </tr>
             )}

@@ -59,7 +59,7 @@ export async function closeProposalsToVoting(actor: Member, budgetCycleId: strin
   const cycleRow = await getBudgetCycle(actor, budgetCycleId);
   await requireBudgetOwner(actor, cycleRow);
   if (cycleRow.status !== "proposals_open") {
-    throw new ConflictError("This budget cycle isn't accepting proposals right now");
+    throw new ConflictError("This budget period isn't accepting proposals right now");
   }
 
   const [updated] = await db
@@ -89,7 +89,7 @@ export async function updateBudgetCycle(actor: Member, budgetCycleId: string, in
   const cycleRow = await getBudgetCycle(actor, budgetCycleId);
   await requireBudgetOwner(actor, cycleRow);
   if (cycleRow.status !== "proposals_open") {
-    throw new ConflictError("This budget cycle's proposal window has already closed");
+    throw new ConflictError("This budget period's proposal window has already closed");
   }
   if (input.fixedCosts !== undefined) {
     await requireValidLineItems(actor.communityId, input.fixedCosts);
@@ -143,7 +143,7 @@ export type SubmitBudgetVoteInput = z.infer<typeof submitBudgetVoteInput>;
 export async function submitBudgetVote(actor: Member, budgetCycleId: string, input: SubmitBudgetVoteInput) {
   const cycleRow = await getBudgetCycle(actor, budgetCycleId);
   if (cycleRow.status !== "voting") {
-    throw new ConflictError("Voting isn't open for this budget cycle right now");
+    throw new ConflictError("Voting isn't open for this budget period right now");
   }
 
   const proposals = await listBudgetProposals(actor, budgetCycleId);
@@ -298,7 +298,7 @@ export async function confirmBudgetCycle(
   const cycleRow = await getBudgetCycle(actor, budgetCycleId);
   await requireBudgetOwner(actor, cycleRow);
   if (cycleRow.status !== "voting") {
-    throw new ConflictError("This budget cycle isn't in voting");
+    throw new ConflictError("This budget period isn't in voting");
   }
 
   const proposals = await listBudgetProposals(actor, budgetCycleId);
@@ -350,7 +350,7 @@ export async function markBudgetCycleDone(actor: Member, budgetCycleId: string) 
   const cycleRow = await getBudgetCycle(actor, budgetCycleId);
   await requireBudgetOwner(actor, cycleRow);
   if (cycleRow.status !== "confirmed") {
-    throw new ConflictError("Confirm this budget cycle's funded set before marking it done");
+    throw new ConflictError("Confirm this budget period's funded set before marking it done");
   }
 
   const [updated] = await db

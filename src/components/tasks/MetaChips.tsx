@@ -4,7 +4,7 @@ import {
   GitBranchIcon,
   ClockIcon,
   UsersIcon,
-  ArrowsClockwiseIcon,
+  TicketIcon,
   CalendarBlankIcon,
 } from "@phosphor-icons/react/dist/ssr";
 
@@ -41,8 +41,11 @@ export function CapacityChip({ held, capacity }: { held: number; capacity: numbe
   );
 }
 
+// Ticket, matching nav-config's "cycle" icon: the chip names the event a
+// task belongs to, not a recurrence, so the same glyph is right in both
+// places.
 export function CycleChip({ name }: { name: string }) {
-  return <MetaChip icon={<ArrowsClockwiseIcon size={13} />}>{name}</MetaChip>;
+  return <MetaChip icon={<TicketIcon size={13} />}>{name}</MetaChip>;
 }
 
 export function DateChip({ date, label }: { date: Date | string; label?: string }) {

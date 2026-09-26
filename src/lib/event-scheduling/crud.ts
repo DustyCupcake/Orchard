@@ -63,7 +63,7 @@ export async function createEventProposal(actor: Member, input: CreateEventPropo
       .from(cycle)
       .where(and(eq(cycle.id, input.cycleId), eq(cycle.communityId, actor.communityId)));
     if (!cycleRow) {
-      throw new NotFoundError("Cycle not found in your community");
+      throw new NotFoundError("Event not found in your community");
     }
   }
 
@@ -129,7 +129,7 @@ export async function updateEventProposal(
       .from(cycle)
       .where(and(eq(cycle.id, input.cycleId), eq(cycle.communityId, actor.communityId)));
     if (!cycleRow) {
-      throw new NotFoundError("Cycle not found in your community");
+      throw new NotFoundError("Event not found in your community");
     }
   }
 

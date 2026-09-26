@@ -71,16 +71,16 @@ export default async function ApplyPage({
 
       {cycleMissing ? (
         <p className="mt-4 text-[13px] text-[var(--text-muted)]">
-          That cycle doesn&apos;t exist — check the link.
+          That event doesn&apos;t exist — check the link.
         </p>
       ) : notAccepting ? (
         <p className="mt-4 text-[13px] text-[var(--text-muted)]">
           {cycleContext
             ? cycleContext.atCapacity
-              ? "This cycle is at capacity — applications for it are closed."
+              ? "This event is at capacity — applications for it are closed."
               : cycleContext.periodOpen
-                ? "Applications for this cycle are closed."
-                : "Applications for this cycle aren't open yet."
+                ? "Applications for this event are closed."
+                : "Applications for this event aren't open yet."
             : "Not accepting applications right now."}
         </p>
       ) : submitted ? (

@@ -338,7 +338,7 @@ export default async function ProfilePage({
 
       {cycleTypeProgress.length > 0 && (
         <section className="mt-8">
-          <SectionHeading>Cycle-type progress</SectionHeading>
+          <SectionHeading>Event-type progress</SectionHeading>
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             Computed live off your declared Participation — see /participation.
           </p>

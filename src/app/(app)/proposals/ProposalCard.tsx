@@ -147,7 +147,7 @@ export default function ProposalCard({
 
               {cyclesEnabled && (
                 <select name="cycleId" defaultValue={proposal.suggestedCycleId ?? defaultCycleId ?? ""} className={INPUT}>
-                  <option value="">No cycle (unscoped)</option>
+                  <option value="">No event (unscoped)</option>
                   {cycles.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}

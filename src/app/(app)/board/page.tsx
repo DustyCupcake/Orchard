@@ -439,7 +439,7 @@ export default async function BoardPage({
             href={cyclelessToggleHref}
             className={hidingCycleless ? "text-[13px] font-medium text-[var(--accent-1)]" : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"}
           >
-            {hidingCycleless ? "✓ Hiding not-cycle-scoped tasks" : "Hide not-cycle-scoped tasks"}
+            {hidingCycleless ? "✓ Hiding not-event-scoped tasks" : "Hide not-event-scoped tasks"}
           </Link>
         </div>
       )}
@@ -455,9 +455,9 @@ export default async function BoardPage({
 
       {canExport && !exportCycle && (
         <p className="mt-4 text-[13px] text-[var(--text-muted)]">
-          Narrow the cycle switcher to one specific cycle to export a Task Pack — exporting
-          doesn&rsquo;t guess which cycle you mean while it&rsquo;s scoped to &ldquo;All active
-          cycles&rdquo;.
+          Narrow the event switcher to one specific event to export a Task Pack — exporting
+          doesn&rsquo;t guess which event you mean while it&rsquo;s scoped to &ldquo;All active
+          events&rdquo;.
         </p>
       )}
 

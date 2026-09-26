@@ -269,8 +269,8 @@ async function resolveScopeForSend(
     if (resolution.kind !== "resolved") {
       throw new ConflictError(
         resolution.kind === "ambiguous"
-          ? "Scoped to multiple active cycles — narrow the nav switcher to one cycle before declaring an arrival window"
-          : "No current cycle to declare an arrival window against",
+          ? "Scoped to multiple active events — narrow the nav switcher to one event before declaring an arrival window"
+          : "No current event to declare an arrival window against",
       );
     }
     const currentCycle = resolution.cycle;
@@ -288,10 +288,10 @@ async function resolveScopeForSend(
       .from(cycle)
       .where(eq(cycle.id, input.cycleId));
     if (!cycleRow || cycleRow.communityId !== actor.communityId) {
-      throw new NotFoundError("Cycle not found in your community");
+      throw new NotFoundError("Event not found in your community");
     }
     if (!(await isAnnouncementHolderForCycle(actor, input.cycleId))) {
-      throw new ForbiddenError("Only that cycle's announcement-task holder can message its roster");
+      throw new ForbiddenError("Only that event's announcement-task holder can message its roster");
     }
     const scopeRef = { cycleId: input.cycleId, segments: input.segments };
     const recipientIds = await resolveRecipientMemberIds(actor.communityId, "cycle", scopeRef);

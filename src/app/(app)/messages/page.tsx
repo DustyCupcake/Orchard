@@ -17,7 +17,7 @@ const SCOPE_LABEL: Record<string, string> = {
   branch: "Branch",
   task_holders: "Task holders",
   arrival_window: "Arrival window",
-  cycle: "Cycle roster",
+  cycle: "Event roster",
   community: "Community announcement",
 };
 
@@ -123,7 +123,7 @@ export default async function MessagesPage({
         <section className="mt-6">
           <SectionHeading>Message people arriving in a window</SectionHeading>
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-            Goes to everyone marked coming/maybe for the current cycle whose declared arrival date
+            Goes to everyone marked coming/maybe for the current event whose declared arrival date
             falls in this range.
           </p>
           <form action={sendMessageAction} className="mt-3 flex flex-col gap-2">
@@ -147,9 +147,9 @@ export default async function MessagesPage({
 
       {myAnnouncementCycles.length > 0 && (
         <section className="mt-6">
-          <SectionHeading>Message a cycle roster</SectionHeading>
+          <SectionHeading>Message an event roster</SectionHeading>
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-            Goes to members who&rsquo;ve said they&rsquo;re coming and/or maybe for the chosen cycle.
+            Goes to members who&rsquo;ve said they&rsquo;re coming and/or maybe for the chosen event.
             Pick which of those two groups should get it — they often need different messages.
           </p>
           <form action={sendMessageAction} className="mt-3 flex flex-col gap-2">
@@ -174,7 +174,7 @@ export default async function MessagesPage({
             <input type="text" name="subject" placeholder="Subject" required className={INPUT} />
             <textarea name="body" placeholder="Message" required rows={3} className={INPUT} />
             <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-              Send to cycle roster
+              Send to event roster
             </button>
           </form>
         </section>
@@ -184,8 +184,8 @@ export default async function MessagesPage({
         <section className="mt-6">
           <SectionHeading>Send a community-wide announcement</SectionHeading>
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-            Goes to every member in the community. A cycle-placed announcement task messages that
-            cycle&rsquo;s roster instead — see above.
+            Goes to every member in the community. An event-placed announcement task messages that
+            event&rsquo;s roster instead — see above.
           </p>
           <form action={sendMessageAction} className="mt-3 flex flex-col gap-2">
             <input type="hidden" name="scope" value="community" />
@@ -205,7 +205,7 @@ export default async function MessagesPage({
         myAnnouncementCycles.length === 0 && (
           <p className="mt-6 text-[13px] text-[var(--text-muted)]">
             You don&rsquo;t currently have access to send anything — coordinate a branch, hold a task
-            with a co-holder, be eligible to start a cycle, or hold an announcement task.
+            with a co-holder, be eligible to start an event, or hold an announcement task.
           </p>
         )}
 

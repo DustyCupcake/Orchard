@@ -16,7 +16,7 @@ async function requireCycleInCommunity(actor: Member, cycleId: string) {
     .from(cycle)
     .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, actor.communityId)));
   if (!row) {
-    throw new NotFoundError("Cycle not found");
+    throw new NotFoundError("Event not found");
   }
   return row;
 }

@@ -257,7 +257,7 @@ export default function TaskCard({
             a cycle-less holder lights up its branch column, a
             cycle-placed holder its cycle row. */}
         {coordinationName && <Tag tone="neutral">Coordinated by {coordinationName}</Tag>}
-        {task.cycleId === null && <Tag>not cycle-scoped</Tag>}
+        {task.cycleId === null && <Tag>not event-scoped</Tag>}
       </div>
 
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">

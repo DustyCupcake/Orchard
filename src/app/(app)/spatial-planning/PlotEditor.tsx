@@ -783,10 +783,10 @@ export default function PlotEditor({
       <section className="mt-4">
         {cycleName && <p className="text-[13px] text-[var(--text-muted)]">Planning for: {cycleName}</p>}
         {!canEdit ? (
-          <p className="text-[13px] text-[var(--text-muted)]">No Plot yet for this Cycle.</p>
+          <p className="text-[13px] text-[var(--text-muted)]">No Plot yet for this Event.</p>
         ) : (
           <div className="flex max-w-[480px] flex-col gap-4">
-            <p className="text-[13px] text-[var(--text)]">No Plot yet for this Cycle — start one:</p>
+            <p className="text-[13px] text-[var(--text)]">No Plot yet for this Event — start one:</p>
             {error && <Banner tone="danger">{error}</Banner>}
             <label className="flex flex-col gap-1">
               <span className={LABEL}>Name</span>
@@ -827,9 +827,9 @@ export default function PlotEditor({
 
             {cloneCandidates.length > 0 && (
               <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-                <legend className="px-1 text-[12px] text-[var(--text-muted)]">Or clone a previous Cycle&rsquo;s Plot</legend>
+                <legend className="px-1 text-[12px] text-[var(--text-muted)]">Or clone a previous Event&rsquo;s Plot</legend>
                 <select value={cloneSourceCycleId} onChange={(e) => setCloneSourceCycleId(e.target.value)} className={INPUT}>
-                  <option value="">— choose a Cycle —</option>
+                  <option value="">— choose an Event —</option>
                   {cloneCandidates.map((c) => (
                     <option key={c.cycleId} value={c.cycleId}>
                       {c.cycleName}

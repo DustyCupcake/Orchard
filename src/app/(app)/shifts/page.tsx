@@ -174,7 +174,7 @@ export default async function ShiftsPage({
   const placementOptions: { cycleId: string | null; label: string }[] = [];
   if (isStandingManager) placementOptions.push({ cycleId: null, label: "Standing — community-wide" });
   for (const c of openCycles) {
-    if (managedScopeSet.has(c.id)) placementOptions.push({ cycleId: c.id, label: `Cycle ${c.name}` });
+    if (managedScopeSet.has(c.id)) placementOptions.push({ cycleId: c.id, label: `Event ${c.name}` });
   }
 
   return (
@@ -237,7 +237,7 @@ export default async function ShiftsPage({
           )}
           {shiftOpened && (
             <div className="mt-4">
-              <Banner tone="success">Sign-ups opened for this cycle&rsquo;s roster — it can&rsquo;t be closed again.</Banner>
+              <Banner tone="success">Sign-ups opened for this event&rsquo;s roster — it can&rsquo;t be closed again.</Banner>
             </div>
           )}
           {proposalConfirmed && (
@@ -265,7 +265,7 @@ export default async function ShiftsPage({
               return (
                 <div key={cycleId} className="mt-4">
                   <h3 className="text-[15px] font-semibold text-[var(--text)]">
-                    {cycleRow ? `Cycle ${cycleRow.name} roster` : "Cycle roster"}
+                    {cycleRow ? `Event ${cycleRow.name} roster` : "Event roster"}
                   </h3>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     {activeCycle?.shiftSignupsOpenedAt ? (
@@ -362,12 +362,12 @@ export default async function ShiftsPage({
             {(openCycles.length > 0 || isStandingManager) ? (
               <form action={createShiftSeriesAction} className="mt-3 flex max-w-[500px] flex-col gap-2">
                 <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Where does this series belong? (optional — defaults to a cycle below)</span>
+                  <span className={LABEL}>Where does this series belong? (optional — defaults to an event below)</span>
                   <select name="cycleId" defaultValue={openCycles[0]?.id ?? ""} className={INPUT}>
                     {isStandingManager && <option value="">Standing — community-wide</option>}
                     {openCycles.map((c) => (
                       <option key={c.id} value={c.id}>
-                        Cycle {c.name}
+                        Event {c.name}
                         {c.shiftSignupsOpenedAt ? " (slot may need the manager's confirmation)" : " (opens with the roster)"}
                       </option>
                     ))}
@@ -400,7 +400,7 @@ export default async function ShiftsPage({
                   <span className={LABEL}>Rotated from an existing task? (optional)</span>
                   <input type="text" name="sourceTaskId" placeholder="paste the task's ID from its /tasks/… URL" className={INPUT} />
                   <span className="text-[12px] text-[var(--text-muted)]">
-                    Placement into a still-collecting cycle is open to any member; once a roster&rsquo;s
+                    Placement into a still-collecting event is open to any member; once a roster&rsquo;s
                     sign-ups are open, new placements land as proposals for its shift manager to
                     confirm. Standing series can only be added by the standing scope&rsquo;s shift manager.
                   </span>
@@ -411,7 +411,7 @@ export default async function ShiftsPage({
               </form>
             ) : (
               <p className="mt-2 text-[13px] text-[var(--text-muted)]">
-                There&rsquo;s nothing to add a series to — no open cycles to place into, and standing
+                There&rsquo;s nothing to add a series to — no open events to place into, and standing
                 series can only be added by the standing scope&rsquo;s shift manager.
               </p>
             )}
@@ -421,14 +421,14 @@ export default async function ShiftsPage({
             <section className="mt-8">
               <SectionHeading>Pending proposals</SectionHeading>
               <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-                Series placed after their cycle&rsquo;s roster opened — confirm the ones you want on it.
+                Series placed after their event&rsquo;s roster opened — confirm the ones you want on it.
               </p>
               <div className="mt-3 flex flex-col gap-2">
                 {pendingProposals.map(({ series, cycleName }) => (
                   <div key={series.id} className={CARD}>
                     <p className="text-[14px] font-medium text-[var(--text)]">{series.title}</p>
                     <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-                      Proposal for Cycle {cycleName}
+                      Proposal for Event {cycleName}
                     </p>
                     <form action={confirmShiftProposalAction} className="mt-2">
                       <input type="hidden" name="seriesId" value={series.id} />

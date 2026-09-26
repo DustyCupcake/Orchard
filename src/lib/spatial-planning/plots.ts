@@ -65,7 +65,7 @@ async function requireCycleInCommunity(communityId: string, cycleId: string | nu
     .from(cycle)
     .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, communityId)));
   if (!row) {
-    throw new NotFoundError("Cycle not found in your community");
+    throw new NotFoundError("Event not found in your community");
   }
 }
 
@@ -111,7 +111,7 @@ export async function createPlot(actor: Member, cycleId: string | null, rawInput
 
   const existing = await getPlotForCycle(actor, cycleId);
   if (existing) {
-    throw new ConflictError("This Cycle already has a Plot");
+    throw new ConflictError("This event already has a Plot");
   }
 
   const [created] = await db
@@ -203,12 +203,12 @@ export async function clonePlotFromCycle(actor: Member, targetCycleId: string, s
 
   const existing = await getPlotForCycle(actor, targetCycleId);
   if (existing) {
-    throw new ConflictError("This Cycle already has a Plot");
+    throw new ConflictError("This event already has a Plot");
   }
 
   const sourcePlot = await getPlotForCycle(actor, sourceCycleId);
   if (!sourcePlot) {
-    throw new NotFoundError("The source Cycle has no Plot to clone");
+    throw new NotFoundError("The source event has no Plot to clone");
   }
 
   return db.transaction(async (tx) => {

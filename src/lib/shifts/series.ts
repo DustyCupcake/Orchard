@@ -70,7 +70,7 @@ export async function createShiftSeries(actor: Member, input: CreateShiftSeriesI
       .from(cycle)
       .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, actor.communityId)));
     if (!cycleRow) {
-      throw new NotFoundError("Cycle not found in your community");
+      throw new NotFoundError("Event not found in your community");
     }
     // §2.6/D11 composition: during the collecting window (the roster's
     // open act not yet performed) any member's placement opens with the
@@ -78,7 +78,7 @@ export async function createShiftSeries(actor: Member, input: CreateShiftSeriesI
     // shift_management holder's confirmation before it's visible or
     // claimable. A closed cycle's roster is frozen — no new placements.
     if (cycleRow.closedAt) {
-      throw new ForbiddenError("This cycle is closed — its shift roster is frozen");
+      throw new ForbiddenError("This event is closed — its shift roster is frozen");
     }
     confirmedAt =
       cycleRow.shiftSignupsOpenedAt === null
@@ -222,14 +222,14 @@ export async function openCycleShiftSignups(actor: Member, cycleId: string) {
     .from(cycle)
     .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, actor.communityId)));
   if (!cycleRow) {
-    throw new NotFoundError("Cycle not found");
+    throw new NotFoundError("Event not found");
   }
   if (cycleRow.closedAt) {
-    throw new ForbiddenError("This cycle is closed — its shift roster is frozen");
+    throw new ForbiddenError("This event is closed — its shift roster is frozen");
   }
   await requireShiftManagerForScope(actor, cycleId);
   if (cycleRow.shiftSignupsOpenedAt !== null) {
-    throw new ForbiddenError("This cycle's shift sign-ups are already open");
+    throw new ForbiddenError("This event's shift sign-ups are already open");
   }
 
   const [updated] = await db
@@ -297,10 +297,10 @@ export async function setShiftSeriesScope(actor: Member, seriesId: string, cycle
       .from(cycle)
       .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, actor.communityId)));
     if (!cycleRow) {
-      throw new NotFoundError("Cycle not found in your community");
+      throw new NotFoundError("Event not found in your community");
     }
     if (cycleRow.closedAt) {
-      throw new ForbiddenError("This cycle is closed — its shift roster is frozen");
+      throw new ForbiddenError("This event is closed — its shift roster is frozen");
     }
   }
   await requireShiftManagerForScope(actor, cycleId);

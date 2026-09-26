@@ -70,7 +70,7 @@ describe("closeCycle", () => {
     const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
 
     const { alice: strangerAlice } = await createFixtures();
-    await expect(closeCycle(strangerAlice, cyc.id)).rejects.toThrow("Cycle not found");
+    await expect(closeCycle(strangerAlice, cyc.id)).rejects.toThrow("Event not found");
 
     await closeCycle(alice, cyc.id);
     await expect(closeCycle(alice, cyc.id)).rejects.toThrow(ConflictError);

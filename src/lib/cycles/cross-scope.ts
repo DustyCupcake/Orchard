@@ -14,7 +14,7 @@ function sameScope(a: ResolvedViewScope, b: ResolvedViewScope): boolean {
 }
 
 export function scopeLabel(scope: ResolvedViewScope): string {
-  return scope.kind === "single" ? scope.cycle.name : "All active cycles";
+  return scope.kind === "single" ? scope.cycle.name : "All active events";
 }
 
 export type CrossCycleContext = {

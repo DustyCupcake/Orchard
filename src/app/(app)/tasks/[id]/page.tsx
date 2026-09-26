@@ -564,7 +564,7 @@ export default async function TaskDetailPage({
             <BranchChip name={branchRow?.name ?? "—"} />
             <EffortChip summary={effortSummary(taskRow.effort, taskRow.effortMagnitude)} />
             <CapacityChip held={realAssignments.length} capacity={taskRow.capacity} />
-            {communityRow.cyclesEnabled && <CycleChip name={taskCycle ? taskCycle.name : "not cycle-scoped"} />}
+            {communityRow.cyclesEnabled && <CycleChip name={taskCycle ? taskCycle.name : "not event-scoped"} />}
           </div>
         }
         actions={
@@ -633,9 +633,9 @@ export default async function TaskDetailPage({
             </label>
             {communityRow.cyclesEnabled && (
               <label className="flex flex-col gap-1">
-                <span className="text-[12px] font-medium text-[var(--text-muted)]">Cycle</span>
+                <span className="text-[12px] font-medium text-[var(--text-muted)]">Event</span>
                 <select name="cycleId" defaultValue={taskRow.cycleId ?? ""} key={taskRow.cycleId ?? ""} className={INPUT}>
-                  <option value="">No cycle (unscoped)</option>
+                  <option value="">No event (unscoped)</option>
                   {allCycles.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}

@@ -86,7 +86,7 @@ async function validateCycleBelongsToCommunity(
     .from(cycle)
     .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, actor.communityId)));
   if (!cycleRow) {
-    throw new NotFoundError("Cycle not found in your community");
+    throw new NotFoundError("Event not found in your community");
   }
   return cycleRow;
 }
@@ -106,7 +106,7 @@ async function validatePhaseBelongsToCycle(
     throw new NotFoundError("Phase not found");
   }
   if (phaseRow.cycleId !== cycleId) {
-    throw new AppError("Phase does not belong to the task's cycle");
+    throw new AppError("Phase does not belong to the task's event");
   }
 }
 
@@ -160,7 +160,7 @@ async function checkDestinationScopeCollision(
       .limit(1);
     if (existing) {
       throw new ConflictError(
-        `Cannot move task: scope ${destinationCycleId ? `cycle ${destinationCycleId}` : "community"} already has a ${PERMISSION_MODULE_LABELS[moduleKey]} grant`,
+        `Cannot move task: scope ${destinationCycleId ? `event ${destinationCycleId}` : "community"} already has a ${PERMISSION_MODULE_LABELS[moduleKey]} grant`,
       );
     }
   }

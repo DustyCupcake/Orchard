@@ -1,6 +1,5 @@
 import type { Icon as PhosphorIconType, IconWeight } from "@phosphor-icons/react";
 import {
-  ArrowsClockwiseIcon,
   BookOpenIcon,
   CalendarBlankIcon,
   CalendarHeartIcon,
@@ -29,6 +28,7 @@ import {
   SignOutIcon,
   SquaresFourIcon,
   StackIcon,
+  TicketIcon,
   UserCirclePlusIcon,
   UsersThreeIcon,
   XIcon,
@@ -55,7 +55,12 @@ const PHOSPHOR_ICONS: Record<string, PhosphorIconType> = {
   handshake: HandshakeIcon,
   gear: GearSixIcon,
   mail: EnvelopeSimpleIcon,
-  cycle: ArrowsClockwiseIcon,
+  // A ticket, not ArrowsClockwise: "cycle" as a recurrence is an
+  // internal/legacy reading, and everywhere a member meets this now it's
+  // one discrete event they're attending (or holding a place at), which is
+  // what a ticket actually is. The key stays "cycle" so nav-config and the
+  // persisted pinned-item keys are untouched.
+  cycle: TicketIcon,
   // Communication/Library hub icons — the attention surfaces'
   // distinct glyphs, so a pinned Communication item never visually
   // collides with a People-family (Community) item in the pinned row.

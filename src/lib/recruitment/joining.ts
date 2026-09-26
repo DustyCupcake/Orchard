@@ -46,7 +46,7 @@ export async function getCycleJoiningState(communityId: string, cycleId: string)
     .from(cycle)
     .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, communityId)));
   if (!row) {
-    throw new NotFoundError("Cycle not found in your community");
+    throw new NotFoundError("Event not found in your community");
   }
 
   const comingRows = await db

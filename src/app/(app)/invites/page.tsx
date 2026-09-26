@@ -114,7 +114,7 @@ export default async function InvitesPage({
               <CheckField label="I think this person is a good fit" name="inviterThinksGoodFit" />
               <CheckField label="I personally know this person" name="inviterKnowsPersonally" />
               <label className="flex flex-col gap-1">
-                <span className={LABEL}>For a cycle (optional — off = a general community invite)</span>
+                <span className={LABEL}>For an event (optional — off = a general community invite)</span>
                 <select name="cycleId" className={INPUT} defaultValue="">
                   <option value="">— general invite —</option>
                   {cycles.map((c) => (
@@ -125,7 +125,7 @@ export default async function InvitesPage({
                 </select>
                 <span className="text-[12px] text-[var(--text-muted)]">
                   An invite&rsquo;s lane is fixed by your marks: marked as known personally, it redeems on the spot
-                  and holds a capacity slot until used (an expiry is required for capacity-capped cycles); otherwise
+                  and holds a capacity slot until used (an expiry is required for capacity-capped events); otherwise
                   it routes through the evaluated application instead and holds nothing (docs/joining-admission-plan.md §2).
                 </span>
               </label>

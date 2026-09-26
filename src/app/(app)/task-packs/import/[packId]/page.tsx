@@ -190,7 +190,7 @@ export default async function ImportTaskPackPage({
         <input type="hidden" name="hints" value={JSON.stringify(distinctHints)} />
 
         <label>
-          New cycle name
+          New event name
           <br />
           <input
             type="text"
@@ -203,10 +203,10 @@ export default async function ImportTaskPackPage({
 
         {cycleTypes.length > 0 && (
           <label>
-            Cycle type (optional)
+            Event type (optional)
             <br />
             <select name="cycleTypeId" defaultValue={qCycleTypeId ?? ""} style={{ padding: "0.4rem", width: "100%" }}>
-              <option value="">No cycle type</option>
+              <option value="">No event type</option>
               {cycleTypes.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}

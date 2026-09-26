@@ -124,7 +124,7 @@ export async function bulkMoveTasksAction(formData: FormData) {
     redirect(errorHref("Select at least one task to move."));
   }
   if (!branchId && !cycleIdRaw && !phaseIdRaw) {
-    redirect(errorHref("Choose a destination branch, cycle, or phase."));
+    redirect(errorHref("Choose a destination branch, event, or phase."));
   }
 
   const input = {

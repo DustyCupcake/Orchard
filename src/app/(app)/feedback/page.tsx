@@ -66,7 +66,7 @@ export default async function FeedbackPage({
       {!form && (
         <p className="mt-4 text-[13px] text-[var(--text-muted)]">
           Not set up for this Community yet — a current Admins holder can define a form and pick
-          it as the post-cycle feedback survey on the Settings screen.
+          it as the post-event feedback survey on the Settings screen.
         </p>
       )}
 
@@ -90,9 +90,9 @@ export default async function FeedbackPage({
             <form action={submitFeedbackAction} className="mt-4 flex flex-col gap-4">
               {cycles.length > 0 && (
                 <label className="flex flex-col gap-1">
-                  <span className="text-[13px] font-medium text-[var(--text)]">Which cycle is this about?</span>
+                  <span className="text-[13px] font-medium text-[var(--text)]">Which event is this about?</span>
                   <span className="text-[12px] text-[var(--text-muted)]">
-                    Defaults to the most recent cycle; pick “General” for feedback not tied to one.
+                    Defaults to the most recent event; pick “General” for feedback not tied to one.
                   </span>
                   <select name="cycleId" defaultValue={cycles[0].id} className={SELECT}>
                     {cycles.map((c) => (
@@ -100,7 +100,7 @@ export default async function FeedbackPage({
                         {c.name}
                       </option>
                     ))}
-                    <option value="">General — not about a specific cycle</option>
+                    <option value="">General — not about a specific event</option>
                   </select>
                 </label>
               )}

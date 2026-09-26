@@ -10,7 +10,7 @@ import { AppError } from "./errors";
 export const MODULE_DEFINITIONS = [
   { key: "sensitive_data", label: "Sensitive data" },
   { key: "budget", label: "Budget" },
-  { key: "event_scheduling", label: "Event scheduling" },
+  { key: "event_scheduling", label: "Programme" },
   { key: "shifts", label: "Shifts / rota" },
   { key: "recruitment", label: "Recruitment" },
   { key: "spatial_planning", label: "Spatial planning" },

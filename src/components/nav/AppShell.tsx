@@ -641,7 +641,7 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
           <div className="flex items-center justify-center gap-2 border-b border-[var(--warning-border)] bg-[var(--warning-soft)] px-4 py-2 text-center text-sm text-[var(--warning)]">
             <Warning size={16} weight="regular" className="shrink-0" />
             <span>
-              On-site mode is on — settings, branches, tiers, cycle types, starting a new Cycle,
+              On-site mode is on — settings, branches, tiers, event types, starting a new event,
               Requirement changes, publishing the Programme, and Spatial-planning edits are all
               locked until it&rsquo;s turned off from Settings.
             </span>

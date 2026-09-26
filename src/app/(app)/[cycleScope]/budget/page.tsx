@@ -47,7 +47,7 @@ function formatLineItemDetail(item: BudgetLineItem, attendeeCount: number | null
   const total = lineItemTotal(item, attendeeCount);
   if (item.perAttendee) {
     return attendeeCount === null
-      ? `${formatAmount(item.amount)} per attendee — no Cycle linked, so this counts as ${formatAmount(0)} for now`
+      ? `${formatAmount(item.amount)} per attendee — no event linked, so this counts as ${formatAmount(0)} for now`
       : `${attendeeCount} attendee${attendeeCount === 1 ? "" : "s"} × ${formatAmount(item.amount)} = ${formatAmount(total)}`;
   }
   if (item.quantity && item.quantity > 1) {
@@ -161,7 +161,7 @@ export default async function BudgetPage({
     return (
       <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
         <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Budget</h1>
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">Scoped to multiple active cycles — pick one to see its budget:</p>
+        <p className="mt-2 text-[13px] text-[var(--text-muted)]">Scoped to multiple active events — pick one to see its budget:</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {resolution.candidates.map((c) => (
             <Link key={c.id} href={`/${c.id}/budget`} className={BUTTON_SECONDARY}>
@@ -264,7 +264,7 @@ export default async function BudgetPage({
           )}
           {cycleUpdated && (
             <div className="mt-4">
-              <Banner tone="success">Budget cycle updated.</Banner>
+              <Banner tone="success">Budget period updated.</Banner>
             </div>
           )}
           {votingOpened && (
@@ -284,7 +284,7 @@ export default async function BudgetPage({
           )}
           {markedDone && (
             <div className="mt-4">
-              <Banner tone="success">Marked done — closing this cycle won&rsquo;t warn about Budget.</Banner>
+              <Banner tone="success">Marked done — closing this event won&rsquo;t warn about Budget.</Banner>
             </div>
           )}
 
@@ -336,7 +336,7 @@ export default async function BudgetPage({
                 <div className="mt-2">
                   {currentCycle.ownerMarkedDoneAt ? (
                     <p className="text-[13px] text-[var(--success)]">
-                      Marked done — closing this cycle&rsquo;s Cycle won&rsquo;t warn about Budget.
+                      Marked done — closing this event won&rsquo;t warn about its Budget.
                     </p>
                   ) : (
                     <form action={markBudgetCycleDoneAction}>
@@ -503,7 +503,7 @@ export default async function BudgetPage({
 
           {isAdminNow && canStartNewCycle && (
             <section className="mt-8 border-t border-[var(--border)] pt-6">
-              <SectionHeading>Start a new budget cycle</SectionHeading>
+              <SectionHeading>Start a new budget period</SectionHeading>
               <form action={createBudgetCycleAction} className="mt-3 flex max-w-[640px] flex-col gap-2">
                 <input type="hidden" name="cycleScope" value={cycleScope} />
                 <input type="hidden" name="cycleId" value={resolvedCycleId ?? ""} />
@@ -523,7 +523,7 @@ export default async function BudgetPage({
                   Designate this scope&rsquo;s Budget owner under Settings → Access &amp; permissions.
                 </p>
                 <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                  Start cycle
+                  Start period
                 </button>
               </form>
             </section>

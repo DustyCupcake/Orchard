@@ -36,9 +36,9 @@ export default async function TaskPacksPage({
         title="Task Packs"
         description={
           <>
-            A portable, importable bundle of tasks — export a cycle&rsquo;s task set from{" "}
+            A portable, importable bundle of tasks — export an event&rsquo;s task set from{" "}
             <Link href="/participation" className="text-[var(--accent-1)] hover:underline">Participation</Link>, or upload a file someone handed you from
-            another deployment below. Import one into a new cycle from here.
+            another deployment below. Import one into a new event from here.
           </>
         }
       />
@@ -68,7 +68,7 @@ export default async function TaskPacksPage({
               )}
               {p.description && <p className="mt-1 text-[13px] text-[var(--text-muted)]">{p.description}</p>}
               <div className="mt-2 flex items-center gap-3 text-[13px]">
-                <Link href={`/task-packs/import/${p.id}`} className="text-[var(--accent-1)] hover:underline">Import into a new cycle</Link>
+                <Link href={`/task-packs/import/${p.id}`} className="text-[var(--accent-1)] hover:underline">Import into a new event</Link>
                 <a href={`/api/task-packs/${p.id}/download`} className="text-[var(--accent-1)] hover:underline">Download</a>
                 <form action={archiveTaskPackAction}>
                   <input type="hidden" name="packId" value={p.id} />

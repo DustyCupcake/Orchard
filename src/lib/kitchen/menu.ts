@@ -99,7 +99,7 @@ export async function createMenuPlan(actor: Member, input: CreateMenuPlanInput) 
       .from(cycle)
       .where(and(eq(cycle.id, input.cycleId), eq(cycle.communityId, actor.communityId)));
     if (!cycleRow) {
-      throw new NotFoundError("Cycle not found in your community");
+      throw new NotFoundError("Event not found in your community");
     }
   }
 

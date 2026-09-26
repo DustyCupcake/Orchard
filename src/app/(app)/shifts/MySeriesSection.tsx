@@ -50,7 +50,7 @@ export default function MySeriesSection({
           }
 
           const scopeLabel = s.cycleId
-            ? `Cycle ${cycleNameById.get(s.cycleId)?.name ?? "—"} roster`
+            ? `Event ${cycleNameById.get(s.cycleId)?.name ?? "—"} roster`
             : "Standing series";
           const replacementOptions = placementOptions.filter((o) => o.cycleId !== s.cycleId);
 

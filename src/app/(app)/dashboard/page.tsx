@@ -632,8 +632,8 @@ export default async function DashboardPage({
               <strong className="font-semibold">{displayedMemberCount}</strong> member
               {displayedMemberCount === 1 ? "" : "s"} coming
               {showingThisCycle
-                ? ` this cycle${singleScopeCycle ? ` (${singleScopeCycle.name})` : ""}`
-                : " across every open cycle"}
+                ? ` this event${singleScopeCycle ? ` (${singleScopeCycle.name})` : ""}`
+                : " across every open event"}
             </p>
             {snapshot.activeMemberCount.thisCycle !== null && (
               <div className="mt-1 flex gap-3">
@@ -645,7 +645,7 @@ export default async function DashboardPage({
                       : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"
                   }
                 >
-                  This cycle
+                  This event
                 </Link>
                 <Link
                   href="/dashboard?memberCount=general"

@@ -141,7 +141,7 @@ export default function EventReviewSection({
       <form action={publishEventScheduleAction} className="mt-4">
         <input type="hidden" name="cycleId" value={cycleId ?? ""} />
         <button type="submit" className={BUTTON_PRIMARY}>
-          Publish schedule
+          Publish programme
         </button>
         {unresolved.length > 0 && (
           <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">

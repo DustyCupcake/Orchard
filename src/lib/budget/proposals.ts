@@ -36,7 +36,7 @@ function requireLineItems(items: BudgetLineItem[]) {
 // from the deadline simply passing.
 function requireProposalsOpen(cycleRow: { status: string; proposalDeadline: Date | string }) {
   if (cycleRow.status !== "proposals_open") {
-    throw new ConflictError("This budget cycle is no longer accepting proposals");
+    throw new ConflictError("This budget period is no longer accepting proposals");
   }
   if (new Date() > new Date(cycleRow.proposalDeadline)) {
     throw new ConflictError("The proposal deadline has passed");

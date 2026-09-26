@@ -43,15 +43,15 @@ export default async function CyclesSearchPage({
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
       <PageHeader
-        title="Find a closed cycle"
-        description="A closed cycle stays fully reachable, read-only — it just never appears in the nav switcher's default view."
+        title="Find a closed event"
+        description="A closed event stays fully reachable, read-only — it just never appears in the nav switcher's default view."
       />
       <form method="get" className="mt-4 flex gap-2">
         <input
           type="text"
           name="q"
           defaultValue={query}
-          placeholder="Search closed cycles by name…"
+          placeholder="Search closed events by name…"
           className={`${INPUT} flex-1`}
         />
         <button type="submit" className={BUTTON_PRIMARY}>
@@ -59,7 +59,7 @@ export default async function CyclesSearchPage({
         </button>
       </form>
 
-      {query && results.length === 0 && <p className="mt-4 text-[13px] text-[var(--text-muted)]">No closed cycle matches.</p>}
+      {query && results.length === 0 && <p className="mt-4 text-[13px] text-[var(--text-muted)]">No closed event matches.</p>}
       {results.length > 0 && (
         <ul className="mt-4 space-y-2 text-[13px]">
           {results.map((c) => (

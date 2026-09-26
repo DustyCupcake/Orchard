@@ -45,14 +45,14 @@ export default async function ContributionPage() {
 
       <p className="mt-4 text-[13px] text-[var(--text-muted)]">
         {communityAverage
-          ? "Each category also shows the average across this cycle’s currently active members (Participation “coming”) in parentheses."
+          ? "Each category also shows the average across this event’s currently active members (Participation “coming”) in parentheses."
           : (
             <>
               No community average yet — nobody&rsquo;s declared{" "}
               <Link href="/participation" className="text-[var(--accent-1)] hover:underline">
                 Participation
               </Link>{" "}
-              &ldquo;coming&rdquo; for the current cycle.
+              &ldquo;coming&rdquo; for the current event.
             </>
           )}
       </p>

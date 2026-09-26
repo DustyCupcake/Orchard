@@ -301,7 +301,7 @@ async function requireCycleInCommunity(communityId: string, cycleId: string) {
     .from(cycle)
     .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, communityId)));
   if (!row) {
-    throw new NotFoundError("Cycle not found in your community");
+    throw new NotFoundError("Event not found in your community");
   }
 }
 
@@ -421,7 +421,7 @@ export async function getPostCycleFeedbackForm(actor: Member) {
 export async function submitPostCycleFeedback(actor: Member, input: SubmitFormResponseInput) {
   const communityRow = await getCommunityRow(actor.communityId);
   if (!communityRow.postCycleFeedbackFormId) {
-    throw new AppError("No post-cycle feedback form is configured for this Community yet");
+    throw new AppError("No post-event feedback form is configured for this Community yet");
   }
   return submitFormResponse(actor, communityRow.postCycleFeedbackFormId, input);
 }

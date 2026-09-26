@@ -126,7 +126,7 @@ export function describeGrantScope(
   cycleId: string | null,
   cycleName: string | null,
 ): string {
-  if (cycleId) return cycleName ?? "that cycle";
+  if (cycleId) return cycleName ?? "that event";
   return PERMISSION_MODULE_SCOPE_TIER[moduleKey] === "cycle" ? "Evergreen" : "Community-wide";
 }
 

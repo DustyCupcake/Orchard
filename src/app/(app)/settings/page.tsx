@@ -79,7 +79,7 @@ const TABS = [
   { key: "modules", label: "Modules" },
   { key: "recruitment", label: "Recruitment" },
   { key: "branches", label: "Branches" },
-  { key: "cycles-tiers", label: "Cycles & Tiers" },
+  { key: "cycles-tiers", label: "Events & Tiers" },
   { key: "profile-privacy", label: "Profile & Privacy" },
   { key: "forms", label: "Forms" },
   { key: "members", label: "Members" },
@@ -184,8 +184,8 @@ function GrantField({
               </div>
               {isMisplacedCommunityGrant(moduleKey, g.cycleId) && (
                 <Banner tone="warning">
-                  This task sits in a cycle, but {PERMISSION_MODULE_LABELS[moduleKey]} is a community-wide
-                  role — keep its cycle unset. It still grants community-wide access (the server is the
+                  This task sits in an event, but {PERMISSION_MODULE_LABELS[moduleKey]} is a community-wide
+                  role — keep its event unset. It still grants community-wide access (the server is the
                   source of truth), so it isn&rsquo;t silently ignored.
                 </Banner>
               )}
@@ -421,8 +421,8 @@ export default async function SettingsPage({
                 </span>
               </FieldSet>
 
-              <CheckField label="Cycles on (multiple named production runs over time)" name="cyclesEnabled" defaultChecked={communityRow.cyclesEnabled} />
-              <CheckField label="Phases on (a cycle can define a named phase spine)" name="phasesEnabled" defaultChecked={communityRow.phasesEnabled} />
+              <CheckField label="Events on (multiple named production runs over time)" name="cyclesEnabled" defaultChecked={communityRow.cyclesEnabled} />
+              <CheckField label="Phases on (an event can define a named phase spine)" name="phasesEnabled" defaultChecked={communityRow.phasesEnabled} />
               <label className="flex flex-col gap-1">
                 <span className={LABEL}>Default date display</span>
                 <select name="defaultDateDisplayMode" defaultValue={communityRow.defaultDateDisplayMode} className={INPUT}>
@@ -435,14 +435,14 @@ export default async function SettingsPage({
               </label>
               {communityRow.phasesEnabled && (
                 <CheckField
-                  label="On-site mode (while on, structural changes across settings, branches, tiers, cycle types, starting a new Cycle, Requirement changes, publishing the Programme, and Spatial-planning edits are all locked; everyday task/wiki/shift work stays live)"
+                  label="On-site mode (while on, structural changes across settings, branches, tiers, event types, starting a new event, Requirement changes, publishing the Programme, and Spatial-planning edits are all locked; everyday task/wiki/shift work stays live)"
                   name="onsiteModeEnabled"
                   defaultChecked={communityRow.onsiteModeEnabled}
                 />
               )}
 
               <label className="flex flex-col gap-1">
-                <span className={LABEL}>Who may start a cycle</span>
+                <span className={LABEL}>Who may start an event</span>
                 <select name="cycleInitiationTierId" defaultValue={communityRow.cycleInitiationTierId ?? ""} className={INPUT}>
                   <option value="">Any member</option>
                   {tiers.map((t) => (
@@ -537,7 +537,7 @@ export default async function SettingsPage({
               ))}
             </FieldSet>
 
-            <FieldSet legend="Post-cycle feedback">
+            <FieldSet legend="Post-event feedback">
               <label className="flex flex-col gap-1">
                 <span className={LABEL}>Feedback form</span>
                 <select name="postCycleFeedbackFormId" defaultValue={communityRow.postCycleFeedbackFormId ?? ""} className={INPUT}>
@@ -737,11 +737,11 @@ export default async function SettingsPage({
         {activeTab === "cycles-tiers" && (
           <div className="flex flex-col gap-8">
             <section>
-              <h2 className="text-[18px] font-semibold text-[var(--text)]">Cycle types</h2>
+              <h2 className="text-[18px] font-semibold text-[var(--text)]">Event types</h2>
               <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-                Optional labels for grouping Cycles (Season, Reunion, Workday) — mainly so a Tier&rsquo;s cycle-type-count
-                criterion can count occurrences of one kind of cycle. A Community that never uses this just leaves
-                every Cycle untyped.
+                Optional labels for grouping Events (Season, Reunion, Workday) — mainly so a Tier&rsquo;s event-type-count
+                criterion can count occurrences of one kind of event. A Community that never uses this just leaves
+                every Event untyped.
               </p>
               {cycleTypes.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None yet.</p>}
               <div className="mt-3 flex flex-col gap-2">
@@ -751,7 +751,7 @@ export default async function SettingsPage({
                       <input type="hidden" name="cycleTypeId" value={ct.id} />
                       <input type="text" name="name" defaultValue={ct.name} className={`${INPUT} flex-1`} />
                       <select name="defaultSourceCycleId" defaultValue={ct.defaultSourceCycleId ?? ""} className={INPUT}>
-                        <option value="">No suggested starting cycle</option>
+                        <option value="">No suggested starting event</option>
                         {cyclesForPicker.map((c) => (
                           <option key={c.id} value={c.id}>
                             {c.name}
@@ -781,9 +781,9 @@ export default async function SettingsPage({
               </div>
 
               <form action={createCycleTypeAction} className="mt-3 flex flex-wrap gap-2">
-                <input type="text" name="name" required placeholder="New cycle type (e.g. Season)" className={INPUT} />
+                <input type="text" name="name" required placeholder="New event type (e.g. Season)" className={INPUT} />
                 <select name="defaultSourceCycleId" defaultValue="" className={INPUT}>
-                  <option value="">No suggested starting cycle</option>
+                  <option value="">No suggested starting event</option>
                   {cyclesForPicker.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -799,7 +799,7 @@ export default async function SettingsPage({
                   ))}
                 </select>
                 <button type="submit" className={BUTTON_PRIMARY}>
-                  Add cycle type
+                  Add event type
                 </button>
               </form>
             </section>
@@ -807,7 +807,7 @@ export default async function SettingsPage({
             <section>
               <h2 className="text-[18px] font-semibold text-[var(--text)]">Tiers</h2>
               <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-                Manual assignment is set from a member&rsquo;s own profile page. Cycle-type count is computed live off
+                Manual assignment is set from a member&rsquo;s own profile page. Event-type count is computed live off
                 Participation. Tenure/completion/cohort aren&rsquo;t computed yet.
               </p>
               {tiers.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None yet.</p>}
@@ -823,7 +823,7 @@ export default async function SettingsPage({
                         {t.criterionType === "cycle_type_count" && (
                           <>
                             <select name="cycleTypeId" defaultValue={config.cycleTypeId ?? ""} className={INPUT}>
-                              <option value="">Pick a cycle type</option>
+                              <option value="">Pick an event type</option>
                               {cycleTypes.map((ct) => (
                                 <option key={ct.id} value={ct.id}>
                                   {ct.name}
@@ -855,10 +855,10 @@ export default async function SettingsPage({
                   <option value="tenure">Tenure (not yet computed)</option>
                   <option value="completion">Completion (not yet computed)</option>
                   <option value="cohort">Cohort (not yet computed)</option>
-                  <option value="cycle_type_count">Cycle-type count (computed)</option>
+                  <option value="cycle_type_count">Event-type count (computed)</option>
                 </select>
                 <select name="cycleTypeId" defaultValue="" className={INPUT}>
-                  <option value="">Cycle type (if cycle-type count)</option>
+                  <option value="">Event type (if event-type count)</option>
                   {cycleTypes.map((ct) => (
                     <option key={ct.id} value={ct.id}>
                       {ct.name}
@@ -1141,7 +1141,7 @@ export default async function SettingsPage({
             <h2 className="text-[18px] font-semibold text-[var(--text)]">Forms</h2>
             <p className="mt-1 text-[13px] text-[var(--text-muted)]">
               A community-defined set of fields collected together as one submission — infrastructure other things
-              lean on, starting with post-cycle feedback. Editing an existing form&rsquo;s fields never touches its
+              lean on, starting with post-event feedback. Editing an existing form&rsquo;s fields never touches its
               past responses — a response keeps whatever it recorded under a field&rsquo;s original key even if that
               field is later renamed, retyped, or removed.
             </p>

@@ -41,7 +41,7 @@ export async function exportCycleAsTaskPack(actor: Member, cycleId: string, inpu
 
   const [cycleRow] = await db.select().from(cycle).where(eq(cycle.id, cycleId));
   if (!cycleRow || cycleRow.communityId !== actor.communityId) {
-    throw new NotFoundError("Cycle not found");
+    throw new NotFoundError("Event not found");
   }
 
   const phases = await db.select().from(phase).where(eq(phase.cycleId, cycleId)).orderBy(phase.order);
@@ -56,7 +56,7 @@ export async function exportCycleAsTaskPack(actor: Member, cycleId: string, inpu
   const selectedTaskIds = input.taskIds && input.taskIds.length > 0 ? new Set(input.taskIds) : null;
   const tasksToExport = selectedTaskIds ? allTasks.filter((t) => selectedTaskIds.has(t.id)) : allTasks;
   if (tasksToExport.length === 0) {
-    throw new NotFoundError("No tasks to export — the cycle (or the selected subset) is empty");
+    throw new NotFoundError("No tasks to export — the event (or the selected subset) is empty");
   }
 
   const branchRows = await db

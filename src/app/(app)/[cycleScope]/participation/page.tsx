@@ -144,7 +144,7 @@ export default async function ParticipationPage({
       )}
       {settingsUpdated && (
         <div className="mt-4">
-          <Banner tone="success">Cycle settings updated.</Banner>
+          <Banner tone="success">Event settings updated.</Banner>
         </div>
       )}
       {phaseUpdated && (
@@ -164,24 +164,24 @@ export default async function ParticipationPage({
       )}
       {cycleCreated && (
         <div className="mt-4">
-          <Banner tone="success">Cycle created — set its dates below, if you know them yet.</Banner>
+          <Banner tone="success">Event created — set its dates below, if you know them yet.</Banner>
         </div>
       )}
       {budgetNotStarted && (
         <div className="mt-4">
           <Banner tone="warning">
-            Couldn&rsquo;t auto-start this cycle&rsquo;s Budget — start one by hand from /budget.
+            Couldn&rsquo;t auto-start this event&rsquo;s Budget — start one by hand from /budget.
           </Banner>
         </div>
       )}
       {cycleClosed && (
         <div className="mt-4">
-          <Banner tone="success">Cycle closed.</Banner>
+          <Banner tone="success">Event closed.</Banner>
         </div>
       )}
       {shiftOpened && (
         <div className="mt-4">
-          <Banner tone="success">Sign-ups opened for this cycle&rsquo;s shift roster — it can&rsquo;t be closed again.</Banner>
+          <Banner tone="success">Sign-ups opened for this event&rsquo;s shift roster — it can&rsquo;t be closed again.</Banner>
         </div>
       )}
       {proposalConfirmed && (
@@ -192,7 +192,7 @@ export default async function ParticipationPage({
 
       {cyclesToRender.length === 0 ? (
         <p className="mt-6 text-[13px] text-[var(--text-muted)]">
-          No open cycle yet — there&rsquo;s nothing to declare participation against until one
+          No open event yet — there&rsquo;s nothing to declare participation against until one
           exists.
         </p>
       ) : (
@@ -275,11 +275,11 @@ async function StartNewCycleSection({
 
   return (
     <section className="mt-8 border-t border-[var(--border)] pt-6">
-      <SectionHeading>Start a new cycle</SectionHeading>
+      <SectionHeading>Start a new event</SectionHeading>
 
       {typesWithDefaultPack.length > 0 && (
         <div className={`mt-4 ${CARD}`}>
-          <h3 className="text-[15px] font-medium text-[var(--text)]">Quick-start from a Cycle type&rsquo;s default pack</h3>
+          <h3 className="text-[15px] font-medium text-[var(--text)]">Quick-start from an Event type&rsquo;s default pack</h3>
           <ul className="mt-2 flex flex-col gap-1 text-[13px]">
             {typesWithDefaultPack.map((t) => (
               <li key={t.id}>
@@ -287,7 +287,7 @@ async function StartNewCycleSection({
                   href={`/task-packs/import/${t.defaultPackId}?cycleTypeId=${t.id}&cycleName=${encodeURIComponent(t.name)}`}
                   className="text-[var(--accent-1)] hover:underline"
                 >
-                  Start a new {t.name} cycle from &ldquo;{packNameById.get(t.defaultPackId!)}&rdquo;
+                  Start a new {t.name} event from &ldquo;{packNameById.get(t.defaultPackId!)}&rdquo;
                 </Link>
               </li>
             ))}
@@ -299,9 +299,9 @@ async function StartNewCycleSection({
         <div className={`mt-4 ${CARD}`}>
           <h3 className="text-[15px] font-medium text-[var(--text)]">Preview a clone</h3>
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-            See what cloning the most recent cycle would resolve to against a hypothetical
+            See what cloning the most recent event would resolve to against a hypothetical
             start/end, before committing to anything. Reuses the exact same recompute the real
-            Cycle-settings form above uses, so this always matches what actually lands once you
+            event settings form above uses, so this always matches what actually lands once you
             create the clone and set its dates for real.
           </p>
           <form method="get" className="mt-3 flex flex-wrap items-end gap-2">
@@ -333,7 +333,7 @@ async function StartNewCycleSection({
       {openCycleName && (
         <div className="mt-4">
           <Banner tone="warning">
-            &ldquo;{openCycleName}&rdquo; is already open — starting another cycle won&rsquo;t close it.
+            &ldquo;{openCycleName}&rdquo; is already open — starting another event won&rsquo;t close it.
           </Banner>
         </div>
       )}
@@ -348,14 +348,14 @@ async function StartNewCycleSection({
           <span className={LABEL}>Source</span>
           <select name="source" defaultValue={hasPreviousCycle ? "clone_previous" : "blank"} className={INPUT}>
             <option value="blank">Blank</option>
-            {hasPreviousCycle && <option value="clone_previous">Clone the most recent cycle</option>}
+            {hasPreviousCycle && <option value="clone_previous">Clone the most recent event</option>}
           </select>
         </label>
         {cycleTypes.length > 0 && (
           <label className="flex flex-col gap-1">
-            <span className={LABEL}>Cycle type (optional)</span>
+            <span className={LABEL}>Event type (optional)</span>
             <select name="cycleTypeId" defaultValue="" className={INPUT}>
-              <option value="">No cycle type</option>
+              <option value="">No event type</option>
               {cycleTypes.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -375,11 +375,11 @@ async function StartNewCycleSection({
         <p className="text-[12px] text-[var(--text-muted)]">
           Setting a clone&rsquo;s dates here resolves its phased boundaries and re-derives its shift
           roster&rsquo;s occurrence timestamps immediately; a clone started without them defers the
-          shift occurrences until you set dates in the Cycle settings form above.
+          shift occurrences until you set dates in the event settings form above.
         </p>
         {canAutoStartBudget && (
           <CheckField
-            label={`Also start a Budget cycle for this Cycle (fixed costs carried forward from "${previousBudgetCycle!.title}")`}
+            label={`Also start a budget period for this event (fixed costs carried forward from "${previousBudgetCycle!.title}")`}
             name="startBudget"
             defaultChecked
           />
@@ -467,7 +467,7 @@ async function ParticipationForCycle({
             <span className="text-[13px] text-[var(--text-muted)]">
               {roster.manager
                 ? `Managed by ${roster.manager.name}.`
-                : "No shift manager selected — this roster stays closed until someone holds a shift_management-granted task in this cycle."}
+                : "No shift manager selected — this roster stays closed until someone holds a shift_management-granted task in this event."}
             </span>
             {roster.signupsOpened ? (
               <Tag tone="success">Sign-ups open</Tag>
@@ -563,9 +563,9 @@ async function ParticipationForCycle({
 
       {canConfigure && !closed && (
         <section className="mt-6">
-          <SectionHeading>Cycle settings</SectionHeading>
+          <SectionHeading>Event settings</SectionHeading>
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-            Visible to you because you can start a cycle for this Community — the same authority
+            Visible to you because you can start an event for this Community — the same authority
             configures its capacity, returning-priority window, and joining config (§4.3/8c).
           </p>
           <form action={updateCycleSettingsAction} className="mt-3 flex max-w-[400px] flex-col gap-2">
@@ -611,7 +611,7 @@ async function ParticipationForCycle({
                   ))}
               </select>
               <span className="text-[12px] text-[var(--text-muted)]">
-                The cycle&rsquo;s joining window runs from the returning-priority close above until the
+                The event&rsquo;s joining window runs from the returning-priority close above until the
                 deadline below; both doors are shut outside it and once capacity is reached.
               </span>
             </label>
@@ -622,7 +622,7 @@ async function ParticipationForCycle({
             />
             <CheckField label="Invites open" name="invitesOpen" defaultChecked={withPhases?.invitesOpen ?? true} />
             <label className="flex flex-col gap-1">
-              <span className={LABEL}>Joining window closes at (optional — blank = until the cycle closes)</span>
+              <span className={LABEL}>Joining window closes at (optional — blank = until the event closes)</span>
               <input
                 type="datetime-local"
                 name="joiningWindowClosesAt"
@@ -655,12 +655,12 @@ async function ParticipationForCycle({
         <section className="mt-6">
           <SectionHeading>Export as a Task Pack</SectionHeading>
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-            Save this cycle&rsquo;s full task set (or a hand-picked subset, from the board&rsquo;s own
+            Save this event&rsquo;s full task set (or a hand-picked subset, from the board&rsquo;s own
             bulk selection) as a named, downloadable pack — see{" "}
             <Link href="/task-packs" className="text-[var(--accent-1)] hover:underline">
               Task Packs
             </Link>{" "}
-            to manage what&rsquo;s saved, share one as a file, or import one into a new cycle.
+            to manage what&rsquo;s saved, share one as a file, or import one into a new event.
           </p>
           <form action={exportCycleAsTaskPackAction} className="mt-3 flex max-w-[400px] flex-col gap-2">
             <input type="hidden" name="cycleId" value={cycleId} />
@@ -674,7 +674,7 @@ async function ParticipationForCycle({
               <textarea name="description" rows={2} className={INPUT} />
             </label>
             <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-              Export whole cycle
+              Export whole event
             </button>
           </form>
         </section>
@@ -682,9 +682,9 @@ async function ParticipationForCycle({
 
       {isAdminNow && !closed && (
         <section className="mt-6 border-t border-[var(--border)] pt-6">
-          <SectionHeading>Close this cycle</SectionHeading>
+          <SectionHeading>Close this event</SectionHeading>
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-            Locks everything about this cycle — no exception. Reaching a closed cycle afterward is
+            Locks everything about this event — no exception. Reaching a closed event afterward is
             a normal, read-only state, not an error.
           </p>
           {needsBudgetDoneWarning && (
@@ -699,7 +699,7 @@ async function ParticipationForCycle({
             <input type="hidden" name="cycleScope" value={cycleScope} />
             {needsBudgetDoneWarning && <CheckField label="Close anyway" name="overrideBudgetWarning" />}
             <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-              Close cycle
+              Close event
             </button>
           </form>
         </section>
@@ -865,7 +865,7 @@ function PhaseBoundaryFields({
       date={date}
       relativeAllowed={relativeAllowed}
       defaultMode={relativeAllowed ? "relative" : "absolute"}
-      relativeHint="Dates inside the cycle move proportionally; dates outside move by whole days from the nearest edge."
+      relativeHint="Dates inside the event move proportionally; dates outside move by whole days from the nearest edge."
     />
   );
 }

@@ -353,7 +353,7 @@ export default async function KitchenPage({
       <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
         <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Kitchen</h1>
         <p className="mt-2 text-[13px] text-[var(--text-muted)]">
-          Scoped to multiple active cycles — pick one to see its menu:
+          Scoped to multiple active events — pick one to see its menu:
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           {resolution.candidates.map((c) => (

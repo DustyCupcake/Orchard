@@ -44,7 +44,7 @@ export default async function CycleScopeLayout({
             color: "#664d03",
           }}
         >
-          This cycle is closed — read-only. Closed {new Date(scope.cycle.closedAt).toLocaleDateString()}.
+          This event is closed — read-only. Closed {new Date(scope.cycle.closedAt).toLocaleDateString()}.
         </div>
       )}
       {children}

@@ -29,7 +29,7 @@ async function requireCycleInCommunity(communityId: string, cycleId: string) {
     .from(cycle)
     .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, communityId)));
   if (!row) {
-    throw new NotFoundError("Cycle not found in your community");
+    throw new NotFoundError("Event not found in your community");
   }
 }
 
@@ -87,7 +87,7 @@ export async function updateCycleType(actor: Member, cycleTypeId: string, input:
     .where(and(eq(cycleType.id, cycleTypeId), eq(cycleType.communityId, actor.communityId)))
     .returning();
   if (!updated) {
-    throw new NotFoundError("Cycle type not found");
+    throw new NotFoundError("Event type not found");
   }
   return updated;
 }
@@ -100,12 +100,12 @@ export async function deleteCycleType(actor: Member, cycleTypeId: string) {
     .from(cycleType)
     .where(and(eq(cycleType.id, cycleTypeId), eq(cycleType.communityId, actor.communityId)));
   if (!existing) {
-    throw new NotFoundError("Cycle type not found");
+    throw new NotFoundError("Event type not found");
   }
 
   const [inUse] = await db.select({ id: cycle.id }).from(cycle).where(eq(cycle.cycleTypeId, cycleTypeId)).limit(1);
   if (inUse) {
-    throw new ConflictError("Cycles still reference this type — untag them first");
+    throw new ConflictError("Events still reference this type — untag them first");
   }
 
   await db.delete(cycleType).where(eq(cycleType.id, cycleTypeId));

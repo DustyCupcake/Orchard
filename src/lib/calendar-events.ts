@@ -51,7 +51,7 @@ async function requireCycleInCommunity(communityId: string, cycleId: string) {
     .from(cycle)
     .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, communityId)));
   if (!row) {
-    throw new NotFoundError("Cycle not found in your community");
+    throw new NotFoundError("Event not found in your community");
   }
   return row;
 }
@@ -84,14 +84,14 @@ async function requireEvent(actor: Member, eventId: string): Promise<CalendarEve
     .from(calendarEvent)
     .where(and(eq(calendarEvent.id, eventId), eq(calendarEvent.communityId, actor.communityId)));
   if (!row) {
-    throw new NotFoundError("Event not found");
+    throw new NotFoundError("Calendar entry not found");
   }
   return row;
 }
 
 function requireOwner(actor: Member, event: CalendarEventRow) {
   if (event.memberId !== actor.id) {
-    throw new ForbiddenError("Only this event's creator can do this");
+    throw new ForbiddenError("Only this calendar entry's creator can do this");
   }
 }
 
@@ -289,7 +289,7 @@ export async function getCalendarEvent(actor: Member, eventId: string) {
     .from(calendarEventInvite)
     .where(and(eq(calendarEventInvite.eventId, eventId), eq(calendarEventInvite.memberId, actor.id)));
   if (!invite) {
-    throw new NotFoundError("Event not found");
+    throw new NotFoundError("Calendar entry not found");
   }
   return event;
 }
@@ -357,7 +357,7 @@ export async function inviteMemberToCalendarEvent(actor: Member, eventId: string
     throw new NotFoundError("Member not found in your community");
   }
   if (memberId === actor.id) {
-    throw new AppError("The creator doesn't need an invite to their own event");
+    throw new AppError("The creator doesn't need an invite to their own calendar entry");
   }
 
   const [existingInvite] = await db
@@ -398,7 +398,7 @@ export async function acceptCalendarEventInvite(actor: Member, eventId: string) 
     .from(calendarEventInvite)
     .where(and(eq(calendarEventInvite.eventId, eventId), eq(calendarEventInvite.memberId, actor.id)));
   if (!row || row.status !== "invited") {
-    throw new NotFoundError("No pending invite found for you on this event");
+    throw new NotFoundError("No pending invite found for you on this calendar entry");
   }
   const [updated] = await db
     .update(calendarEventInvite)
@@ -418,7 +418,7 @@ export async function declineCalendarEventInvite(actor: Member, eventId: string)
     .from(calendarEventInvite)
     .where(and(eq(calendarEventInvite.eventId, eventId), eq(calendarEventInvite.memberId, actor.id)));
   if (!row || row.status !== "invited") {
-    throw new NotFoundError("No pending invite found for you on this event");
+    throw new NotFoundError("No pending invite found for you on this calendar entry");
   }
   const [updated] = await db
     .update(calendarEventInvite)

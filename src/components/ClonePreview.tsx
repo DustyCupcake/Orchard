@@ -97,7 +97,7 @@ export function ClonePreviewList({ preview }: { preview: ClonePreview }) {
   return (
     <div className="mt-3 text-[13px]">
       {preview.phases.length === 0 && cycleAnchored.length === 0 && (
-        <p className="text-[var(--text-muted)]">Nothing to carry forward — the source cycle has no phases or milestones.</p>
+        <p className="text-[var(--text-muted)]">Nothing to carry forward — the source event has no phases or milestones.</p>
       )}
       {preview.phases.map((p) => (
         <div key={p.name} className="mb-2">
@@ -118,7 +118,7 @@ export function ClonePreviewList({ preview }: { preview: ClonePreview }) {
       ))}
       {cycleAnchored.length > 0 && (
         <div>
-          <p className="font-medium text-[var(--text)]">Cycle-anchored</p>
+          <p className="font-medium text-[var(--text)]">Event-anchored</p>
           <ul className="ml-5 mt-1 list-disc text-[var(--text)]">
             {cycleAnchored.map((m, i) => (
               <li key={i}>

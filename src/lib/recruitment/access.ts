@@ -80,6 +80,6 @@ export async function requireRecruitmentScopeForCycle(actor: Member, cycleId: st
     throw new ForbiddenError("Only a current recruitment-task holder can do this");
   }
   if (!heldScopes.has(null) && !heldScopes.has(cycleId)) {
-    throw new ForbiddenError("You don't hold the recruitment task for this application's cycle");
+    throw new ForbiddenError("You don't hold the recruitment task for this application's event");
   }
 }

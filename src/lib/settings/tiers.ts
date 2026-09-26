@@ -43,7 +43,7 @@ async function requireValidCriterionConfig(
 
   const parsed = cycleTypeCountConfigSchema.safeParse(criterionConfig ?? {});
   if (!parsed.success) {
-    throw new AppError("A cycle-type-count criterion needs a cycleTypeId and a positive minCount");
+    throw new AppError("An event-type-count criterion needs a cycleTypeId and a positive minCount");
   }
 
   const [row] = await db
@@ -51,7 +51,7 @@ async function requireValidCriterionConfig(
     .from(cycleType)
     .where(and(eq(cycleType.id, parsed.data.cycleTypeId), eq(cycleType.communityId, communityId)));
   if (!row) {
-    throw new NotFoundError("Cycle type not found in your community");
+    throw new NotFoundError("Event type not found in your community");
   }
 }
 
@@ -120,7 +120,7 @@ export async function deleteTier(actor: Member, tierId: string) {
     .where(eq(community.id, actor.communityId));
   if (communityRow?.cycleInitiationTierId === tierId) {
     throw new ConflictError(
-      "This tier gates cycle initiation — change that setting before deleting it",
+      "This tier gates event initiation — change that setting before deleting it",
     );
   }
 

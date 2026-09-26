@@ -110,7 +110,7 @@ export default async function CycleScopeCoordinationPage({
         {!phaseName && (
           <p className="text-[13px] text-[var(--text-muted)]">
             No current phase to show Availability for — a phase needs an end date in the future (or
-            none set) on the most recently started cycle.
+            none set) on the most recently started event.
           </p>
         )}
         {phaseName && !questionLabel && (

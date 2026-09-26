@@ -81,7 +81,7 @@ export default async function SpatialPlanningPage({
     return (
       <main className="mx-auto max-w-[1100px] px-6 py-10 md:px-12 md:py-14">
         <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Spatial planning</h1>
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">Scoped to multiple active cycles — pick one to see its layout:</p>
+        <p className="mt-2 text-[13px] text-[var(--text-muted)]">Scoped to multiple active events — pick one to see its layout:</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {resolution.candidates.map((c) => (
             <form key={c.id} action={switchToLinkedScopeAction}>

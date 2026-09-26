@@ -15,7 +15,7 @@ const MESSAGE_SCOPE_LABEL: Record<string, string> = {
   branch: "a branch you belong to",
   task_holders: "your task's holders",
   arrival_window: "your arrival window",
-  cycle: "your cycle roster",
+  cycle: "your event roster",
   community: "everyone",
 };
 
@@ -166,8 +166,8 @@ export default async function CommunicationPage({
         <Section href="/feedback" title="Feedback">
           <Row
             href="/feedback"
-            title="Give your feedback on the latest cycle"
-            meta="Post-cycle survey — pick a cycle and submit; the reviewer sees responses here too."
+            title="Give your feedback on the latest event"
+            meta="Post-event survey — pick an event and submit; the reviewer sees responses here too."
           />
           {reviewResponseCount > 0 && (
             <Row

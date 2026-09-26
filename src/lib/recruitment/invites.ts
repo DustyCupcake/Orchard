@@ -59,10 +59,10 @@ export async function createCommunityInvite(actor: Member, input: CreateCommunit
     // otherwise) and gives us its live door state.
     const joining = await getCycleJoiningState(actor.communityId, cycleId);
     if (joining.atCapacity) {
-      throw new ConflictError("This cycle is full — no capacity left for new joins");
+      throw new ConflictError("This event is full — no capacity left for new joins");
     }
     if (!joining.periodOpen) {
-      throw new ConflictError("This cycle's joining period isn't open");
+      throw new ConflictError("This event's joining period isn't open");
     }
     const laneRules = await getJoinLaneRulesForContext(actor.communityId, cycleId);
     const rule = laneRules.get(lane)!;
@@ -72,11 +72,11 @@ export async function createCommunityInvite(actor: Member, input: CreateCommunit
       // capacity-capped cycle it must carry a non-past expiry: no
       // immortal holds (docs §4.3/8d).
       if (!joining.cycle.invitesOpen) {
-        throw new ConflictError("Invites for this cycle are closed");
+        throw new ConflictError("Invites for this event are closed");
       }
       if (joining.cycle.capacity !== null) {
         if (!input.expiresAt) {
-          throw new AppError("Direct invites into a capacity-capped cycle need an expiry date");
+          throw new AppError("Direct invites into a capacity-capped event need an expiry date");
         }
         if (new Date(input.expiresAt) <= new Date()) {
           throw new AppError("The expiry must be in the future — no immortal capacity holds");
@@ -86,7 +86,7 @@ export async function createCommunityInvite(actor: Member, input: CreateCommunit
       // A process-lane invite routes through the evaluated application —
       // the applications door is the one that matters; it holds nothing.
       if (!joining.cycle.applicationsOpen) {
-        throw new ConflictError("Applications for this cycle are closed");
+        throw new ConflictError("Applications for this event are closed");
       }
     }
   } else {

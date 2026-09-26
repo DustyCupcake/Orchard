@@ -50,7 +50,7 @@ export async function getCycleShiftRoster(actor: Member, cycleId: string): Promi
     .from(cycle)
     .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, actor.communityId)));
   if (!cycleRow) {
-    throw new NotFoundError("Cycle not found");
+    throw new NotFoundError("Event not found");
   }
 
   const [manager, isManager] = await Promise.all([

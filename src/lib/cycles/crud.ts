@@ -165,13 +165,13 @@ export async function requireCycleInitiationEligibility(actor: Member) {
     throw new NotFoundError("Community not found");
   }
   if (!communityRow.cyclesEnabled) {
-    throw new ConflictError("Cycles are not enabled for this Community");
+    throw new ConflictError("Events are not enabled for this Community");
   }
   if (
     communityRow.cycleInitiationTierId &&
     !memberHasTier(actor, communityRow.cycleInitiationTierId)
   ) {
-    throw new ForbiddenError("You don't have the tier required to start a cycle");
+    throw new ForbiddenError("You don't have the tier required to start an event");
   }
 }
 
@@ -194,7 +194,7 @@ export async function requireCycleTypeInCommunity(communityId: string, cycleType
     .from(cycleType)
     .where(and(eq(cycleType.id, cycleTypeId), eq(cycleType.communityId, communityId)));
   if (!row) {
-    throw new NotFoundError("Cycle type not found in your community");
+    throw new NotFoundError("Event type not found in your community");
   }
 }
 
@@ -285,7 +285,7 @@ async function createBlankCycle(
   phases: PhaseInput[],
 ) {
   if (violatesBoundaryOrder(startDate, endDate)) {
-    throw new ConflictError("A cycle's end date can't be before its own start date");
+    throw new ConflictError("An event's end date can't be before its own start date");
   }
 
   return db.transaction(async (tx) => {
@@ -339,10 +339,10 @@ async function cloneMostRecentCycle(
     .orderBy(desc(cycle.startedAt))
     .limit(1);
   if (!previous) {
-    throw new NotFoundError("No previous cycle to clone");
+    throw new NotFoundError("No previous event to clone");
   }
   if (violatesBoundaryOrder(startDate, endDate)) {
-    throw new ConflictError("A cycle's end date can't be before its own start date");
+    throw new ConflictError("An event's end date can't be before its own start date");
   }
 
   return db.transaction(async (tx) => {
@@ -781,7 +781,7 @@ async function createBackstopTask(tx: Tx, actor: Member, cycleId: string) {
     .where(eq(branch.communityId, actor.communityId))
     .limit(1);
   if (!branchRow) {
-    throw new ConflictError("No branch exists yet — create one before starting a cycle");
+    throw new ConflictError("No branch exists yet — create one before starting an event");
   }
 
   const [backstopTask] = await tx
@@ -1008,7 +1008,7 @@ export async function getCycle(actor: Member, cycleId: string) {
     .from(cycle)
     .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, actor.communityId)));
   if (!row) {
-    throw new NotFoundError("Cycle not found");
+    throw new NotFoundError("Event not found");
   }
 
   const phases = await db.select().from(phase).where(eq(phase.cycleId, cycleId)).orderBy(phase.order);
@@ -1052,7 +1052,7 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
     .from(cycle)
     .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, actor.communityId)));
   if (!row) {
-    throw new NotFoundError("Cycle not found");
+    throw new NotFoundError("Event not found");
   }
   requireCycleOpen(row);
 
@@ -1069,7 +1069,7 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
   const nextStartDate = input.startDate !== undefined ? input.startDate : row.startDate;
   const nextEndDate = input.endDate !== undefined ? input.endDate : row.endDate;
   if (violatesBoundaryOrder(nextStartDate, nextEndDate)) {
-    throw new ConflictError("A cycle's end date can't be before its own start date");
+    throw new ConflictError("An event's end date can't be before its own start date");
   }
 
   const [updated] = await db
@@ -1228,7 +1228,7 @@ export async function addPhase(actor: Member, cycleId: string, input: Omit<Phase
 
   const [cycleRow] = await db.select().from(cycle).where(eq(cycle.id, cycleId));
   if (!cycleRow || cycleRow.communityId !== actor.communityId) {
-    throw new NotFoundError("Cycle not found");
+    throw new NotFoundError("Event not found");
   }
   requireCycleOpen(cycleRow);
 

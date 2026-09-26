@@ -134,7 +134,7 @@ export async function createBudgetCycle(actor: Member, input: CreateBudgetCycleI
       .from(cycle)
       .where(and(eq(cycle.id, input.cycleId), eq(cycle.communityId, actor.communityId)));
     if (!cycleRow) {
-      throw new NotFoundError("Cycle not found in your community");
+      throw new NotFoundError("Event not found in your community");
     }
   }
 
@@ -144,7 +144,7 @@ export async function createBudgetCycle(actor: Member, input: CreateBudgetCycleI
 
   const existing = await getCurrentBudgetCycle(actor);
   if (existing && existing.status !== "confirmed") {
-    throw new ConflictError("This Community already has an active budget cycle");
+    throw new ConflictError("This Community already has an active budget period");
   }
 
   const [created] = await db
@@ -182,7 +182,7 @@ export async function getBudgetCycle(actor: Member, budgetCycleId: string) {
     .from(budgetCycle)
     .where(and(eq(budgetCycle.id, budgetCycleId), eq(budgetCycle.communityId, actor.communityId)));
   if (!row) {
-    throw new NotFoundError("Budget cycle not found");
+    throw new NotFoundError("Budget period not found");
   }
   return row;
 }

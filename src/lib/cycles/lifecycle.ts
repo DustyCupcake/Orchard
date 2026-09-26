@@ -20,7 +20,7 @@ type CycleRow = typeof cycle.$inferSelect;
 // job.
 export function requireCycleOpen(cycleRow: Pick<CycleRow, "closedAt">) {
   if (cycleRow.closedAt) {
-    throw new ConflictError("This cycle is closed");
+    throw new ConflictError("This event is closed");
   }
 }
 
@@ -44,10 +44,10 @@ export async function closeCycle(
     .from(cycle)
     .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, actor.communityId)));
   if (!row) {
-    throw new NotFoundError("Cycle not found");
+    throw new NotFoundError("Event not found");
   }
   if (row.closedAt) {
-    throw new ConflictError("This cycle is already closed");
+    throw new ConflictError("This event is already closed");
   }
 
   if (!options.overrideBudgetWarning) {

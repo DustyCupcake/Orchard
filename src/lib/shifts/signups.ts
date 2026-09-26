@@ -21,14 +21,14 @@ export async function signUpForShift(actor: Member, occurrenceId: string) {
   // always-open.
   if (series.cycleId) {
     if (!series.confirmedAt) {
-      throw new ConflictError("This series is still an unconfirmed proposal — its cycle's shift manager hasn't confirmed it for this roster yet");
+      throw new ConflictError("This series is still an unconfirmed proposal — its event's shift manager hasn't confirmed it for this roster yet");
     }
     const [cycleRow] = await db
       .select({ shiftSignupsOpenedAt: cycle.shiftSignupsOpenedAt })
       .from(cycle)
       .where(eq(cycle.id, series.cycleId));
     if (!cycleRow?.shiftSignupsOpenedAt) {
-      throw new ConflictError("This cycle's shift sign-ups aren't open yet — its shift manager opens them with a single act");
+      throw new ConflictError("This event's shift sign-ups aren't open yet — its shift manager opens them with a single act");
     }
   }
 

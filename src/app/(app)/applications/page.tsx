@@ -83,7 +83,7 @@ export default async function ApplicationsPage({
   const cycleNameById = new Map(cycles.map((c) => [c.id, c.name] as const));
   const heldScopeCycles = cycles.filter((c) => heldScopes.has(c.id));
   const coverageLine = heldScopes.has(null)
-    ? "You cover the community-wide scope — every application, cycle-tagged or not."
+    ? "You cover the community-wide scope — every application, event-tagged or not."
     : `You cover only: ${heldScopeCycles.map((c) => c.name).join(", ")}.`;
   const lapsed =
     Boolean(subscription?.id) &&
@@ -229,7 +229,7 @@ export default async function ApplicationsPage({
                 <div style={{ marginBottom: "1.25rem" }}>
                   <h2>Outstanding referral invites ({referralInvites.length})</h2>
                   <p style={{ color: "#666", fontSize: "0.85rem" }}>
-                    Cycle invites in referral mode route through the evaluated application here — they hold
+                    Event invites in referral mode route through the evaluated application here — they hold
                     no capacity slot, but their applicants may be on their way in (§4.3/8d).
                   </p>
                   {referralInvites.map((r) => (
@@ -258,8 +258,8 @@ export default async function ApplicationsPage({
                     <p style={{ margin: "0 0 0.4rem", fontSize: "0.8rem", color: "#666" }}>
                       Submitted {new Date(response.submittedAt).toLocaleString()}
                       {response.cycleId
-                        ? ` — for ${cycleNameById.get(response.cycleId) ?? "that cycle"}`
-                        : " — not tied to a cycle"}
+                        ? ` — for ${cycleNameById.get(response.cycleId) ?? "that event"}`
+                        : " — not tied to an event"}
                     </p>
                     <ul style={{ margin: "0 0 0.5rem" }}>
                       {fields.map((f) => {

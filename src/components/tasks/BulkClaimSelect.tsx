@@ -238,7 +238,7 @@ function ExportPanel({ selection }: { selection: TaskSelectionContextValue }) {
       </div>
       {selection.selectedExportableTasks.length === 0 ? (
         <p className="mt-2 text-[13px] text-[var(--text-muted)]">
-          Select one or more cards in this cycle before exporting.
+          Select one or more cards in this event before exporting.
         </p>
       ) : (
         <form action={exportSelectedTasksAsPackAction} className="mt-3 flex max-w-[520px] flex-col gap-2">
@@ -311,7 +311,7 @@ function MovePanel({ selection }: { selection: TaskSelectionContextValue }) {
             </select>
           </label>
           <label className="flex flex-col gap-1 text-[13px] text-[var(--text-muted)]">
-            Cycle
+            Event
             <select
               name="cycleId"
               value={cycleChoice}
@@ -322,8 +322,8 @@ function MovePanel({ selection }: { selection: TaskSelectionContextValue }) {
               }}
               className={INPUT}
             >
-              <option value="">Keep current cycle</option>
-              <option value={NO_CYCLE}>No cycle (unscoped)</option>
+              <option value="">Keep current event</option>
+              <option value={NO_CYCLE}>No event (unscoped)</option>
               {selection.moveCycles.map((cycle) => (
                 <option key={cycle.id} value={cycle.id}>
                   {cycle.name}
@@ -344,14 +344,14 @@ function MovePanel({ selection }: { selection: TaskSelectionContextValue }) {
               {cycleChoice === NO_CYCLE && <option value={NO_PHASE}>No phase</option>}
               {phaseOptions.map((phase) => (
                 <option key={phase.id} value={phase.id}>
-                  {cycleNameById.get(phase.cycleId) ?? "Unknown cycle"} · {phase.name}
+                  {cycleNameById.get(phase.cycleId) ?? "Unknown event"} · {phase.name}
                 </option>
               ))}
             </select>
           </label>
           <p className="text-[12px] text-[var(--text-muted)]">
             Leave a field on &ldquo;keep current&rdquo; to change only the placement you choose. Choose a
-            cycle before choosing a phase; a cycle change clears an incompatible phase, and each
+            event before choosing a phase; an event change clears an incompatible phase, and each
             task is validated independently.
           </p>
           <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
@@ -429,7 +429,7 @@ export function TaskSelectionActionMenu() {
           </button>
         ) : (
           <span className="px-3 py-2 text-[12px] text-[var(--text-muted)]">
-            Narrow to one cycle to export a Task Pack
+            Narrow to one event to export a Task Pack
           </span>
         )
       )}

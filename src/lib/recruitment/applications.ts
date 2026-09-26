@@ -97,7 +97,7 @@ export async function submitRecruitmentApplication(
   let targetCycleId = input.cycleId ?? null;
   if (invite?.cycleId) {
     if (input.cycleId && input.cycleId !== invite.cycleId) {
-      throw new AppError("This invite is for a different cycle");
+      throw new AppError("This invite is for a different event");
     }
     targetCycleId = invite.cycleId;
   }
@@ -111,13 +111,13 @@ export async function submitRecruitmentApplication(
   const joining = targetCycleId ? await getCycleJoiningState(communityId, targetCycleId) : null;
   if (joining) {
     if (joining.atCapacity) {
-      throw new AppError("This cycle is full — no capacity left for new applications");
+      throw new AppError("This event is full — no capacity left for new applications");
     }
     if (!joining.periodOpen) {
-      throw new AppError("Applications for this cycle aren't open right now");
+      throw new AppError("Applications for this event aren't open right now");
     }
     if (!joining.cycle.applicationsOpen) {
-      throw new AppError("Applications for this cycle are closed");
+      throw new AppError("Applications for this event are closed");
     }
   } else if (!communityRow.recruitmentApplicationsOpen) {
     throw new AppError("This community isn't accepting applications right now");
@@ -199,17 +199,17 @@ export function requireApplicationDoorOpen(resolution: PublicApplicationFormReso
     return;
   }
   if (!resolution.form) {
-    throw new AppError("No application form is configured for this cycle yet");
+    throw new AppError("No application form is configured for this event yet");
   }
   const { joining } = resolution;
   if (joining.atCapacity) {
-    throw new AppError("This cycle is full — no capacity left for new applications");
+    throw new AppError("This event is full — no capacity left for new applications");
   }
   if (!joining.periodOpen) {
-    throw new AppError("Applications for this cycle aren't open right now");
+    throw new AppError("Applications for this event aren't open right now");
   }
   if (!joining.cycle.applicationsOpen) {
-    throw new AppError("Applications for this cycle are closed");
+    throw new AppError("Applications for this event are closed");
   }
 }
 
