@@ -37,7 +37,7 @@ import {
 } from "@/lib/permissions";
 import { getCycle, listCycles, resolveCrossCycleContext, scopeLabel } from "@/lib/cycles";
 import { isModuleEnabled } from "@/lib/modules";
-import { effectiveDateDisplayMode, formatDateLabel } from "@/lib/dates";
+import { describeBoundaryRecipe, effectiveDateDisplayMode, formatDateLabel } from "@/lib/dates";
 import { isShiftManagerForScope } from "@/lib/shifts";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import CopyLinkButton from "@/components/CopyLinkButton";
@@ -1922,6 +1922,22 @@ function MilestoneDateFields({
   const relativeAllowed = Boolean(cycleStartDate || cycleEndDate || phases.some((p) => p.startDate || p.endDate));
   const parentType = milestone?.parentType ?? defaultParentType;
   const resolvedDate = milestone?.resolvedDate ?? (milestone?.dateType === "absolute" ? milestone.absoluteDate : null);
+  // The same prose the phase view uses for its own boundaries — see
+  // lib/dates/describe.ts, which is why this isn't a third copy. A
+  // milestone row has no cached `date` column (Phase boundaries do), so
+  // the resolved date is threaded in under the shared shape's name.
+  const recipe =
+    milestone && resolvedDate
+      ? describeBoundaryRecipe(
+          {
+            dateType: milestone.dateType,
+            date: resolvedDate,
+            relativeBasis: milestone.relativeBasis,
+            relativeValue: milestone.relativeValue,
+          },
+          milestone.parentType === "phase" ? "the phase" : "the event",
+        )
+      : null;
 
   return (
     <DateModeField
@@ -1941,14 +1957,7 @@ function MilestoneDateFields({
         resolvedDate && (
           <p className="mt-2 text-[12px] text-[var(--text-muted)]">
             Currently: {resolvedDate}
-            {milestone.dateType === "relative" && milestone.relativeBasis && milestone.relativeValue !== null && (
-              <>
-                {" — "}
-                {milestone.relativeBasis === "between"
-                  ? `${(milestone.relativeValue / 100).toFixed(2).replace(/\.00$/, "")}% through ${milestone.parentType === "phase" ? "the Phase" : "the Cycle"}`
-                  : `${milestone.relativeValue} day(s) from the ${milestone.relativeBasis === "start" ? "start" : "end"}`}
-              </>
-            )}
+            {recipe && ` — ${recipe}`}
           </p>
         )
       }

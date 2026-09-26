@@ -3,10 +3,12 @@ import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import {
   canInitiateCycle,
+  endBoundaryOf,
   getCycle,
   listCycles,
   previewClonePreviousCycle,
   resolveViewScopeFromSegment,
+  startBoundaryOf,
 } from "@/lib/cycles";
 import { getBudgetCycleForCycle, getCurrentBudgetCycle } from "@/lib/budget";
 import { getCycleParticipationSummary, getMyParticipation } from "@/lib/participation";
@@ -18,6 +20,7 @@ import {
 } from "../../shifts/actions";
 import { getCommunity, isAdmin, listCycleTypes } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
+import { describeBoundaryWindow, formatDateRange } from "@/lib/dates";
 import { listTaskPacks } from "@/lib/task-packs";
 import { HIGHLIGHTABLE_MODULES } from "@/lib/nav";
 import { ClonePreviewGrid, ClonePreviewList } from "@/components/ClonePreview";
@@ -745,61 +748,20 @@ function PhaseDatesSection({
     <section className="mt-6">
       <SectionHeading>Phase dates</SectionHeading>
       <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-        Each boundary is either an absolute date or relative to the cycle&rsquo;s own start/end. A date
-        inside the cycle is stored proportionally; a date outside is stored as a day offset from the
-        nearest edge.
+        A phase&rsquo;s dates are either set outright or placed against the event&rsquo;s own start and
+        end, so moving the event moves them along with it. Each phase says where it sits in words;
+        open its edit to change the dates.
       </p>
       {phases.length === 0 && <p className="mt-3 text-[13px] text-[var(--text-muted)]">None yet.</p>}
-      <div className="mt-3 flex flex-col gap-3">
+      <div className="mt-3 flex flex-col gap-2">
         {phases.map((p) => (
-          <div key={p.id} className={`max-w-[500px] ${CARD}`}>
-            <h3 className="text-[15px] font-medium text-[var(--text)]">{p.name}</h3>
-            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-              Start: {p.startDate ?? "unresolved"} — {describeBoundary("Start", p, p.startDateType, p.startRelativeBasis, p.startRelativeValue)}
-              <br />
-              End: {p.endDate ?? "unresolved"} — {describeBoundary("End", p, p.endDateType, p.endRelativeBasis, p.endRelativeValue)}
-            </p>
-            {p.flags.orderInvalid && (
-              <p className="mt-1 text-[13px] text-[var(--danger)]">This phase&rsquo;s end resolves before its own start.</p>
-            )}
-            <form action={updatePhaseBoundaryAction} className="mt-3 flex flex-col gap-2">
-              <input type="hidden" name="phaseId" value={p.id} />
-              <input type="hidden" name="cycleScope" value={cycleScope} />
-              <PhaseBoundaryFields
-                prefix="start"
-                p={p}
-                cycleStartDate={cycleStartDate}
-                cycleEndDate={cycleEndDate}
-              />
-              <PhaseBoundaryFields
-                prefix="end"
-                p={p}
-                cycleStartDate={cycleStartDate}
-                cycleEndDate={cycleEndDate}
-              />
-              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                Save dates
-              </button>
-            </form>
-            <form action={updatePhaseHighlightAction} className="mt-3 flex items-end gap-2">
-              <input type="hidden" name="phaseId" value={p.id} />
-              <input type="hidden" name="cycleScope" value={cycleScope} />
-              <label className="flex flex-col gap-1">
-                <span className={LABEL}>Pin a module for everyone coming while this phase is current</span>
-                <select name="highlightModuleKey" defaultValue={p.highlightModuleKey ?? ""} className={INPUT}>
-                  <option value="">None</option>
-                  {HIGHLIGHTABLE_MODULES.map((m) => (
-                    <option key={m.key} value={m.key}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="submit" className={BUTTON_SECONDARY}>
-                Save
-              </button>
-            </form>
-          </div>
+          <PhaseRowCard
+            key={p.id}
+            p={p}
+            cycleScope={cycleScope}
+            cycleStartDate={cycleStartDate}
+            cycleEndDate={cycleEndDate}
+          />
         ))}
       </div>
 
@@ -828,6 +790,90 @@ function PhaseDatesSection({
         </form>
       </details>
     </section>
+  );
+}
+
+/**
+ * One phase as two lines of prose plus its edit disclosure.
+ *
+ * This used to render its whole authoring form inline, so a handful of
+ * phases stacked two bordered fieldsets, a button and a select apiece —
+ * the form was the thing you saw, and the phase was the thing you had to
+ * look for. The recipe is now the summary: `describeBoundaryWindow` says
+ * the same relationship the form was editing ("4 days before the event
+ * starts") without anyone reading a signed number, and the controls only
+ * mount when asked for. That is the `<details>`-for-edit rule the design
+ * conventions already set for every other form on the app.
+ */
+function PhaseRowCard({
+  p,
+  cycleScope,
+  cycleStartDate,
+  cycleEndDate,
+}: {
+  p: PhaseRow;
+  cycleScope: string;
+  cycleStartDate: string | null;
+  cycleEndDate: string | null;
+}) {
+  const pinned = HIGHLIGHTABLE_MODULES.find((m) => m.key === p.highlightModuleKey);
+
+  return (
+    <div className={`max-w-[500px] ${CARD}`}>
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-[15px] font-medium text-[var(--text)]">{p.name}</h3>
+        {pinned && <Tag tone="accent">{pinned.label} pinned</Tag>}
+      </div>
+      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        {formatDateRange(p.startDate, p.endDate)}
+        {" — "}
+        {describeBoundaryWindow(startBoundaryOf(p), endBoundaryOf(p))}
+      </p>
+      {p.flags.orderInvalid && (
+        <p className="mt-1 text-[13px] text-[var(--danger)]">This phase&rsquo;s end resolves before its own start.</p>
+      )}
+
+      <details className="mt-1">
+        <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Edit</summary>
+        <form action={updatePhaseBoundaryAction} className="mt-2 flex flex-col gap-2">
+          <input type="hidden" name="phaseId" value={p.id} />
+          <input type="hidden" name="cycleScope" value={cycleScope} />
+          <PhaseBoundaryFields
+            prefix="start"
+            p={p}
+            cycleStartDate={cycleStartDate}
+            cycleEndDate={cycleEndDate}
+          />
+          <PhaseBoundaryFields
+            prefix="end"
+            p={p}
+            cycleStartDate={cycleStartDate}
+            cycleEndDate={cycleEndDate}
+          />
+          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+            Save dates
+          </button>
+        </form>
+        <form action={updatePhaseHighlightAction} className="mt-3 flex items-end gap-2">
+          <input type="hidden" name="phaseId" value={p.id} />
+          <input type="hidden" name="cycleScope" value={cycleScope} />
+          <label className="flex flex-col gap-1">
+            <span className={LABEL}>Pin a module for everyone coming while this phase is current</span>
+            <select name="highlightModuleKey" defaultValue={p.highlightModuleKey ?? ""} className={INPUT}>
+              <option value="">None</option>
+              {HIGHLIGHTABLE_MODULES.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className={BUTTON_SECONDARY}>
+            Save
+          </button>
+        </form>
+      </details>
+    </div>
   );
 }
 

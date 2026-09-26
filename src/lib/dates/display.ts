@@ -42,6 +42,24 @@ export function formatWeekday(date: string): string {
   return weekdayFormatter.format(asUtcDate(date));
 }
 
+/**
+ * "Sep 1 – Sep 14, 2027", collapsing a shared year onto the end so a
+ * reader scanning a list of phases gets a date rather than a repeated
+ * year. Falls back to whichever side is known — a half-set window says so
+ * rather than claiming a span it doesn't have.
+ */
+export function formatDateRange(start: string | null, end: string | null): string {
+  if (start && end) {
+    if (start.slice(0, 4) === end.slice(0, 4)) {
+      return `${formatExactDate(start).replace(/,?\s+\d{4}$/, "")} – ${formatExactDate(end)}`;
+    }
+    return `${formatExactDate(start)} – ${formatExactDate(end)}`;
+  }
+  if (start) return `${formatExactDate(start)} – `;
+  if (end) return ` – ${formatExactDate(end)}`;
+  return "No dates set";
+}
+
 export function isShortPeriod(startDate: string, endDate: string): boolean {
   return startDate <= endDate && daysBetween(startDate, endDate) + 1 <= 7;
 }
