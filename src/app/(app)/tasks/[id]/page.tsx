@@ -110,6 +110,7 @@ import {
   withdrawJoinRequestAction,
   nominateForTaskAction,
 } from "./actions";
+import SelectField from "@/components/ui/SelectField";
 
 const SIGNAL_LABELS: Record<string, string> = {
   stalled: "looks stalled",
@@ -1809,13 +1810,13 @@ export default async function TaskDetailPage({
                 <textarea name="description" rows={2} placeholder="Description" className={INPUT} />
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <select name="branchId" defaultValue={taskRow.branchId} className={INPUT}>
+                  <SelectField name="branchId" defaultValue={taskRow.branchId} className={INPUT}>
                     {branches.map((b) => (
                       <option key={b.id} value={b.id}>
                         {b.name}
                       </option>
                     ))}
-                  </select>
+                  </SelectField>
 
                   <EffortFields defaultEffort={taskRow.effort} />
                 </div>

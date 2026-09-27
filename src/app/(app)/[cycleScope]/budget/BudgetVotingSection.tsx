@@ -1,6 +1,7 @@
 import { BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
 import type { getBudgetVotingView } from "@/lib/budget";
 import { confirmBudgetCycleAction, submitBudgetVoteAction } from "./actions";
+import SelectField from "@/components/ui/SelectField";
 
 type VotingView = Awaited<ReturnType<typeof getBudgetVotingView>>;
 type BudgetCycleRow = VotingView["cycle"];
@@ -166,7 +167,7 @@ export default function BudgetVotingSection({
                   {r.proposal.title} ({formatAmount(r.liveTotal)})
                 </span>
                 <input type="hidden" name="proposalId" value={r.proposal.id} />
-                <select name={`rank_${r.proposal.id}`} defaultValue={myRankByProposalId.get(r.proposal.id) ?? ""} required className={`${INPUT} w-fit`}>
+                <SelectField name={`rank_${r.proposal.id}`} defaultValue={myRankByProposalId.get(r.proposal.id) ?? ""} required className={`${INPUT} w-fit`}>
                   <option value="" disabled>
                     rank
                   </option>
@@ -175,7 +176,7 @@ export default function BudgetVotingSection({
                       {i + 1}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
             ))}
             <label className="flex flex-col gap-1">

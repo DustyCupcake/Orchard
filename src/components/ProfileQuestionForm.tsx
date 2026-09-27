@@ -1,6 +1,7 @@
 import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "./ui/kit";
 import type { FieldShape, ResponseType } from "@/lib/field-shape";
+import SelectField from "@/components/ui/SelectField";
 
 export type QuestionResponseType = ResponseType;
 
@@ -111,14 +112,14 @@ export default function ProfileQuestionForm({
       {feedsCapacitySignal && (
         <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
           Visible to coordinators as
-          <select
+          <SelectField
             name="capacityVisibility"
             defaultValue={defaultCapacityVisibility ?? "flag_only"}
             className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)]"
           >
             <option value="flag_only">a coarse flag only</option>
             <option value="open">the exact number</option>
-          </select>
+          </SelectField>
         </label>
       )}
 

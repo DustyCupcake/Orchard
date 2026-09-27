@@ -38,6 +38,7 @@ import {
   updatePhaseBoundaryAction,
   updatePhaseHighlightAction,
 } from "./actions";
+import SelectField from "@/components/ui/SelectField";
 
 type Member = typeof memberTable.$inferSelect;
 type Cycle = Awaited<ReturnType<typeof listCycles>>[number];
@@ -350,10 +351,10 @@ async function StartNewCycleSection({
         </label>
         <label className="flex flex-col gap-1">
           <span className={LABEL}>Source</span>
-          <select name="source" defaultValue={hasPreviousCycle ? "clone_previous" : "blank"} className={INPUT}>
+          <SelectField name="source" defaultValue={hasPreviousCycle ? "clone_previous" : "blank"} className={INPUT}>
             <option value="blank">Blank</option>
             {hasPreviousCycle && <option value="clone_previous">Clone the most recent event</option>}
-          </select>
+          </SelectField>
         </label>
         {cycleTypes.length > 0 && (
           <label className="flex flex-col gap-1">
@@ -555,13 +556,13 @@ async function ParticipationForCycle({
             <input type="hidden" name="cycleScope" value={cycleScope} />
             <label className="flex flex-col gap-1">
               <span className={LABEL}>Status</span>
-              <select name="status" defaultValue={mine.status} className={INPUT}>
+              <SelectField name="status" defaultValue={mine.status} className={INPUT}>
                 {Object.entries(STATUS_LABEL).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>
                 ))}
-              </select>
+              </SelectField>
             </label>
             <label className="flex flex-col gap-1">
               <span className={LABEL}>Arrival date (optional)</span>
@@ -617,7 +618,7 @@ async function ParticipationForCycle({
             </label>
             <label className="flex flex-col gap-1">
               <span className={LABEL}>Application form (optional — blank = community standing form)</span>
-              <select
+              <SelectField
                 name="recruitmentApplicationFormId"
                 className={`${INPUT} w-fit`}
                 defaultValue={withPhases?.recruitmentApplicationFormId ?? ""}
@@ -630,7 +631,7 @@ async function ParticipationForCycle({
                       {f.title}
                     </option>
                   ))}
-              </select>
+              </SelectField>
               <span className="text-[12px] text-[var(--text-muted)]">
                 The event&rsquo;s joining window runs from the returning-priority close above until the
                 deadline below; both doors are shut outside it and once capacity is reached.
@@ -864,14 +865,14 @@ function PhaseRowCard({
           <input type="hidden" name="cycleScope" value={cycleScope} />
           <label className="flex flex-col gap-1">
             <span className={LABEL}>Pin a module for everyone coming while this phase is current</span>
-            <select name="highlightModuleKey" defaultValue={p.highlightModuleKey ?? ""} className={INPUT}>
+            <SelectField name="highlightModuleKey" defaultValue={p.highlightModuleKey ?? ""} className={INPUT}>
               <option value="">None</option>
               {HIGHLIGHTABLE_MODULES.map((m) => (
                 <option key={m.key} value={m.key}>
                   {m.label}
                 </option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <button type="submit" className={BUTTON_SECONDARY}>
             Save

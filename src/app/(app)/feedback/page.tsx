@@ -9,6 +9,7 @@ import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
 import { ForbiddenError } from "@/lib/errors";
 import { Banner, BUTTON_PRIMARY, CARD, CheckField, SELECT } from "@/components/ui/kit";
 import { submitFeedbackAction } from "./actions";
+import SelectField from "@/components/ui/SelectField";
 
 export const dynamic = "force-dynamic";
 
@@ -94,14 +95,14 @@ export default async function FeedbackPage({
                   <span className="text-[12px] text-[var(--text-muted)]">
                     Defaults to the most recent event; pick “General” for feedback not tied to one.
                   </span>
-                  <select name="cycleId" defaultValue={cycles[0].id} className={SELECT}>
+                  <SelectField name="cycleId" defaultValue={cycles[0].id} className={SELECT}>
                     {cycles.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
                       </option>
                     ))}
                     <option value="">General — not about a specific event</option>
-                  </select>
+                  </SelectField>
                 </label>
               )}
 

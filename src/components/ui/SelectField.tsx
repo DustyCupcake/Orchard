@@ -44,11 +44,14 @@ export default function SelectField({
   defaultValue,
   children,
   ...rest
-}: { defaultValue?: string | null } & Omit<
+}: { defaultValue?: string | number | null } & Omit<
   SelectHTMLAttributes<HTMLSelectElement>,
   "value" | "defaultValue" | "children"
 > & { children: ReactNode }) {
-  const selected = defaultValue ?? "";
+  // number is allowed because a value pulled out of a Map is often typed
+  // string | number, and an <option>'s value is a string either way — the
+  // key and the defaultValue just have to be spelled the same way.
+  const selected = defaultValue == null ? "" : String(defaultValue);
   return (
     <select {...rest} key={selected} defaultValue={selected}>
       {children}

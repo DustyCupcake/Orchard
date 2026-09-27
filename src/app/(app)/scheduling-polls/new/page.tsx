@@ -5,6 +5,7 @@ import { branch, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { Banner, BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
 import { proposePollAction } from "./actions";
+import SelectField from "@/components/ui/SelectField";
 
 export const dynamic = "force-dynamic";
 
@@ -49,13 +50,13 @@ export default async function NewSchedulingPollPage({
 
         <label className="flex flex-col gap-1">
           <span className={LABEL}>Branch</span>
-          <select name="branchId" required defaultValue={presetBranchId ?? ""} className={INPUT}>
+          <SelectField name="branchId" required defaultValue={presetBranchId ?? ""} className={INPUT}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>
             ))}
-          </select>
+          </SelectField>
         </label>
 
         <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">

@@ -30,6 +30,7 @@ import {
 } from "./actions";
 import BudgetVotingSection from "./BudgetVotingSection";
 import LineItemsEditor from "./LineItemsEditor";
+import SelectField from "@/components/ui/SelectField";
 
 export const dynamic = "force-dynamic";
 
@@ -422,14 +423,14 @@ export default async function BudgetPage({
                                 <input type="hidden" name="cycleScope" value={cycleScope} />
                                 <input type="text" name="title" defaultValue={p.title} required className={INPUT} />
                                 <textarea name="description" defaultValue={p.description ?? ""} rows={2} className={INPUT} />
-                                <select name="branchId" defaultValue={p.branchId ?? ""} className={INPUT}>
+                                <SelectField name="branchId" defaultValue={p.branchId ?? ""} className={INPUT}>
                                   <option value="">No branch</option>
                                   {branches.map((b) => (
                                     <option key={b.id} value={b.id}>
                                       {b.name}
                                     </option>
                                   ))}
-                                </select>
+                                </SelectField>
                                 <LineItemsEditor name="lineItemsJson" initialItems={items} branches={branches} minItems={1} />
                                 <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                                   Save changes

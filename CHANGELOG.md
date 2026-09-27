@@ -2,6 +2,31 @@
 
 The build history behind [`README.md`](README.md)'s feature list — what each addition built and why it's shaped the way it is. Every numbered phase (0-69) of the original development plan is complete, covering the full original build plan; nothing after that is numbered — real, scoped-but-unbuilt work continues to get picked up off [`docs/roadmap.md`](docs/roadmap.md) as its own standalone feature entry, not a phase. For the full technical spec, see [`docs/spec.md`](docs/spec.md).
 
+## Unreleased: a saved dropdown no longer reverts on screen — 23 more sites, and the diagnosis the first commit didn't carry
+
+Changing a setting and watching the control snap back to its old value, then finding the change *had* saved, is a bug that punishes the person who just did the right thing: it reads as "my edit was rejected" and invites a second, contradictory save. Found on `/settings` → Events & Tiers, where changing an event type's suggested starting event appeared to revert, and a refresh showed it had worked.
+
+**Cause, read out of the React source rather than guessed at.** `defaultValue` on an uncontrolled input is a *mount-time* default, not a value React keeps in sync. In react-dom 19.2.8's `updateDOMProperties`, the `select` case resolves to:
+
+```js
+null != _propKey8                              // has a `value` prop? → controlled
+  ? updateOptions(domElement, !!multiple, _propKey8, false)
+  : !!lastProps !== !!multiple && (             // ← only when it changes between renders
+      defaultValue != null ? updateOptions(domElement, !!multiple, defaultValue, true) : ...);
+```
+
+A settings form is uncontrolled in both renders, so that second condition is `false !== false` and `updateOptions` never runs again. The selection was set once at mount and nothing re-applies it. So the Server Action's `revalidatePath` genuinely refetched, the component genuinely re-rendered with the correct value, and the browser still showed the pre-save selection — a hard refresh then looked like proof the save worked when it only re-mounted the element.
+
+**This is specific to `select`.** `<input defaultValue>` goes through `setProp`, which moves the displayed value when the field isn't dirty, and the person saving is the one who last typed in it — so text fields already looked right. `<input defaultChecked>` is self-consistent for the same reason. That asymmetry is why this read as a dropdown-only bug and why a text field never exposed it.
+
+**`SelectField` (`src/components/ui/SelectField.tsx`) fixes it by remounting on the value.** `key` is the one thing that reliably re-establishes a mount-time default, and keying on the *value* rather than anything incidental means the element is only remounted when the server's answer actually changes — an unrelated re-render (someone else's edit, a nav prefetch) leaves it, and any half-made selection in it, completely alone.
+
+**`SelectField` and the eight `/settings` call sites landed unlabelled in `ef121a3`**, swept in by a `git add -A` alongside the question work, with no mention in that commit's message. This commit finishes the job: **23 more sites across 15 files** — `/tasks/[id]`, `/calendar`, `/participation`, `/budget` (including the voting rank select), `/profile`, `/applications`, `/feedback`, `/shifts`, `/spatial-planning`, `/proposals`, `/task-packs/import`, `/scheduling-polls/new`, and the two shared components `DateModeField` and `ProfileQuestionForm`. `SelectField`'s `defaultValue` accepts `number` as well as `string` because a value pulled out of a `Map` is usually typed `string | number` and an `<option>`'s value is a string either way.
+
+**Two `<select>`s deliberately left alone:** `board/BranchFilter.tsx` and `board/TagFilter.tsx`, whose values are React state driving the control rather than a saved setting re-read after a write. Remounting them gains nothing and would add churn on every filter change. The two `previewView` grid/list toggles are excluded on the same reasoning. Selects already carrying a `key`, and controlled ones (`value` + `onChange`), were skipped by construction — `DateModeField`'s parent/phase switcher is controlled and its phase picker is not, so exactly one of the pair changed.
+
+Verified by `tsc` and `eslint` clean and the full suite green. **Not verified in a browser** — the argument is read out of react-dom's own source and the remount is a documented React guarantee, but the dropdown holding its new value after a real save has not been watched happen, and that is the one claim worth a real pass on `/settings` → Events & Tiers.
+
 ## Unreleased: `sensitive` becomes the one immutable thing, and widening an audience starts asking
 
 **The flag that governs who can read a person's answers could be flipped by anyone with settings access, in both directions.** Ticking it made a question restricted; un-ticking it made every answer given so far readable by the whole Community — including answers given while it was restricted to the kitchen, by people who answered against that narrower audience. No confirmation copy makes that a setting rather than a disclosure, so `sensitive` is now **absent from `updateProfileQuestionInput` entirely** rather than validated-and-refused. It is the one profile-question attribute with no update counterpart, and unrepresentable is the stronger of the two: a validation can be bypassed by a caller that doesn't go through the schema, an absent field cannot be set at all. The remedy is the one the codebase already has for questions — archive and re-add, which leaves the old answers on the old question rather than reinterpreting them. Emergency access stays mutable, because switching it *off* discloses nothing; the two flags are deliberately not symmetric.

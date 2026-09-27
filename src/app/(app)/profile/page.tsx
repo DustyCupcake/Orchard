@@ -31,6 +31,7 @@ import {
   updateProfile,
   withdrawConsentAction,
 } from "./actions";
+import SelectField from "@/components/ui/SelectField";
 
 const LANGUAGE_LEVEL_LABELS: Record<MemberLanguageLevel, string> = {
   basic: "Basic",
@@ -135,11 +136,11 @@ export default async function ProfilePage({
       <form action={updateProfile} className="mt-6 flex flex-col gap-3">
         <label className="flex flex-col gap-1">
           <span className={LABEL}>Date display</span>
-          <select name="dateDisplayMode" defaultValue={viewing.dateDisplayMode ?? "inherit"} className={INPUT}>
+          <SelectField name="dateDisplayMode" defaultValue={viewing.dateDisplayMode ?? "inherit"} className={INPUT}>
             <option value="inherit">Use the Community default</option>
             <option value="exact">Exact calendar dates</option>
             <option value="period">Period name + weekday when available</option>
-          </select>
+          </SelectField>
           <span className="text-[12px] text-[var(--text-muted)]">
             Read-only date labels only; date inputs and exact dates remain available.
           </span>
@@ -432,13 +433,13 @@ export default async function ProfilePage({
                 <input type="hidden" name="id" value={m.id} />
                 <input type="text" name="type" defaultValue={m.type} className={`${INPUT} w-24`} />
                 <input type="text" name="value" defaultValue={m.value} className={`${INPUT} min-w-[160px] flex-1`} />
-                <select name="visibility" defaultValue={m.visibility} className={INPUT}>
+                <SelectField name="visibility" defaultValue={m.visibility} className={INPUT}>
                   {CONTACT_METHOD_VISIBILITIES.map((v) => (
                     <option key={v} value={v}>
                       {CONTACT_VISIBILITY_LABELS[v]}
                     </option>
                   ))}
-                </select>
+                </SelectField>
                 <button type="submit" className={BUTTON_SECONDARY}>
                   Save
                 </button>

@@ -29,6 +29,7 @@ import {
   inviteMemberAction,
   updateCalendarEventAction,
 } from "./actions";
+import SelectField from "@/components/ui/SelectField";
 
 export const dynamic = "force-dynamic";
 
@@ -420,34 +421,34 @@ export default async function CalendarPage({
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className={LABEL}>Event</span>
-                    <select name="cycleId" defaultValue={e.cycleId ?? ""} className={INPUT}>
+                    <SelectField name="cycleId" defaultValue={e.cycleId ?? ""} className={INPUT}>
                       <option value="">Not linked to an event</option>
                       {cycles.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.name}
                         </option>
                       ))}
-                    </select>
+                    </SelectField>
                   </label>
                   <EventDateFields event={e} cycles={cycles} />
                   <label className="flex flex-col gap-1">
                     <span className={LABEL}>Share with</span>
-                    <select name="shareTarget" defaultValue={e.shareTarget} className={INPUT}>
+                    <SelectField name="shareTarget" defaultValue={e.shareTarget} className={INPUT}>
                       <option value="personal">Personal (just you)</option>
                       <option value="branch">Shared with a Branch</option>
                       <option value="community">Shared with the whole Community</option>
-                    </select>
+                    </SelectField>
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className={LABEL}>Branch (used when share target is Branch)</span>
-                    <select name="sharedBranchId" defaultValue={e.sharedBranchId ?? ""} className={INPUT}>
+                    <SelectField name="sharedBranchId" defaultValue={e.sharedBranchId ?? ""} className={INPUT}>
                       <option value="">— pick a Branch if shareTarget is Branch —</option>
                       {branches.map((b) => (
                         <option key={b.id} value={b.id}>
                           {b.name}
                         </option>
                       ))}
-                    </select>
+                    </SelectField>
                   </label>
                   <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                     Save

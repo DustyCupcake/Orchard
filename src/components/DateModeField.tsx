@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { INPUT, LABEL } from "./ui/kit";
 import SegmentedControl from "./ui/SegmentedControl";
+import SelectField from "@/components/ui/SelectField";
 
 type DateMode = "absolute" | "relative";
 type ParentType = "cycle" | "phase";
@@ -88,14 +89,14 @@ export default function DateModeField({
             {selectedParent === "phase" && (
               <label className="flex flex-col gap-1">
                 <span className={LABEL}>Phase</span>
-                <select name={fieldNames.phaseId} defaultValue={phaseId ?? ""} className={INPUT}>
+                <SelectField name={fieldNames.phaseId} defaultValue={phaseId ?? ""} className={INPUT}>
                   <option value="">{phaseSelectDefaultLabel}</option>
                   {phases.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
             )}
           </>
