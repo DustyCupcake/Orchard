@@ -9,12 +9,22 @@ import {
   deleteTier,
   getCommunity,
   listBranches,
+  listCycleTypes,
+  listPendingBranches,
   listTiers,
   requireAdmins,
   updateBranch,
   updateCommunity,
   updateTier,
 } from "@/lib/settings";
+import { listCycles } from "@/lib/cycles";
+import { listProfileQuestions } from "@/lib/profile-questions";
+import { listTraitAxes } from "@/lib/trait-axes";
+import { listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
+import { listForms } from "@/lib/forms";
+import { listConsentPurposes } from "@/lib/consent";
+import { listTaskPacks } from "@/lib/task-packs";
+import { listTasks } from "@/lib/tasks";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
@@ -148,6 +158,91 @@ describe("tier settings", () => {
     await updateCommunity(alice, { cycleInitiationTierId: created.id });
 
     await expect(deleteTier(alice, created.id)).rejects.toThrow(ConflictError);
+  });
+});
+
+describe("the settings read gate", () => {
+  // Locks the community's Admins shut first. A fresh fixture has
+  // adminsEverClaimed false, and requireAdmins lets *anyone* through in that
+  // state as the bootstrap path — so without this, "a non-admin" would still
+  // be an admin as far as the gate is concerned and the test would prove
+  // nothing.
+  async function adminGatedFixtures() {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    const [adminsTask] = await db
+      .insert(task)
+      .values({
+        communityId: testCommunity.id,
+        branchId: branch.id,
+        title: "Admins",
+        effort: "owns_a_thing",
+        effortMagnitude: { hours_per_week: 1 },
+        createdBy: alice.id,
+        openness: "community_endorsed",
+        endorsementThreshold: 1,
+        browsePeriodEnd: new Date(Date.now() + 3600000),
+      })
+      .returning();
+    await grantPermission(testCommunity.id, "admin", adminsTask.id);
+    await db.insert(taskAssignment).values({ taskId: adminsTask.id, memberId: alice.id });
+    await db
+      .update(community)
+      .set({ adminsEverClaimed: true })
+      .where(eq(community.id, testCommunity.id));
+    return { testCommunity, branch, alice, bob };
+  }
+
+  // The read gate moved from the read to the write, and the loaders had to
+  // move with it: while a non-Admin never saw past the refusal banner, ten of
+  // these were `authorized ? … : Promise.resolve([])`. Un-gating the page
+  // without un-gating them would render a settings screen whose dropdowns and
+  // lists are silently empty, so each of these has to actually resolve for a
+  // member who holds nothing.
+  it("every loader the settings page depends on resolves for a non-admin", async () => {
+    const { alice, bob } = await adminGatedFixtures();
+    await createTier(alice, { name: "Cohort" });
+    await expect(requireAdmins(bob)).rejects.toThrow(ForbiddenError);
+
+    const settled = await Promise.allSettled([
+      getCommunity(bob),
+      listBranches(bob),
+      listTiers(bob),
+      listCycleTypes(bob),
+      listCycles(bob),
+      listProfileQuestions(bob, { includeArchived: true }),
+      listTraitAxes(bob, { includeArchived: true }),
+      listSensitiveFieldAccessRules(bob),
+      listForms(bob, { includeArchived: true }),
+      listConsentPurposes(bob),
+      listTaskPacks(bob),
+      listTasks(bob),
+    ]);
+
+    const refused = settled
+      .map((r) => (r.status === "rejected" ? String(r.reason?.message ?? r.reason) : null))
+      .filter((m): m is string => m !== null);
+    expect(refused).toEqual([]);
+  });
+
+  it("hands a non-admin the settings themselves, not an empty list", async () => {
+    const { alice, bob } = await adminGatedFixtures();
+    await createTier(alice, { name: "Cohort" });
+
+    // The failure mode this guards is a loader that resolves to [] rather than
+    // throwing: a green test either way, and a Branches tab showing nothing.
+    expect((await listTiers(bob)).map((t) => t.name)).toEqual(["Cohort"]);
+    expect((await listBranches(bob)).map((b) => b.name)).toEqual(["Fruit"]);
+    expect((await getCommunity(bob)).id).toBe(bob.communityId);
+  });
+
+  it("still refuses the pending-branch queue, which stays an admin work queue", async () => {
+    const { bob } = await adminGatedFixtures();
+    // Not a privilege so much as a fact about the data: a pending branch is a
+    // request from a member awaiting confirmation, so the list is a queue of
+    // member requests rather than branch configuration. It is also the one
+    // loader that would throw rather than return [], since it calls
+    // requireAdmins itself.
+    await expect(listPendingBranches(bob)).rejects.toThrow(ForbiddenError);
   });
 });
 

@@ -101,10 +101,16 @@ const TABS = [
   { key: "members", label: "Members" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
-const TAB_KEYS = TABS.map((t) => t.key) as readonly string[];
 
-function TabBar({ active }: { active: TabKey }) {
-  return <Tabs tabs={TABS} active={active} hrefFor={(key) => `/settings?tab=${key}`} />;
+// Shown to Admins only, not merely read-only for everyone else. The Members
+// tab is a roster-paste tool: its content is other people's names and email
+// addresses, and "should we import this list" is an action rather than a
+// setting the community deliberates about. Every other tab is configuration
+// a member has a stake in reading.
+const ADMIN_ONLY_TABS: readonly TabKey[] = ["members"];
+
+function TabBar({ active, tabs }: { active: TabKey; tabs: readonly { key: TabKey; label: string }[] }) {
+  return <Tabs tabs={tabs} active={active} hrefFor={(key) => `/settings?tab=${key}`} />;
 }
 
 function FieldSet({ legend, children }: { legend: string; children: React.ReactNode }) {
@@ -541,7 +547,6 @@ export default async function SettingsPage({
   }
 
   const { error, bulkStage, bulkState: bulkStateRaw, bulkAdded, tab: tabRaw } = await searchParams;
-  const activeTab: TabKey = TAB_KEYS.includes(tabRaw ?? "") ? (tabRaw as TabKey) : "general";
   // Only offered on the un-tabbed landing view, not repeated above every
   // one of the ten tabs. Someone clicking "Settings" in the sidebar is
   // arriving with a question; someone who deep-linked to
@@ -562,6 +567,26 @@ export default async function SettingsPage({
     }
   }
 
+  // A member can read these settings; only an Admin can change them. The gate
+  // moved from the read to the write, and the write half is what was always
+  // load-bearing: every mutating action in actions.ts calls requireAdmins
+  // itself, so rendering a form to a non-Admin grants nothing.
+  //
+  // spec.md is why the read is open. A settings change is a collective
+  // decision — assembly results are "always advisory, never auto-applied"
+  // (:1257), a foundational-settings change is expected to reach quorum
+  // against the whole roster "before Admins act on it" (:430), and data
+  // decisions belong to the community's collective process "not to whoever
+  // currently holds the sysadmin task" (:1267). None of that is reachable
+  // while the settings themselves are unreadable, since the body weighing a
+  // change has to be able to read what it is weighing.
+  const visibleTabs = authorized ? TABS : TABS.filter((t) => !ADMIN_ONLY_TABS.includes(t.key));
+  const visibleTabKeys = visibleTabs.map((t) => t.key) as readonly string[];
+  // A deep link to an admin-only tab falls back to General rather than
+  // rendering an empty body, so a shared /settings?tab=members link degrades
+  // to something readable instead of looking broken.
+  const activeTab: TabKey = visibleTabKeys.includes(tabRaw ?? "") ? (tabRaw as TabKey) : "general";
+
   const [
     communityRow,
     branches,
@@ -581,15 +606,28 @@ export default async function SettingsPage({
     listBranches(viewing),
     listTiers(viewing),
     listCycleTypes(viewing),
-    authorized ? listCycles(viewing) : Promise.resolve([]),
-    authorized ? listProfileQuestions(viewing, { includeArchived: true }) : Promise.resolve([]),
-    authorized ? listTraitAxes(viewing, { includeArchived: true }) : Promise.resolve([]),
-    authorized ? listSensitiveFieldAccessRules(viewing) : Promise.resolve([]),
-    authorized ? listForms(viewing, { includeArchived: true }) : Promise.resolve([]),
-    authorized ? listConsentPurposes(viewing) : Promise.resolve([]),
+    // Every one of these used to be `authorized ? … : Promise.resolve([])`,
+    // which was free while a non-Admin never saw past the refusal banner and
+    // this data was pure waste for them. It isn't free now: a member reading
+    // the Branches tab needs the branches, and the Modules and Profile &
+    // Privacy tabs need their forms, questions and consent purposes to show
+    // anything true. Gating the loaders while showing the tabs would render a
+    // settings page that silently omits most of the settings.
+    listCycles(viewing),
+    listProfileQuestions(viewing, { includeArchived: true }),
+    listTraitAxes(viewing, { includeArchived: true }),
+    listSensitiveFieldAccessRules(viewing),
+    listForms(viewing, { includeArchived: true }),
+    listConsentPurposes(viewing),
+    // The one exception, and it is not a privilege question: listPendingBranches
+    // calls requireAdmins itself, so calling it for a non-Admin throws rather
+    // than returning []. It stays an Admin's work queue — a list of who is
+    // waiting to be confirmed into a branch is a list of member requests, not
+    // branch configuration — and the tab's pending section simply renders
+    // empty for a member.
     authorized ? listPendingBranches(viewing) : Promise.resolve([]),
     listTaskPacks(viewing),
-    authorized ? listTasks(viewing) : Promise.resolve([]),
+    listTasks(viewing),
   ]);
   const confirmedBranches = branches.filter((b) => b.status === "confirmed");
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
@@ -687,32 +725,15 @@ export default async function SettingsPage({
     .filter((q) => q.scope === "once_ever" && !q.archivedAt)
     .map((q) => ({ id: q.id, label: q.label }));
 
-  if (!authorized) {
-    return (
-      <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Community settings</h1>
-        <div className="mt-4">
-          <Banner tone="danger">
-            Only a current holder of an Admins-granting task can view or change these — see its
-            detail page to put yourself forward or endorse a candidate.
-          </Banner>
-        </div>
-        {showFoundersPrompt && (await getFoundersAssemblyPromptState(viewing.communityId)) === "show" && (
-          <div className="mt-3">
-            <FoundersAssemblyPrompt />
-          </div>
-        )}
-      </main>
-    );
-  }
-
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
       <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Community settings</h1>
       <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-        {communityRow.adminsEverClaimed
-          ? "Editable by whoever currently holds the Admins task."
-          : "No Admins task has ever been claimed in this Community yet, so any member can change these — including granting Admin access to a community_endorsed task below to start gating this screen for real."}
+        {authorized
+          ? communityRow.adminsEverClaimed
+            ? "Editable by whoever currently holds the Admins task."
+            : "No Admins task has ever been claimed in this Community yet, so any member can change these — including granting Admin access to a community_endorsed task below to start gating this screen for real."
+          : "Everyone can read these; only whoever currently holds the Admins task can change them. An Assembly about a foundational setting needs the whole roster weighing in, which needs the setting to be readable in the first place."}
       </p>
 
       {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
@@ -724,10 +745,25 @@ export default async function SettingsPage({
       )}
 
       <div className="mt-6">
-        <TabBar active={activeTab} />
+        <TabBar active={activeTab} tabs={visibleTabs} />
       </div>
 
-      <div className="mt-6">
+      {/*
+       * The read-only mechanism, and the reason it is a fieldset rather than a
+       * `readOnly` prop threaded through every control: HTML disables every
+       * descendant form control of a disabled fieldset, so this covers the
+       * inputs, the submit buttons, the per-row ActionMenu triggers (which
+       * therefore never open), and the `type="button"` handlers inside the
+       * three client components on this screen — none of which is a form
+       * control, so none of them would be reachable any other way.
+       *
+       * The opacity is not decoration. Nothing in this codebase's Tailwind
+       * setup dims a disabled control on its own, so without it a member
+       * would see a normally-coloured form whose controls silently do
+       * nothing — looking editable while being inert is worse than an honest
+       * refusal.
+       */}
+      <fieldset disabled={!authorized} className="mt-6 min-w-0 disabled:opacity-60">
         {activeTab === "general" && (
           <div className="flex flex-col gap-5">
             <form action={updateGeneralSettingsAction} className="flex flex-col gap-4">
@@ -1957,7 +1993,7 @@ export default async function SettingsPage({
             )}
           </section>
         )}
-      </div>
+      </fieldset>
     </main>
   );
 }
