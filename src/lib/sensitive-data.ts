@@ -200,11 +200,49 @@ export async function extendAnswerConsent(actor: Member, answerId: string, ruleI
   await db.insert(profileAnswerRuleConsent).values({ answerId, ruleId }).onConflictDoNothing();
 }
 
-/** Rules that can reach this member's answers but haven't been agreed to.
+/**
+ * One member agreeing to have one answer revealed in a crisis.
  *
- *  The prompt list on a member's own profile. One row per rule rather
- *  than per question, so someone can extend sharing to the kitchen team
- *  without also handing it to whoever was added last week.
+ * The emergency half of the same story as `extendAnswerConsent`, and
+ * separate because the shape differs. An audience is a *set*, so that
+ * prompt is per group and agreeing to one group doesn't mean agreeing to
+ * the next. Emergency access is a single route, so there is nothing to be
+ * granular about — "I agree to this being reachable if someone activates
+ * emergency mode on my page" is one fact about a person, and this is the
+ * whole of it. It lives on a column rather than in the rule table for the
+ * same reason: expressing it there would have needed either a nullable
+ * `rule_id` with a magic value for "the emergency route", or a sentinel
+ * rule row that isn't a rule.
+ *
+ * Scoped to the answer's own owner for the same reason as the audience
+ * half: a forged POST must not be able to agree on somebody's behalf.
+ */
+export async function agreeToEmergencyReveal(actor: Member, answerId: string) {
+  const [answer] = await db
+    .select({ id: profileAnswer.id, status: profileAnswer.status })
+    .from(profileAnswer)
+    .where(and(eq(profileAnswer.id, answerId), eq(profileAnswer.memberId, actor.id)));
+  if (!answer) throw new NotFoundError("Answer not found");
+  // A decline and a deferral hold no value, so there is nothing to agree to
+  // reveal. Refused rather than silently accepted, because a button that
+  // says "yes, allow that" and then does nothing is worse than one that
+  // isn't there.
+  if (answer.status !== "answered") {
+    throw new AppError("That isn't a real answer, so there's nothing to reveal in an emergency");
+  }
+  await db.update(profileAnswer).set({ emergencyConsent: true }).where(eq(profileAnswer.id, answerId));
+}
+
+/**
+ * Reads this member has not been asked about, and so has not agreed to.
+ *
+ * The prompt list on their own profile, both kinds in one place because
+ * they are one story from the member's side: *somebody can read something
+ * of yours that they couldn't before, and here is whether you agree.* Two
+ * queries rather than one because the two joins have nothing in common —
+ * an audience is a per-rule set membership, emergency access is a single
+ * column — and a UNION over two unrelated shapes would be a harder thing
+ * to read than two lists the caller merges.
  */
 export async function listPendingAudienceConsents(actor: Member) {
   const pending = await db
@@ -237,14 +275,14 @@ export async function listPendingAudienceConsents(actor: Member) {
         sql`not exists (select 1 from profile_answer_rule_consent c where c.answer_id = ${profileAnswer.id} and c.rule_id = ${sensitiveFieldAccessRule.id})`,
       ),
     );
-  if (pending.length === 0) return [];
-
   // A name rather than an id, because this string is the entire content of
   // the consent being asked for. "share with 7b3f…" is not a decision
   // anyone can make; "share with anyone holding a Kitchen grant" is. Three
   // lookups for an unbounded number of rules, and a fallback for the
   // dangling-reference case rather than an exception — a member must not
-  // hit an error page because an Admin deleted a Tier.
+  // hit an error page because an Admin deleted a Tier. Skipped entirely
+  // when there are no audience rows, which is the common case on a
+  // Community nobody has widened.
   const tierIds = [...new Set(pending.map((p) => p.ruleTierId).filter((id): id is string => Boolean(id)))];
   const taskIds = [...new Set(pending.map((p) => p.ruleTaskId).filter((id): id is string => Boolean(id)))];
   const tierNames = new Map(
@@ -258,19 +296,55 @@ export async function listPendingAudienceConsents(actor: Member) {
       : (await db.select({ id: task.id, title: task.title }).from(task).where(inArray(task.id, taskIds))).map((r) => [r.id, r.title]),
   );
 
-  return pending.map((p) => ({
-    answerId: p.answerId,
-    questionId: p.questionId,
-    questionLabel: p.questionLabel,
-    ruleId: p.ruleId,
-    audienceLabel: p.ruleModuleKey
-      ? `anyone holding a ${PERMISSION_MODULE_LABELS[p.ruleModuleKey]} grant`
-      : p.ruleTierId
-        ? `anyone in the ${tierNames.get(p.ruleTierId) ?? "Tier this Community has since removed"} Tier`
-        : p.ruleTaskId
-          ? `anyone holding the “${taskNames.get(p.ruleTaskId) ?? "Task this Community has since removed"}” Task`
-          : "another group in this Community",
-  }));
+  // The emergency half. No audience join, no cross product, no rule: just
+  // "this answer of yours is marked for emergency reveal and hasn't agreed
+  // to it". Filtered to questions that are still live and still flagged,
+  // so a question that had its flag turned back off doesn't leave a prompt
+  // behind asking about a reach that no longer exists.
+  const emergency = await db
+    .selectDistinct({
+      answerId: profileAnswer.id,
+      questionId: profileAnswer.questionId,
+      questionLabel: profileQuestion.label,
+    })
+    .from(profileAnswer)
+    .innerJoin(profileQuestion, eq(profileAnswer.questionId, profileQuestion.id))
+    .where(
+      and(
+        eq(profileAnswer.memberId, actor.id),
+        eq(profileAnswer.status, "answered"),
+        eq(profileAnswer.emergencyConsent, false),
+        eq(profileQuestion.emergencyAccess, true),
+        eq(profileQuestion.sensitive, true),
+        isNull(profileQuestion.archivedAt),
+        isNull(profileAnswer.cycleId),
+      ),
+    );
+
+  return [
+    ...pending.map((p) => ({
+      kind: "audience" as const,
+      answerId: p.answerId,
+      questionId: p.questionId,
+      questionLabel: p.questionLabel,
+      ruleId: p.ruleId,
+      audienceLabel: p.ruleModuleKey
+        ? `anyone holding a ${PERMISSION_MODULE_LABELS[p.ruleModuleKey]} grant`
+        : p.ruleTierId
+          ? `anyone in the ${tierNames.get(p.ruleTierId) ?? "Tier this Community has since removed"} Tier`
+          : p.ruleTaskId
+            ? `anyone holding the “${taskNames.get(p.ruleTaskId) ?? "Task this Community has since removed"}” Task`
+            : "another group in this Community",
+    })),
+    ...emergency.map((e) => ({
+      kind: "emergency" as const,
+      answerId: e.answerId,
+      questionId: e.questionId,
+      questionLabel: e.questionLabel,
+      ruleId: null,
+      audienceLabel: null,
+    })),
+  ];
 }
 
 /** How many access rules name this question. */

@@ -592,9 +592,10 @@ describe("widening an audience", () => {
     // Until they agree, it is as though the rule did not exist.
     const pending = await listPendingAudienceConsents(alice);
     expect(pending.map((p) => p.questionLabel)).toEqual(["Allergies"]);
+    expect(pending[0].kind).toBe("audience");
     expect(pending[0].audienceLabel).toBe("anyone in the Kitchen Tier");
 
-    await extendAnswerConsent(alice, pending[0].answerId, pending[0].ruleId);
+    await extendAnswerConsent(alice, pending[0].answerId, pending[0].ruleId!);
     expect(questionsReadableBy(await resolveReadableAnswersForCommunity(await inKitchen()), alice.id)).toContain(question.id);
     // And the prompt is spent.
     expect(await listPendingAudienceConsents(alice)).toEqual([]);
@@ -638,10 +639,10 @@ describe("widening an audience", () => {
       await createSensitiveFieldAccessRule(alice, { questionId: question.id, unlockedByTierId: id });
     }
 
-    const pending = await listPendingAudienceConsents(alice);
+    const pending = (await listPendingAudienceConsents(alice)).filter((p) => p.kind === "audience");
     expect(pending).toHaveLength(2);
-    const kitchenRow = pending.find((p) => p.audienceLabel.includes("Kitchen"))!;
-    await extendAnswerConsent(alice, kitchenRow.answerId, kitchenRow.ruleId);
+    const kitchenRow = pending.find((p) => p.audienceLabel?.includes("Kitchen"))!;
+    await extendAnswerConsent(alice, kitchenRow.answerId, kitchenRow.ruleId!);
 
     // The Welfare Tier and the owner still read it; the group that was not
     // agreed to does not.
@@ -723,6 +724,21 @@ describe("the rules table is question-only", () => {
     expect(Object.keys(sensitiveFieldAccessRule)).toContain("questionId");
     expect(Object.keys(sensitiveFieldAccessRule)).not.toContain("fieldKey");
     expect(sensitiveFieldAccessRule.questionId.notNull).toBe(true);
+  });
+
+  it("carries emergency consent on the answer, not in the rule table", () => {
+    // The audience half needed a table because a rule is a set and consent
+    // is per member of it. Emergency access is one route, so consent is one
+    // fact about a person and belongs on the answer.
+    //
+    // Asserted as an absence because the alternative was a nullable
+    // `rule_id` with a magic value, or a sentinel rule row that isn't a
+    // rule — both of which put a fake audience in a table whose whole
+    // meaning is "somebody in this Community may read this question".
+    const names = Object.keys(profileAnswerRuleConsent);
+    expect(names).toContain("ruleId");
+    expect(names).not.toContain("emergency");
+    expect(Object.keys(profileAnswer)).toContain("emergencyConsent");
   });
 
   it("and the consent purpose has only the question target left", () => {

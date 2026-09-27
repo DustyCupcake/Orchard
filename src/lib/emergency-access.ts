@@ -70,6 +70,18 @@ export async function activateEmergencyAccess(actor: Member, targetMemberId: str
  * Declines aren't answers, and a deferred one is explicitly not an answer
  * either, so neither appears here: reporting "I declined to say" as a
  * value would be reading a refusal as content.
+ *
+ * The fourth condition is `emergencyConsent`, and it is the whole reason
+ * this list is per-answer rather than per-question. An Admin turning the
+ * question's flag on for a question that already had answers is a
+ * *widening*, so every existing answer has its consent reset and the
+ * affected members are prompted on their profile. Until each of them says
+ * yes, their answer is not in this list — so an emergency reveals the
+ * things people agreed it could reach, rather than everything the flag
+ * happens to cover. Someone who never answered is absent because there is
+ * nothing to reveal; someone who answered before the flag was on is
+ * absent because nobody asked them. Those are different facts and only the
+ * first is about the data.
  */
 export async function listEmergencyAnswers(targetMemberId: string) {
   const rows = await db
@@ -92,6 +104,7 @@ export async function listEmergencyAnswers(targetMemberId: string) {
         isNull(profileAnswer.cycleId),
         eq(profileQuestion.emergencyAccess, true),
         eq(profileQuestion.sensitive, true),
+        eq(profileAnswer.emergencyConsent, true),
         isNull(profileQuestion.archivedAt),
       ),
     )

@@ -19,6 +19,7 @@ import { toFieldShape } from "@/lib/field-shape";
 import ThemeToggle from "./ThemeToggle";
 import {
   addMemberLanguageAction,
+  agreeToEmergencyRevealAction,
   createContactMethodAction,
   deleteContactMethodAction,
   deleteMemberLanguageAction,
@@ -308,25 +309,45 @@ export default async function ProfilePage({
         <section className="mt-8">
           <SectionHeading>Extend who can see your answers</SectionHeading>
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-            Since you answered, your Community has added another group to a question you share
-            yours to. They can&rsquo;t see your answer yet, and won&rsquo;t until you say so.
-            Nothing changes if you leave these alone &mdash; whoever could read your answer before
-            still can.
+            Since you answered, your Community has widened what it can read &mdash; a new group on
+            a question, or a question marked so it can be pulled out in a crisis. Neither can reach
+            your answer until you say so, and nothing changes if you leave these alone: whoever
+            could read your answer before still can.
           </p>
           <div className="mt-2 flex flex-col gap-2">
-            {pendingAudienceConsents.map((pending) => (
-              <form key={`${pending.answerId}:${pending.ruleId}`} action={extendAnswerConsentAction} className={`${CARD} flex flex-wrap items-center gap-2`}>
-                <input type="hidden" name="answerId" value={pending.answerId} />
-                <input type="hidden" name="ruleId" value={pending.ruleId} />
-                <span className="flex-1 text-[13px] text-[var(--text)]">
-                  {pending.questionLabel} &mdash; share with{" "}
-                  {pending.audienceLabel ?? "another group in this Community"}
-                </span>
-                <button type="submit" className={BUTTON_SECONDARY}>
-                  Yes, share it
-                </button>
-              </form>
-            ))}
+            {pendingAudienceConsents.map((pending) =>
+              pending.kind === "emergency" ? (
+                /* Emergency access is a *reach*, not an audience, so it gets
+                   its own sentence rather than a slot in the audience one:
+                   "who can read this" and "this can be pulled out in a
+                   crisis" are different promises and merging them into one
+                   list would blur which one a button was agreeing to. */
+                <form key={`e:${pending.answerId}`} action={agreeToEmergencyRevealAction} className={`${CARD} flex flex-wrap items-center gap-2`}>
+                  <input type="hidden" name="answerId" value={pending.answerId} />
+                  <span className="flex-1 text-[13px] text-[var(--text)]">
+                    {pending.questionLabel} &mdash; your Community has marked this one so it can be
+                    read by whoever activates Emergency access on your page, and you weren&rsquo;t
+                    asked about that. It isn&rsquo;t readable that way until you say so. Whoever does
+                    read it is recorded, and you&rsquo;re told it happened.
+                  </span>
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Yes, allow that
+                  </button>
+                </form>
+              ) : (
+                <form key={`r:${pending.answerId}:${pending.ruleId}`} action={extendAnswerConsentAction} className={`${CARD} flex flex-wrap items-center gap-2`}>
+                  <input type="hidden" name="answerId" value={pending.answerId} />
+                  <input type="hidden" name="ruleId" value={pending.ruleId} />
+                  <span className="flex-1 text-[13px] text-[var(--text)]">
+                    {pending.questionLabel} &mdash; share with{" "}
+                    {pending.audienceLabel ?? "another group in this Community"}
+                  </span>
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Yes, share it
+                  </button>
+                </form>
+              ),
+            )}
           </div>
         </section>
       )}

@@ -11,7 +11,7 @@ import { assertNotViewingAs } from "@/lib/view-as";
 import { answerProfileQuestion, getProfileQuestion } from "@/lib/profile-questions";
 import { fieldValueFromFormData, toFieldShape } from "@/lib/field-shape";
 import { getGatingPurposesForQuestions, grantConsent, withdrawConsent } from "@/lib/consent";
-import { extendAnswerConsent } from "@/lib/sensitive-data";
+import { agreeToEmergencyReveal, extendAnswerConsent } from "@/lib/sensitive-data";
 import {
   contactMethodInput,
   createContactMethod,
@@ -278,6 +278,29 @@ export async function extendAnswerConsentAction(formData: FormData) {
       String(formData.get("answerId") ?? ""),
       String(formData.get("ruleId") ?? ""),
     );
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+/**
+ * Agree to have one answer revealed by whoever activates emergency mode.
+ *
+ * The emergency counterpart of `extendAnswerConsentAction`, and the same
+ * three constraints apply for the same reasons: self-service, one
+ * (answer) rather than a whole question, and scoped to the answer's own
+ * owner in the lib so a forged POST can't agree on someone else's behalf.
+ *
+ * `assertNotViewingAs` for the same reason as there — an Admin reading
+ * somebody else's profile must not be able to widen what can be pulled
+ * out of their page in a crisis.
+ */
+export async function agreeToEmergencyRevealAction(formData: FormData) {
+  const current = await requireMember();
+  try {
+    assertNotViewingAs();
+    await agreeToEmergencyReveal(current, String(formData.get("answerId") ?? ""));
   } catch (err) {
     redirectWithError(err);
   }

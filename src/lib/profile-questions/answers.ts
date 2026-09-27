@@ -174,6 +174,7 @@ export async function answerProfileQuestion(
       ),
     );
 
+  const sharing = question.sensitive ? (input.shareWithAudience ?? true) : true;
   const row = {
     status: input.status,
     value,
@@ -184,7 +185,15 @@ export async function answerProfileQuestion(
     // be a claim about the world that isn't true, and the read side would
     // then have to special-case it. Making it unreachable here is better
     // than making every reader remember.
-    shareWithAudience: question.sensitive ? (input.shareWithAudience ?? true) : true,
+    shareWithAudience: sharing,
+    // Whether this answer may be pulled out in a crisis, from the question's
+    // own flag rather than from anything the client sent — the member
+    // doesn't get to *narrow* an emergency reach below what answering the
+    // question told them, and un-ticking the share box is the only reduction
+    // they get. Un-ticking *is* the emergency-only choice, so it counts as
+    // the agreement and is forced true: it would be asking someone about a
+    // reach they chose.
+    emergencyConsent: question.emergencyAccess || !sharing,
     answeredAt: new Date(),
   } as const;
 

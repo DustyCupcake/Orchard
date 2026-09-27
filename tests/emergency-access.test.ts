@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community, member, profileQuestion as profileQuestionTable } from "@/db/schema";
 
@@ -13,7 +13,19 @@ import {
   listEmergencyAccessActivity,
   listEmergencyAnswers,
 } from "@/lib/emergency-access";
-import { answerProfileQuestion } from "@/lib/profile-questions";
+import {
+  answerProfileQuestion,
+  updateProfileQuestion,
+} from "@/lib/profile-questions";
+import {
+  agreeToEmergencyReveal,
+  listPendingAudienceConsents,
+} from "@/lib/sensitive-data";
+
+// Reads the member has not been asked about, of either kind. Named for what
+// the member is being asked rather than for the table behind it, because
+// that is the question the test is about.
+const listPendingReads = listPendingAudienceConsents;
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, createRestrictedQuestion, resetDatabase } from "./helpers";
 
@@ -85,6 +97,179 @@ describe("emergency access", () => {
   // emergency access on a contact method, and the two differences are the
   // whole reason it's worth having: the member consented by *answering*,
   // and the read has to say why it happened.
+  /**
+   * The flag is mutable, which makes turning it *on* a widening: the people
+   * whose answers it reaches answered a question their data could not be
+   * pulled out of in a crisis. So each of them is asked, per answer, and the
+   * reveal waits for them.
+   *
+   * This is the emergency half of the audience-widening story, and it is the
+   * same story with a different shape — an audience is a set of groups and
+   * consent is per group, emergency access is one route and consent is one
+   * fact per answer.
+   */
+  describe("turning emergency access on asks", () => {
+    /** A restricted question with a real answer and emergency access off. */
+    async function emergencyOff() {
+      const { alice, community, branch } = await createFixtures();
+      const bob = await db.insert(member).values({ communityId: community.id, name: "Bob" }).returning();
+      const [t] = await db.insert(tier).values({ communityId: community.id, name: "Welfare" }).returning();
+      const q = await createRestrictedQuestion(
+        alice,
+        {
+          label: "Medication on site",
+          responseType: "single_choice",
+          options: ["none", "inhaler", "epipen"],
+          scope: "once_ever",
+          // So the decline tests below can actually decline — the write
+          // side refuses a decline a question never offered, which is the
+          // right rule and an annoying one to trip over in a fixture.
+          allowPreferNotToSay: true,
+        },
+        { audience: { unlockedByTierId: t.id } },
+      );
+      await answerProfileQuestion(alice, q.id, { status: "answered", value: "epipen" });
+      return { alice, bob, c: community, branch, q, tierId: t.id };
+    }
+
+    it("is nothing to ask about while the flag is off", async () => {
+      const { alice, q } = await emergencyOff();
+      expect(await listPendingReads(alice)).toEqual([]);
+      // And the answer is not emergency-readable, because the question
+      // isn't marked at all.
+      expect(await listEmergencyAnswers(alice.id)).toEqual([]);
+      void q;
+    });
+
+    it("asks, and the reveal waits for the answer", async () => {
+      const { alice, q } = await emergencyOff();
+      const flagged = await updateProfileQuestion(alice, q.id, { emergencyAccess: true });
+      expect(flagged.emergencyAccess).toBe(true);
+
+      // The prompt exists, and it is about *her own* answer — she is the
+      // one whose reach widened.
+      const pending = await listPendingReads(alice);
+      expect(pending.map((p) => p.questionLabel)).toEqual(["Medication on site"]);
+      expect(pending[0].kind).toBe("emergency");
+
+      // …and the reveal does not happen yet. The whole point: an Admin's
+      // click has not turned into someone's crisis being readable.
+      expect(await listEmergencyAnswers(alice.id)).toEqual([]);
+    });
+
+    it("happens once they say yes, and the prompt is spent", async () => {
+      const { alice, q } = await emergencyOff();
+      await updateProfileQuestion(alice, q.id, { emergencyAccess: true });
+      const [pending] = await listPendingReads(alice);
+
+      await agreeToEmergencyReveal(alice, pending.answerId);
+      const found = await listEmergencyAnswers(alice.id);
+      expect(found).toHaveLength(1);
+      expect(found[0].value).toBe("epipen");
+      expect(await listPendingReads(alice)).toEqual([]);
+    });
+
+    it("re-answering agrees, so the prompt never becomes a nag", async () => {
+      // The same reasoning as the audience half: someone re-answering a
+      // question has just been shown what it is and who it is shared with,
+      // so answering again is them agreeing to that afresh. Making them
+      // find a separate button for the same fact would be a second thing
+      // to remember about a question they already know.
+      const { alice, q } = await emergencyOff();
+      await updateProfileQuestion(alice, q.id, { emergencyAccess: true });
+      expect(await listPendingReads(alice)).toHaveLength(1);
+
+      await answerProfileQuestion(alice, q.id, { status: "answered", value: "inhaler" });
+      expect(await listPendingReads(alice)).toEqual([]);
+      expect((await listEmergencyAnswers(alice.id))[0].value).toBe("inhaler");
+    });
+
+    it("asks nobody when the flag is turned off, or turned on again after being off", async () => {
+      // Off is not a widening: it discloses nothing, so nobody's consent
+      // moves and nothing needs re-asking until it's granted again. And
+      // re-granting a reach deserves a fresh answer even though nothing
+      // about the answers changed.
+      const { alice, q } = await emergencyOff();
+      await updateProfileQuestion(alice, q.id, { emergencyAccess: true });
+      const [pending] = await listPendingReads(alice);
+      await agreeToEmergencyReveal(alice, pending.answerId);
+      expect(await listPendingReads(alice)).toEqual([]);
+
+      await updateProfileQuestion(alice, q.id, { emergencyAccess: false });
+      expect(await listPendingReads(alice)).toEqual([]);
+      expect(await listEmergencyAnswers(alice.id)).toEqual([]);
+
+      await updateProfileQuestion(alice, q.id, { emergencyAccess: true });
+      expect(await listPendingReads(alice)).toHaveLength(1);
+      expect(await listEmergencyAnswers(alice.id)).toEqual([]);
+    });
+
+    it("does not ask about an answer that already chose emergency-only", async () => {
+      // Un-ticking the share box already means "emergency-only", so it *is*
+      // the agreement. Asking again would be asking about a reach they
+      // chose — and would leave a permanent unanswerable prompt, because
+      // re-answering with the box still unticked is the same choice.
+      const { alice, q } = await emergencyOff();
+      await answerProfileQuestion(alice, q.id, {
+        status: "answered",
+        value: "epipen",
+        shareWithAudience: false,
+      });
+      await updateProfileQuestion(alice, q.id, { emergencyAccess: true });
+
+      expect(await listPendingReads(alice)).toEqual([]);
+      const found = await listEmergencyAnswers(alice.id);
+      expect(found).toHaveLength(1);
+      expect(found[0].value).toBe("epipen");
+    });
+
+    it("asks about each answer separately, not about the question", async () => {
+      // Per answer, because "agree to this being reachable in a crisis" is
+      // a fact about a person and their answer, not about a question. One
+      // person's yes must not carry another person's answer with it, which
+      // is the same reason the audience half is per (answer, rule).
+      const { alice, c, q } = await emergencyOff();
+      const carol = await db.insert(member).values({ communityId: c.id, name: "Carol" }).returning();
+      await answerProfileQuestion(carol[0], q.id, { status: "answered", value: "inhaler" });
+      await updateProfileQuestion(alice, q.id, { emergencyAccess: true });
+
+      expect(await listPendingReads(alice)).toHaveLength(1);
+      expect(await listPendingReads(carol[0])).toHaveLength(1);
+      // Neither can read the other's: activation reveals the *target's*
+      // answers, so what matters is the target having agreed.
+      expect(await listEmergencyAnswers(alice.id)).toEqual([]);
+      expect(await listEmergencyAnswers(carol[0].id)).toEqual([]);
+    });
+
+    it("will not let someone agree on another person's behalf", async () => {
+      const { alice, bob, q } = await emergencyOff();
+      await updateProfileQuestion(alice, q.id, { emergencyAccess: true });
+      const [answer] = await db.select().from(profileAnswer).where(eq(profileAnswer.questionId, q.id));
+      await expect(agreeToEmergencyReveal(bob[0], answer.id)).rejects.toThrow(NotFoundError);
+      expect(await listEmergencyAnswers(alice.id)).toEqual([]);
+    });
+
+    it("will not agree for something that isn't a real answer", async () => {
+      const { alice, q } = await emergencyOff();
+      await updateProfileQuestion(alice, q.id, { emergencyAccess: true });
+      await answerProfileQuestion(alice, q.id, { status: "declined" });
+      const [declined] = await db
+        .select()
+        .from(profileAnswer)
+        .where(and(eq(profileAnswer.questionId, q.id), eq(profileAnswer.status, "declined")));
+      await expect(agreeToEmergencyReveal(alice, declined.id)).rejects.toThrow(/nothing to reveal/);
+    });
+
+    it("leaves declines out of the reveal entirely, agreed or not", async () => {
+      // Belt-and-braces on a case the reset already excludes: a refusal
+      // holds no value, so there is nothing to reach, agreed or not.
+      const { alice, q } = await emergencyOff();
+      await updateProfileQuestion(alice, q.id, { emergencyAccess: true });
+      await answerProfileQuestion(alice, q.id, { status: "declined" });
+      expect(await listEmergencyAnswers(alice.id)).toEqual([]);
+    });
+  });
+
   describe("emergency access to a profile question", () => {
     /**
      * A member, one question built all the way to emergency-access, and

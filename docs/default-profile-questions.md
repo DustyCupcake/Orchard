@@ -204,6 +204,14 @@ immutable — the two are not symmetric and shouldn't be: one is a decision abou
 own posture, the other is a decision about other people's answers that were given under a
 different posture.
 
+**Turning it *on* asks.** For a question that already has answers, that's a widening: those
+people answered a question their data couldn't be pulled out of in a crisis, and the reach is now
+being handed to whoever activates Emergency mode on their page. So each existing answer has its
+consent reset and its owner is prompted, and the reveal waits for them. Two populations are
+deliberately not asked, both because nothing widens for them: an answer that already un-ticked
+the share box is emergency-only *by that choice*, and a decline holds no value to reach.
+Re-answering agrees, for the same reason it does on the audience side.
+
 **Consent to be read is to a rule, not to a list of people.** "Whoever holds the task" is
 consented to as a *relationship*, so a new claimer is inside what was agreed and needs no new
 conversation. A task being claimed by someone new is not a consent event, and treating it as one
@@ -214,8 +222,9 @@ a question that already has answers cannot reach the answers that predate it; ea
 affected members is prompted to extend sharing, and the prompt is one row per *group*, so
 agreeing to the kitchen team doesn't also hand over to whoever was added last week. Re-answering
 the question is also agreement, since the member has just been shown the audience it is shared
-with. The open gap: turning emergency access *on* for a question that already has answers is the
-same kind of widening and still doesn't ask.
+with. Turning emergency access on for a question that already has answers asks too, and the
+consent is per answer rather than per group because there is only one route to be in — see the
+emergency note above.
 
 **The promise has to match the mechanism.** "You'll be notified if ever someone accesses it"
 cannot mean a notification per read — a kitchen coordinator checking allergies fifty times

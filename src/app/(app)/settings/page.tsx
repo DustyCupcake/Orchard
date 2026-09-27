@@ -614,6 +614,14 @@ function EmergencyToggle({
           nothing to reveal, which would put a read of public data in the log as though it had
           been protected.
         </p>
+      ) : !question.emergencyAccess ? (
+        <p className="text-[12px] text-[var(--text-muted)]">
+          Turning this on for a question people have already answered asks each of them. They
+          answered a question whose answers couldn&rsquo;t be pulled out in a crisis, and the reach
+          is now being handed to whoever activates Emergency access on their page &mdash; so they
+          get asked on their profile, and it stays off for them until they say yes. Turning it
+          <em> off</em> asks nobody, because it discloses nothing.
+        </p>
       ) : null}
     </div>
   );

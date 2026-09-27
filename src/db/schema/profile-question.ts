@@ -238,16 +238,33 @@ export const profileAnswer = pgTable("profile_answer", {
   // — the member keeps it, and their own profile still shows it, they
   // just don't put it in front of whoever holds the access rule.
   //
-  // Default TRUE, for the same reason member.consentsToCommunityIndicators
-  // is: the exposure is already bounded by the access rules, so sharing
-  // is the expected consequence of answering and un-ticking is the
-  // reduction. The opposite default would make the safe choice the one
-  // people have to remember to take.
+  // Default TRUE, because the exposure is already bounded by the access
+  // rules, so sharing is the expected consequence of answering and
+  // un-ticking is the reduction. The opposite default would make the safe
+  // choice the one people have to remember to take.
   //
   // Meaningless on a non-sensitive question, where everyone may read it
   // anyway — the answer writer forces it back to true there, so the
   // column can never disagree with the question it belongs to.
   shareWithAudience: boolean("share_with_audience").notNull().default(true),
+  // Whether this answer's owner has agreed to it being reachable through
+  // Emergency access. Per *answer* rather than per (answer, rule) the way
+  // `profile_answer_rule_consent` is, because emergency access is a single
+  // route rather than a set of audiences, so there is nothing for finer
+  // granularity to distinguish — "yes to being reachable in a crisis" is one
+  // fact about a person, not a fact per group.
+  //
+  // Set at answer time from the question's own flag, and reset to false for
+  // every answer that already exists when an Admin *turns the flag on*,
+  // because that is a widening: those people answered against a question
+  // their data could not be pulled out of in a crisis. Resetting is the
+  // honest direction, since the alternative is the reach being granted
+  // retroactively on nobody's say-so.
+  //
+  // Forced true for an answer that has un-ticked `shareWithAudience`:
+  // un-ticking already means "emergency-only", so it *is* the agreement
+  // and there is nothing new to ask.
+  emergencyConsent: boolean("emergency_consent").notNull().default(true),
   cycleId: uuid("cycle_id").references(() => cycle.id),
   answeredAt: timestamp("answered_at", { withTimezone: true }).notNull().defaultNow(),
 });

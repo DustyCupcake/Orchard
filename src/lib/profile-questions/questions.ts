@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { profileQuestion } from "@/db/schema";
+import { profileAnswer, profileQuestion } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
 import {
@@ -573,6 +573,43 @@ export async function updateProfileQuestion(
     .returning();
   if (!updated) {
     throw new NotFoundError("Profile question not found");
+  }
+
+  // Turning emergency access ON is a widening, and it is the only widening
+  // in this function — everything else it writes is the Community changing
+  // its own posture, which nobody else's answers are subject to.
+  //
+  // So every answer that already exists has its emergency consent reset.
+  // Those people answered a question their data could not be pulled out of
+  // in a crisis, and the reach is now being handed to whoever activates
+  // emergency mode on their page, which they were not asked about. They get
+  // a prompt on their profile instead, and the reach arrives when they say
+  // yes. Leaving the consents alone instead would convert "nobody was
+  // asked" into "everyone agreed" without a word to anybody, which is the
+  // same failure `profile_answer_rule_consent` was added to stop for
+  // audiences.
+  //
+  // Deliberately keyed on the *transition*, not on the incoming value: an
+  // Admin turning it off discloses nothing, so nobody's consent moves, and
+  // turning it back on later asks again. Re-granting a reach deserves a
+  // fresh answer even though nothing about the answers changed.
+  //
+  // The two exclusions are the ones where nothing actually widens. An
+  // answer that already un-ticked `shareWithAudience` is emergency-only by
+  // that choice, so asking again would be asking about a reach they chose.
+  // And a decline or a deferral holds no value, so there is nothing to
+  // reach — the same filter `listEmergencyAnswers` applies.
+  if (input.emergencyAccess === true && !current.emergencyAccess) {
+    await db
+      .update(profileAnswer)
+      .set({ emergencyConsent: false })
+      .where(
+        and(
+          eq(profileAnswer.questionId, questionId),
+          eq(profileAnswer.status, "answered"),
+          eq(profileAnswer.shareWithAudience, true),
+        ),
+      );
   }
 
   return updated;

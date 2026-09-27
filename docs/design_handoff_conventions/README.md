@@ -199,7 +199,7 @@ Living checklist — update it in the same commit whenever a page/piece moves fr
 
   The **headcount floor is gone** and the reason it guarded nothing is the thing worth keeping. A published indicator is an aggregate of answers the whole Community can already read one at a time, so a chart over three people discloses nothing that the member-data grid of the same three doesn't. The floor was protecting a distinction that publication had already made irrelevant, and it was a *number nobody had argued for* doing the protecting — which is the worst combination in a privacy control.
 
-  What it did **not** cover is a *declined* answer in a small event, where "1 of 3 declined" is a small number of facts about a small number of named people. That risk comes from counting declines in a small population, not from the population being small, so the honest response is to not show the declined count at small populations rather than to suppress the whole chart. **This is an open question, deliberately not closed** — it is a disclosure decision, and inventing one nobody agreed to is the failure mode this paragraph exists to prevent.
+  The declined count is worth naming because it is the case that looks like it should need a floor and doesn't. "1 of 3 declined" in a small event tells you one of three named people declined — and the decline is a decision about a question everyone can read, not a fact about them. Someone who declined to give their pronouns is not made identifiable by that; they are made identifiable by an answer, which is the thing that was never published. So the count stays, with no threshold, because the alternative is inventing a suppression rule nobody agreed to.
 
   **There is no standing indicator consent, and there never needed to be one** (`0081` dropped `member.consentsToCommunityIndicators` and `updateIndicatorConsent`). The reasoning it was built on — "a decline is a response to *one* question, and a question invented later has no decline for them to have used" — stopped being true once publication was restricted to public questions, because publication then discloses nothing the underlying answers don't already say. What the column actually controlled was narrower: whether a member was *counted*. The per-question decline is the right lever for that, and it's required on every publishable question. The one thing the old column bought that a decline doesn't is "answer, but don't be a bar in a chart" — and that combination is no longer expressible, because the reason it was wanted (an aggregate of private answers) no longer exists.
 
@@ -243,8 +243,17 @@ Living checklist — update it in the same commit whenever a page/piece moves fr
   only correct granularity — per-question would either hide the answer from the *original*
   audience too, or expose it to the new one, and per (member, rule) would let consent silently
   carry to a rule that was deleted and re-created. **The read side requires the row, so every
-  path fails closed.** The open gap: switching `emergency_access` *on* is also a widening and
-  still doesn't ask.
+  path fails closed.**
+
+  **Switching `emergency_access` *on* asks as well** (0082), with consent shaped differently on
+  purpose. An audience is a *set*, so consent there is per group; emergency access is a single
+  route, so there is nothing finer to distinguish and it is one fact per person, in
+  `answer.emergency_consent`. A table would have needed a nullable `rule_id` with a magic value
+  or a sentinel rule row that isn't a rule, and either would put a fake audience into a table
+  whose whole meaning is "somebody here may read this question". The flag stays **mutable** while
+  `sensitive` is immutable, and that asymmetry is the point: turning emergency access *off*
+  discloses nothing so nobody's consent moves, and turning it *on* resets the consent on every
+  existing shared answer. Re-answering agrees too, for the same reason as the audience half.
 
   **Built so far:** the four `member` columns and the `sensitive_data` module retired in favour of
   sensitive questions (`0080`); `/members/data` as a question-driven roster read with column

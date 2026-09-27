@@ -237,28 +237,29 @@ describe("community indicators", () => {
     });
 
     it("has nowhere on the answer to record a second decision", async () => {
-      // Fails if anybody re-adds a consent column to profile_answer. The
-      // absence is the design, and the only real defence against it being
-      // quietly reintroduced is a test that would notice.
+      // Fails if anybody re-adds a consent column to profile_answer for
+      // *this*. The absence is the design, and the only real defence
+      // against it being quietly reintroduced is a test that would notice.
       const { alice, q } = await publishedLater();
       await updateProfileQuestion(alice, q.id, { publishedAsIndicator: true });
       const names = Object.keys(getTableColumns(profileAnswer));
       expect(names).not.toContain("indicatorConsent");
       // An exhaustive list on purpose, because a new column here is a new
-      // decision and this test is where it should be argued for. The
-      // surviving set is all about the *value* — what was said, whether
-      // it's held at all, when the rows for a Capacity and an event are
-      // kept apart from the standing answer, and whether the answer
-      // opts into the audience on a *sensitive* question. None of it is
-      // about who gets to see the value in an aggregate, which is the
-      // distinction that killed the indicator_consent column: sharing is
-      // one decision about the section, this is one about a single
-      // restricted answer, and merging them is what made the old shape
-      // need a second gate in the first place.
+      // decision and this test is where it should be argued for. Every
+      // surviving column is about one of two things: the *value* (what was
+      // said, whether it's held at all, when a Capacity row and an event
+      // row are kept apart from the standing answer), or *who may read it
+      // by a route the member chose* (`shareWithAudience` for the audience,
+      // `emergencyConsent` for the crisis override). None of it is about
+      // who gets to see the value in an aggregate — that is the distinction
+      // that killed the indicator_consent column, because the decline on the
+      // question is the lever for aggregates and this is the lever for
+      // individual reads.
       expect(names.sort()).toEqual([
         "answeredAt",
         "capacityVisibility",
         "cycleId",
+        "emergencyConsent",
         "id",
         "memberId",
         "questionId",
