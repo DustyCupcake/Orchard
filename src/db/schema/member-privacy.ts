@@ -2,7 +2,6 @@ import { boolean, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzl
 import { community } from "./community";
 import { member } from "./member";
 import { profileQuestion } from "./profile-question";
-import { sensitiveFieldKeyEnum } from "./sensitive-field-access-rule";
 
 // docs/spec.md's "Member contact & privacy" — core, not optional, unlike
 // Sensitive data's opt-in module (Phase 22). See
@@ -48,17 +47,21 @@ export const emergencyAccessLog = pgTable("emergency_access_log", {
 
 // One row per distinct purpose needing its own consent — ordinary,
 // "necessary to participate" processing (task history, availability)
-// gets no row here at all. gatesSensitiveField is a resolved addition
-// beyond spec's own literal field list: an explicit admin-configured
-// pointer from a purpose to the one Sensitive-data field (Phase 22) it
-// gates, reusing the exact same enum and explicit-pointer pattern
-// SensitiveFieldAccessRule already uses for task/tier unlocks, rather
-// than a brittle key-string convention (spec's own key examples —
+// gets no row here at all. gatesQuestionId is an explicit
+// admin-configured pointer from a purpose to the one sensitive question
+// it gates, reusing the same explicit-pointer pattern
+// SensitiveFieldAccessRule uses for task/tier unlocks rather than a
+// brittle key-string convention (spec's own key examples —
 // sensitive_health, sensitive_dietary, ... — read as illustrative
 // shape, not a fixed contract). Null for a purpose unrelated to
-// Sensitive data (photo_publication, marketing_comms, ...). At most one
-// purpose per community may gate a given field — enforced at the
+// sensitive data (photo_publication, marketing_comms, ...). At most one
+// purpose per community may gate a given question — enforced at the
 // application layer in src/lib/consent.ts, not here.
+//
+// This table used to have a gatesSensitiveField half pointing at the
+// four fixed member columns, which were dropped in 0080. ConsentRecord
+// rows are untouched by that: a purpose is a purpose whatever it gates,
+// so the pointer moved rather than the consent.
 export const consentPurpose = pgTable("consent_purpose", {
   id: uuid("id").primaryKey().defaultRandom(),
   communityId: uuid("community_id")
@@ -69,14 +72,6 @@ export const consentPurpose = pgTable("consent_purpose", {
   noticeVersion: integer("notice_version").notNull().default(1),
   noticeText: text("notice_text").notNull(),
   requiresExplicit: boolean("requires_explicit").notNull().default(false),
-  // Exactly one of gatesSensitiveField / gatesQuestionId, same
-  // application-layer rule as the access rule's two targets. Consent is
-  // still keyed by legal purpose — that is the whole shape of
-  // consent_record and it is not changing — so this only widens *what a
-  // purpose can gate* from the four fixed member columns to the
-  // community's own sensitive questions. ConsentRecord rows are
-  // untouched: a purpose is a purpose whatever it gates.
-  gatesSensitiveField: sensitiveFieldKeyEnum("gates_sensitive_field"),
   gatesQuestionId: uuid("gates_question_id").references(() => profileQuestion.id),
 });
 

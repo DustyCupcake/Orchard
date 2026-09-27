@@ -3,8 +3,13 @@
 import { useState } from "react";
 import {
   DEFAULT_PROFILE_QUESTION_GROUPS,
+  starterChoiceField,
   type DefaultQuestionSeed,
 } from "@/lib/profile-questions/defaults-table";
+// The parser in defaults.ts and this form must spell these names
+// identically, so both go through the one function that builds them. A
+// literal here and a literal there is how the form and its parser came to
+// disagree once already.
 // Type-only, so nothing here reaches permissions.ts at runtime — that
 // module imports `@/db`, and a client component importing it fails the
 // build on `postgres`/`tls`/`fs`. The labels arrive as a prop from the
@@ -38,11 +43,16 @@ type Route = "none" | "tier" | "grant" | "task";
 type RowState = {
   include: boolean;
   label: string;
+  /** Whether the answer is restricted at all. Distinct from having an
+   *  audience: "restricted to the owner and emergencies" is a real state,
+   *  and the emergency contact needs to be expressible without inventing
+   *  a reader for it. */
   sensitive: boolean;
   route: Route;
   tierId: string;
   grantModuleKey: PermissionModuleKey | null;
   taskId: string;
+  emergencyAccess: boolean;
 };
 
 function initialRow(seed: DefaultQuestionSeed): RowState {
@@ -52,7 +62,10 @@ function initialRow(seed: DefaultQuestionSeed): RowState {
     // Pre-set from the table's suggestion, because a restricted question
     // arriving with its audience already attached is the useful default
     // and the admin can widen or narrow it here.
-    sensitive: Boolean(seed.accessRuleModuleKey),
+    sensitive: Boolean(seed.accessRuleModuleKey) || Boolean(seed.needsChosenAudience),
+    // A seed whose audience the platform may not choose gets no
+    // preselection at all, so the Admin has to name a group — which is
+    // the entire reason that flag exists.
     route: seed.accessRuleModuleKey ? "grant" : "none",
     // No Tier preselected: a brand-new community may not have one yet, and
     // a preselect that resolves to nothing would fail the submission with
@@ -60,6 +73,7 @@ function initialRow(seed: DefaultQuestionSeed): RowState {
     tierId: "",
     grantModuleKey: seed.accessRuleModuleKey ?? null,
     taskId: "",
+    emergencyAccess: Boolean(seed.emergencyAccess),
   };
 }
 
@@ -164,32 +178,44 @@ export default function StarterQuestionPicker({
                         onChange={(e) =>
                           set(seed.key, {
                             sensitive: e.target.checked,
-                            // Un-ticking restricted has to clear the route,
-                            // or the form would submit an audience for a
-                            // question that isn't restricted and quietly
-                            // create a rule doing nothing.
-                            route: e.target.checked ? row.route : "none",
+                            // Un-ticking restricted has to clear the route
+                            // and the emergency box, or the form would
+                            // submit an audience for a question that isn't
+                            // restricted and quietly create a rule doing
+                            // nothing. Ticking it again restores the
+                            // previous route and emergency setting rather
+                            // than losing them — an admin who unticks by
+                            // mistake and puts it back should get the
+                            // question they had, not a downgraded one.
+                            route: e.target.checked ? row.route || "none" : "none",
+                            emergencyAccess: e.target.checked ? row.emergencyAccess : false,
                           })
                         }
                         className="mt-1"
                       />
                       restricted
                       <span className="text-[var(--text-muted)]">
-                        &mdash; only the audience below may read the answer
+                        &mdash; not readable by the whole Community
                       </span>
                     </label>
                     {row.sensitive && (
                       <>
                         <label className="flex flex-col gap-1">
                           <span className="text-[12px] text-[var(--text-muted)]">
-                            Who may read it
+                            Who may read it in the ordinary course
                           </span>
+                          {/* No "nobody" option, and that is the point: a
+                              sensitive question is restricted *by* an
+                              audience, so the write side refuses the
+                              pair and an empty picker is a refusal
+                              waiting to happen rather than a state the
+                              Admin can reach by accident. */}
                           <select
                             value={row.route}
                             onChange={(e) => set(seed.key, { route: e.target.value as Route })}
-                            className={`${selectClass} max-w-[24rem]`}
+                            className={`${selectClass} max-w-[28rem]`}
                           >
-                            <option value="none">— pick an audience —</option>
+                            <option value="none">&mdash; pick who may read it &mdash;</option>
                             <option value="grant">anyone holding a permission grant</option>
                             <option value="tier">anyone in a Tier</option>
                             <option value="task">anyone holding one Task</option>
@@ -197,9 +223,7 @@ export default function StarterQuestionPicker({
                         </label>
                         {row.route === "grant" && (
                           <label className="flex flex-col gap-1">
-                            <span className="text-[12px] text-[var(--text-muted)]">
-                              Permission
-                            </span>
+                            <span className="text-[12px] text-[var(--text-muted)]">Permission</span>
                             <select
                               value={row.grantModuleKey ?? ""}
                               onChange={(e) =>
@@ -207,7 +231,7 @@ export default function StarterQuestionPicker({
                                   grantModuleKey: (e.target.value || null) as PermissionModuleKey | null,
                                 })
                               }
-                              className={`${selectClass} max-w-[24rem]`}
+                              className={`${selectClass} max-w-[28rem]`}
                             >
                               <option value="">— pick a permission —</option>
                               {permissionModuleKeys.map((k) => (
@@ -224,7 +248,7 @@ export default function StarterQuestionPicker({
                             <select
                               value={row.tierId}
                               onChange={(e) => set(seed.key, { tierId: e.target.value })}
-                              className={`${selectClass} max-w-[24rem]`}
+                              className={`${selectClass} max-w-[28rem]`}
                             >
                               <option value="">— pick a Tier —</option>
                               {tiers.map((t) => (
@@ -237,23 +261,34 @@ export default function StarterQuestionPicker({
                         )}
                         {row.route === "task" && (
                           <label className="flex flex-col gap-1">
-                            <span className="text-[12px] text-[var(--text-muted)]">
-                              Task ID
-                            </span>
+                            <span className="text-[12px] text-[var(--text-muted)]">Task ID</span>
                             <input
                               type="text"
                               value={row.taskId}
                               onChange={(e) => set(seed.key, { taskId: e.target.value })}
                               placeholder="paste the task's ID from its /tasks/… URL"
-                              className={`${inputClass} max-w-[24rem]`}
+                              className={`${inputClass} max-w-[28rem]`}
                             />
                           </label>
                         )}
+                        <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+                          <input
+                            type="checkbox"
+                            checked={row.emergencyAccess}
+                            onChange={(e) => set(seed.key, { emergencyAccess: e.target.checked })}
+                            className="mt-1"
+                          />
+                          also readable in an emergency
+                          <span className="text-[var(--text-muted)]">
+                            &mdash; whoever activates Emergency access on someone&rsquo;s page
+                          </span>
+                        </label>
                         <p className="text-[12px] text-[var(--text-muted)]">
-                          A restricted question with no audience is restricted to nobody, so
-                          these are attached together rather than as two steps. Every answer
-                          still belongs to the person who gave it — they can see it whatever
-                          you pick here, and can switch off sharing it.
+                          {row.route === "none"
+                            ? seed.needsChosenAudience
+                              ? "Pick who should have this. The platform won't guess: none of the permissions means \u201cresponds to emergencies\u201d, and the person who manages settings isn't automatically the person who should hold someone's welfare details. Or untick restricted and leave it out of the set."
+                              : "Pick who should have this, or untick \u201crestricted\u201d to leave it readable by the whole Community."
+                            : "Everyone who satisfies the audience above can read it, and so can the person who answered. They can switch off sharing it to anyone else without removing it from their own profile."}
                         </p>
                       </>
                     )}
@@ -265,28 +300,38 @@ export default function StarterQuestionPicker({
                     widgets are hidden still submits a coherent decision. */}
                 <input
                   type="hidden"
-                  name={`choice.${seed.key}.include`}
+                  name={starterChoiceField(seed.key, "include")}
                   value={row.include ? "on" : ""}
                 />
-                <input type="hidden" name={`choice.${seed.key}.label`} value={row.label} />
+                <input type="hidden" name={starterChoiceField(seed.key, "label")} value={row.label} />
                 <input
                   type="hidden"
-                  name={`choice.${seed.key}.route`}
+                  name={starterChoiceField(seed.key, "restricted")}
+                  value={row.sensitive ? "on" : ""}
+                />
+                <input
+                  type="hidden"
+                  name={starterChoiceField(seed.key, "emergencyAccess")}
+                  value={row.sensitive && row.emergencyAccess ? "on" : ""}
+                />
+                <input
+                  type="hidden"
+                  name={starterChoiceField(seed.key, "route")}
                   value={row.sensitive ? row.route : "none"}
                 />
                 <input
                   type="hidden"
-                  name={`choice.${seed.key}.tierId`}
+                  name={starterChoiceField(seed.key, "tierId")}
                   value={row.sensitive && row.route === "tier" ? row.tierId : ""}
                 />
                 <input
                   type="hidden"
-                  name={`choice.${seed.key}.grantModuleKey`}
+                  name={starterChoiceField(seed.key, "grantModuleKey")}
                   value={row.sensitive && row.route === "grant" ? (row.grantModuleKey ?? "") : ""}
                 />
                 <input
                   type="hidden"
-                  name={`choice.${seed.key}.taskId`}
+                  name={starterChoiceField(seed.key, "taskId")}
                   value={row.sensitive && row.route === "task" ? row.taskId.trim() : ""}
                 />
               </div>

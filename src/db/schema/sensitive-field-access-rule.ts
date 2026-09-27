@@ -1,53 +1,37 @@
-import { pgEnum, pgTable, uuid } from "drizzle-orm/pg-core";
+import { pgTable, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
 import { profileQuestion } from "./profile-question";
 import { task } from "./task";
 import { tier } from "./tier";
 import { permissionGrantModuleEnum } from "./permission-grant";
 
-// The fixed field set — see member.ts and docs/spec.md's "Sensitive
-// data". Not user-definable (spec's own example list is short).
-export const sensitiveFieldKeyEnum = pgEnum("sensitive_field_key", [
-  "health_conditions",
-  "allergies",
-  "emergency_contact",
-  "orientation",
-]);
-
-// "A Community defines which task or tier unlocks which field" — one
+// "A Community defines which task or tier unlocks which question" — one
 // row is one unlock route (exactly one of unlockedByTaskId/
 // unlockedByTierId/unlockedByGrantModuleKey set, enforced at the
-// application layer). A field can have more than one rule — e.g. a
+// application layer). A question can have more than one rule — e.g. a
 // task, a tier and a grant module can each independently unlock it.
 //
 // unlockedByGrantModuleKey is the third route (docs/food-drinks-module-
-// plan.md's D3): the field unlocks for whoever currently holds ANY task
-// granting that permission module in this community — placement
-// deliberately not narrowing it, since a sensitive field is one
-// community record ("field unlocked by a permission grant", the general
-// capability Kitchen is the first consumer of: link `allergies` to the
-// `kitchen` grant once, and every kitchen holder reads it).
+// plan.md's D3): the question unlocks for whoever currently holds ANY
+// task granting that permission module in this community — placement
+// deliberately not narrowing it, since a sensitive answer is one
+// community record.
 export const sensitiveFieldAccessRule = pgTable("sensitive_field_access_rule", {
   id: uuid("id").primaryKey().defaultRandom(),
   communityId: uuid("community_id")
     .notNull()
     .references(() => community.id),
-  // Exactly one of fieldKey / questionId per row, enforced at the
-  // application layer the same way the three unlock routes below are.
-  // The table went from "a rule names one of four fixed member columns"
-  // to "a rule names a fixed member column *or* a profile question",
-  // because a community's own questions are where the sensitive data
-  // actually lives, and an enum can't name one. fieldKey therefore
-  // becomes nullable rather than disappearing: the four member columns
-  // are docs/spec.md's fixed set and stay exactly as they were, and the
-  // questions are additive beside them.
-  fieldKey: sensitiveFieldKeyEnum("field_key"),
-  // A rule naming a question rather than a column. Same three unlock
-  // routes, same union-of-holders resolution, and the same
-  // consent-purpose gate as the member columns — so a community can
-  // treat "medication on site" exactly as it treats "allergies" without
-  // a second access model existing.
-  questionId: uuid("question_id").references(() => profileQuestion.id),
+  // Not nullable as of 0080. This table was originally "a rule names
+  // one of four fixed member columns", then became "a column *or* a
+  // profile question" with fieldKey nullable, and is now
+  // question-only: the four columns it could name are gone. That is not
+  // a loss of expressiveness — an enum could only ever name those four,
+  // and a question can carry any of them and more, with a per-answer
+  // share switch, indicators, emergency reveal and consent gating that
+  // the columns never had.
+  questionId: uuid("question_id")
+    .notNull()
+    .references(() => profileQuestion.id),
   unlockedByTaskId: uuid("unlocked_by_task_id").references(() => task.id),
   unlockedByTierId: uuid("unlocked_by_tier_id").references(() => tier.id),
   unlockedByGrantModuleKey: permissionGrantModuleEnum("unlocked_by_grant_module_key"),

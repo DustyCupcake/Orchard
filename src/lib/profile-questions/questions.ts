@@ -5,12 +5,15 @@ import { profileQuestion } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
 import {
+  createSensitiveFieldAccessRule,
+  createSensitiveFieldAccessRuleInput,
+} from "../sensitive-data";
+import {
   assertEmergencyHasSomethingToOverride,
   assertIndicatorAllowed,
   assertNotContradictoryWithPublication,
   indicatorBlocker,
 } from "./indicators";
-import { countQuestionAccessRules } from "../sensitive-data";
 import {
   RESPONSE_TYPES,
   TEXT_VALIDATIONS,
@@ -80,7 +83,19 @@ export const createProfileQuestionInput = z
     // than kinds, because a question can be both sensitive and per-event —
     // "medication on site" is — and folding either into a category makes
     // that inexpressible.
+    //
+    // `sensitive` is the one attribute that is *fixed at creation* and has
+    // no `update` counterpart anywhere in this file. See the note on
+    // updateProfileQuestion for why.
     sensitive: z.boolean().optional(),
+    // The audience for a sensitive question, supplied at creation and
+    // applied by createProfileQuestion in the only order that works: the
+    // question has to exist before a rule can name it. Passing `sensitive`
+    // without one of these is refused, and so is an audience on a question
+    // that isn't sensitive.
+    audience: createSensitiveFieldAccessRuleInput
+      .omit({ questionId: true })
+      .optional(),
     emergencyAccess: z.boolean().optional(),
     surfaces: z.array(z.string().min(1)).optional(),
   })
@@ -97,6 +112,28 @@ export const createProfileQuestionInput = z
         code: "custom",
         message: "options are required for a choice-based response type",
         path: ["options"],
+      });
+    }
+    // A sensitive question is restricted by an audience, so the two are
+    // one decision and a half of either is refused. Not decoration: a
+    // sensitive question with no audience resolves to nobody-but-the-owner
+    // on the read side, so accepting one silently would hand an admin who
+    // believed they'd restricted a question to the kitchen an answer
+    // nobody can see. And an audience on a public question is a rule
+    // restricting nothing, which is worse than useless because it looks
+    // like it is doing something on the settings page.
+    if (input.sensitive && !input.audience) {
+      ctx.addIssue({
+        code: "custom",
+        message: "a sensitive question needs an audience",
+        path: ["audience"],
+      });
+    }
+    if (!input.sensitive && input.audience) {
+      ctx.addIssue({
+        code: "custom",
+        message: "an audience restricts a sensitive question, so this one isn't sensitive",
+        path: ["audience"],
       });
     }
     // A due date on a question nobody requires answers is a setting that
@@ -145,7 +182,23 @@ export const updateProfileQuestionInput = z
     allowPreferNotToSay: z.boolean().optional(),
     feedsCapacitySignal: z.boolean().optional(),
     publishedAsIndicator: z.boolean().optional(),
-    sensitive: z.boolean().optional(),
+    // NO `sensitive` here, and that absence is the whole mechanism.
+    //
+    // It was a toggle for as long as it was an attribute, on the
+    // reasoning that a non-sensitive question defaults to readable by
+    // everyone so under-labelling publishes — which is true about
+    // *choosing* at creation and says nothing about *changing* one later.
+    // Un-ticking it on a question that has answers makes every one of
+    // them world-readable, for members who answered when only a kitchen
+    // team could see it, and no amount of copy makes that a setting
+    // rather than a disclosure. So the flag is fixed where the question
+    // is created and is unrepresentable in an update — not refused by a
+    // runtime check, absent from the type.
+    //
+    // The remedy for a mis-filed question is the one this codebase already
+    // has for questions in general: archive it and add it again, which
+    // leaves the old answers attached to the old question rather than
+    // reinterpreting them.
     emergencyAccess: z.boolean().optional(),
     surfaces: z.array(z.string().min(1)).optional(),
   });
@@ -225,6 +278,7 @@ function requireValidShape(
     | "publishedAsIndicator"
     | "sensitive"
     | "emergencyAccess"
+    | "audience"
   >,
 ) {
   if (input.scope === "phase" && !input.phaseNameHint) {
@@ -254,44 +308,38 @@ function requireValidShape(
     emergencyAccess: input.emergencyAccess ?? false,
     publishedAsIndicator: input.publishedAsIndicator ?? false,
   });
-  // Sensitive on *create* is refused unconditionally, and that's not an
-  // oversight to be tidied away later: a rule can only name a question
-  // that already exists, so there is no possible order of operations that
-  // creates a sensitive question with a rule attached. The sequence is
-  // create it plain, add the access rule, then mark it sensitive — and
-  // the settings toggle is disabled until a rule exists so the sequence is
-  // discoverable rather than a trap.
-  if (input.sensitive) {
-    throw new AppError(
-      "A question can't be marked sensitive as it is created, because the access rule that protects it has to name the question first. Create it plain, add an access rule for it, then tick sensitive.",
-    );
-  }
-  // Same reasoning, and it falls out of the same impossibility: sensitive
-  // can't be set at creation, so neither can emergency, which requires
-  // it. One message, because there's one sequence.
+  // Emergency access reveals an answer to whoever activates emergency mode,
+  // so it needs something to override — a restriction. Same reasoning the
+  // old create-time refusal used to drag in, now stated on its own terms
+  // and with the audience available.
   assertEmergencyHasSomethingToOverride({
     emergencyAccess: input.emergencyAccess ?? false,
-    sensitive: false,
+    sensitive: input.sensitive ?? false,
   });
-}
-
-/**
- * Marking a question sensitive requires an access rule to exist.
- *
- * Not decoration. `sensitive` is not a label — it is the thing you must
- * tick *in order to restrict* an answer, and the restriction is performed
- * entirely by the rules. A sensitive question with no rules has an empty
- * audience, which `resolveReadableQuestions` treats as nobody-but-the-owner
- * (it fails closed, and must). So allowing the combination would let an
- * Admin believe they'd narrowed a question to a kitchen team when in fact
- * they'd narrowed it to nobody, and nobody would be able to tell from the
- * settings page.
- */
-export async function assertSensitiveAllowed(questionId: string, sensitive: boolean) {
-  if (!sensitive) return;
-  if ((await countQuestionAccessRules(questionId)) === 0) {
+  // The audience and the flag are one decision, checked here as well as in
+  // the zod schema — same defense-in-depth reason as the assertions above,
+  // and for the same caller: a direct lib caller, or an action that hands
+  // over an object rather than a parse.
+  //
+  // Both directions, because both are the same mistake pointed the other
+  // way. A flag with no audience resolves to nobody-but-the-owner, so an
+  // Admin who believed they'd restricted a question to the kitchen would
+  // have restricted it to a state that reads as broken. An audience with
+  // no flag restricts nothing at all and looks on the settings page like
+  // it's doing something.
+  const routes = [
+    input.audience?.unlockedByTaskId,
+    input.audience?.unlockedByTierId,
+    input.audience?.unlockedByGrantModuleKey,
+  ].filter(Boolean).length;
+  if (input.sensitive && routes === 0) {
     throw new AppError(
-      "Marking a question sensitive is what restricts who can read it, and it does that through an access rule — so it needs one. Add an access rule for this question first, then tick sensitive.",
+      "A sensitive question needs an audience: it's what restricts it. Pick a group, or leave the question readable by the whole Community.",
+    );
+  }
+  if (!input.sensitive && routes > 0) {
+    throw new AppError(
+      "An audience only restricts a sensitive question, and this one isn't sensitive — so the rule you picked would read nothing the Community doesn't already read.",
     );
   }
 }
@@ -316,6 +364,14 @@ function shapeFrom(input: {
 export async function createProfileQuestion(actor: Member, input: CreateProfileQuestionInput) {
   requireValidShape(input);
 
+  // A sensitive question is created in the only order that works: the row
+  // first, because a rule can only name a question that exists, then the
+  // rule, then the flag. This used to be impossible from outside — create
+  // refused `sensitive` outright and the settings box was disabled until
+  // a rule existed, so a restricted question could only be made by the
+  // seeder's three separate calls. Doing it here makes the create path
+  // and the settings form and the starter set one operation instead of
+  // three, and removes a dead end from the UI.
   const [created] = await db
     .insert(profileQuestion)
     .values({
@@ -333,12 +389,32 @@ export async function createProfileQuestion(actor: Member, input: CreateProfileQ
       allowPreferNotToSay: input.allowPreferNotToSay ?? false,
       feedsCapacitySignal: input.feedsCapacitySignal ?? false,
       publishedAsIndicator: input.publishedAsIndicator ?? false,
-      sensitive: input.sensitive ?? false,
-      emergencyAccess: input.emergencyAccess ?? false,
+      // Written false and set below, so the flag and the rule it depends
+      // on can never disagree — including if the rule insert throws.
+      sensitive: false,
+      emergencyAccess: false,
       surfaces: input.surfaces ?? [],
     })
     .returning();
-  return created;
+
+  if (!input.sensitive) return created;
+
+  const rule = await createSensitiveFieldAccessRule(actor, {
+    ...input.audience!,
+    questionId: created.id,
+  });
+  // One last UPDATE rather than an amend of the insert above, because the
+  // rule needs the id and the id only exists after the insert.
+  const [finished] = await db
+    .update(profileQuestion)
+    .set({
+      sensitive: true,
+      emergencyAccess: input.emergencyAccess ?? false,
+    })
+    .where(eq(profileQuestion.id, created.id))
+    .returning();
+  void rule;
+  return finished;
 }
 
 export async function updateProfileQuestion(
@@ -413,26 +489,17 @@ export async function updateProfileQuestion(
   // that was already emergency-marked. Either way the question ends up
   // both, and it's checked before the write so it never exists.
   assertNotContradictoryWithPublication({
-    sensitive: input.sensitive ?? current.sensitive,
+    // `current.sensitive`, never an incoming value: the flag is fixed at
+    // creation, so an update cannot move it and these checks are about the
+    // question as it already is.
+    sensitive: current.sensitive,
     emergencyAccess: input.emergencyAccess ?? current.emergencyAccess,
     publishedAsIndicator: effectivePublished,
   });
-  // Ahead of the rule-count check below, deliberately, because for a
-  // question that has neither flag the two messages are about the same
-  // underlying gap and "mark it sensitive first" is the more informative
-  // one — it names the step that comes next rather than the mechanism.
   assertEmergencyHasSomethingToOverride({
     emergencyAccess: input.emergencyAccess ?? current.emergencyAccess,
-    sensitive: input.sensitive ?? current.sensitive,
+    sensitive: current.sensitive,
   });
-  // Only when sensitive is *being turned on*. Un-ticking it is always
-  // allowed, and a question that was somehow already sensitive with no
-  // rules must be able to have that fixed — refusing here would trap an
-  // admin in a state they can only leave by deleting the question.
-  if (input.sensitive === true && !current.sensitive) {
-    await assertSensitiveAllowed(questionId, true);
-  }
-
   // Every field-shape flag, resolved against the effective response type
   // and then zeroed where it no longer applies — so switching a question
   // from a number to a single_choice clears its stale min/max/step, and
@@ -494,7 +561,6 @@ export async function updateProfileQuestion(
       ...(input.publishedAsIndicator !== undefined && {
         publishedAsIndicator: input.publishedAsIndicator,
       }),
-      ...(input.sensitive !== undefined && { sensitive: input.sensitive }),
       ...(input.emergencyAccess !== undefined && {
         emergencyAccess: input.emergencyAccess,
       }),

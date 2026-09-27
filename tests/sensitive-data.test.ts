@@ -1,89 +1,135 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, cycle, member, profileQuestion, task, taskAssignment } from "@/db/schema";
+import {
+  consentPurpose,
+  cycle,
+  member as memberTable,
+  profileAnswer,
+  profileQuestion,
+  profileAnswerRuleConsent,
+  sensitiveFieldAccessRule,
+  taskAssignment,
+  tier,
+} from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
-import { createTier, updateCommunity } from "@/lib/settings";
-import { isModuleEnabled } from "@/lib/modules";
+import { createTier } from "@/lib/settings";
 import {
   createSensitiveFieldAccessRule,
   deleteSensitiveFieldAccessRule,
-  getSensitiveDataTable,
+  listReadableSensitiveQuestionIds,
   listSensitiveFieldAccessRules,
-  listUnlockedFields,
-  updateOwnSensitiveData,
+  extendAnswerConsent,
+  listPendingAudienceConsents,
+  questionsReadableBy,
+  resolveReadableAnswersForCommunity,
+  resolveReadableQuestions,
+  type CreateSensitiveFieldAccessRuleInput,
 } from "@/lib/sensitive-data";
-import { AppError, NotFoundError } from "@/lib/errors";
-import { createConsentPurpose, grantConsent, withdrawConsent } from "@/lib/consent";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { answerProfileQuestion, createProfileQuestion, updateProfileQuestion } from "@/lib/profile-questions";
+import {
+  createConsentPurpose,
+  getGatingPurposesForQuestions,
+  grantConsent,
+  withdrawConsent,
+} from "@/lib/consent";
+import { AppError, ConflictError, NotFoundError } from "@/lib/errors";
+import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
 
-async function insertTask(communityId: string, branchId: string, createdBy: string) {
-  const [row] = await db
-    .insert(task)
-    .values({
-      communityId,
-      branchId,
-      title: "Catering coordination",
-      effort: "owns_a_thing",
-      effortMagnitude: { hours_per_week: 2 },
-      createdBy,
-    })
-    .returning();
+// This file used to be about four `member` columns. Those are gone
+// (migration 0080) and what remains is the thing that was underneath them
+// the whole time: who may read a member's answer to a sensitive question,
+// and who may not.
+//
+// The important thing about that is that it was untested at the only
+// level that matters. `resolveReadableQuestions` had a test suite, and
+// every test called it directly with a fabricated second member — while
+// its one production caller passed the viewer as the owner, so level 2 of
+// the ladder never executed on a real request. The tests were true and
+// the feature was inert. So the emphasis here is on
+// `resolveReadableAnswersForCommunity` and `getMemberData`, which is what
+// the app now actually calls, and on the properties that must hold for a
+// third party.
+
+async function addMember(communityId: string, name: string) {
+  const [m] = await db.insert(memberTable).values({ communityId, name }).returning();
+  return m;
+}
+
+/** A question restricted to an audience, the way the app actually has to
+ *  make one: created plain, given a rule, then flagged. `sensitive` is
+ *  refused at create time precisely because the rule has to name the
+ *  question first, so there is no one-call shortcut to use here.
+ */
+async function restrictedQuestion(
+  actor: Parameters<typeof createProfileQuestion>[0],
+  label: string,
+  route: Omit<CreateSensitiveFieldAccessRuleInput, "questionId">,
+  emergencyAccess = false,
+) {
+  return createProfileQuestion(actor, {
+    label,
+    responseType: "text",
+    scope: "once_ever",
+    sensitive: true,
+    audience: route,
+    emergencyAccess,
+  });
+}
+
+/** Restricted, then stripped of its audience: the fail-closed state.
+ *
+ *  Not reachable through the write side any more — a sensitive question
+ *  without an audience is refused at creation, and the flag can't be moved
+ *  afterwards — so this builds it the way a Community would have before
+ *  that rule existed. The read side still has to resolve it, because
+ *  deleting the last rule reaches it too.
+ */
+async function ownerOnlyQuestion(
+  actor: Parameters<typeof createProfileQuestion>[0],
+  label: string,
+  emergencyAccess = false,
+) {
+  const question = await createProfileQuestion(actor, {
+    label,
+    responseType: "text",
+    scope: "once_ever",
+    sensitive: true,
+    audience: { unlockedByTierId: (await insertTier(actor, "Welfare")).id },
+    emergencyAccess,
+  });
+  const rules = await listSensitiveFieldAccessRules(actor);
+  await deleteSensitiveFieldAccessRule(actor, rules.find((r) => r.questionId === question.id)!.id);
+  return question;
+}
+
+async function insertTier(actor: { communityId: string }, name: string) {
+  const [row] = await db.insert(tier).values({ communityId: actor.communityId, name }).returning();
   return row;
 }
 
-describe("isModuleEnabled", () => {
-  it("is false by default, true once listed", () => {
-    expect(isModuleEnabled({ modulesEnabled: [] }, "sensitive_data")).toBe(false);
-    expect(isModuleEnabled({ modulesEnabled: ["sensitive_data"] }, "sensitive_data")).toBe(true);
-  });
-});
-
-describe("a member's own sensitive data", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("rejects updates while the module is off", async () => {
-    const { alice } = await createFixtures();
-    await expect(
-      updateOwnSensitiveData(alice, { allergies: "peanuts" }),
-    ).rejects.toThrow(AppError);
-  });
-
-  it("is always editable by the member themselves once the module is on", async () => {
-    const { alice } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["sensitive_data"] });
-
-    const updated = await updateOwnSensitiveData(alice, {
-      allergies: "peanuts",
-      healthConditions: "asthma",
-      emergencyContact: "Jane, 555-1234",
-      orientation: "ace",
-    });
-    expect(updated.allergies).toBe("peanuts");
-    expect(updated.healthConditions).toBe("asthma");
-    expect(updated.emergencyContact).toBe("Jane, 555-1234");
-    expect(updated.orientation).toBe("ace");
-  });
-});
-
-describe("sensitive field access rules", () => {
+describe("question access rules", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
   it("rejects a rule with neither or both of task/tier set", async () => {
     const { alice, branch } = await createFixtures();
+    const question = await createProfileQuestion(alice, {
+      label: "Allergies",
+      responseType: "text",
+      scope: "once_ever",
+    });
+
     await expect(
-      createSensitiveFieldAccessRule(alice, { fieldKey: "allergies" }),
+      createSensitiveFieldAccessRule(alice, { questionId: question.id }),
     ).rejects.toThrow(AppError);
 
     const t = await insertTask(alice.communityId, branch.id, alice.id);
     const tierRow = await createTier(alice, { name: "Kitchen" });
     await expect(
       createSensitiveFieldAccessRule(alice, {
-        fieldKey: "allergies",
+        questionId: question.id,
         unlockedByTaskId: t.id,
         unlockedByTierId: tierRow.id,
       }),
@@ -92,23 +138,40 @@ describe("sensitive field access rules", () => {
 
   it("rejects a task or tier from another community", async () => {
     const { alice } = await createFixtures();
+    const question = await createProfileQuestion(alice, {
+      label: "Allergies",
+      responseType: "text",
+      scope: "once_ever",
+    });
     const { branch: strangerBranch, alice: strangerAlice } = await createFixtures();
-    const strangerTask = await insertTask(strangerAlice.communityId, strangerBranch.id, strangerAlice.id);
+    const strangerTask = await insertTask(
+      strangerAlice.communityId,
+      strangerBranch.id,
+      strangerAlice.id,
+    );
 
     await expect(
-      createSensitiveFieldAccessRule(alice, { fieldKey: "allergies", unlockedByTaskId: strangerTask.id }),
+      createSensitiveFieldAccessRule(alice, {
+        questionId: question.id,
+        unlockedByTaskId: strangerTask.id,
+      }),
     ).rejects.toThrow(NotFoundError);
   });
 
   it("creates, lists, and deletes rules", async () => {
     const { alice, branch } = await createFixtures();
+    const question = await createProfileQuestion(alice, {
+      label: "Allergies",
+      responseType: "text",
+      scope: "once_ever",
+    });
     const t = await insertTask(alice.communityId, branch.id, alice.id);
 
     const created = await createSensitiveFieldAccessRule(alice, {
-      fieldKey: "allergies",
+      questionId: question.id,
       unlockedByTaskId: t.id,
     });
-    expect(created.fieldKey).toBe("allergies");
+    expect(created.questionId).toBe(question.id);
 
     const rules = await listSensitiveFieldAccessRules(alice);
     expect(rules.map((r) => r.id)).toEqual([created.id]);
@@ -117,418 +180,553 @@ describe("sensitive field access rules", () => {
     expect(await listSensitiveFieldAccessRules(alice)).toHaveLength(0);
   });
 
-  it("creates a rule naming a question and no column", async () => {
-    // The one combination the settings form could not produce. Both target
-    // selects were rendered without an empty option on the column side, so
-    // every question-keyed rule submitted a field *and* a question and was
-    // refused here — and since `sensitive` is itself refused until a rule
-    // exists, that left no route from settings to a restricted question at
-    // all. Covered here at the lib boundary because the form is where the
-    // bug was; the "— none —" option is what makes this reachable from a
-    // browser.
+  it("rejects a rule naming an archived question, and one from another community", async () => {
+    // A rule against an archived question would keep restricting nothing
+    // forever, and the read side skips archived questions anyway — so the
+    // row is dead weight that looks live in the settings list.
     const { alice, branch } = await createFixtures();
     const t = await insertTask(alice.communityId, branch.id, alice.id);
-    const [question] = await db
-      .insert(profileQuestion)
-      .values({
-        communityId: alice.communityId,
-        label: "Allergies",
-        responseType: "text",
-        scope: "once_ever",
-      })
-      .returning();
+    const question = await createProfileQuestion(alice, {
+      label: "Old question",
+      responseType: "text",
+      scope: "once_ever",
+    });
+    await db
+      .update(profileQuestion)
+      .set({ archivedAt: new Date() })
+      .where(eq(profileQuestion.id, question.id));
+    await expect(
+      createSensitiveFieldAccessRule(alice, { questionId: question.id, unlockedByTaskId: t.id }),
+    ).rejects.toThrow(/archived/);
+
+    const { alice: stranger, community: elsewhere } = await createFixtures();
+    const theirs = await createProfileQuestion(stranger, {
+      label: "Theirs",
+      responseType: "text",
+      scope: "once_ever",
+    });
+    expect(elsewhere.id).not.toBe(alice.communityId);
+    await expect(
+      createSensitiveFieldAccessRule(alice, { questionId: theirs.id, unlockedByTaskId: t.id }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("accepts a staged rule against a question that isn't sensitive yet", async () => {
+    // Rule first, flag second. Requiring the flag here as well would
+    // deadlock: the flag is refused until a rule exists, so a rule that
+    // demanded the flag would leave the state unreachable. This rule
+    // restricts nothing today and starts the moment the box is ticked.
+    const { alice, branch } = await createFixtures();
+    const t = await insertTask(alice.communityId, branch.id, alice.id);
+    const question = await createProfileQuestion(alice, {
+      label: "Not yet restricted",
+      responseType: "text",
+      scope: "once_ever",
+      sensitive: false,
+    });
 
     const created = await createSensitiveFieldAccessRule(alice, {
-      fieldKey: null,
       questionId: question.id,
       unlockedByTaskId: t.id,
     });
-    expect(created.fieldKey).toBeNull();
     expect(created.questionId).toBe(question.id);
   });
+});
 
-  it("rejects a rule naming both a column and a question", async () => {
-    // The ambiguity that made the form's default fatal: two targets is not
-    // a narrower rule, it's one the read side would have to guess at.
-    const { alice, branch } = await createFixtures();
-    const t = await insertTask(alice.communityId, branch.id, alice.id);
-    const [question] = await db
-      .insert(profileQuestion)
-      .values({
-        communityId: alice.communityId,
-        label: "Allergies",
-        responseType: "text",
-        scope: "once_ever",
-      })
-      .returning();
-
-    await expect(
-      createSensitiveFieldAccessRule(alice, {
-        fieldKey: "allergies",
-        questionId: question.id,
-        unlockedByTaskId: t.id,
-      }),
-    ).rejects.toThrow(/exactly one/i);
+// The three-level ladder, exercised through the function the app calls.
+describe("who may read a sensitive answer", () => {
+  beforeEach(async () => {
+    await resetDatabase();
   });
 
-  it("rejects a rule naming neither a column nor a question", async () => {
-    const { alice, branch } = await createFixtures();
-    const t = await insertTask(alice.communityId, branch.id, alice.id);
-    await expect(
-      createSensitiveFieldAccessRule(alice, { fieldKey: null, questionId: null, unlockedByTaskId: t.id }),
-    ).rejects.toThrow(/exactly one/i);
+  it("reads a non-sensitive answer for anyone, and a sensitive one only for the audience", async () => {
+    const { alice, community, branch } = await createFixtures();
+    const bob = await addMember(community.id, "Bob");
+
+    const publicQ = await createProfileQuestion(alice, {
+      label: "Languages",
+      responseType: "text",
+      scope: "once_ever",
+    });
+    await answerProfileQuestion(alice, publicQ.id, { status: "answered", value: "Welsh" });
+
+    const kitchenTask = await insertTask(community.id, branch.id, alice.id);
+    await grantPermission(community.id, "kitchen", kitchenTask.id);
+    await claimTask(alice, kitchenTask.id);
+    const privateQ = await restrictedQuestion(alice, "Allergies", {
+      unlockedByGrantModuleKey: "kitchen",
+    });
+    await answerProfileQuestion(alice, privateQ.id, { status: "answered", value: "peanuts" });
+
+    // Alice holds the kitchen grant, so she may read the sensitive answer.
+    const asAlice = await resolveReadableAnswersForCommunity(alice);
+    expect(questionsReadableBy(asAlice, alice.id)).toContain(privateQ.id);
+    expect(questionsReadableBy(asAlice, alice.id)).toContain(publicQ.id);
+    // Bob reads the public answer and nothing else. His own row has no
+    // answers yet, so the map has no entry for him at all.
+    const asBob = await resolveReadableAnswersForCommunity(bob);
+    expect([...questionsReadableBy(asBob, alice.id)]).toEqual([publicQ.id]);
   });
 
-  it("rejects a rule naming an archived question, and one from another community", async () => {
-    // A rule against an archived question would keep restricting nothing
-    // forever, and `resolveReadableQuestions` skips archived questions
-    // anyway — so the row is dead weight that looks live in the list.
-    const { alice, branch } = await createFixtures();
-    const t = await insertTask(alice.communityId, branch.id, alice.id);
-    const [question] = await db
+  it("resolves to nobody but the owner for a sensitive question with no rule", async () => {
+    // The state the starter set's emergency contact arrives in, and the
+    // one that used to be unreachable: `sensitive` with zero rules is a
+    // deliberate answer, and the read side fails closed on it rather than
+    // defaulting to everyone.
+    const { alice, community } = await createFixtures();
+    const bob = await addMember(community.id, "Bob");
+    const question = await ownerOnlyQuestion(alice, "Emergency contact", true);
+    await answerProfileQuestion(alice, question.id, {
+      status: "answered",
+      value: "Sam, 07700 900123",
+    });
+
+    const asBob = await resolveReadableAnswersForCommunity(bob);
+    expect(questionsReadableBy(asBob, alice.id).has(question.id)).toBe(false);
+    // …and the owner still sees their own.
+    const asAlice = await resolveReadableAnswersForCommunity(alice);
+    expect(questionsReadableBy(asAlice, alice.id)).toContain(question.id);
+  });
+
+  it("honours the answer's own share box, in both directions", async () => {
+    const { alice, community, branch } = await createFixtures();
+    const bob = await addMember(community.id, "Bob");
+    const kitchenTask = await insertTask(community.id, branch.id, alice.id);
+    await grantPermission(community.id, "kitchen", kitchenTask.id);
+    await claimTask(alice, kitchenTask.id);
+    // Bob is the reader here, so bob has to be in the audience. Both of
+    // them holding it is the ordinary case, not a contrivance: the grant
+    // route is "anyone holding any task granting this module".
+    const bobsKitchen = await insertTask(community.id, branch.id, bob.id, { title: "Cooks too" });
+    await grantPermission(community.id, "kitchen", bobsKitchen.id);
+    await claimTask(bob, bobsKitchen.id);
+    const question = await restrictedQuestion(alice, "Allergies", {
+      unlockedByGrantModuleKey: "kitchen",
+    });
+    await answerProfileQuestion(alice, question.id, { status: "answered", value: "peanuts" });
+    expect(questionsReadableBy(await resolveReadableAnswersForCommunity(bob), alice.id)).toContain(
+      question.id,
+    );
+
+    // Un-ticking reduces it to emergency-only, and keeps it on her own
+    // profile — which is the whole reason the lever is per-answer.
+    await answerProfileQuestion(alice, question.id, {
+      status: "answered",
+      value: "peanuts",
+      shareWithAudience: false,
+    });
+    expect(questionsReadableBy(await resolveReadableAnswersForCommunity(bob), alice.id).has(question.id)).toBe(
+      false,
+    );
+    expect(questionsReadableBy(await resolveReadableAnswersForCommunity(alice), alice.id)).toContain(
+      question.id,
+    );
+  });
+
+  it("honours a consent purpose gating the question, and stops honouring it on withdrawal", async () => {
+    // The check the four columns had and question-keyed purposes never
+    // did. `getGatingPurposesForQuestions` existed, was validated, was
+    // configurable in settings, and had no caller: an admin could pin a
+    // purpose to a question, a member could withdraw it, and nothing
+    // changed at all.
+    const { alice, community, branch } = await createFixtures();
+    const bob = await addMember(community.id, "Bob");
+    const kitchenTask = await insertTask(community.id, branch.id, bob.id);
+    await grantPermission(community.id, "kitchen", kitchenTask.id);
+    await claimTask(bob, kitchenTask.id);
+    const question = await restrictedQuestion(alice, "Allergies", {
+      unlockedByGrantModuleKey: "kitchen",
+    });
+    await answerProfileQuestion(alice, question.id, { status: "answered", value: "peanuts" });
+    const purpose = await createConsentPurpose(alice, {
+      key: "kitchen_allergies",
+      label: "Kitchen allergy reads",
+      noticeText: "Cooks see your allergies.",
+      gatesQuestionId: question.id,
+      requiresExplicit: true,
+    });
+
+    // Bob is in the audience but the answer is *alice's*, so the consent
+    // that matters is hers — consent is an agreement about your own data,
+    // not a permission the reader holds. In the audience, no consent: not
+    // readable.
+    expect(questionsReadableBy(await resolveReadableAnswersForCommunity(bob), alice.id).has(question.id)).toBe(
+      false,
+    );
+    await grantConsent(alice, purpose.id);
+    expect(questionsReadableBy(await resolveReadableAnswersForCommunity(bob), alice.id)).toContain(
+      question.id,
+    );
+    // …and her withdrawing it takes effect on the next read.
+    await withdrawConsent(alice, purpose.id);
+    expect(questionsReadableBy(await resolveReadableAnswersForCommunity(bob), alice.id).has(question.id)).toBe(
+      false,
+    );
+  });
+
+  it("refuses to store an answer to a gated question without consent", async () => {
+    const { alice } = await createFixtures();
+    const question = await ownerOnlyQuestion(alice, "Allergies");
+    const purpose = await createConsentPurpose(alice, {
+      key: "kitchen_allergies",
+      label: "Kitchen allergy reads",
+      noticeText: "Cooks see your allergies.",
+      gatesQuestionId: question.id,
+      requiresExplicit: true,
+    });
+    expect(purpose.gatesQuestionId).toBe(question.id);
+
+    await expect(
+      answerProfileQuestion(alice, question.id, { status: "answered", value: "peanuts" }),
+    ).rejects.toThrow(ConflictError);
+
+    await grantConsent(alice, purpose.id);
+    await expect(
+      answerProfileQuestion(alice, question.id, { status: "answered", value: "peanuts" }),
+    ).resolves.toBeDefined();
+  });
+
+  it("never needs consent to defer or decline, since neither discloses anything", async () => {
+    const { alice } = await createFixtures();
+    const question = await ownerOnlyQuestion(alice, "Allergies");
+    await updateProfileQuestion(alice, question.id, { allowPreferNotToSay: true });
+    await createConsentPurpose(alice, {
+      key: "kitchen_allergies",
+      label: "Kitchen allergy reads",
+      noticeText: "...",
+      gatesQuestionId: question.id,
+      requiresExplicit: true,
+    });
+
+    await expect(
+      answerProfileQuestion(alice, question.id, { status: "declined" }),
+    ).resolves.toBeDefined();
+    await expect(
+      answerProfileQuestion(alice, question.id, { status: "deferred" }),
+    ).resolves.toBeDefined();
+  });
+
+  it("ignores archived questions and per-event answers", async () => {
+    // A grid about the people shouldn't carry an event's worth of
+    // answers, and an archived question has nothing left to show.
+    const { alice, community } = await createFixtures();
+    const [archived] = await db
       .insert(profileQuestion)
       .values({
-        communityId: alice.communityId,
-        label: "Old question",
+        communityId: community.id,
+        label: "Retired",
         responseType: "text",
         scope: "once_ever",
         archivedAt: new Date(),
       })
       .returning();
-    await expect(
-      createSensitiveFieldAccessRule(alice, { questionId: question.id, unlockedByTaskId: t.id }),
-    ).rejects.toThrow(/archived/i);
-
-    const { alice: stranger } = await createFixtures();
-    const [strangerQuestion] = await db
+    const [perEvent] = await db
       .insert(profileQuestion)
       .values({
-        communityId: stranger.communityId,
-        label: "Theirs",
-        responseType: "text",
-        scope: "once_ever",
+        communityId: community.id,
+        label: "Do you need a bed?",
+        responseType: "boolean",
+        scope: "per_cycle",
       })
       .returning();
-    await expect(
-      createSensitiveFieldAccessRule(alice, {
-        questionId: strangerQuestion.id,
-        unlockedByTaskId: t.id,
-      }),
-    ).rejects.toThrow(NotFoundError);
-  });
-
-  it("accepts a staged rule against a question that isn't sensitive yet", async () => {
-    // The two halves of one decision, and the reason the order is rule
-    // first. Requiring the flag here as well as in assertSensitiveAllowed
-    // would deadlock: the flag is refused until a rule exists, so a rule
-    // that demanded the flag would leave the state unreachable. This rule
-    // restricts nothing today and starts the moment the box is ticked.
-    const { alice, branch } = await createFixtures();
-    const t = await insertTask(alice.communityId, branch.id, alice.id);
-    const [question] = await db
-      .insert(profileQuestion)
-      .values({
-        communityId: alice.communityId,
-        label: "Not yet restricted",
-        responseType: "text",
-        scope: "once_ever",
-        sensitive: false,
-      })
-      .returning();
-
-    const created = await createSensitiveFieldAccessRule(alice, {
-      questionId: question.id,
-      unlockedByTaskId: t.id,
-    });
-    expect(created.questionId).toBe(question.id);
-  });
-});
-
-describe("unlocking others' fields", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("unlocks via a currently-held task, not a shadow of it", async () => {
-    const { alice, bob, branch } = await createFixtures();
-    const cateringTask = await insertTask(alice.communityId, branch.id, alice.id);
-    await createSensitiveFieldAccessRule(alice, { fieldKey: "allergies", unlockedByTaskId: cateringTask.id });
-
-    expect(await listUnlockedFields(alice)).toEqual([]);
-
-    await claimTask(alice, cateringTask.id);
-    expect(await listUnlockedFields(alice)).toEqual(["allergies"]);
-    expect(await listUnlockedFields(bob)).toEqual([]);
-  });
-
-  it("unlocks via a tier the actor currently carries", async () => {
-    const { alice } = await createFixtures();
-    const safetyTier = await createTier(alice, { name: "Safety officer" });
-    await createSensitiveFieldAccessRule(alice, {
-      fieldKey: "health_conditions",
-      unlockedByTierId: safetyTier.id,
-    });
-
-    expect(await listUnlockedFields(alice)).toEqual([]);
-
-    await db.update(member).set({ tierIds: [safetyTier.id] }).where(eq(member.id, alice.id));
-    const refetched = (await db.select().from(member).where(eq(member.id, alice.id)))[0];
-    expect(await listUnlockedFields(refetched)).toEqual(["health_conditions"]);
-  });
-
-  it("combines multiple unlocked fields from separate rules", async () => {
-    const { alice, branch } = await createFixtures();
-    const cateringTask = await insertTask(alice.communityId, branch.id, alice.id);
-    await claimTask(alice, cateringTask.id);
-    const safetyTier = await createTier(alice, { name: "Safety officer" });
-    await db.update(member).set({ tierIds: [safetyTier.id] }).where(eq(member.id, alice.id));
-
-    await createSensitiveFieldAccessRule(alice, { fieldKey: "allergies", unlockedByTaskId: cateringTask.id });
-    await createSensitiveFieldAccessRule(alice, { fieldKey: "health_conditions", unlockedByTierId: safetyTier.id });
-
-    const refetched = (await db.select().from(member).where(eq(member.id, alice.id)))[0];
-    expect(await listUnlockedFields(refetched)).toEqual(["health_conditions", "allergies"]);
-  });
-});
-
-describe("getSensitiveDataTable", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("rejects while the module is off", async () => {
-    const { alice } = await createFixtures();
-    await expect(getSensitiveDataTable(alice)).rejects.toThrow(AppError);
-  });
-
-  it("is empty when the actor is unlocked for nothing", async () => {
-    const { alice } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["sensitive_data"] });
-    const table = await getSensitiveDataTable(alice);
-    expect(table).toEqual({ fields: [], rows: [] });
-  });
-
-  it("shows every member's value for exactly the fields the viewer is unlocked for", async () => {
-    const { alice, bob, branch } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["sensitive_data"] });
-    await updateOwnSensitiveData(bob, { allergies: "shellfish", healthConditions: "diabetic" });
-
-    const cateringTask = await insertTask(alice.communityId, branch.id, alice.id);
-    await claimTask(alice, cateringTask.id);
-    await createSensitiveFieldAccessRule(alice, { fieldKey: "allergies", unlockedByTaskId: cateringTask.id });
-
-    const refetchedAlice = (await db.select().from(member).where(eq(member.id, alice.id)))[0];
-    const table = await getSensitiveDataTable(refetchedAlice);
-    expect(table.fields).toEqual(["allergies"]);
-    const bobRow = table.rows.find((r) => r.id === bob.id);
-    expect(bobRow?.values).toEqual({ allergies: "shellfish" });
-    // healthConditions never surfaces — alice isn't unlocked for it.
-    expect(bobRow?.values.healthConditions).toBeUndefined();
-  });
-
-  it("never grants access to another community's rules or members", async () => {
-    const { alice: strangerAlice } = await createFixtures();
-    await db.update(community).set({ modulesEnabled: ["sensitive_data"] }).where(eq(community.id, strangerAlice.communityId));
-
-    const { alice, branch } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["sensitive_data"] });
-    const cateringTask = await insertTask(alice.communityId, branch.id, alice.id);
-    await claimTask(alice, cateringTask.id);
-    await createSensitiveFieldAccessRule(alice, { fieldKey: "allergies", unlockedByTaskId: cateringTask.id });
-
-    expect(await listUnlockedFields(strangerAlice)).toEqual([]);
-  });
-});
-
-describe("Phase 46: consent gating of sensitive fields", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("lets a field populate freely when no gating purpose is configured (Phase 22's original behavior)", async () => {
-    const { alice } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["sensitive_data"] });
-    const updated = await updateOwnSensitiveData(alice, { allergies: "peanuts" });
-    expect(updated.allergies).toBe("peanuts");
-  });
-
-  it("rejects populating a field whose gating purpose has no active consent", async () => {
-    const { alice } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["sensitive_data"] });
-    await createConsentPurpose(alice, {
-      key: "sensitive_health",
-      label: "Health data",
-      noticeText: "...",
-      gatesSensitiveField: "allergies",
-      requiresExplicit: true,
-    });
-
-    await expect(updateOwnSensitiveData(alice, { allergies: "peanuts" })).rejects.toThrow(AppError);
-  });
-
-  it("allows the write once consent is granted, and always allows clearing a field back to null", async () => {
-    const { alice } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["sensitive_data"] });
-    const purpose = await createConsentPurpose(alice, {
-      key: "sensitive_health",
-      label: "Health data",
-      noticeText: "...",
-      gatesSensitiveField: "allergies",
-      requiresExplicit: true,
-    });
-    await grantConsent(alice, purpose.id);
-
-    const updated = await updateOwnSensitiveData(alice, { allergies: "peanuts" });
-    expect(updated.allergies).toBe("peanuts");
-
-    const cleared = await updateOwnSensitiveData(alice, { allergies: null });
-    expect(cleared.allergies).toBeNull();
-  });
-
-  it("stops showing a field to an unlocked viewer the moment consent is withdrawn, re-checked live at read time", async () => {
-    const { alice, bob, branch } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["sensitive_data"] });
-    const purpose = await createConsentPurpose(alice, {
-      key: "sensitive_health",
-      label: "Health data",
-      noticeText: "...",
-      gatesSensitiveField: "allergies",
-      requiresExplicit: true,
-    });
-    await grantConsent(bob, purpose.id);
-    await updateOwnSensitiveData(bob, { allergies: "shellfish" });
-
-    const cateringTask = await insertTask(alice.communityId, branch.id, alice.id);
-    await claimTask(alice, cateringTask.id);
-    await createSensitiveFieldAccessRule(alice, { fieldKey: "allergies", unlockedByTaskId: cateringTask.id });
-
-    const refetchedAlice = (await db.select().from(member).where(eq(member.id, alice.id)))[0];
-    const beforeWithdraw = await getSensitiveDataTable(refetchedAlice);
-    expect(beforeWithdraw.rows.find((r) => r.id === bob.id)?.values.allergies).toBe("shellfish");
-
-    await withdrawConsent(bob, purpose.id);
-
-    const afterWithdraw = await getSensitiveDataTable(refetchedAlice);
-    expect(afterWithdraw.rows.find((r) => r.id === bob.id)?.values.allergies).toBeNull();
-  });
-});
-
-// The third unlock route (docs/food-drinks-module-plan.md's D3): a field
-// can be unlocked by "whoever currently holds ANY task granting module
-// X" rather than one named task or tier. Kitchen's allergies link rides
-// it. Deliberately community-wide — a sensitive field is one community
-// record, so the rule names the module and the granting task's own
-// placement (its cycle) does NOT narrow the unlock.
-describe("unlocking via a permission-grant module", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("rejects a rule that mixes the grant-module route with a task or a tier", async () => {
-    const { alice, branch } = await createFixtures();
-    const t = await insertTask(alice.communityId, branch.id, alice.id);
-    await expect(
-      createSensitiveFieldAccessRule(alice, {
-        fieldKey: "allergies",
-        unlockedByGrantModuleKey: "kitchen",
-        unlockedByTaskId: t.id,
-      }),
-    ).rejects.toThrow(AppError);
-
-    const tierRow = await createTier(alice, { name: "Kitchen" });
-    await expect(
-      createSensitiveFieldAccessRule(alice, {
-        fieldKey: "allergies",
-        unlockedByGrantModuleKey: "kitchen",
-        unlockedByTierId: tierRow.id,
-      }),
-    ).rejects.toThrow(AppError);
-  });
-
-  it("unlocks for the holder of a task granting that module, and only for them", async () => {
-    const { alice, bob, branch } = await createFixtures();
-    const grantTask = await insertTask(alice.communityId, branch.id, alice.id);
-    await grantPermission(alice.communityId, "kitchen", grantTask.id);
-    await claimTask(alice, grantTask.id);
-    await createSensitiveFieldAccessRule(alice, {
-      fieldKey: "allergies",
-      unlockedByGrantModuleKey: "kitchen",
-    });
-
-    const refetchedAlice = (await db.select().from(member).where(eq(member.id, alice.id)))[0];
-    expect(await listUnlockedFields(refetchedAlice)).toEqual(["allergies"]);
-    // Bob holds nothing, and a grant nobody holds unlocks nobody.
-    expect(await listUnlockedFields(bob)).toEqual([]);
-  });
-
-  it("is community-wide: a grant placed in a cycle still unlocks, ignoring the task's placement", async () => {
-    const { alice, branch } = await createFixtures();
-    const [scopeCycle] = await db
+    const [cycleRow] = await db
       .insert(cycle)
-      .values({ communityId: alice.communityId, name: "Spring" })
+      .values({ communityId: community.id, name: "Autumn", startedAt: new Date() })
       .returning();
-    const [cycleGrantTask] = await db
-      .insert(task)
-      .values({
-        communityId: alice.communityId,
-        branchId: branch.id,
-        cycleId: scopeCycle.id,
-        title: "Kitchen for Spring",
-        effort: "owns_a_thing",
-        effortMagnitude: { hours_per_week: 2 },
-        createdBy: alice.id,
-      })
-      .returning();
-    await grantPermission(alice.communityId, "kitchen", cycleGrantTask.id);
-    await claimTask(alice, cycleGrantTask.id);
-    await createSensitiveFieldAccessRule(alice, {
-      fieldKey: "allergies",
-      unlockedByGrantModuleKey: "kitchen",
-    });
+    await db.insert(profileAnswer).values([
+      { memberId: alice.id, questionId: archived.id, value: "x", status: "answered" },
+      { memberId: alice.id, questionId: perEvent.id, value: true, status: "answered", cycleId: cycleRow.id },
+    ]);
 
-    // A cycle-placed grant does not make this a cycle-scoped unlock —
-    // compare the task route, which IS scoped to that one task.
-    const refetchedAlice = (await db.select().from(member).where(eq(member.id, alice.id)))[0];
-    expect(await listUnlockedFields(refetchedAlice)).toEqual(["allergies"]);
+    const readable = await resolveReadableAnswersForCommunity(alice);
+    expect(questionsReadableBy(readable, alice.id).has(archived.id)).toBe(false);
+    expect(questionsReadableBy(readable, alice.id).has(perEvent.id)).toBe(false);
   });
 
-  it("unlocks via whichever of several granting tasks the member holds, and a shadow claim doesn't count", async () => {
-    const { alice, bob, branch } = await createFixtures();
-    // kitchen is multi-cardinality, so the community may grant it on
-    // several tasks; each holder gets the same unlock.
-    const first = await insertTask(alice.communityId, branch.id, alice.id);
-    const [second] = await db
-      .insert(task)
-      .values({
-        communityId: alice.communityId,
-        branchId: branch.id,
-        title: "Weeknight cook",
-        effort: "owns_a_thing",
-        effortMagnitude: { hours_per_week: 2 },
-        createdBy: alice.id,
-      })
-      .returning();
-    await grantPermission(alice.communityId, "kitchen", first.id);
-    await grantPermission(alice.communityId, "kitchen", second.id);
-    await claimTask(bob, second.id);
-    await createSensitiveFieldAccessRule(alice, {
-      fieldKey: "allergies",
+  it("resolves a tier route, a task route and a grant route identically", async () => {
+    // One resolution for three routes, on purpose: a second copy per route
+    // is how "task rules count, tier rules don't" bugs arrive, and the
+    // whole point of having three is that they mean the same thing.
+    const { alice, community, branch } = await createFixtures();
+    const bob = await addMember(community.id, "Bob");
+    const tierRow = await createTier(alice, { name: "Kitchen" });
+    const taskRow = await insertTask(community.id, branch.id, alice.id);
+    const grantTask = await insertTask(community.id, branch.id, alice.id, { title: "Kitchen" });
+    await grantPermission(community.id, "kitchen", grantTask.id);
+    const byTier = await restrictedQuestion(alice, "By tier", { unlockedByTierId: tierRow.id });
+    const byTask = await restrictedQuestion(alice, "By task", { unlockedByTaskId: taskRow.id });
+    const byGrant = await restrictedQuestion(alice, "By grant", {
       unlockedByGrantModuleKey: "kitchen",
     });
+    for (const q of [byTier, byTask, byGrant]) {
+      await answerProfileQuestion(alice, q.id, { status: "answered", value: "yes" });
+    }
 
-    // Bob holds the *second* grant — the rule is about the module, not
-    // the first task named in any list.
-    expect(await listUnlockedFields(bob)).toEqual(["allergies"]);
+    await db
+      .update(memberTable)
+      .set({ tierIds: [tierRow.id] })
+      .where(eq(memberTable.id, bob.id));
+    await db.insert(taskAssignment).values({ taskId: taskRow.id, memberId: bob.id, isShadow: false });
+    await claimTask(alice, grantTask.id);
+    await db.insert(taskAssignment).values({ taskId: grantTask.id, memberId: bob.id, isShadow: false });
 
-    // A shadow of a granting task is not a real hold (same rule as the
-    // task route: the resolver only counts non-shadow assignments).
-    const [shadowBob] = await db
-      .insert(member)
-      .values({ communityId: alice.communityId, name: "Shadow Bob" })
-      .returning();
+    // Re-read rather than mutating the fixture: `satisfiedRuleIds` resolves
+    // Tier rules from `viewer.tierIds`, so a stale row would test the
+    // fixture's staleness instead of the tier route.
+    const [bobWithTier] = await db
+      .select()
+      .from(memberTable)
+      .where(eq(memberTable.id, bob.id));
+    const readable = await resolveReadableAnswersForCommunity(bobWithTier);
+    const mine = questionsReadableBy(readable, alice.id);
+    expect(mine).toContain(byTier.id);
+    expect(mine).toContain(byTask.id);
+    expect(mine).toContain(byGrant.id);
+  });
+
+  it("does not count a shadow holding", async () => {
+    // A shadow is a real assignment row that isn't a real hold — a
+    // "covering for" note. Treating it as one would hand a restricted
+    // answer to someone who has explicitly said they aren't doing the job.
+    const { alice, community, branch } = await createFixtures();
+    const bob = await addMember(community.id, "Bob");
+    const taskRow = await insertTask(community.id, branch.id, alice.id);
+    const question = await restrictedQuestion(alice, "Allergies", { unlockedByTaskId: taskRow.id });
+    await answerProfileQuestion(alice, question.id, { status: "answered", value: "peanuts" });
     await db
       .insert(taskAssignment)
-      .values({ taskId: first.id, memberId: shadowBob.id, isShadow: true });
-    expect(await listUnlockedFields(shadowBob)).toEqual([]);
+      .values({ taskId: taskRow.id, memberId: bob.id, isShadow: true });
+    expect(
+      questionsReadableBy(await resolveReadableAnswersForCommunity(bob), alice.id).has(question.id),
+    ).toBe(false);
+  });
+
+  it("keeps the single-owner resolver working for one member at a time", async () => {
+    // The narrow version is still what the self-service surfaces call, and
+    // it must agree with the batch one — a second implementation of the
+    // same ladder is how they drift apart.
+    const { alice, community, branch } = await createFixtures();
+    const bob = await addMember(community.id, "Bob");
+    const taskRow = await insertTask(community.id, branch.id, alice.id);
+    const question = await restrictedQuestion(alice, "Allergies", { unlockedByTaskId: taskRow.id });
+    await answerProfileQuestion(alice, question.id, { status: "answered", value: "peanuts" });
+    await db.insert(taskAssignment).values({ taskId: taskRow.id, memberId: bob.id, isShadow: false });
+
+    const rows = [{ questionId: question.id, sensitive: true, shareWithAudience: true }];
+    expect(await resolveReadableQuestions(bob, alice.id, rows)).toContain(question.id);
+    expect(await resolveReadableQuestions(alice, bob.id, [])).toEqual(new Set());
+  });
+
+  it("lists which sensitive questions the viewer is in the audience for", async () => {
+    // What the column picker and the kitchen both ask, and the cheap
+    // version of the same question the batch resolver answers expensively.
+    const { alice, community, branch } = await createFixtures();
+    const bob = await addMember(community.id, "Bob");
+    const taskRow = await insertTask(community.id, branch.id, alice.id);
+    const question = await restrictedQuestion(alice, "Allergies", { unlockedByTaskId: taskRow.id });
+    const publicQ = await createProfileQuestion(alice, {
+      label: "Languages",
+      responseType: "text",
+      scope: "once_ever",
+    });
+    await db.insert(taskAssignment).values({ taskId: taskRow.id, memberId: bob.id, isShadow: false });
+
+    const forBob = await listReadableSensitiveQuestionIds(bob);
+    expect([...forBob]).toEqual([question.id]);
+    // A non-sensitive question is not "unlocked" by anything — it's
+    // readable by everyone, which is a different fact.
+    expect(forBob.has(publicQ.id)).toBe(false);
+  });
+});
+
+/**
+ * The widening question.
+ *
+ * An access rule says who *may* read a question. It used to be the whole
+ * answer, which meant adding a rule to a question that already had
+ * answers reached every one of them at once — a group being given access
+ * to people's medical and welfare details by an Admin's click, with the
+ * people themselves never asked. `profile_answer_rule_consent` is the
+ * second half: a rule reads an answer only where the answer's owner
+ * agreed to *that rule*.
+ */
+describe("widening an audience", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  /** Alice's allergies, restricted to the Welfare Tier, already answered. */
+  async function answeredQuestion() {
+    const { alice, community } = await createFixtures();
+    const bob = await addMember(community.id, "Bob");
+    const welfare = await insertTier({ communityId: community.id }, "Welfare");
+    const question = await restrictedQuestion(alice, "Allergies", {
+      unlockedByTierId: welfare.id,
+    });
+    await answerProfileQuestion(alice, question.id, { status: "answered", value: "peanuts" });
+    await db.update(memberTable).set({ tierIds: [welfare.id] }).where(eq(memberTable.id, bob.id));
+    return { alice, bob, community, welfare, question };
+  }
+
+  it("reaches the answers given after the rule exists", async () => {
+    const { alice, community } = await createFixtures();
+    const bob = await addMember(community.id, "Bob");
+    const welfare = await insertTier({ communityId: community.id }, "Welfare");
+    const kitchen = await insertTier({ communityId: community.id }, "Kitchen");
+    const question = await restrictedQuestion(alice, "Allergies", {
+      unlockedByTierId: welfare.id,
+    });
+    await answerProfileQuestion(alice, question.id, { status: "answered", value: "peanuts" });
+
+    // A second group is added *after* the answer, and the member is told.
+    await createSensitiveFieldAccessRule(alice, { questionId: question.id, unlockedByTierId: kitchen.id });
+    // Re-read rather than reusing the fixture object: audience resolution
+    // reads `tierIds` off the member it is handed, and the resolver is
+    // given a row — so a stale in-memory copy fails the tier test for a
+    // reason that has nothing to do with consent.
+    const inKitchen = async () =>
+      (await db.select().from(memberTable).where(eq(memberTable.id, bob.id)))[0];
+    await db.update(memberTable).set({ tierIds: [kitchen.id] }).where(eq(memberTable.id, bob.id));
+    expect(questionsReadableBy(await resolveReadableAnswersForCommunity(await inKitchen()), alice.id).has(question.id)).toBe(false);
+
+    // Until they agree, it is as though the rule did not exist.
+    const pending = await listPendingAudienceConsents(alice);
+    expect(pending.map((p) => p.questionLabel)).toEqual(["Allergies"]);
+    expect(pending[0].audienceLabel).toBe("anyone in the Kitchen Tier");
+
+    await extendAnswerConsent(alice, pending[0].answerId, pending[0].ruleId);
+    expect(questionsReadableBy(await resolveReadableAnswersForCommunity(await inKitchen()), alice.id)).toContain(question.id);
+    // And the prompt is spent.
+    expect(await listPendingAudienceConsents(alice)).toEqual([]);
+    void community;
+  });
+
+  it("does not reach an answer given before the rule existed, ever", async () => {
+    // The same setup with nobody agreeing, and the narrow resolver agrees
+    // with the batch one. The two must never disagree — `resolveReadableQuestions`
+    // is what /profile and the emergency read use, and a batch-only fix
+    // would have left a hole in a page rather than in a test.
+    const { alice, bob, question, community } = await answeredQuestion();
+    const kitchen = await insertTier({ communityId: community.id }, "Kitchen");
+    await createSensitiveFieldAccessRule(alice, { questionId: question.id, unlockedByTierId: kitchen.id });
+    await db.update(memberTable).set({ tierIds: [kitchen.id] }).where(eq(memberTable.id, bob.id));
+    const bobInKitchen = (await db.select().from(memberTable).where(eq(memberTable.id, bob.id)))[0];
+
+    const batch = await resolveReadableAnswersForCommunity(bobInKitchen);
+    expect(questionsReadableBy(batch, alice.id).has(question.id)).toBe(false);
+    const narrow = await resolveReadableQuestions(bobInKitchen, alice.id, [
+      { questionId: question.id, sensitive: true, shareWithAudience: true },
+    ]);
+    expect(narrow.has(question.id)).toBe(false);
+  });
+
+  it("agrees to one group without agreeing to the next", async () => {
+    // Per (answer, rule), not per (member, question). The single
+    // shareWithAudience boolean cannot express this case at all: false
+    // would hide the answer from the Welfare Tier too — a narrowing nobody
+    // asked for and that Tier did not consent to — and true would hand it
+    // to both new groups.
+    const { alice, community } = await createFixtures();
+    const welfare = await insertTier({ communityId: community.id }, "Welfare");
+    const kitchen = await insertTier({ communityId: community.id }, "Kitchen");
+    const medical = await insertTier({ communityId: community.id }, "Medical");
+    const question = await restrictedQuestion(alice, "Allergies", {
+      unlockedByTierId: welfare.id,
+    });
+    await answerProfileQuestion(alice, question.id, { status: "answered", value: "peanuts" });
+    for (const id of [kitchen.id, medical.id]) {
+      await createSensitiveFieldAccessRule(alice, { questionId: question.id, unlockedByTierId: id });
+    }
+
+    const pending = await listPendingAudienceConsents(alice);
+    expect(pending).toHaveLength(2);
+    const kitchenRow = pending.find((p) => p.audienceLabel.includes("Kitchen"))!;
+    await extendAnswerConsent(alice, kitchenRow.answerId, kitchenRow.ruleId);
+
+    // The Welfare Tier and the owner still read it; the group that was not
+    // agreed to does not.
+    for (const [viewerTier, expected] of [
+      [welfare.id, true],
+      [kitchen.id, true],
+      [medical.id, false],
+    ] as const) {
+      const [viewer] = await db
+        .insert(memberTable)
+        .values({ communityId: community.id, name: `V-${viewerTier.slice(0, 4)}`, tierIds: [viewerTier] })
+        .returning();
+      const readable = await resolveReadableAnswersForCommunity(viewer);
+      expect(questionsReadableBy(readable, alice.id).has(question.id)).toBe(expected);
+    }
+  });
+
+  it("is scoped to the answer's own owner", async () => {
+    // A forged POST naming somebody else's answer must not consent on
+    // their behalf — the whole point is that the person who would be read
+    // is the one who says yes. Scoped in the lib rather than only in the
+    // action, so a second caller can't get it wrong.
+    const { alice, bob, community, question } = await answeredQuestion();
+    const kitchen = await insertTier({ communityId: community.id }, "Kitchen");
+    const rule = await createSensitiveFieldAccessRule(alice, {
+      questionId: question.id,
+      unlockedByTierId: kitchen.id,
+    });
+    const [answer] = await db.select().from(profileAnswer).where(eq(profileAnswer.questionId, question.id));
+
+    // Bob tries to extend Alice's sharing.
+    await expect(extendAnswerConsent(bob, answer.id, rule.id)).rejects.toThrow(NotFoundError);
+    // …and Alice can.
+    await extendAnswerConsent(alice, answer.id, rule.id);
+    const consents = await db
+      .select()
+      .from(profileAnswerRuleConsent)
+      .where(eq(profileAnswerRuleConsent.ruleId, rule.id));
+    expect(consents).toHaveLength(1);
+  });
+
+  it("refuses consent for a rule that names a different question", async () => {
+    const { alice, question } = await answeredQuestion();
+    const other = await restrictedQuestion(alice, "Something else", {
+      unlockedByTierId: (await insertTier({ communityId: alice.communityId }, "Kitchen")).id,
+    });
+    const [answer] = await db.select().from(profileAnswer).where(eq(profileAnswer.questionId, question.id));
+    const rules = await listSensitiveFieldAccessRules(alice);
+    const otherRule = rules.find((r) => r.questionId === other.id)!;
+    expect(otherRule).toBeTruthy();
+    await expect(extendAnswerConsent(alice, answer.id, otherRule.id)).rejects.toThrow(
+      /doesn't apply to this answer/,
+    );
+  });
+});
+
+describe("consent purposes over questions", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("returns nothing for a community with no gated question", async () => {
+    const { community } = await createFixtures();
+    expect(await getGatingPurposesForQuestions(community.id)).toEqual(new Map());
+  });
+});
+
+describe("the rules table is question-only", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("cannot represent the old 'a column or a question' ambiguity", async () => {
+    // The exact-one-of-two rule the application layer enforced for years
+    // existed only because a row could name either a column or a
+    // question. With the columns gone question_id is NOT NULL, so the
+    // ambiguity is unrepresentable rather than validated — which is the
+    // stronger of the two, and is why the write-side check went with it.
+    expect(Object.keys(sensitiveFieldAccessRule)).toContain("questionId");
+    expect(Object.keys(sensitiveFieldAccessRule)).not.toContain("fieldKey");
+    expect(sensitiveFieldAccessRule.questionId.notNull).toBe(true);
+  });
+
+  it("and the consent purpose has only the question target left", () => {
+    expect(Object.keys(consentPurpose)).toContain("gatesQuestionId");
+    expect(Object.keys(consentPurpose)).not.toContain("gatesSensitiveField");
   });
 });

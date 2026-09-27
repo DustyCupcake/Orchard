@@ -13,14 +13,9 @@ import {
   listEmergencyAccessActivity,
   listEmergencyAnswers,
 } from "@/lib/emergency-access";
-import { createSensitiveFieldAccessRule } from "@/lib/sensitive-data";
-import {
-  answerProfileQuestion,
-  createProfileQuestion,
-  updateProfileQuestion,
-} from "@/lib/profile-questions";
-import { AppError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { answerProfileQuestion } from "@/lib/profile-questions";
+import { ForbiddenError, NotFoundError } from "@/lib/errors";
+import { createFixtures, createRestrictedQuestion, resetDatabase } from "./helpers";
 
 describe("emergency access", () => {
   beforeEach(async () => {
@@ -97,21 +92,24 @@ describe("emergency access", () => {
      */
     async function emergencyQuestion(overrides: Record<string, unknown> = {}) {
       const { alice, bob, community: c } = await createFixtures();
-      const q = await createProfileQuestion(alice, {
-        label: "Medication on site",
-        responseType: "single_choice",
-        options: ["none", "inhaler", "epipen"],
-        scope: "once_ever",
-        allowPreferNotToSay: true,
-        ...overrides,
-      });
+      // One call, and the row it returns is already restricted — there
+      // used to be a "the flagged row, not the one create returned"
+      // dance here because the flag was set by a second update and the
+      // first return value was stale. Nothing can be stale now.
       const [t] = await db.insert(tier).values({ communityId: c.id, name: "Kitchen" }).returning();
-      await createSensitiveFieldAccessRule(alice, { questionId: q.id, unlockedByTierId: t.id });
-      const flagged = await updateProfileQuestion(alice, q.id, {
-        sensitive: true,
-        emergencyAccess: true,
-      });
-      return { alice, bob, c, q: flagged, tierId: t.id };
+      const q = await createRestrictedQuestion(
+        alice,
+        {
+          label: "Medication on site",
+          responseType: "single_choice",
+          options: ["none", "inhaler", "epipen"],
+          scope: "once_ever",
+          allowPreferNotToSay: true,
+          ...overrides,
+        },
+        { emergencyAccess: true, audience: { unlockedByTierId: t.id } },
+      );
+      return { alice, bob, c, q, tierId: t.id };
     }
 
     it("reveals the answer, and requires a reason for reading it", async () => {
@@ -151,7 +149,7 @@ describe("emergency access", () => {
       // been protected. The write side refuses the combination; this
       // asserts the read side holds on its own, since a stale flag or a
       // hand-edited row shouldn't turn the audit trail into fiction.
-      const { alice, bob, q, c } = await emergencyQuestion();
+      const { alice, q, c } = await emergencyQuestion();
       await answerProfileQuestion(alice, q.id, { status: "answered", value: "epipen" });
       expect(await listEmergencyAnswers(alice.id)).toHaveLength(1);
 
@@ -184,22 +182,26 @@ describe("emergency access", () => {
       // so the read side has to be the field's own formatting.
       const { alice, c } = await emergencyQuestion({ label: "Needs an epipen?" });
       const [t] = await db.insert(tier).values({ communityId: c.id, name: "First aid" }).returning();
-      const boolQ = await createProfileQuestion(alice, {
+      const boolQ = await createRestrictedQuestion(
+        alice,
+        {
         label: "Needs an epipen?",
         responseType: "boolean",
         scope: "once_ever",
-      });
-      await createSensitiveFieldAccessRule(alice, { questionId: boolQ.id, unlockedByTierId: t.id });
-      await updateProfileQuestion(alice, boolQ.id, { sensitive: true, emergencyAccess: true });
+      },
+        { emergencyAccess: true, audience: { unlockedByTierId: t.id } },
+      );
       await answerProfileQuestion(alice, boolQ.id, { status: "answered", value: false });
 
-      const dateQ = await createProfileQuestion(alice, {
+      const dateQ = await createRestrictedQuestion(
+        alice,
+        {
         label: "Date of birth",
         responseType: "date",
         scope: "once_ever",
-      });
-      await createSensitiveFieldAccessRule(alice, { questionId: dateQ.id, unlockedByTierId: t.id });
-      await updateProfileQuestion(alice, dateQ.id, { sensitive: true, emergencyAccess: true });
+      },
+        { emergencyAccess: true, audience: { unlockedByTierId: t.id } },
+      );
       await answerProfileQuestion(alice, dateQ.id, { status: "answered", value: "1990-04-01" });
 
       const found = await listEmergencyAnswers(alice.id);
@@ -223,14 +225,16 @@ describe("emergency access", () => {
       // cycleId submitted at it — resolveCycleId ignores a cycle for a
       // standing question, so the first attempt at this stored a standing
       // answer and the assertion failed for the wrong reason.
-      const perEvent = await createProfileQuestion(alice, {
+      const perEvent = await createRestrictedQuestion(
+        alice,
+        {
         label: "Medication for this event",
         responseType: "single_choice",
         options: ["none", "inhaler"],
         scope: "per_cycle",
-      });
-      await createSensitiveFieldAccessRule(alice, { questionId: perEvent.id, unlockedByTierId: t.id });
-      await updateProfileQuestion(alice, perEvent.id, { sensitive: true, emergencyAccess: true });
+      },
+        { emergencyAccess: true, audience: { unlockedByTierId: t.id } },
+      );
       await answerProfileQuestion(alice, perEvent.id, {
         status: "answered",
         value: "inhaler",
@@ -244,14 +248,16 @@ describe("emergency access", () => {
 
       // A standing answer to a standing question is the one that is
       // reachable, so the filter isn't simply excluding everything.
-      const standing = await createProfileQuestion(alice, {
+      const standing = await createRestrictedQuestion(
+        alice,
+        {
         label: "Medication on site",
         responseType: "single_choice",
         options: ["none", "inhaler", "epipen"],
         scope: "once_ever",
-      });
-      await createSensitiveFieldAccessRule(alice, { questionId: standing.id, unlockedByTierId: t.id });
-      await updateProfileQuestion(alice, standing.id, { sensitive: true, emergencyAccess: true });
+      },
+        { emergencyAccess: true, audience: { unlockedByTierId: t.id } },
+      );
       await answerProfileQuestion(alice, standing.id, { status: "answered", value: "epipen" });
       const found = await listEmergencyAnswers(alice.id);
       expect(found).toHaveLength(1);

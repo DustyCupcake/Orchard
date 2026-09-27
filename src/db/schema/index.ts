@@ -35,6 +35,7 @@ export * from "./call";
 export * from "./wiki-page";
 export * from "./conflict-report";
 export * from "./sensitive-field-access-rule";
+export * from "./answer-rule-consent";
 export * from "./form";
 export * from "./budget";
 export * from "./event-scheduling";

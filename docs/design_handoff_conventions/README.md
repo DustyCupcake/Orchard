@@ -195,73 +195,102 @@ Living checklist — update it in the same commit whenever a page/piece moves fr
 
   Two traps worth remembering, both of which bit during the build. **A boolean is stored as a real `true`, not a string in an option's slot**, so routing it through the same counting path as a choice — where a `typeof v !== "string"` filter skips it — produced two empty rows for a published yes/no; it's a separate branch with both sides always present, and there's a test for the all-yes case so a real zero can't regress into a missing row. And **the refusal message composes a reason with a remedy, kept as two values**: concatenating one combined string told an admin editing a published question to "change the answer type to pick one first" — advice for someone trying to *publish* — immediately before "unpublish it first", which is advice for someone trying to *stop*. Relatedly, changing a published question's type is **refused, not silently unfixed** (the opposite of how a stale `min`/`max` is cleared), because clearing would let an admin editing an unrelated dropdown make a community-chosen disclosure vanish with nothing said; a plain label edit must still work, and a test pins that.
 
-  The indicators also render on the **Dashboard**, and there the population follows the page's existing `?memberCount=cycle` toggle — one control for one question ("who are we talking about?"), not two that can disagree. Only the population narrows; the answers are once-ever facts, so an event-scoped indicator means "of the eight coming, five have told us their pronouns", never "what people said about this event". `memberCountView` is hoisted above the `Promise.all` so the indicators and the member count resolve the switcher's default identically — and note the indicator scope is *not* `singleCycleId` alone, since the switcher being narrowed to one event is not the same as the reader having chosen "This event". **An event population smaller than the community's floor falls back to the community-wide figures *with a note saying why*** (migration `0074`, `cycleIndicatorsEnabled` + `cycleIndicatorsMinMembers`, default 10 members and off) — never a silent substitution, and never an "0 of 0" chart. The floor is tested against the **post-exclusion population the chart will actually display**, resolved inside `listCommunityIndicators`, so the fallback note can never say "10 attendees" above a chart reading "of 8". Both halves of the old rule needed replacing: gating an indicator on a coordination grant was the wrong fix (see below), and an empty event chart is a broken widget rather than a privacy win.
+  The indicators also render on the **Dashboard**, and there the population follows the page's existing `?memberCount=cycle` toggle — one control for one question ("who are we talking about?"), not two that can disagree. Only the population narrows; the answers are once-ever facts, so an event-scoped indicator means "of the eight coming, five have told us their pronouns", never "what people said about this event". `memberCountView` is hoisted above the `Promise.all` so the indicators and the member count resolve the switcher's default identically — and note the indicator scope is *not* `singleCycleId` alone, since the switcher being narrowed to one event is not the same as the reader having chosen "This event". **An event with nobody signed up falls back to the community-wide figures *with a note saying why*** (migration `0074`'s `cycleIndicatorsEnabled`; `cycleIndicatorsMinMembers` went in `0081`) — never a silent substitution, and never an "0 of 0" chart.
 
-  The remaining open risk, recorded rather than papered over: **there is deliberately no small-n suppression** beyond the community's own configured floor. A hidden threshold would read as a broken widget, and inventing a disclosure rule nobody agreed to is worse than the community choosing one.
+  The **headcount floor is gone** and the reason it guarded nothing is the thing worth keeping. A published indicator is an aggregate of answers the whole Community can already read one at a time, so a chart over three people discloses nothing that the member-data grid of the same three doesn't. The floor was protecting a distinction that publication had already made irrelevant, and it was a *number nobody had argued for* doing the protecting — which is the worst combination in a privacy control.
 
-  **A member's standing consent** is `member.consentsToCommunityIndicators`, its own section on `/profile` — the consent mechanism that was missing, because a decline is a response to *one* question and a question invented later has no decline for them to have used. Two things about it are load-bearing. It's a **reporting change, not an answering gate**: a member who declines can still answer everything and nothing becomes outstanding for them, since suppressing answering too would be a way to drop someone out of a *required* question by hiding the control. And they're removed from the **denominator too**, not just the numerator — keeping them in the population while dropping their answer produces a permanent "1 haven't" for someone still answering everything. `populationIds` is the single definition of who an indicator describes and both the count and the answer filter read it. The default is **true**, and it is the **opposite** of `contributionVisible` on purpose: a contribution record is passive (generated from task history, so sharing it must be asked for) while a profile question was asked and answered (so counting them is the expected consequence). The section is deliberately outside "Your answers", which only renders when there's something to show — the control has to be settable *before* answering, or it informs nobody. Migration `0076` flipped this column's polarity; the setter is `updateIndicatorConsent`, self-service with no Admin path, because an Admin ability to exclude a member is the same power as one to include them without asking, wearing a privacy label.
+  What it did **not** cover is a *declined* answer in a small event, where "1 of 3 declined" is a small number of facts about a small number of named people. That risk comes from counting declines in a small population, not from the population being small, so the honest response is to not show the declined count at small populations rather than to suppress the whole chart. **This is an open question, deliberately not closed** — it is a disclosure decision, and inventing one nobody agreed to is the failure mode this paragraph exists to prevent.
 
-  **The settled design** — this supersedes the section's earlier three-category version, and
-  `docs/default-profile-questions.md` holds the full write-up plus the proposed default question
-  set. A profile question is **not** a member of a category; it carries independent attributes,
-  because the three-category version failed on its own terms: "gated" turned out to be *access*,
-  not a kind of data — t-shirt size isn't sensitive and still mustn't be readable by everyone.
+  **There is no standing indicator consent, and there never needed to be one** (`0081` dropped `member.consentsToCommunityIndicators` and `updateIndicatorConsent`). The reasoning it was built on — "a decline is a response to *one* question, and a question invented later has no decline for them to have used" — stopped being true once publication was restricted to public questions, because publication then discloses nothing the underlying answers don't already say. What the column actually controlled was narrower: whether a member was *counted*. The per-question decline is the right lever for that, and it's required on every publishable question. The one thing the old column bought that a decline doesn't is "answer, but don't be a bar in a chart" — and that combination is no longer expressible, because the reason it was wanted (an aggregate of private answers) no longer exists.
 
-  **Built so far:** the `sensitive` and `emergency_access` columns and their settings UI
-  (`0076`); the refusal on the flags that contradict publication, in both directions and against
-  the effective pair; section-level consent replacing the per-question machinery (`0077`); the
-  `community_coordination` gate removed outright rather than left as a dead enum (`0073`); and
-  the access rules and consent purposes retargeted to question ids, with
-  `resolveReadableQuestions` as the single fail-closed definition of readability and the
-  per-answer share box wired through the answer form (`0078`).
-  **Not yet:** emergency *reads* — `emergency_access` is stored and guarded, but activating
-  emergency mode doesn't yet surface question answers, and `emergencyAccessLog.explanation` is
-  still nullable when a question read should require it. Then task-derived questions inheriting
-  their task's scope, the community-chosen prominent profile set, and setup-time seeding.
+  **The settled design** — `docs/spec.md` § Sensitive data is the authority and
+  `docs/default-profile-questions.md` holds the full write-up plus the default question set. A
+  profile question is **not** a member of a category; it carries independent attributes. There
+  are **two** visibility states, not three or four: **public** (readable by the whole Community)
+  and **restricted** (readable by a named audience). That supersedes *both* earlier versions of
+  this section — the three-category one, which failed on its own terms because "gated" turned out
+  to be *access* rather than a kind of data (t-shirt size isn't sensitive and still mustn't be
+  readable by everyone), and the "no category but publication is separate" one, which was right
+  about attributes and wrong about publication.
 
-  **The one thing to re-derive before touching the ladder:** `sensitive` performs no restriction
-  of its own. It marks which questions the access rules apply to, and the rules are the entire
-  mechanism — so "sensitive with no rule" means an *empty* audience, which the read side treats as
-  nobody-but-the-owner. That is why marking one is refused without a rule, and why the settings box
-  is disabled until a rule exists rather than accepted and silently useless. An early draft also
-  required a rule to already find its question sensitive, which with the above is a **deadlock**:
-  the rule names a question, the flag is refused until a rule exists, and neither can go first.
-  Rules and consent purposes are therefore allowed against a not-yet-sensitive question and are
-  *staged* — restricting nothing until the flag lands.
+  **Publication is a capability of public questions, not a third kind.** An indicator is an
+  aggregate of answers the whole Community can already read individually, so publishing one
+  discloses nothing the underlying data doesn't already say — which is what made the `demographic`
+  category unnecessary in the first place. Restricted questions keep the publication refusal. A
+  community indicator still requires a `once_ever`, non-text question offering "prefer not to
+  say", because the thing that *does* need guarding is not who can see the aggregate but whether
+  a member has a way to keep their answer out of it.
+
+  **`sensitive` is fixed at creation and immutable in both directions** — the one
+  profile-question attribute with no update counterpart in the type at all, not a validation that
+  could be bypassed. Turning it *off* makes every answer given so far readable by everyone,
+  including answers given while it was restricted to the kitchen; no amount of confirmation copy
+  makes that a setting rather than a disclosure. The remedy is archive-and-re-add.
+
+  **A sensitive question is restricted *by* its audience, and the pairing is required.** No
+  third "owner-and-emergency-only" state: it reads as broken rather than as private, and an Admin
+  who believed they'd restricted a question would have restricted it to something that looks like
+  a bug. `createProfileQuestion` takes `sensitive` and `audience` together and does the
+  insert → rule → flag sequence internally, which retires a dead end: creating a restricted
+  question used to be three visits to two settings sections, and the flag used to be freely
+  toggleable afterwards.
+
+  **Widening an audience asks the people already affected** (`0081`,
+  `profile_answer_rule_consent`). A rule says who *may* read a question; a consent row says who
+  has agreed to be read *by that rule*. Answering consents to the rules in effect at that moment;
+  a rule added afterwards has no row and cannot reach the answers that predate it, and each of
+  those members gets a prompt to extend sharing on their own profile. Per (answer, rule) is the
+  only correct granularity — per-question would either hide the answer from the *original*
+  audience too, or expose it to the new one, and per (member, rule) would let consent silently
+  carry to a rule that was deleted and re-created. **The read side requires the row, so every
+  path fails closed.** The open gap: switching `emergency_access` *on* is also a widening and
+  still doesn't ask.
+
+  **Built so far:** the four `member` columns and the `sensitive_data` module retired in favour of
+  sensitive questions (`0080`); `/members/data` as a question-driven roster read with column
+  selection, value filter and per-option breakdowns, linked from `/members`; kitchen reading
+  sensitive answers by keyword over the holder's whole audience; the review step for the starter
+  set; `sensitive` immutability with create taking the audience (`0081`); the standing indicator
+  consent and the per-event headcount floor dropped (`0081`); and `resolveReadableQuestions` kept
+  as the single fail-closed definition of readability, with `resolveReadableAnswersForCommunity`
+  as its batch twin, kept honest by the same tests.
+  **Not yet:** emergency *reads* wired end to end on some surfaces, `emergencyAccessLog.explanation`
+  still nullable when a question read should require it, emergency-widening consent, task-derived
+  questions inheriting their task's scope, the community-chosen prominent profile set, and
+  setup-time seeding.
 
   | attribute | values | notes |
   |---|---|---|
-  | **published** | on / off | Admin toggle on one question. Once-ever only. |
-  | **sensitive** | on / off | On requires an access rule to exist. |
-  | **scope** | once-ever / per-event / per-phase | Free — and free for *sensitive* questions, since "medication on site" is both. |
-  | **access** | a set of rules | Orthogonal to sensitivity. |
-  | **emergency** | on / off | Answering it consents to emergency reads. |
+  | **restricted** (`sensitive`) | on / off | **Fixed at creation.** On requires an audience; an audience without it is refused. |
+  | **published** | on / off | Mutable, and only on a public question. Once-ever, non-text, decline-offering. |
+  | **scope** | once-ever / per-event / per-phase | Free — and free for *restricted* questions, since "medication on site" is both. |
+  | **access** | a set of rules, each with a per-answer consent set | Chosen at creation; widened later, with consent. |
+  | **emergency** | on / off | Mutable. Answering it consents to emergency reads. |
 
-  **Sensitivity is made cheap-to-abuse deliberately not.** A non-sensitive, unrestricted
-  question defaults to **readable by the whole community**, and restricting it at all requires
-  marking it sensitive and configuring rules. So under-labelling a health question doesn't save
-  work — it publishes the data to everyone, visibly. The shortcut and the danger can't point the
-  same way, so nobody has to be trusted to tick the right box. This is the whole answer to the
-  absurdity of a hardcoded `admin → allergies`, and it retires the need for the per-module
-  opt-in list that pairing would have required.
+  **Sensitivity is made cheap-to-abuse deliberately not.** A public question is readable by the
+  whole Community, and restricting it is a single tick at creation plus a choice of audience. So
+  under-labelling a health question doesn't save work — it publishes the data to everyone,
+  visibly, from the moment the first answer lands. The shortcut and the danger can't point the
+  same way, so nobody has to be trusted to make the right choice. This is the whole answer to the
+  absurdity of a hardcoded `admin → allergies`.
 
-  **Consent is granted once, at the section — never per question.** A member ticks "my answers
-  in this section may appear in community indicators" and that covers every answer they give
-  there, including to questions added later. Because a question can only enter the section at
-  creation, the consent always predates the answer, so there is never a reason to ask again.
-  This is why the `indicatorConsent` enum, the `pendingConsent` count, the "asked whether to be
-  counted" coverage line, the `/questions` consent-request section and the Dashboard's consent
-  element were all **built and then removed**: they solved a per-publication nagging problem that
-  section consent makes impossible, and were triggered by an *admin's* action that had nothing
-  to do with the member. The one thing that does re-open it is widening a sensitive question's
-  audience, and only for the member whose answer it is.
+  **Consent to publish is the per-question decline, and nothing else.** Every publishable question
+  must offer "prefer not to say" — which is why the refusal to publish one without it is a
+  *write-side* check and not a UI hint. A decline is a stored refusal with its own number in the
+  aggregate, not a gap, because silence is visible: it shows up as "1 haven't" in the coverage
+  line, so a refusal leaked through the very gap meant to protect it. This is also why the
+  `indicatorConsent` enum, the `pendingConsent` count, the "asked whether to be counted" coverage
+  line, the `/questions` consent-request section and the Dashboard's consent element were all
+  **built and then removed**: they solved a per-publication nagging problem that publication
+  restricted to public answers makes impossible, and were triggered by an *admin's* action with
+  nothing to do with the member.
 
-  **Consent is to a rule, not to a list of people.** "Whoever holds the task" is consented to as
-  a *relationship*, so a new claimer is inside what was agreed and needs no new conversation —
-  the same shape as "anyone holding Kitchen" when Kitchen is open. Only edits to the rule
-  re-open it: adding a task link, changing an access rule, turning on emergency access. A task
-  being claimed by somebody new is **not** a consent event, and treating it as one would either
-  spam members or produce a notification they learn to ignore.
+  **Consent to be read is to a rule, not to a list of people.** "Whoever holds the task" is
+  consented to as a *relationship*, so a new claimer is inside what was agreed and needs no new
+  conversation — the same shape as "anyone holding Kitchen" when Kitchen is open. Only edits to
+  the *audience* re-open it: adding a task link, adding an access rule, turning on emergency
+  access. A task being claimed by somebody new is **not** a consent event, and treating it as one
+  would either spam members or produce a notification they learn to ignore.
 
   **Emergency access is an override, not a permission**, and that is why it behaves the way it
   does. Answering an emergency-marked question *is* consenting to emergency reads — no separate

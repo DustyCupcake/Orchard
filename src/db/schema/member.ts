@@ -32,32 +32,45 @@ export const member = pgTable("member", {
   // themselves regardless of any SensitiveFieldAccessRule; access to
   // *another* member's value is purpose-bound, gated at the query
   // layer in src/lib/sensitive-data.ts, not by hiding these columns.
-  healthConditions: text("health_conditions"),
-  allergies: text("allergies"),
-  emergencyContact: text("emergency_contact"),
-  orientation: text("orientation"),
-  // Contribution tracking (docs/spec.md) — off by default, the same
-  // private-by-default/explicit-opt-in pattern as the sensitive fields
-  // above and contact-method visibility. Only gates *others'* view of
-  // this member's breakdown; their own is always visible to themselves.
-  contributionVisible: boolean("contribution_visible").notNull().default(false),
-  // Standing consent to have this member's answers counted in published
-  // community indicators, given once for the whole publishable-questions
-  // section rather than per question — a question can only enter that
-  // section at creation, so the consent always predates the answer and is
-  // never re-asked. Un-ticking is immediate and retroactive: the
-  // aggregate recomputes per request, so there's no stored tally to
-  // unwind.
+  // The four fixed sensitive member columns (health conditions,
+  // allergies, emergency contact, orientation) were dropped in 0080.
+  // They were docs/spec.md's original fixed set, and by the time the
+  // sensitive-question system existed they had become the worse half of
+  // a pair: questions are the general mechanism — arbitrary shapes, a
+  // per-answer audience, indicators, emergency reveal, consent gating —
+  // while these four were four hardcoded text columns behind a module
+  // toggle, with one live reader between them (the kitchen's dietary
+  // panel). Keeping both meant an allergy could be recorded in two
+  // places and read from only one, which is the specific failure the
+  // starter set's own comment warned about. Everything they did is now
+  // done by a sensitive question, and the roster-wide read that
+  // /sensitive-data provided is /members/data.
   //
-  // Default TRUE, deliberately the opposite of contributionVisible above,
-  // and for the same asymmetry: a contribution record is generated
-  // passively from task history, so sharing it has to be asked for, while
-  // an indicator is an aggregate of answers the member gave knowing
-  // "this section may appear in community indicators". Answering *is*
-  // consenting, in the same way it is for emergency access.
-  consentsToCommunityIndicators: boolean("consents_to_community_indicators")
-    .notNull()
-    .default(true),
+  // Contribution tracking (docs/spec.md) — off by default, the same
+  // private-by-default/explicit-opt-in pattern as contact-method
+  // visibility below. Only gates *others'* view of this member's
+  // breakdown; their own is always visible to themselves.
+  contributionVisible: boolean("contribution_visible").notNull().default(false),
+  // `consentsToCommunityIndicators` — the standing opt-out of being
+  // *counted* in published indicators — was dropped in 0081, along with
+  // the demographic question category it existed to cover.
+  //
+  // It was not a publication consent, which is what made it redundant: an
+  // indicator is an aggregate of answers the whole Community can already
+  // read individually, so publishing it discloses nothing the underlying
+  // data doesn't already say. What it actually did was let a member opt
+  // out of being characterised by a chart while still answering the
+  // question, since a decline is the only other lever and it also removes
+  // the answer from their profile. That is a real control, and it went
+  // with the category: with the demographic set gone, a "publishable"
+  // question is just a public one, and opting out of counting it is opting
+  // out of something already visible.
+  //
+  // The decline (`allowPreferNotToSay`) is the remaining lever, and
+  // publication requires it — see indicatorBlocker. Declines are counted
+  // separately rather than as a gap, so a refusal is a refusal and not a
+  // silence leaking through the very gap meant to protect it.
+  //
   // Manual "pin this for me" nav overrides — module/nav-item keys (see
   // src/components/nav/nav-config.ts) a member chose to pin themselves,
   // on top of whatever auto-pins from task-holdership or the current

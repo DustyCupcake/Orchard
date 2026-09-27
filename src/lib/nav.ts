@@ -36,7 +36,6 @@ const MODULE_NAV_ITEM_KEY = {
   shifts: "shifts",
   recruitment: "recruitment",
   spatialPlanning: "spatial-planning",
-  sensitiveData: "sensitive-data",
   budget: "budget",
   conflictReports: "conflict-reports",
   feedback: "feedback",
@@ -57,7 +56,6 @@ export const HIGHLIGHTABLE_MODULES: { key: VisibleModuleKey; label: string }[] =
   { key: "eventScheduling", label: "Programme" },
   { key: "spatialPlanning", label: "Spatial planning" },
   { key: "conflictReports", label: "Conflict reports" },
-  { key: "sensitiveData", label: "Sensitive data" },
   { key: "feedback", label: "Feedback" },
   { key: "kitchen", label: "Kitchen" },
 ];
@@ -129,7 +127,6 @@ export type NavContext = {
     shifts: boolean;
     recruitment: boolean;
     spatialPlanning: boolean;
-    sensitiveData: boolean;
     budget: boolean;
     conflictReports: boolean;
     feedback: boolean;
@@ -190,7 +187,6 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     shifts: isModuleEnabled(community, "shifts"),
     recruitment: isModuleEnabled(community, "recruitment"),
     spatialPlanning: isModuleEnabled(community, "spatial_planning"),
-    sensitiveData: isModuleEnabled(community, "sensitive_data"),
     budget: isModuleEnabled(community, "budget"),
     conflictReports: conflictTeamGrantingTaskIds.length > 0 || conflictTeamOpen,
     feedback: community.postCycleFeedbackFormId !== null,
