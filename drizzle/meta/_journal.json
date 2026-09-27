@@ -554,6 +554,13 @@
       "when": 1790440402291,
       "tag": "0078_question_access_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1790498563889,
+      "tag": "0079_settings_change",
+      "breakpoints": true
     }
   ]
 }

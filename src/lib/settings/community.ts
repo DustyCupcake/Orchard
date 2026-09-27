@@ -6,6 +6,7 @@ import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
 import { recruitmentDecisionRulesSchema, requireValidDecisionRules } from "../recruitment/evaluations";
 import { requireNotOnsiteLocked } from "../onsite-mode";
+import { recordSettingChanges } from "./history";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -155,77 +156,98 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
     requireValidDecisionRules(input.recruitmentDecisionRules);
   }
 
-  const [updated] = await db
-    .update(community)
-    .set({
-      ...(input.name !== undefined && { name: input.name }),
-      ...(input.cyclesEnabled !== undefined && { cyclesEnabled: input.cyclesEnabled }),
-      ...(input.phasesEnabled !== undefined && { phasesEnabled: input.phasesEnabled }),
-      ...(input.defaultDateDisplayMode !== undefined && { defaultDateDisplayMode: input.defaultDateDisplayMode }),
-      ...(input.cycleInitiationTierId !== undefined && {
-        cycleInitiationTierId: input.cycleInitiationTierId,
-      }),
-      ...(input.defaultCallHasAgenda !== undefined && { defaultCallHasAgenda: input.defaultCallHasAgenda }),
-      ...(input.defaultCallNeedsSummary !== undefined && {
-        defaultCallNeedsSummary: input.defaultCallNeedsSummary,
-      }),
-      ...(input.defaultCallRequireRead !== undefined && {
-        defaultCallRequireRead: input.defaultCallRequireRead,
-      }),
-      ...(input.conflictAckWindowHours !== undefined && {
-        conflictAckWindowHours: input.conflictAckWindowHours,
-      }),
-      ...(input.modulesEnabled !== undefined && { modulesEnabled: input.modulesEnabled }),
-      ...(input.postCycleFeedbackFormId !== undefined && {
-        postCycleFeedbackFormId: input.postCycleFeedbackFormId,
-      }),
-      ...(input.recruitmentApplicationFormId !== undefined && {
-        recruitmentApplicationFormId: input.recruitmentApplicationFormId,
-      }),
-      ...(input.recruitmentApplicationsOpen !== undefined && {
-        recruitmentApplicationsOpen: input.recruitmentApplicationsOpen,
-      }),
-      ...(input.recruitmentInvitesOpen !== undefined && {
-        recruitmentInvitesOpen: input.recruitmentInvitesOpen,
-      }),
-      ...(input.recruitmentEvaluatorCount !== undefined && {
-        recruitmentEvaluatorCount: input.recruitmentEvaluatorCount,
-      }),
-      ...(input.recruitmentDecisionRules !== undefined && {
-        recruitmentDecisionRules: input.recruitmentDecisionRules,
-      }),
-      ...(input.recruitmentSubscriptionLapseThreshold !== undefined && {
-        recruitmentSubscriptionLapseThreshold: input.recruitmentSubscriptionLapseThreshold,
-      }),
-      ...(input.recruitmentWiderDiscussionHours !== undefined && {
-        recruitmentWiderDiscussionHours: input.recruitmentWiderDiscussionHours,
-      }),
-      ...(input.recruitmentRejectionTemplate !== undefined && {
-        recruitmentRejectionTemplate: input.recruitmentRejectionTemplate,
-      }),
-      ...(input.onsiteModeEnabled !== undefined && { onsiteModeEnabled: input.onsiteModeEnabled }),
-      ...(input.taskNominationResponseDays !== undefined && {
-        taskNominationResponseDays: input.taskNominationResponseDays,
-      }),
-      ...(input.engagementSoftFlagThreshold !== undefined && {
-        engagementSoftFlagThreshold: input.engagementSoftFlagThreshold,
-      }),
-      ...(input.engagementPatternThreshold !== undefined && {
-        engagementPatternThreshold: input.engagementPatternThreshold,
-      }),
-      ...(input.callSummaryReadWindowDays !== undefined && {
-        callSummaryReadWindowDays: input.callSummaryReadWindowDays,
-      }),
-      ...(input.accentPrimary !== undefined && { accentPrimary: input.accentPrimary }),
-      ...(input.accentSecondary !== undefined && { accentSecondary: input.accentSecondary }),
-      ...(input.logoUrl !== undefined && { logoUrl: input.logoUrl }),
-      ...(input.oidcIssuerUrl !== undefined && { oidcIssuerUrl: input.oidcIssuerUrl }),
-      ...(input.oidcClientId !== undefined && { oidcClientId: input.oidcClientId }),
-      ...(input.oidcRequiredRole !== undefined && { oidcRequiredRole: input.oidcRequiredRole }),
-      ...(input.oidcPrimary !== undefined && { oidcPrimary: input.oidcPrimary }),
-    })
-    .where(eq(community.id, actor.communityId))
-    .returning();
+  // The write and its log share one transaction, so a change can never land
+  // without its record — the failure mode that makes an audit log worse than
+  // none, because the gap is invisible.
+  return db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(community)
+      .set({
+        ...(input.name !== undefined && { name: input.name }),
+        ...(input.cyclesEnabled !== undefined && { cyclesEnabled: input.cyclesEnabled }),
+        ...(input.phasesEnabled !== undefined && { phasesEnabled: input.phasesEnabled }),
+        ...(input.defaultDateDisplayMode !== undefined && { defaultDateDisplayMode: input.defaultDateDisplayMode }),
+        ...(input.cycleInitiationTierId !== undefined && {
+          cycleInitiationTierId: input.cycleInitiationTierId,
+        }),
+        ...(input.defaultCallHasAgenda !== undefined && { defaultCallHasAgenda: input.defaultCallHasAgenda }),
+        ...(input.defaultCallNeedsSummary !== undefined && {
+          defaultCallNeedsSummary: input.defaultCallNeedsSummary,
+        }),
+        ...(input.defaultCallRequireRead !== undefined && {
+          defaultCallRequireRead: input.defaultCallRequireRead,
+        }),
+        ...(input.conflictAckWindowHours !== undefined && {
+          conflictAckWindowHours: input.conflictAckWindowHours,
+        }),
+        ...(input.modulesEnabled !== undefined && { modulesEnabled: input.modulesEnabled }),
+        ...(input.postCycleFeedbackFormId !== undefined && {
+          postCycleFeedbackFormId: input.postCycleFeedbackFormId,
+        }),
+        ...(input.recruitmentApplicationFormId !== undefined && {
+          recruitmentApplicationFormId: input.recruitmentApplicationFormId,
+        }),
+        ...(input.recruitmentApplicationsOpen !== undefined && {
+          recruitmentApplicationsOpen: input.recruitmentApplicationsOpen,
+        }),
+        ...(input.recruitmentInvitesOpen !== undefined && {
+          recruitmentInvitesOpen: input.recruitmentInvitesOpen,
+        }),
+        ...(input.recruitmentEvaluatorCount !== undefined && {
+          recruitmentEvaluatorCount: input.recruitmentEvaluatorCount,
+        }),
+        ...(input.recruitmentDecisionRules !== undefined && {
+          recruitmentDecisionRules: input.recruitmentDecisionRules,
+        }),
+        ...(input.recruitmentSubscriptionLapseThreshold !== undefined && {
+          recruitmentSubscriptionLapseThreshold: input.recruitmentSubscriptionLapseThreshold,
+        }),
+        ...(input.recruitmentWiderDiscussionHours !== undefined && {
+          recruitmentWiderDiscussionHours: input.recruitmentWiderDiscussionHours,
+        }),
+        ...(input.recruitmentRejectionTemplate !== undefined && {
+          recruitmentRejectionTemplate: input.recruitmentRejectionTemplate,
+        }),
+        ...(input.onsiteModeEnabled !== undefined && { onsiteModeEnabled: input.onsiteModeEnabled }),
+        ...(input.taskNominationResponseDays !== undefined && {
+          taskNominationResponseDays: input.taskNominationResponseDays,
+        }),
+        ...(input.engagementSoftFlagThreshold !== undefined && {
+          engagementSoftFlagThreshold: input.engagementSoftFlagThreshold,
+        }),
+        ...(input.engagementPatternThreshold !== undefined && {
+          engagementPatternThreshold: input.engagementPatternThreshold,
+        }),
+        ...(input.callSummaryReadWindowDays !== undefined && {
+          callSummaryReadWindowDays: input.callSummaryReadWindowDays,
+        }),
+        ...(input.accentPrimary !== undefined && { accentPrimary: input.accentPrimary }),
+        ...(input.accentSecondary !== undefined && { accentSecondary: input.accentSecondary }),
+        ...(input.logoUrl !== undefined && { logoUrl: input.logoUrl }),
+        ...(input.oidcIssuerUrl !== undefined && { oidcIssuerUrl: input.oidcIssuerUrl }),
+        ...(input.oidcClientId !== undefined && { oidcClientId: input.oidcClientId }),
+        ...(input.oidcRequiredRole !== undefined && { oidcRequiredRole: input.oidcRequiredRole }),
+        ...(input.oidcPrimary !== undefined && { oidcPrimary: input.oidcPrimary }),
+      })
+      .where(eq(community.id, actor.communityId))
+      .returning();
 
-  return updated;
+    // Labelled with the name from AFTER the update, so a row that renamed the
+    // community still reads as the community it renamed it to — which is the
+    // name someone looking for it later will recognise. Nothing is withheld
+    // here: every community column is already member-readable on /settings
+    // (see docs/spec.md:430 on assemblies deciding foundational settings), so
+    // a diff of them withholds nothing a reader could not already go and read.
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "community",
+      action: "updated",
+      entityId: actor.communityId,
+      entityLabel: updated.name,
+      current: currentRow,
+      changes: input,
+    });
+
+    return updated;
+  });
 }

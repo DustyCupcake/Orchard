@@ -50,6 +50,7 @@ export * from "./view-as";
 export * from "./task-pack";
 export * from "./permission-grant";
 export * from "./open-permission-grant";
+export * from "./settings-change";
 export * from "./trait-axis";
 export * from "./member-axis-value";
 export * from "./task-axis-value";
