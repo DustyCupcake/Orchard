@@ -1,8 +1,9 @@
 # Default profile questions
 
-A proposed starter set for a new Community. Nothing here is built — this is a review
-document. Edit the tables, strike entries you don't want, and the agreed set becomes the
-seeding path for community set-up.
+The proposed starter set for a new Community, and — since the seeding path landed — the
+document the table in `src/lib/profile-questions/defaults-table.ts` is written from. Edit
+either; the table is what a community actually gets, and the reasoning for why it differs
+from this document is recorded in the notes at the foot.
 
 ## How to use it
 
@@ -80,7 +81,7 @@ audience asks their agreement and notifies them)*
 | 15 | **Allergies** **[exists — a `member` column today]** | text (long) | — | yes | Kitchen coordinators genuinely need it; nobody else does. |
 | 16 | **Health conditions** **[exists — a `member` column today]** | text (long) | — | yes | Same audience, higher consequence. |
 | 17 | **Emergency contact** **[exists — a `member` column today]** | text (long) | — | no | Can't be usefully refused during an event, and the emergency path reads it. Requiring a decline here would be theatre. |
-| 18 | **Home city or town** | text | — | yes | Drives travel and cost planning. |
+| 18 | **Home city or town** | text | — | yes | Drives travel and cost planning. A town rather than a full address, so it narrows a plan without being the start of finding someone. |
 | 19 | **Date of birth** | date | — | no | Needed for some insurance and safeguarding contexts. Precise, so high sensitivity — but a "prefer not to say" that leaves a gap in eligibility is worse than the fact being held. |
 | 20 | **Full legal name** | text | — | no | Distinct from display name; needed where a legal record matters. |
 
@@ -191,3 +192,50 @@ cannot mean a notification per read — a kitchen coordinator checking allergies
 over a weekend would be fifty notifications, and the second one trains people to ignore the
 first. Log every read, notify on the *first* one, and let the member see their own access
 history. The section copy has to say which of those it is.
+
+---
+
+## Where the shipped set parts company with this document
+
+The table in `src/lib/profile-questions/defaults-table.ts` is what a new Community actually
+gets. It is not this document verbatim, and the differences are deliberate.
+
+**Nothing per-event is seeded.** The whole "For an event" group — #8 to #14 — is absent from
+the table. Scope is fixed at creation, and a `per_cycle` question is skipped on every read
+surface while its member has no declared cycle and no open cycle exists to fall back to. The
+seed runs at signup, so it would have created seven questions that a brand-new Community
+cannot see, answer, or be nagged about, and permanently so for a Community that never enables
+cycles. A Community adds these itself, per event, once it has one, where the create form's
+scope picker makes the decision explicitly.
+
+**#19 Date of birth is not seeded.** #5's age band covers every use this set has for age,
+and #19 collected a precise identifier with no decline offered — a real identifier, gathered
+for a hypothetical insurance context, on behalf of a member who had no way to refuse it. The
+"a decline that leaves an eligibility gap is worse than the fact being held" reasoning is
+sound *if* something needs the fact; nothing here did, and eligibility belongs in
+`requirement` per the note above.
+
+**#18 and #20 arrived without an audience, and were therefore readable by everyone.** Both
+sit under a heading that says an access rule is required, and both seeded as non-sensitive
+questions — which `resolveReadableQuestions` reads as level 1, unrestricted. A restricted
+group whose rows contradict its own heading is worse than no group, so both now carry a
+default audience: `event_scheduling_owner` for #18, since travel and cost planning is
+programme-owner work, and `admin` for #20, the narrowest audience in the set for the question
+with no decline offered. The review step pre-selects these and the admin can change either.
+
+**"Anything that would affect what you can take on" moved into the restricted group.** It
+began in the capability group, whose blurb promised that none of it was anybody's business to
+read, while its own reasoning described it as "the escape hatch for disability, caring, faith"
+— and it seeded world-readable. Restricted, to `branch_coordination`, since they are the ones
+fitting work to people.
+
+**"How long you've been part of this" is not seeded.** Tenure is a proxy for how long someone
+has been around, published as an indicator on a Community page, to answer a question about a
+member who joined last week. The age band and the certifications are the membership signals
+that bear on a decision.
+
+**The access rules are picked where the questions are created, not afterwards.** Marking a
+question sensitive is refused until a rule names it; a rule can only name a question that
+exists. That is a closed loop unless both happen at once, which is why the review step takes
+the audience alongside the tick — and why an admin should not have to go and hand-write a rule
+per restricted question afterwards.

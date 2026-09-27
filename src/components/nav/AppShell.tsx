@@ -10,7 +10,6 @@ import {
   ALL_ITEMS,
   CALENDAR_ITEM,
   DASHBOARD_ITEM,
-  EVENTS_ITEM,
   NAV_GROUPS,
   isItemVisible,
   isNavGroupRenderable,
@@ -327,7 +326,9 @@ function SidebarNavList({
           badge={taskBadgeCount}
         />
         <NavLink item={CALENDAR_ITEM} collapsed={collapsed} active={isActive(CALENDAR_ITEM.href)} />
-        <NavLink item={EVENTS_ITEM} collapsed={collapsed} active={isActive(EVENTS_ITEM.href)} />
+        {/* No Events row here on purpose — event management is reached
+            from the view-scope switcher above, as "Manage events" in its
+            own dropdown. See nav-config.ts. */}
       </ul>
 
       {otherGroups.map(renderGroup)}
@@ -571,12 +572,6 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
   }
 
   function isActive(href: string) {
-    // The Events destination is the /[cycleScope]/participation family;
-    // its bare /participation link is only a redirect shim, so a plain
-    // prefix check would never light up the top-level row on the real page.
-    if (href === "/participation" && /^\/[^/]+\/participation(?:\/|$)/.test(pathname)) {
-      return true;
-    }
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 

@@ -26,6 +26,12 @@ type MoveCycle = { id: string; name: string };
 type MovePhase = { id: string; name: string; cycleId: string };
 
 type TaskSelectionContextValue = {
+  /**
+   * Whether the batch-selection process has been started. Selection is
+   * opt-in: until it is, no card carries a checkbox, so reading the board
+   * is not reading a wall of tick boxes.
+   */
+  selecting: boolean;
   availableIds: Set<string>;
   selectedIds: Set<string>;
   selectedCount: number;
@@ -43,6 +49,8 @@ type TaskSelectionContextValue = {
   toggle: (id: string, on: boolean) => void;
   setAll: (on: boolean) => void;
   clear: () => void;
+  startSelecting: () => void;
+  stopSelecting: () => void;
   openExport: () => void;
   closeExport: () => void;
   openMove: () => void;
@@ -71,7 +79,7 @@ export function TaskSelectionCheckbox({
   title: string;
 }) {
   const selection = useTaskSelection();
-  if (!selection || !selection.availableIds.has(taskId)) return null;
+  if (!selection || !selection.selecting || !selection.availableIds.has(taskId)) return null;
 
   return (
     <input
@@ -110,6 +118,7 @@ export function TaskSelectionProvider({
   returnTo: string;
 }) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [selecting, setSelecting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
 
@@ -181,6 +190,16 @@ export function TaskSelectionProvider({
     setExportOpen(false);
     setMoveOpen(false);
   };
+  // Leaving the process discards the selection along with it. Keeping a
+  // hidden selection alive would leave the action menu promising "3 tasks
+  // selected" that the user can no longer see or revise.
+  const stopSelecting = () => {
+    setSelecting(false);
+    clear();
+  };
+  const startSelecting = () => {
+    setSelecting(true);
+  };
   const openExport = () => {
     if (canExport && exportCycleId) {
       setMoveOpen(false);
@@ -193,6 +212,7 @@ export function TaskSelectionProvider({
   };
 
   const value: TaskSelectionContextValue = {
+    selecting,
     availableIds,
     selectedIds,
     selectedCount: selectedIds.size,
@@ -210,6 +230,8 @@ export function TaskSelectionProvider({
     toggle,
     setAll,
     clear,
+    startSelecting,
+    stopSelecting,
     openExport,
     closeExport: () => setExportOpen(false),
     openMove,
@@ -363,19 +385,51 @@ function MovePanel({ selection }: { selection: TaskSelectionContextValue }) {
   );
 }
 
+/**
+ * The one place the batch-selection process starts and ends. Until it is
+ * started this renders a single quiet button — no checkboxes, no counter,
+ * no bordered bar — so the board reads as a board. Once started it owns
+ * the whole interaction: select-all, the count, clearing, and leaving.
+ */
 export function TaskSelectionBar() {
   const selection = useTaskSelection();
-  if (!selection || selection.availableIds.size === 0) return null;
+  if (!selection) return null;
+  if (!selection.selecting) {
+    if (selection.availableIds.size === 0) return null;
+    return (
+      <div className="mt-4">
+        <button
+          type="button"
+          onClick={selection.startSelecting}
+          className={BUTTON_SECONDARY}
+        >
+          Select tasks
+        </button>
+        <span className="ml-3 text-[12px] text-[var(--text-muted)]">
+          Tick cards to claim, export, or move them in one go.
+        </span>
+      </div>
+    );
+  }
 
-  const allSelected = selection.selectedIds.size === selection.availableIds.size;
+  // Reachable even when a filter change emptied the selectable set, so the
+  // process is never a dead end with checkboxes the user can't undo.
+  const allSelected =
+    selection.availableIds.size > 0 &&
+    selection.selectedIds.size === selection.availableIds.size;
 
   return (
     <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
       <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+        <label
+          className={`flex items-center gap-2 text-[13px] text-[var(--text)] ${
+            selection.availableIds.size === 0 ? "opacity-50" : ""
+          }`}
+        >
           <input
             type="checkbox"
             checked={allSelected}
+            disabled={selection.availableIds.size === 0}
             onChange={(event) => selection.setAll(event.target.checked)}
             className="h-4 w-4 accent-[var(--accent-1)]"
           />
@@ -393,6 +447,9 @@ export function TaskSelectionBar() {
           Claim, export, and move are available from the ⋯ menu; each action applies only to
           eligible selected cards. A tag filter can define a cluster to select in one step.
         </span>
+        <button type="button" onClick={selection.stopSelecting} className={`${BUTTON_SECONDARY} ml-auto`}>
+          Done
+        </button>
       </div>
       {selection.exportOpen && <ExportPanel selection={selection} />}
       {selection.moveOpen && <MovePanel selection={selection} />}
@@ -406,37 +463,45 @@ export function TaskSelectionActionMenu() {
 
   return (
     <>
-      <span className="px-3 py-2 text-[12px] text-[var(--text-muted)]">
-        {selection.selectedCount === 0
-          ? "Select tasks on cards to enable batch actions"
-          : `${selection.selectedCount} task${selection.selectedCount === 1 ? "" : "s"} selected`}
-      </span>
-      {selection.selectedClaimableTaskIds.length > 0 && (
-        <form action={bulkClaimAction} className="contents">
-          <input type="hidden" name="returnTo" value={selection.returnTo} />
-          {selection.selectedClaimableTaskIds.map((id) => (
-            <input key={id} type="hidden" name="taskIds" value={id} />
-          ))}
-          <button type="submit">
-            Claim selected ({selection.selectedClaimableTaskIds.length} of {selection.selectedCount})
-          </button>
-        </form>
-      )}
-      {selection.canExport && (
-        selection.exportCycleId ? (
-          <button type="button" onClick={selection.openExport}>
-            Export selected as a Task Pack ({selection.selectedExportableTasks.length} of {selection.selectedCount})
-          </button>
-        ) : (
-          <span className="px-3 py-2 text-[12px] text-[var(--text-muted)]">
-            Narrow to one event to export a Task Pack
-          </span>
-        )
-      )}
-      {selection.selectedMovableTaskIds.length > 0 && (
-        <button type="button" onClick={selection.openMove}>
-          Move selected ({selection.selectedMovableTaskIds.length} of {selection.selectedCount})
+      {!selection.selecting ? (
+        <button type="button" onClick={selection.startSelecting}>
+          Select tasks…
         </button>
+      ) : (
+        <>
+          <span className="px-3 py-2 text-[12px] text-[var(--text-muted)]">
+            {selection.selectedCount === 0
+              ? "Tick cards to enable batch actions"
+              : `${selection.selectedCount} task${selection.selectedCount === 1 ? "" : "s"} selected`}
+          </span>
+          {selection.selectedClaimableTaskIds.length > 0 && (
+            <form action={bulkClaimAction} className="contents">
+              <input type="hidden" name="returnTo" value={selection.returnTo} />
+              {selection.selectedClaimableTaskIds.map((id) => (
+                <input key={id} type="hidden" name="taskIds" value={id} />
+              ))}
+              <button type="submit">
+                Claim selected ({selection.selectedClaimableTaskIds.length} of {selection.selectedCount})
+              </button>
+            </form>
+          )}
+          {selection.canExport && (
+            selection.exportCycleId ? (
+              <button type="button" onClick={selection.openExport}>
+                Export selected as a Task Pack ({selection.selectedExportableTasks.length} of {selection.selectedCount})
+              </button>
+            ) : (
+              <span className="px-3 py-2 text-[12px] text-[var(--text-muted)]">
+                Narrow to one event to export a Task Pack
+              </span>
+            )
+          )}
+          {selection.selectedMovableTaskIds.length > 0 && (
+            <button type="button" onClick={selection.openMove}>
+              Move selected ({selection.selectedMovableTaskIds.length} of {selection.selectedCount})
+            </button>
+          )}
+        </>
       )}
     </>
   );

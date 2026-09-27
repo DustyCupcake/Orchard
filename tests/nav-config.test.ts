@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { ALL_ITEMS, EVENTS_ITEM, NAV_GROUPS, isNavGroupRenderable } from "@/components/nav/nav-config";
+import { ALL_ITEMS, NAV_GROUPS, isNavGroupRenderable } from "@/components/nav/nav-config";
 
 describe("navigation group visibility", () => {
-  it("keeps Events as a top-level destination, outside Community", () => {
-    expect(EVENTS_ITEM).toMatchObject({ label: "Events", href: "/participation" });
-    expect(ALL_ITEMS).toContainEqual(EVENTS_ITEM);
-
-    const community = NAV_GROUPS.find((group) => group.key === "community");
-    expect(community?.items.some((item) => item.key === "cycles")).toBe(false);
+  // Event management is reached from the view-scope switcher's own
+  // dropdown ("Manage events", CycleSwitcher.tsx), not from a sidebar row
+  // of its own. Asserting no nav item carries the Events href anywhere,
+  // so nobody helpfully re-adds the top-level row it used to have — the
+  // bare /participation is a redirect shim onto /[cycleScope]/participation,
+  // so such a row could never even light up on the page it led to.
+  it("gives the Events page no nav item of its own", () => {
+    expect(ALL_ITEMS.some((item) => item.href === "/participation")).toBe(false);
+    expect(ALL_ITEMS.some((item) => item.key === "cycles")).toBe(false);
+    for (const group of NAV_GROUPS) {
+      expect(group.items.some((item) => item.href === "/participation")).toBe(false);
+      expect(group.items.some((item) => item.key === "cycles")).toBe(false);
+    }
   });
 
   // /questions is a supporting page, not a destination in its own right —

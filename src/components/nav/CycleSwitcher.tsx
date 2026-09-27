@@ -114,6 +114,26 @@ export default function CycleSwitcher({
               </Link>
             </div>
           ))}
+          {/* The two links below are destinations, not selections — the
+              rows above change which event this whole view is scoped to,
+              these two just go somewhere. A hairline separates them, so a
+              click is never ambiguous about which kind of row it was.
+              "Manage events" is the event-management half of the Events
+              page (settings, phases, close, clone, start a new one) and
+              deliberately follows the *current* selection rather than the
+              member's persisted default: the whole menu is about the
+              event you're looking at, so a link inside it that silently
+              resolved to a different one would be a trap. The aggregate
+              selection resolves to /active/participation, which is where
+              "Start a new event" lives. */}
+          <div className="my-1 border-t border-[var(--border)]" />
+          <Link
+            href={`/${currentScope}/participation`}
+            onClick={() => setOpen(false)}
+            className="block px-3 py-1.5 text-[13px] text-[var(--text)] hover:bg-[var(--surface-sunken)]"
+          >
+            Manage events
+          </Link>
           <Link
             href="/cycles"
             onClick={() => setOpen(false)}

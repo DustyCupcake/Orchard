@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, cycle, member, task, taskAssignment } from "@/db/schema";
+import { community, cycle, member, profileQuestion, task, taskAssignment } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { createTier, updateCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
@@ -115,6 +115,132 @@ describe("sensitive field access rules", () => {
 
     await deleteSensitiveFieldAccessRule(alice, created.id);
     expect(await listSensitiveFieldAccessRules(alice)).toHaveLength(0);
+  });
+
+  it("creates a rule naming a question and no column", async () => {
+    // The one combination the settings form could not produce. Both target
+    // selects were rendered without an empty option on the column side, so
+    // every question-keyed rule submitted a field *and* a question and was
+    // refused here — and since `sensitive` is itself refused until a rule
+    // exists, that left no route from settings to a restricted question at
+    // all. Covered here at the lib boundary because the form is where the
+    // bug was; the "— none —" option is what makes this reachable from a
+    // browser.
+    const { alice, branch } = await createFixtures();
+    const t = await insertTask(alice.communityId, branch.id, alice.id);
+    const [question] = await db
+      .insert(profileQuestion)
+      .values({
+        communityId: alice.communityId,
+        label: "Allergies",
+        responseType: "text",
+        scope: "once_ever",
+      })
+      .returning();
+
+    const created = await createSensitiveFieldAccessRule(alice, {
+      fieldKey: null,
+      questionId: question.id,
+      unlockedByTaskId: t.id,
+    });
+    expect(created.fieldKey).toBeNull();
+    expect(created.questionId).toBe(question.id);
+  });
+
+  it("rejects a rule naming both a column and a question", async () => {
+    // The ambiguity that made the form's default fatal: two targets is not
+    // a narrower rule, it's one the read side would have to guess at.
+    const { alice, branch } = await createFixtures();
+    const t = await insertTask(alice.communityId, branch.id, alice.id);
+    const [question] = await db
+      .insert(profileQuestion)
+      .values({
+        communityId: alice.communityId,
+        label: "Allergies",
+        responseType: "text",
+        scope: "once_ever",
+      })
+      .returning();
+
+    await expect(
+      createSensitiveFieldAccessRule(alice, {
+        fieldKey: "allergies",
+        questionId: question.id,
+        unlockedByTaskId: t.id,
+      }),
+    ).rejects.toThrow(/exactly one/i);
+  });
+
+  it("rejects a rule naming neither a column nor a question", async () => {
+    const { alice, branch } = await createFixtures();
+    const t = await insertTask(alice.communityId, branch.id, alice.id);
+    await expect(
+      createSensitiveFieldAccessRule(alice, { fieldKey: null, questionId: null, unlockedByTaskId: t.id }),
+    ).rejects.toThrow(/exactly one/i);
+  });
+
+  it("rejects a rule naming an archived question, and one from another community", async () => {
+    // A rule against an archived question would keep restricting nothing
+    // forever, and `resolveReadableQuestions` skips archived questions
+    // anyway — so the row is dead weight that looks live in the list.
+    const { alice, branch } = await createFixtures();
+    const t = await insertTask(alice.communityId, branch.id, alice.id);
+    const [question] = await db
+      .insert(profileQuestion)
+      .values({
+        communityId: alice.communityId,
+        label: "Old question",
+        responseType: "text",
+        scope: "once_ever",
+        archivedAt: new Date(),
+      })
+      .returning();
+    await expect(
+      createSensitiveFieldAccessRule(alice, { questionId: question.id, unlockedByTaskId: t.id }),
+    ).rejects.toThrow(/archived/i);
+
+    const { alice: stranger } = await createFixtures();
+    const [strangerQuestion] = await db
+      .insert(profileQuestion)
+      .values({
+        communityId: stranger.communityId,
+        label: "Theirs",
+        responseType: "text",
+        scope: "once_ever",
+      })
+      .returning();
+    await expect(
+      createSensitiveFieldAccessRule(alice, {
+        questionId: strangerQuestion.id,
+        unlockedByTaskId: t.id,
+      }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("accepts a staged rule against a question that isn't sensitive yet", async () => {
+    // The two halves of one decision, and the reason the order is rule
+    // first. Requiring the flag here as well as in assertSensitiveAllowed
+    // would deadlock: the flag is refused until a rule exists, so a rule
+    // that demanded the flag would leave the state unreachable. This rule
+    // restricts nothing today and starts the moment the box is ticked.
+    const { alice, branch } = await createFixtures();
+    const t = await insertTask(alice.communityId, branch.id, alice.id);
+    const [question] = await db
+      .insert(profileQuestion)
+      .values({
+        communityId: alice.communityId,
+        label: "Not yet restricted",
+        responseType: "text",
+        scope: "once_ever",
+        sensitive: false,
+      })
+      .returning();
+
+    const created = await createSensitiveFieldAccessRule(alice, {
+      questionId: question.id,
+      unlockedByTaskId: t.id,
+    });
+    expect(created.questionId).toBe(question.id);
   });
 });
 

@@ -4,230 +4,167 @@ import { profileQuestion } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { createProfileQuestion, updateProfileQuestion } from "./questions";
 import { createSensitiveFieldAccessRule } from "../sensitive-data";
-import { PERMISSION_MODULE_KEYS, type PermissionModuleKey } from "../permissions";
+import { PERMISSION_MODULE_KEYS } from "../permissions";
+import { AppError } from "../errors";
+import {
+  DEFAULT_PROFILE_QUESTION_GROUPS,
+  type DefaultQuestionChoice,
+  type DefaultQuestionChoices,
+  type DefaultQuestionGroup,
+  type DefaultQuestionSeed,
+  type SeededQuestionAudience,
+} from "./defaults-table";
+
+// The starter set itself — the table, its types, and the reasoning behind
+// its shape — lives in ./defaults-table, which has no database import and
+// is therefore safe for the Settings review step to pull into the browser
+// bundle. Re-exported here so everything that seeds a community keeps
+// importing one module, and so `@/lib/profile-questions` still offers the
+// table from its barrel.
+export {
+  DEFAULT_PROFILE_QUESTION_GROUPS,
+  DEFAULT_QUESTION_KEYS,
+} from "./defaults-table";
+export type {
+  DefaultQuestionChoice,
+  DefaultQuestionChoices,
+  DefaultQuestionGroup,
+  DefaultQuestionSeed,
+  SeededQuestionAudience,
+} from "./defaults-table";
 
 type Member = typeof memberTable.$inferSelect;
 
-// The starter set from docs/default-profile-questions.md, as data.
-//
-// A table rather than a function body, for one reason: this is the whole
-// set a new community starts with, so it has to be *readable* by the
-// people who maintain it. A community that wants to drop one of these
-// should be able to see that it's a row, edit the row, and have the next
-// community start without it.
-//
-// NOT seeded, deliberately: the four fixed sensitive member columns
-// (health conditions, allergies, emergency contact, orientation). Those
-// are docs/spec.md's fixed set and already exist as `member` columns
-// under the `sensitive_data` module. Questions 15–17 in the doc are
-// *that* set, not new questions — seeding them as questions would leave
-// a community with two places to record an allergy and one place to read
-// it, which is the kind of split that loses an allergy.
-//
-// The groups are the doc's *presentation* groups and they exist here for
-// that reason only. Presentation is not a permission and is not stored on
-// the question: if you're reading this to find out who may see an answer,
-// the answer is `resolveReadableQuestions`.
+/**
+ * Checks the table against the rules the rest of this file relies on, so a
+ * bad row fails here — loudly, once, at the point of the edit — rather than
+ * as a question that arrived quietly wrong in a real community.
+ *
+ * All three of these were real: a `per_cycle` group that seeded questions
+ * no member could ever see (see the scope note at the top of this file),
+ * two Restricted rows with no audience contradicting their own group's
+ * blurb, and a permission module named by a string literal that nothing
+ * checks. Each one is a one-line table edit, and without this they were
+ * all one-line *mistakes*.
+ *
+ * Takes the table as an argument so a test can hand it a deliberately
+ * broken one — a validator nothing has ever seen fail is not a validator.
+ */
+export function validateDefaultQuestionTable(
+  groups: DefaultQuestionGroup[] = DEFAULT_PROFILE_QUESTION_GROUPS,
+) {
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  for (const group of groups) {
+    // A group is the unit that can promise anything, and the one promise a
+    // group can make is about who may read the answers.
+    if ("perEvent" in group) {
+      problems.push(
+        `${group.title}: sets perEvent, so its questions would seed as per_cycle — and a per_cycle question is skipped on every read surface while the member has no declared cycle, which is every member of a community that hasn't run an event yet.`,
+      );
+    }
+    for (const seed of group.questions) {
+      const where = `${group.title} / ${seed.label}`;
+      if (seen.has(seed.key)) problems.push(`${where}: duplicate key "${seed.key}".`);
+      seen.add(seed.key);
+      if (seed.accessRuleModuleKey && !PERMISSION_MODULE_KEYS.includes(seed.accessRuleModuleKey)) {
+        problems.push(
+          `${where}: names the permission module "${seed.accessRuleModuleKey}", which doesn't exist. A rule that unlocks nothing is worse than no rule.`,
+        );
+      }
+      if (seed.publishedAsIndicator && !seed.allowPreferNotToSay) {
+        problems.push(
+          `${where}: published as an indicator with no decline offered, which the consent floor refuses.`,
+        );
+      }
+    }
+  }
+  // "Restricted" is the one group whose blurb is a promise, so it is the
+  // one group where a row without an audience is a contradiction rather
+  // than merely a public question.
+  const restricted = groups.find((g) => g.title === "Restricted");
+  for (const seed of restricted?.questions ?? []) {
+    if (!seed.accessRuleModuleKey) {
+      problems.push(
+        `Restricted / ${seed.label}: has no audience, so it would seed readable by the whole community — which is the opposite of what the group says. Give it an accessRuleModuleKey or move it out.`,
+      );
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(`The default question set is inconsistent:\n- ${problems.join("\n- ")}`);
+  }
+}
 
-export type DefaultQuestionSeed = {
-  label: string;
-  responseType: "text" | "single_choice" | "multi_choice" | "boolean" | "number" | "date";
-  options?: string[];
-  allowOther?: boolean;
-  multiline?: boolean;
-  // An indicator, which needs once-ever scope and a way to decline — the
-  // two rules `createProfileQuestion` enforces anyway, stated here so the
-  // intent is visible rather than implied.
-  publishedAsIndicator?: boolean;
-  allowPreferNotToSay: boolean;
-  // The audience. A rule has to be added *after* the question exists, so
-  // this is a flag in the table and a step in the seed — see
-  // `seedDefaultProfileQuestions` for why the order is load-bearing.
-  accessRuleModuleKey?: PermissionModuleKey;
-  // Free text: the doc's "Why" column, so the reason travels with the
-  // question rather than living in a document nobody reading their own
-  // settings will open.
-  why: string;
-};
+function chosenRoute(audience: SeededQuestionAudience) {
+  return [audience.unlockedByTaskId, audience.unlockedByTierId, audience.unlockedByGrantModuleKey].filter(
+    Boolean,
+  ).length;
+}
 
-export type DefaultQuestionGroup = {
-  title: string;
-  blurb: string;
-  /** The doc's third group, and the only per-event one. See the scope note. */
-  perEvent?: boolean;
-  questions: DefaultQuestionSeed[];
-};
+/** The audience decided for one seed, from either source. */
+function audienceFor(seed: DefaultQuestionSeed, choice: DefaultQuestionChoice | undefined) {
+  // `choice === undefined` means the row wasn't in the submitted set at
+  // all, which only happens on the unattended path — there, the table's
+  // own suggestion stands. A present choice with a null audience is a
+  // decision: "add this one, readable by everyone".
+  if (choice === undefined) {
+    return seed.accessRuleModuleKey
+      ? ({ unlockedByGrantModuleKey: seed.accessRuleModuleKey } satisfies SeededQuestionAudience)
+      : null;
+  }
+  return choice.audience;
+}
 
-export const DEFAULT_PROFILE_QUESTION_GROUPS: DefaultQuestionGroup[] = [
-  {
-    title: "Who you are",
-    blurb: "Standing facts about a person. Answer once; they don't change per event.",
-    questions: [
-      {
-        label: "Your pronouns",
-        responseType: "single_choice",
-        options: ["she/her", "he/him", "they/them", "he/they", "she/they"],
-        allowOther: true,
-        // The case the whole feature exists for: countable, so an
-        // indicator, and declinable, so a lawful one.
-        publishedAsIndicator: true,
-        allowPreferNotToSay: true,
-        why: "The motivating case, and the reason the escape hatch exists.",
-      },
-      {
-        label: "Languages you speak",
-        // Text, not pick-any, and the reason is a hard constraint rather
-        // than a preference: a choice question with no options is refused
-        // outright, and rightly so — it would render as an empty list plus
-        // a text box, which is a worse version of the same thing.
-        //
-        // So the seed is the shape that works with nothing invented, and
-        // a community that wants this countable changes it to a pick-any
-        // and types in their own languages — which is the edit they'd have
-        // made anyway. The doc proposes pick-any + other, and this is that
-        // minus the part no one but the community can supply.
-        responseType: "text",
-        multiline: true,
-        allowPreferNotToSay: true,
-        why: "Who someone is, and what an interpreter needs — both at once, which is why it isn't filed as either. Make it a pick-any and add your own languages if you want it countable.",
-      },
-      {
-        label: "How long you've been part of this",
-        responseType: "single_choice",
-        options: ["less than a year", "1–3 years", "more than 3 years"],
-        publishedAsIndicator: true,
-        allowPreferNotToSay: true,
-        why: "Tenure shapes whose input a community's decisions are landing on.",
-      },
-      {
-        label: "Age range",
-        responseType: "single_choice",
-        options: ["under 18", "18–24", "25–34", "35–44", "45–64", "65+"],
-        publishedAsIndicator: true,
-        allowPreferNotToSay: true,
-        why: "A band, never a date of birth. Eligibility stays in `requirement` — a question would give it a decline button, and declining an eligibility gate is a contradiction.",
-      },
-    ],
-  },
-  {
-    title: "What you can do",
-    blurb: "What someone can be asked to do, and what would get in the way. None of it is anybody's business to read.",
-    questions: [
-      {
-        label: "Certifications you hold",
-        responseType: "multi_choice",
-        options: ["first aid", "food hygiene", "safeguarding", "driving licence"],
-        allowOther: true,
-        allowPreferNotToSay: true,
-        why: "Determines what someone can be asked to do, and is a real safety input.",
-      },
-      {
-        label: "Anything that would affect what you can take on",
-        responseType: "text",
-        multiline: true,
-        allowPreferNotToSay: true,
-        why: "The escape hatch for disability, caring, faith — whatever a fixed list doesn't cover.",
-      },
-      {
-        label: "Do you have a vehicle?",
-        responseType: "boolean",
-        allowPreferNotToSay: false,
-        why: "A fact, not a circumstance, so it isn't sensitive — nobody minds this being known.",
-      },
-    ],
-  },
-  {
-    title: "For an event",
-    blurb: "Asked again each time, because the answer genuinely changes.",
-    // Per-event rather than per-phase: a phase is a stretch of one
-    // event, so a phase-scoped answer would be asked again for every
-    // phase of the same weekend — which is the question repeating itself.
-    perEvent: true,
-    questions: [
-      {
-        label: "Do you need a bed?",
-        responseType: "boolean",
-        allowPreferNotToSay: false,
-        why: "The canonical event question, and the one the capacity signal already comes from.",
-      },
-      {
-        label: "T-shirt size",
-        responseType: "single_choice",
-        options: ["XS", "S", "M", "L", "XL", "XXL"],
-        allowOther: true,
-        allowPreferNotToSay: false,
-        why: "Not sensitive — but still not everybody's business, which is exactly why a flag is the wrong tool and an access rule is the right one.",
-      },
-      {
-        label: "Can you drive a van / carry passengers?",
-        responseType: "boolean",
-        allowPreferNotToSay: false,
-        why: "Asks capability, not possession, and is a different question from having a vehicle.",
-      },
-      {
-        label: "Do you need a lift to or from an event?",
-        responseType: "boolean",
-        allowPreferNotToSay: false,
-        why: "The reverse of the above, and a separate question.",
-      },
-      {
-        label: "Dietary needs",
-        responseType: "multi_choice",
-        options: ["vegetarian", "vegan", "halal", "kosher", "gluten-free"],
-        allowOther: true,
-        allowPreferNotToSay: true,
-        why: "A refusal here is itself information the kitchen needs, which is why it's a decline rather than a blank.",
-      },
-      {
-        label: "Can you carry heavy things?",
-        responseType: "boolean",
-        allowPreferNotToSay: false,
-        why: "Task matching, and nobody minds.",
-      },
-      {
-        label: "When are you generally around?",
-        responseType: "single_choice",
-        options: ["weekdays", "evings", "weekends", "shift work"],
-        allowOther: true,
-        allowPreferNotToSay: false,
-        why: "Scheduling input. Better asked once than at every event, so it's standing rather than per-event despite the group.",
-      },
-    ],
-  },
-  {
-    title: "Restricted",
-    blurb: "Answers the whole community must not read. Each arrives with its audience already attached, because a sensitive question with no rule is restricted to nobody.",
-    questions: [
-      {
-        label: "Allergies",
-        responseType: "text",
-        multiline: true,
-        allowPreferNotToSay: true,
-        accessRuleModuleKey: "kitchen",
-        why: "Kitchen coordinators genuinely need it; nobody else does.",
-      },
-      {
-        label: "Home city or town",
-        responseType: "text",
-        allowPreferNotToSay: true,
-        why: "Drives travel and cost planning. Restricted because where someone lives is the start of a lot of an address.",
-      },
-      {
-        label: "Date of birth",
-        responseType: "date",
-        allowPreferNotToSay: false,
-        accessRuleModuleKey: "kitchen",
-        why: "Precise, so restricted — but a decline that leaves an eligibility gap is worse than the fact being held, so no decline is offered.",
-      },
-      {
-        label: "Full legal name",
-        responseType: "text",
-        allowPreferNotToSay: false,
-        why: "Distinct from display name, and needed where a legal record matters.",
-      },
-    ],
-  },
-];
+/**
+ * Everything checkable about a submission, checked before a single row is
+ * written.
+ *
+ * Order matters more than it looks. The seeder is not transactional —
+ * `createProfileQuestion` and friends each use the module-level `db` — so
+ * a refusal raised partway through would leave the questions seeded so far
+ * committed. And that is not a cosmetic half-state: `hasProfileQuestions`
+ * is the guard on re-seeding, so a partial write permanently closes the
+ * review step and the community is left with an arbitrary prefix of the
+ * starter set and no way to get the rest. Validating the whole submission
+ * up front is what makes "nothing was added" true whenever the answer is
+ * no.
+ */
+function preflight(
+  groups: DefaultQuestionGroup[],
+  choices: DefaultQuestionChoices | undefined,
+): Map<string, DefaultQuestionChoice> {
+  const seeds = new Map(groups.flatMap((g) => g.questions).map((q) => [q.key, q]));
+  const problems: string[] = [];
+
+  if (choices) {
+    for (const key of Object.keys(choices)) {
+      if (!seeds.has(key)) {
+        problems.push(
+          `the set has no question called "${key}" any more — reload the page and pick again`,
+        );
+      }
+    }
+    for (const seed of seeds.values()) {
+      const choice = choices[seed.key];
+      if (!choice || !choice.include) continue;
+      const audience = audienceFor(seed, choice);
+      if (audience && chosenRoute(audience) !== 1) {
+        problems.push(
+          `“${seed.label}” is restricted to everyone except the audience you picked, so it needs exactly one of a Tier, a permission grant, or a Task — pick one, or untick “restricted” to leave it readable by the whole Community`,
+        );
+      }
+    }
+  }
+
+  if (problems.length > 0) {
+    throw new AppError(
+      `Nothing was added — the starter set can't be applied as submitted. ${problems
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+        .join(". ")}.`,
+    );
+  }
+  return new Map(Object.entries(choices ?? {}));
+}
 
 /**
  * Seed a new community's standing questions.
@@ -236,7 +173,7 @@ export const DEFAULT_PROFILE_QUESTION_GROUPS: DefaultQuestionGroup[] = [
  * is the one attribute where a wrong default is a disclosure rather than
  * an inconvenience: any member can activate it, and the answer arrives
  * with no consent decision beyond having filled the question in. That's
- * defensible per question and not a thing to switch on across five
+ * defensible per question and not a thing to switch on across several
  * questions in someone's community on their behalf, so it's the
  * community's call in settings — where the copy explains what activating
  * it does.
@@ -247,22 +184,32 @@ export const DEFAULT_PROFILE_QUESTION_GROUPS: DefaultQuestionGroup[] = [
  * the same three steps an admin takes by hand, in the same order. A
  * community that wants to change one of these is already looking at the
  * sequence that seeded it.
+ *
+ * `choices` is what the settings review step sends, and it is
+ * **authoritative**: a key it doesn't mention is not seeded. That is the
+ * only safe reading, because a partial set that defaulted the rest to "add
+ * them anyway" would put back the exact bug the review step exists to fix
+ * — one unticked row, silently added. Omitting the argument entirely is
+ * the unattended signup path, which takes the table's suggestions whole;
+ * both entry points therefore produce the same set, and a community never
+ * finds itself with different questions depending on how it was created.
  */
-export async function seedDefaultProfileQuestions(actor: Member) {
-  // Validated up front so a typo in the table above fails here, loudly,
-  // rather than producing a rule that quietly unlocks nothing for ever.
-  for (const group of DEFAULT_PROFILE_QUESTION_GROUPS) {
-    for (const seed of group.questions) {
-      if (seed.accessRuleModuleKey && !PERMISSION_MODULE_KEYS.includes(seed.accessRuleModuleKey)) {
-        throw new Error(
-          `The default question "${seed.label}" names the permission module "${seed.accessRuleModuleKey}", which doesn't exist. A rule that unlocks nothing is worse than no rule.`,
-        );
-      }
-    }
-  }
+export async function seedDefaultProfileQuestions(
+  actor: Member,
+  choices?: DefaultQuestionChoices,
+) {
+  // Validated up front so a bad row fails here, loudly, rather than
+  // producing a rule that quietly unlocks nothing for ever.
+  validateDefaultQuestionTable();
+  // `undefined` is the unattended path and takes the table whole; an empty
+  // object is a review of a set with nothing ticked, and adds nothing. So
+  // the discriminator is presence, not size.
+  const isReview = choices !== undefined;
+  const decided = preflight(DEFAULT_PROFILE_QUESTION_GROUPS, choices);
 
   const created: {
     id: string;
+    key: string;
     label: string;
     scope: "once_ever" | "per_cycle";
     sensitive: boolean;
@@ -270,13 +217,28 @@ export async function seedDefaultProfileQuestions(actor: Member) {
 
   for (const group of DEFAULT_PROFILE_QUESTION_GROUPS) {
     for (const seed of group.questions) {
+      const choice = decided.get(seed.key);
+      // A row named in `choices` but unticked is excluded. A row *not*
+      // named is excluded too, whenever `choices` was supplied at all —
+      // see the note on the parameter.
+      if (isReview && !choice?.include) continue;
+
+      const audience = audienceFor(seed, choice);
       const question = await createProfileQuestion(actor, {
-        label: seed.label,
+        // The review step lets an admin retitle a row on the way in, which
+        // is the whole reason it exists — a starter set you have to archive
+        // and re-add under your own wording is worse than no starter set.
+        label: choice?.label?.trim() || seed.label,
         responseType: seed.responseType,
         options: seed.options,
         multiline: seed.multiline ?? false,
         allowOther: seed.allowOther ?? false,
-        scope: group.perEvent ? "per_cycle" : "once_ever",
+        // Once-ever for every seeded question, and not a detail. A
+        // `per_cycle` question is skipped on every read surface while the
+        // member has no declared cycle — which is the state of a community
+        // that hasn't run an event yet, i.e. all of them at seed time. See
+        // the scope note at the top of this file.
+        scope: "once_ever",
         // Every seeded question allows deferral. "I don't know yet" is the
         // honest state for a new member on a question they weren't
         // expecting, and the reverse default — a seeded question chasing
@@ -292,19 +254,17 @@ export async function seedDefaultProfileQuestions(actor: Member) {
         emergencyAccess: false,
       });
 
-      if (seed.accessRuleModuleKey) {
-        await createSensitiveFieldAccessRule(actor, {
-          questionId: question.id,
-          unlockedByGrantModuleKey: seed.accessRuleModuleKey,
-        });
+      if (audience) {
+        await createSensitiveFieldAccessRule(actor, { questionId: question.id, ...audience });
         await updateProfileQuestion(actor, question.id, { sensitive: true });
       }
 
       created.push({
         id: question.id,
+        key: seed.key,
         label: question.label,
-        scope: group.perEvent ? "per_cycle" : "once_ever",
-        sensitive: Boolean(seed.accessRuleModuleKey),
+        scope: "once_ever",
+        sensitive: Boolean(audience),
       });
     }
   }

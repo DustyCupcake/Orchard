@@ -84,6 +84,7 @@ import FoundersAssemblyPrompt from "./FoundersAssemblyPrompt";
 import FormBuilder from "./FormBuilder";
 import { toEditableFieldShape } from "@/lib/field-shape";
 import ProfileQuestionEditor from "./ProfileQuestionEditor";
+import StarterQuestionPicker from "./StarterQuestionPicker";
 
 export const dynamic = "force-dynamic";
 
@@ -462,8 +463,8 @@ function PrivacyToggles({
       {needsRule && (
         <p className="text-[12px] text-[var(--text-muted)]">
           Not available until this question has an access rule, because the rule <em>is</em> the restriction
-          &mdash; sensitive only says which questions the rules apply to. Add one under Sensitive data access
-          below, then tick this.
+          &mdash; sensitive only says which questions the rules apply to. Name this question under
+          Access rules below, then tick this.
         </p>
       )}
       <label
@@ -639,17 +640,26 @@ export default async function SettingsPage({
   const openModuleKeys = await listOpenModuleKeys(communityRow.id);
   const holdersByTaskId = await listHoldersByTaskId(allGrants.map((g) => g.taskId));
 
-  // Which sensitive fields are unlocked by a *grant* to each module. Opening a
-  // module does not unlock them (D9 — deliberately deferred), so this is
+  // Which sensitive values are unlocked by a *grant* to each module. Opening
+  // a module does not unlock them (D9 — deliberately deferred), so this is
   // shown as information about an existing, separate setting rather than as a
   // warning about the checkbox: the coupling is real and invisible, and the
   // person deciding should be able to see it exists.
+  //
+  // The two target kinds are named rather than summarised. "a profile
+  // question" was accurate once and stopped being useful the moment a
+  // community had more than one — the reader of this panel is deciding
+  // whether opening a module exposes anything, and "does it expose a
+  // question?" is not an answer they can act on.
   const sensitiveFieldsByModule = new Map<PermissionModuleKey, string[]>();
   for (const rule of sensitiveFieldRules) {
     if (!rule.unlockedByGrantModuleKey) continue;
     const existing = sensitiveFieldsByModule.get(rule.unlockedByGrantModuleKey) ?? [];
-    if (rule.fieldKey) existing.push(rule.fieldKey.replace(/_/g, " "));
-    if (rule.questionId) existing.push("a profile question");
+    if (rule.fieldKey) existing.push(SENSITIVE_FIELD_LABELS[rule.fieldKey].toLowerCase());
+    if (rule.questionId) {
+      const label = questionLabelById.get(rule.questionId);
+      existing.push(label ? `the “${label}” answer` : "a profile question");
+    }
     sensitiveFieldsByModule.set(rule.unlockedByGrantModuleKey, existing);
   }
   const communityTasksForPicker = communityTasksRaw.map((t) => ({
@@ -1279,25 +1289,45 @@ export default async function SettingsPage({
             <section>
               <h2 className="text-[18px] font-semibold text-[var(--text)]">Profile questions</h2>
               {profileQuestions.length === 0 && (
-                /* Offered only when there's genuinely nothing to edit. Once
-                   a community has even one question it has decided what its
-                   questions are, and silently adding twenty more over the top
-                   would be the wrong kind of helpful. */
+                /* The starter set goes through a review step rather than a
+                   single button. The one-button version was defensible
+                   only until you counted what it left behind: every
+                   question it created had to be archived again by hand,
+                   and since a community with no questions has no members,
+                   none of them could have been answered — so the archive
+                   pass was pure friction at the one moment the set was
+                   cheapest to decline. It is also the only place an
+                   audience can be picked, because `sensitive` is refused
+                   until a rule names the question and a rule needs the
+                   question to exist; offering it here is what makes a
+                   restricted question reachable at all. */
                 <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
                   <p className="text-[13px] text-[var(--text)]">
                     This Community has no questions yet.
                   </p>
                   <p className="mt-1 text-[12px] text-[var(--text-muted)]">
-                    Add the starter set &mdash; twenty questions covering who someone is, what they can
-                    do, what an event needs, and a few restricted answers that come with an audience
-                    already attached. Every one of them is yours to retitle, re-shape, archive or delete
-                    afterwards; nothing is a commitment.
+                    Here is a suggested set — who someone is, what they can do, and a
+                    few answers the whole Community must not read. Go through it first:
+                    untick anything you don&rsquo;t want, retitle anything you&rsquo;d
+                    phrase differently, and pick who may read each restricted answer. Every
+                    question you keep stays editable afterwards; nothing here is a
+                    commitment.
                   </p>
-                  <form action={seedDefaultProfileQuestionsAction} className="mt-3">
-                    <button type="submit" className={BUTTON_SECONDARY}>
-                      Add the starter set
-                    </button>
-                  </form>
+                  <details className="mt-3" open>
+                    <summary className="inline-flex cursor-pointer items-center gap-1 text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+                      Review the starter set
+                    </summary>
+                    <form action={seedDefaultProfileQuestionsAction} className="mt-3 flex flex-col gap-3">
+                      <StarterQuestionPicker
+                        tiers={tiers.map((t) => ({ id: t.id, name: t.name }))}
+                        permissionModuleKeys={[...PERMISSION_MODULE_KEYS]}
+                        permissionModuleLabels={PERMISSION_MODULE_LABELS}
+                      />
+                      <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                        Add the selected questions
+                      </button>
+                    </form>
+                  </details>
                 </div>
               )}
               <p className="mt-1 text-[13px] text-[var(--text-muted)]">
@@ -1548,42 +1578,84 @@ export default async function SettingsPage({
             </section>
 
             <section>
-              <h2 className="text-[18px] font-semibold text-[var(--text)]">Sensitive data access</h2>
+              <h2 className="text-[18px] font-semibold text-[var(--text)]">Access rules</h2>
               <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-                Purpose-bound, not role-bound: pick which task, tier, or permission grant unlocks each field for{" "}
-                <em>other</em> members&rsquo; values on <code>/sensitive-data</code>. A member can always see and
-                edit their own values regardless of these rules. Only takes effect once &ldquo;Sensitive
-                data&rdquo; is checked under the Modules tab.
+                Purpose-bound, not role-bound: pick which task, tier, or permission grant unlocks
+                something for <em>other</em> members&rsquo; values. A member can always see and
+                edit their own, whatever you pick here.
+              </p>
+              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                A rule names one of two things. Naming a <strong>column</strong> — health
+                conditions, allergies, emergency contact, orientation — unlocks it on{" "}
+                <code>/sensitive-data</code>, and only once &ldquo;Sensitive data&rdquo; is
+                checked under the Modules tab. Naming a <strong>profile question</strong> is
+                what makes that question restricted: the answer is readable by the union of
+                everyone who satisfies any rule naming it, and by nobody else. Question rules
+                don&rsquo;t depend on that module toggle — they&rsquo; a property of the answer,
+                not of a page.
+              </p>
+              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                The two are chosen in the opposite order, which is worth knowing before you
+                start. Marking a question sensitive is refused until a rule names it, and a
+                rule can only name a question that exists — so for a question, add the rule
+                here <em>first</em>, then tick its <em>sensitive</em> box under Profile
+                questions. The rule sitting there in between restricts nothing yet; the tick is
+                what switches it on. The starter set asks for this at the same time, so
+                there&rsquo;s rarely a reason to do it by hand.
               </p>
               {sensitiveFieldRules.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">No rules yet.</p>}
               <div className="mt-3 flex flex-col gap-2">
-                {sensitiveFieldRules.map((r) => (
-                  <div key={r.id} className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-                    <span className="flex-1 text-[13px] text-[var(--text)]">
-                      {r.questionId
-                        ? `“${questionLabelById.get(r.questionId) ?? "an archived question"}” — unlocked by `
-                        : `${SENSITIVE_FIELD_LABELS[r.fieldKey!]} — unlocked by `}
-                      {""}
-                      {r.unlockedByTaskId
-                        ? `holding "${ruleTaskNameById.get(r.unlockedByTaskId) ?? "—"}"`
-                        : r.unlockedByTierId
-                          ? `Tier "${tierNameById.get(r.unlockedByTierId) ?? "—"}"`
-                          : `any holder of a "${PERMISSION_MODULE_LABELS[r.unlockedByGrantModuleKey!]}" grant`}
-                    </span>
-                    <form action={deleteSensitiveFieldAccessRuleAction}>
-                      <input type="hidden" name="ruleId" value={r.id} />
-                      <button type="submit" className={BUTTON_SECONDARY}>
-                        Delete
-                      </button>
-                    </form>
-                  </div>
-                ))}
+                {sensitiveFieldRules.map((r) => {
+                  /* Both the target and the route are read through a
+                     fallback rather than asserted. The write side refuses a
+                     rule with two targets or two routes, but the database is
+                     editable by hand, and a non-null assertion here rendered
+                     the string "undefined" into this list — which reads as a
+                     rendering fault rather than the broken row it actually
+                     is. Naming the fault is the point. */
+                  const target = r.questionId
+                    ? `Question "${questionLabelById.get(r.questionId) ?? "archived, or not in this Community"}"`
+                    : r.fieldKey
+                      ? `Column ${SENSITIVE_FIELD_LABELS[r.fieldKey]}`
+                      : "Nothing — this rule names no target";
+                  const route = r.unlockedByTaskId
+                    ? `anyone holding "${ruleTaskNameById.get(r.unlockedByTaskId) ?? "a task not in this Community"}"`
+                    : r.unlockedByTierId
+                      ? `anyone in Tier "${tierNameById.get(r.unlockedByTierId) ?? "—"}"`
+                      : r.unlockedByGrantModuleKey
+                        ? `anyone holding a ${PERMISSION_MODULE_LABELS[r.unlockedByGrantModuleKey]} grant`
+                        : "nobody — this rule has no unlock route";
+                  return (
+                    <div key={r.id} className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
+                      <span className="flex-1 text-[13px] text-[var(--text)]">
+                        {target} &mdash; readable by {route}
+                      </span>
+                      <form action={deleteSensitiveFieldAccessRuleAction}>
+                        <input type="hidden" name="ruleId" value={r.id} />
+                        <button type="submit" className={BUTTON_SECONDARY}>
+                          Delete
+                        </button>
+                      </form>
+                    </div>
+                  );
+                })}
               </div>
 
-              <form action={createSensitiveFieldAccessRuleAction} className="mt-3 flex max-w-[420px] flex-col gap-2">
+              <form action={createSensitiveFieldAccessRuleAction} className="mt-3 flex max-w-[420px] flex flex-col gap-2">
+                {/* Both target selects need an explicit empty option, and
+                    that is not a nicety — it is the only reason a
+                    question-keyed rule can be created at all. The write
+                    side refuses a rule naming two targets, so a `fieldKey`
+                    select with no "— none —" submits a field *and* a
+                    question for every question-keyed rule, and every one
+                    of them fails. Combined with `sensitive` being refused
+                    until a rule exists, that left no way to mark a
+                    question sensitive from settings at all: the seeder
+                    could, and nothing else could. */}
                 <label className="flex flex-col gap-1">
-                  <span className={LABEL}>What does this rule unlock?</span>
-                  <select name="fieldKey" defaultValue={SENSITIVE_FIELD_KEYS[0]} className={INPUT}>
+                  <span className={LABEL}>A Sensitive-data column</span>
+                  <select name="fieldKey" defaultValue="" className={INPUT}>
+                    <option value="">— none —</option>
                     {SENSITIVE_FIELD_KEYS.map((k) => (
                       <option key={k} value={k}>
                         {SENSITIVE_FIELD_LABELS[k]}
@@ -1592,7 +1664,7 @@ export default async function SettingsPage({
                   </select>
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Or a profile question ID (pick exactly one target)</span>
+                  <span className={LABEL}>Or a profile question (pick exactly one)</span>
                   <select name="questionId" defaultValue="" className={INPUT}>
                     <option value="">— none —</option>
                     {sensitiveQuestionOptions.map((q) => (
@@ -1603,10 +1675,19 @@ export default async function SettingsPage({
                   </select>
                 </label>
                 {sensitiveQuestionOptions.length === 0 && (
+                  /* Correct as far as it goes — there are no *sensitive*
+                     questions — and wrong about what to do about it. The
+                     rule is the half that goes first: a rule against a
+                     plain question is a staged rule, restricting nothing
+                     today and starting the moment the sensitive box is
+                     ticked. Telling an admin to do it the other way round
+                     points at a sequence the write side refuses, which is
+                     the one order that has no reachable start. */
                   <p className="text-[12px] text-[var(--text-muted)]">
-                    No questions are marked sensitive yet, so there&rsquo;s nothing here to unlock. Mark one
-                    sensitive under Profile questions first — its <em>sensitive</em> box stays disabled until it
-                    has a rule, which is what makes the flag mean something.
+                    No question is marked sensitive yet, so a rule naming one won&rsquo;t
+                    restrict anything on its own. That&rsquo;s the right order though: name
+                    the question here, then tick its <em>sensitive</em> box above, and the
+                    rule starts restricting the moment you do.
                   </p>
                 )}
                 <label className="flex flex-col gap-1">
@@ -1642,9 +1723,12 @@ export default async function SettingsPage({
               <h2 className="text-[18px] font-semibold text-[var(--text)]">Consent purposes</h2>
               <p className="mt-1 text-[13px] text-[var(--text-muted)]">
                 One row per distinct purpose needing a member&rsquo;s consent — ordinary/operational processing gets
-                no row here at all. Optionally pin a purpose to one Sensitive-data field: once set, that field only
-                populates or shows once the owning member has granted this purpose, and stops the moment they
-                withdraw it.
+                no row here at all. Optionally pin a purpose to one Sensitive-data column or one
+                sensitive profile question: once set, that value only populates or shows once
+                the owning member has granted this purpose, and stops the moment they withdraw
+                it. Pinning a purpose is a separate decision from restricting a question&rsquo;s
+                audience — a question can be restricted to the kitchen team while the member
+                still has to have agreed to the kitchen reading it at all.
               </p>
               {consentPurposes.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">No purposes yet.</p>}
               <div className="mt-3 flex flex-col gap-2">
@@ -1680,7 +1764,7 @@ export default async function SettingsPage({
                 <input type="text" name="label" placeholder="label" required className={INPUT} />
                 <textarea name="noticeText" placeholder="notice text shown to the member" required rows={2} className={INPUT} />
                 <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Gates a Sensitive-data field (optional)</span>
+                  <span className={LABEL}>Gates a Sensitive-data column (optional)</span>
                   <select name="gatesSensitiveField" defaultValue="" className={INPUT}>
                     <option value="">— none —</option>
                     {SENSITIVE_FIELD_KEYS.map((k) => (

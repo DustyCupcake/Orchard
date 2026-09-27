@@ -58,10 +58,16 @@ export type NavGroup = {
 
 export const DASHBOARD_ITEM: NavItem = { key: "dashboard", label: "Dashboard", href: "/dashboard", icon: "home" };
 export const CALENDAR_ITEM: NavItem = { key: "calendar", label: "Calendar", href: "/calendar", icon: "calendar" };
-// Event is the member-facing name for the domain's former Cycle concept.
-// Keep the persisted key, route, and icon key stable; only the visible label
-// and its top-level placement change here.
-export const EVENTS_ITEM: NavItem = { key: "cycles", label: "Events", href: "/participation", icon: "cycle" };
+// The Events page deliberately has NO nav item, at the top level or inside
+// any group. Event management is a view of the event you already have
+// selected, not a destination of its own: it lives in the view-scope
+// switcher's own dropdown (CycleSwitcher.tsx) as "Manage events", which
+// opens the currently-selected scope's page. A top-level row would also
+// have been the one row whose href is a bare redirect shim — /participation
+// always resolves to /{cycleScope}/participation — so it could never light
+// up on the page it actually led to. The page itself stays reachable from
+// the switcher, the Dashboard and /community event cards, and the
+// per-event settings gear in that same dropdown.
 
 // Calendar is a single aggregating read view (Phase 44) — it has no
 // sub-pages of its own, unlike the groups below, so it sits at the top
@@ -214,16 +220,17 @@ export const NAV_GROUPS: NavGroup[] = [
 // reasoning that a destination needs somewhere to be found from — but
 // every outstanding thing else in this app already surfaces on the
 // Dashboard (the feed, the snapshot, the onboarding panel), and a
-// top-level row is expensive real estate: it sits beside Dashboard,
-// Calendar and Events for every member on every request, most of whom
-// will never have a single outstanding question. The count rides the
-// Dashboard badge instead (nav.ts's questionsBadgeCount) and the page is
-// reachable from the Dashboard element, the /profile pointer, the event
-// page's own link, and the post-declaration handover.
+// top-level row is expensive real estate: it sits beside Dashboard and
+// Calendar for every member on every request, most of whom will never
+// have a single outstanding question. The count rides the Dashboard
+// badge instead (nav.ts's taskBadgeCount) and the page is reachable from
+// the Dashboard element, the /profile pointer, the event page's own
+// link, and the post-declaration handover. The Events page is the same
+// shape for the same reason — see the note on DASHBOARD_ITEM's block
+// above.
 export const ALL_ITEMS: NavItem[] = [
   DASHBOARD_ITEM,
   CALENDAR_ITEM,
-  EVENTS_ITEM,
   ...NAV_GROUPS.flatMap((g) => g.items),
 ];
 

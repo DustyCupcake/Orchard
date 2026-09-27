@@ -43,6 +43,7 @@ import {
   updateTierInput,
 } from "@/lib/settings";
 import { decodeBulkMemberState, encodeBulkMemberState } from "./bulk-members-state";
+import type { PermissionModuleKey } from "@/lib/permissions";
 import {
   archiveProfileQuestion,
   createProfileQuestion,
@@ -52,6 +53,7 @@ import {
   unarchiveProfileQuestion,
   updateProfileQuestion,
   updateProfileQuestionInput,
+  type DefaultQuestionChoices,
 } from "@/lib/profile-questions";
 import {
   createSensitiveFieldAccessRule,
@@ -763,10 +765,48 @@ export async function seedDefaultProfileQuestionsAction(formData: FormData) {
     // kind of bug that looks like a data problem for ever afterwards.
     if (await hasProfileQuestions(actor.communityId)) {
       throw new AppError(
-        "This Community already has questions, so the default set wasn't added. Edit or archive what you have instead — a second set would be a duplicate of every one of them.",
+        "This Community already has questions, so the starter set wasn't added. Edit or archive what you have instead — a second set would be a duplicate of every one of them.",
       );
     }
-    await seedDefaultProfileQuestions(actor);
+
+    // The review step submits one `choice.<key>.*` group per proposed
+    // question, whether or not it was kept — so "excluded" is an explicit
+    // value rather than an absent key, and the seeder can tell "the admin
+    // unticked it" from "this row isn't in the table any more".
+    const raw = formData.getAll("choice");
+    const choices: DefaultQuestionChoices = {};
+    for (const entry of raw) {
+      const [key, field] = String(entry).split(".");
+      if (!key || !field) continue;
+      const value = String(formData.get(`choice.${key}.${field}`) ?? "");
+      const choice = (choices[key] ??= { include: false, audience: null });
+      if (field === "include") {
+        choice.include = value === "on";
+      } else if (field === "label") {
+        choice.label = value;
+      } else if (field === "route") {
+        choice.audience =
+          value === "tier"
+            ? { unlockedByTierId: null }
+            : value === "grant"
+              ? { unlockedByGrantModuleKey: null }
+              : value === "task"
+                ? { unlockedByTaskId: null }
+                : null;
+      } else if (choice.audience) {
+        // Filled in after `route`, so the route above is what decides
+        // which of these three fields is the audience rather than all
+        // three being set — which the write side refuses.
+        if (field === "tierId") choice.audience.unlockedByTierId = value || null;
+        if (field === "grantModuleKey") {
+          choice.audience.unlockedByGrantModuleKey =
+            (value || null) as PermissionModuleKey | null;
+        }
+        if (field === "taskId") choice.audience.unlockedByTaskId = value || null;
+      }
+    }
+
+    await seedDefaultProfileQuestions(actor, choices);
   } catch (err) {
     redirectWithError(err, "profile-privacy");
   }
