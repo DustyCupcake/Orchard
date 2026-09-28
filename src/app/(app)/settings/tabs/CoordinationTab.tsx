@@ -72,7 +72,7 @@ export default function CoordinationTab({ community }: { community: typeof commu
 
       <SettingsSection
         title="Indicators"
-        description="Community indicators are the patterns the data shows about who takes part — never published about a person, never gated. These two settings are only about how small a population can be broken out for."
+        description="Community indicators are the patterns the data shows about who takes part — never published about a person, never gated. This one setting is only about how small a population can be broken out for."
       >
         <SettingsCard
           action={updateIndicatorSettingsAction}
@@ -86,13 +86,22 @@ export default function CoordinationTab({ community }: { community: typeof commu
             defaultChecked={community.cycleIndicatorsEnabled}
             hint="Off, indicators are only ever shown for the community as a whole. On, each event gets its own figures for whoever's already in it."
           />
-          <TextField
-            label="Never break out below this many members"
-            name="cycleIndicatorsMinMembers"
-            type="number"
-            defaultValue={community.cycleIndicatorsMinMembers}
-            hint="The value isn't the point — the community making the decision and recording it is. Eight isn't meaningfully safer than ten."
-          />
+          {/* The "never below this many members" floor that used to sit
+              here is gone, and not because this is a tidier screen. It
+              guarded breaking an indicator out for one event when the
+              attendee count was small; but an indicator is now an
+              aggregate of public questions only, so its breakdown is
+              derivable from the per-person public answers and the
+              participation list, and the floor guarded nothing that
+              wasn't already visible. Its one remaining catch — a declined
+              answer in a small population, where "1 of 3" identifies who
+              didn't say — is a consequence of *counting declines* rather
+              than of the floor, so dropping the floor had to drop the
+              thing it guarded with it, or it would have dropped a guard
+              without dropping what it guarded. See
+              drizzle/0081_indicator_consent_collapse.sql, which drops the
+              column and says the same thing at the place the decision
+              belongs. */}
         </SettingsCard>
       </SettingsSection>
     </div>

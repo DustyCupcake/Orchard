@@ -1,7 +1,7 @@
 import { MODULE_DEFINITIONS } from "../modules";
 import { PERMISSION_MODULE_KEYS, PERMISSION_MODULE_LABELS } from "../permissions";
 import { OPENNESS_LABELS } from "../format";
-import { SENSITIVE_FIELD_KEYS, SENSITIVE_FIELD_LABELS } from "../sensitive-data";
+import { DEFAULT_PROFILE_QUESTION_GROUPS } from "../profile-questions/defaults-table";
 import { JOINING_LANE_KINDS, type JoinLaneKind } from "@/db/schema";
 import type { AssemblyResponseType } from "./agenda";
 
@@ -282,13 +282,19 @@ export const FOUNDING_SETTINGS_ITEMS: FoundingSettingsItem[] = [
   },
 
   // ── Data & privacy ────────────────────────────────────────────────
+  // These two used to name the four fixed sensitive member columns, which
+  // no longer exist. The questions they now refer to are the ones the
+  // starter set proposes, and the settings copy points at the real
+  // mechanism rather than at a module toggle that gated nothing.
   {
     group: "Data & privacy",
     text: "Which of these do we need to hold about members?",
     responseType: "multi_choice",
-    options: SENSITIVE_FIELD_KEYS.map((key) => SENSITIVE_FIELD_LABELS[key]),
+    options: DEFAULT_PROFILE_QUESTION_GROUPS.find((g) => g.title === "Restricted")!.questions.map(
+      (q) => q.label,
+    ),
     settingsMapping:
-      "Settings → Profile & privacy → sensitive fields. Nothing here is switched on by default, and no field is readable without a member's active consent",
+      "Settings → Profile & privacy → Profile questions, under Restricted. A question nobody marks sensitive is readable by the whole Community, so this is the decision that makes them private",
   },
   {
     group: "Data & privacy",
@@ -296,7 +302,7 @@ export const FOUNDING_SETTINGS_ITEMS: FoundingSettingsItem[] = [
     responseType: "text",
     options: [],
     settingsMapping:
-      "Settings → Profile & privacy → who unlocks each field (a task, a tier, or a permission module)",
+      "Settings → Profile & privacy → Access rules (a Tier, a Task, or a permission grant). A sensitive question with no rule is readable by its owner and whoever activates Emergency access — a real choice for an emergency contact, and the right default for anything the platform shouldn't assume",
   },
 ];
 

@@ -25,6 +25,7 @@ import {
   setRecruitmentSubscriptionAction,
   submitEvaluationAction,
 } from "./actions";
+import SelectField from "@/components/ui/SelectField";
 
 export const dynamic = "force-dynamic";
 
@@ -315,7 +316,7 @@ export default async function ApplicationsPage({
                       <label style={{ fontSize: "0.85rem" }}>
                         Your recommendation
                         <br />
-                        <select
+                        <SelectField
                           name="recommendation"
                           defaultValue={myEvaluation?.recommendation ?? "unsure"}
                           style={{ padding: "0.3rem" }}
@@ -323,7 +324,7 @@ export default async function ApplicationsPage({
                           <option value="proceed">Proceed</option>
                           <option value="unsure">Unsure</option>
                           <option value="decline">Decline</option>
-                        </select>
+                        </SelectField>
                       </label>
                       <label style={{ fontSize: "0.85rem" }}>
                         Notes (optional)

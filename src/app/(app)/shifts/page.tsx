@@ -28,6 +28,7 @@ import {
   withdrawFromShiftAction,
 } from "./actions";
 import MySeriesSection from "./MySeriesSection";
+import SelectField from "@/components/ui/SelectField";
 
 export const dynamic = "force-dynamic";
 
@@ -363,7 +364,7 @@ export default async function ShiftsPage({
               <form action={createShiftSeriesAction} className="mt-3 flex max-w-[500px] flex-col gap-2">
                 <label className="flex flex-col gap-1">
                   <span className={LABEL}>Where does this series belong? (optional — defaults to an event below)</span>
-                  <select name="cycleId" defaultValue={openCycles[0]?.id ?? ""} className={INPUT}>
+                  <SelectField name="cycleId" defaultValue={openCycles[0]?.id ?? ""} className={INPUT}>
                     {isStandingManager && <option value="">Standing — community-wide</option>}
                     {openCycles.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -371,7 +372,7 @@ export default async function ShiftsPage({
                         {c.shiftSignupsOpenedAt ? " (slot may need the manager's confirmation)" : " (opens with the roster)"}
                       </option>
                     ))}
-                  </select>
+                  </SelectField>
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className={LABEL}>Title</span>

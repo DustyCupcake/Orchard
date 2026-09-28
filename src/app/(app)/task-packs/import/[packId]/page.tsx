@@ -12,6 +12,7 @@ import { ClonePreviewGrid, ClonePreviewList } from "@/components/ClonePreview";
 import ReassignmentBulkSelect from "./ReassignmentBulkSelect";
 import { decodeImportState } from "./state";
 import { finalizePackImportAction, reviewPackImportAction } from "./actions";
+import SelectField from "@/components/ui/SelectField";
 
 export const dynamic = "force-dynamic";
 
@@ -205,14 +206,14 @@ export default async function ImportTaskPackPage({
           <label>
             Event type (optional)
             <br />
-            <select name="cycleTypeId" defaultValue={qCycleTypeId ?? ""} style={{ padding: "0.4rem", width: "100%" }}>
+            <SelectField name="cycleTypeId" defaultValue={qCycleTypeId ?? ""} style={{ padding: "0.4rem", width: "100%" }}>
               <option value="">No event type</option>
               {cycleTypes.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
                 </option>
               ))}
-            </select>
+            </SelectField>
           </label>
         )}
 
@@ -230,7 +231,7 @@ export default async function ImportTaskPackPage({
                 <span style={{ color: "#a15c00" }}> — similar match, not exact: double-check before continuing</span>
               )}
               <br />
-              <select
+              <SelectField
                 name={`resolution__${hint}`}
                 defaultValue={suggestedBranchId ?? "__create_new__"}
                 style={{ padding: "0.3rem" }}
@@ -243,7 +244,7 @@ export default async function ImportTaskPackPage({
                     {matchKind === "similar" && b.id === suggestedBranchId ? " (similar match)" : ""}
                   </option>
                 ))}
-              </select>
+              </SelectField>
             </label>
           ))}
         </div>

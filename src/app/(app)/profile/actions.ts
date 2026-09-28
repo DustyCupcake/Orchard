@@ -9,14 +9,9 @@ import { member, tier } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { assertNotViewingAs } from "@/lib/view-as";
 import { answerProfileQuestion, getProfileQuestion } from "@/lib/profile-questions";
-import { updateIndicatorConsent } from "@/lib/profile-questions/indicators";
 import { fieldValueFromFormData, toFieldShape } from "@/lib/field-shape";
-import {
-  SensitiveFieldKey,
-  updateOwnSensitiveData,
-  updateOwnSensitiveDataInput,
-} from "@/lib/sensitive-data";
-import { getGatingPurposesForCommunity, grantConsent, withdrawConsent } from "@/lib/consent";
+import { getGatingPurposesForQuestions, grantConsent, withdrawConsent } from "@/lib/consent";
+import { agreeToEmergencyReveal, extendAnswerConsent } from "@/lib/sensitive-data";
 import {
   contactMethodInput,
   createContactMethod,
@@ -94,20 +89,6 @@ export async function updateProfile(formData: FormData) {
 // Self-service, on the page that already says "these are your answers":
 // how *your* answers get read is yours to decide, and no Admin gets a
 // button for it. Mirrors updateContributionVisibility's own shape.
-export async function updateIndicatorConsentAction(formData: FormData) {
-  const actor = await requireMember();
-  try {
-    await updateIndicatorConsent(actor, formData.get("consentsToCommunityIndicators") === "on");
-  } catch (err) {
-    redirectWithError(err);
-  }
-  // The only readers are /community and /dashboard, neither of which
-  // this page revalidates.
-  revalidatePath("/profile");
-  revalidatePath("/community");
-  revalidatePath("/dashboard");
-}
-
 export async function submitProfileAnswerAction(formData: FormData) {
   const current = await requireMember();
 
@@ -136,56 +117,23 @@ export async function submitProfileAnswerAction(formData: FormData) {
   // mistyped email) surfaced as an unhandled throw. Same handling every
   // other answer action in the app already had.
   try {
+    // Consent first, and re-derived from the question rather than trusted
+    // from the form: the `consent_<key>` checkbox names a purpose *key*, and
+    // a member could otherwise point one at a purpose this question isn't
+    // gated by and grant themselves something unrelated. The question is
+    // already loaded above, so the lookup is a single map hit.
+    const purposes = await getGatingPurposesForQuestions(current.communityId);
+    const purpose = purposes.get(question.id);
+    if (purpose && formData.get(`consent_${purpose.key}`) === "on") {
+      await grantConsent(current, purpose.id, "explicit_action");
+    }
+
     await answerProfileQuestion(current, questionId, {
       status,
       value: status === "answered" ? value : undefined,
       capacityVisibility,
       shareWithAudience: formData.get("shareWithAudience") === "on",
     });
-  } catch (err) {
-    redirectWithError(err);
-  }
-  revalidatePath("/profile");
-}
-
-const SENSITIVE_FIELD_FORM_KEYS: Record<SensitiveFieldKey, string> = {
-  health_conditions: "healthConditions",
-  allergies: "allergies",
-  emergency_contact: "emergencyContact",
-  orientation: "orientation",
-};
-
-// Phase 46: "filling in a health condition prompts the matching consent
-// first, not a separate settings screen visited in advance" — a
-// checked "consent_<field>" checkbox on this same form grants consent
-// for that field's gating purpose (if any) before the field write is
-// attempted, so a single submit does both in one act. Re-derives the
-// field->purpose mapping server-side rather than trusting a hidden
-// input, since a member could otherwise point a checkbox at an
-// arbitrary purpose id.
-export async function updateSensitiveDataAction(formData: FormData) {
-  const current = await requireMember();
-
-  try {
-    const gatingPurposes = await getGatingPurposesForCommunity(current.communityId);
-    for (const [fieldKey, formKey] of Object.entries(SENSITIVE_FIELD_FORM_KEYS) as [
-      SensitiveFieldKey,
-      string,
-    ][]) {
-      const purpose = gatingPurposes.get(fieldKey);
-      if (!purpose) continue;
-      if (formData.get(`consent_${formKey}`) === "on") {
-        await grantConsent(current, purpose.id, "explicit_action");
-      }
-    }
-
-    const input = updateOwnSensitiveDataInput.parse({
-      healthConditions: String(formData.get("healthConditions") ?? "").trim() || null,
-      allergies: String(formData.get("allergies") ?? "").trim() || null,
-      emergencyContact: String(formData.get("emergencyContact") ?? "").trim() || null,
-      orientation: String(formData.get("orientation") ?? "").trim() || null,
-    });
-    await updateOwnSensitiveData(current, input);
   } catch (err) {
     redirectWithError(err);
   }
@@ -300,6 +248,59 @@ export async function withdrawConsentAction(formData: FormData) {
   const purposeId = String(formData.get("purposeId"));
   try {
     await withdrawConsent(current, purposeId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+/**
+ * Agree to share one answer with one newly-added audience.
+ *
+ * Self-service and about exactly one (answer, rule) pair on purpose. The
+ * list it serves is already per-rule so a member can say yes to the
+ * kitchen team without handing over to the group added last week, and this
+ * action agrees to precisely the pair the button names — there is no
+ * "extend sharing" *for a question*, because that is a different and much
+ * wider decision than the one on the button.
+ *
+ * `assertNotViewingAs` because this writes about the member's own data
+ * and an Admin reading somebody else's profile must not be able to answer
+ * on their behalf. The lib scopes the write to the answer's own owner too,
+ * so a forged POST is refused even if it gets this far.
+ */
+export async function extendAnswerConsentAction(formData: FormData) {
+  const current = await requireMember();
+  try {
+    assertNotViewingAs();
+    await extendAnswerConsent(
+      current,
+      String(formData.get("answerId") ?? ""),
+      String(formData.get("ruleId") ?? ""),
+    );
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+/**
+ * Agree to have one answer revealed by whoever activates emergency mode.
+ *
+ * The emergency counterpart of `extendAnswerConsentAction`, and the same
+ * three constraints apply for the same reasons: self-service, one
+ * (answer) rather than a whole question, and scoped to the answer's own
+ * owner in the lib so a forged POST can't agree on someone else's behalf.
+ *
+ * `assertNotViewingAs` for the same reason as there — an Admin reading
+ * somebody else's profile must not be able to widen what can be pulled
+ * out of their page in a crisis.
+ */
+export async function agreeToEmergencyRevealAction(formData: FormData) {
+  const current = await requireMember();
+  try {
+    assertNotViewingAs();
+    await agreeToEmergencyReveal(current, String(formData.get("answerId") ?? ""));
   } catch (err) {
     redirectWithError(err);
   }

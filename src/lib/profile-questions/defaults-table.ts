@@ -38,6 +38,36 @@ export type DefaultQuestionSeed = {
   // exists, so this is a flag in the table and a step in the seed — see
   // `seedDefaultProfileQuestions` for why the order is load-bearing.
   accessRuleModuleKey?: PermissionModuleKey;
+  // Restricted with no audience at all: readable by whoever answered, plus
+  // whoever activates Emergency access on their page, and by nobody else.
+  //
+  // The alternative to this flag used to be a refusal — marking a question
+  // sensitive required a rule, because a rule-less sensitive question
+  // resolves to "nobody but the owner" and an admin who wanted an audience
+  // might get that by mistake. But owner-only is a real answer to a real
+  // question, and refusing to express it meant the only way to ship an
+  // emergency contact was to invent an audience nobody had asked for. The
+  // settings copy names all three states so this is a choice on the screen
+  // rather than a slip past a guard.
+  // A question whose audience the platform may not choose. The only one is
+  // the emergency contact, and the reason is the whole entry: none of the
+  // fourteen permission modules means "responds to emergencies", and
+  // defaulting it to one — Admin especially, since holding Admin is about
+  // who manages a Community's settings and is no reason to hold someone's
+  // medical or welfare details — would be the platform making a privacy
+  // decision on the Community's behalf.
+  //
+  // So the review step offers it with the audience picker empty and
+  // *required*: the Admin either names a group or unticks the question.
+  // The unattended signup path, where there is nobody to ask, skips it —
+  // which is the one intentional difference between the two entry points,
+  // and it is a difference of omission rather than of guesswork.
+  needsChosenAudience?: boolean;
+  // Whether emergency access can reveal this answer. Requires `sensitive`,
+  // because an emergency override with no restriction to override is a
+  // claim about reading public data, and logging it as though it had been
+  // protected would be a lie in the audit trail.
+  emergencyAccess?: boolean;
   // Free text: the doc's "Why" column, so the reason travels with the
   // question rather than living in a document nobody reading their own
   // settings will open.
@@ -69,11 +99,46 @@ export type DefaultQuestionChoice = {
    *  submits one, so a cleared title falls back rather than creating a
    *  nameless question. */
   label?: string;
+  /** Whether the answer is restricted at all. The write side refuses a
+   *  restricted question with no audience — a sensitive question is
+   *  restricted *by* its audience, so half the pair is not a thing — which
+   *  makes `restricted: true` with `audience: null` a contradiction rather
+   *  than the owner-and-emergency state it used to be. */
+  restricted: boolean;
   audience: SeededQuestionAudience | null;
+  /** Emergency access only ever rides on a restricted question, so the
+   *  form offers it only once `restricted` is true. */
+  emergencyAccess?: boolean;
 };
 
 /** Keyed by `DefaultQuestionSeed.key`. */
 export type DefaultQuestionChoices = Record<string, DefaultQuestionChoice>;
+
+const STARTER_CHOICE_PREFIX = "choice";
+
+/**
+ * The FormData field name for one part of one review-step choice.
+ *
+ * Lives here, not in defaults.ts, because the review form is a client
+ * component and defaults.ts reaches `@/db` — importing the seeder from a
+ * client component fails the build on `postgres`/`tls`/`fs`. So does
+ * importing anything else from that module, which is the whole reason this
+ * file exists.
+ *
+ * Exported and shared with the parser in defaults.ts, because the form and
+ * its parser disagreed once, silently and completely: the form emitted
+ * `choice.<key>.<field>` while the parser called `formData.getAll("choice")`,
+ * which matches a name exactly and so matched nothing. The submission
+ * created zero questions and reported no error, since an empty choices
+ * object legitimately means "the admin kept nothing" — and a suite calling
+ * the seeder directly with a built object couldn't see it. One function,
+ * two callers, no way to spell the name wrong twice.
+ */
+export function starterChoiceField(key: string, field: string) {
+  return `${STARTER_CHOICE_PREFIX}.${key}.${field}`;
+}
+
+export const STARTER_CHOICE_FIELD_PREFIX = STARTER_CHOICE_PREFIX;
 
 // The starter set from docs/default-profile-questions.md, as data.
 //
@@ -223,6 +288,33 @@ export const DEFAULT_PROFILE_QUESTION_GROUPS: DefaultQuestionGroup[] = [
         // a member with nothing to add isn't forced to write something.
         accessRuleModuleKey: "branch_coordination",
         why: "The escape hatch for disability, caring, faith — whatever a fixed list doesn't cover. The easiest question in the set to get wrong, because it reads like a capability question and isn't.",
+      },
+      {
+        key: "emergency_contact",
+        label: "Emergency contact",
+        responseType: "text",
+        multiline: true,
+        // Restricted like every other private answer, plus emergency
+        // access — the one time this is needed is exactly when someone
+        // activates Emergency access on the member's page, at which point
+        // the answer is revealed, the read is logged, and both parties are
+        // notified.
+        //
+        // The audience is the Community's to name and the platform is not
+        // allowed to name it: none of the permission modules means
+        // "responds to emergencies", and Admin least of all, since holding
+        // Admin is about who manages a Community's settings and is no
+        // reason to hold someone's welfare details. So this row asks for a
+        // choice, and the unattended signup path skips it.
+        needsChosenAudience: true,
+        emergencyAccess: true,
+        // No decline. "I'd rather not give an emergency contact" is not a
+        // real answer to the question — but the member can still leave it
+        // blank, and blank is treated as "nothing to reveal" rather than as
+        // a gap, because the emergency path reveals what exists rather than
+        // reporting a missing field.
+        allowPreferNotToSay: false,
+        why: "The one thing worth having before it's needed. Readable by whoever you name below, and by anyone who activates Emergency access on the person's page — with the read logged and both of you told.",
       },
       {
         key: "home_city",

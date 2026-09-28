@@ -7,7 +7,8 @@ import { ConflictError, NotFoundError } from "../errors";
 import { toFieldShape, validateFieldValue, type TextValidation } from "../field-shape";
 import { phaseForCycle } from "./capacity";
 import { getMemberDeclaredCycleId } from "../participation";
-import { resolveReadableQuestions } from "../sensitive-data";
+import { getGatingPurposesForQuestions, hasActiveConsent } from "../consent";
+import { consentAnswerToCurrentAudience, resolveReadableQuestions } from "../sensitive-data";
 
 type Member = typeof memberTable.$inferSelect;
 type ProfileQuestion = typeof profileQuestionTable.$inferSelect;
@@ -133,6 +134,25 @@ export async function answerProfileQuestion(
   }
 
   const value = input.status === "answered" ? validateValue(question, input.value) : null;
+  // A question with a configured consent purpose needs that consent
+  // before an answer is stored against it — the behaviour the four fixed
+  // member columns had (Phase 46, "filling in a health condition prompts
+  // the matching consent first, not a separate settings screen visited in
+  // advance") and which question-keyed purposes never got, because
+  // getGatingPurposesForQuestions had no caller at all.
+  //
+  // Only for a real value, for the same reason the column gate was: a
+  // deferral and a decline store nothing to be shown to anyone, so neither
+  // is a disclosure and neither needs a licence to record.
+  if (value !== null) {
+    const purposes = await getGatingPurposesForQuestions(actor.communityId);
+    const purpose = purposes.get(question.id);
+    if (purpose && !(await hasActiveConsent(actor.id, purpose.id))) {
+      throw new ConflictError(
+        `Answering "${question.label}" needs your agreement to the purpose "${purpose.label}" first — tick the consent box on the question and submit again.`,
+      );
+    }
+  }
   // "Prefer not to say" only exists on questions that offer it. A client
   // that sends `declined` for one that doesn't is not making a choice
   // the community offered, so it's rejected rather than quietly stored —
@@ -154,6 +174,7 @@ export async function answerProfileQuestion(
       ),
     );
 
+  const sharing = question.sensitive ? (input.shareWithAudience ?? true) : true;
   const row = {
     status: input.status,
     value,
@@ -164,7 +185,15 @@ export async function answerProfileQuestion(
     // be a claim about the world that isn't true, and the read side would
     // then have to special-case it. Making it unreachable here is better
     // than making every reader remember.
-    shareWithAudience: question.sensitive ? (input.shareWithAudience ?? true) : true,
+    shareWithAudience: sharing,
+    // Whether this answer may be pulled out in a crisis, from the question's
+    // own flag rather than from anything the client sent — the member
+    // doesn't get to *narrow* an emergency reach below what answering the
+    // question told them, and un-ticking the share box is the only reduction
+    // they get. Un-ticking *is* the emergency-only choice, so it counts as
+    // the agreement and is forced true: it would be asking someone about a
+    // reach they chose.
+    emergencyConsent: question.emergencyAccess || !sharing,
     answeredAt: new Date(),
   } as const;
 
@@ -174,6 +203,15 @@ export async function answerProfileQuestion(
       .set(row)
       .where(eq(profileAnswer.id, existing.id))
       .returning();
+    // Re-answering also re-consents, and for the same reason answering
+    // does: the member has just been shown the question and the audience
+    // it is shared with, and answering again is them agreeing to that
+    // audience afresh. It is also the only way a *new* rule ever reaches
+    // an old answer without a separate prompt — a member who already
+    // knows the question and re-answers it is agreeing to the audience
+    // that exists now, so making them find a separate "extend sharing"
+    // button for the same fact would be a second thing to remember.
+    await recordAudienceConsent(updated, question);
     return updated;
   }
 
@@ -181,7 +219,31 @@ export async function answerProfileQuestion(
     .insert(profileAnswer)
     .values({ memberId: actor.id, questionId, cycleId, ...row })
     .returning();
+  await recordAudienceConsent(created, question);
   return created;
+}
+
+/**
+ * Consent this answer to every rule that exists right now.
+ *
+ * The whole consent model in one call, and it fires from one place — the
+ * answer write — rather than from the rule create. That direction is the
+ * fix: a rule added afterwards has no consent row to read, so it cannot
+ * reach the answers that predate it, which is the difference between a
+ * member being asked and a member being assumed to have agreed.
+ *
+ * A no-op for a public question, a decline, or an unshared answer, all of
+ * which have nothing for a rule to read anyway — so the filtering lives
+ * here where the three cases are already decided rather than in the
+ * resolver, which would have to re-derive them.
+ */
+async function recordAudienceConsent(
+  answer: { id: string; status: string; shareWithAudience: boolean } | undefined,
+  question: { id: string; sensitive: boolean },
+) {
+  if (!answer) return 0;
+  if (!question.sensitive || answer.status !== "answered" || !answer.shareWithAudience) return 0;
+  return consentAnswerToCurrentAudience(answer.id, question.id);
 }
 
 export type OutstandingQuestion = {

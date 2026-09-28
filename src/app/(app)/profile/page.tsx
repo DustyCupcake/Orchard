@@ -1,15 +1,14 @@
 import Link from "next/link";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { tier } from "@/db/schema";
+import { profileQuestion, tier } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { listOnceEverAnswers, listOutstandingQuestions } from "@/lib/profile-questions";
-import { getCommunity, getCycleTypeCountProgress } from "@/lib/settings";
-import { isModuleEnabled } from "@/lib/modules";
-import { SENSITIVE_FIELD_LABELS, SensitiveFieldKey } from "@/lib/sensitive-data";
+import { getCycleTypeCountProgress } from "@/lib/settings";
+import { listPendingAudienceConsents } from "@/lib/sensitive-data";
 import { CONTACT_METHOD_VISIBILITIES, listOwnContactMethods } from "@/lib/contact-methods";
-import { getGatingPurposesForCommunity, hasActiveConsent, listMyConsentStatus } from "@/lib/consent";
+import { listMyConsentStatus } from "@/lib/consent";
 import { listAllDistinctTags } from "@/lib/tags";
 import { listOwnMemberLanguages, MEMBER_LANGUAGE_LEVELS, type MemberLanguageLevel } from "@/lib/member-languages";
 import { listMemberAxisValues, listTraitAxes } from "@/lib/trait-axes";
@@ -20,18 +19,19 @@ import { toFieldShape } from "@/lib/field-shape";
 import ThemeToggle from "./ThemeToggle";
 import {
   addMemberLanguageAction,
+  agreeToEmergencyRevealAction,
   createContactMethodAction,
   deleteContactMethodAction,
   deleteMemberLanguageAction,
+  extendAnswerConsentAction,
   grantConsentAction,
   submitProfileAnswerAction,
   updateContactMethodAction,
   updateMemberAxisAction,
   updateProfile,
-  updateIndicatorConsentAction,
-  updateSensitiveDataAction,
   withdrawConsentAction,
 } from "./actions";
+import SelectField from "@/components/ui/SelectField";
 
 const LANGUAGE_LEVEL_LABELS: Record<MemberLanguageLevel, string> = {
   basic: "Basic",
@@ -58,30 +58,6 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 // — "at the point a gated field is first populated, not a separate
 // settings screen visited in advance." Renders nothing once consent is
 // already active (see the general "Your consent" section further down
-// for withdrawing it) or when the field isn't gated at all.
-function ConsentCheckbox({
-  fieldKey,
-  formKey,
-  gatingPurposes,
-  active,
-}: {
-  fieldKey: SensitiveFieldKey;
-  formKey: string;
-  gatingPurposes: Map<SensitiveFieldKey, { id: string; label: string; noticeText: string }>;
-  active: boolean;
-}) {
-  const purpose = gatingPurposes.get(fieldKey);
-  if (!purpose || active) return null;
-  return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-2.5 text-[13px]">
-      <p className="text-[var(--text)]">{purpose.noticeText}</p>
-      <label className="mt-1.5 flex items-center gap-2 text-[var(--text)]">
-        <input type="checkbox" name={`consent_${formKey}`} /> I consent to &ldquo;{purpose.label}&rdquo;
-      </label>
-    </div>
-  );
-}
-
 export default async function ProfilePage({
   searchParams,
 }: {
@@ -98,44 +74,48 @@ export default async function ProfilePage({
     communityTiers,
     outstanding,
     onceEverAnswers,
-    communityRow,
     cycleTypeProgress,
     ownContactMethods,
-    gatingPurposes,
     myConsentStatus,
     tagSuggestions,
     ownLanguages,
     traitAxes,
     ownAxisValues,
+    pendingAudienceConsents,
   ] = await Promise.all([
     db.select().from(tier).where(eq(tier.communityId, viewing.communityId)),
     listOutstandingQuestions(viewing),
     listOnceEverAnswers(viewing),
-    getCommunity(viewing),
     getCycleTypeCountProgress(viewing),
     listOwnContactMethods(viewing),
-    getGatingPurposesForCommunity(viewing.communityId),
     listMyConsentStatus(viewing),
     listAllDistinctTags(viewing),
     listOwnMemberLanguages(viewing),
     listTraitAxes(viewing),
     listMemberAxisValues(viewing.id),
+    listPendingAudienceConsents(viewing),
   ]);
-  const sensitiveDataOn = isModuleEnabled(communityRow, "sensitive_data");
   // Only a manual-criterion tier is ever hand-toggled here — a computed
   // one (cycle_type_count, Phase 40) is owned by syncComputedTiers and
   // shown read-only below instead. See actions.ts's updateProfile for
   // why the submitted checkbox set can't just overwrite tierIds wholesale.
   const manualTiers = communityTiers.filter((t) => t.criterionType === "manual");
 
-  // Phase 46: which of the 4 sensitive fields currently need a consent
-  // prompt inline (a gating purpose exists, and this member hasn't
-  // granted it yet) — computed once for the Sensitive data section
-  // below rather than re-querying per field.
-  const fieldConsentActive = new Map<SensitiveFieldKey, boolean>();
-  for (const [fieldKey, purpose] of gatingPurposes) {
-    fieldConsentActive.set(fieldKey, await hasActiveConsent(viewing.id, purpose.id));
-  }
+  // The label of whatever question each purpose gates, so "Your consent"
+  // can say what a grant is actually for rather than naming a purpose in
+  // the abstract. Fetched for just the gated ids rather than the whole
+  // question list: this page already loads a lot, and a member's consent
+  // rows are few.
+  const gatedQuestionIds = [
+    ...new Set(myConsentStatus.map((s) => s.purpose.gatesQuestionId).filter((id): id is string => Boolean(id))),
+  ];
+  const gatedQuestions = gatedQuestionIds.length
+    ? await db
+        .select({ id: profileQuestion.id, label: profileQuestion.label })
+        .from(profileQuestion)
+        .where(inArray(profileQuestion.id, gatedQuestionIds))
+    : [];
+  const questionLabelById = new Map(gatedQuestions.map((q) => [q.id, q.label]));
 
   return (
     <main className="mx-auto max-w-[480px] px-6 py-10 md:px-12 md:py-14">
@@ -156,11 +136,11 @@ export default async function ProfilePage({
       <form action={updateProfile} className="mt-6 flex flex-col gap-3">
         <label className="flex flex-col gap-1">
           <span className={LABEL}>Date display</span>
-          <select name="dateDisplayMode" defaultValue={viewing.dateDisplayMode ?? "inherit"} className={INPUT}>
+          <SelectField name="dateDisplayMode" defaultValue={viewing.dateDisplayMode ?? "inherit"} className={INPUT}>
             <option value="inherit">Use the Community default</option>
             <option value="exact">Exact calendar dates</option>
             <option value="period">Period name + weekday when available</option>
-          </select>
+          </SelectField>
           <span className="text-[12px] text-[var(--text-muted)]">
             Read-only date labels only; date inputs and exact dates remain available.
           </span>
@@ -313,6 +293,66 @@ export default async function ProfilePage({
         </section>
       )}
 
+      {/* The one place a member is asked about an audience they were NOT
+          already asked about. Every other consent here is given at the
+          moment of answering, against an audience the form showed them.
+          This is the other direction: the Community has since added a
+          group to a question these answers were already shared with, and
+          nothing reaches them until each of them says so. Without this
+          list, the alternative is either never reaching them or reaching
+          them without asking, and the whole table exists to avoid the
+          second.
+
+          Deliberately one row per *group* rather than per question, so
+          agreeing to the kitchen team doesn't also hand over to whoever
+          was added last week. */}
+      {pendingAudienceConsents.length > 0 && (
+        <section className="mt-8">
+          <SectionHeading>Extend who can see your answers</SectionHeading>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            Since you answered, your Community has widened what it can read &mdash; a new group on
+            a question, or a question marked so it can be pulled out in a crisis. Neither can reach
+            your answer until you say so, and nothing changes if you leave these alone: whoever
+            could read your answer before still can.
+          </p>
+          <div className="mt-2 flex flex-col gap-2">
+            {pendingAudienceConsents.map((pending) =>
+              pending.kind === "emergency" ? (
+                /* Emergency access is a *reach*, not an audience, so it gets
+                   its own sentence rather than a slot in the audience one:
+                   "who can read this" and "this can be pulled out in a
+                   crisis" are different promises and merging them into one
+                   list would blur which one a button was agreeing to. */
+                <form key={`e:${pending.answerId}`} action={agreeToEmergencyRevealAction} className={`${CARD} flex flex-wrap items-center gap-2`}>
+                  <input type="hidden" name="answerId" value={pending.answerId} />
+                  <span className="flex-1 text-[13px] text-[var(--text)]">
+                    {pending.questionLabel} &mdash; your Community has marked this one so it can be
+                    read by whoever activates Emergency access on your page, and you weren&rsquo;t
+                    asked about that. It isn&rsquo;t readable that way until you say so. Whoever does
+                    read it is recorded, and you&rsquo;re told it happened.
+                  </span>
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Yes, allow that
+                  </button>
+                </form>
+              ) : (
+                <form key={`r:${pending.answerId}:${pending.ruleId}`} action={extendAnswerConsentAction} className={`${CARD} flex flex-wrap items-center gap-2`}>
+                  <input type="hidden" name="answerId" value={pending.answerId} />
+                  <input type="hidden" name="ruleId" value={pending.ruleId} />
+                  <span className="flex-1 text-[13px] text-[var(--text)]">
+                    {pending.questionLabel} &mdash; share with{" "}
+                    {pending.audienceLabel ?? "another group in this Community"}
+                  </span>
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Yes, share it
+                  </button>
+                </form>
+              ),
+            )}
+          </div>
+        </section>
+      )}
+
       {onceEverAnswers.length > 0 && (
         <section className="mt-8">
           <SectionHeading>Your answers</SectionHeading>
@@ -367,86 +407,16 @@ export default async function ProfilePage({
           <Link href="/community" className="text-[var(--accent-1)] hover:underline">
             the Community page
           </Link>{" "}
-          &mdash; a proportion, a distribution or a range, never anybody&rsquo;s individual answer. The
-          consent below is given once for the whole section rather than per question, and covers
-          every answer you give to a question in it, including questions a Community adds later.
+          &mdash; a proportion, a distribution or a range, never anybody&rsquo;s individual answer.
+          Only questions the whole Community can already read individually are ever
+          published, so a published figure says nothing the underlying answers don&rsquo;t
+          already say.
         </p>
-        <form action={updateIndicatorConsentAction} className="mt-3 flex flex-col gap-2">
-          <CheckField
-            label="My answers to published questions may be counted in community indicators"
-            name="consentsToCommunityIndicators"
-            defaultChecked={viewing.consentsToCommunityIndicators}
-          />
-          <p className="text-[12px] text-[var(--text-muted)]">
-            {/* Real apostrophes rather than &rsquo; here: this is a
-                JavaScript string inside a prop, and HTML entities are
-                only decoded in JSX text and string *literals*, not in a
-                JS expression — `&rsquo;` would render as those seven
-                characters. */}
-            {viewing.consentsToCommunityIndicators
-              ? "Your answers to published questions are included. Each one also offers “prefer not to say” when you’d rather answer but not be counted, and declining a question keeps it out entirely."
-              : "You’re out of every published indicator. Your questions still work exactly as they did, and you’re not counted in the coverage figures either — you’re simply not part of the group they describe."}
-          </p>
-          <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
-            Save
-          </button>
-        </form>
-      </section>
-
-      {sensitiveDataOn && (
-        <section className="mt-8">
-          <SectionHeading>Sensitive data</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-            Always yours to see and edit. Only visible to others via a task or tier your Community
-            has explicitly set to unlock a given field — see <code className="font-mono">/sensitive-data</code>.
-          </p>
-          <form action={updateSensitiveDataAction} className="mt-3 flex flex-col gap-3">
-            <label className="flex flex-col gap-1">
-              <span className={LABEL}>{SENSITIVE_FIELD_LABELS.health_conditions}</span>
-              <textarea name="healthConditions" rows={2} defaultValue={viewing.healthConditions ?? ""} className={INPUT} />
-            </label>
-            <ConsentCheckbox
-              fieldKey="health_conditions"
-              formKey="healthConditions"
-              gatingPurposes={gatingPurposes}
-              active={fieldConsentActive.get("health_conditions") ?? false}
-            />
-            <label className="flex flex-col gap-1">
-              <span className={LABEL}>{SENSITIVE_FIELD_LABELS.allergies}</span>
-              <textarea name="allergies" rows={2} defaultValue={viewing.allergies ?? ""} className={INPUT} />
-            </label>
-            <ConsentCheckbox
-              fieldKey="allergies"
-              formKey="allergies"
-              gatingPurposes={gatingPurposes}
-              active={fieldConsentActive.get("allergies") ?? false}
-            />
-            <label className="flex flex-col gap-1">
-              <span className={LABEL}>{SENSITIVE_FIELD_LABELS.emergency_contact}</span>
-              <input type="text" name="emergencyContact" defaultValue={viewing.emergencyContact ?? ""} className={INPUT} />
-            </label>
-            <ConsentCheckbox
-              fieldKey="emergency_contact"
-              formKey="emergencyContact"
-              gatingPurposes={gatingPurposes}
-              active={fieldConsentActive.get("emergency_contact") ?? false}
-            />
-            <label className="flex flex-col gap-1">
-              <span className={LABEL}>{SENSITIVE_FIELD_LABELS.orientation}</span>
-              <input type="text" name="orientation" defaultValue={viewing.orientation ?? ""} className={INPUT} />
-            </label>
-            <ConsentCheckbox
-              fieldKey="orientation"
-              formKey="orientation"
-              gatingPurposes={gatingPurposes}
-              active={fieldConsentActive.get("orientation") ?? false}
-            />
-            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-              Save
-            </button>
-          </form>
-        </section>
-      )}
+        <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+          Your lever is the <strong>prefer not to say</strong> box on each question, which appears
+          on every question that can be published. Answering it keeps your answer on your profile
+          and out of the figures; declining outright keeps it out of both.
+        </p>      </section>
 
       <section className="mt-8">
         <SectionHeading>Contact methods</SectionHeading>
@@ -463,13 +433,13 @@ export default async function ProfilePage({
                 <input type="hidden" name="id" value={m.id} />
                 <input type="text" name="type" defaultValue={m.type} className={`${INPUT} w-24`} />
                 <input type="text" name="value" defaultValue={m.value} className={`${INPUT} min-w-[160px] flex-1`} />
-                <select name="visibility" defaultValue={m.visibility} className={INPUT}>
+                <SelectField name="visibility" defaultValue={m.visibility} className={INPUT}>
                   {CONTACT_METHOD_VISIBILITIES.map((v) => (
                     <option key={v} value={v}>
                       {CONTACT_VISIBILITY_LABELS[v]}
                     </option>
                   ))}
-                </select>
+                </SelectField>
                 <button type="submit" className={BUTTON_SECONDARY}>
                   Save
                 </button>
@@ -512,8 +482,11 @@ export default async function ProfilePage({
               <div key={purpose.id} className={CARD}>
                 <p className="text-[14px] font-medium text-[var(--text)]">
                   {purpose.label}
-                  {purpose.gatesSensitiveField && (
-                    <span className="font-normal text-[var(--text-muted)]"> — gates {SENSITIVE_FIELD_LABELS[purpose.gatesSensitiveField]}</span>
+                  {purpose.gatesQuestionId && (
+                    <span className="font-normal text-[var(--text-muted)]">
+                      {" "}
+                      &mdash; gates &ldquo;{questionLabelById.get(purpose.gatesQuestionId) ?? "a question no longer here"}&rdquo;
+                    </span>
                   )}
                 </p>
                 <p className="mt-1 text-[12px] text-[var(--text-muted)]">{purpose.noticeText}</p>

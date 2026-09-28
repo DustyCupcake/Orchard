@@ -1,6 +1,6 @@
 {
-  "id": "6c1791b3-00bb-42e7-9242-ccb24806870c",
-  "prevId": "9e078b07-4b6b-432b-ae57-d65618f39a14",
+  "id": "3a9d5c17-4e82-4b60-9f31-6c07ad2b8451",
+  "prevId": "0f1b0e6a-7c2d-4a55-9b3e-5d2a1c8f4e70",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -187,13 +187,6 @@
           "notNull": true,
           "default": false
         },
-        "cycle_indicators_min_members": {
-          "name": "cycle_indicators_min_members",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 10
-        },
         "recruitment_applications_open": {
           "name": "recruitment_applications_open",
           "type": "boolean",
@@ -203,13 +196,6 @@
         },
         "recruitment_invites_open": {
           "name": "recruitment_invites_open",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "recruitment_interviews_open": {
-          "name": "recruitment_interviews_open",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -242,28 +228,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": 48
-        },
-        "recruitment_nomination_window_hours": {
-          "name": "recruitment_nomination_window_hours",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 48
-        },
-        "recruitment_objection_overrule": {
-          "name": "recruitment_objection_overrule",
-          "type": "objection_overrule_mode",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'majority'"
-        },
-        "recruitment_objection_quorum": {
-          "name": "recruitment_objection_quorum",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 3
         },
         "recruitment_rejection_template": {
           "name": "recruitment_rejection_template",
@@ -651,13 +615,6 @@
           "notNull": true,
           "default": true
         },
-        "interviews_open": {
-          "name": "interviews_open",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
         "joining_window_closes_at": {
           "name": "joining_window_closes_at",
           "type": "timestamp with time zone",
@@ -936,43 +893,12 @@
           "primaryKey": false,
           "notNull": false
         },
-        "health_conditions": {
-          "name": "health_conditions",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "allergies": {
-          "name": "allergies",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "emergency_contact": {
-          "name": "emergency_contact",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "orientation": {
-          "name": "orientation",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "contribution_visible": {
           "name": "contribution_visible",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "consents_to_community_indicators": {
-          "name": "consents_to_community_indicators",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
         },
         "pinned_module_keys": {
           "name": "pinned_module_keys",
@@ -5306,18 +5232,11 @@
           "primaryKey": false,
           "notNull": true
         },
-        "field_key": {
-          "name": "field_key",
-          "type": "sensitive_field_key",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": false
-        },
         "question_id": {
           "name": "question_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "unlocked_by_task_id": {
           "name": "unlocked_by_task_id",
@@ -6590,44 +6509,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "awareness_confirmed_at": {
-          "name": "awareness_confirmed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "awareness_confirmed_by": {
-          "name": "awareness_confirmed_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "consent_at": {
-          "name": "consent_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "consent_disclosure": {
-          "name": "consent_disclosure",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "consensus_state": {
-          "name": "consensus_state",
-          "type": "invite_consensus_state",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'not_required'"
-        },
-        "consensus_deadline": {
-          "name": "consensus_deadline",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -6683,19 +6564,6 @@
           "tableTo": "member",
           "columnsFrom": [
             "redeemed_by_member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "community_invite_awareness_confirmed_by_member_id_fk": {
-          "name": "community_invite_awareness_confirmed_by_member_id_fk",
-          "tableFrom": "community_invite",
-          "tableTo": "member",
-          "columnsFrom": [
-            "awareness_confirmed_by"
           ],
           "columnsTo": [
             "id"
@@ -6841,237 +6709,6 @@
           "tableTo": "cycle",
           "columnsFrom": [
             "cycle_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.joining_nomination": {
-      "name": "joining_nomination",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "community_id": {
-          "name": "community_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "invite_id": {
-          "name": "invite_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "form_response_id": {
-          "name": "form_response_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "support_token": {
-          "name": "support_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "joining_nomination_state",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'awaiting'"
-        },
-        "deadline": {
-          "name": "deadline",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "joining_nomination_invite_idx": {
-          "name": "joining_nomination_invite_idx",
-          "columns": [
-            {
-              "expression": "invite_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "joining_nomination_response_idx": {
-          "name": "joining_nomination_response_idx",
-          "columns": [
-            {
-              "expression": "form_response_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "joining_nomination_community_id_community_id_fk": {
-          "name": "joining_nomination_community_id_community_id_fk",
-          "tableFrom": "joining_nomination",
-          "tableTo": "community",
-          "columnsFrom": [
-            "community_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "joining_nomination_invite_id_community_invite_id_fk": {
-          "name": "joining_nomination_invite_id_community_invite_id_fk",
-          "tableFrom": "joining_nomination",
-          "tableTo": "community_invite",
-          "columnsFrom": [
-            "invite_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "joining_nomination_form_response_id_form_response_id_fk": {
-          "name": "joining_nomination_form_response_id_form_response_id_fk",
-          "tableFrom": "joining_nomination",
-          "tableTo": "form_response",
-          "columnsFrom": [
-            "form_response_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "joining_nomination_support_token_unique": {
-          "name": "joining_nomination_support_token_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "support_token"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.joining_support": {
-      "name": "joining_support",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "nomination_id": {
-          "name": "nomination_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "supporter_id": {
-          "name": "supporter_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "knows_personally": {
-          "name": "knows_personally",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "thinks_good_fit": {
-          "name": "thinks_good_fit",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "joining_support_nomination_id_joining_nomination_id_fk": {
-          "name": "joining_support_nomination_id_joining_nomination_id_fk",
-          "tableFrom": "joining_support",
-          "tableTo": "joining_nomination",
-          "columnsFrom": [
-            "nomination_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "joining_support_supporter_id_member_id_fk": {
-          "name": "joining_support_supporter_id_member_id_fk",
-          "tableFrom": "joining_support",
-          "tableTo": "member",
-          "columnsFrom": [
-            "supporter_id"
           ],
           "columnsTo": [
             "id"
@@ -7266,23 +6903,11 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "community_id": {
-          "name": "community_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
         "form_response_id": {
           "name": "form_response_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
-        },
-        "invite_id": {
-          "name": "invite_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "raised_by": {
           "name": "raised_by",
@@ -7302,49 +6927,10 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "resolution": {
-          "name": "resolution",
-          "type": "objection_resolution",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'standing'"
-        },
-        "resolved_at": {
-          "name": "resolved_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolved_by_id": {
-          "name": "resolved_by_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolution_note": {
-          "name": "resolution_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {},
       "foreignKeys": {
-        "objection_community_id_community_id_fk": {
-          "name": "objection_community_id_community_id_fk",
-          "tableFrom": "objection",
-          "tableTo": "community",
-          "columnsFrom": [
-            "community_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "objection_form_response_id_form_response_id_fk": {
           "name": "objection_form_response_id_form_response_id_fk",
           "tableFrom": "objection",
@@ -7358,91 +6944,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "objection_invite_id_community_invite_id_fk": {
-          "name": "objection_invite_id_community_invite_id_fk",
-          "tableFrom": "objection",
-          "tableTo": "community_invite",
-          "columnsFrom": [
-            "invite_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "objection_raised_by_member_id_fk": {
           "name": "objection_raised_by_member_id_fk",
           "tableFrom": "objection",
           "tableTo": "member",
           "columnsFrom": [
             "raised_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "objection_resolved_by_id_member_id_fk": {
-          "name": "objection_resolved_by_id_member_id_fk",
-          "tableFrom": "objection",
-          "tableTo": "member",
-          "columnsFrom": [
-            "resolved_by_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.recruitment_application_consent": {
-      "name": "recruitment_application_consent",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "form_response_id": {
-          "name": "form_response_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "disclosure": {
-          "name": "disclosure",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "confirmed_at": {
-          "name": "confirmed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "recruitment_application_consent_form_response_id_form_response_id_fk": {
-          "name": "recruitment_application_consent_form_response_id_form_response_id_fk",
-          "tableFrom": "recruitment_application_consent",
-          "tableTo": "form_response",
-          "columnsFrom": [
-            "form_response_id"
           ],
           "columnsTo": [
             "id"
@@ -7682,194 +7189,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.recruitment_pair": {
-      "name": "recruitment_pair",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "community_id": {
-          "name": "community_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cycle_id": {
-          "name": "cycle_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "token": {
-          "name": "token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "requested_by_id": {
-          "name": "requested_by_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "first_response_id": {
-          "name": "first_response_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "second_member_id": {
-          "name": "second_member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "second_response_id": {
-          "name": "second_response_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "recruitment_pair_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'awaiting_applicant'"
-        },
-        "shared_call_offered_at": {
-          "name": "shared_call_offered_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "shared_call_accepted_at": {
-          "name": "shared_call_accepted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "shared_call_declined_at": {
-          "name": "shared_call_declined_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "resolved_at": {
-          "name": "resolved_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "recruitment_pair_community_id_community_id_fk": {
-          "name": "recruitment_pair_community_id_community_id_fk",
-          "tableFrom": "recruitment_pair",
-          "tableTo": "community",
-          "columnsFrom": [
-            "community_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "recruitment_pair_cycle_id_cycle_id_fk": {
-          "name": "recruitment_pair_cycle_id_cycle_id_fk",
-          "tableFrom": "recruitment_pair",
-          "tableTo": "cycle",
-          "columnsFrom": [
-            "cycle_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "recruitment_pair_requested_by_id_member_id_fk": {
-          "name": "recruitment_pair_requested_by_id_member_id_fk",
-          "tableFrom": "recruitment_pair",
-          "tableTo": "member",
-          "columnsFrom": [
-            "requested_by_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "recruitment_pair_first_response_id_form_response_id_fk": {
-          "name": "recruitment_pair_first_response_id_form_response_id_fk",
-          "tableFrom": "recruitment_pair",
-          "tableTo": "form_response",
-          "columnsFrom": [
-            "first_response_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "recruitment_pair_second_member_id_member_id_fk": {
-          "name": "recruitment_pair_second_member_id_member_id_fk",
-          "tableFrom": "recruitment_pair",
-          "tableTo": "member",
-          "columnsFrom": [
-            "second_member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "recruitment_pair_second_response_id_form_response_id_fk": {
-          "name": "recruitment_pair_second_response_id_form_response_id_fk",
-          "tableFrom": "recruitment_pair",
-          "tableTo": "form_response",
-          "columnsFrom": [
-            "second_response_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "recruitment_pair_token_unique": {
-          "name": "recruitment_pair_token_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.recruitment_subscription": {
       "name": "recruitment_subscription",
       "schema": "",
@@ -7928,169 +7247,6 @@
           ]
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.objection_party_consent": {
-      "name": "objection_party_consent",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "objection_id": {
-          "name": "objection_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "granted_at": {
-          "name": "granted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "withdrawn_at": {
-          "name": "withdrawn_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "objection_party_consent_objection_id_objection_id_fk": {
-          "name": "objection_party_consent_objection_id_objection_id_fk",
-          "tableFrom": "objection_party_consent",
-          "tableTo": "objection",
-          "columnsFrom": [
-            "objection_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "objection_party_consent_member_id_member_id_fk": {
-          "name": "objection_party_consent_member_id_member_id_fk",
-          "tableFrom": "objection_party_consent",
-          "tableTo": "member",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.objection_party_exclusion": {
-      "name": "objection_party_exclusion",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "objection_id": {
-          "name": "objection_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "added_by": {
-          "name": "added_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "added_at": {
-          "name": "added_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "objection_party_exclusion_objection_id_objection_id_fk": {
-          "name": "objection_party_exclusion_objection_id_objection_id_fk",
-          "tableFrom": "objection_party_exclusion",
-          "tableTo": "objection",
-          "columnsFrom": [
-            "objection_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "objection_party_exclusion_member_id_member_id_fk": {
-          "name": "objection_party_exclusion_member_id_member_id_fk",
-          "tableFrom": "objection_party_exclusion",
-          "tableTo": "member",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "objection_party_exclusion_added_by_member_id_fk": {
-          "name": "objection_party_exclusion_added_by_member_id_fk",
-          "tableFrom": "objection_party_exclusion",
-          "tableTo": "member",
-          "columnsFrom": [
-            "added_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -8801,13 +7957,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "gates_sensitive_field": {
-          "name": "gates_sensitive_field",
-          "type": "sensitive_field_key",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": false
         },
         "gates_question_id": {
           "name": "gates_question_id",
@@ -10522,6 +9671,109 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
+    },
+    "public.profile_answer_rule_consent": {
+      "name": "profile_answer_rule_consent",
+      "schema": "public",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "answer_id": {
+          "name": "answer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_id": {
+          "name": "rule_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "granted_at": {
+          "name": "granted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "profile_answer_rule_consent_answer_id_rule_id_unique": {
+          "name": "profile_answer_rule_consent_answer_id_rule_id_unique",
+          "columns": [
+            {
+              "expression": "answer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "rule_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "profile_answer_rule_consent_rule_id_idx": {
+          "name": "profile_answer_rule_consent_rule_id_idx",
+          "columns": [
+            {
+              "expression": "rule_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "profile_answer_rule_consent_answer_id_profile_answer_id_fk": {
+          "name": "profile_answer_rule_consent_answer_id_profile_answer_id_fk",
+          "tableFrom": "profile_answer_rule_consent",
+          "columnsFrom": [
+            "answer_id"
+          ],
+          "tableTo": "profile_answer",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "profile_answer_rule_consent_rule_id_sensitive_field_access_rule_id_fk": {
+          "name": "profile_answer_rule_consent_rule_id_sensitive_field_access_rule_id_fk",
+          "tableFrom": "profile_answer_rule_consent",
+          "columnsFrom": [
+            "rule_id"
+          ],
+          "tableTo": "sensitive_field_access_rule",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "compositePrimaryKeys": {}
     }
   },
   "enums": {
@@ -10540,14 +9792,6 @@
         "cohort",
         "rolling",
         "fixed"
-      ]
-    },
-    "public.objection_overrule_mode": {
-      "name": "objection_overrule_mode",
-      "schema": "public",
-      "values": [
-        "majority",
-        "quorum"
       ]
     },
     "public.date_display_mode": {
@@ -10880,16 +10124,6 @@
         "max_attendance"
       ]
     },
-    "public.sensitive_field_key": {
-      "name": "sensitive_field_key",
-      "schema": "public",
-      "values": [
-        "health_conditions",
-        "allergies",
-        "emergency_contact",
-        "orientation"
-      ]
-    },
     "public.budget_cycle_status": {
       "name": "budget_cycle_status",
       "schema": "public",
@@ -10928,17 +10162,6 @@
         "not_coming"
       ]
     },
-    "public.invite_consensus_state": {
-      "name": "invite_consensus_state",
-      "schema": "public",
-      "values": [
-        "not_required",
-        "awaiting_consent",
-        "announced",
-        "admitted",
-        "withheld"
-      ]
-    },
     "public.joining_lane_kind": {
       "name": "joining_lane_kind",
       "schema": "public",
@@ -10956,27 +10179,6 @@
         "basic",
         "nomination",
         "consensus"
-      ]
-    },
-    "public.joining_nomination_state": {
-      "name": "joining_nomination_state",
-      "schema": "public",
-      "values": [
-        "awaiting",
-        "supported",
-        "skipped",
-        "lapsed"
-      ]
-    },
-    "public.objection_resolution": {
-      "name": "objection_resolution",
-      "schema": "public",
-      "values": [
-        "standing",
-        "cleared",
-        "upheld",
-        "overruled",
-        "withdrawn"
       ]
     },
     "public.recruitment_decision_leaning": {
@@ -11000,16 +10202,6 @@
       "name": "recruitment_decision_resolution",
       "schema": "public",
       "values": [
-        "accepted",
-        "declined"
-      ]
-    },
-    "public.recruitment_pair_status": {
-      "name": "recruitment_pair_status",
-      "schema": "public",
-      "values": [
-        "awaiting_applicant",
-        "awaiting_accept",
         "accepted",
         "declined"
       ]
@@ -11099,7 +10291,6 @@
         "feedback_review",
         "event_scheduling_owner",
         "recruitment",
-        "recruitment_mediation",
         "spatial_planning",
         "announcements",
         "support",

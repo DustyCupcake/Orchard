@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { cycle, dish, dishIngredient, foodIdea, member, menuPlan, taskResource } from "@/db/schema";
+import { cycle, dish, dishIngredient, foodIdea, member, menuPlan, profileQuestion, taskResource } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { updateCommunity } from "@/lib/settings";
-import { createConsentPurpose, grantConsent } from "@/lib/consent";
-import { updateOwnSensitiveData } from "@/lib/sensitive-data";
+import { createConsentPurpose, grantConsent, listConsentPurposes, withdrawConsent } from "@/lib/consent";
 import { createSensitiveFieldAccessRule } from "@/lib/sensitive-data";
+import { answerProfileQuestion } from "@/lib/profile-questions";
 import { AppError, ConflictError, ForbiddenError } from "@/lib/errors";
 import {
   adoptFromIdea,
@@ -439,15 +439,54 @@ describe("the dietary-constraint panel (D3/D4)", () => {
     await resetDatabase();
   });
 
-  async function kitchenWithAllergies(aliceAllergies: string | null, bobAllergies: string | null) {
+  /** A kitchen holder, a sensitive "Allergies" question, and answers on it.
+   *
+   *  This used to write `member.allergies` through updateOwnSensitiveData.
+   *  Those columns are gone, so the fixture now does what a real community
+   *  does: creates a sensitive question, restricts it to the kitchen
+   *  grant, and answers it. The panel reads it back through the same
+   *  audience resolution as every other surface.
+   */
+  async function kitchenWithAllergies(
+    aliceAllergies: string | null,
+    bobAllergies: string | null,
+    // Whether the kitchen grant can read the question at all. False is the
+    // "not linked yet" case; the one test that wants it answers *before*
+    // anyone can read, which is the fail-closed state.
+    options: { linkedToKitchen?: boolean } = {},
+  ) {
     const { alice, bob, branch } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["kitchen", "sensitive_data"] });
+    await updateCommunity(alice, { modulesEnabled: ["kitchen"] });
     await makeKitchenOwner(alice.communityId, branch.id, alice.id);
+    // Inserted raw rather than through createProfileQuestion, because the
+    // library refuses a sensitive question with no audience and this
+    // fixture needs to build that state on purpose.
+    const [question] = await db
+      .insert(profileQuestion)
+      .values({
+        communityId: alice.communityId,
+        label: "Allergies",
+        responseType: "text",
+        multiline: true,
+        scope: "once_ever",
+        sensitive: true,
+      })
+      .returning();
+    if (options.linkedToKitchen !== false) {
+      // Before the answers, not after. A rule added later cannot reach
+      // answers that predate it — each of those is asked separately — so a
+      // fixture that answered first would be modelling a different
+      // community than a real one.
+      await createSensitiveFieldAccessRule(alice, {
+        questionId: question.id,
+        unlockedByGrantModuleKey: "kitchen",
+      });
+    }
     const purpose = await createConsentPurpose(alice, {
       key: "kitchen_allergies",
       label: "Kitchen allergy reads",
       noticeText: "Cooks see your allergies to keep the menu safe.",
-      gatesSensitiveField: "allergies",
+      gatesQuestionId: question.id,
       requiresExplicit: true,
     });
     for (const [who, value] of [
@@ -456,26 +495,56 @@ describe("the dietary-constraint panel (D3/D4)", () => {
     ] as const) {
       if (value === null) continue;
       await grantConsent(who, purpose.id);
-      await updateOwnSensitiveData(who, { allergies: value });
+      await answerProfileQuestion(who, question.id, { status: "answered", value });
     }
     const plan = await createMenuPlan(alice, { title: "Autumn" });
     const meal = await createMeal(alice, { menuPlanId: plan.id, label: "Friday", date: "2026-10-02", headCount: 12 });
-    return { alice, bob, plan, meal };
+    return { alice, bob, plan, meal, question };
   }
 
-  it("returns null while allergies aren't linked to the kitchen grant", async () => {
-    const { alice, meal } = await kitchenWithAllergies(null, "peanuts");
-    // No sensitive-field rule at all: the module can't read the column,
-    // so the panel is absent rather than empty.
+  it("returns null while the allergies question isn't linked to the kitchen grant", async () => {
+    const { alice, meal, question } = await kitchenWithAllergies(null, "peanuts", { linkedToKitchen: false });
+    // The question is sensitive but has no rule, so it resolves to
+    // nobody-but-the-owner and the panel is absent rather than empty.
+    // That is the same fail-closed reading as before, now expressed
+    // through the question system.
+    expect(question.sensitive).toBe(true);
     expect(await getMealConstraintPanel(alice, meal.id)).toBeNull();
   });
 
-  it("flags a dish against a consented member's disclosed allergy once the grant unlocks the field", async () => {
-    const { alice, bob, meal } = await kitchenWithAllergies(null, "peanuts and cashews");
+  it("does not read an answer that predates the kitchen being given the question", async () => {
+    // The kitchen is the case where getting this wrong hurts somebody —
+    // a nut allergy nobody could see — so the widening is worth asserting
+    // here rather than only in the resolution tests. The panel is absent
+    // rather than wrong, which is the honest shape: there is nothing to
+    // show because nobody has agreed to be shown.
+    const { alice, bob, meal, question } = await kitchenWithAllergies(null, "peanuts and cashews", {
+      linkedToKitchen: false,
+    });
+    await createDish(alice, { mealId: meal.id, name: "Satay", allergenFlags: ["peanuts"] });
+    // No panel at all: the question is restricted to nobody, so the page
+    // falls back to the dish's own flag notes.
+    expect(await getMealConstraintPanel(alice, meal.id)).toBeNull();
+
     await createSensitiveFieldAccessRule(alice, {
-      fieldKey: "allergies",
+      questionId: question.id,
       unlockedByGrantModuleKey: "kitchen",
     });
+    // A panel now, with nobody in it: the rule exists, the answer predates
+    // it, and Bob has not been asked. Which is the honest shape — a dish to
+    // check and no allergy anyone has agreed to show.
+    expect((await getMealConstraintPanel(alice, meal.id))!.disclosedEaters).toBe(0);
+
+    // He answers again — which is him agreeing to the audience that exists
+    // now — and the panel appears.
+    await answerProfileQuestion(bob, question.id, { status: "answered", value: "peanuts and cashews" });
+    const panel = await getMealConstraintPanel(alice, meal.id);
+    expect(panel!.disclosedEaters).toBe(1);
+    expect(panel!.dishes[0].conflicts[0].memberId).toBe(bob.id);
+  });
+
+  it("flags a dish against a consented member's disclosed allergy once the grant unlocks it", async () => {
+    const { alice, bob, meal, question } = await kitchenWithAllergies(null, "peanuts and cashews");
     await createDish(alice, {
       mealId: meal.id,
       name: "Satay",
@@ -492,12 +561,60 @@ describe("the dietary-constraint panel (D3/D4)", () => {
     expect(flagged.conflicts[0].matchedFlags).toEqual(["peanuts", "tree_nuts"]);
   });
 
+  it("drops a member whose consent to the gating purpose is withdrawn", async () => {
+    // The consent gate that the four columns had and question-keyed
+    // purposes never did. Withdrawing has to take effect on the next read,
+    // not never.
+    const { alice, bob, meal } = await kitchenWithAllergies(null, "peanuts");
+    await createDish(alice, { mealId: meal.id, name: "Satay", allergenFlags: ["peanuts"] });
+    expect((await getMealConstraintPanel(alice, meal.id))!.disclosedEaters).toBe(1);
+
+    const purposes = await listConsentPurposes(alice);
+    await withdrawConsent(bob, purposes[0].id);
+    const after = await getMealConstraintPanel(alice, meal.id);
+    expect(after!.disclosedEaters).toBe(0);
+    expect(after!.dishes).toHaveLength(0);
+  });
+
+  it("drops a member who unticks their share box, while keeping their own answer", async () => {
+    // The per-answer lever. Un-ticking reduces the answer to
+    // emergency-only; it does not remove it from the member's own profile.
+    const { alice, bob, meal, question } = await kitchenWithAllergies(null, "peanuts");
+    await createDish(alice, { mealId: meal.id, name: "Satay", allergenFlags: ["peanuts"] });
+    expect((await getMealConstraintPanel(alice, meal.id))!.disclosedEaters).toBe(1);
+
+    await answerProfileQuestion(bob, question.id, {
+      status: "answered",
+      value: "peanuts",
+      shareWithAudience: false,
+    });
+    expect((await getMealConstraintPanel(alice, meal.id))!.disclosedEaters).toBe(0);
+  });
+
+  it("ignores non-sensitive answers, so unrelated free text can't become a conflict", async () => {
+    // A community with a public "languages you speak" question would
+    // otherwise match "soy" in someone's answer against a soy dish and
+    // invent a food-safety incident out of a translation preference.
+    const { alice, meal } = await kitchenWithAllergies(null, "peanuts");
+    const [publicQuestion] = await db
+      .insert(profileQuestion)
+      .values({
+        communityId: alice.communityId,
+        label: "Languages you speak",
+        responseType: "text",
+        scope: "once_ever",
+        sensitive: false,
+      })
+      .returning();
+    await answerProfileQuestion(alice, publicQuestion.id, { status: "answered", value: "soy, soy sauce" });
+    await createDish(alice, { mealId: meal.id, name: "Tofu", allergenFlags: ["soy"] });
+
+    const panel = await getMealConstraintPanel(alice, meal.id);
+    expect(panel!.dishes).toHaveLength(0);
+  });
+
   it("counts a member as disclosed but unflagged, and hides a dish nobody conflicts with", async () => {
     const { alice, meal } = await kitchenWithAllergies(null, "lactose");
-    await createSensitiveFieldAccessRule(alice, {
-      fieldKey: "allergies",
-      unlockedByGrantModuleKey: "kitchen",
-    });
     await createDish(alice, { mealId: meal.id, name: "Fried rice", allergenFlags: ["peanuts"] });
 
     const panel = await getMealConstraintPanel(alice, meal.id);
@@ -506,7 +623,7 @@ describe("the dietary-constraint panel (D3/D4)", () => {
     expect(panel!.dishes).toHaveLength(0);
   });
 
-  it("is owner-only, and refuses a non-holder before the field gate is even consulted", async () => {
+  it("is owner-only, and refuses a non-holder before the audience is even resolved", async () => {
     const { bob, meal } = await kitchenWithAllergies(null, "peanuts");
     await expect(getMealConstraintPanel(bob, meal.id)).rejects.toThrow(ForbiddenError);
   });

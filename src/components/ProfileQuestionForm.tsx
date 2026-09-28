@@ -1,6 +1,7 @@
 import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "./ui/kit";
 import type { FieldShape, ResponseType } from "@/lib/field-shape";
+import SelectField from "@/components/ui/SelectField";
 
 export type QuestionResponseType = ResponseType;
 
@@ -36,6 +37,7 @@ export default function ProfileQuestionForm({
   allowPreferNotToSay = false,
   sensitive = false,
   defaultShareWithAudience = true,
+  gatingPurpose = null,
 }: {
   // The page's own server action, passed in rather than imported: each
   // page's actions.ts owns its own revalidation (same reason
@@ -73,6 +75,13 @@ export default function ProfileQuestionForm({
   // offering that choice would be a control that does nothing.
   sensitive?: boolean;
   defaultShareWithAudience?: boolean;
+  // The consent purpose gating this question, when the Community has
+  // pinned one to it. Answering without active consent is refused by
+  // answerProfileQuestion, so this box is how a member grants it — the
+  // same "consent on the same form, not on a settings screen visited in
+  // advance" shape the four fixed member columns used before they were
+  // dropped. Null when the question is ungated, in which case no box.
+  gatingPurpose?: { key: string; label: string; noticeText: string } | null;
 }) {
   return (
     <form action={action} className="mt-2 flex flex-col gap-2">
@@ -103,14 +112,14 @@ export default function ProfileQuestionForm({
       {feedsCapacitySignal && (
         <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
           Visible to coordinators as
-          <select
+          <SelectField
             name="capacityVisibility"
             defaultValue={defaultCapacityVisibility ?? "flag_only"}
             className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)]"
           >
             <option value="flag_only">a coarse flag only</option>
             <option value="open">the exact number</option>
-          </select>
+          </SelectField>
         </label>
       )}
 
@@ -128,6 +137,26 @@ export default function ProfileQuestionForm({
           and leaves it theirs. Someone can reasonably want their
           medication recorded for the kitchen team and not want it on
           their public profile. */}
+      {gatingPurpose && (
+        /* The write gate, and the only place a member can satisfy it:
+           answerProfileQuestion refuses to store an answer for a gated
+           question without active consent, so ticking this and submitting
+           is what grants it. Placed above the share box because it is the
+           coarser of the two decisions — it decides whether the answer
+           exists for anyone else at all, where the share box only decides
+           whether the configured audience sees it. */
+        <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+          <input type="checkbox" name={`consent_${gatingPurpose.key}`} className="mt-0.5" />
+          <span>
+            I agree to this being recorded for &ldquo;{gatingPurpose.label}&rdquo;
+            <span className="block text-[12px] text-[var(--text-muted)]">
+              {gatingPurpose.noticeText} You can withdraw this at any time from your profile, and the
+              answer stops being shown to anyone else straight away.
+            </span>
+          </span>
+        </label>
+      )}
+
       {sensitive && (
         <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
           <input

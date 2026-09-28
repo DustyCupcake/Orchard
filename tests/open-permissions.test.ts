@@ -5,6 +5,7 @@ import {
   community,
   member,
   openPermissionGrant,
+  profileQuestion,
   sensitiveFieldAccessRule,
   taskAssignment,
 } from "@/db/schema";
@@ -52,7 +53,7 @@ import {
   listConflictTeamMemberIds,
   requireConflictTeamMember,
 } from "@/lib/conflict";
-import { listUnlockedFields } from "@/lib/sensitive-data";
+import { listReadableSensitiveQuestionIds } from "@/lib/sensitive-data";
 import { isAdmin, requireAdmins } from "@/lib/settings/admins";
 import { updateCommunity } from "@/lib/settings";
 import { getNavContext } from "@/lib/nav";
@@ -838,23 +839,35 @@ describe("open capability resolvers (Step 4)", () => {
     await grantPermission(testCommunity.id, "kitchen", kitchenTask.id);
     await db.insert(taskAssignment).values({ taskId: kitchenTask.id, memberId: alice.id, isShadow: false });
 
-    // A field unlocked by the `kitchen` grant.
+    // A sensitive question unlocked by the `kitchen` grant. D9's point is
+    // that opening a module doesn't grant the read and holding the grant
+    // does — so this needs a real question now, not a fixed column.
+    const [allergies] = await db
+      .insert(profileQuestion)
+      .values({
+        communityId: testCommunity.id,
+        label: "Allergies",
+        responseType: "text",
+        scope: "once_ever",
+        sensitive: true,
+      })
+      .returning();
     await db.insert(sensitiveFieldAccessRule).values({
       communityId: testCommunity.id,
-      fieldKey: "allergies",
+      questionId: allergies.id,
       unlockedByGrantModuleKey: "kitchen",
     });
 
     // The holder is unlocked; bob is not.
-    expect(await listUnlockedFields(alice)).toContain("allergies");
-    expect(await listUnlockedFields(bob)).not.toContain("allergies");
+    expect(await listReadableSensitiveQuestionIds(alice)).toContain(allergies.id);
+    expect(await listReadableSensitiveQuestionIds(bob)).not.toContain(allergies.id);
 
     await openModule(testCommunity.id, "kitchen", alice.id);
 
     // Open Kitchen, and bob still cannot read everyone's allergies. The
     // capability widened; the disclosure deliberately did not.
     expect(await isKitchenOwner(bob)).toBe(true);
-    expect(await listUnlockedFields(bob)).not.toContain("allergies");
+    expect(await listReadableSensitiveQuestionIds(bob)).not.toContain(allergies.id);
   });
 });
 

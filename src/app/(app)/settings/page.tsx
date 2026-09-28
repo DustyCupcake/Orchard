@@ -1,7 +1,7 @@
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { task } from "@/db/schema";
+import { phase, task } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity, listBranches, listCycleTypes, listPendingBranches, listTiers, requireAdmins } from "@/lib/settings";
 import Tabs from "@/components/ui/Tabs";
@@ -13,10 +13,11 @@ import {
 } from "@/lib/permissions";
 import { listTasks } from "@/lib/tasks";
 import { listCycles } from "@/lib/cycles";
+import { resolveViewScopeCycleForMember } from "@/lib/cycles/view-scope";
 import { listProfileQuestions } from "@/lib/profile-questions";
 import { listTraitAxes } from "@/lib/trait-axes";
 import { listTaskPacks } from "@/lib/task-packs";
-import { SENSITIVE_FIELD_LABELS, listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
+import { listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
 import { listForms } from "@/lib/forms";
 import { listConsentPurposes } from "@/lib/consent";
 import { getFoundersAssemblyPromptState } from "@/lib/assemblies";
@@ -120,6 +121,7 @@ export default async function SettingsPage({
     pendingBranches,
     taskPacks,
     communityTasks,
+    currentPhaseNames,
   ] = await Promise.all([
     getCommunity(viewing),
     listBranches(viewing),
@@ -134,7 +136,20 @@ export default async function SettingsPage({
     authorized ? listPendingBranches(viewing) : Promise.resolve([]),
     listTaskPacks(viewing),
     listTasks(viewing),
+    // The phase names of the event this member is currently looking at, so
+    // the Profile & Privacy tab can put a phase-scoped question under "for
+    // other events" when the event on screen has no phase of that name.
+    // Off-URL on purpose: /settings has no cycle segment, so this reads the
+    // same persisted "what am I looking at" that the Contribution average
+    // and Messages' arrival window read. Coerced to a Set below so the JSX
+    // doesn't have to null-guard a possibly-ambiguous resolution.
+    resolveViewScopeCycleForMember(viewing).then(async (r) => {
+      if (r.kind !== "resolved") return [] as string[];
+      const rows = await db.select({ name: phase.name }).from(phase).where(eq(phase.cycleId, r.cycle.id));
+      return rows.map((p) => p.name.toLowerCase());
+    }),
   ]);
+  const currentPhases = new Set(currentPhaseNames);
 
   const confirmedBranches = branches.filter((b) => b.status === "confirmed");
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
@@ -215,15 +230,19 @@ export default async function SettingsPage({
     // community had more than one — the reader of this panel is deciding
     // whether opening a module exposes anything, and "does it expose a
     // question?" is not an answer they can act on.
+    // Which answers each permission grant unlocks. Every rule is
+    // question-keyed now: the four fixed Sensitive-data columns went with
+    // the `sensitive_data` module (migration 0080) and `question_id` is
+    // NOT NULL, so "which of two things does this rule name" is
+    // unrepresentable rather than something the form has to get right.
+    // A rule naming a question that has since been deleted still has to
+    // render as *something*, so it says so.
     const sensitiveFieldsByModule = new Map<PermissionModuleKey, string[]>();
     for (const rule of rules) {
       if (!rule.unlockedByGrantModuleKey) continue;
+      const label = questionLabelById.get(rule.questionId);
       const existing = sensitiveFieldsByModule.get(rule.unlockedByGrantModuleKey) ?? [];
-      if (rule.fieldKey) existing.push(SENSITIVE_FIELD_LABELS[rule.fieldKey].toLowerCase());
-      if (rule.questionId) {
-        const label = questionLabelById.get(rule.questionId);
-        existing.push(label ? `the “${label}” answer` : "a profile question");
-      }
+      existing.push(label ? `the “${label}” answer` : "a question that no longer exists");
       sensitiveFieldsByModule.set(rule.unlockedByGrantModuleKey, existing);
     }
 
@@ -286,8 +305,8 @@ export default async function SettingsPage({
           also the only mechanism that reaches the `type="button"`-driven
           widgets (FormBuilder, FieldShapeEditor, StarterQuestionPicker),
           which are not form controls at all; a prop would be the only thing
-          that could, and eleven hand-written tab files is a lot of surface
-          for one attribute to be missing from.
+          that could, and ten hand-written tab files is a lot of surface for
+          one attribute to be missing from.
 
           What changed is the other half. The old wrapper carried
           `disabled:opacity-60`, which dimmed 60% of every explanation on
@@ -333,9 +352,10 @@ export default async function SettingsPage({
             rules={rules}
             consentPurposes={consentPurposes}
             tiers={tiers}
+            communityTasks={communityTasks.map((t) => ({ id: t.id, title: t.title }))}
+            currentPhases={currentPhases}
             sensitiveQuestionOptions={sensitiveQuestionOptions}
             questionLabelById={questionLabelById}
-            ruleCountByQuestion={ruleCountByQuestion}
             ruleTaskNameById={ruleTaskNameById}
             tierNameById={tierNameById}
           />

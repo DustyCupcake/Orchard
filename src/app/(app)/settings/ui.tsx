@@ -1,6 +1,12 @@
 import type { ReactNode } from "react";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT, LABEL, SELECT } from "@/components/ui/kit";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+// Aliased, because the settings screen has its own `SelectField` below and
+// the two are genuinely different things. This one is a bare `<select>`
+// that re-establishes its selection when the server's answer changes;
+// that one is a label, a hint, and a list of `{value, label}` options
+// wrapped around it.
+import ValueKeyedSelect from "@/components/ui/SelectField";
 
 // The settings screen's own vocabulary, extracted because the page grew
 // to ten tabs of hand-rolled fieldset/label/div stacks and they had
@@ -222,6 +228,22 @@ export function TextAreaField({
   );
 }
 
+// The settings screen's dropdown shape — a label, a hint and a wide
+// variant — wrapping the *shared* `SelectField` rather than a bare
+// `<select defaultValue>` of its own.
+//
+// The bare version was in this file from the start of the settings
+// rebuild, and it has a bug that `src/components/ui/SelectField.tsx` was
+// written to fix repo-wide: React treats `defaultValue` on an
+// uncontrolled `<select>` as a mount-time default, and an uncontrolled
+// select is uncontrolled in both renders, so a Server Action's
+// `revalidatePath` genuinely refetches and the component genuinely
+// re-renders with the right answer while the browser keeps showing the
+// pre-save selection. Read that file's comment for the react-dom
+// `updateDOMProperties` walkthrough. Shipping a second, unfixed dropdown
+// on the one screen that was rebuilt specifically because it was being
+// misread would have been a quiet regression of a fix that already
+// existed, so this delegates and adds only the chrome.
 export function SelectField({
   label,
   name,
@@ -239,7 +261,7 @@ export function SelectField({
 }) {
   return (
     <SettingsField label={label} hint={hint} wide={wide}>
-      <select
+      <ValueKeyedSelect
         name={name}
         defaultValue={defaultValue ?? ""}
         className={`${SELECT} disabled:cursor-not-allowed disabled:opacity-60`}
@@ -249,7 +271,7 @@ export function SelectField({
             {o.label}
           </option>
         ))}
-      </select>
+      </ValueKeyedSelect>
     </SettingsField>
   );
 }

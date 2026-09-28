@@ -30,6 +30,7 @@ import {
   upsertSpacePreferenceAction,
 } from "./actions";
 import type { Point, PlacementGeometry, ScaleCalibration } from "@/lib/spatial-planning/geometry";
+import SelectField from "@/components/ui/SelectField";
 
 export const dynamic = "force-dynamic";
 
@@ -255,13 +256,13 @@ export default async function SpatialPlanningPage({
           <form action={upsertSpacePreferenceAction} className="mt-3 flex flex-col gap-2">
             <label className="flex flex-col gap-1">
               <span className={LABEL}>Sleep/space arrangement</span>
-              <select name="sleepArrangement" defaultValue={mySpacePreference?.sleepArrangement ?? "solo_tent"} className={INPUT}>
+              <SelectField name="sleepArrangement" defaultValue={mySpacePreference?.sleepArrangement ?? "solo_tent"} className={INPUT}>
                 {SLEEP_ARRANGEMENTS.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
                 ))}
-              </select>
+              </SelectField>
             </label>
 
             <div className="flex gap-2">

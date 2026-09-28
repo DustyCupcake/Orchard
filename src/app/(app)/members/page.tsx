@@ -50,6 +50,15 @@ export default async function MembersPage({
         stay hidden here — see each member&rsquo;s own page for Emergency access.
       </p>
 
+      <p className="mt-3 text-[13px] text-[var(--text-muted)]">
+        Looking for several people at once?{" "}
+        <Link href="/members/data" className="text-[var(--accent-1)] hover:underline">
+          Member data
+        </Link>{" "}
+        puts every question you&rsquo;re entitled to read into one table, with the columns, a value
+        filter and the counts.
+      </p>
+
       <ul className="mt-4">
         {members.map((m) => (
           <li key={m.id} className="flex items-center justify-between gap-2 border-b border-[var(--border)] py-2.5 last:border-b-0">

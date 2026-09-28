@@ -8,6 +8,7 @@ import {
   type PermissionModuleKey,
 } from "@/lib/permissions";
 import { activateProposalAction, declineProposalAction } from "./actions";
+import SelectField from "@/components/ui/SelectField";
 
 type Proposal = {
   id: string;
@@ -156,24 +157,24 @@ export default function ProposalCard({
             <textarea name="description" defaultValue={proposal.description} rows={2} placeholder="Description" className={INPUT} />
 
             <div className="flex flex-wrap items-center gap-2">
-              <select name="branchId" required defaultValue={proposal.suggestedBranchId ?? ""} className={INPUT}>
+              <SelectField name="branchId" required defaultValue={proposal.suggestedBranchId ?? ""} className={INPUT}>
                 <option value="">Branch…</option>
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
                   </option>
                 ))}
-              </select>
+              </SelectField>
 
               {cyclesEnabled && (
-                <select name="cycleId" defaultValue={proposal.suggestedCycleId ?? defaultCycleId ?? ""} className={INPUT}>
+                <SelectField name="cycleId" defaultValue={proposal.suggestedCycleId ?? defaultCycleId ?? ""} className={INPUT}>
                   <option value="">No event (unscoped)</option>
                   {cycles.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               )}
 
               <EffortFields

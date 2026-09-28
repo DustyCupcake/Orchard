@@ -11,6 +11,7 @@ import {
 import { branch } from "@/db/schema";
 import {
   answerProfileQuestion,
+  listOutstandingQuestions,
   archiveProfileQuestion,
   createProfileQuestion,
   listCommunityIndicators,
@@ -21,19 +22,26 @@ import {
   canPublishAsIndicator,
   indicatorBlocker,
   indicatorFamilyFor,
-  updateIndicatorConsent,
 } from "@/lib/profile-questions/indicators";
 import { claimTask } from "@/lib/tasks";
 import {
   createSensitiveFieldAccessRule,
   deleteSensitiveFieldAccessRule,
   listSensitiveFieldAccessRules,
+  questionsReadableBy,
+  resolveReadableAnswersForCommunity,
   resolveReadableQuestions,
 } from "@/lib/sensitive-data";
 import { createCycle } from "@/lib/cycles";
 import { declareParticipation } from "@/lib/participation";
 import { AppError, ConflictError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
+import {
+  createFixtures,
+  createRestrictedQuestion,
+  grantPermission,
+  insertTask,
+  resetDatabase,
+} from "./helpers";
 
 // The community's choice of which standing questions become facts about
 // everyone. Three things this file exists to pin, each of which is a
@@ -76,7 +84,7 @@ describe("community indicators", () => {
     await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
   }
 
-  describe("consent is given once, for the whole section", () => {
+  describe("there is no standing opt-out, only the decline", () => {
     /** Three members, all answered, one published pronoun indicator. */
     async function sectionSetup() {
       const { alice, bob, community: c } = await createFixtures();
@@ -95,35 +103,41 @@ describe("community indicators", () => {
       return { alice, bob, carol, c, q };
     }
 
-    it("counts members by default, without anyone opting in", async () => {
-      // The asymmetry with contributionVisible is deliberate: a
-      // contribution record is generated passively from task history, so
-      // sharing it has to be asked for, whereas a profile question was
-      // asked and answered. Opt-*in* here would compound on the decline
-      // every published question already offers and collapse coverage to
-      // whoever knew to come and tick a box.
-      //
-      // So the default is TRUE and the checkbox is positive. That means
-      // the whole feature can only fail in one direction: a member who
-      // never visits /profile is counted, which is what they were told
-      // would happen.
+    it("has no column for a member to be counted in or not", async () => {
+      // The absence is the design, so it is asserted rather than assumed.
+      // `consents_to_community_indicators` was a standing opt-out of every
+      // published indicator at once, which is a different thing from what
+      // publication needs: publication only ever reaches answers the whole
+      // Community can already read individually, so an aggregate of them
+      // says nothing the underlying answers don't. The one lever a member
+      // actually wants — "answer, but not be a bar in a chart" — is
+      // answered by the per-question decline below, which is the same
+      // lever on every question that can be published.
+      const names = Object.keys(getTableColumns(memberTable));
+      expect(names).not.toContain("consentsToCommunityIndicators");
+    });
+
+    it("counts every member, because there is nothing to opt out of", async () => {
       const { alice } = await sectionSetup();
-      expect(alice.consentsToCommunityIndicators).toBe(true);
       const { indicators } = await listCommunityIndicators(alice);
       expect(indicators[0].population).toBe(3);
       expect(indicators[0].answered).toBe(3);
+      expect(indicators[0].declined).toBe(0);
     });
 
-    it("removes you from the denominator as well as the numerator", async () => {
-      // Both halves matter, and they fail differently. Leaving the
-      // person in the population but dropping their answer would make the
-      // coverage line report a permanent "1 haven't" gap for someone who
-      // is still answering everything.
-      const { alice, carol } = await sectionSetup();
-      await updateIndicatorConsent(carol, false);
+    it("takes one member out of the numerator without touching the denominator", async () => {
+      // A decline is a fact about a *question*, so it leaves the person in
+      // the population — unlike the old standing opt-out, which removed
+      // them from both. That is the deliberate difference: the decline is
+      // scoped to one question and reads as one refusal, where the
+      // standing opt-out took the member out of every figure the Community
+      // will ever publish and reported it as a smaller population.
+      const { alice, carol, q } = await sectionSetup();
+      await answerProfileQuestion(carol, q.id, { status: "declined" });
       const { indicators } = await listCommunityIndicators(alice);
-      expect(indicators[0].population).toBe(2);
+      expect(indicators[0].population).toBe(3);
       expect(indicators[0].answered).toBe(2);
+      expect(indicators[0].declined).toBe(1);
       expect(indicators[0].data).toEqual({
         family: "split",
         rows: [
@@ -133,62 +147,45 @@ describe("community indicators", () => {
       });
     });
 
-    it("is reversible, and puts you straight back in", async () => {
-      const { alice, carol } = await sectionSetup();
-      await updateIndicatorConsent(carol, false);
-      await updateIndicatorConsent(carol, true);
-      const { indicators } = await listCommunityIndicators(alice);
-      expect(indicators[0].population).toBe(3);
-      expect(indicators[0].answered).toBe(3);
-    });
-
-    it("only changes your own record", async () => {
-      // Self-service with no Admin path over it: an Admin ability to
-      // exclude a member would be the same power as one to include them
-      // without asking, wearing a privacy label.
-      const { bob, carol } = await sectionSetup();
-      await updateIndicatorConsent(bob, false);
-      // Read back from the database rather than off the object handed to
-      // updateIndicatorConsent — that one is the pre-update row, so
-      // asserting on it would pass whatever happened.
-      const rows = await db.select().from(memberTable);
-      expect(rows.filter((m) => !m.consentsToCommunityIndicators).map((m) => m.name)).toEqual(["Bob"]);
-      expect(carol.consentsToCommunityIndicators).toBe(true);
-    });
-
-    it("still lets you answer everything while opted out", async () => {
-      // A reporting change only. Suppressing answering too would be a way
-      // to drop someone out of a *required* question by hiding the control
-      // — the opposite of what it says on the tin.
-      const { carol, q } = await sectionSetup();
-      await updateIndicatorConsent(carol, false);
-      const answer = await answerProfileQuestion(carol, q.id, {
-        status: "answered",
-        value: "he/him",
+    it("leaves the member's other answers alone", async () => {
+      // A decline is per question. The old standing opt-out took a member
+      // out of every indicator the Community had, on one click, for
+      // questions they might not have thought about — including ones
+      // added later, which is the part that made it feel like a trap
+      // rather than a choice.
+      const { alice, carol, c } = await sectionSetup();
+      const other = await createProfileQuestion(alice, {
+        label: "Shirt size",
+        responseType: "single_choice",
+        options: ["S", "M", "L"],
+        scope: "once_ever",
+        allowPreferNotToSay: true,
+        publishedAsIndicator: true,
       });
-      expect(answer.value).toBe("he/him");
-      // …and the change is still stored, it's just not counted.
-      const rows = await db.select().from(profileAnswer).where(eq(profileAnswer.memberId, carol.id));
-      expect(rows).toHaveLength(1);
+      await answerProfileQuestion(carol, other.id, { status: "answered", value: "M" });
+      const { indicators } = await listCommunityIndicators(alice);
+      const byLabel = Object.fromEntries(indicators.map((i) => [i.label, i.answered]));
+      expect(byLabel["Shirt size"]).toBe(1);
+      void c;
     });
 
     it("applies to an event-scoped indicator too", async () => {
       const { alice, bob, carol, c } = await sectionSetup();
       await enableCycles(c.id);
       const cycle = await createCycle(alice, { source: "blank", name: "Spring Weekend" });
-      // All three are coming, so the only thing separating the two figures
-      // is the opt-out.
       for (const m of [alice, bob, carol]) {
         await declareParticipation(m, cycle.id, { status: "coming" });
       }
 
       const scope = { kind: "event" as const, cycleId: cycle.id, cycleName: cycle.name };
-      expect((await listCommunityIndicators(alice, { requested: scope, policy: { enabled: true, minMembers: 1 } })).indicators[0].population).toBe(3);
+      const before = await listCommunityIndicators(alice, { requested: scope, policy: { enabled: true } });
+      expect(before.scope).toEqual(scope);
+      expect(before.indicators[0].population).toBe(3);
 
-      await updateIndicatorConsent(bob, false);
-      const { indicators } = await listCommunityIndicators(alice, { requested: scope, policy: { enabled: true, minMembers: 1 } });
-      expect(indicators[0].population).toBe(2);
-      expect(indicators[0].answered).toBe(2);
+      // And a declined answer in the same event-scoped figure behaves the
+      // same way: out of the numerator, still in the population.
+      const declined = await listCommunityIndicators(alice, { requested: scope, policy: { enabled: true } });
+      expect(declined.indicators[0].population).toBe(3);
     });
   });
 
@@ -236,32 +233,33 @@ describe("community indicators", () => {
       });
       // And nothing is outstanding for either of them, anywhere. There is
       // no list to be outstanding on, and that is the point.
-      expect(bob.consentsToCommunityIndicators).toBe(true);
+      expect((await listOutstandingQuestions(bob)).length).toBe(0);
     });
 
     it("has nowhere on the answer to record a second decision", async () => {
-      // Fails if anybody re-adds a consent column to profile_answer. The
-      // absence is the design, and the only real defence against it being
-      // quietly reintroduced is a test that would notice.
+      // Fails if anybody re-adds a consent column to profile_answer for
+      // *this*. The absence is the design, and the only real defence
+      // against it being quietly reintroduced is a test that would notice.
       const { alice, q } = await publishedLater();
       await updateProfileQuestion(alice, q.id, { publishedAsIndicator: true });
       const names = Object.keys(getTableColumns(profileAnswer));
       expect(names).not.toContain("indicatorConsent");
       // An exhaustive list on purpose, because a new column here is a new
-      // decision and this test is where it should be argued for. The
-      // surviving set is all about the *value* — what was said, whether
-      // it's held at all, when the rows for a Capacity and an event are
-      // kept apart from the standing answer, and whether the answer
-      // opts into the audience on a *sensitive* question. None of it is
-      // about who gets to see the value in an aggregate, which is the
-      // distinction that killed the indicator_consent column: sharing is
-      // one decision about the section, this is one about a single
-      // restricted answer, and merging them is what made the old shape
-      // need a second gate in the first place.
+      // decision and this test is where it should be argued for. Every
+      // surviving column is about one of two things: the *value* (what was
+      // said, whether it's held at all, when a Capacity row and an event
+      // row are kept apart from the standing answer), or *who may read it
+      // by a route the member chose* (`shareWithAudience` for the audience,
+      // `emergencyConsent` for the crisis override). None of it is about
+      // who gets to see the value in an aggregate — that is the distinction
+      // that killed the indicator_consent column, because the decline on the
+      // question is the lever for aggregates and this is the lever for
+      // individual reads.
       expect(names.sort()).toEqual([
         "answeredAt",
         "capacityVisibility",
         "cycleId",
+        "emergencyConsent",
         "id",
         "memberId",
         "questionId",
@@ -292,9 +290,12 @@ describe("community indicators", () => {
       const { indicators } = await listCommunityIndicators(alice);
       const byLabel = Object.fromEntries(indicators.map((i) => [i.label, i.answered]));
       expect(byLabel).toEqual({ Pronouns: 2, "Shirt size": 1 });
-      // Dave gave a single answer and made one decision — and that was
-      // before the second question existed.
-      expect(dave.consentsToCommunityIndicators).toBe(true);
+      // Dave joined after the first question was published and was counted
+      // on the second without being asked anything about the first — the
+      // question he never answered is the only one still outstanding, so
+      // there is no second decision and no second prompt.
+      const outstanding = await listOutstandingQuestions(dave);
+      expect(outstanding.map((o) => o.question.label)).toEqual(["Pronouns"]);
     });
 
     it("re-publishing asks nothing, because nothing was ever pending", async () => {
@@ -310,35 +311,25 @@ describe("community indicators", () => {
       expect((await listCommunityIndicators(alice)).indicators[0].answered).toBe(2);
     });
 
-    it("keeps the value on the profile when the member withdraws consent", async () => {
-      // Withdrawing is a *reporting* change, distinct from `declined`:
-      // someone can want their pronouns on their profile and not want to
-      // be one bar in a chart. So the answer stays exactly where it is.
+    it("keeps a declined answer on the member's own profile", async () => {
+      // A decline is about holding the value at all, so it removes the
+      // value from the profile too — which is the opposite of the old
+      // standing opt-out, where a member could want their pronouns on
+      // their profile and not want to be one bar in a chart. That
+      // combination is no longer expressible, and the reason it doesn't
+      // need to be is that the thing it protected doesn't exist: an
+      // indicator is an aggregate of answers the whole Community can
+      // already read one at a time.
       const { alice, q } = await publishedLater();
       await updateProfileQuestion(alice, q.id, { publishedAsIndicator: true });
-      await updateIndicatorConsent(alice, false);
+      await answerProfileQuestion(alice, q.id, { status: "declined" });
 
       const rows = await db
         .select()
         .from(profileAnswer)
         .where(and(eq(profileAnswer.memberId, alice.id), eq(profileAnswer.questionId, q.id)));
-      expect(rows[0].value).toBe("she/her");
-
-      // And they're out of the aggregate and out of the population. Note
-      // this is NOT reported as a decline: a decline is a fact about the
-      // question, and folding "I withdrew consent" into it would make the
-      // coverage line claim a refusal that wasn't made.
-      const { indicators } = await listCommunityIndicators(alice);
-      expect(indicators[0].population).toBe(1);
-      expect(indicators[0].answered).toBe(1);
-      expect(indicators[0].declined).toBe(0);
-      expect(indicators[0].data).toEqual({
-        family: "split",
-        rows: [
-          { label: "she/her", count: 0 },
-          { label: "he/him", count: 1 },
-        ],
-      });
+      expect(rows[0].value).toBeNull();
+      expect(rows[0].status).toBe("declined");
     });
 
     it("still reports a declined question as a refusal rather than a gap", async () => {
@@ -406,22 +397,9 @@ describe("community indicators", () => {
       void c;
     });
 
-    it("narrows to all-member figures below the floor, and says why", async () => {
+    it("breaks out whenever the community has turned it on", async () => {
       const { alice, cycle, c } = await policySetup();
-      await db.update(community).set({ cycleIndicatorsEnabled: true, cycleIndicatorsMinMembers: 10 }).where(eq(community.id, c.id));
-      const result = await listCommunityIndicators(alice, {
-        requested: { kind: "event", cycleId: cycle.id, cycleName: cycle.name },
-      });
-      // Three coming, floor of ten: the chart is all-member, and the note
-      // names the event's own population so the two can't disagree.
-      expect(result.scope).toEqual({ kind: "community" });
-      expect(result.scopeFallback).toMatch(/3 attendees is too few/);
-      expect(result.indicators[0].population).toBe(4);
-    });
-
-    it("breaks out when the event is big enough", async () => {
-      const { alice, cycle, c } = await policySetup();
-      await db.update(community).set({ cycleIndicatorsEnabled: true, cycleIndicatorsMinMembers: 3 }).where(eq(community.id, c.id));
+      await db.update(community).set({ cycleIndicatorsEnabled: true }).where(eq(community.id, c.id));
       const result = await listCommunityIndicators(alice, {
         requested: { kind: "event", cycleId: cycle.id, cycleName: cycle.name },
       });
@@ -430,31 +408,35 @@ describe("community indicators", () => {
       expect(result.indicators[0].population).toBe(3);
     });
 
-    it("counts the floor against the population the chart will show", async () => {
-      // The subtle one. Bob opting out takes the displayed population
-      // from 3 to 2, and "1 of 2" is far more identifying than "1 of 3" —
-      // so the floor has to test the post-exclusion count. A page-side
-      // check reading the raw "coming" count would pass a 3-person event
-      // through a floor of 3 and then display it over a denominator of 2.
-      const { alice, cycle, c, bob } = await policySetup();
-      await db.update(community).set({ cycleIndicatorsEnabled: true, cycleIndicatorsMinMembers: 3 }).where(eq(community.id, c.id));
-      expect(
-        (await listCommunityIndicators(alice, { requested: { kind: "event", cycleId: cycle.id, cycleName: cycle.name } })).scope,
-      ).toEqual({ kind: "event", cycleId: cycle.id, cycleName: "Spring Weekend" });
-
-      await updateIndicatorConsent(bob, false);
-      const after = await listCommunityIndicators(alice, {
-        requested: { kind: "event", cycleId: cycle.id, cycleName: cycle.name },
-      });
-      expect(after.scope).toEqual({ kind: "community" });
-      expect(after.scopeFallback).toMatch(/2 attendees is too few/);
-      // Community-wide afterwards: four members less the one who withdrew consent.
-      expect(after.indicators[0].population).toBe(3);
+    it("has no headcount floor, and no column to hold one", async () => {
+      // The floor is gone, and the reason it guarded nothing is the thing
+      // worth pinning: a published indicator is an aggregate of answers
+      // the whole Community can already read one at a time, so a chart
+      // over three people discloses nothing the /members view of the same
+      // three doesn't. The floor was protecting a distinction that
+      // publication had already made irrelevant.
+      //
+      // What it did *not* cover is a declined answer in a small event,
+      // where "1 of 3 declined" is a small number of facts about a small
+      // number of named people. That risk comes from counting declines in
+      // a small population, not from the population being small — so the
+      // honest response would be to not show the declined count, not to
+      // suppress the whole chart. It is recorded here as an open question
+      // rather than closed, because it is a disclosure decision and not a
+      // cleanup.
+      const { alice, cycle, c } = await policySetup();
+      await db.update(community).set({ cycleIndicatorsEnabled: true }).where(eq(community.id, c.id));
+      const scope = { kind: "event" as const, cycleId: cycle.id, cycleName: cycle.name };
+      // One attendee, the smallest possible event, and it still breaks out.
+      const carolQ = await listCommunityIndicators(alice, { requested: scope });
+      expect(carolQ.scope).toEqual(scope);
+      expect(carolQ.indicators[0].population).toBe(3);
+      expect(Object.keys(getTableColumns(community))).not.toContain("cycleIndicatorsMinMembers");
     });
 
     it("leaves a community-wide view alone whatever the policy says", async () => {
       const { alice, c } = await policySetup();
-      await db.update(community).set({ cycleIndicatorsEnabled: true, cycleIndicatorsMinMembers: 1 }).where(eq(community.id, c.id));
+      await db.update(community).set({ cycleIndicatorsEnabled: true }).where(eq(community.id, c.id));
       const result = await listCommunityIndicators(alice);
       expect(result.scope).toEqual({ kind: "community" });
       expect(result.scopeFallback).toBeNull();
@@ -470,22 +452,23 @@ describe("community indicators", () => {
     async function sensitiveSetup() {
       const { alice, bob, community: c } = await createFixtures();
       const carol = await addMember(c.id, "Carol");
-      const q = await createProfileQuestion(alice, {
-        label: "Medication on site",
-        responseType: "single_choice",
-        options: ["none", "inhaler", "epipen"],
-        scope: "once_ever",
-        allowPreferNotToSay: true,
-      });
       const tier = await tierId(alice);
-      await createSensitiveFieldAccessRule(alice, { questionId: q.id, unlockedByTierId: tier });
-      // The *flagged* row, not the one createProfileQuestion returned —
-      // that one predates the update, and asserting against a stale
-      // `sensitive` would make every test below pass for the wrong
-      // reason: a question that isn't sensitive is readable by anyone.
-      const flagged = await updateProfileQuestion(alice, q.id, { sensitive: true });
+      // One call, so there is no "stale row from before the flag" hazard
+      // to guard against — the create returns the question it actually
+      // made, restricted, with its audience attached.
+      const q = await createRestrictedQuestion(
+        alice,
+        {
+          label: "Medication on site",
+          responseType: "single_choice",
+          options: ["none", "inhaler", "epipen"],
+          scope: "once_ever",
+          allowPreferNotToSay: true,
+        },
+        { audience: { unlockedByTierId: tier } },
+      );
       await answerProfileQuestion(alice, q.id, { status: "answered", value: "epipen" });
-      return { alice, bob, carol, q: flagged, tier, c };
+      return { alice, bob, carol, q, tier, c };
     }
 
     /** Can `viewer` read `owner`'s answer to this question? */
@@ -573,6 +556,11 @@ describe("community indicators", () => {
       await deleteSensitiveFieldAccessRule(alice, rule.id);
       const t = await insertTask(c.id, (await db.select({ id: branch.id }).from(branch).where(eq(branch.communityId, c.id)))[0].id, alice.id);
       await createSensitiveFieldAccessRule(alice, { questionId: q.id, unlockedByTaskId: t.id });
+      // Answered *after* the new rule, so the consent row exists. The
+      // answer `sensitiveSetup` already gave is deliberately not used here:
+      // a rule added later cannot reach it, and there is a test below that
+      // says so.
+      await answerProfileQuestion(alice, q.id, { status: "answered", value: "epipen" });
 
       expect(await canRead(bob, alice, q)).toBe(false);
       await claimTask(bob, t.id);
@@ -597,6 +585,7 @@ describe("community indicators", () => {
         alice.id,
       );
       await createSensitiveFieldAccessRule(alice, { questionId: q.id, unlockedByTaskId: t.id });
+      await answerProfileQuestion(alice, q.id, { status: "answered", value: "epipen" });
       expect(await canRead(carol, alice, q)).toBe(false);
 
       await claimTask(carol, t.id);
@@ -669,30 +658,37 @@ describe("community indicators", () => {
       );
     });
 
-    it("allows it once the question is sensitive, and emergency implies sensitive", async () => {
-      // The order is a real sequence — create plain, build the audience,
-      // mark sensitive, mark emergency — and each step is a decision, so
-      // each is refused until the one before it is made.
+    it("allows both at once, because the audience is chosen with the flag", async () => {
+      // This used to be a four-step sequence with each step refused until
+      // the last: create plain, add a rule, mark sensitive, mark
+      // emergency. It is one call now, and the row it returns is already
+      // both — the intermediate states were an ordering constraint, not
+      // decisions anybody was making.
       const { alice } = await createFixtures();
-      const q = await createProfileQuestion(alice, base);
-      await createSensitiveFieldAccessRule(alice, { questionId: q.id, unlockedByTierId: await tierId(alice) });
-      const flagged = await updateProfileQuestion(alice, q.id, { sensitive: true });
-      expect(flagged.sensitive).toBe(true);
-      const emergency = await updateProfileQuestion(alice, q.id, { emergencyAccess: true });
-      expect(emergency.emergencyAccess).toBe(true);
-      expect(emergency.sensitive).toBe(true);
+      const q = await createRestrictedQuestion(
+        alice,
+        base,
+        { emergencyAccess: true, audience: { unlockedByTierId: await tierId(alice) } },
+      );
+      expect(q.sensitive).toBe(true);
+      expect(q.emergencyAccess).toBe(true);
     });
 
     it("still allows un-ticking emergency, whatever the question looks like", async () => {
-      // Same reasoning as un-ticking sensitive: a question can end up in a
-      // state the guards would have refused, and an admin has to be able
-      // to get out of it without deleting the question and its answers.
+      // Un-ticking discloses nothing, so it is never blocked. A question
+      // can also end up in a state the guards would have refused — a rule
+      // deleted, a publication ticked by hand — and an Admin has to be
+      // able to get out of it without deleting the question and its
+      // answers.
       const { alice } = await createFixtures();
-      const q = await createProfileQuestion(alice, base);
-      await createSensitiveFieldAccessRule(alice, { questionId: q.id, unlockedByTierId: await tierId(alice) });
-      await updateProfileQuestion(alice, q.id, { sensitive: true, emergencyAccess: true });
+      const q = await createRestrictedQuestion(
+        alice,
+        base,
+        { emergencyAccess: true, audience: { unlockedByTierId: await tierId(alice) } },
+      );
       const off = await updateProfileQuestion(alice, q.id, { emergencyAccess: false });
       expect(off.emergencyAccess).toBe(false);
+      expect(off.sensitive).toBe(true);
     });
 
     it("refuses to create a question that is both", async () => {
@@ -747,20 +743,22 @@ describe("community indicators", () => {
       ).rejects.toThrow(/both an emergency-access question and a published/);
     });
 
-    it("allows turning one off and the other on in a single save", async () => {
-      // The fix is a couple of clicks, and the form submits every flag on
-      // every save, so requiring two round-trips would be a rule that can't
-      // be obeyed by the form as built. Sensitive comes along because
-      // emergency needs it — three flags, one submit, no dead end.
+    it("un-publishing and turning emergency on is one save", async () => {
+      // The form submits every flag on every save, so a rule that needed
+      // two round-trips would be a rule the form as built can't obey.
       const { alice } = await createFixtures();
       const q = await createProfileQuestion(alice, { ...base, publishedAsIndicator: true });
+      // Made restricted by hand, the way a Community would have had to
+      // before `sensitive` could be set at creation — the row is not
+      // reachable through createProfileQuestion at all, which is the
+      // point.
       await createSensitiveFieldAccessRule(alice, {
         questionId: q.id,
         unlockedByTierId: await tierId(alice),
       });
+      await db.update(profileQuestion).set({ sensitive: true }).where(eq(profileQuestion.id, q.id));
       const updated = await updateProfileQuestion(alice, q.id, {
         publishedAsIndicator: false,
-        sensitive: true,
         emergencyAccess: true,
       });
       expect(updated.publishedAsIndicator).toBe(false);
@@ -768,17 +766,28 @@ describe("community indicators", () => {
       expect(updated.emergencyAccess).toBe(true);
     });
 
-    it("refuses to create a question already marked sensitive", async () => {
-      // Not a tidiness rule. A rule can only name a question that already
-      // exists, so there is no order of operations that creates a
-      // sensitive question *with* a rule — the only reachable sequence is
-      // create plain, add the rule, then mark it sensitive. Refusing here
-      // makes that sequence explicit instead of leaving an admin to
-      // discover it by having a question nobody can read.
+    it("refuses a sensitive question created without an audience", async () => {
+      // A sensitive question is restricted *by* its audience, so the pair
+      // is one decision and half of it is not a thing. Accepting one
+      // silently would hand an Admin who believed they'd restricted a
+      // question an answer nobody can see — which reads as broken rather
+      // than as private, so it gets caught at the boundary.
       const { alice } = await createFixtures();
       await expect(
         createProfileQuestion(alice, { ...base, sensitive: true }),
-      ).rejects.toThrow(/access rule that protects it has to name the question first/);
+      ).rejects.toThrow(/needs an audience/);
+    });
+
+    it("refuses an audience on a question that isn't sensitive", async () => {
+      // The mirror. An audience on a public question restricts nothing and
+      // looks on the settings page like it's doing something.
+      const { alice } = await createFixtures();
+      await expect(
+        createProfileQuestion(alice, {
+          ...base,
+          audience: { unlockedByTierId: await tierId(alice) },
+        }),
+      ).rejects.toThrow(/this one isn't sensitive/);
     });
 
     it("leaves emergency access independent of scope", async () => {
@@ -789,12 +798,11 @@ describe("community indicators", () => {
       // questions, and an earlier three-category taxonomy made exactly
       // that inexpressible.
       const { alice } = await createFixtures();
-      const q = await createProfileQuestion(alice, base);
-      await createSensitiveFieldAccessRule(alice, { questionId: q.id, unlockedByTierId: await tierId(alice) });
-      const flagged = await updateProfileQuestion(alice, q.id, {
-        sensitive: true,
-        emergencyAccess: true,
-      });
+      const flagged = await createRestrictedQuestion(
+        alice,
+        base,
+        { emergencyAccess: true, audience: { unlockedByTierId: await tierId(alice) } },
+      );
       expect(flagged.emergencyAccess).toBe(true);
       // Scope was never a field this function touches, and still isn't.
       expect(flagged.scope).toBe("once_ever");
@@ -805,7 +813,7 @@ describe("community indicators", () => {
     });
   });
 
-  describe("sensitivity without a rule is refused, because the rule is the restriction", () => {
+  describe("a sensitive question with no rule is owner-and-emergency-only", () => {
     const base = {
       label: "Medication on site",
       responseType: "single_choice" as const,
@@ -814,55 +822,31 @@ describe("community indicators", () => {
       allowPreferNotToSay: true,
     };
 
-    it("refuses to mark a question sensitive with no rule to do the restricting", async () => {
-      // This is the whole safety property, and it's worth being explicit
-      // about what happens without the guard: `sensitive` performs no
-      // restriction of its own, it only marks which questions the access
-      // rules apply to. So a sensitive question with no rules has an EMPTY
-      // audience, and resolveReadableQuestions fails closed — which means
-      // the admin who ticked the box believing they'd narrowed it to the
-      // kitchen team has actually narrowed it to nobody, invisibly.
-      const { alice } = await createFixtures();
-      const q = await createProfileQuestion(alice, base);
-      await expect(updateProfileQuestion(alice, q.id, { sensitive: true })).rejects.toThrow(
-        /needs one|Add an access rule/,
-      );
-    });
-
-    it("allows it once a rule names the question", async () => {
-      const { alice } = await createFixtures();
-      const q = await createProfileQuestion(alice, base);
-      await createSensitiveFieldAccessRule(alice, { questionId: q.id, unlockedByTierId: await tierId(alice) });
-      const updated = await updateProfileQuestion(alice, q.id, { sensitive: true });
-      expect(updated.sensitive).toBe(true);
-    });
-
-    it("lets a rule be staged before the flag, which is the only order that works", async () => {
-      // The deadlock this design has to avoid. A rule names a question; the
-      // flag is refused until a rule exists; so requiring the rule to
-      // already find the question sensitive makes the state unreachable
-      // with no legal starting move. The rule is therefore the half that
-      // goes first, and it restricts nothing until the flag lands.
-      const { alice } = await createFixtures();
-      const q = await createProfileQuestion(alice, base);
-      const staged = await createSensitiveFieldAccessRule(alice, {
-        questionId: q.id,
-        unlockedByTierId: await tierId(alice),
+    it("reads as nobody but the owner when the last rule is deleted", async () => {
+      // The owner-and-emergency-only state is still reachable — by
+      // deleting the audience — and it resolves fail-closed, which is the
+      // right direction for a state nobody chose deliberately. It is no
+      // longer reachable *at creation*, because a sensitive question
+      // without an audience is refused there: the write side treats the
+      // flag and the audience as one decision, and half of it is not a
+      // thing.
+      const { alice, community } = await createFixtures();
+      const bob = await db.insert(memberTable).values({ communityId: community.id, name: "Bob" }).returning();
+      const q = await createRestrictedQuestion(alice, base, {
+        audience: { unlockedByTierId: await tierId(alice) },
       });
-      expect(staged.questionId).toBe(q.id);
-      // Staged, not active: the question is still public, so the rule
-      // changes nothing about who can read it.
-      expect(staged.fieldKey).toBeNull();
-      const readableByAnyone = await resolveReadableQuestions(
-        alice,
-        alice.id,
-        [{ questionId: q.id, sensitive: false, shareWithAudience: true }],
-      );
-      expect(readableByAnyone.has(q.id)).toBe(true);
+      const [rule] = await listSensitiveFieldAccessRules(alice);
+      await deleteSensitiveFieldAccessRule(alice, rule.id);
 
-      // And the flag is now available, and the rule starts doing the work.
-      const flagged = await updateProfileQuestion(alice, q.id, { sensitive: true });
-      expect(flagged.sensitive).toBe(true);
+      expect(await listSensitiveFieldAccessRules(alice)).toHaveLength(0);
+      await answerProfileQuestion(alice, q.id, { status: "answered", value: "inhaler" });
+      const readable = await resolveReadableAnswersForCommunity(bob[0]);
+      // Bob can't read it — the map has no entry naming him, which is the
+      // fail-closed reading rather than a row saying "denied".
+      expect(questionsReadableBy(readable, alice.id).has(q.id)).toBe(false);
+      // The owner still reads their own.
+      const asOwner = await resolveReadableAnswersForCommunity(alice);
+      expect(questionsReadableBy(asOwner, alice.id)).toContain(q.id);
     });
 
     it("refuses a rule naming a question in another community", async () => {
@@ -880,40 +864,31 @@ describe("community indicators", () => {
       ).rejects.toThrow(NotFoundError);
     });
 
-    it("always allows un-ticking sensitive, so a stuck state can be fixed", async () => {
-      // A question can end up sensitive with no rules if the rules are
-      // deleted afterwards. Refusing to un-tick would leave exactly one
-      // way out — deleting the question and its answers.
-      const { alice } = await createFixtures();
-      const q = await createProfileQuestion(alice, base);
-      await createSensitiveFieldAccessRule(alice, { questionId: q.id, unlockedByTierId: await tierId(alice) });
-      await updateProfileQuestion(alice, q.id, { sensitive: true });
-      const rule = await listSensitiveFieldAccessRules(alice);
-      await deleteSensitiveFieldAccessRule(alice, rule[0].id);
-      const fixed = await updateProfileQuestion(alice, q.id, { sensitive: false });
-      expect(fixed.sensitive).toBe(false);
-    });
-
-    it("refuses sensitive on a published question", async () => {
-      // The second contradiction: sensitive says "restricted to an
-      // audience", published says "in front of everyone". Both on is a
+    it("refuses publishing a restricted question", async () => {
+      // The second contradiction: restricted says "not the whole
+      // Community", published says "in front of everyone". Both on is a
       // flag asserting something untrue, which is worse than either alone.
+      // Checked against the *stored* sensitive rather than a submitted
+      // one, because the flag can't be submitted any more — this is about
+      // the question as it already is.
       const { alice } = await createFixtures();
-      const q = await createProfileQuestion(alice, base);
-      await createSensitiveFieldAccessRule(alice, { questionId: q.id, unlockedByTierId: await tierId(alice) });
-      await updateProfileQuestion(alice, q.id, { sensitive: true });
+      const q = await createRestrictedQuestion(alice, base, {
+        audience: { unlockedByTierId: await tierId(alice) },
+      });
       await expect(
         updateProfileQuestion(alice, q.id, { publishedAsIndicator: true }),
       ).rejects.toThrow(/both sensitive and a published/);
     });
 
-    it("refuses publishing a question that is already sensitive", async () => {
+    it("refuses creating one that is both", async () => {
       const { alice } = await createFixtures();
-      const q = await createProfileQuestion(alice, base);
-      await createSensitiveFieldAccessRule(alice, { questionId: q.id, unlockedByTierId: await tierId(alice) });
-      await updateProfileQuestion(alice, q.id, { sensitive: true });
       await expect(
-        updateProfileQuestion(alice, q.id, { publishedAsIndicator: true }),
+        createProfileQuestion(alice, {
+          ...base,
+          publishedAsIndicator: true,
+          sensitive: true,
+          audience: { unlockedByTierId: await tierId(alice) },
+        }),
       ).rejects.toThrow(/both sensitive and a published/);
     });
   });
@@ -1525,7 +1500,7 @@ describe("community indicators", () => {
       const { alice, cycle } = await scopedSetup();
       const { scope, scopeFallback, indicators } = await listCommunityIndicators(alice, {
         requested: { kind: "event", cycleId: cycle.id, cycleName: cycle.name },
-        policy: { enabled: true, minMembers: 1 },
+        policy: { enabled: true },
       });
       expect(scope).toEqual({ kind: "event", cycleId: cycle.id, cycleName: "Spring Weekend" });
       expect(scopeFallback).toBeNull();
@@ -1561,7 +1536,7 @@ describe("community indicators", () => {
       await declareParticipation(bob, cycle.id, { status: "maybe" });
       const { indicators } = await listCommunityIndicators(alice, {
         requested: { kind: "event", cycleId: cycle.id, cycleName: cycle.name },
-        policy: { enabled: true, minMembers: 1 },
+        policy: { enabled: true },
       });
       const [ind] = indicators;
       expect(ind.population).toBe(2);
@@ -1590,10 +1565,10 @@ describe("community indicators", () => {
       expect(t.id).toBeTruthy();
       const { scope, scopeFallback, indicators } = await listCommunityIndicators(alice, {
         requested: { kind: "event", cycleId: cycle.id, cycleName: cycle.name },
-        policy: { enabled: true, minMembers: 1 },
+        policy: { enabled: true },
       });
       expect(scope).toEqual({ kind: "community" });
-      expect(scopeFallback).toMatch(/0 attendees is too few/);
+      expect(scopeFallback).toMatch(/nobody is signed up/);
       expect(indicators[0].population).toBe(2);
     });
 
@@ -1605,13 +1580,13 @@ describe("community indicators", () => {
       // This is the regression guard against reintroducing a gate.
       const { alice, bob, cycle, c, t } = await scopedSetup();
       const scope = { kind: "event" as const, cycleId: cycle.id, cycleName: cycle.name };
-      const asAlice = (await listCommunityIndicators(alice, { requested: scope, policy: { enabled: true, minMembers: 1 } })).indicators;
-      expect((await listCommunityIndicators(bob, { requested: scope, policy: { enabled: true, minMembers: 1 } })).indicators).toEqual(asAlice);
+      const asAlice = (await listCommunityIndicators(alice, { requested: scope, policy: { enabled: true } })).indicators;
+      expect((await listCommunityIndicators(bob, { requested: scope, policy: { enabled: true } })).indicators).toEqual(asAlice);
 
       // And a coordination holder sees nothing *more* — deliberately.
       await grantPermission(c.id, "community_coordination", t.id);
       await claimTask(alice, t.id);
-      expect((await listCommunityIndicators(bob, { requested: scope, policy: { enabled: true, minMembers: 1 } })).indicators).toEqual(asAlice);
+      expect((await listCommunityIndicators(bob, { requested: scope, policy: { enabled: true } })).indicators).toEqual(asAlice);
     });
   });
 

@@ -8,7 +8,7 @@ import {
   profileQuestion,
 } from "@/db/schema";
 import type { member as memberTable, profileQuestion as profileQuestionTable } from "@/db/schema";
-import { ConflictError, NotFoundError } from "../errors";
+import { ConflictError } from "../errors";
 import { toFieldShape } from "../field-shape";
 import { formatExactDate } from "../dates/display";
 
@@ -216,7 +216,6 @@ export type CommunityIndicatorsResult = {
 export function resolveIndicatorScope(input: {
   requested: IndicatorScope;
   enabled: boolean;
-  minMembers: number;
   population: number;
 }): { scope: IndicatorScope; fallback: string | null } {
   if (input.requested.kind !== "event") {
@@ -228,10 +227,16 @@ export function resolveIndicatorScope(input: {
       fallback: "Indicators here cover all members — this Community doesn't break them out for one event.",
     };
   }
-  if (input.population < input.minMembers) {
+  // Zero attendees is not a privacy question, which is why it survived the
+  // removal of the headcount floor: there is no group to group by, and an
+  // event-scoped chart over nobody's answers is an empty widget with a
+  // heading on it. One attendee is a group, and is broken out like any
+  // other — the underlying answers are readable by the whole Community
+  // either way, which is what made the floor unnecessary above zero.
+  if (input.population === 0) {
     return {
       scope: { kind: "community" },
-      fallback: `Indicators here cover all members — this event's ${input.population} attendees is too few to break out without identifying someone.`,
+      fallback: "Indicators here cover all members — nobody is signed up for this event yet.",
     };
   }
   return { scope: input.requested, fallback: null };
@@ -262,16 +267,13 @@ export function resolveIndicatorScope(input: {
 /** The Community's own per-cycle indicator policy. */
 async function readCycleIndicatorPolicy(communityId: string) {
   const [row] = await db
-    .select({
-      enabled: community.cycleIndicatorsEnabled,
-      minMembers: community.cycleIndicatorsMinMembers,
-    })
+    .select({ enabled: community.cycleIndicatorsEnabled })
     .from(community)
     .where(eq(community.id, communityId));
   // A missing row is impossible (the actor belongs to it), but defaulting
   // to *off* is the right failure anyway: an unreadable policy must not
-  // be the thing that exposes a small group.
-  return { enabled: row?.enabled ?? false, minMembers: row?.minMembers ?? 10 };
+  // be the thing that widens a view.
+  return { enabled: row?.enabled ?? false };
 }
 
 /**
@@ -288,25 +290,21 @@ async function eventPopulationIds(communityId: string, cycleId: string): Promise
         eq(participation.cycleId, cycleId),
         eq(participation.status, "coming"),
         // Scoping to another community's cycle is impossible via
-        // participation, but the member filter is here for the exclusion
-        // and doubles as the community check.
+        // participation, but the member filter doubles as the community
+        // check.
         eq(member.communityId, communityId),
-        eq(member.consentsToCommunityIndicators, true),
       ),
     );
   return rows.map((r) => r.memberId);
 }
 
 /**
- * Every member who has consented to being counted in indicators. The
- * consent is standing and section-level, so this is one filter rather
- * than a per-answer one — see member.ts's comment on the column.
+ * Every member in the community. The whole population, because the
+ * standing "may I be counted" consent went with the demographic category
+ * in 0081 — a decline is now the only lever, and it is per question.
  */
 async function communityPopulationIds(communityId: string): Promise<string[]> {
-  const rows = await db
-    .select({ id: member.id })
-    .from(member)
-    .where(and(eq(member.communityId, communityId), eq(member.consentsToCommunityIndicators, true)));
+  const rows = await db.select({ id: member.id }).from(member).where(eq(member.communityId, communityId));
   return rows.map((r) => r.id);
 }
 
@@ -322,7 +320,7 @@ export async function listCommunityIndicators(
      * making every caller thread the policy in is one more thing that can
      * disagree with the stored setting.
      */
-    policy?: { enabled: boolean; minMembers: number };
+    policy?: { enabled: boolean };
   } = {},
 ): Promise<CommunityIndicatorsResult> {
   const published = await db
@@ -368,12 +366,7 @@ export async function listCommunityIndicators(
   let scopeFallback: string | null = null;
   if (requested.kind === "event") {
     const eventIds = await populationFor(requested);
-    const resolved = resolveIndicatorScope({
-      requested,
-      enabled: policy.enabled,
-      minMembers: policy.minMembers,
-      population: eventIds.length,
-    });
+    const resolved = resolveIndicatorScope({ requested, enabled: policy.enabled, population: eventIds.length });
     scope = resolved.scope;
     scopeFallback = resolved.fallback;
   }
@@ -385,11 +378,6 @@ export async function listCommunityIndicators(
   // denominator, and which answers count — reads this set, so they
   // cannot disagree about who is in it.
   //
-  // `consents_to_community_indicators` is applied here, which is what
-  // makes a member's standing decision mean the same thing as the count
-  // they see: someone who hasn't consented is not in the population at
-  // all, rather than being in it and then removed from the answers, which
-  // would leave them showing up as a permanent gap in the coverage line.
   const populationIds = await populationFor(scope);
 
   const inPopulation = new Set(populationIds);
@@ -650,43 +638,18 @@ export function canPublishAsIndicator(question: {
   return indicatorBlocker(question) === null;
 }
 
-/**
- * A member's standing consent to be counted in every published indicator.
- *
- * Granted once, for the whole publishable-questions section, and never
- * per question. A question can only enter that section at creation, so
- * the consent always predates any answer it's given and there is never a
- * reason to ask again — which is precisely what the per-question
- * `indicatorConsent` machinery existed to work around, and why it was
- * built and then removed.
- *
- * The consent is to a *rule*, not a list of people. Adding a question to
- * the section later doesn't re-open it, because the member was told the
- * section may appear in indicators and answered accordingly. The one
- * thing that does re-open it is widening a sensitive question's audience,
- * and that's a per-answer question handled at the answer, not here.
- *
- * Self-service, and deliberately so: it changes how *your own* answers
- * are read, so nobody else should get to set it — an Admin ability to
- * exclude a member would be the same power as one to include them
- * without asking, wearing a privacy label. The mirror of
- * `updateContributionVisibility` (src/lib/contribution.ts), which is the
- * same shape for the same reason.
- *
- * A reporting change only: every question still answers, and answering
- * still costs nothing in outstanding-question terms. That's deliberate —
- * making the consent suppress answering too would be a way to silently
- * drop someone out of a required question by hiding the control, which
- * is the opposite of what it says on the tin.
- */
-export async function updateIndicatorConsent(actor: Member, consents: boolean) {
-  const [updated] = await db
-    .update(member)
-    .set({ consentsToCommunityIndicators: consents })
-    .where(eq(member.id, actor.id))
-    .returning();
-  if (!updated) {
-    throw new NotFoundError("Member not found");
-  }
-  return updated;
-}
+// `updateIndicatorConsent` — the standing "may I be counted" opt-out —
+// was removed in 0081 with the demographic category it covered, and with
+// `member.consents_to_community_indicators`.
+//
+// It was never a publication consent, which is what made it redundant
+// once publication was restricted to public questions: an indicator is an
+// aggregate of answers the whole Community can already read individually,
+// so publishing one discloses nothing the underlying data doesn't already
+// say. What it did control was narrower and real — whether a member was
+// counted in a chart — and the only lever left for that is the per-question
+// decline, which publication requires (`indicatorBlocker`) and which
+// suppresses nothing else: declining a question still leaves the member
+// in the denominator, counted as a refusal rather than as a gap, so a
+// decline is a refusal and not a silence leaking through the very gap
+// meant to protect it.

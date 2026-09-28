@@ -2,12 +2,12 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { profileQuestion } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { createProfileQuestion, updateProfileQuestion } from "./questions";
-import { createSensitiveFieldAccessRule } from "../sensitive-data";
-import { PERMISSION_MODULE_KEYS } from "../permissions";
+import { createProfileQuestion } from "./questions";
+import { PERMISSION_MODULE_KEYS, type PermissionModuleKey } from "../permissions";
 import { AppError } from "../errors";
 import {
   DEFAULT_PROFILE_QUESTION_GROUPS,
+  STARTER_CHOICE_FIELD_PREFIX,
   type DefaultQuestionChoice,
   type DefaultQuestionChoices,
   type DefaultQuestionGroup,
@@ -24,6 +24,7 @@ import {
 export {
   DEFAULT_PROFILE_QUESTION_GROUPS,
   DEFAULT_QUESTION_KEYS,
+  starterChoiceField,
 } from "./defaults-table";
 export type {
   DefaultQuestionChoice,
@@ -34,6 +35,74 @@ export type {
 } from "./defaults-table";
 
 type Member = typeof memberTable.$inferSelect;
+
+/**
+ * Reads the review step's submission into choices.
+ *
+ * Split out of the server action, which is a `"use server"` module and so
+ * cannot be called from a test without a request context — which is how the
+ * parse stayed untested until a browser submitted the form and it silently
+ * created nothing.
+ *
+ * Assembled in a fixed order rather than as entries arrive: `restricted`
+ * has to be read before `route`, because a route on a question that isn't
+ * restricted is not an audience at all, and leaning on the order a browser
+ * happens to serialise hidden inputs in is a way for that to break
+ * silently.
+ */
+export function parseStarterSetChoices(formData: FormData): DefaultQuestionChoices {
+  const fieldsByKey = new Map<string, Record<string, string>>();
+  for (const [name, value] of formData.entries()) {
+    if (!name.startsWith(`${STARTER_CHOICE_FIELD_PREFIX}.`)) continue;
+    // Exactly three dotted parts: the prefix, the seed key (kebab-case, so
+    // never contains a dot), and the field name. Anything else isn't ours
+    // and is left alone rather than guessed at.
+    const parts = name.split(".");
+    if (parts.length !== 3) continue;
+    const [, key, field] = parts;
+    const fields = fieldsByKey.get(key) ?? {};
+    fields[field] = String(value ?? "");
+    fieldsByKey.set(key, fields);
+  }
+
+  const choices: DefaultQuestionChoices = {};
+  for (const [key, fields] of fieldsByKey) {
+    const restricted = fields.restricted === "on";
+    const route = fields.route ?? "none";
+    // A route is only an audience when the question is restricted at all.
+    // "Restricted, route none" is the owner-and-emergency state, so `none`
+    // maps to a null audience rather than to a route named "none" that the
+    // write side would then have to recognise. An unrecognised route also
+    // lands on null, which for a restricted question is the *most*
+    // restrictive reading available: a malformed submission becomes
+    // owner-only rather than public.
+    const audience: SeededQuestionAudience | null =
+      !restricted || route === "none"
+        ? null
+        : route === "tier"
+          ? { unlockedByTierId: fields.tierId || null }
+          : route === "grant"
+            ? {
+                unlockedByGrantModuleKey: (fields.grantModuleKey || null) as
+                  | PermissionModuleKey
+                  | null,
+              }
+            : route === "task"
+              ? { unlockedByTaskId: fields.taskId || null }
+              : null;
+    choices[key] = {
+      include: fields.include === "on",
+      restricted,
+      audience,
+      label: fields.label,
+      // Emergency access only ever rides on a restricted question, so the
+      // two are collapsed here rather than leaving an impossible pair for
+      // the seeder's preflight to reject on every submission.
+      emergencyAccess: restricted && fields.emergencyAccess === "on",
+    };
+  }
+  return choices;
+}
 
 /**
  * Checks the table against the rules the rest of this file relies on, so a
@@ -77,6 +146,16 @@ export function validateDefaultQuestionTable(
           `${where}: published as an indicator with no decline offered, which the consent floor refuses.`,
         );
       }
+      if (seed.needsChosenAudience && seed.accessRuleModuleKey) {
+        problems.push(
+          `${where}: asks the Admin to choose its audience and also names one. Pick one — a pre-selected audience is the thing this flag exists to avoid.`,
+        );
+      }
+      if (seed.emergencyAccess && !seed.accessRuleModuleKey && !seed.needsChosenAudience) {
+        problems.push(
+          `${where}: has emergency access but neither a named nor a to-be-chosen audience. An emergency override needs a restriction to override, and marking a public question emergency-reachable would log a read of public data as though it had been protected.`,
+        );
+      }
     }
   }
   // "Restricted" is the one group whose blurb is a promise, so it is the
@@ -84,9 +163,13 @@ export function validateDefaultQuestionTable(
   // than merely a public question.
   const restricted = groups.find((g) => g.title === "Restricted");
   for (const seed of restricted?.questions ?? []) {
-    if (!seed.accessRuleModuleKey) {
+    // A sensitive question is restricted by an audience and the write side
+    // refuses one without, so a Restricted row with neither is a row that
+    // cannot be created at all — which is a worse failure than it sounds,
+    // because it would throw during someone's signup.
+    if (!seed.accessRuleModuleKey && !seed.needsChosenAudience) {
       problems.push(
-        `Restricted / ${seed.label}: has no audience, so it would seed readable by the whole community — which is the opposite of what the group says. Give it an accessRuleModuleKey or move it out.`,
+        `Restricted / ${seed.label}: has no audience, so it cannot be created as a sensitive question at all. Give it an accessRuleModuleKey, mark it needsChosenAudience, or move it out.`,
       );
     }
   }
@@ -113,6 +196,17 @@ function audienceFor(seed: DefaultQuestionSeed, choice: DefaultQuestionChoice | 
       : null;
   }
   return choice.audience;
+}
+
+/** Whether this seed is restricted at all, whichever source says so.
+ *
+ *  Distinct from `audienceFor` because a restricted question is never
+ *  without an audience: the write side refuses the pair, so the two are
+ *  always the same fact and this only names it in one place.
+ */
+function isRestricted(seed: DefaultQuestionSeed, choice: DefaultQuestionChoice | undefined) {
+  if (choice === undefined) return Boolean(seed.accessRuleModuleKey) || Boolean(seed.needsChosenAudience);
+  return choice.restricted;
 }
 
 /**
@@ -153,6 +247,11 @@ function preflight(
           `“${seed.label}” is restricted to everyone except the audience you picked, so it needs exactly one of a Tier, a permission grant, or a Task — pick one, or untick “restricted” to leave it readable by the whole Community`,
         );
       }
+      if (choice.emergencyAccess && !choice.restricted) {
+        problems.push(
+          `“${seed.label}” is marked for emergency access but isn't restricted, so there's nothing for an emergency to override — either restrict it or turn emergency access off`,
+        );
+      }
     }
   }
 
@@ -169,21 +268,24 @@ function preflight(
 /**
  * Seed a new community's standing questions.
  *
- * Deliberately seeds **no** emergency-access question. Emergency access
- * is the one attribute where a wrong default is a disclosure rather than
- * an inconvenience: any member can activate it, and the answer arrives
- * with no consent decision beyond having filled the question in. That's
- * defensible per question and not a thing to switch on across several
- * questions in someone's community on their behalf, so it's the
- * community's call in settings — where the copy explains what activating
- * it does.
+ * Seeds exactly one emergency-access question, and it is the emergency
+ * contact — because that is the one case where the attribute is the point
+ * rather than a risk. Emergency access is otherwise the attribute where a
+ * wrong default is a disclosure rather than an inconvenience: any member
+ * can activate it, and the answer arrives with no consent decision beyond
+ * having filled the question in. So it is not spread across the set, and it
+ * arrives owner-and-emergency-only rather than with an invented audience.
+ * Whether anyone should read an emergency contact routinely is a decision
+ * the community makes with full knowledge of what it means, in Settings,
+ * and the platform declines to make it for them.
  *
  * The order is load-bearing for the restricted ones: a question can't be
  * marked sensitive until a rule names it, and a rule can only name a
  * question that exists. So each is created, given its rule, then flagged —
  * the same three steps an admin takes by hand, in the same order. A
  * community that wants to change one of these is already looking at the
- * sequence that seeded it.
+ * sequence that seeded it. The owner-and-emergency question skips the
+ * middle step, having no rule to add.
  *
  * `choices` is what the settings review step sends, and it is
  * **authoritative**: a key it doesn't mention is not seeded. That is the
@@ -207,12 +309,20 @@ export async function seedDefaultProfileQuestions(
   const isReview = choices !== undefined;
   const decided = preflight(DEFAULT_PROFILE_QUESTION_GROUPS, choices);
 
+  // `emergencyAccess` and `publishedAsIndicator` are carried on the return
+  // value because a caller that seeded a set and then wanted to know what
+  // it had got no way to ask — the rows are ids and labels. The review step
+  // redirects and the unattended path doesn't look, so this is not a
+  // hot path; it's there so a test (or a future admin screen) can assert
+  // on what was actually made rather than re-querying and hoping.
   const created: {
     id: string;
     key: string;
     label: string;
     scope: "once_ever" | "per_cycle";
     sensitive: boolean;
+    emergencyAccess: boolean;
+    publishedAsIndicator: boolean;
   }[] = [];
 
   for (const group of DEFAULT_PROFILE_QUESTION_GROUPS) {
@@ -222,8 +332,16 @@ export async function seedDefaultProfileQuestions(
       // named is excluded too, whenever `choices` was supplied at all —
       // see the note on the parameter.
       if (isReview && !choice?.include) continue;
+      // Unattended, a row whose audience needs a human is skipped outright
+      // rather than guessed at. A wrong guess here is a disclosure.
+      if (!isReview && seed.needsChosenAudience) continue;
 
       const audience = audienceFor(seed, choice);
+      const restricted = isRestricted(seed, choice);
+      const emergency =
+        choice !== undefined
+          ? Boolean(choice.emergencyAccess) && choice.restricted
+          : Boolean(seed.emergencyAccess) && Boolean(seed.needsChosenAudience);
       const question = await createProfileQuestion(actor, {
         // The review step lets an admin retitle a row on the way in, which
         // is the whole reason it exists — a starter set you have to archive
@@ -247,24 +365,25 @@ export async function seedDefaultProfileQuestions(
         allowDeferral: true,
         allowPreferNotToSay: seed.allowPreferNotToSay,
         publishedAsIndicator: seed.publishedAsIndicator ?? false,
-        // Marked sensitive below, once the rule exists. Passing it here
-        // would be refused, and correctly: `sensitive` is the second step
-        // of three, not a property of the seed.
-        sensitive: false,
-        emergencyAccess: false,
+        // `sensitive` and its audience together, with
+        // createProfileQuestion doing the three steps internally. This used
+        // to be three calls here and three more in the UI, and only because
+        // `sensitive` was refused on create and freely toggled afterwards —
+        // a shape that is now gone, so the seeder, the review form and the
+        // add-question form are all one call to the same place.
+        sensitive: restricted && Boolean(audience),
+        audience: audience ?? undefined,
+        emergencyAccess: emergency,
       });
-
-      if (audience) {
-        await createSensitiveFieldAccessRule(actor, { questionId: question.id, ...audience });
-        await updateProfileQuestion(actor, question.id, { sensitive: true });
-      }
 
       created.push({
         id: question.id,
         key: seed.key,
         label: question.label,
         scope: "once_ever",
-        sensitive: Boolean(audience),
+        sensitive: restricted,
+        emergencyAccess: question.emergencyAccess,
+        publishedAsIndicator: question.publishedAsIndicator,
       });
     }
   }

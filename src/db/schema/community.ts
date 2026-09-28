@@ -115,11 +115,20 @@ export const community = pgTable("community", {
   //
   // Defaults are chosen, not derived. Off, because a per-cycle view is a
   // new exposure surface and every comparable sharing switch in this
-  // codebase opts in (`contributionVisible`, `cyclesEnabled`). And 10 is
-  // not meaningfully safer than 8 — the value of the floor is that the
-  // Community *made a decision and recorded it*, not the specific number.
+  // codebase opts in (`contributionVisible`, `cyclesEnabled`).
+  //
+  // The companion floor (a minimum headcount before an indicator may be
+  // broken out for one event) was dropped in 0081. It guarded the case
+  // where a small group could be identified by a breakdown, and with
+  // publication restricted to public questions that case is gone: an
+  // aggregate of answers everyone can already read, over a set of members
+  // whose names are already on the participation list, says nothing the
+  // reader couldn't assemble themselves. The one thing it still caught was
+  // a *declined* answer in a small population — "1 of 3" identifies who
+  // didn't say — and that residue is a consequence of counting declines
+  // rather than of the floor, so removing the floor would have removed a
+  // guard without removing the thing it guarded.
   cycleIndicatorsEnabled: boolean("cycle_indicators_enabled").notNull().default(false),
-  cycleIndicatorsMinMembers: integer("cycle_indicators_min_members").notNull().default(10),
   recruitmentApplicationsOpen: boolean("recruitment_applications_open").notNull().default(true),
   recruitmentInvitesOpen: boolean("recruitment_invites_open").notNull().default(true),
   // The third door (docs/joining-admission-plan.md §2.3/J3/D13): the

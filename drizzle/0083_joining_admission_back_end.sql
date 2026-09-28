@@ -90,6 +90,9 @@ ALTER TABLE "objection" ADD COLUMN "community_id" uuid NOT NULL;--> statement-br
 -- attached to nothing and would fail the ALTER, deliberately — a
 -- silently-missing community would be a shielded objection no mediation
 -- body could ever find.
+--
+-- Hand-written: drizzle-kit diffs schemas, not data, and cannot emit a
+-- backfill for a NOT NULL column it has just added.
 UPDATE "objection" o SET "community_id" = f."community_id" FROM "form_response" fr JOIN "form" f ON f."id" = fr."form_id" WHERE fr."id" = o."form_response_id";--> statement-breakpoint
 ALTER TABLE "objection" ADD COLUMN "invite_id" uuid;--> statement-breakpoint
 ALTER TABLE "objection" ADD COLUMN "resolution" "objection_resolution" DEFAULT 'standing' NOT NULL;--> statement-breakpoint

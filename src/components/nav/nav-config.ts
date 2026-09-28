@@ -191,13 +191,6 @@ export const NAV_GROUPS: NavGroup[] = [
         moduleKey: "conflictReports",
       },
       {
-        key: "sensitive-data",
-        label: "Sensitive data",
-        href: "/sensitive-data",
-        icon: "shield",
-        moduleKey: "sensitiveData",
-      },
-      {
         key: "schedule",
         label: "Programme",
         href: "/schedule",

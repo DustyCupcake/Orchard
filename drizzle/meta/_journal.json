@@ -565,8 +565,29 @@
     {
       "idx": 80,
       "version": "7",
-      "when": 1790532278336,
-      "tag": "0080_joining_admission_back_end",
+      "when": 1790509677547,
+      "tag": "0080_sensitive_data_collapse",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1790527820806,
+      "tag": "0081_indicator_consent_collapse",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1790533502524,
+      "tag": "0082_emergency_consent",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1790582224259,
+      "tag": "0083_joining_admission_back_end",
       "breakpoints": true
     }
   ]

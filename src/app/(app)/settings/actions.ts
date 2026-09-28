@@ -51,7 +51,6 @@ import {
 import { JOINING_LANE_ORDER } from "@/lib/recruitment/lanes";
 import type { JoinLaneKind } from "@/db/schema";
 import { checkboxGroup, checkboxOf, defined, number, optionalText, text } from "./form-values";
-import type { PermissionModuleKey } from "@/lib/permissions";
 import {
   archiveProfileQuestion,
   createProfileQuestion,
@@ -60,12 +59,13 @@ import {
   seedDefaultProfileQuestions,
   unarchiveProfileQuestion,
   updateProfileQuestion,
+  parseStarterSetChoices,
   updateProfileQuestionInput,
-  type DefaultQuestionChoices,
 } from "@/lib/profile-questions";
 import {
   createSensitiveFieldAccessRule,
   createSensitiveFieldAccessRuleInput,
+  type CreateSensitiveFieldAccessRuleInput,
   deleteSensitiveFieldAccessRule,
 } from "@/lib/sensitive-data";
 import { archiveForm, createForm, createFormInput, unarchiveForm, updateForm, updateFormInput } from "@/lib/forms";
@@ -889,6 +889,23 @@ function numberOrNull(raw: FormDataEntryValue | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// The three audience routes, read from whichever fields the form left
+// filled. One reader for the create form and the Access rules form so the
+// two can't disagree about what "one route" means — and a route the form
+// left blank comes back undefined rather than an empty string, because
+// "no tier" and "the id of a tier that doesn't exist" are different
+// mistakes and only the first is recoverable.
+function readAudienceFields(formData: FormData) {
+  const tierId = String(formData.get("unlockedByTierId") ?? "").trim();
+  const taskId = String(formData.get("unlockedByTaskId") ?? "").trim();
+  const moduleKey = String(formData.get("unlockedByGrantModuleKey") ?? "").trim();
+  return {
+    unlockedByTierId: tierId || undefined,
+    unlockedByTaskId: taskId || undefined,
+    unlockedByGrantModuleKey: (moduleKey || undefined) as CreateSensitiveFieldAccessRuleInput["unlockedByGrantModuleKey"],
+  };
+}
+
 export async function createProfileQuestionAction(formData: FormData) {
   const actor = await requireMember();
   try {
@@ -922,6 +939,17 @@ export async function createProfileQuestionAction(formData: FormData) {
       allowPreferNotToSay: formData.get("allowPreferNotToSay") === "on",
       feedsCapacitySignal: formData.get("feedsCapacitySignal") === "on",
       surfaces: formData.get("onboardingSurface") === "on" ? ["onboarding"] : [],
+      // Restricted, with the audience named here rather than in a second
+      // trip to the Access rules section. A rule can only name a question
+      // that already exists, so the two are one decision and the create
+      // path does both — see createProfileQuestion's insert/rule/flag
+      // sequence. The rule fields are read with the same "exactly one"
+      // discipline as the standalone form, and an empty set on a
+      // restricted question is a refusal from the schema rather than a
+      // question nobody can read.
+      sensitive: formData.get("sensitive") === "on",
+      audience: readAudienceFields(formData),
+      emergencyAccess: formData.get("emergencyAccess") === "on",
     });
     await createProfileQuestion(actor, input);
   } catch (err) {
@@ -954,7 +982,20 @@ export async function updateProfileQuestionAction(formData: FormData) {
       allowPreferNotToSay: formData.get("allowPreferNotToSay") === "on",
       feedsCapacitySignal: formData.get("feedsCapacitySignal") === "on",
       publishedAsIndicator: formData.get("publishedAsIndicator") === "on",
-      sensitive: formData.get("sensitive") === "on",
+      // No `sensitive` here — the update input has no such field at all,
+      // which is the mechanism rather than a check. Emergency *is* still
+      // mutable and deliberately so: switching it off discloses nothing,
+      // and a Community should be able to stop advertising a standing
+      // emergency reachability of its members' facts.
+      //
+      // The one asymmetry, and it is unresolved: switching it ON is a
+      // widening, so it ought to require the same per-answer consent
+      // `profile_answer_rule_consent` gives an access rule. It doesn't yet
+      // — an Admin ticking this on a question that already has answers
+      // makes every one of them emergency-reachable without asking. See
+      // `extendAnswerConsent`'s sibling gap in sensitive-data.ts. Noted
+      // here rather than in a TODO because it is a disclosure decision,
+      // not a bug report.
       emergencyAccess: formData.get("emergencyAccess") === "on",
       surfaces: formData.get("onboardingSurface") === "on" ? ["onboarding"] : [],
     });
@@ -985,42 +1026,11 @@ export async function seedDefaultProfileQuestionsAction(formData: FormData) {
       );
     }
 
-    // The review step submits one `choice.<key>.*` group per proposed
-    // question, whether or not it was kept — so "excluded" is an explicit
-    // value rather than an absent key, and the seeder can tell "the admin
-    // unticked it" from "this row isn't in the table any more".
-    const raw = formData.getAll("choice");
-    const choices: DefaultQuestionChoices = {};
-    for (const entry of raw) {
-      const [key, field] = String(entry).split(".");
-      if (!key || !field) continue;
-      const value = String(formData.get(`choice.${key}.${field}`) ?? "");
-      const choice = (choices[key] ??= { include: false, audience: null });
-      if (field === "include") {
-        choice.include = value === "on";
-      } else if (field === "label") {
-        choice.label = value;
-      } else if (field === "route") {
-        choice.audience =
-          value === "tier"
-            ? { unlockedByTierId: null }
-            : value === "grant"
-              ? { unlockedByGrantModuleKey: null }
-              : value === "task"
-                ? { unlockedByTaskId: null }
-                : null;
-      } else if (choice.audience) {
-        // Filled in after `route`, so the route above is what decides
-        // which of these three fields is the audience rather than all
-        // three being set — which the write side refuses.
-        if (field === "tierId") choice.audience.unlockedByTierId = value || null;
-        if (field === "grantModuleKey") {
-          choice.audience.unlockedByGrantModuleKey =
-            (value || null) as PermissionModuleKey | null;
-        }
-        if (field === "taskId") choice.audience.unlockedByTaskId = value || null;
-      }
-    }
+    // Parsing lives in the lib, not here: this module is `"use server"`,
+    // so a test cannot call it without a request context, and the parse is
+    // exactly the kind of thing that needs one. It reads a real FormData
+    // built with the same field names the review form renders.
+    const choices = parseStarterSetChoices(formData);
 
     await seedDefaultProfileQuestions(actor, choices);
   } catch (err) {

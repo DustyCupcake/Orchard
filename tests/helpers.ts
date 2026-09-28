@@ -9,6 +9,8 @@ import {
   type PermissionModuleKey,
 } from "@/lib/permissions";
 import { claimTask } from "@/lib/tasks";
+import { createProfileQuestion, type CreateProfileQuestionInput } from "@/lib/profile-questions/questions";
+import type { CreateSensitiveFieldAccessRuleInput } from "@/lib/sensitive-data";
 
 type FixtureMember = typeof memberTable.$inferSelect;
 
@@ -131,4 +133,40 @@ export async function insertTask(
     })
     .returning();
   return row;
+}
+
+/**
+ * A restricted profile question, in one call.
+ *
+ * Every test that needs a sensitive question used to do it in three
+ * statements — create, add an access rule, then flip the flag — because
+ * that was the only order the write side permitted, and flipping the flag
+ * afterwards was the only way to do it at all. Both halves of that are
+ * gone: the flag is chosen at creation and cannot move, and the audience
+ * rides along with it.
+ *
+ * A helper rather than repeating the shape, because the point of these
+ * tests is the *reading* and not the three-step incantation, and a helper
+ * only has to be updated in one place when the shape changes again.
+ *
+ * The audience is passed rather than invented. Making a Tier here would
+ * be tidier to call and worse to read: a test that says
+ * `{ audience: { unlockedByTierId: t.id } }` states the audience it is
+ * testing against, and one that says `createRestrictedQuestion(alice, …)`
+ * states a Tier that exists only so the call can be made — which is
+ * exactly the kind of thing that makes a test pass for the wrong reason.
+ */
+export async function createRestrictedQuestion(
+  actor: FixtureMember,
+  input: Omit<CreateProfileQuestionInput, "sensitive" | "audience" | "emergencyAccess">,
+  options: {
+    emergencyAccess?: boolean;
+    audience: Omit<CreateSensitiveFieldAccessRuleInput, "questionId">;
+  },
+) {
+  return createProfileQuestion(actor, {
+    ...input,
+    sensitive: true,
+    ...options,
+  });
 }
