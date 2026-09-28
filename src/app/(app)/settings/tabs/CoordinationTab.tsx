@@ -17,7 +17,14 @@ export default function CoordinationTab({ community }: { community: typeof commu
           action={updateCoordinationTimingsAction}
           submitLabel="Save deadlines"
           title="Response windows"
-          description="All measured in hours, all counted from the moment the thing was sent."
+          state={
+            <>
+              A conflict report is overdue after {community.conflictAckWindowHours}h · a task
+              nomination goes back after {pluralDays(community.taskNominationResponseDays)} · a
+              published call summary counts as unread after {pluralDays(community.callSummaryReadWindowDays)}
+            </>
+          }
+          description="All counted from the moment the thing was sent. The conflict window is in hours because it is a working-hours judgement; the other two are in days, because they are read by a person between other things."
         >
           <TextField
             label="Acknowledge a conflict report within (hours)"
@@ -27,14 +34,14 @@ export default function CoordinationTab({ community }: { community: typeof commu
             hint="After this, the report is shown as overdue on the conflict team's page. It is never escalated by the clock."
           />
           <TextField
-            label="Answer a task nomination within (hours)"
+            label="Answer a task nomination within (days)"
             name="taskNominationResponseDays"
             type="number"
             defaultValue={community.taskNominationResponseDays}
-            hint="Deliberately in days rather than hours, because it's the one that's read by a human between other things. Pass the deadline by and the assignment goes back to Unclaimed — no penalty either way."
+            hint="Pass the deadline by and the assignment goes back to Unclaimed — no penalty either way."
           />
           <TextField
-            label="A call summary waits this long before counting as unread (hours)"
+            label="A call summary waits this long before counting as unread (days)"
             name="callSummaryReadWindowDays"
             type="number"
             defaultValue={community.callSummaryReadWindowDays}
@@ -51,6 +58,13 @@ export default function CoordinationTab({ community }: { community: typeof commu
           action={updateResponseTrackingAction}
           submitLabel="Save thresholds"
           title="When a pattern is a pattern"
+          state={
+            <>
+              Worth noticing at {community.engagementSoftFlagThreshold} missed responses · shown to
+              the member themselves at {community.engagementPatternThreshold}. One response can
+              never cross both.
+            </>
+          }
           description="The thresholds are a ladder: one response is ordinary, a few is worth noticing, more is a pattern. A single engagement event can never cross both bars on its own."
         >
           <TextField
@@ -78,6 +92,11 @@ export default function CoordinationTab({ community }: { community: typeof commu
           action={updateIndicatorSettingsAction}
           submitLabel="Save indicator settings"
           title="Breaking out a single event"
+          state={
+            community.cycleIndicatorsEnabled
+              ? "On — each event's figures are shown for whoever is already in it"
+              : "Off — indicators are only ever shown for the community as a whole"
+          }
           description="An event population is both small and identifiable: you know exactly who's coming, so '1 in 8' is one person rather than a rounding error. This is the community's own lever against that."
         >
           <ToggleField
@@ -106,4 +125,11 @@ export default function CoordinationTab({ community }: { community: typeof commu
       </SettingsSection>
     </div>
   );
+}
+
+/** "1 day" / "3 days", for a state line. A bare "3" next to a setting
+ *  whose unit is the whole point would be the same unreadable number the
+ *  label used to hide behind a wrong unit. */
+function pluralDays(n: number): string {
+  return n === 1 ? "1 day" : `${n} days`;
 }

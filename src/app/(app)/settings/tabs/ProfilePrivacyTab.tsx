@@ -334,7 +334,12 @@ function ProfileQuestionsSection({
         );
       })}
 
-      <SettingsCard action={createProfileQuestionAction} submitLabel="Add question" title="Add a question">
+      <SettingsCard
+        action={createProfileQuestionAction}
+        submitLabel="Add question"
+        title="Add a question"
+        affordance="Create"
+      >
         <ProfileQuestionEditor initial={toEditableFieldShape({ label: "", responseType: "text", required: false })} />
         <label className="flex max-w-[420px] flex-col gap-1">
           <span className={LABEL}>Asked</span>
@@ -463,7 +468,16 @@ function TraitAxesSection({ traitAxes }: { traitAxes: (typeof traitAxisTable.$in
               {a.archivedAt && <Tag tone="warning">archived</Tag>}
             </span>
           }
-          description={`Key: ${a.key} — not editable here.`}
+          state={
+            <>
+              {a.optionLabels.length > 0
+                ? `${a.optionLabels.length} labelled positions instead of a slider`
+                : "a slider between the two ends"}{" "}
+              · {a.askAtOnboarding ? "asked during onboarding" : "not asked during onboarding"} ·
+              key <code>{a.key}</code>
+            </>
+          }
+          description="The key is fixed once the axis exists, because answers are stored against it — renaming one would orphan every answer already given." 
           aside={
             <form action={a.archivedAt ? unarchiveTraitAxisAction : archiveTraitAxisAction}>
               <input type="hidden" name="axisId" value={a.id} />
@@ -494,7 +508,12 @@ function TraitAxesSection({ traitAxes }: { traitAxes: (typeof traitAxisTable.$in
         </SettingsCard>
       ))}
 
-      <SettingsCard action={createTraitAxisAction} submitLabel="Add trait axis" title="Add a trait axis">
+      <SettingsCard
+        action={createTraitAxisAction}
+        submitLabel="Add trait axis"
+        title="Add a trait axis"
+        affordance="Create"
+      >
         <TextField label="Key" name="key" placeholder="e.g. autonomy" required />
         <div className="flex flex-wrap gap-2">
           <input type="text" name="lowLabel" placeholder="low label" required className={`${INPUT} flex-1`} />
@@ -569,7 +588,12 @@ function ConsentPurposesSection({
         </div>
       ))}
 
-      <SettingsCard action={createConsentPurposeAction} submitLabel="Add purpose" title="Add a purpose">
+      <SettingsCard
+        action={createConsentPurposeAction}
+        submitLabel="Add purpose"
+        title="Add a purpose"
+        affordance="Create"
+      >
         <TextField label="Key" name="key" placeholder="e.g. kitchen_dietary" required />
         <TextField label="Label" name="label" required />
         <label className="flex max-w-[420px] flex-col gap-1">

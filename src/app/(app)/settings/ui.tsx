@@ -90,30 +90,64 @@ function CardShell({
 // the button's own wording — deliberately per-card rather than a global
 // "Save", because "Save" on a screen with nine cards has never once told
 // anybody what they are about to save.
+//
+// `state` is the reason this is a disclosure rather than a bare form. The
+// default view of this screen is supposed to be *the community's current
+// configuration*, and a card that is only a form says none of it until you
+// open it — you cannot read how many branches exist, or whether single
+// sign-on is on, or what a question's audience is, without opening every
+// card on the tab to find out. So the collapsed side states the setting in
+// a sentence, and the controls are what you get for changing it.
+//
+// The structure is not incidental: a `<summary>` and a `<form>` cannot share
+// a parent, so the header lives in the summary and the form is its sibling
+// inside the same `<details>`. `aside` is deliberately *not* in the summary
+// either — it carries destructive actions (a branch's Delete) and a nested
+// form, and putting either in a summary row is both invalid and wrong.
 export function SettingsCard({
   title,
+  state,
   description,
   aside,
   action,
   submitLabel = "Save",
+  affordance = "Edit",
   children,
 }: {
   title?: ReactNode;
+  state?: ReactNode;
   description?: ReactNode;
   aside?: ReactNode;
   action: (formData: FormData) => void | Promise<void>;
   submitLabel?: string;
+  /** What the collapsed row invites you to do. "Create" for a card whose
+   *  subject doesn't exist yet — a create card labelled "Edit" is asking
+   *  you to open something there is nothing to edit. */
+  affordance?: string;
   children: ReactNode;
 }) {
   return (
-    <form action={action} className="flex flex-col gap-3">
-      <CardShell title={title} description={description} aside={aside}>
+    <details className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
+      <summary className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1">
+        {title && <h3 className="text-[15px] font-medium text-[var(--text)]">{title}</h3>}
+        {state && (
+          <div className="w-full text-[12px] leading-relaxed text-[var(--text-muted)]">{state}</div>
+        )}
+        <span className="ml-auto text-[12px] text-[var(--accent-1)]">{affordance}</span>
+      </summary>
+      {description && (
+        <p className="mt-2 max-w-[560px] text-[12px] leading-relaxed text-[var(--text-muted)]">
+          {description}
+        </p>
+      )}
+      <form action={action} className="mt-3 flex flex-col gap-3">
         {children}
-      </CardShell>
-      <div>
-        <SubmitButton className={BUTTON_PRIMARY}>{submitLabel}</SubmitButton>
-      </div>
-    </form>
+        <div>
+          <SubmitButton className={BUTTON_PRIMARY}>{submitLabel}</SubmitButton>
+        </div>
+      </form>
+      {aside && <div className="mt-3">{aside}</div>}
+    </details>
   );
 }
 

@@ -45,6 +45,13 @@ export default function CyclesTiersTab({
             action={updateCycleTypeAction}
             submitLabel="Save type"
             title={t.name}
+            state={
+              t.defaultPackId
+                ? `A new one is proposed from the saved pack "${taskPacks.find((p) => p.id === t.defaultPackId)?.name ?? "a pack that no longer exists"}".`
+                : t.defaultSourceCycleId
+                  ? `A new one is proposed as a copy of "${cycles.find((c) => c.id === t.defaultSourceCycleId)?.name ?? "an event that no longer exists"}".`
+                  : "A new one starts from nothing."
+            }
             aside={
               <form action={deleteCycleTypeAction}>
                 <input type="hidden" name="cycleTypeId" value={t.id} />
@@ -80,7 +87,12 @@ export default function CyclesTiersTab({
             />
           </SettingsCard>
         ))}
-        <SettingsCard action={createCycleTypeAction} submitLabel="Create type" title="Add an event type">
+        <SettingsCard
+          action={createCycleTypeAction}
+          submitLabel="Create type"
+          title="Add an event type"
+          affordance="Create"
+        >
           <TextField label="Name" name="name" required />
           <SelectField
             label="Start from a copy of"
@@ -116,6 +128,20 @@ export default function CyclesTiersTab({
             action={updateTierAction}
             submitLabel="Save tier"
             title={t.name}
+            state={
+              t.criterionType === "cycle_type_count" ? (
+                <>
+                  Reached automatically at{" "}
+                  {(t.criterionConfig as { minCount?: number } | undefined)?.minCount ?? "?"} events
+                  of type{" "}
+                  {cycleTypes.find((c) => c.id === (t.criterionConfig as { cycleTypeId?: string } | undefined)?.cycleTypeId)
+                    ?.name ?? "a type that no longer exists"}
+                  .
+                </>
+              ) : (
+                "Counted by hand — nobody is placed in this tier automatically."
+              )
+            }
             aside={
               <>
                 <Tag>{CRITERION_LABEL[t.criterionType] ?? t.criterionType}</Tag>
@@ -130,18 +156,18 @@ export default function CyclesTiersTab({
           >
             <input type="hidden" name="tierId" value={t.id} />
             <TextField label="Name" name="name" defaultValue={t.name} required />
-            {t.criterionType === "cycle_type_count" && (
-              <p className="max-w-[420px] text-[12px] text-[var(--text-muted)]">
-                Automatic:{" "}
-                {(t.criterionConfig as { minCount?: number } | undefined)?.minCount ?? "?"} events of type{" "}
-                {cycleTypes.find((c) => c.id === (t.criterionConfig as { cycleTypeId?: string } | undefined)?.cycleTypeId)
-                  ?.name ?? "?"}
-                .
-              </p>
-            )}
+            {/* The criterion itself is stated on the collapsed side now, so
+                it is not repeated here. A tier whose criterion is derived
+                has nothing else to edit, which is why this form is a single
+                name field. */}
           </SettingsCard>
         ))}
-        <SettingsCard action={createTierAction} submitLabel="Create tier" title="Add a tier">
+        <SettingsCard
+          action={createTierAction}
+          submitLabel="Create tier"
+          title="Add a tier"
+          affordance="Create"
+        >
           <TextField label="Name" name="name" required />
           <label className="flex max-w-[420px] flex-col gap-1">
             <span className={LABEL}>How is it counted</span>

@@ -100,6 +100,28 @@ export default function BranchesTab({
             action={updateBranchAction}
             submitLabel="Save branch"
             title={b.name}
+            state={
+              <>
+                {b.description?.trim() || "No description yet."}{" "}
+                {b.defaultCallHasAgenda === null &&
+                b.defaultCallNeedsSummary === null &&
+                b.defaultCallRequireRead === null ? (
+                  <>Calls use the community defaults.</>
+                ) : (
+                  <>
+                    Calls here need{" "}
+                    {[
+                      b.defaultCallHasAgenda === true ? "an agenda" : b.defaultCallHasAgenda === false ? "no agenda" : null,
+                      b.defaultCallNeedsSummary === true ? "a summary" : b.defaultCallNeedsSummary === false ? "no summary" : null,
+                      b.defaultCallRequireRead === true ? "read confirmation" : b.defaultCallRequireRead === false ? "no read confirmation" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "nothing beyond the community default"}
+                    .
+                  </>
+                )}
+              </>
+            }
             aside={
               <form action={deleteBranchAction}>
                 <input type="hidden" name="branchId" value={b.id} />
@@ -141,6 +163,7 @@ export default function BranchesTab({
           action={createBranchAction}
           submitLabel="Create branch"
           title="Add a branch"
+          affordance="Create"
           description="One sentence on what it's for is enough. Everything else is filled in later."
         >
           <TextField label="Name" name="name" required />

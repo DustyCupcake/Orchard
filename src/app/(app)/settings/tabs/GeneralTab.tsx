@@ -14,8 +14,7 @@ import {
   updateSsoAction,
 } from "../actions";
 
-export default function GeneralTab({
-  community,
+export default function GeneralTab({  community,
   tiers,
 }: {
   community: typeof communityTable.$inferSelect;
@@ -31,6 +30,24 @@ export default function GeneralTab({
           action={updateGeneralBasicsAction}
           submitLabel="Save basics"
           title="Name and structure"
+          state={
+            <>
+              {community.name} ·{" "}
+              {[
+                community.cyclesEnabled ? "events on" : "no events",
+                community.phasesEnabled ? "phases on" : "no phases",
+                community.onsiteModeEnabled ? "on-site mode on" : "on-site mode off",
+              ].join(" · ")}{" "}
+              ·{" "}
+              {community.defaultDateDisplayMode === "period"
+                ? "dates read as periods"
+                : "dates read exactly"}{" "}
+              ·{" "}
+              {community.cycleInitiationTierId
+                ? `starting an event needs ${tiers.find((t) => t.id === community.cycleInitiationTierId)?.name ?? "a tier that no longer exists"}`
+                : "anyone can start an event"}
+            </>
+          }
           description="Turning Events on gives the community dated runs with their own capacity, doors and joining windows. Turning Phases on splits each event into stages — and is a prerequisite for on-site mode."
         >
           <TextField label="Community name" name="name" defaultValue={community.name} required wide />
@@ -81,6 +98,18 @@ export default function GeneralTab({
           action={updateCallDefaultsAction}
           submitLabel="Save call defaults"
           title="What a call needs to be finished"
+          state={
+            <>
+              Defaults only — a branch can override each of these.{" "}
+              {[
+                community.defaultCallHasAgenda ? "agenda" : null,
+                community.defaultCallNeedsSummary ? "summary" : null,
+                community.defaultCallRequireRead ? "read confirmation" : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "no requirements by default"}
+            </>
+          }
           description="Set per call, but these are the starting values. A branch can override any of them."
         >
           <ToggleField
@@ -110,6 +139,18 @@ export default function GeneralTab({
           action={updateBrandingAction}
           submitLabel="Save branding"
           title="Colours and logo"
+          state={
+            <>
+              {/* The *resolved* accent, not the raw column: a null accent is
+                  not "no colour", it is the design tokens' own default, and
+                  a state line reading "none" would be a lie about what the
+                  app is currently showing. Same fallback the inputs use, so
+                  the line matches what saving an untouched form would write. */}
+              <Swatch hex={community.accentPrimary ?? "#3a6cd9"} /> primary ·{" "}
+              <Swatch hex={community.accentSecondary ?? "#8c4bb0"} /> secondary ·{" "}
+              {community.logoUrl ? "logo set" : "no logo — the community name is used"}
+            </>
+          }
           description="Hex colours, read across the whole app. A URL rather than an upload, because nothing in this codebase stores files yet."
         >
           <FieldGroup legend="Colours">
@@ -149,6 +190,17 @@ export default function GeneralTab({
           action={updateSsoAction}
           submitLabel="Save sign-in settings"
           title="Single sign-on (OIDC)"
+          state={
+            community.oidcIssuerUrl ? (
+              <>
+                Configured via {hostOf(community.oidcIssuerUrl)}
+                {community.oidcPrimary ? " · the main way in" : " · offered alongside magic-link"}
+                {community.oidcRequiredRole ? ` · accounts need the ${community.oidcRequiredRole} role` : " · any account from that provider is allowed"}
+              </>
+            ) : (
+              "Not configured — everyone signs in with a magic link"
+            )
+          }
           description="A second identity provider. The client secret lives in the environment, never here, and never leaves the server."
         >
           <TextField
@@ -180,4 +232,29 @@ export default function GeneralTab({
       </SettingsSection>
     </div>
   );
+}
+
+/** The colour as a chip, so the state line answers "what does the app look
+ *  like" without the reader having to interpret a hex string. */
+function Swatch({ hex }: { hex: string }) {
+  return (
+    <span
+      className="mr-1 inline-block h-2.5 w-2.5 align-middle rounded-[2px] border border-[var(--border)]"
+      style={{ backgroundColor: hex }}
+      aria-hidden
+    />
+  );
+}
+
+/** The host of an issuer URL, because "configured via
+ *  https://id.example.com/realms/main" is a configuration detail and
+ *  "configured via id.example.com" is the thing you'd recognise. Falls back
+ *  to the raw string rather than to nothing, since a hand-edited value that
+ *  isn't a URL should still be visible here rather than silently blank. */
+function hostOf(issuerUrl: string): string {
+  try {
+    return new URL(issuerUrl).host;
+  } catch {
+    return issuerUrl;
+  }
 }

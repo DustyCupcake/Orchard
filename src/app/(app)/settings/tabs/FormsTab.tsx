@@ -96,6 +96,7 @@ export default function FormsTab({
         action={createFormAction}
         submitLabel="Create form"
         title="New form"
+        affordance="Create"
         description="Start with the questions. You can reorder, rewrite and archive afterwards without losing anything that has already been answered."
       >
         <FormBuilder

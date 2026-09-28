@@ -79,6 +79,29 @@ A settings form is uncontrolled in both renders, so that second condition is `fa
 
 Verified by `tsc` and `eslint` clean and the full suite green. **Not verified in a browser** — the argument is read out of react-dom's own source and the remount is a documented React guarantee, but the dropdown holding its new value after a real save has not been watched happen, and that is the one claim worth a real pass on `/settings` → Events & Tiers.
 
+## Unreleased: every settings card states what the setting currently is
+
+The settings screen had been rebuilt into one-card-one-save, which fixed the real hazard — a rejected decision-rule set silently reverting the doors — but left the screen unreadable as a *description of the community*. Every card was a form. Opening the tab told you how many cards there were and nothing about what any of them was set to: not how many branches exist, not whether single sign-on is on, not what a tier's threshold was, not whether anyone can apply. Reading the configuration meant opening all ten tabs' worth of cards and reading the controls.
+
+**`SettingsCard` takes a `state` and is now a disclosure.** Collapsed, it is a title and a sentence saying what the setting currently is; expanded, it is exactly the card that was there before — all the controls together, then one Save. The structure is forced rather than chosen: a `<summary>` and a `<form>` cannot share a parent, so the header is the summary and the form is its sibling. `aside` stays out of the summary too, since it carries destructive actions and a nested form.
+
+**All 25 cards now state their value**, and several needed judgement rather than a mechanical read of the column:
+
+- **Colours** show the *resolved* accent with a swatch, not the raw column. A null accent is not "no colour", it is the design tokens' own documented default, so a state line reading "none" would be a lie about what the app is currently showing. Same fallback the inputs use, so the line matches what saving an untouched form writes.
+- **Single sign-on** reads "Not configured — everyone signs in with a magic link" rather than three empty fields, and otherwise names the host rather than the full issuer URL, because `https://id.example.com/realms/main` is a configuration detail and `id.example.com` is the thing you recognise.
+- **A tier whose criterion is derived** states the threshold and the event type on the collapsed side, which is where it already appeared inside the form — so that paragraph is removed rather than said twice.
+- **Decision rules** are summarised in the sentence an admin would use: *"2 rules, first match wins — if 2 say proceed, they're in; if anything else, announce it to the community (resolving to proceed if nobody objects)."* This is the field the surrounding comment calls the one most likely to be wrong, and it was previously only legible as escaped JSON; being able to read the intent without decoding is what makes a wrong rule obvious before it decides somebody's application. The JSON editor is untouched — the state line is a reading of it, not a replacement.
+- **A branch** says whether its call requirements are its own or inherited, rather than showing three selects that all read "inherit".
+- **Admission rules** reuse the lane summaries the read-only view already had, so an admin and a member are reading the same sentence.
+
+**Create cards say "Create", not "Edit."** A card whose subject does not exist yet was inviting you to open something there was nothing to edit. That is an `affordance` prop rather than a guess based on the absence of `state`, because a real setting can legitimately have no state to show.
+
+**Two unit labels were wrong and are fixed.** "Answer a task nomination within (hours)" and "A call summary waits this long before counting as unread (hours)" were both labelling **day** columns. An admin following the label would set `3` meaning three hours and get three days, on two settings where the number is the entire point. The state lines now also carry the unit — "a nomination is backed for 24h · a community-checked arrival is announced for 48h" — because a bare number next to a setting whose unit matters is the same unreadable figure the bad label was hiding.
+
+Not done here: the decision-rules JSON editor itself is still a textarea (the joining lanes got a real `LaneRulesEditor`; this field did not), and the cycles page is still the old flat layout. Both are the remaining items of this sweep.
+
+Verified by `tsc` and `eslint` clean, `next build` clean, and the full suite green. **Not verified in a browser** — this change is almost entirely about what a collapsed card looks like, which is the one thing static checks cannot see. The two-click cost of editing anything, and whether a list of twenty collapsed cards reads better than twenty open forms, both want a real look before this is trusted.
+
 ## Unreleased: a question's audience moves onto the question, and the Access rules section goes
 
 Restricted-question access was configured in two places on the same screen. The audience was chosen in the question's own form at creation, and the separate **Access rules** section existed only to append a group to a question that already had one — a list flattened across every question, identifiable only by reading the question label inside each row. Answering "who can read this?" meant finding a question's row in one section, and changing it meant visiting another.

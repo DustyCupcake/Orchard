@@ -71,6 +71,16 @@ export default async function RecruitmentTab({
             action={updateAdmissionRulesAction}
             submitLabel="Save admission rules"
             title="One rule per lane"
+            state={
+              <div className="flex flex-col gap-0.5">
+                {JOINING_LANE_ORDER.map((lane) => (
+                  <span key={lane}>
+                    <span className="text-[var(--text)]">{laneTitle(lane)}:</span>{" "}
+                    {laneSummary(lanes[lane])}
+                  </span>
+                ))}
+              </div>
+            }
             description="Verification and process are set per lane, never stacked: a lane either asks for extra proof or it asks for a form and an interview, not both kinds of waiting on one person."
           >
             <LaneRulesEditor initial={lanes} />
@@ -97,6 +107,15 @@ export default async function RecruitmentTab({
           action={updateRecruitmentDoorsAction}
           submitLabel="Save doors"
           title="Open right now?"
+          state={
+            <>
+              {[
+                community.recruitmentApplicationsOpen ? "applications open" : "applications closed",
+                community.recruitmentInvitesOpen ? "invites open" : "invites closed",
+                community.recruitmentInterviewsOpen ? "interviews open" : "interviews closed",
+              ].join(" · ")}
+            </>
+          }
           description="Close these to run the community fully closed except for the events or periods you open separately."
         >
           <ToggleField
@@ -128,6 +147,17 @@ export default async function RecruitmentTab({
           action={updateRecruitmentWindowsAction}
           submitLabel="Save windows"
           title="How long people wait"
+          state={
+            <>
+              A nomination is backed for {community.recruitmentNominationWindowHours}h · a
+              community-checked arrival is announced for {community.recruitmentWiderDiscussionHours}h
+              · a concern is overruled by{" "}
+              {community.recruitmentObjectionOverrule === "quorum"
+                ? `${community.recruitmentObjectionQuorum} people`
+                : "a majority of the mediation body"}
+              .
+            </>
+          }
           description="A window never refuses anyone. When a support window lapses the person falls through to their lane's process, and when a community check closes with no concern the person is admitted — a clock can only ever let someone in, never out."
         >
           <TextField
@@ -183,6 +213,21 @@ export default async function RecruitmentTab({
           action={updateRecruitmentApplicationAction}
           submitLabel="Save application settings"
           title="Form, readers and words"
+          state={
+            <>
+              {activeForms.find((f) => f.id === community.recruitmentApplicationFormId)
+                ? `Applicants fill in "${activeForms.find((f) => f.id === community.recruitmentApplicationFormId)!.title}".`
+                : "No application form chosen."}{" "}
+              Decided at {community.recruitmentEvaluatorCount} recommendation
+              {community.recruitmentEvaluatorCount === 1 ? "" : "s"} · a subscription lapses after{" "}
+              {community.recruitmentSubscriptionLapseThreshold} no-show
+              {community.recruitmentSubscriptionLapseThreshold === 1 ? "" : "s"} ·{" "}
+              {community.recruitmentRejectionTemplate?.trim()
+                ? "a decline draft exists"
+                : "no decline draft written"}
+              .
+            </>
+          }
           description="Everything about the funnel itself, apart from how readers' recommendations become an outcome — that has its own card below, because it's the field most likely to be wrong."
         >
           <SelectField
@@ -223,6 +268,11 @@ export default async function RecruitmentTab({
           action={updateRecruitmentDecisionRulesAction}
           submitLabel="Save decision rules"
           title="How recommendations become an outcome"
+          state={
+            (community.recruitmentDecisionRules as DecisionRule[]).length === 0
+              ? "No rules configured — no application can be decided at all"
+              : describeDecisionRules(community.recruitmentDecisionRules as DecisionRule[])
+          }
           description="An ordered list, first match wins. The last rule has to have no conditions — it's the fallback, and without it no application can be decided at all."
         >
           <TextAreaField
@@ -278,4 +328,43 @@ function laneSummary(rule: JoiningLaneRule) {
     rule.interviewRequired ? "an interview" : null,
   ].filter(Boolean);
   return `${proof}${process.length ? `, plus ${process.join(" and ")}` : ""}.`;
+}
+
+type DecisionRule = {
+  conditions?: {
+    minCounts?: { proceed?: number; decline?: number; unsure?: number };
+    inviterThinksGoodFit?: boolean;
+    inviterKnowsPersonally?: boolean;
+  };
+  outcome: "proceed" | "wider_discussion" | "decline";
+  defaultResolution?: "proceed" | "decline";
+};
+
+/**
+ * The rule set in the sentence an admin would use to describe it, so the
+ * collapsed card says what the rules *do* rather than making the reader
+ * open a JSON textarea to find out. This is the field the surrounding
+ * comment calls the one most likely to be wrong, and it is also the one
+ * that was previously only legible as escaped JSON — the two facts pull
+ * against each other, and being able to read the intent without decoding
+ * is what makes a wrong rule obvious before it decides somebody's
+ * application.
+ */
+function describeDecisionRules(rules: DecisionRule[]): string {
+  const parts = rules.map((r) => {
+    const c = r.conditions?.minCounts ?? {};
+    const bits: string[] = [];
+    if (c.proceed !== undefined) bits.push(`${c.proceed} say proceed`);
+    if (c.decline !== undefined) bits.push(`${c.decline} say decline`);
+    if (c.unsure !== undefined) bits.push(`${c.unsure} unsure`);
+    if (r.conditions?.inviterKnowsPersonally) bits.push("inviter knows them");
+    if (r.conditions?.inviterThinksGoodFit) bits.push("inviter vouches");
+    const when = bits.length ? bits.join(", ") : "anything else";
+    if (r.outcome === "wider_discussion") {
+      return `if ${when}, announce it to the community (resolving to ${r.defaultResolution ?? "?"} if nobody objects)`;
+    }
+    if (r.outcome === "proceed") return `if ${when}, they're in`;
+    return `if ${when}, decline`;
+  });
+  return `${rules.length} rule${rules.length === 1 ? "" : "s"}, first match wins — ${parts.join("; ")}.`;
 }

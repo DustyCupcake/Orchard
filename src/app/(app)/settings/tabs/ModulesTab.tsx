@@ -34,6 +34,11 @@ export default function ModulesTab({
           action={updateModulesSettingsAction}
           submitLabel="Save modules"
           title="Modules"
+          state={
+            community.modulesEnabled.length === 0
+              ? "None switched on — Orchard is running as a task board and nothing else"
+              : `${community.modulesEnabled.length} of ${MODULE_DEFINITIONS.length} on: ${MODULE_DEFINITIONS.filter((m) => community.modulesEnabled.includes(m.key)).map((m) => m.label).join(", ")}`
+          }
           description="Untick to hide a module's pages. Existing records stay exactly where they are and come back if you retick."
         >
           {MODULE_DEFINITIONS.map((m) => (
@@ -57,6 +62,11 @@ export default function ModulesTab({
           action={updatePostCycleFeedbackAction}
           submitLabel="Save feedback form"
           title="The feedback ask"
+          state={
+            forms.find((f) => f.id === community.postCycleFeedbackFormId)
+              ? `Sent after every event: "${forms.find((f) => f.id === community.postCycleFeedbackFormId)!.title}"`
+              : "No form chosen — nobody is asked anything after an event"
+          }
           description="Which form to send out once an event closes. Without one there's no ask at all — the platform has no default question to put to anybody."
         >
           <SelectField
