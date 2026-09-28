@@ -79,6 +79,20 @@ A settings form is uncontrolled in both renders, so that second condition is `fa
 
 Verified by `tsc` and `eslint` clean and the full suite green. **Not verified in a browser** — the argument is read out of react-dom's own source and the remount is a documented React guarantee, but the dropdown holding its new value after a real save has not been watched happen, and that is the one claim worth a real pass on `/settings` → Events & Tiers.
 
+## Unreleased: the events page becomes an index of events, and stops stacking a whole event's settings per open event
+
+`/participation` in its aggregate form — the "manage events" view — rendered `ParticipationForCycle` **once per open cycle**. That was the mixing. A community with three open events got three complete configuration blocks stacked on one page: three sets of capacity controls, joining config, the four admission-lane cards, phase dates and Task Pack export, each identifiable only by an `<h2>`. And because the index *was* the per-event page, there was nowhere to go to configure one event on its own.
+
+**The aggregate view is now an index: one card per event, open ones first, each linking to `/{id}/participation`.** That per-event page keeps everything it had — your plans, event settings, phases, the lanes, pack export — and is the same destination the nav switcher's gear icon already pointed at, so the card and the switcher now agree on where an event is configured. The card's numbers come from `listOpenEventParticipationCards`, the same call `/community`'s event cards use, so the two cannot drift apart.
+
+**Closed events collapse behind a disclosure** whose summary carries the count, so a community with a long history doesn't open this page onto a wall of dead cards, and the size of the history is known before opening it. They're ordered most-recently-closed first.
+
+**The list is visible to every member.** It was gated behind `canConfigureCycle`, which made this page nearly empty for everyone else — but "what events does this community have, and when are they" is not an administrative question, and a member declaring participation needs to find the event to declare against. Creating an event is still gated; seeing them is not.
+
+One thing this does **not** do: it doesn't change the per-event page's own internal organisation, which still stacks a cycle's phases, joining config, lanes, plans and export in one column. That's defensible — they all describe the same event, and the page is now unambiguously about one event — but it's the next thing I'd look at, and it's why I stopped here rather than also reordering that page in the same commit.
+
+Verified by `tsc` and `eslint` clean, `next build` clean, and 54 tests across `participation`, `cycles`, `cycles-lifecycle` and `board-cycle-scope` green. **Not verified in a browser** — this replaces a page's entire structure, and whether an event card reads as obviously clickable, and whether a member who lands here without event-starting rights finds what they came for, both want a real look.
+
 ## Unreleased: every settings card states what the setting currently is
 
 The settings screen had been rebuilt into one-card-one-save, which fixed the real hazard — a rejected decision-rule set silently reverting the doors — but left the screen unreadable as a *description of the community*. Every card was a form. Opening the tab told you how many cards there were and nothing about what any of them was set to: not how many branches exist, not whether single sign-on is on, not what a tier's threshold was, not whether anyone can apply. Reading the configuration meant opening all ten tabs' worth of cards and reading the controls.

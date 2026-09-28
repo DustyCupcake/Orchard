@@ -11,7 +11,11 @@ import {
   startBoundaryOf,
 } from "@/lib/cycles";
 import { getBudgetCycleForCycle, getCurrentBudgetCycle } from "@/lib/budget";
-import { getCycleParticipationSummary, getMyParticipation } from "@/lib/participation";
+import {
+  getCycleParticipationSummary,
+  getMyParticipation,
+  listOpenEventParticipationCards,
+} from "@/lib/participation";
 import { getCycleShiftRoster } from "@/lib/shifts";
 import { listForms } from "@/lib/forms";
 import { getJoinLaneRulesForContext } from "@/lib/recruitment/joining-lanes";
@@ -151,7 +155,6 @@ export default async function ParticipationPage({
 
   const hasPreviousCycle = allCycles.length > 0;
   const openCycle = allCycles.find((c) => !c.closedAt) ?? null;
-  const cyclesToRender: Cycle[] = scope.kind === "aggregate" ? allCycles.filter((c) => !c.closedAt) : [scope.cycle];
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
@@ -215,23 +218,17 @@ export default async function ParticipationPage({
         </div>
       )}
 
-      {cyclesToRender.length === 0 ? (
-        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
-          No open event yet — there&rsquo;s nothing to declare participation against until one
-          exists.
-        </p>
+      {scope.kind === "aggregate" ? (
+        <EventIndex viewing={viewing} allCycles={allCycles} />
       ) : (
-        cyclesToRender.map((c) => (
-          <ParticipationForCycle
-            key={c.id}
-            viewing={viewing}
-            cycleId={c.id}
-            cycleName={c.name}
-            cycleScope={cycleScope}
-            closed={Boolean(c.closedAt)}
-            isAdminNow={isAdminNow}
-          />
-        ))
+        <ParticipationForCycle
+          viewing={viewing}
+          cycleId={scope.cycle.id}
+          cycleName={scope.cycle.name}
+          cycleScope={cycleScope}
+          closed={Boolean(scope.cycle.closedAt)}
+          isAdminNow={isAdminNow}
+        />
       )}
 
       {canConfigure && (
@@ -248,6 +245,117 @@ export default async function ParticipationPage({
     </main>
   );
 }
+
+/**
+ * The index, for the aggregate scope: one card per event, open ones first,
+ * and a card linking into each event's own page.
+ *
+ * **This replaces rendering `ParticipationForCycle` once per open cycle.**
+ * That was the mixing: a community with three open events got three complete
+ * configuration blocks stacked on one page — three sets of capacity controls,
+ * joining config, lane rules, phase dates and pack export, each with no
+ * indication which event it belonged to beyond an `<h2>`. It also meant the
+ * per-event page and the index were the same page, so there was nowhere to
+ * *go* to configure one event. An event's own settings now live at
+ * `/{id}/participation`, which is also where the nav switcher's gear points,
+ * so the card and the switcher agree on where an event is configured.
+ *
+ * **Visible to every member, not just whoever can start an event.** It used
+ * to be gated on `canInitiateCycle`, which made this page nearly empty for
+ * everyone else — but "what events does this community have, and when are
+ * they" is not an administrative question, and a member declaring
+ * participation needs to find the event to declare against.
+ */
+async function EventIndex({ viewing, allCycles }: { viewing: Member; allCycles: Cycle[] }) {
+  // The same call /community's event cards use, so the numbers here and
+  // there cannot disagree. It only covers open events; closed ones need
+  // nothing but a name and dates, which allCycles already has.
+  const openCards = await listOpenEventParticipationCards(viewing);
+  const closedCycles = allCycles
+    .filter((c) => c.closedAt)
+    .sort((a, b) => (b.closedAt!.getTime() - a.closedAt!.getTime()));
+
+  if (allCycles.length === 0) {
+    return (
+      <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+        No events yet. Until one exists there&rsquo;s nothing to declare participation against.
+      </p>
+    );
+  }
+
+  return (
+    <section className="mt-6 flex flex-col gap-2">
+      {openCards.map((c) => (
+        <Link
+          key={c.id}
+          href={`/${c.id}/participation`}
+          className={`${CARD} block transition-colors hover:border-[var(--accent-1)]`}
+        >
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="text-[15px] font-medium text-[var(--text)]">{c.name}</span>
+            {c.myStatus !== "unknown" && (
+              <Tag tone={c.myStatus === "coming" ? "success" : c.myStatus === "maybe" ? "warning" : undefined}>
+                {PARTICIPATION_LABEL[c.myStatus]}
+              </Tag>
+            )}
+          </div>
+          <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+            {dateRange(c.startDate, c.endDate)}
+            {c.capacity !== null && (
+              <>
+                {" · "}
+                {c.comingCount} coming
+                {c.remainingCapacity !== null && c.remainingCapacity > 0 && ` · ${c.remainingCapacity} place${c.remainingCapacity === 1 ? "" : "s"} left`}
+                {c.remainingCapacity !== null && c.remainingCapacity === 0 && " · full"}
+              </>
+            )}
+            {c.capacity === null && c.comingCount > 0 && ` · ${c.comingCount} coming`}
+          </p>
+        </Link>
+      ))}
+
+      {/* Closed events collapse. A community with a long history would
+          otherwise open this page onto a wall of dead cards, and the thing
+          a reader wants first is what is happening *now* — the count is in
+          the summary so the history's size is known before opening it. */}
+      {closedCycles.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-[13px] text-[var(--accent-1)] hover:underline">
+            {closedCycles.length} past event{closedCycles.length === 1 ? "" : "s"}
+          </summary>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {closedCycles.map((c) => (
+              <Link
+                key={c.id}
+                href={`/${c.id}/participation`}
+                className="flex flex-wrap items-baseline gap-x-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] transition-colors hover:border-[var(--accent-1)]"
+                style={{ opacity: 0.75 }}
+              >
+                <span className="font-medium text-[var(--text)]">{c.name}</span>
+                <span className="text-[12px] text-[var(--text-muted)]">
+                  {dateRange(c.startDate, c.endDate)}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </details>
+      )}
+    </section>
+  );
+}
+
+function dateRange(start: string | null, end: string | null): string {
+  if (start && end) return `${start} – ${end}`;
+  if (start) return `from ${start}`;
+  if (end) return `until ${end}`;
+  return "No dates set yet";
+}
+
+const PARTICIPATION_LABEL = {
+  coming: "You're coming",
+  maybe: "Maybe",
+  not_coming: "Not coming",
+} as const;
 
 // "The Pack import review screen gains the date preview" —
 // docs/development-plan.md's Phase 44. This is that screen's minimal
