@@ -2,7 +2,7 @@ import { getJoinLaneRulesForContext, listLaneOverridesByCycle } from "@/lib/recr
 import { JOINING_LANE_DEFAULTS, JOINING_LANE_ORDER, type JoiningLaneRule } from "@/lib/recruitment/lanes";
 import type { community as communityTable, form as formTable } from "@/db/schema";
 import Link from "next/link";
-import { SelectField, SettingsCard, SettingsPanel, SettingsSection, TextAreaField, TextField, ToggleField } from "../ui";
+import { SelectField, SettingsGroup, SettingsPanel, SettingsSection, TextAreaField, TextField, ToggleField } from "../ui";
 import {
   updateAdmissionRulesAction,
   updateRecruitmentApplicationAction,
@@ -81,7 +81,7 @@ export default async function RecruitmentTab({
         description="Four ways in. What someone declares about themselves — or what the member inviting them declares — picks the lane, and this is what each lane does about it. The defaults are what Orchard does out of the box: someone you personally know joins straight away, everyone else fills in the form and has an interview."
       >
         {authorized ? (
-          <SettingsCard
+          <SettingsGroup
             action={updateAdmissionRulesAction}
             submitLabel="Save admission rules"
             title="One rule per lane"
@@ -109,7 +109,7 @@ export default async function RecruitmentTab({
             description="Verification and process are set per lane, never stacked: a lane either asks for extra proof or it asks for a form and an interview, not both kinds of waiting on one person."
           >
             <LaneRulesEditor initial={lanes} />
-          </SettingsCard>
+          </SettingsGroup>
         ) : (
           <SettingsPanel title="One rule per lane">
             <div className="flex flex-col gap-3">
@@ -159,7 +159,7 @@ export default async function RecruitmentTab({
         title="Doors"
         description="Three independent doors, and they really are independent: closing interviews doesn't stop applications, and closing applications doesn't stop somebody you know joining outright. These are the community-wide, event-independent doors — each event can also close its own."
       >
-        <SettingsCard
+        <SettingsGroup
           action={updateRecruitmentDoorsAction}
           submitLabel="Save doors"
           title="Open right now?"
@@ -192,14 +192,14 @@ export default async function RecruitmentTab({
             defaultChecked={community.recruitmentInterviewsOpen}
             hint="Whether an interview can be scheduled. New in the redesign: the interview stage used to be something that either always happened or was skipped by whoever arrived on a direct invite, and now it's a door you can close on its own."
           />
-        </SettingsCard>
+        </SettingsGroup>
       </SettingsSection>
 
       <SettingsSection
         title="Windows and exceptions"
         description="Both of the plan's waiting periods live here rather than on a lane. That's deliberate: stacking a nomination and a community check on one lane would mean two timers and two sets of people who'd each think they owned the decision."
       >
-        <SettingsCard
+        <SettingsGroup
           action={updateRecruitmentWindowsAction}
           submitLabel="Save windows"
           title="How long people wait"
@@ -249,7 +249,7 @@ export default async function RecruitmentTab({
               hint="If the mediation body is smaller than this, the overrule can't be exercised at all — which is a real choice, not a bug, and the mediation page says so plainly rather than letting one person quietly overrule."
             />
           )}
-        </SettingsCard>
+        </SettingsGroup>
       </SettingsSection>
 
       <SettingsSection
@@ -265,7 +265,7 @@ export default async function RecruitmentTab({
             </p>
           </SettingsPanel>
         )}
-        <SettingsCard
+        <SettingsGroup
           action={updateRecruitmentApplicationAction}
           submitLabel="Save application settings"
           title="Form, readers and words"
@@ -318,9 +318,9 @@ export default async function RecruitmentTab({
             rows={5}
             hint="Shown to whoever is about to send an actual decline. Never sent automatically — this is a first draft to argue with, not a message the platform delivers."
           />
-        </SettingsCard>
+        </SettingsGroup>
 
-        <SettingsCard
+        <SettingsGroup
           action={updateRecruitmentDecisionRulesAction}
           submitLabel="Save decision rules"
           title="How recommendations become an outcome"
@@ -358,7 +358,7 @@ export default async function RecruitmentTab({
               give the community the check window, and admit them if nobody objects.
             </p>
           </div>
-        </SettingsCard>
+        </SettingsGroup>
       </SettingsSection>
     </div>
   );

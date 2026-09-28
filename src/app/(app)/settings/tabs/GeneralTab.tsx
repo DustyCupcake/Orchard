@@ -2,7 +2,7 @@ import type { community as communityTable, tier as tierTable } from "@/db/schema
 import {
   FieldGroup,
   SelectField,
-  SettingsCard,
+  SettingsGroup,
   SettingsSection,
   TextField,
   ToggleField,
@@ -26,7 +26,7 @@ export default function GeneralTab({  community,
         title="The basics"
         description="What this community is called, and the two structural switches everything else hangs off."
       >
-        <SettingsCard
+        <SettingsGroup
           action={updateGeneralBasicsAction}
           submitLabel="Save basics"
           title="Name and structure"
@@ -92,9 +92,9 @@ export default function GeneralTab({  community,
             ]}
             hint="Whoever meets this bar is trusted to open an event and size it. Leaving it empty means any member can."
           />
-        </SettingsCard>
+        </SettingsGroup>
 
-        <SettingsCard
+        <SettingsGroup
           action={updateCallDefaultsAction}
           submitLabel="Save call defaults"
           title="What a call needs to be finished"
@@ -128,14 +128,14 @@ export default function GeneralTab({  community,
             defaultChecked={community.defaultCallRequireRead}
             hint="Turn this on and the summary stays on each attendee's list until they've said they read it."
           />
-        </SettingsCard>
+        </SettingsGroup>
       </SettingsSection>
 
       <SettingsSection
         title="Look"
         description="Colours and a logo. Leave them blank and the design tokens' own defaults are used."
       >
-        <SettingsCard
+        <SettingsGroup
           action={updateBrandingAction}
           submitLabel="Save branding"
           title="Colours and logo"
@@ -179,14 +179,14 @@ export default function GeneralTab({  community,
             wide
             hint="A hosted image. Shown in the sidebar and on the sign-in page."
           />
-        </SettingsCard>
+        </SettingsGroup>
       </SettingsSection>
 
       <SettingsSection
         title="Signing in"
         description="Orchard always has magic-link sign-in. Single sign-on is a second way in, not a replacement — leaving all three fields empty means magic-link only."
       >
-        <SettingsCard
+        <SettingsGroup
           action={updateSsoAction}
           submitLabel="Save sign-in settings"
           title="Single sign-on (OIDC)"
@@ -228,7 +228,7 @@ export default function GeneralTab({  community,
             }
             hint="On, the sign-in page goes straight to your provider and magic-link stops originating new accounts. Off, both are offered as equals — useful while you're migrating."
           />
-        </SettingsCard>
+        </SettingsGroup>
       </SettingsSection>
     </div>
   );

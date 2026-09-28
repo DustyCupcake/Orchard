@@ -1,6 +1,6 @@
 import type { community as communityTable, form as formTable } from "@/db/schema";
 import { MODULE_DEFINITIONS } from "@/lib/modules";
-import { SelectField, SettingsCard, SettingsSection, ToggleField } from "../ui";
+import { SelectField, SettingsGroup, SettingsSection, ToggleField } from "../ui";
 import { updateModulesSettingsAction, updatePostCycleFeedbackAction } from "../actions";
 
 // A short, honest line per module: what turns off when you untick it.
@@ -30,7 +30,7 @@ export default function ModulesTab({
         title="What's switched on"
         description="Each of these is a whole area of the app. Nothing here is on by default except what you see ticked — a community that turns everything on is opting into maintaining all of it."
       >
-        <SettingsCard
+        <SettingsGroup
           action={updateModulesSettingsAction}
           submitLabel="Save modules"
           title="Modules"
@@ -51,14 +51,14 @@ export default function ModulesTab({
               hint={MODULE_CONSEQUENCE[m.key]}
             />
           ))}
-        </SettingsCard>
+        </SettingsGroup>
       </SettingsSection>
 
       <SettingsSection
         title="After an event"
         description="One standing question, asked once an event is over, of everyone in it."
       >
-        <SettingsCard
+        <SettingsGroup
           action={updatePostCycleFeedbackAction}
           submitLabel="Save feedback form"
           title="The feedback ask"
@@ -82,7 +82,7 @@ export default function ModulesTab({
             ]}
             hint="Build it under the Forms tab. Who reviews the answers is a permission, not a setting — see Access & permissions."
           />
-        </SettingsCard>
+        </SettingsGroup>
       </SettingsSection>
     </div>
   );

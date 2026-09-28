@@ -379,6 +379,96 @@ export function FieldGroup({ legend, children }: { legend: string; children: Rea
   );
 }
 
+/**
+ * A group of related controls — not a thing in its own right.
+ *
+ * The border breaks at the title, because it is a real `<legend>`: this is
+ * the older treatment this screen had before every section became a card,
+ * and it is the right one for this shape. A card reads as an object you
+ * could add another of, and a group of toggles is not one — "Doors" and
+ * "What a call needs to be finished" are three controls each, forever, and
+ * presenting them as cards made the screen look like a shelf of things
+ * rather than a set of decisions.
+ *
+ * **It is closed, and that is the read-only mechanism.** This looks like
+ * `SettingsCard` with a lighter border, and the only differences are the
+ * border and the legend — but being *closed until you click Edit* is what
+ * lets a non-Admin read the settings without being able to touch them, and
+ * it is why the state line below is load-bearing rather than decorative:
+ * the controls are hidden, so something has to say what they are set to.
+ * (An earlier draft of this made the group open and dropped the state line
+ * on the reasoning that visible inputs state themselves. That is true and
+ * it is the wrong trade here: it throws away the read-only view, which is
+ * the whole reason the group is a disclosure.)
+ *
+ * A `<summary>` and a `<form>` cannot share a parent, so the header is the
+ * summary and the form is its sibling inside the same `<details>` — the
+ * same constraint `SettingsCard` works under.
+ *
+ * The obvious next step for the toggle-only groups is a control title with
+ * an on/off indicator beside it rather than a sentence; that is a matter
+ * of the `state` this already takes, and is deliberately not attempted here.
+ */
+export function SettingsGroup({
+  title,
+  state,
+  description,
+  aside,
+  action,
+  submitLabel = "Save",
+  children,
+}: {
+  title: ReactNode;
+  state?: ReactNode;
+  description?: ReactNode;
+  // Rendered inside the disclosure but *below* the form, never in the
+  // summary: clicking a link inside a `<summary>` toggles the group open
+  // as well as following the link, which is the wrong response to "which
+  // events override this".
+  aside?: ReactNode;
+  action: (formData: FormData) => void | Promise<void>;
+  submitLabel?: string;
+  children: ReactNode;
+}) {
+  return (
+    // The border, the padding and the legend breaking it are the old
+    // `FieldSet` from before the card rebuild, reproduced exactly — in
+    // particular with **no background fill**, which is the part that
+    // stops it reading as an object on a shelf. A filled card says "here
+    // is a thing"; a bare border on the page background says "here is a
+    // set of controls", which is what this is.
+    //
+    // The `<fieldset>`/`<legend>` pair is load-bearing rather than
+    // decorative: a legend interrupts its own fieldset's border, which is
+    // the whole effect, and it cannot be reproduced with a div and a
+    // heading. The disclosure lives *inside* it so the group can still be
+    // closed until you ask for the controls.
+    <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3.5">
+      <legend className="px-1 text-[12px] font-medium text-[var(--text-muted)]">{title}</legend>
+      <details>
+        <summary className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1">
+          {state && (
+            <span className="text-[12px] leading-relaxed text-[var(--text-muted)]">{state}</span>
+          )}
+          <span className="ml-auto text-[12px] text-[var(--accent-1)]">Edit</span>
+        </summary>
+        {description && (
+          <p className="mt-2 max-w-[620px] text-[12px] leading-relaxed text-[var(--text-muted)]">
+            {description}
+          </p>
+        )}
+        <form action={action} className="mt-3 flex flex-col gap-3">
+          {children}
+          <div>
+            <SubmitButton className={BUTTON_PRIMARY}>{submitLabel}</SubmitButton>
+          </div>
+        </form>
+        {aside && <div className="mt-2">{aside}</div>}
+      </details>
+    </fieldset>
+  );
+}
+
 // A code sample. The decision-rules editor's example used to be inline
 // `<code>` inside a hint sentence, which is unreadable at the length it
 // needs; a block that can be scrolled and selected is the difference

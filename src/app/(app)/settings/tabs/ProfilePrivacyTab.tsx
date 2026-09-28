@@ -294,9 +294,19 @@ function ProfileQuestionsSection({
         );
         const hidden = eventScoped.filter((q) => !live.includes(q));
 
+        // A plain grouping, not a card: what this holds is a list of cards,
+        // and a card around a list of cards reads as one more object on the
+        // shelf rather than as a heading for the ones below it. The count
+        // stays — it is what tells a reader whether the section is worth
+        // scrolling.
         return (
-          <SettingsPanel key={category} title={`${category === "public" ? "Public" : "Restricted"} (${inCategory.length})`}>
-            <p className="max-w-[720px] text-[13px] text-[var(--text-muted)]">{blurb}</p>
+          <section key={category} className="mt-2">
+            <h3 className="text-[15px] font-medium text-[var(--text)]">
+              {category === "public" ? "Public" : "Restricted"} ({inCategory.length})
+            </h3>
+            <p className="mt-0.5 max-w-[720px] text-[12px] leading-relaxed text-[var(--text-muted)]">
+              {blurb}
+            </p>
 
             {inCategory.length === 0 && <p className="text-[13px] text-[var(--text-muted)]">None yet.</p>}
 
@@ -330,7 +340,7 @@ function ProfileQuestionsSection({
                 )}
               </div>
             )}
-          </SettingsPanel>
+          </section>
         );
       })}
 

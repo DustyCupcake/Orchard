@@ -1,5 +1,5 @@
 import type { community as communityTable } from "@/db/schema";
-import { SettingsCard, SettingsSection, TextField, ToggleField } from "../ui";
+import { SettingsGroup, SettingsSection, TextField, ToggleField } from "../ui";
 import {
   updateCoordinationTimingsAction,
   updateIndicatorSettingsAction,
@@ -13,7 +13,7 @@ export default function CoordinationTab({ community }: { community: typeof commu
         title="Deadlines"
         description="How long somebody gets before a thing is somebody else's problem. Every one of these is a *quiet* default, not a deadline: nothing is refused when a clock runs out, it just stops being held by the person it was waiting on."
       >
-        <SettingsCard
+        <SettingsGroup
           action={updateCoordinationTimingsAction}
           submitLabel="Save deadlines"
           title="Response windows"
@@ -47,14 +47,14 @@ export default function CoordinationTab({ community }: { community: typeof commu
             defaultValue={community.callSummaryReadWindowDays}
             hint="How long before a published summary appears as something you haven't read."
           />
-        </SettingsCard>
+        </SettingsGroup>
       </SettingsSection>
 
       <SettingsSection
         title="Response tracking"
         description="Reads a pattern of engagement across every surface where a member can act — offers, questions, messages, summaries — and puts it in their profile rather than in anybody's dashboard."
       >
-        <SettingsCard
+        <SettingsGroup
           action={updateResponseTrackingAction}
           submitLabel="Save thresholds"
           title="When a pattern is a pattern"
@@ -81,14 +81,14 @@ export default function CoordinationTab({ community }: { community: typeof commu
             defaultValue={community.engagementPatternThreshold}
             hint="This many and the member sees it in their own profile. It's their number, about them, and nobody is told."
           />
-        </SettingsCard>
+        </SettingsGroup>
       </SettingsSection>
 
       <SettingsSection
         title="Indicators"
         description="Community indicators are the patterns the data shows about who takes part — never published about a person, never gated. This one setting is only about how small a population can be broken out for."
       >
-        <SettingsCard
+        <SettingsGroup
           action={updateIndicatorSettingsAction}
           submitLabel="Save indicator settings"
           title="Breaking out a single event"
@@ -121,7 +121,7 @@ export default function CoordinationTab({ community }: { community: typeof commu
               drizzle/0081_indicator_consent_collapse.sql, which drops the
               column and says the same thing at the place the decision
               belongs. */}
-        </SettingsCard>
+        </SettingsGroup>
       </SettingsSection>
     </div>
   );
