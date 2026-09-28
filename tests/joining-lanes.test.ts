@@ -180,7 +180,18 @@ describe("lane resolution (docs/joining-admission-plan.md §2, §4.1)", () => {
         // only way to break J2 would be a rule with two of them.
         expect(["basic", "nomination", "consensus"]).toContain(rule.verificationMode);
         expect(typeof describeLaneConsequence(rule)).toBe("string");
-        expect(summarizeLaneRule(rule).length).toBeGreaterThan(0);
+        // Asserted on content, not on length. These two sentences are the
+        // entire legibility argument for the settings panel — they are what
+        // a rule *is* to somebody deciding whether to change it — and a
+        // `length > 0` check waved through "plus an application and a
+        // interview" on all four cards, which is the combination three of
+        // the four presets produce. The two failure modes worth naming:
+        // a bare "undefined" from a mode the label map doesn't cover, and
+        // a wrong article in front of a vowel.
+        const summary = summarizeLaneRule(rule);
+        expect(summary).not.toMatch(/undefined|null|NaN/);
+        expect(summary).not.toMatch(/\ba [aeiou]/i);
+        expect(summary).not.toMatch(/\ban [^aeiou]/i);
         void lane;
       }
     }
@@ -194,7 +205,7 @@ describe("lane resolution (docs/joining-admission-plan.md §2, §4.1)", () => {
     // the guarantee explicitly, because §2.5/J6 is the one promise that
     // distinguishes this design from the endorsement mechanisms it borrows
     // its vocabulary from.
-    const sentence = describeLaneConformance(nomination);
+    const sentence = describeLaneConsequence(nomination);
     expect(sentence).toMatch(/never turns them away/);
     expect(sentence).toMatch(/one other member/);
     expect(describeLaneConsequence({ ...nomination, supportCount: 3 })).toMatch(/3 other members/);
@@ -202,11 +213,34 @@ describe("lane resolution (docs/joining-admission-plan.md §2, §4.1)", () => {
     // unless it is overruled — that is the default, not the exception.
     expect(describeLaneConsequence(consensus)).toMatch(/unless the mediation body overrules/);
   });
-});
 
-function describeLaneConformance(rule: Parameters<typeof describeLaneConsequence>[0]) {
-  return describeLaneConsequence(rule);
-}
+  it("reads as English in every combination, because the sentence is the setting", () => {
+    // The one-line summary is what a card shows *above* its controls, so
+    // it is the only part of the rule somebody reads before deciding
+    // whether to open it. A summary that is technically derived and
+    // grammatically wrong is worse than no summary, because it looks
+    // authoritative. Spelled out rather than left to the loop above: this
+    // is the exact sentence a community with untouched settings sees on
+    // three of its four lane cards, and it is the one that was wrong.
+    expect(
+      summarizeLaneRule({ ...nomination, applicationRequired: true, interviewRequired: true }),
+    ).toBe("needs 1 more member, plus an application and an interview");
+    expect(summarizeLaneRule({ ...nomination, applicationRequired: true, interviewRequired: false })).toBe(
+      "needs 1 more member, plus an application",
+    );
+    expect(summarizeLaneRule({ ...nomination, applicationRequired: false, interviewRequired: true })).toBe(
+      "needs 1 more member, plus an interview",
+    );
+    // Nothing switched on: no trailing clause at all, rather than
+    // "plus " with nothing after it.
+    expect(summarizeLaneRule({ ...nomination, applicationRequired: false, interviewRequired: false })).toBe(
+      "needs 1 more member",
+    );
+    expect(summarizeLaneRule({ verificationMode: "consensus", supportCount: 1, applicationRequired: true, interviewRequired: true, applyInsteadAvailable: true })).toBe(
+      "announced to the community before admission, plus an application and an interview",
+    );
+  });
+});
 
 describe("the third door (docs/joining-admission-plan.md §2.3/J3)", () => {
   beforeEach(resetDatabase);

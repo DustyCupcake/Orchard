@@ -207,7 +207,18 @@ export function summarizeLaneRule(rule: JoiningLaneRule): string {
     rule.applicationRequired ? "application" : null,
     rule.interviewRequired ? "interview" : null,
   ].filter(Boolean);
-  return `${mode[rule.verificationMode]}${process.length ? `, plus an ${process.join(" and a ")}` : ""}`;
+  // The article is chosen per item rather than written once in front of
+  // the list. It used to be a literal `an ${process.join(" and a ")}`,
+  // which reads correctly for exactly one combination — an application
+  // alone — and says "plus an application and a interview" for the
+  // default, which is the sentence on four cards out of four for a
+  // community that has touched nothing. Both words start with a vowel
+  // today, so the table is not carrying any cleverness; it is carrying
+  // the third process step that doesn't exist yet, which would have
+  // needed it.
+  const withArticle = (word: string | null) => `${/^[aeiou]/i.test(word ?? "") ? "an" : "a"} ${word}`;
+  const processClause = process.map(withArticle).join(" and ");
+  return `${mode[rule.verificationMode]}${process.length ? `, plus ${processClause}` : ""}`;
 }
 
 // §5.1 — the preset select. Each preset fills all four lanes at once and
