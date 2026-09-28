@@ -18,7 +18,7 @@ import {
 } from "@/lib/participation";
 import { getCycleShiftRoster } from "@/lib/shifts";
 import { listForms } from "@/lib/forms";
-import { getJoinLaneRulesForContext } from "@/lib/recruitment/joining-lanes";
+import { getJoinLaneRulesForContext, listOverriddenLanes } from "@/lib/recruitment/joining-lanes";
 import { JOINING_LANE_COPY, JOINING_LANE_DEFAULTS, JOINING_LANE_ORDER, type JoiningLaneRule } from "@/lib/recruitment/lanes";
 import {
   confirmShiftProposalAction,
@@ -562,24 +562,29 @@ async function ParticipationForCycle({
   // back to the community's standing form) — only for the same
   // audience, same reason.
   const forms = canConfigure ? await listForms(viewing) : [];
-  // §5.2 — the community-wide lane rules this event would inherit, and
-  // the ones it currently overrides. Two reads because they answer
-  // different questions: the first is what a lane *does* here if nothing
-  // is overridden, the second is what has *been* overridden. Reading
-  // only the second and defaulting the rest would quietly re-introduce
-  // the "never snapshotted" bug the lane model was built to avoid.
-  const cycleLaneRules = canConfigure
-    ? await getJoinLaneRulesForContext(communityRow.id, cycleId)
-    : new Map();
-  const cycleLanes = canConfigure
-    ? await Promise.all(
-        JOINING_LANE_ORDER.map(async (key) => ({
-          key,
-          title: JOINING_LANE_COPY[key].title,
-          inherited: communityLaneRules.get(key) ?? JOINING_LANE_DEFAULTS[key],
-        })),
-      )
-    : [];
+  // §5.2 — the community-wide lane rules this event inherits, the ones it
+  // has overridden, and which of those it has overridden. Two reads
+  // because they answer different questions: the first is what a lane
+  // *does* here if nothing is overridden, the second is what has *been*
+  // overridden. Reading only the second and defaulting the rest would
+  // quietly re-introduce the "never snapshotted" bug the lane model was
+  // built to avoid.
+  //
+  // **None of this is gated on `canConfigure` any more.** Which rule
+  // applies to the lane somebody would arrive by is not an administrative
+  // question — it is the admission design of their own community, and they
+  // have a say in it. Only the *controls* below are Admin-only, which is
+  // the same split the settings screen uses: the state is everyone's, the
+  // editing is an Admin's.
+  const cycleLaneRules = await getJoinLaneRulesForContext(communityRow.id, cycleId);
+  const overriddenLanes = new Set(await listOverriddenLanes(communityRow.id, cycleId));
+  const laneRows = JOINING_LANE_ORDER.map((key) => ({
+    key,
+    title: JOINING_LANE_COPY[key].title,
+    effective: cycleLaneRules.get(key) ?? communityLaneRules.get(key) ?? JOINING_LANE_DEFAULTS[key],
+    isCustom: overriddenLanes.has(key),
+  }));
+  const customLaneCount = laneRows.filter((l) => l.isCustom).length;
   // Admin-only, and only meaningful for a still-open cycle — see
   // closeCycle's own budget-owner warning (src/lib/cycles/lifecycle.ts).
   const budgetCycleRow =
@@ -822,8 +827,20 @@ async function ParticipationForCycle({
               Save settings
             </button>
           </form>
+        </section>
+      )}
 
-          {/* §5.2 — the same four lane cards the community-wide settings
+      {/* §5.2 — moved OUT of the "Event settings" section above, which is
+          Admin-gated, because these four rules are not an administrative
+          fact about the event. They are this community's admission design,
+          and a member arriving by one of these lanes is being measured
+          against it — so the rules are stated to everyone and only the
+          controls that change them are Admin-only. The same split the
+          community settings screen uses: the state is everyone's, the
+          editing is an Admin's. */}
+      {!closed && (
+        <section className="mt-6">
+          {/* The same four lane cards the community-wide settings
               have, as per-event overrides. A lane this event doesn't
               override inherits the community's rule, and that inheritance
               is the default state rather than a sentinel: an absent row
@@ -834,18 +851,50 @@ async function ParticipationForCycle({
             <div>
               <h3 className="text-[15px] font-medium text-[var(--text)]">This event&rsquo;s own admission rules</h3>
               <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-                By default every lane here works exactly as the community has set it. Tick a lane to
-                run this event differently — a one-off that doesn&rsquo;t change what happens at the
-                community&rsquo;s other events.
+                {customLaneCount === 0 ? (
+                  <>
+                    Every lane works exactly as the community has set it — this event doesn&rsquo;t
+                    change any of them.
+                  </>
+                ) : (
+                  <>
+                    {customLaneCount} of {laneRows.length} lanes work differently here. The rest are
+                    the community&rsquo;s, and follow it if the community changes them later.
+                  </>
+                )}
               </p>
             </div>
+            {!canConfigure ? (
+              /* The same four lanes, stated rather than editable. A member
+                 arriving by one of these is being measured against it, and
+                 "one member's word is enough" is the kind of fact they are
+                 entitled to read — the same reasoning that opened the
+                 community settings screen to every member. */
+              <div className="flex flex-col gap-2">
+                {laneRows.map((lane) => (
+                  <div
+                    key={lane.key}
+                    className="rounded-[var(--radius-md)] border border-[var(--border)] p-3"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[13px] font-medium text-[var(--text)]">{lane.title}</span>
+                      <Tag tone={lane.isCustom ? "warning" : undefined}>
+                        {lane.isCustom ? "this event's own rule" : "the community's rule"}
+                      </Tag>
+                    </div>
+                    <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                      {laneSummary(lane.effective)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
             <form action={updateCycleLaneRulesAction} className="flex flex-col gap-3">
               <input type="hidden" name="cycleId" value={cycleId} />
               <input type="hidden" name="cycleScope" value={cycleScope} />
               <div className="flex flex-col gap-2">
-                {cycleLanes.map((lane) => {
+                {laneRows.map((lane) => {
                   const override = cycleLaneRules.get(lane.key);
-                  const inherited = cycleLaneRules.get(lane.key) ?? lane.inherited;
                   return (
                     <div key={lane.key} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
                       <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
@@ -853,13 +902,13 @@ async function ParticipationForCycle({
                           type="checkbox"
                           name={`lane.${lane.key}.override`}
                           value="on"
-                          defaultChecked={Boolean(override)}
+                          defaultChecked={lane.isCustom}
                           className="mt-0.5"
                         />
                         <span>
                           This event has its own rule for <strong>{lane.title}</strong>
                           <span className="block text-[12px] text-[var(--text-muted)]">
-                            Right now: {laneSummary(inherited)}
+                            Right now: {laneSummary(lane.effective)}
                           </span>
                         </span>
                       </label>
@@ -930,6 +979,7 @@ async function ParticipationForCycle({
                 Save this event&rsquo;s rules
               </button>
             </form>
+            )}
           </div>
         </section>
       )}

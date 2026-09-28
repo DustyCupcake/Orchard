@@ -1,6 +1,7 @@
-import { getJoinLaneRulesForContext } from "@/lib/recruitment/joining-lanes";
+import { getJoinLaneRulesForContext, listLaneOverridesByCycle } from "@/lib/recruitment/joining-lanes";
 import { JOINING_LANE_DEFAULTS, JOINING_LANE_ORDER, type JoiningLaneRule } from "@/lib/recruitment/lanes";
 import type { community as communityTable, form as formTable } from "@/db/schema";
+import Link from "next/link";
 import { SelectField, SettingsCard, SettingsPanel, SettingsSection, TextAreaField, TextField, ToggleField } from "../ui";
 import {
   updateAdmissionRulesAction,
@@ -46,10 +47,14 @@ const DECISION_RULES_EXAMPLE = `[
 export default async function RecruitmentTab({
   community,
   forms,
+  cycles,
   authorized,
 }: {
   community: typeof communityTable.$inferSelect;
   forms: (typeof formTable.$inferSelect)[];
+  // Only to name the events that override these defaults below — the tab
+  // has no other use for the list.
+  cycles: { id: string; name: string }[];
   authorized: boolean;
 }) {
   const rules = await getJoinLaneRulesForContext(community.id, null);
@@ -59,6 +64,15 @@ export default async function RecruitmentTab({
 
   const activeForms = forms.filter((f) => !f.archivedAt);
   const noFormConfigured = !community.recruitmentApplicationFormId;
+
+  // Which events shadow these defaults, and which lanes. Read on the
+  // community screen because that is where a blind edit happens: these are
+  // *defaults*, and a default only reaches an event whose lane isn't
+  // overridden there. Without this line an Admin changes a community rule
+  // with no way to know it will land at next year's reunion but not at the
+  // event next month.
+  const overrides = await listLaneOverridesByCycle(community.id);
+  const cycleNameById = new Map(cycles.map((c) => [c.id, c.name]));
 
   return (
     <div className="flex flex-col gap-8">
@@ -71,6 +85,17 @@ export default async function RecruitmentTab({
             action={updateAdmissionRulesAction}
             submitLabel="Save admission rules"
             title="One rule per lane"
+            aside={
+              overrides.length > 0 ? (
+                <Link
+                  href="#lane-overrides"
+                  className="text-[12px] font-medium text-[var(--accent-1)] hover:underline"
+                >
+                  {overrides.length} event{overrides.length === 1 ? "" : "s"} override
+                  {overrides.length === 1 ? "s" : ""} these
+                </Link>
+              ) : undefined
+            }
             state={
               <div className="flex flex-col gap-0.5">
                 {JOINING_LANE_ORDER.map((lane) => (
@@ -96,6 +121,37 @@ export default async function RecruitmentTab({
               ))}
             </div>
           </SettingsPanel>
+        )}
+
+        {/* Named, and linked, because a default nobody can trace is a
+            default nobody can reason about. This is the visible half of
+            the never-snapshotted design: the row is not a frozen copy of
+            the community rule, it is an absence, so it keeps tracking the
+            community even after the community moves on. */}
+        {overrides.length > 0 && (
+          <div id="lane-overrides" className="mt-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
+            <p className="text-[12px] font-medium text-[var(--text)]">
+              {overrides.length === 1 ? "One event runs" : `${overrides.length} events run`} different
+              admission rules
+            </p>
+            <ul className="mt-1.5 flex flex-col gap-1">
+              {overrides.map((o) => (
+                <li key={o.cycleId} className="text-[12px] text-[var(--text-muted)]">
+                  <Link
+                    href={`/${o.cycleId}/participation`}
+                    className="font-medium text-[var(--accent-1)] hover:underline"
+                  >
+                    {cycleNameById.get(o.cycleId) ?? "An event"}
+                  </Link>{" "}
+                  — {o.lanes.map((l) => laneTitle(l).toLowerCase()).join(", ")}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+              Changing a rule above reaches every event except these — and reaches these only for
+              the lanes they haven&rsquo;t overridden.
+            </p>
+          </div>
         )}
       </SettingsSection>
 

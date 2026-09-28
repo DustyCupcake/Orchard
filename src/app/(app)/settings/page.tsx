@@ -329,7 +329,12 @@ export default async function SettingsPage({
         {activeTab === "modules" && <ModulesTab community={communityRow} forms={forms} />}
 
         {activeTab === "recruitment" && (
-          <RecruitmentTab community={communityRow} forms={forms} authorized={authorized} />
+          <RecruitmentTab
+            community={communityRow}
+            forms={forms}
+            cycles={cycles}
+            authorized={authorized}
+          />
         )}
 
         {activeTab === "branches" && (

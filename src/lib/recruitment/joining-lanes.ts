@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { joiningLane } from "@/db/schema";
@@ -237,6 +237,36 @@ export async function listOverriddenLanes(communityId: string, cycleId: string):
     .from(joiningLane)
     .where(and(eq(joiningLane.communityId, communityId), eq(joiningLane.cycleId, cycleId)));
   return rows.map((r) => r.lane);
+}
+
+// Which events currently override at least one lane, community-wide.
+//
+// The settings screen needs this and could not answer it: an Admin editing
+// a community-wide lane rule is editing a *default*, and because
+// inheritance is the absence of a row rather than a snapshotted copy, that
+// edit propagates to every lane that isn't overridden somewhere. So
+// whether an edit reaches a given event is a function of which events
+// shadow which lanes — and with no way to see that, the edit is made blind.
+// The point of the never-snapshotted design is that a community default
+// stays true; this is what makes that visible rather than merely intended.
+export async function listLaneOverridesByCycle(
+  communityId: string,
+): Promise<{ cycleId: string; lanes: JoinLaneKind[] }[]> {
+  const rows = await db
+    .select({ cycleId: joiningLane.cycleId, lane: joiningLane.lane })
+    .from(joiningLane)
+    .where(and(eq(joiningLane.communityId, communityId), isNotNull(joiningLane.cycleId)));
+
+  const byCycle = new Map<string, JoinLaneKind[]>();
+  for (const r of rows) {
+    if (!r.cycleId) continue;
+    const list = byCycle.get(r.cycleId);
+    if (list) list.push(r.lane);
+    else byCycle.set(r.cycleId, [r.lane]);
+  }
+  return [...byCycle.entries()]
+    .map(([cycleId, lanes]) => ({ cycleId, lanes: lanes.sort() }))
+    .sort((a, b) => a.cycleId.localeCompare(b.cycleId));
 }
 
 // §5.2's "untick to inherit". Removing the row *is* the reset, because
