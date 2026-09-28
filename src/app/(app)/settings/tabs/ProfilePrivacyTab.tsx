@@ -14,7 +14,7 @@ import {
 } from "@/lib/profile-questions/indicators";
 import { toEditableFieldShape } from "@/lib/field-shape";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, CheckField, INPUT, LABEL, Tag } from "@/components/ui/kit";
-import { SettingsCard, SettingsPanel, SettingsSection, TextField, ToggleField } from "../ui";
+import { SelectField, SettingsCard, SettingsPanel, SettingsSection, TextField, ToggleField } from "../ui";
 import {
   archiveProfileQuestionAction,
   archiveTraitAxisAction,
@@ -85,23 +85,18 @@ export default function ProfilePrivacyTab({
   ruleTaskNameById: Map<string, string>;
   tierNameById: Map<string, string>;
 }) {
+  const maps: NameMaps = { ruleTaskNameById, tierNameById };
   return (
     <div className="flex flex-col gap-10">
       <ProfileQuestionsSection
         profileQuestions={profileQuestions}
+        rules={rules}
+        maps={maps}
         tiers={tiers}
         communityTasks={communityTasks}
         currentPhases={currentPhases}
       />
       <TraitAxesSection traitAxes={traitAxes} />
-      <AccessRulesSection
-        rules={rules}
-        tiers={tiers}
-        profileQuestions={profileQuestions}
-        questionLabelById={questionLabelById}
-        ruleTaskNameById={ruleTaskNameById}
-        tierNameById={tierNameById}
-      />
       <ConsentPurposesSection
         consentPurposes={consentPurposes}
         sensitiveQuestionOptions={sensitiveQuestionOptions}
@@ -113,15 +108,36 @@ export default function ProfilePrivacyTab({
 
 function ProfileQuestionsSection({
   profileQuestions,
+  rules,
+  maps,
   tiers,
   communityTasks,
   currentPhases,
 }: {
   profileQuestions: (typeof profileQuestionTable.$inferSelect)[];
+  rules: Rule[];
+  maps: NameMaps;
   tiers: (typeof tierTable.$inferSelect)[];
   communityTasks: { id: string; title: string }[];
   currentPhases: Set<string>;
 }) {
+  // One index rather than a filter per card: a community has a handful of
+  // restricted questions and a couple of dozen cards, and the audience line
+  // is on every collapsed card, so this is computed once for all of them.
+  const rulesByQuestion = new Map<string, Rule[]>();
+  for (const r of rules) {
+    const list = rulesByQuestion.get(r.questionId);
+    if (list) list.push(r);
+    else rulesByQuestion.set(r.questionId, [r]);
+  }
+  const cardProps = (q: typeof profileQuestionTable.$inferSelect) => ({
+    question: q,
+    rules: rulesByQuestion.get(q.id) ?? [],
+    maps,
+    tiers,
+    communityTasks,
+  });
+
   return (
     <SettingsSection
       title="Profile questions"
@@ -168,6 +184,52 @@ function ProfileQuestionsSection({
           what made this section feel like a wall rather than a list. The
           per-category blurbs below carry only what is specific to that
           category. */}
+      <SettingsPanel>
+        <details>
+          <summary className="cursor-pointer text-[13px] font-medium text-[var(--accent-1)]">
+            How privacy and consent work for these questions
+          </summary>
+          <div className="mt-2 flex max-w-[720px] flex-col gap-2">
+            <p className="text-[13px] text-[var(--text-muted)]">
+              A question is either <strong>readable by the whole community</strong> or{" "}
+              <strong>restricted</strong>, and which one it is gets decided once, when it is created.
+              It can&rsquo;t be flipped afterwards, because un-restricting a question would make every
+              answer given so far readable by everyone — including answers people gave while it was
+              restricted to a smaller group. No confirmation makes that a setting rather than a
+              disclosure, so the remedy is to archive the question and add it again.
+            </p>
+            <p className="text-[13px] text-[var(--text-muted)]">
+              A restricted question&rsquo;s audience is a list of <strong>rules</strong>, and anyone who
+              satisfies any one of them may read it — a named Tier, the holder of one task, or anyone
+              holding a particular permission. You can see and change that list on the question itself,
+              under &ldquo;Who can read this&rdquo;.
+            </p>
+            <p className="text-[13px] text-[var(--text-muted)]">
+              Adding a rule is a <strong>widening</strong>, and widening asks the people already
+              affected rather than helping itself to their answers: a new rule reaches only answers
+              given from the moment it exists. Everyone who had already answered is told and asked
+              whether to extend sharing, and until each of them says yes their answer stays with the
+              audience that already had it. Removing a rule is the opposite and needs nobody&rsquo;s
+              agreement.
+            </p>
+            <p className="text-[13px] text-[var(--text-muted)]">
+              <strong>Emergency access is an override, not a permission.</strong> Answering a question
+              marked for it is the consent — there is no separate box, and the only way to refuse is
+              not to answer. Anyone can activate emergency mode on another member&rsquo;s page, which is
+              how a crisis gets read; every such read is written to a log, and unlike reading inside a
+              permission someone granted, it is not silent.
+            </p>
+            <p className="text-[13px] text-[var(--text-muted)]">
+              <strong>Publishing</strong> is only possible on a public question, and only for one that
+              is asked once, isn&rsquo;t free text, and offers &ldquo;prefer not to say&rdquo;. It shows a
+              proportion or a distribution on the community page, never anyone&rsquo;s individual answer —
+              and that adds nothing a reader couldn&rsquo;t already work out by reading the answers one at
+              a time, which is why it needs no separate consent.
+            </p>
+          </div>
+        </details>
+      </SettingsPanel>
+
       <SettingsPanel>
         <details>
           <summary className="cursor-pointer text-[13px] font-medium text-[var(--accent-1)]">
@@ -240,7 +302,7 @@ function ProfileQuestionsSection({
 
             <div className="mt-1 flex flex-col gap-1.5">
               {standing.map((q) => (
-                <QuestionCard key={q.id} question={q} />
+                <QuestionCard key={q.id} {...cardProps(q)} />
               ))}
             </div>
 
@@ -251,7 +313,7 @@ function ProfileQuestionsSection({
                 </p>
                 <div className="mt-1.5 flex flex-col gap-1.5">
                   {live.map((q) => (
-                    <QuestionCard key={q.id} question={q} />
+                    <QuestionCard key={q.id} {...cardProps(q)} />
                   ))}
                 </div>
                 {hidden.length > 0 && (
@@ -261,7 +323,7 @@ function ProfileQuestionsSection({
                     </summary>
                     <div className="mt-1.5 flex flex-col gap-1.5">
                       {hidden.map((q) => (
-                        <QuestionCard key={q.id} question={q} />
+                        <QuestionCard key={q.id} {...cardProps(q)} />
                       ))}
                     </div>
                   </details>
@@ -449,140 +511,6 @@ function TraitAxesSection({ traitAxes }: { traitAxes: (typeof traitAxisTable.$in
   );
 }
 
-function AccessRulesSection({
-  rules,
-  tiers,
-  profileQuestions,
-  questionLabelById,
-  ruleTaskNameById,
-  tierNameById,
-}: {
-  rules: (typeof ruleTable.$inferSelect)[];
-  tiers: (typeof tierTable.$inferSelect)[];
-  profileQuestions: (typeof profileQuestionTable.$inferSelect)[];
-  questionLabelById: Map<string, string>;
-  ruleTaskNameById: Map<string, string>;
-  tierNameById: Map<string, string>;
-}) {
-  const restricted = profileQuestions.filter((q) => !q.archivedAt && q.sensitive);
-  return (
-    <SettingsSection
-      title="Access rules"
-      description="A rule says who, besides the person who answered, may read one restricted question: a named Tier, a holder of one task, or anyone holding a permission grant. A question can carry several rules, and anyone who satisfies any one of them can read it."
-    >
-      <SettingsPanel title="Adding a group afterwards is a widening">
-        <p className="max-w-[620px] text-[13px] text-[var(--text-muted)]">
-          A question&rsquo;s first audience is chosen when it&rsquo;s created, so this form is for{" "}
-          <em>adding</em> a group to one that already has an audience. Adding one is a{" "}
-          <strong>widening</strong>, and widening asks the people already affected: a new rule reaches
-          only answers given from the moment it exists. Everyone who already answered is told about
-          it and asked whether to extend sharing, and until each of them says yes their answer stays
-          with the audience that already had it. That&rsquo;s the difference between widening an
-          audience and quietly taking it.
-        </p>
-        <p className="max-w-[620px] text-[13px] text-[var(--text-muted)]">
-          Deleting the last rule on a restricted question leaves it readable by its owner and nobody
-          else, which is the safe direction to fail in. It still reaches whoever activates Emergency
-          access on someone&rsquo;s page, if that question has it.
-        </p>
-      </SettingsPanel>
-
-      {rules.length === 0 && <p className="text-[13px] text-[var(--text-muted)]">No rules yet.</p>}
-      {rules.map((r) => {
-        /* The route is read through a fallback rather than asserted. The
-           write side refuses a rule with two routes, but the database is
-           editable by hand, and a non-null assertion here rendered the
-           string "undefined" into this list — which reads as a rendering
-           fault rather than the broken row it actually is. Naming the
-           fault is the point. */
-        const target = `“${questionLabelById.get(r.questionId) ?? "a question that has been archived or removed"}”`;
-        const route = r.unlockedByTaskId
-          ? `anyone holding “${ruleTaskNameById.get(r.unlockedByTaskId) ?? "a task not in this community"}”`
-          : r.unlockedByTierId
-            ? `anyone in Tier “${tierNameById.get(r.unlockedByTierId) ?? "—"}”`
-            : r.unlockedByGrantModuleKey
-              ? `anyone holding a ${PERMISSION_MODULE_LABELS[r.unlockedByGrantModuleKey]} grant`
-              : "nobody — this rule has no unlock route";
-        return (
-          <div
-            key={r.id}
-            className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3"
-          >
-            <span className="flex-1 text-[13px] text-[var(--text)]">
-              {target} &mdash; readable by {route}
-            </span>
-            <form action={deleteSensitiveFieldAccessRuleAction}>
-              <input type="hidden" name="ruleId" value={r.id} />
-              <button type="submit" className={BUTTON_SECONDARY}>
-                Delete
-              </button>
-            </form>
-          </div>
-        );
-      })}
-
-      <SettingsCard action={createSensitiveFieldAccessRuleAction} submitLabel="Add rule" title="Add a rule">
-        <label className="flex max-w-[420px] flex-col gap-1">
-          <span className={LABEL}>Which question?</span>
-          {/* Restricted questions only, and this is not a filter for
-              brevity. A rule's whole job is to widen an audience, and only
-              a restricted question has one to widen — the flag is fixed at
-              creation and a public question stays public, so a rule naming
-              one could never read anything the community doesn't already
-              read. Offering public questions here would be offering a field
-              that cannot do anything, which is worse than not offering it.
-              (Before the Sensitive-data columns went, this list was every
-              non-archived question, on the theory that a rule is a
-              *staged* widening waiting for someone to tick a box. Nothing
-              can tick that box any more.) */}
-          <select name="questionId" defaultValue="" className={INPUT}>
-            <option value="">— pick one —</option>
-            {restricted.map((q) => (
-              <option key={q.id} value={q.id}>
-                {q.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {restricted.length === 0 && (
-          <p className="max-w-[560px] text-[12px] text-[var(--text-muted)]">
-            No restricted questions yet, so there&rsquo;s no audience to widen. Add one under Profile
-            questions first — the audience is chosen there, and this form is for adding a group
-            afterwards.
-          </p>
-        )}
-        <label className="flex max-w-[420px] flex-col gap-1">
-          <span className={LABEL}>Unlock via a Tier</span>
-          <select name="unlockedByTierId" defaultValue="" className={INPUT}>
-            <option value="">— none —</option>
-            {tiers.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex max-w-[420px] flex-col gap-1">
-          <span className={LABEL}>Or unlock via a permission grant</span>
-          <select name="unlockedByGrantModuleKey" defaultValue="" className={INPUT}>
-            <option value="">— none —</option>
-            {PERMISSION_MODULE_KEYS.map((k) => (
-              <option key={k} value={k}>
-                {PERMISSION_MODULE_LABELS[k]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <TextField
-          label="Or unlock via a task ID (pick exactly one of Tier/Grant/Task)"
-          name="unlockedByTaskId"
-          placeholder="paste the task's ID from its /tasks/… URL"
-        />
-      </SettingsCard>
-    </SettingsSection>
-  );
-}
-
 function ConsentPurposesSection({
   consentPurposes,
   sensitiveQuestionOptions,
@@ -679,7 +607,65 @@ function ConsentPurposesSection({
  *  creation, so there is nothing to edit about it here and it reads much
  *  better as a fact than as a greyed-out checkbox.
  */
-function QuestionCard({ question: q }: { question: typeof profileQuestionTable.$inferSelect }) {
+type Rule = typeof ruleTable.$inferSelect;
+type NameMaps = { ruleTaskNameById: Map<string, string>; tierNameById: Map<string, string> };
+
+/** One rule, as the sentence an admin would say out loud.
+ *
+ *  Every branch falls back rather than asserting. The write side refuses a
+ *  rule carrying two routes, but the database is editable by hand, and the
+ *  non-null assertion this replaced rendered the string "undefined" into
+ *  the list — which reads as a rendering fault rather than as the broken
+ *  row it actually is. Naming the fault is the point.
+ */
+function ruleRoute(r: Rule, maps: NameMaps): string {
+  if (r.unlockedByTaskId) {
+    return `anyone holding “${maps.ruleTaskNameById.get(r.unlockedByTaskId) ?? "a task not in this community"}”`;
+  }
+  if (r.unlockedByTierId) {
+    return `anyone in Tier “${maps.tierNameById.get(r.unlockedByTierId) ?? "—"}”`;
+  }
+  if (r.unlockedByGrantModuleKey) {
+    return `anyone holding a ${PERMISSION_MODULE_LABELS[r.unlockedByGrantModuleKey]} grant`;
+  }
+  return "nobody — this rule has no unlock route";
+}
+
+/** Who can read this question, for the collapsed card.
+ *
+ *  The whole point of moving access rules onto the card: the question and
+ *  the answer to "who can read this" are one object, and an admin should
+ *  never have to find a question's row in one section to learn its
+ *  audience and then visit another section to change it.
+ */
+function audienceLine(q: typeof profileQuestionTable.$inferSelect, ownRules: Rule[], maps: NameMaps) {
+  if (!q.sensitive) {
+    return "Readable by the whole community.";
+  }
+  if (ownRules.length === 0) {
+    // Relocated verbatim from the Access rules section this replaces, which
+    // is where the honest description of the empty case already lived. A
+    // restricted question with no rule resolves to nobody-but-the-owner,
+    // which reads as broken rather than as private unless it is said.
+    return "Readable by the person who answered, and by whoever activates Emergency access on their page. Nobody else.";
+  }
+  return `Also readable by ${ownRules.map((r) => ruleRoute(r, maps)).join("; ")}.`;
+}
+
+function QuestionCard({
+  question: q,
+  rules,
+  maps,
+  tiers,
+  communityTasks,
+}: {
+  question: typeof profileQuestionTable.$inferSelect;
+  rules: Rule[];
+  maps: NameMaps;
+  tiers: (typeof tierTable.$inferSelect)[];
+  communityTasks: { id: string; title: string }[];
+}) {
+  const options = (q.options ?? []) as string[];
   return (
     <details className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
       <summary
@@ -700,6 +686,18 @@ function QuestionCard({ question: q }: { question: typeof profileQuestionTable.$
               : `asked in the ${q.phaseNameHint} phase`}
         </span>
         <span className="ml-auto text-[12px] text-[var(--accent-1)]">Edit</span>
+        {/* The state, on the collapsed side. A card that only said
+            "restricted" made the reader open it to learn who could read
+            the thing, which is the one fact a privacy surface exists to
+            communicate. */}
+        <span className="w-full text-[12px] leading-relaxed text-[var(--text-muted)]">
+          {audienceLine(q, rules, maps)}
+        </span>
+        {options.length > 0 && (
+          <span className="w-full text-[12px] leading-relaxed text-[var(--text-muted)]">
+            Choices: {options.join(", ")}
+          </span>
+        )}
       </summary>
 
       {/* Inside the disclosure rather than a separate one: a <summary> and
@@ -777,6 +775,84 @@ function QuestionCard({ question: q }: { question: typeof profileQuestionTable.$
           {q.archivedAt ? "Unarchive this question" : "Archive this question"}
         </button>
       </form>
+
+      {q.sensitive && (
+        <div className="mt-3 border-t border-[var(--border)] pt-3">
+          <p className="text-[12px] font-medium text-[var(--text-muted)]">Who can read this</p>
+          <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--text-muted)]">
+            {audienceLine(q, rules, maps)}
+          </p>
+
+          {rules.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {rules.map((r) => (
+                <div key={r.id} className="flex items-center gap-2 text-[12px] text-[var(--text)]">
+                  <span className="flex-1">Readable by {ruleRoute(r, maps)}</span>
+                  <form action={deleteSensitiveFieldAccessRuleAction}>
+                    <input type="hidden" name="ruleId" value={r.id} />
+                    <button type="submit" className="text-[12px] text-[var(--text-muted)] hover:underline">
+                      Remove
+                    </button>
+                  </form>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Adding a group is the one action here that reaches people who
+              already answered, so what it does is stated on the control
+              rather than in a preamble some distance away. */}
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[12px] text-[var(--accent-1)]">
+              Add a group that can read this
+            </summary>
+            <div className="mt-2 flex max-w-[560px] flex-col gap-2">
+              <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+                Adding a group is a <strong>widening</strong>, and widening asks the people already
+                affected: the new group reaches only answers given from the moment it exists. Everyone
+                who has already answered is told about it and asked whether to extend sharing, and
+                until each of them says yes their answer stays with the audience that already had it.
+                That&rsquo;s the difference between widening an audience and quietly taking it.
+              </p>
+              <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+                Removing the last one leaves this readable by the person who answered and nobody else.
+              </p>
+              <form action={createSensitiveFieldAccessRuleAction} className="flex flex-col gap-2">
+                {/* The question is the card, so unlike the old standalone
+                    form there is nothing to pick here — which also removes
+                    the one way to widen the audience of the wrong question. */}
+                <input type="hidden" name="questionId" value={q.id} />
+                <SelectField
+                  label="Via a Tier"
+                  name="unlockedByTierId"
+                  defaultValue=""
+                  options={[{ value: "", label: "— none —" }, ...tiers.map((t) => ({ value: t.id, label: t.name }))]}
+                />
+                <SelectField
+                  label="Or via a permission grant"
+                  name="unlockedByGrantModuleKey"
+                  defaultValue=""
+                  options={[
+                    { value: "", label: "— none —" },
+                    ...PERMISSION_MODULE_KEYS.map((k) => ({ value: k, label: PERMISSION_MODULE_LABELS[k] })),
+                  ]}
+                />
+                <TextField
+                  label="Or via a task (pick exactly one of the three)"
+                  name="unlockedByTaskId"
+                  placeholder="paste the task's ID from its /tasks/… URL"
+                  hint={`Tasks this community has: ${communityTasks.length}`}
+                />
+                <div>
+                  <button type="submit" className={BUTTON_PRIMARY}>
+                    Add this group
+                  </button>
+                </div>
+              </form>
+            </div>
+          </details>
+        </div>
+      )}
     </details>
   );
 }
