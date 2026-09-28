@@ -1,5 +1,7 @@
 import { boolean, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { community } from "./community";
 import { communityInvite } from "./community-invite";
+import { cycle } from "./cycle";
 import { formResponse } from "./form";
 import { member } from "./member";
 import { schedulingPoll } from "./scheduling-poll";
@@ -79,6 +81,22 @@ export const recruitmentApplicationInvite = pgTable("recruitment_application_inv
     .references(() => communityInvite.id),
 });
 
+// The lifecycle of an objection under docs/joining-admission-plan.md
+// §2.6. `standing` is where every objection starts and where an
+// objection *lives*: it is never thrown out by the window's timer, and
+// inaction never admits or excludes. The three terminal states are the
+// three things that can actually happen to it — mediation cleared it,
+// mediation let it stand (which refuses the admission), or the body
+// exercised the overrule (the exception, and the only one that needs a
+// threshold).
+export const objectionResolutionEnum = pgEnum("objection_resolution", [
+  "standing",
+  "cleared",
+  "upheld",
+  "overruled",
+  "withdrawn",
+]);
+
 // "Subscribed members can raise an anonymous-to-the-community... but
 // visible-to-the-evaluators objection" — see docs/spec.md's
 // Recruitment. raisedBy is stored (never deleted, a real audit trail
@@ -89,16 +107,112 @@ export const recruitmentApplicationInvite = pgTable("recruitment_application_inv
 // here, not just "hidden from the wider community" — the same posture
 // the Anonymous task signal already takes ("a signal that can be
 // traced back defeats its own purpose").
+//
+// docs/joining-admission-plan.md §2.6/§4.3 tightens that from
+// "anonymous to the community, visible to the evaluators" into a
+// *shield at rest*: raisedBy is now readable only by the mediation
+// body (holders of a task granted `recruitment_mediation`), never by
+// the evaluators, and never by the person being objected to or the
+// inviter. See src/lib/recruitment/mediation.ts for the resolver and
+// objection_party_exclusion / objection_party_consent for the two ways
+// the objector adjusts what the body may see.
+//
+// formResponseId became nullable so the *same* objection machinery
+// covers both windows the plan unifies ("one discipline, applied to
+// both consensus-lane arrivals and the existing evaluated-path wider-
+// discussion", §2.6): inviteId is set for a consensus-lane arrival,
+// which has no application behind it, and formResponseId for the
+// evaluated path. Exactly one is set, enforced at the application
+// layer — the same posture schedulingEntry's memberId/formResponseId
+// pair takes in this schema. communityId is denormalized onto the row
+// so the mediation queue can scope by community without a join through
+// either subject.
 export const objection = pgTable("objection", {
   id: uuid("id").primaryKey().defaultRandom(),
-  formResponseId: uuid("form_response_id")
+  communityId: uuid("community_id")
     .notNull()
-    .references(() => formResponse.id),
+    .references(() => community.id),
+  formResponseId: uuid("form_response_id").references(() => formResponse.id),
+  inviteId: uuid("invite_id").references(() => communityInvite.id),
   raisedBy: uuid("raised_by")
     .notNull()
     .references(() => member.id),
   note: text("note").notNull(),
   raisedAt: timestamp("raised_at", { withTimezone: true }).notNull().defaultNow(),
+  resolution: objectionResolutionEnum("resolution").notNull().default("standing"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolvedById: uuid("resolved_by_id").references(() => member.id),
+  resolutionNote: text("resolution_note"),
+});
+
+// "Who are you sticking with" (docs/joining-admission-plan.md
+// §2.8/J9). Pairing is *fact only*: the platform records that A named B
+// and never decides anything from it. The three shapes the plan names
+// all land on this one row:
+//   — the named person is a member      → secondMemberId, and the link
+//     they got was the support view, so a pair here is an extra vouch;
+//   — the named person is applying too  → secondResponseId is set once
+//     they apply through the link, and the namer then gets the
+//     accept-the-pairing link (same token) to confirm the person who
+//     arrived is the person they meant;
+//   — the recruitment/mediation team links them by hand → requestedBy
+//     is the team member, and status starts at awaiting_accept.
+// The token is the one pairing *and* accept link: opening it as the
+// named person routes to the application (or the support view), and
+// opening it as the namer offers accept/decline.
+export const recruitmentPairStatusEnum = pgEnum("recruitment_pair_status", [
+  "awaiting_applicant",
+  "awaiting_accept",
+  "accepted",
+  "declined",
+]);
+
+export const recruitmentPair = pgTable("recruitment_pair", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  communityId: uuid("community_id")
+    .notNull()
+    .references(() => community.id),
+  cycleId: uuid("cycle_id").references(() => cycle.id),
+  token: text("token").notNull().unique(),
+  // The person who named the other. Always a Member — even for a manual
+  // link, where that member is the one who did the linking, because
+  // there is no version of a pairing with nobody behind it.
+  requestedById: uuid("requested_by_id")
+    .notNull()
+    .references(() => member.id),
+  // The namer's own side, when the namer is an applicant too (the
+  // public-application lane's "who are you sticking with" answer).
+  firstResponseId: uuid("first_response_id").references(() => formResponse.id),
+  secondMemberId: uuid("second_member_id").references(() => member.id),
+  secondResponseId: uuid("second_response_id").references(() => formResponse.id),
+  status: recruitmentPairStatusEnum("status").notNull().default("awaiting_applicant"),
+  // §2.8 — the joint interview is opt-in, so "offered", "said yes" and
+  // "said no" are three separate recorded facts rather than one
+  // nullable flag: a community reading these later needs to be able to
+  // tell a pair who was never asked from a pair who declined, and the
+  // answerer's own refusal is a thing worth having on the record.
+  sharedCallOfferedAt: timestamp("shared_call_offered_at", { withTimezone: true }),
+  sharedCallAcceptedAt: timestamp("shared_call_accepted_at", { withTimezone: true }),
+  sharedCallDeclinedAt: timestamp("shared_call_declined_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+});
+
+// J10's binding consent, for the path that has no invite row to record
+// it on: a public applicant on a consensus lane has no redemption step,
+// so the disclosure is read and ticked at the application itself. The
+// invite's two consent steps stay on community_invite (the plan says so
+// explicitly — "recorded on the invite row") because that row *is* the
+// send; this table is the application-shaped twin, and the exact text
+// is stored rather than a boolean so a later argument about what was
+// agreed is answerable from the record.
+export const recruitmentApplicationConsent = pgTable("recruitment_application_consent", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  formResponseId: uuid("form_response_id")
+    .notNull()
+    .references(() => formResponse.id),
+  disclosure: text("disclosure").notNull(),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const recruitmentDecisionOutcomeEnum = pgEnum("recruitment_decision_outcome", [

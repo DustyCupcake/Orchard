@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { community, dateDisplayModeEnum, form, tier } from "@/db/schema";
+import { community, dateDisplayModeEnum, form, objectionOverruleModeEnum, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
 import { recruitmentDecisionRulesSchema, requireValidDecisionRules } from "../recruitment/evaluations";
@@ -63,6 +63,24 @@ export const updateCommunityInput = z.object({
   // (per-cycle doors live on the cycle itself).
   recruitmentApplicationsOpen: z.boolean().optional(),
   recruitmentInvitesOpen: z.boolean().optional(),
+  // The third door (docs/joining-admission-plan.md §2.3/J3): whether an
+  // interview can be scheduled at all. Distinct from a lane's
+  // `interviewRequired` — that says "an arrival on this lane is
+  // interviewed", this says "no interviews are happening right now".
+  recruitmentInterviewsOpen: z.boolean().optional(),
+  // The second of the two time-boxed verification windows (§2.2/J2), and
+  // the overrule threshold that governs the one exception in §2.6. Both
+  // are per-mechanism rather than per-lane on purpose: J2 ruled out
+  // stacking nomination and consensus on a lane precisely because two
+  // windows means two timers and nobody knows who resolves what.
+  recruitmentNominationWindowHours: z.number().int().positive().max(24 * 30).optional(),
+  recruitmentObjectionOverrule: z.enum(objectionOverruleModeEnum.enumValues).optional(),
+  // Only meaningful in `quorum` mode, and bounded so it can't be set to
+  // a number that silently disables the overrule: the mediation page
+  // reports "the quorum is N and the body is M" as the *reason* the
+  // exception is unavailable, which only works if the number stays
+  // somewhere a body could plausibly reach.
+  recruitmentObjectionQuorum: z.number().int().min(1).max(50).optional(),
   recruitmentEvaluatorCount: z.number().int().positive().optional(),
   recruitmentDecisionRules: recruitmentDecisionRulesSchema.optional(),
   recruitmentSubscriptionLapseThreshold: z.number().int().positive().optional(),
@@ -192,6 +210,18 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         }),
         ...(input.recruitmentInvitesOpen !== undefined && {
           recruitmentInvitesOpen: input.recruitmentInvitesOpen,
+        }),
+        ...(input.recruitmentInterviewsOpen !== undefined && {
+          recruitmentInterviewsOpen: input.recruitmentInterviewsOpen,
+        }),
+        ...(input.recruitmentNominationWindowHours !== undefined && {
+          recruitmentNominationWindowHours: input.recruitmentNominationWindowHours,
+        }),
+        ...(input.recruitmentObjectionOverrule !== undefined && {
+          recruitmentObjectionOverrule: input.recruitmentObjectionOverrule,
+        }),
+        ...(input.recruitmentObjectionQuorum !== undefined && {
+          recruitmentObjectionQuorum: input.recruitmentObjectionQuorum,
         }),
         ...(input.recruitmentEvaluatorCount !== undefined && {
           recruitmentEvaluatorCount: input.recruitmentEvaluatorCount,

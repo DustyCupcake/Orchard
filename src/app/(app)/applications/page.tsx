@@ -39,6 +39,19 @@ const RESOLUTION_LABEL: Record<string, string> = {
   declined: "Declined",
 };
 
+// §4.3's objection lifecycle, as the evaluators see it. They get the
+// note and the state and never the name — the identity is shielded to the
+// mediation body (J7), and this list is deliberately the same shape it
+// was before the redesign so that the *only* thing that changed for the
+// evaluators is that they can no longer wave a standing concern through.
+const OBJECTION_STATE_LABEL: Record<string, string> = {
+  standing: "standing — with the mediation body",
+  cleared: "cleared",
+  upheld: "the concern stood, and they didn't join",
+  overruled: "overruled by the mediation body",
+  withdrawn: "withdrawn by whoever raised it",
+};
+
 // See docs/spec.md's Recruitment ("Evaluation + decision logic",
 // "Recruitment-mode subscription", "Wider discussion window",
 // "Accompaniment", "Rejection templates") and docs/development-plan.md's
@@ -363,15 +376,46 @@ export default async function ApplicationsPage({
                                 ` (closes ${new Date(decision.widerDiscussionDeadline).toLocaleString()})`}
                             </p>
                             {objections.length > 0 && (
-                              <ul style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
-                                {objections.map((o) => (
-                                  <li key={o.id}>
-                                    {o.note} <span style={{ color: "#666" }}>({new Date(o.raisedAt).toLocaleDateString()})</span>
-                                  </li>
-                                ))}
-                              </ul>
+                              <>
+                                <ul style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
+                                  {objections.map((o) => (
+                                    <li key={o.id}>
+                                      {o.note}{" "}
+                                      <span style={{ color: "#666" }}>
+                                        ({new Date(o.raisedAt).toLocaleDateString()} ·{" "}
+                                        {OBJECTION_STATE_LABEL[o.resolution] ?? o.resolution}
+                                        {o.resolutionNote ? ` — ${o.resolutionNote}` : ""})
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                                {/* §2.6/J7, and the reason this block
+                                    looks different from the one it
+                                    replaced: while a concern is
+                                    standing, the two Resolve buttons are
+                                    *gone*, not disabled. The server
+                                    refuses the write either way
+                                    (resolveWiderDiscussionManually), but
+                                    offering an action that silently does
+                                    nothing is how a team ends up
+                                    believing it waved a concern
+                                    through. The action on offer now
+                                    belongs to a different group of
+                                    people and is named. */}
+                                {objections.some((o) => o.resolution === "standing") && (
+                                  <p style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
+                                    Someone has raised a concern and it <strong>stands</strong> until
+                                    the mediation body talks it through — it is not resolved by
+                                    waiting, and it isn&rsquo;t yours to resolve.{" "}
+                                    <Link href="/recruitment/mediation" style={{ color: "var(--accent-1)" }}>
+                                      Open the mediation queue
+                                    </Link>
+                                    .
+                                  </p>
+                                )}
+                              </>
                             )}
-                            {!decision.resolution && (
+                            {!decision.resolution && !objections.some((o) => o.resolution === "standing") && (
                               <form action={resolveWiderDiscussionAction} style={{ display: "flex", gap: "0.4rem" }}>
                                 <input type="hidden" name="formResponseId" value={response.id} />
                                 <button type="submit" name="resolution" value="accepted" style={{ padding: "0.3rem 0.6rem" }}>

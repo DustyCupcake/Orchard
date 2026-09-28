@@ -16,13 +16,24 @@ import {
   listApplicationAlerts,
   listOpenIntroCallsForSubscriber,
   getRecruitmentPipeline,
+  isMediationMember,
+  listStandingObjectionSummaries,
 } from "@/lib/recruitment";
+import { listPairings, listSharedInterviewOffers } from "@/lib/recruitment/pairs";
+import { answerSharedInterviewAction } from "./actions";
 import { ForbiddenError } from "@/lib/errors";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
 import { Banner, BUTTON_SECONDARY, CARD, Tag } from "@/components/ui/kit";
 import PageHeader from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
+
+const PAIR_LABEL: Record<string, string> = {
+  awaiting_applicant: "waiting on them",
+  awaiting_accept: "waiting on a yes",
+  accepted: "confirmed",
+  declined: "turned down",
+};
 
 const STAGE_LABEL: Record<string, string> = {
   applied: "Applied",
@@ -127,6 +138,24 @@ export default async function RecruitmentHubPage() {
   let pipeline = null;
   if (isHolder) {
     pipeline = await getRecruitmentPipeline(viewing);
+  }
+
+  // §2.6/§5.4's three addition panels, holder-only like the pipeline
+  // itself. The objection counts are the load-bearing part: the hub is
+  // where somebody would otherwise assume a concern is theirs, and the
+  // whole point of the redesign is that it isn't — it is the mediation
+  // body's, and the hub says so in as many words.
+  let standingObjections: Awaited<ReturnType<typeof listStandingObjectionSummaries>> = [];
+  let pairings: Awaited<ReturnType<typeof listPairings>> = [];
+  let sharedOffers: Awaited<ReturnType<typeof listSharedInterviewOffers>> = [];
+  let isMediationMemberNow = false;
+  if (isHolder) {
+    [standingObjections, pairings, sharedOffers, isMediationMemberNow] = await Promise.all([
+      listStandingObjectionSummaries(viewing),
+      listPairings(viewing),
+      listSharedInterviewOffers(viewing),
+      isMediationMember(viewing),
+    ]);
   }
 
   // A non-holder's own view: "something is pending", never the answers.
@@ -546,6 +575,107 @@ export default async function RecruitmentHubPage() {
               .
             </p>
           </section>
+
+          {/* §5.4's "the objection state at a glance on the applications
+              pipeline". Counts and nothing else: the pipeline is the
+              evaluators' surface, and the evaluators are precisely the
+              people §2.6's shield keeps away from who objected. So what
+              belongs here is "the body has this", and a link to the body
+              — not the note, the date, or anything that could be read as
+              a hint about who. */}
+          {standingObjections.length > 0 && (
+            <section className="mt-6">
+              <h2 className="flex items-center gap-2 text-[22px] font-semibold text-[var(--text)]">
+                Concerns the community has raised
+                <Tag tone="warning">{standingObjections.length} standing</Tag>
+              </h2>
+              <p className="mt-1 max-w-[620px] text-[13px] text-[var(--text-muted)]">
+                Someone has raised a concern about {standingObjections.length}{" "}
+                {standingObjections.length === 1 ? "arrival" : "arrivals"}, and{" "}
+                {standingObjections.length === 1 ? "it" : "they"} stand until the mediation body
+                talks {standingObjections.length === 1 ? "it" : "them"} through. That is not yours
+                to resolve — and you won&rsquo;t be told who raised {standingObjections.length === 1 ? "it" : "them"}.
+              </p>
+              <ul className="mt-3 flex flex-col gap-1.5">
+                {standingObjections.map((o) => (
+                  <li key={o.id} className="text-[13px] text-[var(--text-muted)]">
+                    {o.formResponseId ? "An application" : "An announced arrival"} —
+                    raised {timeSince(o.raisedAt)}{" "}
+                    {isMediationMemberNow && (
+                      <Link href="/recruitment/mediation" className="text-[var(--accent-1)] hover:underline">
+                        Open the mediation queue
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* §2.8's pairing record. Shown because it is a fact the
+              humans should see — two applicants who said they were
+              coming together — and shown with an explicit statement of
+              what it does *not* do, because the most likely misreading of
+              a "who are you sticking with" list is that the platform
+              decided something. */}
+          {pairings.length > 0 && (
+            <section className="mt-6">
+              <h2 className="text-[22px] font-semibold text-[var(--text)]">Coming together</h2>
+              <p className="mt-1 max-w-[620px] text-[13px] text-[var(--text-muted)]">
+                People who named each other as the person they&rsquo;re arriving with. That is all
+                this is: a fact, recorded so the two of you can see each other and be offered one
+                interview together. Nothing about how either of you is assessed depends on it.
+              </p>
+              <div className="mt-3 flex flex-col gap-2">
+                {pairings.map((p) => (
+                  <div key={p.id} className={`${CARD} flex flex-wrap items-center gap-2`}>
+                    <span className="text-[13px] text-[var(--text)]">
+                      {p.namer?.name ?? "Someone"} · {p.namedMember ? p.namedMember.name : "someone applying"}
+                    </span>
+                    <Tag
+                      tone={
+                        p.sharedCall === "accepted"
+                          ? "success"
+                          : p.sharedCall === "offered"
+                            ? "accent"
+                            : p.status === "accepted"
+                              ? "accent"
+                              : "neutral"
+                      }
+                    >
+                      {PAIR_LABEL[p.status] ?? p.status}
+                      {p.sharedCall === "accepted" ? " · one interview" : ""}
+                    </Tag>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {sharedOffers.length > 0 && (
+            <section className="mt-6">
+              <h2 className="text-[22px] font-semibold text-[var(--text)]">Shared interviews to offer</h2>
+              <p className="mt-1 max-w-[620px] text-[13px] text-[var(--text-muted)]">
+                Both sides of these pairs are at the interview stage. Offering one interview between
+                them is opt-in and never automatic — §2.8 is explicit about that, because a joint
+                call is the one place a pair could quietly become a stronger unit than either person.
+              </p>
+              <div className="mt-3 flex flex-col gap-2">
+                {sharedOffers.map((o) => (
+                  <form key={o.pairId} action={answerSharedInterviewAction} className={`${CARD} flex flex-wrap items-center gap-2`}>
+                    <input type="hidden" name="pairId" value={o.pairId} />
+                    <span className="text-[13px] text-[var(--text)]">Two applicants, one interview</span>
+                    <button type="submit" name="accept" value="1" className={BUTTON_SECONDARY}>
+                      Offer it
+                    </button>
+                    <button type="submit" name="accept" value="0" className={BUTTON_SECONDARY}>
+                      Leave them separate
+                    </button>
+                  </form>
+                ))}
+              </div>
+            </section>
+          )}
         </>
       )}
     </main>

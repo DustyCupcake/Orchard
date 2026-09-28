@@ -15,6 +15,16 @@ import { dateDisplayModeEnum } from "./date-display";
 export const membershipModelEnum = pgEnum("membership_model", ["cohort", "rolling", "fixed"]);
 export const branchMembershipModelEnum = pgEnum("branch_membership_model", ["emergent", "explicit"]);
 
+// How much of the mediation body has to agree before an objection can be
+// overruled in favour of admitting someone anyway
+// (docs/joining-admission-plan.md §2.6/J7). Declared here, next to the
+// columns that use it, rather than in the recruitment module's own
+// schema file: like every other settings-facing vocabulary in this file
+// (membershipModelEnum, dateDisplayModeEnum) it is a *configuration*
+// choice, and a db/schema file importing another module's file for it
+// would be a dependency direction this schema has never taken.
+export const objectionOverruleModeEnum = pgEnum("objection_overrule_mode", ["majority", "quorum"]);
+
 // A single Community row per deployment. Everything else in the schema
 // belongs to one — see docs/spec.md's "Community" section.
 export const community = pgTable("community", {
@@ -112,6 +122,15 @@ export const community = pgTable("community", {
   cycleIndicatorsMinMembers: integer("cycle_indicators_min_members").notNull().default(10),
   recruitmentApplicationsOpen: boolean("recruitment_applications_open").notNull().default(true),
   recruitmentInvitesOpen: boolean("recruitment_invites_open").notNull().default(true),
+  // The third door (docs/joining-admission-plan.md §2.3/J3/D13): the
+  // interview stage, finally a door of its own instead of something
+  // that either always ran (evaluated applications) or was skipped
+  // wholesale (direct invites). A cycle with `interviewsOpen = false`
+  // cannot have an intro call scheduled against it, whatever its lanes
+  // say — and a community that closes the community-wide one closes
+  // interviews everywhere. Default true: the stage exists today on the
+  // evaluated path, so a community that touches nothing keeps it.
+  recruitmentInterviewsOpen: boolean("recruitment_interviews_open").notNull().default(true),
   // "However many evaluators the Community assigns (two, in the
   // reference case)" — see docs/spec.md's Recruitment. "The
   // evaluators" are resolved as whoever currently holds a task granting
@@ -150,6 +169,31 @@ export const community = pgTable("community", {
   // Accompaniment task is a real side effect, not just a status read)
   // — see src/lib/recruitment/decisions.ts's resolveWiderDiscussionWindows.
   recruitmentWiderDiscussionHours: integer("recruitment_wider_discussion_hours").notNull().default(48),
+  // The second of the two time-boxed verification windows
+  // (docs/joining-admission-plan.md §2.2/J2). J2 settled that periods
+  // are community-wide per *mechanism* rather than per lane — stacking
+  // nomination and consensus per lane was explicitly ruled out — so
+  // there are exactly two knobs: recruitmentWiderDiscussionHours above,
+  // reused as the consensus window, and this one for the nomination's
+  // support window. Default 48h, deliberately the same shape of number
+  // as the wider-discussion window so a community reading both knobs
+  // sees one consistent idea: "long enough that a person who was told
+  // on Monday has a real chance before Friday".
+  recruitmentNominationWindowHours: integer("recruitment_nomination_window_hours")
+    .notNull()
+    .default(48),
+  // §2.6/J7 — the overrule threshold. An objection is never thrown out
+  // by a timer; mediation either clears it or it stands, and admitting
+  // *anyway* is the documented exception. The community chooses how
+  // much of the mediation body that takes: `majority` (the default —
+  // more than half of the people who hold it right now) or a `quorum`
+  // of a fixed size they name. Stored as a mode + a number rather than
+  // one nullable integer so "majority" and "quorum of N" cannot be
+  // confused with each other by a later reader.
+  recruitmentObjectionOverrule: objectionOverruleModeEnum("recruitment_objection_overrule")
+    .notNull()
+    .default("majority"),
+  recruitmentObjectionQuorum: integer("recruitment_objection_quorum").notNull().default(3),
   // "A written starting point for the hardest message in the flow" —
   // surfaced to whoever's about to send an actual decline, never sent
   // automatically. A single field for v1, per spec's own framing.

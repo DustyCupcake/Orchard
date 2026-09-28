@@ -9,7 +9,6 @@ import {
   memberIdentity,
   evaluation,
   objection,
-  participation,
   recruitmentApplicationInvite,
   recruitmentDecision,
   task,
@@ -17,14 +16,16 @@ import {
 } from "@/db/schema";
 import type { community as communityTable, member as memberTable } from "@/db/schema";
 import type { FormField } from "../forms";
-import { ConflictError, NotFoundError } from "../errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { createTask } from "../tasks";
 import { createPoll } from "../scheduling-polls";
 import { generateToken } from "../token";
 import { getCommunityRow, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
 import { computeRecruitmentOutcome } from "./evaluations";
+import { canScheduleInterview } from "./joining";
 import { listGrantingTaskIds } from "../permissions";
 import { answerProfileQuestion } from "../profile-questions";
+import { seedCycleParticipation } from "../participation";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityRow = typeof communityTable.$inferSelect;
@@ -278,20 +279,10 @@ async function maybeConvertApplicantToMember(
     }
   }
 
-  // §4.3/8d (D14): accepting a cycle-keyed application seeds the new
-  // member's participation in that cycle — "coming", idempotently — so
-  // they count against the cycle's capacity from day one (same
-  // select-then-insert posture redeemCommunityInvite keeps; there's no
-  // DB-level unique constraint on participation).
-  if (responseRow.cycleId) {
-    const [existing] = await db
-      .select({ id: participation.id })
-      .from(participation)
-      .where(and(eq(participation.cycleId, responseRow.cycleId), eq(participation.memberId, memberId)));
-    if (!existing) {
-      await db.insert(participation).values({ cycleId: responseRow.cycleId, memberId, status: "coming" });
-    }
-  }
+  // §4.3/8d (D14) / J12: accepting a cycle-keyed application seeds the
+  // new member's participation in that cycle — "coming", idempotently —
+  // so they count against the cycle's capacity from day one.
+  await seedCycleParticipation(db, responseRow.cycleId, memberId);
 
   const [updated] = await db
     .update(recruitmentDecision)
@@ -363,6 +354,24 @@ async function maybeCreateAccompanimentTask(actor: Member, communityRow: Communi
   return updated;
 }
 
+// The write half of an acceptance, split out of recordDecisionIfReached
+// so that src/lib/recruitment/mediation.ts can reuse it: an objection
+// that the body *clears* admits the applicant exactly the way a `proceed`
+// rule does, and re-implementing the conversion + accompaniment steps
+// there would be how the two paths started disagreeing about what
+// "accepted" means. Idempotent at both steps (convertedMemberId and
+// accompanimentTaskId are the markers), so calling it on an already-
+// accepted decision is a no-op rather than a double conversion.
+export async function applyAcceptanceSideEffects(
+  actor: Member,
+  communityRow: CommunityRow,
+  decision: RecruitmentDecisionRow,
+) {
+  const converted = await maybeConvertApplicantToMember(communityRow, decision);
+  const withTask = await maybeCreateAccompanimentTask(actor, communityRow, converted);
+  return withTask ?? converted;
+}
+
 // The real, persisted trigger point Phase 33 deliberately didn't build
 // — called after every submitEvaluation, but only actually does
 // anything the first time enough evaluators have filed for this
@@ -398,23 +407,35 @@ export async function recordDecisionIfReached(actor: Member, formResponseId: str
   let decisionRow = created;
 
   // "Proceed-adjacent" — proceed and wider_discussion both auto-
-  // schedule the intro call; decline never does.
+  // schedule the intro call; decline never does. Unless the third door
+  // says otherwise: §2.3/J3 made the interview stage independently
+  // toggleable, so a community (or an event) with interviews closed gets
+  // no poll at all rather than a promise it didn't make. The decision
+  // still records, and the pipeline's stage computation already treats a
+  // decision with no poll as `call_pending`, so the applicant is visible
+  // as waiting rather than as finished.
   if (result.outcome !== "decline") {
-    const evaluatorIds = result.evaluations.map((e) => e.evaluatorId);
-    const introCall = await createIntroCallPoll(actor, communityRow, formResponseId, evaluatorIds);
-    if (introCall) {
-      const [updated] = await db
-        .update(recruitmentDecision)
-        .set({ introCallPollId: introCall.pollId, introCallToken: introCall.token })
-        .where(eq(recruitmentDecision.id, created.id))
-        .returning();
-      decisionRow = updated;
+    const [responseRow] = await db
+      .select({ cycleId: formResponse.cycleId })
+      .from(formResponse)
+      .where(eq(formResponse.id, formResponseId));
+    if (await canScheduleInterview(actor.communityId, responseRow?.cycleId ?? null)) {
+      const evaluatorIds = result.evaluations.map((e) => e.evaluatorId);
+      const introCall = await createIntroCallPoll(actor, communityRow, formResponseId, evaluatorIds);
+      if (introCall) {
+        const [updated] = await db
+          .update(recruitmentDecision)
+          .set({ introCallPollId: introCall.pollId, introCallToken: introCall.token })
+          .where(eq(recruitmentDecision.id, created.id))
+          .returning();
+        decisionRow = updated;
+      }
     }
   }
 
   if (resolution === "accepted") {
-    decisionRow = await maybeConvertApplicantToMember(communityRow, decisionRow);
-    const updated = await maybeCreateAccompanimentTask(actor, communityRow, decisionRow);
+    const converted = await maybeConvertApplicantToMember(communityRow, decisionRow);
+    const updated = await maybeCreateAccompanimentTask(actor, communityRow, converted);
     if (updated) decisionRow = updated;
   }
 
@@ -428,10 +449,15 @@ export type ResolveWiderDiscussionInput = z.infer<typeof resolveWiderDiscussionI
 
 // The human-call escape hatch spec names but doesn't mechanize: "an
 // objection → evaluators see it and the outcome waits on a human
-// call, not the timer." Callable any time resolution is still
-// pending, whether or not an objection was actually raised — a holder
-// can also just decide not to wait out the window. Holder-gated, same
-// authority as filing an Evaluation.
+// call, not the timer." Callable any time resolution is still pending —
+// but §2.6/J7 closed the loophole this used to have, which is the whole
+// point of the redesign: a recruitment holder can no longer resolve a
+// window that has a standing objection on it. The plan says that
+// decision belongs to the mediation body ("the objection is never
+// thrown out... it stands"), and this is where that promise is enforced
+// rather than stated. A window with no objection is still a holder's to
+// resolve — they can decline to wait out the clock, which is a decision
+// about *timing*, not about overriding anybody's concern.
 export async function resolveWiderDiscussionManually(
   actor: Member,
   formResponseId: string,
@@ -457,6 +483,22 @@ export async function resolveWiderDiscussionManually(
     throw new ConflictError("This decision has already resolved");
   }
 
+  const [standing] = await db
+    .select({ id: objection.id })
+    .from(objection)
+    .where(
+      and(
+        eq(objection.formResponseId, formResponseId),
+        eq(objection.resolution, "standing"),
+      ),
+    )
+    .limit(1);
+  if (standing) {
+    throw new ForbiddenError(
+      "Someone has raised a concern about this arrival, and it isn't yours to wave through — the mediation team has to talk it through first",
+    );
+  }
+
   const [updated] = await db
     .update(recruitmentDecision)
     .set({ resolution: input.resolution })
@@ -465,9 +507,7 @@ export async function resolveWiderDiscussionManually(
 
   if (input.resolution === "accepted") {
     const communityRow = await getCommunityRow(actor.communityId);
-    const converted = await maybeConvertApplicantToMember(communityRow, updated);
-    const withTask = await maybeCreateAccompanimentTask(actor, communityRow, converted);
-    return withTask ?? converted;
+    return applyAcceptanceSideEffects(actor, communityRow, updated);
   }
   return updated;
 }
@@ -496,7 +536,16 @@ export async function resolveWiderDiscussionWindows() {
     const [objectionRow] = await db
       .select({ id: objection.id })
       .from(objection)
-      .where(eq(objection.formResponseId, decision.formResponseId))
+      .where(
+        and(
+          eq(objection.formResponseId, decision.formResponseId),
+          // §2.6/J7: only a *standing* objection holds the window. One
+          // the body has already settled is history, and letting a
+          // settled objection keep blocking the arrival would re-create
+          // the veto-by-inaction this whole redesign is about.
+          eq(objection.resolution, "standing"),
+        ),
+      )
       .limit(1);
     if (objectionRow) continue;
 
@@ -532,7 +581,7 @@ export async function resolveWiderDiscussionWindows() {
         (await getRecruitmentTaskHolderMember(communityRow)) ??
         (await resolveAccompanimentAuthor(communityRow, converted));
       if (actorMember) {
-        const withTask = await maybeCreateAccompanimentTask(actorMember, communityRow, converted);
+        const withTask = await applyAcceptanceSideEffects(actorMember, communityRow, converted);
         if (withTask?.accompanimentTaskId) accompanimentsCreated++;
       }
     }

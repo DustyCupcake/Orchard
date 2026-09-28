@@ -1,21 +1,27 @@
 import { and, desc, eq, gt, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { communityInvite, cycle, member, memberIdentity, participation } from "@/db/schema";
+import { communityInvite, cycle, member, memberIdentity } from "@/db/schema";
 import type { member as memberTable, JoinLaneKind } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
 import { generateToken } from "../token";
+import { seedCycleParticipation } from "../participation";
 import { getCycleJoiningState } from "./joining";
 import { getCommunityRow, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
 import {
-  getInviteRedemptionKind,
+  getInviteRedemptionPath,
+  getJoinLaneRule,
   getJoinLaneRulesForContext,
   joiningLaneForInvite,
-  laneRedemptionKind,
-  redemptionKindForInvite,
+  pathHoldsCapacity,
+  redemptionPathForInvite,
+  settledPathForRule,
   type JoiningLaneRule,
+  type JoiningRedemptionPath,
 } from "./joining-lanes";
+import { openNominationForInvite } from "./support";
+import { completeConsensusArrival, consensusDisclosure, consensusWindowFor } from "./consensus";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityInviteRow = typeof communityInvite.$inferSelect;
@@ -30,20 +36,35 @@ export const createCommunityInviteInput = z.object({
   // the cycle this invite is for (null = a general community invite)
   // picks the context its lane rule resolves in.
   cycleId: z.string().uuid().nullable().optional(),
+  // §2.6/J10 — the inviter's awareness tick. Mandatory on a consensus
+  // lane (the lib refuses the invite without it) and meaningless
+  // anywhere else, so it is simply absent there rather than stored
+  // false: "the inviter said nobody was told" is not a state anyone
+  // should be able to express.
+  awarenessConfirmed: z.boolean().optional(),
 });
 export type CreateCommunityInviteInput = z.infer<typeof createCommunityInviteInput>;
 
 // Open to any member — generating an invite is a unilateral act, the
 // same posture Shifts' createShiftSeries already takes for "rotate a
 // task into a shift." Always single-use, no multi-use variant per
-// spec's explicit CampTool callout. As of docs/joining-admission-plan.md
-// §2/§4.1 the inviter's marks fix the lane; creating a cycle invite
-// gates on that lane's own rules (the cycle's `joining_lane` row, else
-// the community-wide one) plus the joining period and capacity room — a
-// direct lane gates on the invites door, every process lane on the
-// applications door. A general invite (no cycle) gates on the
-// community-wide doors: the invites door always, plus the applications
-// door when the lane would funnel through /apply.
+// spec's explicit CampTool callout.
+//
+// What the lane's rule does to the invite is the whole of
+// docs/joining-admission-plan.md §2, and it happens here at creation so
+// the inviter finds out *before* they hand the link over rather than the
+// recipient finding out after:
+//
+//   direct     — redeems on the spot, and holds a capacity slot until
+//                redeemed/revoked/expired (so into a capped event it
+//                needs a real expiry);
+//   nomination — a support window opens at creation, and the invitee is
+//                routed to it. Holds nothing;
+//   consensus  — the inviter must tick the awareness box, the invitee
+//                consents and is announced at redemption, and the
+//                community-check window opens there. Holds nothing;
+//   process    — routes into the evaluated application, exactly as the
+//                old `referral` mode did. Holds nothing.
 export async function createCommunityInvite(actor: Member, input: CreateCommunityInviteInput) {
   const communityRow = await getCommunityRow(actor.communityId);
   requireModuleEnabled(communityRow, "recruitment");
@@ -54,6 +75,12 @@ export async function createCommunityInvite(actor: Member, input: CreateCommunit
   };
   const lane = joiningLaneForInvite(declaration);
   const cycleId = input.cycleId ?? null;
+
+  const rule = cycleId
+    ? (await getJoinLaneRule(actor.communityId, cycleId, lane))
+    : (await getJoinLaneRule(actor.communityId, null, lane));
+  const path = (await import("./lanes")).redemptionPathForRule(rule);
+
   if (cycleId) {
     // Validates the cycle is in-community (throws NotFoundError
     // otherwise) and gives us its live door state.
@@ -64,15 +91,17 @@ export async function createCommunityInvite(actor: Member, input: CreateCommunit
     if (!joining.periodOpen) {
       throw new ConflictError("This event's joining period isn't open");
     }
-    const laneRules = await getJoinLaneRulesForContext(actor.communityId, cycleId);
-    const rule = laneRules.get(lane)!;
-    if (laneRedemptionKind(rule) === "direct") {
-      // A direct-lane invite redeems straight into membership and holds
-      // a capacity slot until redeemed, revoked, or expired — so into a
-      // capacity-capped cycle it must carry a non-past expiry: no
-      // immortal holds (docs §4.3/8d).
+    // Every path needs *some* door: the direct one on invites, the two
+    // that go through an application on applications, and a lane that
+    // asks for an interview additionally on interviews — the third door
+    // §2.3 adds. Without the last check a community could close
+    // interviews and still be signing people up for interviews.
+    if (path === "direct") {
       if (!joining.cycle.invitesOpen) {
         throw new ConflictError("Invites for this event are closed");
+      }
+      if (rule.interviewRequired && !joining.cycle.interviewsOpen) {
+        throw new ConflictError("Interviews for this event are closed");
       }
       if (joining.cycle.capacity !== null) {
         if (!input.expiresAt) {
@@ -83,30 +112,45 @@ export async function createCommunityInvite(actor: Member, input: CreateCommunit
         }
       }
     } else {
-      // A process-lane invite routes through the evaluated application —
-      // the applications door is the one that matters; it holds nothing.
       if (!joining.cycle.applicationsOpen) {
         throw new ConflictError("Applications for this event are closed");
       }
+      if (rule.interviewRequired && !joining.cycle.interviewsOpen) {
+        throw new ConflictError("Interviews for this event are closed");
+      }
+    }
+  } else if (path === "direct") {
+    if (!communityRow.recruitmentInvitesOpen) {
+      throw new AppError("This community isn't accepting invite-based joins right now");
+    }
+    if (rule.interviewRequired && !communityRow.recruitmentInterviewsOpen) {
+      throw new AppError("This community isn't running interviews right now");
     }
   } else {
-    const laneRules = await getJoinLaneRulesForContext(actor.communityId, null);
-    const rule = laneRules.get(lane)!;
-    if (laneRedemptionKind(rule) === "direct") {
-      if (!communityRow.recruitmentInvitesOpen) {
-        throw new AppError("This community isn't accepting invite-based joins right now");
-      }
-    } else {
-      // A process-lane general invite still funnels through /apply, so
-      // both community doors must be open — it is an invite link *and*
-      // its path is the application funnel.
-      if (!communityRow.recruitmentInvitesOpen) {
-        throw new AppError("This community isn't accepting invite-based joins right now");
-      }
-      if (!communityRow.recruitmentApplicationsOpen) {
-        throw new AppError("This community isn't accepting applications right now");
-      }
+    // A non-direct general invite still funnels through /apply (or
+    // through the support/consent pages that lead there), so both
+    // community doors must be open — it is an invite link *and* its
+    // path is the application funnel.
+    if (!communityRow.recruitmentInvitesOpen) {
+      throw new AppError("This community isn't accepting invite-based joins right now");
     }
+    if (!communityRow.recruitmentApplicationsOpen) {
+      throw new AppError("This community isn't accepting applications right now");
+    }
+    if (rule.interviewRequired && !communityRow.recruitmentInterviewsOpen) {
+      throw new AppError("This community isn't running interviews right now");
+    }
+  }
+
+  // J10's first consent step, enforced here rather than at redemption:
+  // an inviter who hasn't told the invitee is the person who should be
+  // stopped, and stopping them at send means the link never exists to be
+  // sent. Deliberately not "warn and proceed" — a consensus lane whose
+  // whole legitimacy is consent is not a lane you can use without it.
+  if (rule.verificationMode === "consensus" && !input.awarenessConfirmed) {
+    throw new AppError(
+      "This lane announces every arrival to the community, so tick the box saying you've told them before you can send the invite",
+    );
   }
 
   const [created] = await db
@@ -120,22 +164,52 @@ export async function createCommunityInvite(actor: Member, input: CreateCommunit
       inviterThinksGoodFit: declaration.inviterThinksGoodFit,
       inviterKnowsPersonally: declaration.inviterKnowsPersonally,
       expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+      awarenessConfirmedAt: input.awarenessConfirmed ? new Date() : null,
+      awarenessConfirmedBy: input.awarenessConfirmed ? actor.id : null,
+      consensusState: rule.verificationMode === "consensus" ? "awaiting_consent" : "not_required",
     })
     .returning();
+
+  // A nomination's window opens the moment the invite does, because the
+  // inviter's support-poke list is chosen at send time (§2.4) and there
+  // is nothing to poke about afterwards.
+  if (path === "nomination") {
+    await openNominationForInvite(created);
+  }
   return created;
 }
 
-// An invite's meaning follows its *lane* — fixed at creation by the
-// inviter's marks, resolved live through the community's per-lane rules
-// (docs/joining-admission-plan.md §2): a direct lane (basic, no
-// process) redeems straight into membership; every process lane routes
-// through the evaluated application. The rule is read at resolution
-// time — the cycle's own `joining_lane` row, else the community-wide
-// one — never snapshotted on the invite row.
-export type CommunityInviteRedemptionKind = "direct" | "process";
+// What the inviter sees after creating one, so §5.3's "the marks are
+// shown with their consequences" and "the poke member-picker or
+// share-link option for nomination lanes" have something to render: the
+// lane, the path, and — for a nomination — the support link to hand out
+// or poke people with.
+export type InviteFollowUp = {
+  invite: CommunityInviteRow;
+  lane: JoinLaneKind;
+  path: JoiningRedemptionPath;
+  rule: JoiningLaneRule;
+  supportToken: string | null;
+  supportDeadline: Date | null;
+  interviewRequired: boolean;
+};
 
-export async function getCommunityInviteRedemptionKind(row: CommunityInviteRow): Promise<CommunityInviteRedemptionKind> {
-  return getInviteRedemptionKind(row.communityId, row);
+export async function getInviteFollowUp(inviteId: string): Promise<InviteFollowUp | null> {
+  const [invite] = await db.select().from(communityInvite).where(eq(communityInvite.id, inviteId));
+  if (!invite) return null;
+  const lane = joiningLaneForInvite(invite);
+  const rule = await getJoinLaneRule(invite.communityId, invite.cycleId, lane);
+  const { getNominationForInvite } = await import("./support");
+  const nomination = await getNominationForInvite(invite.id);
+  return {
+    invite,
+    lane,
+    path: redemptionPathForInvite(invite, await getJoinLaneRulesForContext(invite.communityId, invite.cycleId)),
+    rule,
+    supportToken: nomination?.supportToken ?? null,
+    supportDeadline: nomination?.deadline ?? null,
+    interviewRequired: rule.interviewRequired,
+  };
 }
 
 export async function listMyCommunityInvites(actor: Member) {
@@ -188,21 +262,38 @@ export function communityInviteStatus(row: CommunityInviteRow | undefined): Comm
 }
 
 // Public — no actor, no community-scoping input (the token alone
-// identifies both). Used by the /invite/[token] page to decide whether
-// to show the join form at all.
+// identifies both). Used by the /invite/[token] page to decide which of
+// the four §2 paths to render.
 export async function getCommunityInviteByToken(token: string) {
   const [row] = await db.select().from(communityInvite).where(eq(communityInvite.token, token));
   return row;
 }
 
+export type CommunityInviteRedemptionPath = JoiningRedemptionPath;
+
+export async function getCommunityInviteRedemptionPath(row: CommunityInviteRow): Promise<CommunityInviteRedemptionPath> {
+  return getInviteRedemptionPath(row.communityId, row);
+}
+
+// Back-compat alias for the two-path vocabulary the rest of the
+// codebase used before the redesign; "is this an invite that hands over
+// a member on the spot" is still the only question several call sites
+// ask, and answering it with a four-way path would have them all
+// re-implement the same two-line test.
+export async function getCommunityInviteRedeemsDirectly(row: CommunityInviteRow): Promise<boolean> {
+  return (await getCommunityInviteRedemptionPath(row)) === "direct";
+}
+
 // §4.3/8d + docs/joining-admission-plan.md §2 pipeline visibility:
-// outstanding *cycle* invites whose lane routes through the evaluated
-// application (a process lane) belong on the recruitment pipeline
-// alongside the applications themselves, because that is where they
-// funnel. The lane is fixed at creation; resolution reads the cycle's
-// own `joining_lane` row, else the community-wide one. Scope-filtering
-// follows listApplicationsForEvaluation exactly: a cycle-placed holder
-// sees only their own cycle's outstanding process invites; the
+// outstanding *cycle* invites whose path is anything but `direct`
+// belong on the recruitment pipeline alongside the applications
+// themselves, because that is where they funnel — a nomination is
+// waiting for supporters, a check window for the community, a process
+// lane for evaluators, and in all three cases the recruitment team is
+// the one who will be asked about it. The lane is fixed at creation;
+// resolution reads the cycle's own `joining_lane` row, else the
+// community-wide one. Scope-filtering follows listApplicationsForEvaluation
+// exactly: a cycle-placed holder sees only their own cycle's; the
 // cycle-less community/evergreen holder sees all of them. General
 // (cycle-less) invites resolve like any lane but are not part of this
 // count.
@@ -214,11 +305,13 @@ export async function listOutstandingReferralInvites(actor: Member) {
   const now = new Date();
   const rows = await db
     .select({
+      id: communityInvite.id,
       cycleId: communityInvite.cycleId,
       label: communityInvite.label,
       createdAt: communityInvite.createdAt,
       inviterThinksGoodFit: communityInvite.inviterThinksGoodFit,
       inviterKnowsPersonally: communityInvite.inviterKnowsPersonally,
+      consensusState: communityInvite.consensusState,
     })
     .from(communityInvite)
     .where(
@@ -256,7 +349,7 @@ export async function listOutstandingReferralInvites(actor: Member) {
     if (!r.cycleId) continue;
     if (!(heldScopes.has(null) || heldScopes.has(r.cycleId))) continue;
     const rules = await rulesFor(r.cycleId);
-    if (redemptionKindForInvite(r, rules) !== "process") continue;
+    if (pathHoldsCapacity(redemptionPathForInvite(r, rules))) continue;
     processInvites.push({ ...r, cycleId: r.cycleId, cycleName: cycleNames.get(r.cycleId) ?? "" });
   }
   return processInvites;
@@ -264,19 +357,39 @@ export async function listOutstandingReferralInvites(actor: Member) {
 
 export const redeemCommunityInviteInput = z.object({
   email: z.string().email(),
+  // §2.6/J10's binding consent. Required — and required *to be true* —
+// on a consensus lane, absent everywhere else. The action writes the
+// disclosure text it was shown alongside the tick, so the record
+// answers "what were they told" rather than just "did they agree".
+  consentAccepted: z.boolean().optional(),
+  disclosure: z.string().optional(),
 });
 export type RedeemCommunityInviteInput = z.infer<typeof redeemCommunityInviteInput>;
 
+export type RedemptionOutcome =
+  | { kind: "member"; memberId: string }
+  // A nomination whose window is still open: the person is told what
+  // they're waiting for and given the link that ends the wait.
+  | { kind: "awaiting_support"; supportToken: string; deadline: Date | null }
+  // A consensus arrival that has been announced: the person is a member,
+  // their place in the event is not yet settled, and the window runs.
+  | { kind: "announced"; memberId: string; deadline: Date | null }
+  // A lane that funnels into the evaluated application.
+  | { kind: "process" };
+
 // Public — no actor. "Redeeming a valid, unexpired, unredeemed,
-// unrevoked token *is* the proof of legitimacy" (docs/spec.md), so this
-// creates the Member outright, no magic-link round-trip needed.
-// Deliberately doesn't call createSession itself — that touches
-// next/headers, which only works inside a Route Handler/Server Action,
-// not this framework-agnostic lib layer (same separation
-// findOrCreateMemberByEmail already keeps). The caller starts the
-// session with the returned Member's id, same as the ordinary
-// magic-link verify route already does.
-export async function redeemCommunityInvite(token: string, input: RedeemCommunityInviteInput) {
+// unrevoked token *is* the proof of legitimacy" (docs/spec.md), so for
+// any path that hands over a Member this creates one outright, no
+// magic-link round-trip needed. Deliberately doesn't call
+// createSession itself — that touches next/headers, which only works
+// inside a Route Handler/Server Action, not this framework-agnostic lib
+// layer (same separation findOrCreateMemberByEmail already keeps). The
+// caller starts the session with the returned Member's id, same as the
+// ordinary magic-link verify route already does.
+export async function redeemCommunityInvite(
+  token: string,
+  input: RedeemCommunityInviteInput,
+): Promise<RedemptionOutcome> {
   const invite = await getCommunityInviteByToken(token);
   if (!invite) {
     throw new NotFoundError("Invite link not found");
@@ -294,13 +407,52 @@ export async function redeemCommunityInvite(token: string, input: RedeemCommunit
   const communityRow = await getCommunityRow(invite.communityId);
   requireModuleEnabled(communityRow, "recruitment");
 
-  // docs/joining-admission-plan.md §2 — a process-lane invite never
-  // redeems directly; it routes through the evaluated application
-  // (/apply?invite=<token>). The /invite/[token] page redirects there,
-  // and the lib guards too.
-  const kind = await getCommunityInviteRedemptionKind(invite);
-  if (kind === "process") {
+  // A nomination is the one path that isn't a decision about the person
+  // at all: the support window is opened at send (§2.4, so the inviter
+  // could poke people while it was fresh) and the invitee's arrival
+  // through it is a *report* of state, not a new one. So this is
+  // checked before anything is created, and the outcome tells the page
+  // to render the support view with a way past it (§2.5's "skip the
+  // nomination, I'll do the application instead").
+  //
+  // And once the window *is* settled, where the person goes depends on
+  // the lane's process rather than on the path name: §2.2 says a second's
+  // support "converts it to the light path", and J6 says a lapse or a
+  // skip falls through to "the lane's process path". Both destinations
+  // are therefore `laneRedemptionKind(rule)` — a process-less lane lets
+  // them straight in, and a lane with a form routes them to it. Treating
+  // a settled nomination as "not direct, so admit anyway" is the bug this
+  // branch exists to prevent: it would hand over a member on a lane the
+  // community said needed a form.
+  let path = await getCommunityInviteRedemptionPath(invite);
+  if (path === "nomination") {
+    const { getNominationForInvite } = await import("./support");
+    const nomination = await getNominationForInvite(invite.id);
+    if (nomination && nomination.state === "awaiting") {
+      return { kind: "awaiting_support", supportToken: nomination.supportToken, deadline: nomination.deadline };
+    }
+    // Settled either way, and the destination is settledPathForRule: what
+    // happens next is a fact about the lane's *process*, not its mode. A
+    // nomination lane with no form and no interview admits straight
+    // away — that is what "a second's support converts it to the light
+    // path" means, and what a lapse falls through to. A nomination lane
+    // that does ask for a form routes to it. Leaving `path` as
+    // "nomination" would hand over a member on either, including the
+    // lanes the community said needed an application.
+    const settledRule = await getJoinLaneRule(invite.communityId, invite.cycleId, joiningLaneForInvite(invite));
+    path = settledPathForRule(settledRule);
+  }
+
+  if (path === "process") {
     throw new ConflictError("This invite routes through the application process — open its apply link instead");
+  }
+
+  if (path === "check") {
+    if (!input.consentAccepted) {
+      throw new AppError(
+        "Joining through this invite means your arrival is announced to the community — read the disclosure and tick the box to go on",
+      );
+    }
   }
 
   const email = input.email.trim().toLowerCase();
@@ -311,6 +463,11 @@ export async function redeemCommunityInvite(token: string, input: RedeemCommunit
   if (existingIdentity) {
     throw new ConflictError("This email already belongs to a member — log in instead");
   }
+
+  const isConsensus = path === "check";
+  const { communityName, windowHours } = await consensusWindowFor(invite.communityId);
+  const disclosure =
+    input.disclosure?.trim() || consensusDisclosure(communityName, windowHours);
 
   const newMember = await db.transaction(async (tx) => {
     const [created] = await tx
@@ -334,34 +491,48 @@ export async function redeemCommunityInvite(token: string, input: RedeemCommunit
     // of the same link to still only let one through.
     const [claimed] = await tx
       .update(communityInvite)
-      .set({ redeemedAt: new Date(), redeemedByMemberId: created.id })
+      .set({
+        redeemedAt: new Date(),
+        redeemedByMemberId: created.id,
+        // J10's binding consent, recorded on the invite row as the plan
+        // specifies, with the exact disclosure that was read.
+        ...(isConsensus
+          ? { consentAt: new Date(), consentDisclosure: disclosure, consensusState: "announced" as const }
+          : {}),
+      })
       .where(and(eq(communityInvite.id, invite.id), isNull(communityInvite.redeemedAt)))
       .returning();
     if (!claimed) {
       throw new ConflictError("This invite link has already been used");
     }
 
-    // §4.3/8d (D14): redeeming a direct invite into a cycle seeds the
-    // new member's participation there — "coming", idempotently — so
-    // they count against the cycle's capacity from day one. No DB-level
-    // unique constraint on participation, so same select-then-insert
-    // posture declareParticipation keeps.
-    if (invite.cycleId) {
-      const [existing] = await tx
-        .select({ id: participation.id })
-        .from(participation)
-        .where(and(eq(participation.cycleId, invite.cycleId), eq(participation.memberId, created.id)));
-      if (!existing) {
-        await tx.insert(participation).values({
-          cycleId: invite.cycleId,
-          memberId: created.id,
-          status: "coming",
-        });
-      }
+    // §4.3/8d (D14) / J12: a direct invite into a cycle seeds the new
+    // member's participation there — "coming", idempotently — so they
+    // count against the cycle's capacity from day one. A *consensus*
+    // arrival deliberately does not: the participation row is the
+    // arrival, and the whole point of the window is that it has not been
+    // announced to the community yet (src/lib/recruitment/consensus.ts
+    // seeds it when the window closes clean).
+    if (invite.cycleId && !isConsensus) {
+      await seedCycleParticipation(tx, invite.cycleId, created.id);
     }
 
     return created;
   });
 
-  return newMember;
+  if (isConsensus) {
+    const deadline = new Date(Date.now() + windowHours * 3_600_000);
+    await db
+      .update(communityInvite)
+      .set({ consensusDeadline: deadline })
+      .where(eq(communityInvite.id, invite.id));
+    return { kind: "announced", memberId: newMember.id, deadline };
+  }
+
+  return { kind: "member", memberId: newMember.id };
 }
+
+// The window's own admission write, exposed so the /invite page can ask
+// "did this one land while nobody objected?" without reaching into
+// consensus.ts's internals.
+export { completeConsensusArrival };

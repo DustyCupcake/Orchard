@@ -52,6 +52,16 @@ export const cycle = pgTable("cycle", {
   recruitmentApplicationFormId: uuid("recruitment_application_form_id"),
   applicationsOpen: boolean("applications_open").notNull().default(true),
   invitesOpen: boolean("invites_open").notNull().default(true),
+  // The third door (docs/joining-admission-plan.md §2.3/J3), sitting
+  // beside the other two rather than inside a lane: whether an intro
+  // call can be scheduled against this event at all. Distinct from a
+  // lane's `interviewRequired` — that says "an arrival on this lane is
+  // interviewed", this says "no interview happens in this event right
+  // now" — which is exactly the pair the plan needs: an event can
+  // interview its invitees while the applications door is shut, and
+  // can stop interviewing without touching anybody's admission rules.
+  // Default true: the stage runs today on the evaluated path.
+  interviewsOpen: boolean("interviews_open").notNull().default(true),
   joiningWindowClosesAt: timestamp("joining_window_closes_at", { withTimezone: true }),
   cycleTypeId: uuid("cycle_type_id").references(() => cycleType.id),
   // The event's own working dates — distinct from `started_at` (an

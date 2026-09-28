@@ -153,6 +153,15 @@ describe("communityInviteStatus", () => {
       revokedAt: null,
       redeemedAt: null,
       redeemedByMemberId: null,
+      // The consensus/consent columns are irrelevant to a status read
+      // (docs/joining-admission-plan.md §2.6) and are spelled out only
+      // because communityInviteStatus takes the whole row.
+      awarenessConfirmedAt: null,
+      awarenessConfirmedBy: null,
+      consentAt: null,
+      consentDisclosure: null,
+      consensusState: "not_required" as const,
+      consensusDeadline: null,
       createdAt: new Date(),
     };
     expect(communityInviteStatus(base)).toBe("valid");
@@ -173,7 +182,14 @@ describe("redeemCommunityInvite", () => {
     await enableRecruitment(alice.communityId);
     const invite = await createCommunityInvite(alice, { inviterKnowsPersonally: true });
 
-    const newMember = await redeemCommunityInvite(invite.token, { email: "dana@example.com" });
+    // docs/joining-admission-plan.md §2: a knows-personally invite is the
+    // `direct` path, so redemption hands over a Member immediately and
+    // says so in the outcome rather than by returning the row.
+    const outcome = await redeemCommunityInvite(invite.token, { email: "dana@example.com" });
+    expect(outcome.kind).toBe("member");
+    if (outcome.kind !== "member") throw new Error("expected the direct path");
+
+    const [newMember] = await db.select().from(member).where(eq(member.id, outcome.memberId));
     expect(newMember.communityId).toBe(alice.communityId);
     expect(newMember.referredByMemberId).toBe(alice.id);
     expect(newMember.joinedViaInviteId).toBe(invite.id);

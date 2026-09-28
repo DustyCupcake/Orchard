@@ -159,6 +159,19 @@ function ModuleNeedsActionSections({
         </FeedSection>
       )}
 
+      {pick(feed.mediationNeedsAction).length > 0 && (
+        <FeedSection title="Someone raised a concern about a join — it's yours to talk through" shared={shared}>
+          {pick(feed.mediationNeedsAction).map((m) => (
+            <FeedRow
+              key={m.id}
+              href="/recruitment/mediation"
+              title={`Concern about ${m.subjectLabel}, raised ${new Date(m.raisedAt).toLocaleDateString()}`}
+              tag={<Tag tone="warning">needs mediating</Tag>}
+            />
+          ))}
+        </FeedSection>
+      )}
+
       {pick(feed.budgetNeedsAction).length > 0 && (
         <FeedSection title="Budget needs your attention" shared={shared}>
           {pick(feed.budgetNeedsAction).map((b, i) => (
@@ -399,6 +412,7 @@ export default async function DashboardPage({
   // section can be suppressed when there is nothing at all.
   const hasSharedModuleNeedsAction =
     feed.recruitmentNeedsAction.shared.length > 0 ||
+    feed.mediationNeedsAction.shared.length > 0 ||
     feed.budgetNeedsAction.shared.length > 0 ||
     feed.eventSchedulingNeedsAction.shared.length > 0 ||
     feed.shiftCoordinatorNeedsAction.shared.length > 0 ||
@@ -411,6 +425,7 @@ export default async function DashboardPage({
     feed.flaggedHeldTasks.length > 0 ||
     feed.emergencyAccessActivity.length > 0 ||
     feed.recruitmentNeedsAction.personal.length > 0 ||
+    feed.mediationNeedsAction.personal.length > 0 ||
     feed.placementInvites.length > 0 ||
     feed.myLinkedPendingPlacements.length > 0 ||
     feed.placementRevertNotices.length > 0 ||

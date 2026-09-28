@@ -9,6 +9,7 @@ import { getCompositionBreakdown } from "./composition";
 import { listMyCalendarEventInvites } from "./calendar-events";
 import { isModuleEnabled } from "./modules";
 import { getCommunityRow, isRecruitmentTaskHolder, listRecruitmentActionItems } from "./recruitment";
+import { listMediationActionItems } from "./recruitment/mediation";
 import { listCurrentRoundQuestions } from "./input-rounds/rounds";
 import { listOutboundMessagesVisibleTo } from "./messages";
 import { listPostCycleFeedbackResponses } from "./forms";
@@ -142,6 +143,16 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
     isModuleEnabled(communityRow, "recruitment") && (await isRecruitmentTaskHolder(actor))
       ? await listRecruitmentActionItems(actor)
       : { personal: [], shared: [] };
+
+  // §2.6's duty item, and the reason the redesign is not just a settings
+  // change: a standing objection is the community's *obligation* to talk
+  // to somebody, and the old behaviour made that obligation invisible —
+  // the outcome just sat pending on whoever happened to be evaluating.
+  // Its own section, because it is owed by a different group of people
+  // (the mediation body) than the one the section above addresses, and
+  // merging them would tell a recruitment holder that a concern is
+  // theirs to resolve — which §2.6/J7 specifically forbids.
+  const mediationNeedsAction = await listMediationActionItems(actor);
 
   // Same "check the gate here, not inside a try/catch" posture as
   // recruitmentNeedsAction just above — a non-holder's feed simply
@@ -277,6 +288,7 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
     upcomingCheckins,
     flaggedHeldTasks,
     recruitmentNeedsAction,
+    mediationNeedsAction,
     placementInvites,
     myLinkedPendingPlacements,
     placementRevertNotices,

@@ -11,6 +11,7 @@ export const PERMISSION_MODULE_KEYS = [
   "feedback_review",
   "event_scheduling_owner",
   "recruitment",
+  "recruitment_mediation",
   "spatial_planning",
   "announcements",
   "support",
@@ -41,6 +42,14 @@ export const PERMISSION_MODULE_LABELS: Record<PermissionModuleKey, string> = {
   feedback_review: "Feedback review",
   event_scheduling_owner: "Programme owner",
   recruitment: "Recruitment",
+  // Deliberately not "Recruitment (mediation)": the plan (§2.7/J8) makes
+  // this a *separate* grant that a community can hand to a different
+  // task from the one that evaluates applications, so a name that reads
+  // as a sub-role of Recruitment would quietly re-couple the two the
+  // moment someone looks at the settings panel. The hint below is the
+  // exemplary text §2.7 asks for, and it says plainly what the holder
+  // sees and decides.
+  recruitment_mediation: "Recruitment mediation",
   spatial_planning: "Spatial planning",
   announcements: "Announcements",
   support: "Support (View-as)",
@@ -73,6 +82,8 @@ export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
     "Reviews, confirms and publishes the Programme. Members can still submit proposals without this set.",
   recruitment:
     "Evaluates applications on /applications and the inquiry inbox on /invites.",
+  recruitment_mediation:
+    "Holder mediates recruitment objections (invite-consensus and evaluated-path alike), sees objector identities that are shielded from everyone else, and may exercise the majority overrule where the community has enabled it.",
   spatial_planning:
     "Draws and edits Zones. Nobody can until this is set — see /spatial-planning.",
   announcements:
@@ -123,6 +134,16 @@ export const PERMISSION_MODULE_SCOPE_TIER: Record<PermissionModuleKey, Permissio
   feedback_review: "cycle",
   event_scheduling_owner: "cycle",
   recruitment: "cycle",
+  // Community-shaped, mirroring conflict_team, and for the same reason
+  // the plan gives (§2.7): mediation is a standing, relationship-shaped
+  // authority even though the arrivals it mediates are not — an
+  // objection to one event's invite is still mediated by the same
+  // people who mediate an objection to an untagged application, and
+  // scoping the body per event would fragment it into exactly the
+  // per-event veto-by-inaction the redesign exists to end. It is also
+  // multi-cardinality per scope (§2.7: "a mediation *team* is fine"),
+  // see MULTI_CARDINALITY_MODULES below.
+  recruitment_mediation: "community",
   spatial_planning: "cycle",
   announcements: "cycle_variant",
   support: "community",
@@ -216,6 +237,12 @@ const MULTI_CARDINALITY_MODULES = new Set<PermissionModuleKey>([
   // of them replacing the others (branch_coordination's shape, not
   // budget's single-owner shape).
   "kitchen",
+  // §2.7 — "multi-cardinality per scope (a mediation *team* is fine)".
+  // A body that can be overruled-against is a body, not a single pair of
+  // hands: a community that wanted one named mediator per objection
+  // would have no threshold to compute and no peers to see the pattern
+  // of a serial objector, which is the whole point of §2.6.
+  "recruitment_mediation",
 ]);
 
 export function allowsMultipleGrants(moduleKey: PermissionModuleKey): boolean {

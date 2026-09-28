@@ -9,10 +9,14 @@ import {
   claimInquiry,
   createCommunityInvite,
   createCommunityInviteInput,
+  getInviteFollowUp,
   resolveInquiry,
   revokeCommunityInvite,
 } from "@/lib/recruitment";
-import { AppError } from "@/lib/errors";
+import { pokeMembersForSupport } from "@/lib/recruitment/pairs";
+import { getCommunity } from "@/lib/settings";
+import { resolveAppUrlFromHeaders } from "@/lib/app-url";
+import { AppError, ForbiddenError, NotFoundError } from "@/lib/errors";
 
 function redirectWithError(err: unknown): never {
   if (err instanceof ZodError) {
@@ -37,24 +41,77 @@ async function requireMember() {
 
 export async function createCommunityInviteAction(formData: FormData) {
   const actor = await requireMember();
+  let created;
 
   try {
     const input = createCommunityInviteInput.parse({
       label: String(formData.get("label") ?? "").trim() || null,
       inviterThinksGoodFit: formData.get("inviterThinksGoodFit") === "on",
       inviterKnowsPersonally: formData.get("inviterKnowsPersonally") === "on",
+      // §2.6/J10 — the inviter's own awareness tick, mandatory on a
+      // consensus lane (createCommunityInvite refuses without it) and
+      // simply absent anywhere else.
+      awarenessConfirmed: formData.get("awarenessConfirmed") === "on",
       cycleId: String(formData.get("cycleId") ?? "").trim() || null,
       expiresAt: String(formData.get("expiresAt") ?? "").trim()
         ? new Date(String(formData.get("expiresAt"))).toISOString()
         : null,
     });
-    await createCommunityInvite(actor, input);
+    created = await createCommunityInvite(actor, input);
   } catch (err) {
     redirectWithError(err);
   }
 
   revalidatePath("/invites");
-  redirect("/invites?created=1");
+  // A nomination needs its support link shown straight away — the whole
+  // of §2.4's poke option is that the inviter can hand it over or ask
+  // specific people *now*, while they still remember who.
+  redirect(created ? `/invites?created=1&invite=${created.id}` : "/invites?created=1");
+}
+
+// §2.4's poke: the inviter names the members they think also know the
+// invitee, and each of them gets their own email with the support link.
+// Deliberately one email per person and never a broadcast — "nothing
+// broadcasts the nominee's existence beyond who the inviter chose" is the
+// plan's exact wording, and a BCC would break it in the one place it
+// matters.
+export async function pokeForSupportAction(formData: FormData) {
+  const actor = await requireMember();
+  const inviteId = String(formData.get("inviteId") ?? "");
+  const memberIds = formData.getAll("pokeMemberId").map(String).filter(Boolean);
+  const appUrl = await resolveAppUrlFromHeaders();
+
+  try {
+    const followUp = await getInviteFollowUp(inviteId);
+    if (!followUp) {
+      throw new NotFoundError("Invite not found");
+    }
+    if (followUp.invite.createdBy !== actor.id) {
+      throw new ForbiddenError("Only the member who sent this invite can ask others to support it");
+    }
+    if (!followUp.supportToken) {
+      throw new AppError("This invite isn't waiting on anybody's support");
+    }
+    const communityRow = await getCommunity(actor);
+    const { poked } = await pokeMembersForSupport({
+      communityId: actor.communityId,
+      communityName: communityRow.name,
+      askerId: actor.id,
+      askerName: actor.name,
+      nomineeLabel: followUp.invite.label,
+      supportUrl: `${appUrl}/support/${followUp.supportToken}`,
+      windowHours: communityRow.recruitmentNominationWindowHours,
+      memberIds,
+    });
+    if (poked.length === 0) {
+      throw new AppError("Nobody was asked — pick at least one person, and check they have an email on file");
+    }
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/invites");
+  redirect(`/invites?poked=1&invite=${encodeURIComponent(inviteId)}`);
 }
 
 export async function revokeCommunityInviteAction(formData: FormData) {

@@ -18,6 +18,14 @@ import {
 } from "@/lib/cycles";
 import type { DateBoundaryInput } from "@/lib/dates";
 import { exportCycleAsTaskPack } from "@/lib/task-packs";
+import {
+  deleteCycleJoiningLaneRules,
+  joiningLaneRuleInputSchema,
+  setCycleJoiningLaneRules,
+  type JoiningLaneRuleInput,
+} from "@/lib/recruitment/joining-lanes";
+import { JOINING_LANE_ORDER } from "@/lib/recruitment/lanes";
+import type { JoinLaneKind } from "@/db/schema";
 import { AppError, ConfirmationRequiredError } from "@/lib/errors";
 
 // Every form on this page carries a hidden `cycleScope` field so a
@@ -145,6 +153,12 @@ export async function updateCycleSettingsAction(formData: FormData) {
       recruitmentApplicationFormId: applicationFormId,
       applicationsOpen: formData.get("applicationsOpen") === "on",
       invitesOpen: formData.get("invitesOpen") === "on",
+      // §2.3/J3's third door. `=== "on"` like its two siblings: all three
+      // are always in this form, so an unchecked box genuinely means off
+      // rather than "not in this form" (the hidden-`off` trick the
+      // settings screen's per-card forms need doesn't apply to a form that
+      // owns all three).
+      interviewsOpen: formData.get("interviewsOpen") === "on",
       joiningWindowClosesAt: joiningWindowRaw ? new Date(joiningWindowRaw).toISOString() : null,
     });
     await updateCycleSettings(actor, cycleId, input);
@@ -154,6 +168,49 @@ export async function updateCycleSettingsAction(formData: FormData) {
 
   revalidatePath(`/${cycleScope}/participation`);
   redirect(`/${cycleScope}/participation?settingsUpdated=1`);
+}
+
+// §5.2 — the per-event admission-rule overrides. Its own action, its own
+// button and its own error redirect, for the same reason the settings
+// screen's cards stopped sharing one: four lane cards and a capacity
+// field are unrelated decisions, and a rejected lane rule shouldn't cost
+// you the capacity you just set.
+//
+// A lane whose override checkbox is unticked is *deleted*, not reset —
+// inheritance is the absence of a row, so removing a card genuinely hands
+// the lane back to the community rule instead of freezing whatever it
+// happened to be. deleteCycleLaneRules does that; the write side then
+// only handles the ones that stayed.
+export async function updateCycleLaneRulesAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleId = String(formData.get("cycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+
+  try {
+    const rules: Partial<Record<JoinLaneKind, JoiningLaneRuleInput>> = {};
+    const dropped: JoinLaneKind[] = [];
+    for (const lane of JOINING_LANE_ORDER) {
+      const ticked = formData.get(`lane.${lane}.override`) === "on";
+      if (!ticked) {
+        dropped.push(lane);
+        continue;
+      }
+      rules[lane] = joiningLaneRuleInputSchema.parse({
+        verificationMode: formData.get(`lane.${lane}.verificationMode`),
+        supportCount: Number(formData.get(`lane.${lane}.supportCount`) ?? 1),
+        applicationRequired: formData.getAll(`lane.${lane}.applicationRequired`).includes("on"),
+        interviewRequired: formData.getAll(`lane.${lane}.interviewRequired`).includes("on"),
+        applyInsteadAvailable: formData.getAll(`lane.${lane}.applyInsteadAvailable`).includes("on"),
+      });
+    }
+    await setCycleJoiningLaneRules(actor.communityId, cycleId, rules);
+    await deleteCycleJoiningLaneRules(actor.communityId, cycleId, dropped);
+  } catch (err) {
+    redirectWithError(cycleScope, err);
+  }
+
+  revalidatePath(`/${cycleScope}/participation`);
+  redirect(`/${cycleScope}/participation?laneRulesUpdated=1`);
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside

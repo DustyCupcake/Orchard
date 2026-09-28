@@ -66,6 +66,12 @@ describe("getPersonalFeed", () => {
       upcomingCheckins: [],
       flaggedHeldTasks: [],
       recruitmentNeedsAction: { personal: [], shared: [] },
+      // §2.6's duty item — a standing objection is the *mediation body's*
+      // obligation to go and talk to somebody, not the recruitment
+      // holder's, so it gets its own feed section rather than being
+      // folded into recruitmentNeedsAction (which would tell a
+      // recruitment holder that a concern is theirs to wave through).
+      mediationNeedsAction: { personal: [], shared: [] },
       placementInvites: [],
       myLinkedPendingPlacements: [],
       placementRevertNotices: [],

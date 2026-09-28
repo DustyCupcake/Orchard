@@ -1,0 +1,100 @@
+import type { community as communityTable } from "@/db/schema";
+import { SettingsCard, SettingsSection, TextField, ToggleField } from "../ui";
+import {
+  updateCoordinationTimingsAction,
+  updateIndicatorSettingsAction,
+  updateResponseTrackingAction,
+} from "../actions";
+
+export default function CoordinationTab({ community }: { community: typeof communityTable.$inferSelect }) {
+  return (
+    <div className="flex flex-col gap-8">
+      <SettingsSection
+        title="Deadlines"
+        description="How long somebody gets before a thing is somebody else's problem. Every one of these is a *quiet* default, not a deadline: nothing is refused when a clock runs out, it just stops being held by the person it was waiting on."
+      >
+        <SettingsCard
+          action={updateCoordinationTimingsAction}
+          submitLabel="Save deadlines"
+          title="Response windows"
+          description="All measured in hours, all counted from the moment the thing was sent."
+        >
+          <TextField
+            label="Acknowledge a conflict report within (hours)"
+            name="conflictAckWindowHours"
+            type="number"
+            defaultValue={community.conflictAckWindowHours}
+            hint="After this, the report is shown as overdue on the conflict team's page. It is never escalated by the clock."
+          />
+          <TextField
+            label="Answer a task nomination within (hours)"
+            name="taskNominationResponseDays"
+            type="number"
+            defaultValue={community.taskNominationResponseDays}
+            hint="Deliberately in days rather than hours, because it's the one that's read by a human between other things. Pass the deadline by and the assignment goes back to Unclaimed — no penalty either way."
+          />
+          <TextField
+            label="A call summary waits this long before counting as unread (hours)"
+            name="callSummaryReadWindowDays"
+            type="number"
+            defaultValue={community.callSummaryReadWindowDays}
+            hint="How long before a published summary appears as something you haven't read."
+          />
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Response tracking"
+        description="Reads a pattern of engagement across every surface where a member can act — offers, questions, messages, summaries — and puts it in their profile rather than in anybody's dashboard."
+      >
+        <SettingsCard
+          action={updateResponseTrackingAction}
+          submitLabel="Save thresholds"
+          title="When a pattern is a pattern"
+          description="The thresholds are a ladder: one response is ordinary, a few is worth noticing, more is a pattern. A single engagement event can never cross both bars on its own."
+        >
+          <TextField
+            label="Noted at"
+            name="engagementSoftFlagThreshold"
+            type="number"
+            defaultValue={community.engagementSoftFlagThreshold}
+            hint="This many responses and it's quietly worth noticing."
+          />
+          <TextField
+            label="Surfaced as a pattern at"
+            name="engagementPatternThreshold"
+            type="number"
+            defaultValue={community.engagementPatternThreshold}
+            hint="This many and the member sees it in their own profile. It's their number, about them, and nobody is told."
+          />
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Indicators"
+        description="Community indicators are the patterns the data shows about who takes part — never published about a person, never gated. These two settings are only about how small a population can be broken out for."
+      >
+        <SettingsCard
+          action={updateIndicatorSettingsAction}
+          submitLabel="Save indicator settings"
+          title="Breaking out a single event"
+          description="An event population is both small and identifiable: you know exactly who's coming, so '1 in 8' is one person rather than a rounding error. This is the community's own lever against that."
+        >
+          <ToggleField
+            label="Break indicators out per event"
+            name="cycleIndicatorsEnabled"
+            defaultChecked={community.cycleIndicatorsEnabled}
+            hint="Off, indicators are only ever shown for the community as a whole. On, each event gets its own figures for whoever's already in it."
+          />
+          <TextField
+            label="Never break out below this many members"
+            name="cycleIndicatorsMinMembers"
+            type="number"
+            defaultValue={community.cycleIndicatorsMinMembers}
+            hint="The value isn't the point — the community making the decision and recording it is. Eight isn't meaningfully safer than ten."
+          />
+        </SettingsCard>
+      </SettingsSection>
+    </div>
+  );
+}

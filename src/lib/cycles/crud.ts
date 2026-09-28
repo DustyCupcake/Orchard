@@ -1040,6 +1040,11 @@ export const updateCycleSettingsInput = z.object({
   recruitmentApplicationFormId: z.string().uuid().nullable().optional(),
   applicationsOpen: z.boolean().optional(),
   invitesOpen: z.boolean().optional(),
+  // §2.3/J3's third door — the interview stage, independently
+  // toggleable per event. Sits beside the other two rather than inside a
+  // lane because it's a different kind of statement: "no interviews in
+  // this event right now", not "arrivals on this lane are interviewed".
+  interviewsOpen: z.boolean().optional(),
   joiningWindowClosesAt: z.string().min(1).nullable().optional(),
 });
 export type UpdateCycleSettingsInput = z.infer<typeof updateCycleSettingsInput>;
@@ -1084,6 +1089,7 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
       }),
       ...(input.applicationsOpen !== undefined && { applicationsOpen: input.applicationsOpen }),
       ...(input.invitesOpen !== undefined && { invitesOpen: input.invitesOpen }),
+      ...(input.interviewsOpen !== undefined && { interviewsOpen: input.interviewsOpen }),
       ...(input.joiningWindowClosesAt !== undefined && {
         joiningWindowClosesAt: input.joiningWindowClosesAt ? new Date(input.joiningWindowClosesAt) : null,
       }),

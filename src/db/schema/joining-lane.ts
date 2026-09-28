@@ -80,10 +80,13 @@ export const joiningLane = pgTable(
 // today's three doors from one place, and the "real" default
 // (nomination/consensus) is what the migration seeds. The exact
 // "rows to seed" derivation is in docs/joining-admission-plan.md §2.9.
-export type JoiningLaneRule = {
-  verificationMode: JoiningVerificationMode;
-  supportCount: number;
-  applicationRequired: boolean;
-  interviewRequired: boolean;
-  applyInsteadAvailable: boolean;
-};
+//
+// The row shape itself is spelled out as the table above rather than as
+// a named type, and the application-side type lives in
+// src/lib/recruitment/lanes.ts (which is the half the settings panel's
+// client component imports). This file cannot import that one without
+// making the db layer depend on the application layer, and the two are
+// kept honest by resolveLaneRuleRow in
+// src/lib/recruitment/joining-lanes.ts, which is the single place a
+// stored row becomes an application-side rule and type-checks the
+// assignment in both directions.

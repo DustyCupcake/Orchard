@@ -1,0 +1,281 @@
+import { getJoinLaneRulesForContext } from "@/lib/recruitment/joining-lanes";
+import { JOINING_LANE_DEFAULTS, JOINING_LANE_ORDER, type JoiningLaneRule } from "@/lib/recruitment/lanes";
+import type { community as communityTable, form as formTable } from "@/db/schema";
+import { SelectField, SettingsCard, SettingsPanel, SettingsSection, TextAreaField, TextField, ToggleField } from "../ui";
+import {
+  updateAdmissionRulesAction,
+  updateRecruitmentApplicationAction,
+  updateRecruitmentDecisionRulesAction,
+  updateRecruitmentDoorsAction,
+  updateRecruitmentWindowsAction,
+} from "../actions";
+import LaneRulesEditor from "../LaneRulesEditor";
+
+const DECISION_RULES_EXAMPLE = `[
+  {
+    "conditions": { "minCounts": { "proceed": 2 } },
+    "outcome": "proceed"
+  },
+  {
+    "conditions": {},
+    "outcome": "wider_discussion",
+    "defaultResolution": "proceed"
+  }
+]`;
+
+// §5.1's "Settings → Recruitment: Admission rules", reorganised around
+// what somebody is actually trying to decide, in the order they decide
+// it. The order matters and is not cosmetic:
+//
+//   1. the lanes — who gets in, and what happens to them. This is the
+//      community's admission *design* and it is the first thing a reader
+//      should meet, because everything below it is machinery for
+//      implementing the design they just chose.
+//   2. the doors — is any of it open right now.
+//   3. the windows — how long the two kinds of waiting last, and the one
+//      exception the community gets on concerns.
+//   4. the application funnel — which form, who evaluates, how their
+//      recommendations become an outcome.
+//   5. decision rules, alone, because they are the one field on this
+//      screen that is genuinely error-prone and used to share a Save
+//      button with all of the above.
+//
+// The whole tab used to be one form with one Save, which meant a rejected
+// decision-rule set silently reverted the doors and the windows; see
+// ../actions.ts's own header for that.
+export default async function RecruitmentTab({
+  community,
+  forms,
+  authorized,
+}: {
+  community: typeof communityTable.$inferSelect;
+  forms: (typeof formTable.$inferSelect)[];
+  authorized: boolean;
+}) {
+  const rules = await getJoinLaneRulesForContext(community.id, null);
+  const lanes = Object.fromEntries(
+    JOINING_LANE_ORDER.map((lane) => [lane, rules.get(lane) ?? JOINING_LANE_DEFAULTS[lane]]),
+  ) as Record<(typeof JOINING_LANE_ORDER)[number], JoiningLaneRule>;
+
+  const activeForms = forms.filter((f) => !f.archivedAt);
+  const noFormConfigured = !community.recruitmentApplicationFormId;
+
+  return (
+    <div className="flex flex-col gap-8">
+      <SettingsSection
+        title="Admission rules"
+        description="Four ways in. What someone declares about themselves — or what the member inviting them declares — picks the lane, and this is what each lane does about it. The defaults are what Orchard does out of the box: someone you personally know joins straight away, everyone else fills in the form and has an interview."
+      >
+        {authorized ? (
+          <SettingsCard
+            action={updateAdmissionRulesAction}
+            submitLabel="Save admission rules"
+            title="One rule per lane"
+            description="Verification and process are set per lane, never stacked: a lane either asks for extra proof or it asks for a form and an interview, not both kinds of waiting on one person."
+          >
+            <LaneRulesEditor initial={lanes} />
+          </SettingsCard>
+        ) : (
+          <SettingsPanel title="One rule per lane">
+            <div className="flex flex-col gap-3">
+              {JOINING_LANE_ORDER.map((lane) => (
+                <div key={lane} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+                  <p className="text-[13px] font-medium text-[var(--text)]">{laneTitle(lane)}</p>
+                  <p className="mt-1 text-[13px] text-[var(--text-muted)]">{laneSummary(lanes[lane])}</p>
+                </div>
+              ))}
+            </div>
+          </SettingsPanel>
+        )}
+      </SettingsSection>
+
+      <SettingsSection
+        title="Doors"
+        description="Three independent doors, and they really are independent: closing interviews doesn't stop applications, and closing applications doesn't stop somebody you know joining outright. These are the community-wide, event-independent doors — each event can also close its own."
+      >
+        <SettingsCard
+          action={updateRecruitmentDoorsAction}
+          submitLabel="Save doors"
+          title="Open right now?"
+          description="Close these to run the community fully closed except for the events or periods you open separately."
+        >
+          <ToggleField
+            label="Applications"
+            name="recruitmentApplicationsOpen"
+            defaultChecked={community.recruitmentApplicationsOpen}
+            hint="Whether anyone can apply at all, on any lane that asks for a form."
+          />
+          <ToggleField
+            label="Invites"
+            name="recruitmentInvitesOpen"
+            defaultChecked={community.recruitmentInvitesOpen}
+            hint="Whether a member can hand out an invite link. Someone you know personally can't join without one of these, so closing this closes that too."
+          />
+          <ToggleField
+            label="Interviews"
+            name="recruitmentInterviewsOpen"
+            defaultChecked={community.recruitmentInterviewsOpen}
+            hint="Whether an interview can be scheduled. New in the redesign: the interview stage used to be something that either always happened or was skipped by whoever arrived on a direct invite, and now it's a door you can close on its own."
+          />
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Windows and exceptions"
+        description="Both of the plan's waiting periods live here rather than on a lane. That's deliberate: stacking a nomination and a community check on one lane would mean two timers and two sets of people who'd each think they owned the decision."
+      >
+        <SettingsCard
+          action={updateRecruitmentWindowsAction}
+          submitLabel="Save windows"
+          title="How long people wait"
+          description="A window never refuses anyone. When a support window lapses the person falls through to their lane's process, and when a community check closes with no concern the person is admitted — a clock can only ever let someone in, never out."
+        >
+          <TextField
+            label="Support window (hours)"
+            name="recruitmentNominationWindowHours"
+            type="number"
+            defaultValue={community.recruitmentNominationWindowHours}
+            hint="How long someone waits for other members to back up a nomination. After this, nothing happens to them either way."
+          />
+          <TextField
+            label="Community-check window (hours)"
+            name="recruitmentWiderDiscussionHours"
+            type="number"
+            defaultValue={community.recruitmentWiderDiscussionHours}
+            hint="How long a community-checked arrival stays announced before it's settled. It also sets the deadline quoted in the disclosure an invitee consents to, so the two can never disagree."
+          />
+          <SelectField
+            label="Overrule threshold"
+            name="recruitmentObjectionOverrule"
+            defaultValue={community.recruitmentObjectionOverrule}
+            options={[
+              { value: "majority", label: "A majority of whoever holds Recruitment mediation" },
+              { value: "quorum", label: "A fixed number of people" },
+            ]}
+            hint="The exception, and the only thing the community can vote over a concern. Clearing a concern is mediation's own job and needs no threshold; admitting somebody over a concern nobody could resolve needs this."
+          />
+          {community.recruitmentObjectionOverrule === "quorum" && (
+            <TextField
+              label="How many people"
+              name="recruitmentObjectionQuorum"
+              type="number"
+              defaultValue={community.recruitmentObjectionQuorum}
+              hint="If the mediation body is smaller than this, the overrule can't be exercised at all — which is a real choice, not a bug, and the mediation page says so plainly rather than letting one person quietly overrule."
+            />
+          )}
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection
+        title="The application"
+        description="What a newcomer fills in, who reads it, and how their readers' recommendations turn into an outcome."
+      >
+        {noFormConfigured && (
+          <SettingsPanel title="No application form yet">
+            <p className="text-[13px] text-[var(--text-muted)]">
+              Build one under the Forms tab, then choose it here. Until you do, every lane that asks
+              for a form has nothing to ask with — including the public application, which is only a
+              door at all once there&rsquo;s something behind it.
+            </p>
+          </SettingsPanel>
+        )}
+        <SettingsCard
+          action={updateRecruitmentApplicationAction}
+          submitLabel="Save application settings"
+          title="Form, readers and words"
+          description="Everything about the funnel itself, apart from how readers' recommendations become an outcome — that has its own card below, because it's the field most likely to be wrong."
+        >
+          <SelectField
+            label="Application form"
+            name="recruitmentApplicationFormId"
+            defaultValue={community.recruitmentApplicationFormId ?? ""}
+            wide
+            options={[
+              { value: "", label: "— none configured —" },
+              ...activeForms.map((f) => ({ value: f.id, label: f.title })),
+            ]}
+            hint="This is what renders at the public /apply page, and what any lane asking for a form asks with. An event can point at a different form of its own."
+          />
+          <TextField
+            label="Evaluators needed before a decision is reached"
+            name="recruitmentEvaluatorCount"
+            type="number"
+            defaultValue={community.recruitmentEvaluatorCount}
+            hint="How many different people holding the recruitment task have to file a recommendation. Evaluators are whoever currently holds the task — set that up under Access & permissions."
+          />
+          <TextField
+            label="Lapse a subscription after this many no-shows"
+            name="recruitmentSubscriptionLapseThreshold"
+            type="number"
+            defaultValue={community.recruitmentSubscriptionLapseThreshold}
+            hint="A subscription is the standing opt-in that lets a member see that something is pending and raise a concern. This turns one off after it many applications in a row with no availability offered."
+          />
+          <TextAreaField
+            label="Starting point for a decline"
+            name="recruitmentRejectionTemplate"
+            defaultValue={community.recruitmentRejectionTemplate ?? ""}
+            rows={5}
+            hint="Shown to whoever is about to send an actual decline. Never sent automatically — this is a first draft to argue with, not a message the platform delivers."
+          />
+        </SettingsCard>
+
+        <SettingsCard
+          action={updateRecruitmentDecisionRulesAction}
+          submitLabel="Save decision rules"
+          title="How recommendations become an outcome"
+          description="An ordered list, first match wins. The last rule has to have no conditions — it's the fallback, and without it no application can be decided at all."
+        >
+          <TextAreaField
+            label="Decision rules (JSON)"
+            name="recruitmentDecisionRulesRaw"
+            defaultValue={JSON.stringify(community.recruitmentDecisionRules, null, 2)}
+            rows={12}
+            mono
+            required
+            hint={
+              <>
+                An outcome is one of <code>proceed</code>, <code>wider_discussion</code> or{" "}
+                <code>decline</code>. A <code>wider_discussion</code> rule must also say which way it
+                goes by default (<code>defaultResolution</code>), because that is what happens if the
+                community check finds nobody objecting. Conditions can also test the inviter&rsquo;s
+                marks, so a rule can weigh how someone arrived as well as what the evaluators said.
+              </>
+            }
+          />
+          <div>
+            <p className="text-[12px] font-medium text-[var(--text-muted)]">An example</p>
+            <pre className="mt-1 overflow-x-auto rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--neutral-100)] p-3 text-[12px] leading-relaxed text-[var(--text-muted)]">
+              {DECISION_RULES_EXAMPLE}
+            </pre>
+            <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+              That reads: two evaluators said proceed, so they&rsquo;re in. Otherwise announce it and
+              give the community the check window, and admit them if nobody objects.
+            </p>
+          </div>
+        </SettingsCard>
+      </SettingsSection>
+    </div>
+  );
+}
+
+function laneTitle(lane: (typeof JOINING_LANE_ORDER)[number]) {
+  return {
+    invited_knows_personally: "Invited — knows personally",
+    invited_good_fit: "Invited — vouches (good fit)",
+    invited_neither: "Invited — neither mark",
+    public_application: "Public application",
+  }[lane];
+}
+
+function laneSummary(rule: JoiningLaneRule) {
+  const proof = {
+    basic: "one member's word is enough",
+    nomination: `needs ${rule.supportCount} more member${rule.supportCount === 1 ? "" : "s"}`,
+    consensus: "announced to the community before admission",
+  }[rule.verificationMode];
+  const process = [
+    rule.applicationRequired ? "an application" : null,
+    rule.interviewRequired ? "an interview" : null,
+  ].filter(Boolean);
+  return `${proof}${process.length ? `, plus ${process.join(" and ")}` : ""}.`;
+}

@@ -1,13 +1,14 @@
 import { and, desc, eq, gt, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
+import type { DbOrTx } from "@/db";
 import { communityInvite, cycle, JOINING_LANE_KINDS, participation } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { NotFoundError } from "./errors";
 import { syncComputedTiers } from "./settings/tiers";
 import { requireCycleOpen } from "./cycles/lifecycle";
 import { listOpenCycles } from "./cycles/crud";
-import { getJoinLaneRulesForContext, laneRedemptionKind, redemptionKindForInvite } from "./recruitment/joining-lanes";
+import { getJoinLaneRulesForContext, laneRedemptionKind, redemptionPathForInvite } from "./recruitment/joining-lanes";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -29,6 +30,37 @@ export const declareParticipationInput = z.object({
   note: z.string().nullable().optional(),
 });
 export type DeclareParticipationInput = z.infer<typeof declareParticipationInput>;
+
+// §4.3/8d (D14) + docs/joining-admission-plan.md §2 — "accepting or
+// redeeming seeds participation(cycle, member, 'coming') idempotently,
+// whatever lane the newcomer arrived through" (J12). Extracted out of
+// the three places that used to each carry their own copy (invites.ts's
+// redemption, decisions.ts's applicant conversion, and now the
+// consensus window's completion) so that J12 is one function with one
+// definition rather than three that have to be kept agreeing.
+//
+// Deliberately *not* declareParticipation: this is the platform seeding
+// a place for someone who is not in the room to hold a vote, and it
+// runs inside the caller's transaction. The same select-then-insert
+// posture every other idempotent participation write uses — there is no
+// DB-level unique constraint on participation.
+export async function seedCycleParticipation(
+  tx: DbOrTx,
+  cycleId: string | null,
+  memberId: string,
+) {
+  if (!cycleId) return null;
+  const [existing] = await tx
+    .select({ id: participation.id })
+    .from(participation)
+    .where(and(eq(participation.cycleId, cycleId), eq(participation.memberId, memberId)));
+  if (existing) return existing;
+  const [created] = await tx
+    .insert(participation)
+    .values({ cycleId, memberId, status: "coming" })
+    .returning();
+  return created;
+}
 
 // "Resubmittable as plans change" — upserts in place, the same
 // select-then-update-or-insert posture Assemblies' submitAssemblyResponse
@@ -147,7 +179,7 @@ export async function getCycleParticipationSummary(actor: Member, cycleId: strin
           or(isNull(communityInvite.expiresAt), gt(communityInvite.expiresAt, now)),
         ),
       );
-    holds = heldRows.filter((row) => redemptionKindForInvite(row, laneRules) === "direct").length;
+    holds = heldRows.filter((row) => redemptionPathForInvite(row, laneRules) === "direct").length;
   }
   const usedCapacity = comingCount + holds;
 

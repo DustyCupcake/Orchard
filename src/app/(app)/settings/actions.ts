@@ -43,6 +43,14 @@ import {
   updateTierInput,
 } from "@/lib/settings";
 import { decodeBulkMemberState, encodeBulkMemberState } from "./bulk-members-state";
+import {
+  joiningLaneRuleInputSchema,
+  setCommunityJoiningLaneRules,
+  type JoiningLaneRuleInput,
+} from "@/lib/recruitment/joining-lanes";
+import { JOINING_LANE_ORDER } from "@/lib/recruitment/lanes";
+import type { JoinLaneKind } from "@/db/schema";
+import { checkboxGroup, checkboxOf, defined, number, optionalText, text } from "./form-values";
 import type { PermissionModuleKey } from "@/lib/permissions";
 import {
   archiveProfileQuestion,
@@ -134,72 +142,119 @@ async function requireMember() {
   return actor;
 }
 
-// Community settings used to be one form/one action covering every
-// field below across four now-separate tabs. Split into four scoped
-// actions (General/Coordination/Modules/Recruitment) so each tab's
-// form only ever submits, and only ever needs to know about, its own
-// fields — critically, submitting one tab can never blank out a
-// checkbox or list that belongs to a different tab's own form, since
-// updateCommunityInput's fields are all optional and each action here
-// only supplies its own subset (an omitted key, not a false/empty
-// value). updateCommunity()/updateCommunityInput themselves are
-// untouched — still one shared lib function and schema, since the
-// on-site-mode lock check inside updateCommunity() needs to keep
-// running for every one of these regardless of which tab triggered it.
+// Community settings are grouped into one action per *card* rather than
+// one per tab. The earlier split (one action per tab) fixed a real bug —
+// submitting one tab could never blank out another tab's checkbox, since
+// every field in updateCommunityInput is optional — but it left the other
+// half of the problem: within a tab, a single Save meant one rejected
+// value discarded every unrelated change on that tab, and the person
+// fixing the one bad number had to re-do the other four.
+//
+// So the unit is the card, and each action below submits exactly the keys
+// its own card owns. `checkboxOf` (./form-values) is what makes that
+// possible: a toggle paired with a hidden `off` always submits its key,
+// so "off" and "not mine" stay distinguishable. Everything funnels
+// through the same updateCommunity()/updateCommunityInput, unchanged, so
+// the on-site-mode lock and the change log still run for every card.
 
-export async function updateGeneralSettingsAction(formData: FormData) {
+// General → Name & shape
+export async function updateGeneralBasicsAction(formData: FormData) {
   const actor = await requireMember();
-
   try {
     await requireAdmins(actor);
-    const input = updateCommunityInput.parse({
-      name: String(formData.get("name") ?? "").trim() || undefined,
-      cyclesEnabled: formData.get("cyclesEnabled") === "on",
-      phasesEnabled: formData.get("phasesEnabled") === "on",
-      defaultDateDisplayMode: String(formData.get("defaultDateDisplayMode") ?? "exact") as "exact" | "period",
-      cycleInitiationTierId: String(formData.get("cycleInitiationTierId") ?? "") || null,
-      defaultCallHasAgenda: formData.get("defaultCallHasAgenda") === "on",
-      defaultCallNeedsSummary: formData.get("defaultCallNeedsSummary") === "on",
-      defaultCallRequireRead: formData.get("defaultCallRequireRead") === "on",
-      onsiteModeEnabled: formData.get("onsiteModeEnabled") === "on",
-      accentPrimary: String(formData.get("accentPrimary") ?? "").trim() || null,
-      accentSecondary: String(formData.get("accentSecondary") ?? "").trim() || null,
-      logoUrl: String(formData.get("logoUrl") ?? "").trim() || null,
-      oidcIssuerUrl: String(formData.get("oidcIssuerUrl") ?? "").trim() || null,
-      oidcClientId: String(formData.get("oidcClientId") ?? "").trim() || null,
-      oidcRequiredRole: String(formData.get("oidcRequiredRole") ?? "").trim() || null,
-      oidcPrimary: formData.get("oidcPrimary") === "on",
-    });
+    const input = updateCommunityInput.parse(
+      defined({
+        name: text(formData, "name") || undefined,
+        cyclesEnabled: checkboxOf(formData, "cyclesEnabled"),
+        phasesEnabled: checkboxOf(formData, "phasesEnabled"),
+        defaultDateDisplayMode: text(formData, "defaultDateDisplayMode") as "exact" | "period" | "",
+        cycleInitiationTierId: optionalText(formData, "cycleInitiationTierId"),
+        onsiteModeEnabled: checkboxOf(formData, "onsiteModeEnabled"),
+      }),
+    );
     await updateCommunity(actor, input);
   } catch (err) {
     redirectWithError(err, "general");
   }
-
   revalidatePath("/settings");
 }
 
-export async function updateCoordinationSettingsAction(formData: FormData) {
+// General → Branding
+export async function updateBrandingAction(formData: FormData) {
   const actor = await requireMember();
-
   try {
     await requireAdmins(actor);
-    const input = updateCommunityInput.parse({
-      conflictAckWindowHours: Number(formData.get("conflictAckWindowHours") ?? NaN) || undefined,
-      taskNominationResponseDays:
-        Number(formData.get("taskNominationResponseDays") ?? NaN) || undefined,
-      engagementSoftFlagThreshold:
-        Number(formData.get("engagementSoftFlagThreshold") ?? NaN) || undefined,
-      engagementPatternThreshold:
-        Number(formData.get("engagementPatternThreshold") ?? NaN) || undefined,
-      callSummaryReadWindowDays:
-        Number(formData.get("callSummaryReadWindowDays") ?? NaN) || undefined,
-      // A checked box submits "on" and an unchecked one submits nothing,
-      // so absent has to mean false here or the setting could never be
-      // turned back off.
-      cycleIndicatorsEnabled: formData.get("cycleIndicatorsEnabled") === "on",
-      cycleIndicatorsMinMembers:
-        Number(formData.get("cycleIndicatorsMinMembers") ?? NaN) || undefined,
-    });
+    await updateCommunity(
+      actor,
+      updateCommunityInput.parse(
+        defined({
+          accentPrimary: optionalText(formData, "accentPrimary"),
+          accentSecondary: optionalText(formData, "accentSecondary"),
+          logoUrl: optionalText(formData, "logoUrl"),
+        }),
+      ),
+    );
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+// General → Single sign-on
+export async function updateSsoAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    await updateCommunity(
+      actor,
+      updateCommunityInput.parse(
+        defined({
+          oidcIssuerUrl: optionalText(formData, "oidcIssuerUrl"),
+          oidcClientId: optionalText(formData, "oidcClientId"),
+          oidcRequiredRole: optionalText(formData, "oidcRequiredRole"),
+          oidcPrimary: checkboxOf(formData, "oidcPrimary"),
+        }),
+      ),
+    );
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+// General → Call defaults
+export async function updateCallDefaultsAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    await updateCommunity(
+      actor,
+      updateCommunityInput.parse(
+        defined({
+          defaultCallHasAgenda: checkboxOf(formData, "defaultCallHasAgenda"),
+          defaultCallNeedsSummary: checkboxOf(formData, "defaultCallNeedsSummary"),
+          defaultCallRequireRead: checkboxOf(formData, "defaultCallRequireRead"),
+        }),
+      ),
+    );
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+// Coordination → how long people get
+export async function updateCoordinationTimingsAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    const input = updateCommunityInput.parse(
+      defined({
+        conflictAckWindowHours: number(formData, "conflictAckWindowHours"),
+        taskNominationResponseDays: number(formData, "taskNominationResponseDays"),
+        callSummaryReadWindowDays: number(formData, "callSummaryReadWindowDays"),
+      }),
+    );
     await updateCommunity(actor, input);
   } catch (err) {
     redirectWithError(err, "coordination");
@@ -208,7 +263,46 @@ export async function updateCoordinationSettingsAction(formData: FormData) {
   // The two readers are the Dashboard (scoped) and /community (not).
   revalidatePath("/community");
   revalidatePath("/dashboard");
+  revalidatePath("/settings");
+}
 
+// Coordination → indicators
+export async function updateIndicatorSettingsAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    const input = updateCommunityInput.parse(
+      defined({
+        cycleIndicatorsEnabled: checkboxOf(formData, "cycleIndicatorsEnabled"),
+        cycleIndicatorsMinMembers: number(formData, "cycleIndicatorsMinMembers"),
+      }),
+    );
+    await updateCommunity(actor, input);
+  } catch (err) {
+    redirectWithError(err, "coordination");
+  }
+  revalidatePath("/community");
+  revalidatePath("/dashboard");
+  revalidatePath("/settings");
+}
+
+// Coordination → response tracking thresholds
+export async function updateResponseTrackingAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    const input = updateCommunityInput.parse(
+      defined({
+        engagementSoftFlagThreshold: number(formData, "engagementSoftFlagThreshold"),
+        engagementPatternThreshold: number(formData, "engagementPatternThreshold"),
+      }),
+    );
+    await updateCommunity(actor, input);
+  } catch (err) {
+    redirectWithError(err, "coordination");
+  }
+  revalidatePath("/community");
+  revalidatePath("/dashboard");
   revalidatePath("/settings");
 }
 
@@ -218,8 +312,7 @@ export async function updateModulesSettingsAction(formData: FormData) {
   try {
     await requireAdmins(actor);
     const input = updateCommunityInput.parse({
-      modulesEnabled: formData.getAll("modulesEnabled").map(String),
-      postCycleFeedbackFormId: String(formData.get("postCycleFeedbackFormId") ?? "").trim() || null,
+      modulesEnabled: checkboxGroup(formData, "modulesEnabled"),
     });
     await updateCommunity(actor, input);
   } catch (err) {
@@ -229,28 +322,151 @@ export async function updateModulesSettingsAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
-export async function updateRecruitmentSettingsAction(formData: FormData) {
+export async function updatePostCycleFeedbackAction(formData: FormData) {
   const actor = await requireMember();
-
   try {
     await requireAdmins(actor);
-    const input = updateCommunityInput.parse({
-      recruitmentApplicationFormId: String(formData.get("recruitmentApplicationFormId") ?? "").trim() || null,
-      recruitmentApplicationsOpen: formData.get("recruitmentApplicationsOpen") === "on",
-      recruitmentInvitesOpen: formData.get("recruitmentInvitesOpen") === "on",
-      recruitmentEvaluatorCount: Number(formData.get("recruitmentEvaluatorCount") ?? NaN) || undefined,
-      recruitmentDecisionRules: parseDecisionRules(String(formData.get("recruitmentDecisionRulesRaw") ?? "")),
-      recruitmentSubscriptionLapseThreshold:
-        Number(formData.get("recruitmentSubscriptionLapseThreshold") ?? NaN) || undefined,
-      recruitmentWiderDiscussionHours: Number(formData.get("recruitmentWiderDiscussionHours") ?? NaN) || undefined,
-      recruitmentRejectionTemplate: String(formData.get("recruitmentRejectionTemplate") ?? "").trim() || null,
-    });
+    await updateCommunity(
+      actor,
+      updateCommunityInput.parse({ postCycleFeedbackFormId: optionalText(formData, "postCycleFeedbackFormId") }),
+    );
+  } catch (err) {
+    redirectWithError(err, "modules");
+  }
+  revalidatePath("/settings");
+}
+
+// Recruitment → the application funnel itself: which form, how many
+// evaluators, how their recommendations turn into an outcome, and the
+// words a decline starts from.
+//
+// The decision rules get their own card rather than sharing one with the
+// other four, and that is the whole reason this tab stopped being one
+// form: those rules are the single most error-prone field on the settings
+// screen (a hand-written JSON array with a required fallback rule), and
+// while they shared a Save with the doors and the windows, a rejected
+// rule set silently reverted every door and window on the tab.
+export async function updateRecruitmentApplicationAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    const input = updateCommunityInput.parse(
+      defined({
+        recruitmentApplicationFormId: optionalText(formData, "recruitmentApplicationFormId"),
+        recruitmentEvaluatorCount: number(formData, "recruitmentEvaluatorCount"),
+        recruitmentSubscriptionLapseThreshold: number(formData, "recruitmentSubscriptionLapseThreshold"),
+        recruitmentRejectionTemplate: optionalText(formData, "recruitmentRejectionTemplate"),
+        ...(formData.has("recruitmentDecisionRulesRaw")
+          ? { recruitmentDecisionRules: parseDecisionRules(String(formData.get("recruitmentDecisionRulesRaw") ?? "")) }
+          : {}),
+      }),
+    );
     await updateCommunity(actor, input);
   } catch (err) {
     redirectWithError(err, "recruitment");
   }
-
   revalidatePath("/settings");
+}
+
+export async function updateRecruitmentDecisionRulesAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    await updateCommunity(actor, {
+      recruitmentDecisionRules: parseDecisionRules(String(formData.get("recruitmentDecisionRulesRaw") ?? "")) as
+        | []
+        | { conditions: Record<string, unknown>; outcome: "proceed" | "decline" | "wider_discussion"; defaultResolution?: "proceed" | "decline" }[],
+    });
+  } catch (err) {
+    redirectWithError(err, "recruitment");
+  }
+  revalidatePath("/settings");
+}
+
+// Recruitment → the three doors (§2.3). One card, one save, because the
+// three are a single decision: "is this community accepting newcomers at
+// all right now, and by which routes".
+export async function updateRecruitmentDoorsAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    const input = updateCommunityInput.parse(
+      defined({
+        recruitmentApplicationsOpen: checkboxOf(formData, "recruitmentApplicationsOpen"),
+        recruitmentInvitesOpen: checkboxOf(formData, "recruitmentInvitesOpen"),
+        recruitmentInterviewsOpen: checkboxOf(formData, "recruitmentInterviewsOpen"),
+      }),
+    );
+    await updateCommunity(actor, input);
+  } catch (err) {
+    redirectWithError(err, "recruitment");
+  }
+  revalidatePath("/settings");
+  revalidatePath("/invites");
+  revalidatePath("/apply");
+}
+
+// Recruitment → the two time-boxed windows and the overrule threshold
+// (§2.2/J2, §2.6/J7). Per-mechanism periods, not per lane: J2 settled
+// that nomination and consensus are never stacked on one lane precisely
+// because two windows on one lane means two timers and nobody knows who
+// resolves what, so there are exactly three numbers here and each one
+// governs a mechanism.
+export async function updateRecruitmentWindowsAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    const input = updateCommunityInput.parse(
+      defined({
+        recruitmentWiderDiscussionHours: number(formData, "recruitmentWiderDiscussionHours"),
+        recruitmentNominationWindowHours: number(formData, "recruitmentNominationWindowHours"),
+        recruitmentObjectionOverrule: text(formData, "recruitmentObjectionOverrule") as
+          | "majority"
+          | "quorum"
+          | "",
+        recruitmentObjectionQuorum: number(formData, "recruitmentObjectionQuorum"),
+      }),
+    );
+    await updateCommunity(actor, input);
+  } catch (err) {
+    redirectWithError(err, "recruitment");
+  }
+  revalidatePath("/settings");
+  revalidatePath("/recruitment/mediation");
+}
+
+// Recruitment → the four admission lanes (§2.1/§2.2, §5.1). The one card
+// on this tab that is genuinely a form about a *design*, and the one that
+// most needed to stop sharing a Save button with everything else.
+export async function updateAdmissionRulesAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    const rules: Partial<Record<JoinLaneKind, JoiningLaneRuleInput>> = {};
+    for (const lane of JOINING_LANE_ORDER) {
+      // A lane the client didn't render a card for is left alone rather
+      // than written as a default — the preset select and the four cards
+      // both post through the same fields, and "absent" has to be able to
+      // mean "untouched" so a per-lane tweak survives a preset change
+      // that didn't include it.
+      if (formData.get(`lane.${lane}.verificationMode`) === null) continue;
+      const parsed = joiningLaneRuleInputSchema.parse({
+        verificationMode: formData.get(`lane.${lane}.verificationMode`),
+        supportCount: Number(formData.get(`lane.${lane}.supportCount`) ?? 1),
+        applicationRequired: checkboxOf(formData, `lane.${lane}.applicationRequired`) ?? false,
+        interviewRequired: checkboxOf(formData, `lane.${lane}.interviewRequired`) ?? false,
+        applyInsteadAvailable: checkboxOf(formData, `lane.${lane}.applyInsteadAvailable`) ?? true,
+      });
+      rules[lane] = parsed;
+    }
+    await setCommunityJoiningLaneRules(actor.communityId, rules);
+  } catch (err) {
+    redirectWithError(err, "recruitment");
+  }
+  revalidatePath("/settings");
+  revalidatePath("/invites");
+  revalidatePath("/apply");
+  revalidatePath("/recruitment");
 }
 
 const permissionGrantFields = z.object({

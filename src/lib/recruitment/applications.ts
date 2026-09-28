@@ -15,10 +15,14 @@ import { requireModuleEnabled } from "../modules";
 import { getForm, submitPublicFormResponse } from "../forms";
 import { computeRecruitmentOutcome } from "./evaluations";
 import { getCycleJoiningState, type CycleJoiningState } from "./joining";
-import { getInviteRedemptionKind } from "./joining-lanes";
+import { getInviteRedemptionPath, getJoinLaneRule, joiningLaneForInvite } from "./joining-lanes";
 import { getCommunityRow, isRecruitmentTaskHolder, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
 import { computeWiderDiscussionStatus, getRecruitmentDecision } from "./decisions";
 import { listObjections } from "./objections";
+import { consensusDisclosure, consensusWindowFor, recordApplicationConsent } from "./consensus";
+import { openNominationForApplication } from "./support";
+import { attachApplicantToPairing, createPairings, resolvePairingForApplication } from "./pairs";
+import type { JoinLaneKind } from "@/db/schema";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -54,12 +58,33 @@ export const submitRecruitmentApplicationInput = z.object({
   // general, cycle-less door. When set, the cycle's own joining config
   // gates the submission and the response is tagged with the cycle.
   cycleId: z.string().uuid().nullable().optional(),
+  // §2.8 — "who are you sticking with", for an applicant naming another
+  // applicant. The link that carries this is the pairing link, and the
+  // pair is recorded at the funnel: the platform never decides anything
+  // from it (J9), it only exists so the two humans can be offered a
+  // shared interview and can see each other's name.
+  pairingToken: z.string().min(1).nullable().optional(),
+  // §2.8 — names the *members* this applicant is coming with. Each one
+  // gets a pairing link; a member who opens it sees the support view.
+  pairingMemberIds: z.array(z.string().uuid()).max(20).default([]),
+  // J10's binding consent, for a public lane the community set to
+  // consensus. Read and ticked on /apply itself (there is no
+  // redemption step for somebody who applied on their own), and stored
+  // with the exact disclosure that was shown.
+  consentAccepted: z.boolean().optional(),
+  disclosure: z.string().optional(),
 });
-export type SubmitRecruitmentApplicationInput = z.infer<typeof submitRecruitmentApplicationInput>;
+export type SubmitRecruitmentApplicationInput = z.input<typeof submitRecruitmentApplicationInput>;
+export type ParsedRecruitmentApplicationInput = z.output<typeof submitRecruitmentApplicationInput>;
 
 // Public — no actor. Always resolves the form id itself from the
 // Community/Cycle config rather than accepting one from request input —
 // see submitPublicFormResponse's own comment for why that matters.
+//
+// Takes the schema's *input* type, not its output, so a caller can
+// submit just the answers and let the defaults (no pairing, no consent,
+// no cycle) apply — which is the shape the plain /apply form and the
+// public JSON API both actually send.
 export async function submitRecruitmentApplication(
   communityId: string,
   input: SubmitRecruitmentApplicationInput,
@@ -84,16 +109,26 @@ export async function submitRecruitmentApplication(
       throw new ConflictError("This invite link has been revoked");
     }
   }
+  const pairing = input.pairingToken
+    ? await resolvePairingForApplication(input.pairingToken)
+    : null;
+  if (input.pairingToken && !pairing) {
+    throw new NotFoundError("That pairing link isn't valid any more");
+  }
+  if (pairing && pairing.communityId !== communityId) {
+    throw new AppError("That pairing link belongs to another community");
+  }
 
   // Which door does this submission knock on (§4.3/8c)? A cycle-targeted
   // application gates on the cycle's own joining state (period + door +
   // capacity room); the general application gates on the community-wide
-  // door toggle. An invite's *lane* — fixed at creation by the
+  // door toggles. An invite's *lane* — fixed at creation by the
   // inviter's marks, docs/joining-admission-plan.md §2 — decides whether
   // its token belongs here at all: a direct lane redeems on
-  // /invite/[token] and is rejected on /apply; every process lane routes
-  // through this funnel (the token is the vouch, tagging the
-  // application with the invite's cycle — §4.3/8d).
+  // /invite/[token] and is rejected on /apply, while nomination and
+  // consensus are *this* page with the lane's own window around it, and
+  // a basic process lane is the plain evaluated funnel the token has
+  // always been (§4.3/8d).
   let targetCycleId = input.cycleId ?? null;
   if (invite?.cycleId) {
     if (input.cycleId && input.cycleId !== invite.cycleId) {
@@ -101,8 +136,12 @@ export async function submitRecruitmentApplication(
     }
     targetCycleId = invite.cycleId;
   }
+  if (pairing?.cycleId && !targetCycleId) {
+    targetCycleId = pairing.cycleId;
+  }
   if (invite) {
-    if ((await getInviteRedemptionKind(communityId, invite)) === "direct") {
+    const path = await getInviteRedemptionPath(communityId, invite);
+    if (path === "direct") {
       // A direct-lane invite skips the funnel entirely — it redeems on
       // /invite/[token], not through the evaluated application.
       throw new AppError("This invite redeems directly — open its join link instead of applying");
@@ -123,12 +162,38 @@ export async function submitRecruitmentApplication(
     throw new AppError("This community isn't accepting applications right now");
   }
 
+  // Which lane is this application on? An invite answers for itself; a
+  // public applicant's is the public lane by definition, and its rule is
+  // the one that decides whether they are asked for support, for a
+  // community-check consent, or for nothing at all.
+  const lane: JoinLaneKind = invite ? joiningLaneForInvite(invite) : "public_application";
+  const rule = await getJoinLaneRule(communityId, targetCycleId, lane);
+
+  // J10 — a consensus lane's consent is the applicant's own, read here
+  // and stored with the text they read. Refusing it is not a refusal to
+  // apply (nothing is created); it just isn't this community's door.
+  if (rule.verificationMode === "consensus") {
+    if (!input.consentAccepted) {
+      throw new AppError(
+        "Applying through this door means your arrival is announced to the community — read the disclosure and tick the box to go on",
+      );
+    }
+  }
+
   const formId = joining?.cycle.recruitmentApplicationFormId ?? communityRow.recruitmentApplicationFormId;
   if (!formId) {
     throw new AppError("No application form is configured for this Community yet");
   }
 
   const created = await submitPublicFormResponse(formId, { values: input.values });
+
+  if (rule.verificationMode === "consensus") {
+    const { communityName, windowHours } = await consensusWindowFor(communityId);
+    await recordApplicationConsent(
+      created.id,
+      input.disclosure?.trim() || consensusDisclosure(communityName, windowHours),
+    );
+  }
 
   // Linked whether or not the response is cycle-tagged — the invite's
   // checkboxes feed outcome matching either way (the referral half of
@@ -139,16 +204,48 @@ export async function submitRecruitmentApplication(
       .values({ formResponseId: created.id, communityInviteId: invite.id });
   }
 
+  // §2.2/J6 — a nomination lane opens its support window here, for the
+  // same reason an invite opens one at send: the applicant is about to
+  // be handed a link, and the whole point is that they have it early
+  // enough to actually ask somebody.
+  if (rule.verificationMode === "nomination") {
+    await openNominationForApplication(created.id, communityId);
+  }
+
+  let tagged = created;
   if (joining) {
-    const [tagged] = await db
+    const [updated] = await db
       .update(formResponse)
       .set({ cycleId: joining.cycle.id })
       .where(eq(formResponse.id, created.id))
       .returning();
-    return tagged;
+    tagged = updated;
   }
 
-  return created;
+  // §2.8 — the pair is a fact recorded at the funnel. Nothing reads it
+  // to make a decision; it exists so two humans can be shown each other's
+  // name and offered one interview between them.
+  if (pairing) {
+    await attachApplicantToPairing(pairing.token, created.id, targetCycleId);
+  }
+  const pairingMemberIds = input.pairingMemberIds ?? [];
+  if (invite && pairingMemberIds.length > 0) {
+    // The pair needs a `requestedById` — a pairing with nobody behind it
+    // isn't a pairing — and the applicant isn't a member yet, so there
+    // is no Member row of theirs to point at. The inviter is the person
+    // actually standing behind this arrival, so that is who gets named.
+    // A public applicant with no invite behind them gets no automatic
+    // pairing: the recruitment team can still link the two by hand
+    // (§2.8's manual route), which has a real member doing it, rather
+    // than the platform inventing a "who is this from?" record.
+    await createPairings(
+      { communityId, memberId: invite.createdBy },
+      { nomineeMemberIds: pairingMemberIds, pokeMemberIds: [], cycleId: targetCycleId, firstResponseId: created.id },
+      { requireMember: false },
+    );
+  }
+
+  return tagged;
 }
 
 // The form a public join lands on — the cycle's own pointer falling

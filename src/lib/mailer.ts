@@ -160,3 +160,33 @@ export async function sendBackstopHardFlagEmail(
   ].join("\n");
   await sendPlainTextEmail(email, subject, text, `backstop hard flag ("${input.taskTitle}"):\n${input.taskUrl}`);
 }
+
+// docs/joining-admission-plan.md §2.4's "poke": the inviter of a
+// nomination names the members they think also know the invitee, and
+// those members each get one email carrying the support link. No action
+// token and no per-person state here, unlike the task-nomination email
+// above — because "you've been asked to support {name}" has exactly one
+// action (open the link, say how you know them) and supporting is
+// idempotent by construction (src/lib/recruitment/support.ts's
+// recordSupport upserts in place). A token would buy nothing and would
+// expire a link the invitee is still relying on.
+//
+// Deliberately one email per named person rather than one broadcast: the
+// plan is explicit that "nothing broadcasts the nominee's existence
+// beyond who the inviter chose", and a BCC would break that.
+export async function sendNominationSupportRequestEmail(
+  email: string,
+  input: { askerName: string; nomineeLabel: string | null; supportUrl: string; windowHours: number; onBehalfOfCommunity: boolean },
+) {
+  const subject = `${input.askerName} asked you to vouch for someone${input.nomineeLabel ? ` (${input.nomineeLabel})` : ""}`;
+  const text = [
+    `${input.askerName} has asked you to support someone's join${input.nomineeLabel ? `: ${input.nomineeLabel}` : ""}.`,
+    ``,
+    `If you know them, or you'd expect them to fit, this link is all it takes:`,
+    `${input.supportUrl}`,
+    ``,
+    `You'll be asked to say how you know them. Nothing about this is broadcast, and nobody is told who you supported unless they support it themselves.`,
+    `If nobody gets round to it within ${input.windowHours} hours, nothing happens to them — the request just lapses and they carry on.${input.onBehalfOfCommunity ? " They're also waiting on the community's own application process, so this is a bonus, not a gate." : ""}`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `nomination support request for ${email}:\n${input.supportUrl}`);
+}

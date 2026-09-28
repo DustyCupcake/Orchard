@@ -44,6 +44,7 @@ export const permissionGrantModuleEnum = pgEnum("permission_grant_module", [
   "feedback_review",
   "event_scheduling_owner",
   "recruitment",
+  "recruitment_mediation",
   "spatial_planning",
   "announcements",
   "support",

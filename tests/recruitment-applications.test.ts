@@ -938,8 +938,11 @@ describe("cycle invites + capacity holds + joining seed (docs/cycle-scope-remedi
     const { cycle } = await setUpInvitesFixtures(fixtures);
     const created = await createCommunityInvite(alice, { cycleId: cycle.id, label: "Dana", inviterKnowsPersonally: true });
 
-    const newMember = await redeemCommunityInvite(created.token, { email: "dana@example.com" });
+    const outcome = await redeemCommunityInvite(created.token, { email: "dana@example.com" });
+    expect(outcome.kind).toBe("member");
+    if (outcome.kind !== "member") throw new Error("expected the direct path");
 
+    const [newMember] = await db.select().from(member).where(eq(member.id, outcome.memberId));
     expect(newMember.communityId).toBe(fixtures.community.id);
     expect(newMember.joinedViaInviteId).toBe(created.id);
     const [row] = await db
