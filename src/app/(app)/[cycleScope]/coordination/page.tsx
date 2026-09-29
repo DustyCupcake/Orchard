@@ -145,11 +145,18 @@ export default async function CycleScopeCoordinationPage({
         ) : (
           <>
             <div className="mt-3 flex flex-wrap gap-2">
+              {/* Only the two counts that have a section of their own are
+                  links. The rest are deliberately not clickable: a chip
+                  labelled "Waiting 3" that scrolls to the unanswered
+                  check-ins is a different set of tasks entirely, and
+                  sending someone to the full list under a label that
+                  promises a filtered one is the same mistake quieter.
+                  Add a section before adding an anchor. */}
               <CountChip href="#needs-an-owner" label="Needs an owner" value={counts.unclaimed} tone="warning" />
               <CountChip href="#flagged" label="Flagged" value={counts.flagged} tone="danger" />
-              <CountChip href="#waiting" label="Waiting" value={counts.waiting} tone="neutral" />
-              <CountChip href="#task-status" label="Claimed" value={counts.claimed} tone="accent" />
-              <CountChip href="#task-status" label="Done" value={counts.done} tone="success" />
+              <CountChip label="Waiting" value={counts.waiting} tone="neutral" />
+              <CountChip label="Claimed" value={counts.claimed} tone="accent" />
+              <CountChip label="Done" value={counts.done} tone="success" />
             </div>
             <p className="mt-2 text-[13px] text-[var(--text-muted)]">
               {counts.total} task{counts.total === 1 ? "" : "s"} in total
@@ -211,7 +218,7 @@ export default async function CycleScopeCoordinationPage({
       )}
 
       {overdueCheckins.length > 0 && (
-        <section className="mt-8" id="waiting">
+        <section className="mt-8" id="checkins">
           <SectionHeading>Check-ins nobody answered</SectionHeading>
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             A task was parked with a check-in date, and the nudge went out without a reply.
@@ -358,16 +365,22 @@ function CountChip({
   value,
   tone,
 }: {
-  href: string;
+  href?: string;
   label: string;
   value: number;
   tone: Tone;
 }) {
+  const className = `inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[13px] font-medium ${TONE_TEXT[tone]}`;
+  if (!href) {
+    return (
+      <span className={className}>
+        <span className="text-[var(--text-muted)]">{label}</span>
+        <span>{value}</span>
+      </span>
+    );
+  }
   return (
-    <Link
-      href={href}
-      className={`inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[13px] font-medium ${TONE_TEXT[tone]}`}
-    >
+    <Link href={href} className={className}>
       <span className="text-[var(--text-muted)]">{label}</span>
       <span>{value}</span>
     </Link>
