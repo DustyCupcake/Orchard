@@ -154,14 +154,14 @@ function ProfileQuestionsSection({
               friction at the one moment the set was cheapest to decline.
               It is also the one place an audience can be picked in bulk,
               because a restricted question is created restricted. */}
-          <p className="max-w-[620px] text-[13px] text-[var(--text-muted)]">
+          <p className="max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">
             Here is a suggested set — who someone is, what they can do, and a few answers the whole
             community must not read. Go through it: untick anything you don&rsquo;t want, retitle
             anything you&rsquo;d phrase differently, and pick who may read each restricted answer.
             Everything you keep stays editable afterwards; nothing here is a commitment.
           </p>
           <details open>
-            <summary className="cursor-pointer text-[13px] font-medium text-[var(--accent-1)]">
+            <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--accent-1)]">
               Review the starter set
             </summary>
             <form action={seedDefaultProfileQuestionsAction} className="mt-3 flex flex-col gap-3">
@@ -186,11 +186,11 @@ function ProfileQuestionsSection({
           category. */}
       <SettingsPanel>
         <details>
-          <summary className="cursor-pointer text-[13px] font-medium text-[var(--accent-1)]">
+          <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--accent-1)]">
             How privacy and consent work for these questions
           </summary>
           <div className="mt-2 flex max-w-[720px] flex-col gap-2">
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               A question is either <strong>readable by the whole community</strong> or{" "}
               <strong>restricted</strong>, and which one it is gets decided once, when it is created.
               It can&rsquo;t be flipped afterwards, because un-restricting a question would make every
@@ -198,13 +198,13 @@ function ProfileQuestionsSection({
               restricted to a smaller group. No confirmation makes that a setting rather than a
               disclosure, so the remedy is to archive the question and add it again.
             </p>
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               A restricted question&rsquo;s audience is a list of <strong>rules</strong>, and anyone who
               satisfies any one of them may read it — a named Tier, the holder of one task, or anyone
               holding a particular permission. You can see and change that list on the question itself,
               under &ldquo;Who can read this&rdquo;.
             </p>
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               Adding a rule is a <strong>widening</strong>, and widening asks the people already
               affected rather than helping itself to their answers: a new rule reaches only answers
               given from the moment it exists. Everyone who had already answered is told and asked
@@ -212,14 +212,14 @@ function ProfileQuestionsSection({
               audience that already had it. Removing a rule is the opposite and needs nobody&rsquo;s
               agreement.
             </p>
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               <strong>Emergency access is an override, not a permission.</strong> Answering a question
               marked for it is the consent — there is no separate box, and the only way to refuse is
               not to answer. Anyone can activate emergency mode on another member&rsquo;s page, which is
               how a crisis gets read; every such read is written to a log, and unlike reading inside a
               permission someone granted, it is not silent.
             </p>
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               <strong>Publishing</strong> is only possible on a public question, and only for one that
               is asked once, isn&rsquo;t free text, and offers &ldquo;prefer not to say&rdquo;. It shows a
               proportion or a distribution on the community page, never anyone&rsquo;s individual answer —
@@ -232,11 +232,11 @@ function ProfileQuestionsSection({
 
       <SettingsPanel>
         <details>
-          <summary className="cursor-pointer text-[13px] font-medium text-[var(--accent-1)]">
+          <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--accent-1)]">
             How answering, required questions and &ldquo;prefer not to say&rdquo; work
           </summary>
           <div className="mt-2 flex max-w-[720px] flex-col gap-2">
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               Marking one <strong>required</strong> means anyone who hasn&rsquo;t answered it yet
               gets a count on their Dashboard until they do — so reserve it for what you genuinely
               can&rsquo;t run the event without. &ldquo;I don&rsquo;t know yet&rdquo; counts as an
@@ -245,7 +245,7 @@ function ProfileQuestionsSection({
               blank for a standing fact like an emergency contact, where a deferral should really be
               permanent.
             </p>
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               The two &ldquo;not answering&rdquo; buttons are deliberately different.{" "}
               <strong>Allow &ldquo;I don&rsquo;t know yet&rdquo;</strong> is on by default and means
               &ldquo;ask me again later&rdquo;.{" "}
@@ -255,7 +255,7 @@ function ProfileQuestionsSection({
               on for questions about someone&rsquo;s own identity or circumstances, and leave it off
               for questions the community genuinely needs a real answer to from everyone.
             </p>
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               A question per event is asked again each time, so it lives in the event section below
               rather than here. A phase-scoped question with &ldquo;feeds capacity signal&rdquo; on
               powers the Coordination view&rsquo;s fitted-ask flags and non-response list for
@@ -301,14 +301,14 @@ function ProfileQuestionsSection({
         // scrolling.
         return (
           <section key={category} className="mt-2">
-            <h3 className="text-[15px] font-medium text-[var(--text)]">
+            <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">
               {category === "public" ? "Public" : "Restricted"} ({inCategory.length})
             </h3>
-            <p className="mt-0.5 max-w-[720px] text-[12px] leading-relaxed text-[var(--text-muted)]">
+            <p className="mt-0.5 max-w-[720px] text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
               {blurb}
             </p>
 
-            {inCategory.length === 0 && <p className="text-[13px] text-[var(--text-muted)]">None yet.</p>}
+            {inCategory.length === 0 && <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
 
             <div className="mt-1 flex flex-col gap-1.5">
               {standing.map((q) => (
@@ -318,7 +318,7 @@ function ProfileQuestionsSection({
 
             {eventScoped.length > 0 && (
               <div className="mt-3">
-                <p className="text-[12px] font-medium text-[var(--text-muted)]">
+                <p className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">
                   Asked again for each event
                 </p>
                 <div className="mt-1.5 flex flex-col gap-1.5">
@@ -328,7 +328,7 @@ function ProfileQuestionsSection({
                 </div>
                 {hidden.length > 0 && (
                   <details className="mt-1.5">
-                    <summary className="cursor-pointer text-[12px] text-[var(--accent-1)]">
+                    <summary className="cursor-pointer text-[length:var(--text-meta)] text-[var(--accent-1)]">
                       {hidden.length} more for other events
                     </summary>
                     <div className="mt-1.5 flex flex-col gap-1.5">
@@ -379,17 +379,17 @@ function ProfileQuestionsSection({
         <CheckField label="Restricted — only the audience below can read it" name="sensitive" />
         <AudiencePickers tiers={tiers} communityTasks={communityTasks} />
         <CheckField label="Reachable through Emergency access" name="emergencyAccess" />
-        <p className="max-w-[620px] text-[12px] text-[var(--text-muted)]">
+        <p className="max-w-[620px] text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Restricted or not can&rsquo;t be changed once the question exists, so it&rsquo;s picked here.
           The audience can be widened later under Access rules — which only reaches answers given
           from then on, unless each person who already answered says yes to it.
         </p>
-        <p className="max-w-[620px] text-[12px] text-[var(--text-muted)]">
+        <p className="max-w-[620px] text-[length:var(--text-meta)] text-[var(--text-muted)]">
           You can turn a question into a community indicator after adding it — tick &ldquo;show the
           answers on the community page&rdquo; on its row. Only a public, once-ever question with a
           countable answer type can be one.
         </p>
-        <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+        <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
           needed by (optional — only applies if required and deferrable)
           <input type="date" name="requiredBy" className={`${INPUT} py-1`} />
         </label>
@@ -460,7 +460,7 @@ function TraitAxesSection({ traitAxes }: { traitAxes: (typeof traitAxisTable.$in
       description="Bipolar scales — 'wants direction' ↔ 'wants independence' — set on both members (their own preference) and tasks (a proposer's suggestion, reviewed at activation), and compared by proximity to rank onboarding's task suggestions."
     >
       <SettingsPanel>
-        <p className="max-w-[620px] text-[13px] text-[var(--text-muted)]">
+        <p className="max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">
           An axis is a surfacing signal, not a score: never shown as a number and never a hard
           requirement. &ldquo;Surface during onboarding&rdquo; keeps the first-session screen short — an
           axis left unchecked is still settable any time at /profile.
@@ -511,7 +511,7 @@ function TraitAxesSection({ traitAxes }: { traitAxes: (typeof traitAxisTable.$in
           />
           <div className="flex flex-wrap items-center gap-3">
             <ToggleField label="Surface during onboarding" name="askAtOnboarding" defaultChecked={a.askAtOnboarding} />
-            <label className="flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+            <label className="flex items-center gap-1.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
               Sort order
               <input type="number" name="sortOrder" defaultValue={a.sortOrder} className={`${INPUT} w-20`} />
             </label>
@@ -556,14 +556,14 @@ function ConsentPurposesSection({
       description="One row per distinct purpose needing a member's consent. Ordinary operational processing gets no row at all."
     >
       <SettingsPanel>
-        <p className="max-w-[620px] text-[13px] text-[var(--text-muted)]">
+        <p className="max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">
           Pin a purpose to one profile question and it becomes the read path&rsquo;s gate: once set,
           a member cannot answer that question at all without agreeing, and their answer stops being
           visible to anyone else the moment they withdraw. A gated question also reports how many
           members have agreed, because &ldquo;0 of 12&rdquo; reads identically whether nobody answered
           or nobody consented.
         </p>
-        <p className="max-w-[620px] text-[13px] text-[var(--text-muted)]">
+        <p className="max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">
           This is a separate decision from an access rule, and the two answer different questions. A
           rule says <em>who in this community may read it</em> — the kitchen team, a wellbeing Tier. A
           purpose says <em>whether the member agreed to it being read at all</em>. A question can be
@@ -572,23 +572,23 @@ function ConsentPurposesSection({
         </p>
       </SettingsPanel>
 
-      {consentPurposes.length === 0 && <p className="text-[13px] text-[var(--text-muted)]">No purposes yet.</p>}
+      {consentPurposes.length === 0 && <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">No purposes yet.</p>}
       {consentPurposes.map((p) => (
         <div
           key={p.id}
           className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3"
         >
           <div className="flex-1">
-            <span className="text-[13px] font-medium text-[var(--text)]">{p.label}</span>{" "}
-            <code className="text-[12px] text-[var(--text-muted)]">{p.key}</code>
+            <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{p.label}</span>{" "}
+            <code className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{p.key}</code>
             {p.gatesQuestionId && (
-              <span className="text-[12px] text-[var(--text-muted)]">
+              <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 {" "}
                 &mdash; gates &ldquo;{questionLabelById.get(p.gatesQuestionId) ?? "a question that has been archived or removed"}&rdquo;
               </span>
             )}
-            {p.requiresExplicit && <span className="text-[12px] text-[var(--text-muted)]"> (explicit)</span>}
-            <div className="text-[12px] text-[var(--text-muted)]">{p.noticeText}</div>
+            {p.requiresExplicit && <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]"> (explicit)</span>}
+            <div className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{p.noticeText}</div>
           </div>
           <form action={deleteConsentPurposeAction}>
             <input type="hidden" name="purposeId" value={p.id} />
@@ -707,29 +707,29 @@ function QuestionCard({
         className="flex cursor-pointer flex-wrap items-center gap-2"
         style={{ opacity: q.archivedAt ? 0.6 : 1 }}
       >
-        <span className="text-[14px] font-medium text-[var(--text)]">{q.label}</span>
+        <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{q.label}</span>
         {q.sensitive && <Fact>restricted</Fact>}
         {q.emergencyAccess && <Fact>emergency access</Fact>}
         {q.publishedAsIndicator && <Fact>published</Fact>}
         {q.required && <Fact>required</Fact>}
         {q.archivedAt && <Fact>archived</Fact>}
-        <span className="text-[12px] text-[var(--text-muted)]">
+        <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
           {q.scope === "once_ever"
             ? "asked once"
             : q.scope === "per_cycle"
               ? "asked per event"
               : `asked in the ${q.phaseNameHint} phase`}
         </span>
-        <span className="ml-auto text-[12px] text-[var(--accent-1)]">Edit</span>
+        <span className="ml-auto text-[length:var(--text-meta)] text-[var(--accent-1)]">Edit</span>
         {/* The state, on the collapsed side. A card that only said
             "restricted" made the reader open it to learn who could read
             the thing, which is the one fact a privacy surface exists to
             communicate. */}
-        <span className="w-full text-[12px] leading-relaxed text-[var(--text-muted)]">
+        <span className="w-full text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
           {audienceLine(q, rules, maps)}
         </span>
         {options.length > 0 && (
-          <span className="w-full text-[12px] leading-relaxed text-[var(--text-muted)]">
+          <span className="w-full text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
             Choices: {options.join(", ")}
           </span>
         )}
@@ -781,13 +781,13 @@ function QuestionCard({
         </div>
         {q.sensitive && <EmergencyToggle question={q} />}
         {q.required && q.allowDeferral && (
-          <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+          <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
             needed by
             <input type="date" name="requiredBy" defaultValue={q.requiredBy ?? ""} className={`${INPUT} py-1`} />
           </label>
         )}
         {q.requiredBy && (
-          <p className="text-[12px] text-[var(--text-muted)]">
+          <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
             After {new Date(q.requiredBy).toLocaleDateString()}, anyone who answered
             &ldquo;I don&rsquo;t know yet&rdquo; counts as still owing an answer.
           </p>
@@ -797,7 +797,7 @@ function QuestionCard({
             Save
           </button>
         </div>
-        <p className="text-[12px] text-[var(--text-muted)]">
+        <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
           {q.sensitive
             ? "This one is restricted, and that can't be changed here — un-restricting it would make every answer so far readable by the whole community. If it was filed wrongly, archive it and add it again with an audience."
             : "This one is readable by the whole community, and that can't be changed here either. To restrict it, archive it and add it again with an audience."}
@@ -806,26 +806,26 @@ function QuestionCard({
 
       <form action={q.archivedAt ? unarchiveProfileQuestionAction : archiveProfileQuestionAction} className="mt-2">
         <input type="hidden" name="questionId" value={q.id} />
-        <button type="submit" className="text-[12px] text-[var(--text-muted)] hover:underline">
+        <button type="submit" className="text-[length:var(--text-meta)] text-[var(--text-muted)] hover:underline">
           {q.archivedAt ? "Unarchive this question" : "Archive this question"}
         </button>
       </form>
 
       {q.sensitive && (
         <div className="mt-3 border-t border-[var(--border)] pt-3">
-          <p className="text-[12px] font-medium text-[var(--text-muted)]">Who can read this</p>
-          <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--text-muted)]">
+          <p className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Who can read this</p>
+          <p className="mt-0.5 text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
             {audienceLine(q, rules, maps)}
           </p>
 
           {rules.length > 0 && (
             <div className="mt-2 flex flex-col gap-1.5">
               {rules.map((r) => (
-                <div key={r.id} className="flex items-center gap-2 text-[12px] text-[var(--text)]">
+                <div key={r.id} className="flex items-center gap-2 text-[length:var(--text-meta)] text-[var(--text)]">
                   <span className="flex-1">Readable by {ruleRoute(r, maps)}</span>
                   <form action={deleteSensitiveFieldAccessRuleAction}>
                     <input type="hidden" name="ruleId" value={r.id} />
-                    <button type="submit" className="text-[12px] text-[var(--text-muted)] hover:underline">
+                    <button type="submit" className="text-[length:var(--text-meta)] text-[var(--text-muted)] hover:underline">
                       Remove
                     </button>
                   </form>
@@ -838,18 +838,18 @@ function QuestionCard({
               already answered, so what it does is stated on the control
               rather than in a preamble some distance away. */}
           <details className="mt-2">
-            <summary className="cursor-pointer text-[12px] text-[var(--accent-1)]">
+            <summary className="cursor-pointer text-[length:var(--text-meta)] text-[var(--accent-1)]">
               Add a group that can read this
             </summary>
             <div className="mt-2 flex max-w-[560px] flex-col gap-2">
-              <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+              <p className="text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
                 Adding a group is a <strong>widening</strong>, and widening asks the people already
                 affected: the new group reaches only answers given from the moment it exists. Everyone
                 who has already answered is told about it and asked whether to extend sharing, and
                 until each of them says yes their answer stays with the audience that already had it.
                 That&rsquo;s the difference between widening an audience and quietly taking it.
               </p>
-              <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+              <p className="text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
                 Removing the last one leaves this readable by the person who answered and nobody else.
               </p>
               <form action={createSensitiveFieldAccessRuleAction} className="flex flex-col gap-2">
@@ -894,7 +894,7 @@ function QuestionCard({
 
 function Fact({ children }: { children: React.ReactNode }) {
   return (
-    <span className="rounded-[var(--radius-md)] bg-[var(--surface-sunken)] px-1.5 py-0.5 text-[11px] text-[var(--text-muted)]">
+    <span className="rounded-[var(--radius-md)] bg-[var(--surface-sunken)] px-1.5 py-0.5 text-[length:var(--text-micro)] text-[var(--text-muted)]">
       {children}
     </span>
   );
@@ -916,7 +916,7 @@ function IndicatorToggle({ question }: { question: typeof profileQuestionTable.$
   return (
     <div className="flex flex-col gap-1">
       <label
-        className={`flex items-center gap-2 text-[13px] ${canPublish ? "text-[var(--text)]" : "text-[var(--text-muted)]"}`}
+        className={`flex items-center gap-2 text-[length:var(--text-body)] ${canPublish ? "text-[var(--text)]" : "text-[var(--text-muted)]"}`}
       >
         <input
           type="checkbox"
@@ -927,13 +927,13 @@ function IndicatorToggle({ question }: { question: typeof profileQuestionTable.$
         show the answers on the community page
       </label>
       {canPublish && family ? (
-        <p className="text-[12px] text-[var(--text-muted)]">
+        <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Shown as {INDICATOR_FAMILY_LABELS[family].toLowerCase()} &mdash; the form follows from the
           answer type, so it can&rsquo;t end up describing the answers wrongly.
         </p>
       ) : (
         blocker && (
-          <p className="max-w-[560px] text-[12px] text-[var(--text-muted)]">
+          <p className="max-w-[560px] text-[length:var(--text-meta)] text-[var(--text-muted)]">
             Not available here, because {blocker.reason}. {blocker.remedy}
           </p>
         )
@@ -962,7 +962,7 @@ function EmergencyToggle({ question }: { question: typeof profileQuestionTable.$
   return (
     <div className="flex flex-col gap-1">
       <label
-        className={`flex items-center gap-2 text-[13px] ${blocked ? "text-[var(--text-muted)]" : "text-[var(--text)]"}`}
+        className={`flex items-center gap-2 text-[length:var(--text-body)] ${blocked ? "text-[var(--text-muted)]" : "text-[var(--text)]"}`}
       >
         <input
           type="checkbox"
@@ -976,20 +976,20 @@ function EmergencyToggle({ question }: { question: typeof profileQuestionTable.$
         </span>
       </label>
       {question.emergencyAccess && question.publishedAsIndicator ? (
-        <p className="max-w-[560px] text-[12px] text-[var(--text-muted)]">
+        <p className="max-w-[560px] text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Not available while this question is published on the community page. An indicator is
           already readable by the whole community, so there&rsquo;s nothing for an emergency override
           to reach — and this isn&rsquo;t the kind of question anyone needs in an emergency.
           Unpublish it first, or leave this off.
         </p>
       ) : !question.sensitive && !question.emergencyAccess ? (
-        <p className="max-w-[560px] text-[12px] text-[var(--text-muted)]">
+        <p className="max-w-[560px] text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Not available on a public question. Emergency access overrides a restriction, so it needs
           one to override — and on a question everyone can already read there&rsquo;s nothing to
           reveal, which would put a read of public data in the log as though it had been protected.
         </p>
       ) : !question.emergencyAccess ? (
-        <p className="max-w-[560px] text-[12px] text-[var(--text-muted)]">
+        <p className="max-w-[560px] text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Turning this on for a question people have already answered asks each of them. They
           answered a question whose answers couldn&rsquo;t be pulled out in a crisis, and the reach
           is now being handed to whoever activates Emergency access on their page — so they get asked

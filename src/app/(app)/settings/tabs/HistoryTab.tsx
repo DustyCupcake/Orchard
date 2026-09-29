@@ -105,8 +105,8 @@ function FilterRow({
       href={key ? `/settings?tab=history&entity=${key}` : "/settings?tab=history"}
       className={
         active === key || (key === null && active === null)
-          ? "rounded-[var(--radius-sm)] border border-[var(--accent-1)] bg-[var(--surface)] px-2.5 py-1 text-[12px] text-[var(--text)]"
-          : "rounded-[var(--radius-sm)] border border-[var(--border)] px-2.5 py-1 text-[12px] text-[var(--text-muted)] hover:text-[var(--text)]"
+          ? "rounded-[var(--radius-sm)] border border-[var(--accent-1)] bg-[var(--surface)] px-2.5 py-1 text-[length:var(--text-meta)] text-[var(--text)]"
+          : "rounded-[var(--radius-sm)] border border-[var(--border)] px-2.5 py-1 text-[length:var(--text-meta)] text-[var(--text-muted)] hover:text-[var(--text)]"
       }
     >
       {label} <span className="text-[var(--text-muted)]">{count}</span>
@@ -134,8 +134,8 @@ export default function HistoryTab({
   return (
     <section className="flex flex-col gap-4">
       <div>
-        <h2 className="text-[22px] font-semibold text-[var(--text)]">Change log</h2>
-        <p className="mt-1 max-w-[620px] text-[13px] leading-relaxed text-[var(--text-muted)]">
+        <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Change log</h2>
+        <p className="mt-1 max-w-[620px] text-[length:var(--text-body)] leading-relaxed text-[var(--text-muted)]">
           Every change to a setting, one line per field, newest first. Old and new values both
           kept, so it also answers what a setting was before.
         </p>
@@ -144,7 +144,7 @@ export default function HistoryTab({
       <FilterRow counts={counts} active={activeEntity} />
 
       {groups.length === 0 ? (
-        <p className="text-[13px] text-[var(--text-muted)]">
+        <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
           {activeEntity
             ? `Nothing has changed ${ENTITY_LABEL[activeEntity]?.toLowerCase() ?? activeEntity} yet.`
             : "Nothing has been logged yet."}
@@ -153,7 +153,7 @@ export default function HistoryTab({
         <ol className="flex flex-col">
           {groups.map((g) => (
             <li key={g.rows[0].id} className="border-t border-[var(--border)] py-3 first:border-t-0">
-              <div className="flex flex-wrap items-baseline gap-x-2 text-[12px] text-[var(--text-muted)]">
+              <div className="flex flex-wrap items-baseline gap-x-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 <span className="font-medium text-[var(--text)]">{g.actorName}</span>
                 <span>
                   changed {g.rows.length === 1 ? "one setting" : `${g.rows.length} settings`}
@@ -170,7 +170,7 @@ export default function HistoryTab({
                   // nowhere — the sentence already stands on its own.
                   const kind = ENTITY_LABEL[r.entity];
                   return (
-                    <li key={r.id} className="text-[13px] leading-relaxed text-[var(--text)]">
+                    <li key={r.id} className="text-[length:var(--text-body)] leading-relaxed text-[var(--text)]">
                       {r.entity === "community" ? null : (
                         <span className="text-[var(--text-muted)]">{r.entityLabel ? `${kind}: ` : `${kind} — `}</span>
                       )}

@@ -21,7 +21,7 @@ export default async function IntroCallPage({ params }: { params: Promise<{ toke
   if (!found) {
     return (
       <main className="mx-auto max-w-[480px] px-6 py-16">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Intro call</h1>
+        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Intro call</h1>
         <div className="mt-4">
           <Banner tone="danger">This link isn&rsquo;t valid.</Banner>
         </div>
@@ -34,8 +34,8 @@ export default async function IntroCallPage({ params }: { params: Promise<{ toke
 
   return (
     <main className="mx-auto max-w-[900px] px-6 py-16">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Intro call</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Intro call</h1>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Paint the windows you&rsquo;re free to talk — nobody, including you, sees anyone else&rsquo;s
         submission until a time is confirmed.
       </p>

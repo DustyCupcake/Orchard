@@ -88,8 +88,8 @@ function StatusButtons({
       {CHOICES.map((choice) => {
         const selected = myStatus === choice;
         const classes = selected
-          ? "rounded-[var(--radius-md)] border border-[var(--accent-1)] bg-[var(--accent-1-soft)] px-2.5 py-1 text-[12px] font-medium text-[var(--accent-1)]"
-          : "rounded-[var(--radius-md)] border border-[var(--border)] bg-transparent px-2.5 py-1 text-[12px] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)]";
+          ? "rounded-[var(--radius-md)] border border-[var(--accent-1)] bg-[var(--accent-1-soft)] px-2.5 py-1 text-[length:var(--text-meta)] font-medium text-[var(--accent-1)]"
+          : "rounded-[var(--radius-md)] border border-[var(--border)] bg-transparent px-2.5 py-1 text-[length:var(--text-meta)] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)]";
         return (
           <button
             key={choice}
@@ -107,7 +107,7 @@ function StatusButtons({
           still needs a way back to silence — the full form's select has
           offered "Haven't said" this whole time. */}
       {myStatus !== "unknown" && (
-        <button type="submit" name="status" value="unknown" className={BUTTON_SECONDARY + " px-2 py-1 text-[12px]"}>
+        <button type="submit" name="status" value="unknown" className={BUTTON_SECONDARY + " px-2 py-1 text-[length:var(--text-meta)]"}>
           Clear
         </button>
       )}
@@ -134,9 +134,9 @@ export async function EventParticipationCards({
 
   return (
     <section className="mt-6">
-      <h2 className="text-[22px] font-semibold text-[var(--text)]">Current and upcoming events</h2>
+      <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Current and upcoming events</h2>
       {shown.length === 0 ? (
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
           No open events right now — there&rsquo;s nothing to declare yet.
         </p>
       ) : (
@@ -147,18 +147,18 @@ export async function EventParticipationCards({
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                   <Link
                     href={`/${card.id}/participation`}
-                    className="text-[15px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]"
+                    className="text-[length:var(--text-heading)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]"
                   >
                     {card.name}
                   </Link>
-                  <span className="inline-flex items-center gap-1 text-[13px] text-[var(--text-muted)]">
+                  <span className="inline-flex items-center gap-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                     <CalendarBlank size={14} />
                     {dateRange(card.startDate, card.endDate)}
                   </span>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] pt-2">
                   <StatusButtons cycleId={card.id} myStatus={card.myStatus} action={action} />
-                  <span className="inline-flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+                  <span className="inline-flex items-center gap-1.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
                     <Users size={14} />
                     {participationCount(card)}
                     {/* Over capacity is a real, visible number everywhere
@@ -173,7 +173,7 @@ export async function EventParticipationCards({
             ))}
           </div>
           {cards.length > MAX_CARDS && (
-            <Link href="/participation" className="mt-2 inline-block text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+            <Link href="/participation" className="mt-2 inline-block text-[length:var(--text-body)] font-medium text-[var(--accent-1)] hover:underline">
               See all {cards.length} open events →
             </Link>
           )}
@@ -228,14 +228,14 @@ export async function EventComingRibbon({
   return (
     <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--accent-1-border)] bg-[var(--accent-1-soft)] px-4 py-3">
       <div className="min-w-0">
-        <p className="text-[14px] font-medium text-[var(--accent-1)]">
+        <p className="text-[length:var(--text-body)] font-medium text-[var(--accent-1)]">
           You&rsquo;re not down as coming for{" "}
           <Link href={`/${cycle.id}/participation`} className="underline hover:no-underline">
             {cycle.name}
           </Link>
           .
         </p>
-        <p className="mt-0.5 text-[13px] text-[var(--accent-1)]">
+        <p className="mt-0.5 text-[length:var(--text-body)] text-[var(--accent-1)]">
           {dateRange(cycle.startDate, cycle.endDate)} · {participationCount(summary)}
         </p>
       </div>

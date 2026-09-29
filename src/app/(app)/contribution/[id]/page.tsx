@@ -37,7 +37,7 @@ export default async function MemberContributionPage({
 
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-      <Link href="/contribution" className="text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+      <Link href="/contribution" className="text-[length:var(--text-body)] font-medium text-[var(--accent-1)] hover:underline">
         ← Back to your contribution
       </Link>
 
@@ -45,7 +45,7 @@ export default async function MemberContributionPage({
 
       {result && (
         <>
-          <h1 className="mt-4 text-[32px] font-semibold leading-tight text-[var(--text)]">
+          <h1 className="mt-4 text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">
             {result.memberName}&rsquo;s contribution
           </h1>
           <div className="mt-4">

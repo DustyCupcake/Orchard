@@ -71,8 +71,8 @@ export default async function QuestionsPage({
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Your questions</h1>
-      <p className="mb-6 mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Your questions</h1>
+      <p className="mb-6 mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Things your community has asked about you. Answer what you can — &ldquo;I don&rsquo;t know
         yet&rdquo; is a real answer and is never held against you. Anything already answered lives on
         your <Link href="/profile" className="text-[var(--accent-1)] hover:underline">profile</Link>.
@@ -86,10 +86,10 @@ export default async function QuestionsPage({
 
       {focus && (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] px-4 py-2.5">
-          <p className="text-[13px] text-[var(--text)]">
+          <p className="text-[length:var(--text-body)] text-[var(--text)]">
             Showing what&rsquo;s needed for <strong className="font-semibold">{focus.name}</strong>
           </p>
-          <Link href={`/${focus.id}/participation`} className="text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+          <Link href={`/${focus.id}/participation`} className="text-[length:var(--text-body)] font-medium text-[var(--accent-1)] hover:underline">
             Back to the event →
           </Link>
         </div>
@@ -97,9 +97,9 @@ export default async function QuestionsPage({
 
       {outstanding.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] px-7 py-8 text-center">
-          <p className="text-[13px] text-[var(--text-muted)]">Nothing outstanding — you&rsquo;re all caught up.</p>
+          <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">Nothing outstanding — you&rsquo;re all caught up.</p>
           {focus && (
-            <Link href={`/${focus.id}/participation`} className="text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+            <Link href={`/${focus.id}/participation`} className="text-[length:var(--text-body)] font-medium text-[var(--accent-1)] hover:underline">
               Back to {focus.name}
             </Link>
           )}
@@ -161,22 +161,22 @@ function QuestionGroup({
   if (items.length === 0) return null;
   return (
     <section className="mb-6">
-      <h2 className="text-[18px] font-semibold text-[var(--text)]">{title}</h2>
-      <p className="mb-3 mt-1 text-[13px] text-[var(--text-muted)]">{blurb}</p>
+      <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{title}</h2>
+      <p className="mb-3 mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{blurb}</p>
       <div className="flex flex-col gap-2">
         {items.map(({ question, existingAnswer }) => (
           <div key={`${question.id}-${cycleId ?? "once"}`} className={CARD}>
-            <p className="text-[14px] font-medium text-[var(--text)]">
+            <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
               {question.label}
               {question.required ? " *" : ""}
               {question.requiredBy && (
-                <span className="ml-2 text-[12px] font-normal text-[var(--text-muted)]">
+                <span className="ml-2 text-[length:var(--text-meta)] font-normal text-[var(--text-muted)]">
                   needed by {new Date(question.requiredBy).toLocaleDateString()}
                 </span>
               )}
             </p>
             {existingAnswer?.status === "deferred" && (
-              <p className="mt-1 text-[12px] text-[var(--text-muted)]">You said you didn&rsquo;t know yet.</p>
+              <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">You said you didn&rsquo;t know yet.</p>
             )}
             <ProfileQuestionForm
               action={submitQuestionAnswerAction}

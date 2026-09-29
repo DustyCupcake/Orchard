@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!--
+    Orchard's mark: three fruit on a tree canopy over a trunk.
+
+    Drawn rather than lettered because a wordmark needs the community's
+    name, which is per-install and set in the app's own display face — an
+    icon has to work without it. The shape is built from the same two
+    radius steps as the UI (5px at a 32px box ≈ the --radius-md ratio)
+    so it sits with the cards rather than on top of them.
+  -->
+  <rect width="32" height="32" rx="6" fill="#2f6b4f" />
+  <path d="M16 25V15" stroke="#f7f5f0" stroke-width="2.4" stroke-linecap="round" />
+  <circle cx="10.5" cy="11" r="3.1" fill="#f7f5f0" />
+  <circle cx="21.5" cy="11" r="3.1" fill="#f7f5f0" />
+  <circle cx="16" cy="7.6" r="3.1" fill="#f7f5f0" />
+</svg>

@@ -49,8 +49,8 @@ export function SettingsSection({
   return (
     <section className="flex flex-col gap-3">
       <div>
-        <h2 className="text-[22px] font-semibold text-[var(--text)]">{title}</h2>
-        {description && <p className="mt-1 max-w-[620px] text-[13px] text-[var(--text-muted)]">{description}</p>}
+        <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{title}</h2>
+        {description && <p className="mt-1 max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">{description}</p>}
       </div>
       {children}
     </section>
@@ -73,9 +73,9 @@ function CardShell({
       {(title || description) && (
         <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
-            {title && <h3 className="text-[15px] font-medium text-[var(--text)]">{title}</h3>}
+            {title && <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">{title}</h3>}
             {description && (
-              <p className="mt-0.5 max-w-[560px] text-[12px] text-[var(--text-muted)]">{description}</p>
+              <p className="mt-0.5 max-w-[560px] text-[length:var(--text-meta)] text-[var(--text-muted)]">{description}</p>
             )}
           </div>
           {aside}
@@ -186,14 +186,14 @@ export function SettingsCard({
         aria-label={summaryLabel(title, state, stateLabel, affordance)}
         className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1"
       >
-        {title && <h3 className="text-[15px] font-medium text-[var(--text)]">{title}</h3>}
+        {title && <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">{title}</h3>}
         {state && (
-          <div className="w-full text-[12px] leading-relaxed text-[var(--text-muted)]">{state}</div>
+          <div className="w-full text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">{state}</div>
         )}
-        <span className="ml-auto text-[12px] text-[var(--accent-1)]">{affordance}</span>
+        <span className="ml-auto text-[length:var(--text-meta)] text-[var(--accent-1)]">{affordance}</span>
       </summary>
       {description && (
-        <p className="mt-2 max-w-[560px] text-[12px] leading-relaxed text-[var(--text-muted)]">
+        <p className="mt-2 max-w-[560px] text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
           {description}
         </p>
       )}
@@ -249,7 +249,7 @@ export function SettingsField({
     <label className={`flex flex-col gap-1 ${wide ? "w-full" : "max-w-[420px]"}`}>
       <span className={LABEL}>{label}</span>
       {children}
-      {hint && <span className="text-[12px] leading-relaxed text-[var(--text-muted)]">{hint}</span>}
+      {hint && <span className="text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">{hint}</span>}
     </label>
   );
 }
@@ -402,14 +402,14 @@ export function ToggleField({
   if (disabledReason) {
     return (
       <div className="flex flex-col gap-0.5">
-        <span className="text-[13px] text-[var(--text-muted)]">{label}</span>
-        <span className="text-[12px] text-[var(--text-muted)]">{disabledReason}</span>
+        <span className="text-[length:var(--text-body)] text-[var(--text-muted)]">{label}</span>
+        <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{disabledReason}</span>
       </div>
     );
   }
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+      <span className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
         <input type="hidden" name={name} value="off" />
         <input
           type="checkbox"
@@ -419,7 +419,7 @@ export function ToggleField({
         />
         {label}
       </span>
-      {hint && <span className="max-w-[560px] text-[12px] leading-relaxed text-[var(--text-muted)]">{hint}</span>}
+      {hint && <span className="max-w-[560px] text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">{hint}</span>}
     </div>
   );
 }
@@ -430,7 +430,7 @@ export function ToggleField({
 export function FieldGroup({ legend, children }: { legend: string; children: ReactNode }) {
   return (
     <fieldset className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] p-3">
-      <legend className="px-1 text-[12px] font-medium text-[var(--text-muted)]">{legend}</legend>
+      <legend className="px-1 text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">{legend}</legend>
       {children}
     </fieldset>
   );
@@ -506,19 +506,19 @@ export function SettingsGroup({
     // heading. The disclosure lives *inside* it so the group can still be
     // closed until you ask for the controls.
     <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3.5">
-      <legend className="px-1 text-[12px] font-medium text-[var(--text-muted)]">{title}</legend>
+      <legend className="px-1 text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">{title}</legend>
       <details>
         <summary
           aria-label={summaryLabel(title, state, stateLabel, "Edit")}
           className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1"
         >
           {state && (
-            <span className="text-[12px] leading-relaxed text-[var(--text-muted)]">{state}</span>
+            <span className="text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">{state}</span>
           )}
-          <span className="ml-auto text-[12px] text-[var(--accent-1)]">Edit</span>
+          <span className="ml-auto text-[length:var(--text-meta)] text-[var(--accent-1)]">Edit</span>
         </summary>
         {description && (
-          <p className="mt-2 max-w-[620px] text-[12px] leading-relaxed text-[var(--text-muted)]">
+          <p className="mt-2 max-w-[620px] text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
             {description}
           </p>
         )}
@@ -540,7 +540,7 @@ export function SettingsGroup({
 // between a copyable example and a wall of escaped JSON.
 export function CodeSample({ children }: { children: string }) {
   return (
-    <pre className="overflow-x-auto rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--neutral-100)] p-3 text-[12px] leading-relaxed text-[var(--text-muted)]">
+    <pre className="overflow-x-auto rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--neutral-100)] p-3 text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
       {children}
     </pre>
   );

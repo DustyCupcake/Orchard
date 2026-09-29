@@ -46,7 +46,7 @@ export default function CycleSwitcher({
   if (!ctx.hasAnyOpenCycle) {
     if (collapsed) return null;
     return (
-      <div className="border-b border-[var(--border)] px-3 py-2.5 text-[12px] text-[var(--text-muted)]">
+      <div className="border-b border-[var(--border)] px-3 py-2.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
         {ctx.canInitiateCycle ? (
           <Link href="/active/participation" className="text-[var(--accent-1)] hover:underline">
             Start an event
@@ -81,7 +81,7 @@ export default function CycleSwitcher({
         onClick={() => setOpen((v) => !v)}
         title={collapsed ? currentLabel : undefined}
         aria-expanded={open}
-        className={`flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left text-[13px] text-[var(--text)] hover:bg-[var(--surface-sunken)] ${
+        className={`flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-left text-[length:var(--text-body)] text-[var(--text)] hover:bg-[var(--surface-sunken)] ${
           collapsed ? "justify-center" : "justify-between"
         }`}
       >
@@ -96,7 +96,7 @@ export default function CycleSwitcher({
         <div className="absolute left-2 right-2 top-full z-10 mt-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] py-1 shadow-lg">
           <button
             onClick={() => selectScope("active")}
-            className={`flex w-full items-center px-3 py-1.5 text-left text-[13px] hover:bg-[var(--surface-sunken)] ${
+            className={`flex w-full items-center px-3 py-1.5 text-left text-[length:var(--text-body)] hover:bg-[var(--surface-sunken)] ${
               currentScope === "active" ? "font-medium text-[var(--accent-1)]" : "text-[var(--text)]"
             }`}
           >
@@ -106,7 +106,7 @@ export default function CycleSwitcher({
             <div key={c.id} className="group/cycleitem flex items-center">
               <button
                 onClick={() => selectScope(c.id)}
-                className={`flex flex-1 items-center truncate px-3 py-1.5 text-left text-[13px] hover:bg-[var(--surface-sunken)] ${
+                className={`flex flex-1 items-center truncate px-3 py-1.5 text-left text-[length:var(--text-body)] hover:bg-[var(--surface-sunken)] ${
                   currentScope === c.id ? "font-medium text-[var(--accent-1)]" : "text-[var(--text)]"
                 }`}
               >
@@ -138,14 +138,14 @@ export default function CycleSwitcher({
           <Link
             href={`/${currentScope}/participation`}
             onClick={() => setOpen(false)}
-            className="block px-3 py-1.5 text-[13px] text-[var(--text)] hover:bg-[var(--surface-sunken)]"
+            className="block px-3 py-1.5 text-[length:var(--text-body)] text-[var(--text)] hover:bg-[var(--surface-sunken)]"
           >
             Manage events
           </Link>
           <Link
             href="/cycles"
             onClick={() => setOpen(false)}
-            className="block px-3 py-1.5 text-[13px] text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
+            className="block px-3 py-1.5 text-[length:var(--text-body)] text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
           >
             Find a closed event
           </Link>

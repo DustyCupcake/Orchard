@@ -5,7 +5,7 @@ import { getConsentGaps, getMemberData } from "@/lib/member-data";
 
 export const dynamic = "force-dynamic";
 
-const TH = "border-b border-[var(--border)] px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]";
+const TH = "border-b border-[var(--border)] px-2 py-2 text-left text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]";
 const TD = "border-b border-[var(--border)] px-2 py-2 align-top text-[var(--text)]";
 
 /**
@@ -62,14 +62,14 @@ export default async function MemberDataPage({
 
   return (
     <main className="mx-auto max-w-[1000px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Member data</h1>
-      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Member data</h1>
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Everything your Community asks about its members, in one table. Pick the columns, filter to a
         value, or read the counts. You only ever see a question you&rsquo;re entitled to — anyone
         else&rsquo;s answer is absent rather than hidden, so nothing is here for you to
         accidentally reveal.
       </p>
-      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
         A question per event is asked again each time, so it isn&rsquo;t here — that&rsquo;s{" "}
         <Link href="/questions" className="text-[var(--accent-1)] hover:underline">
           /questions
@@ -85,10 +85,10 @@ export default async function MemberDataPage({
         <form method="get" className="mt-4 flex flex-col gap-2">
           <input type="hidden" name="view" value={asReport ? "report" : "table"} />
           {filter && <input type="hidden" name="q" value={filter} />}
-          <span className="text-[12px] font-medium text-[var(--text)]">Columns</span>
+          <span className="text-[length:var(--text-meta)] font-medium text-[var(--text)]">Columns</span>
           <div className="flex flex-wrap gap-3">
             {allColumns.map((c) => (
-              <label key={c.id} className="flex items-center gap-1.5 text-[13px] text-[var(--text)]">
+              <label key={c.id} className="flex items-center gap-1.5 text-[length:var(--text-body)] text-[var(--text)]">
                 <input
                   type="checkbox"
                   name="columns"
@@ -98,7 +98,7 @@ export default async function MemberDataPage({
                 />
                 {c.label}
                 {c.withheld && (
-                  <span className="text-[12px] text-[var(--text-muted)]">
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                     — restricted, you&rsquo;re not in the audience
                   </span>
                 )}
@@ -107,27 +107,27 @@ export default async function MemberDataPage({
           </div>
           <div className="flex flex-wrap items-end gap-2">
             <label className="flex flex-col gap-1">
-              <span className="text-[12px] text-[var(--text-muted)]">Contains</span>
+              <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">Contains</span>
               <input
                 type="text"
                 name="q"
                 defaultValue={filter}
                 placeholder="e.g. peanut"
-                className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)]"
+                className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[length:var(--text-body)] text-[var(--text)]"
               />
             </label>
-            <button type="submit" className="rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--text)] hover:bg-[var(--surface-sunken)]">
+            <button type="submit" className="rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[length:var(--text-body)] text-[var(--text)] hover:bg-[var(--surface-sunken)]">
               Apply
             </button>
             <Link
               href="/members/data"
-              className="rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--text)] hover:bg-[var(--surface-sunken)]"
+              className="rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[length:var(--text-body)] text-[var(--text)] hover:bg-[var(--surface-sunken)]"
             >
               All columns
             </Link>
             <Link
               href={asReport ? "/members/data" : "/members/data?view=report"}
-              className="rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[13px] text-[var(--text)] hover:bg-[var(--surface-sunken)]"
+              className="rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[length:var(--text-body)] text-[var(--text)] hover:bg-[var(--surface-sunken)]"
             >
               {asReport ? "Show the table" : "Show reports"}
             </Link>
@@ -136,7 +136,7 @@ export default async function MemberDataPage({
       )}
 
       {data.columns.length === 0 && (
-        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
           No columns selected. Tick one above — or{" "}
           <Link href="/members/data" className="text-[var(--accent-1)] hover:underline">
             show all
@@ -151,8 +151,8 @@ export default async function MemberDataPage({
             const gap = gapByQuestion.get(c.question.id);
             return (
               <section key={c.question.id} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-                <h2 className="text-[15px] font-semibold text-[var(--text)]">{c.question.label}</h2>
-                <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                <h2 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">{c.question.label}</h2>
+                <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                   {filter
                     ? `${c.entries.length} matching, of ${c.population} members`
                     : `${c.entries.length} of ${c.population} have answered`}
@@ -165,7 +165,7 @@ export default async function MemberDataPage({
                     {c.breakdown.map((b) => (
                       <li
                         key={b.option}
-                        className="rounded-[var(--radius-md)] border border-[var(--border)] px-2 py-1 text-[13px] text-[var(--text)]"
+                        className="rounded-[var(--radius-md)] border border-[var(--border)] px-2 py-1 text-[length:var(--text-body)] text-[var(--text)]"
                       >
                         {b.option} <span className="text-[var(--text-muted)]">{b.count}</span>
                       </li>
@@ -179,7 +179,7 @@ export default async function MemberDataPage({
                 {c.entries.length > 0 && (
                   <ul className="mt-2 flex flex-col gap-1">
                     {c.entries.map((e) => (
-                      <li key={e.memberId} className="text-[13px] text-[var(--text)]">
+                      <li key={e.memberId} className="text-[length:var(--text-body)] text-[var(--text)]">
                         <Link
                           href={`/members/${e.memberId}`}
                           className="font-medium text-[var(--accent-1)] hover:underline"
@@ -199,7 +199,7 @@ export default async function MemberDataPage({
 
       {data.columns.length > 0 && !asReport && (
         <div className="mt-6 overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-[length:var(--text-body)]">
             <thead>
               <tr>
                 <th className={TH}>Member</th>

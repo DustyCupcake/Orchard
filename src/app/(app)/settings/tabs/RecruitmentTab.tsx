@@ -91,7 +91,7 @@ export default async function RecruitmentTab({
               overrides.length > 0 ? (
                 <Link
                   href="#lane-overrides"
-                  className="text-[12px] font-medium text-[var(--accent-1)] hover:underline"
+                  className="text-[length:var(--text-meta)] font-medium text-[var(--accent-1)] hover:underline"
                 >
                   {overrides.length} event{overrides.length === 1 ? "" : "s"} override
                   {overrides.length === 1 ? "s" : ""} these
@@ -117,8 +117,8 @@ export default async function RecruitmentTab({
             <div className="flex flex-col gap-3">
               {JOINING_LANE_ORDER.map((lane) => (
                 <div key={lane} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-                  <p className="text-[13px] font-medium text-[var(--text)]">{laneTitle(lane)}</p>
-                  <p className="mt-1 text-[13px] text-[var(--text-muted)]">{laneSummary(lanes[lane])}</p>
+                  <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{laneTitle(lane)}</p>
+                  <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{laneSummary(lanes[lane])}</p>
                 </div>
               ))}
             </div>
@@ -132,13 +132,13 @@ export default async function RecruitmentTab({
             community even after the community moves on. */}
         {overrides.length > 0 && (
           <div id="lane-overrides" className="mt-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-            <p className="text-[12px] font-medium text-[var(--text)]">
+            <p className="text-[length:var(--text-meta)] font-medium text-[var(--text)]">
               {overrides.length === 1 ? "One event runs" : `${overrides.length} events run`} different
               admission rules
             </p>
             <ul className="mt-1.5 flex flex-col gap-1">
               {overrides.map((o) => (
-                <li key={o.cycleId} className="text-[12px] text-[var(--text-muted)]">
+                <li key={o.cycleId} className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   <Link
                     href={`/${o.cycleId}/participation`}
                     className="font-medium text-[var(--accent-1)] hover:underline"
@@ -149,7 +149,7 @@ export default async function RecruitmentTab({
                 </li>
               ))}
             </ul>
-            <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+            <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               Changing a rule above reaches every event except these — and reaches these only for
               the lanes they haven&rsquo;t overridden.
             </p>
@@ -189,7 +189,7 @@ export default async function RecruitmentTab({
       >
         {noFormConfigured && (
           <SettingsPanel title="No application form yet">
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               Build one under the Forms tab, then choose it here. Until you do, every lane that asks
               for a form has nothing to ask with — including the public application, which is only a
               door at all once there&rsquo;s something behind it.
@@ -268,7 +268,7 @@ export default async function RecruitmentTab({
           {authorized ? (
             <DecisionRulesEditor initial={community.recruitmentDecisionRules as DecisionRule[]} />
           ) : (
-            <p className="text-[13px] leading-relaxed text-[var(--text)]">
+            <p className="text-[length:var(--text-body)] leading-relaxed text-[var(--text)]">
               {(community.recruitmentDecisionRules as DecisionRule[]).length === 0
                 ? "No rules configured — no application can be decided at all."
                 : describeDecisionRules(community.recruitmentDecisionRules as DecisionRule[])}

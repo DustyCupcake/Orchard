@@ -423,10 +423,10 @@ export default async function BoardPage({
           <p className="font-medium">Marked as done.</p>
           {relatedToFinished.length > 0 && (
             <>
-              <p className="mb-1 mt-2 text-[12px] font-medium opacity-80">You might also like:</p>
+              <p className="mb-1 mt-2 text-[length:var(--text-meta)] font-medium opacity-80">You might also like:</p>
               <ul className="flex flex-col gap-0.5">
                 {relatedToFinished.map((t) => (
-                  <li key={t.id} className="text-[13px]">
+                  <li key={t.id} className="text-[length:var(--text-body)]">
                     <Link href={`/tasks/${t.id}`} className="font-medium hover:underline">
                       {t.title}
                     </Link>{" "}
@@ -445,13 +445,13 @@ export default async function BoardPage({
           {allTags.length > 0 && <TagFilter tags={allTags} selectedTag={tag} />}
           <Link
             href={fitToggleHref}
-            className={sortByFit ? "text-[13px] font-medium text-[var(--accent-1)]" : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"}
+            className={sortByFit ? "text-[length:var(--text-body)] font-medium text-[var(--accent-1)]" : "text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--text)]"}
           >
             {sortByFit ? "✓ Sorted by what fits me" : "Sort by what fits me"}
           </Link>
           <Link
             href={cyclelessToggleHref}
-            className={hidingCycleless ? "text-[13px] font-medium text-[var(--accent-1)]" : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"}
+            className={hidingCycleless ? "text-[length:var(--text-body)] font-medium text-[var(--accent-1)]" : "text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--text)]"}
           >
             {hidingCycleless ? "✓ Hiding not-event-scoped tasks" : "Hide not-event-scoped tasks"}
           </Link>
@@ -459,7 +459,7 @@ export default async function BoardPage({
       )}
 
       {branches.length === 0 && (
-        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
           No branches yet — a current Admins holder can set up this Community&rsquo;s branches (and
           its first tasks) from the Settings screen.
         </p>
@@ -468,7 +468,7 @@ export default async function BoardPage({
       <TaskSelectionBar />
 
       {canExport && !exportCycle && (
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Narrow the event switcher to one specific event to export a Task Pack — exporting
           doesn&rsquo;t guess which event you mean while it&rsquo;s scoped to &ldquo;All active
           events&rdquo;.
@@ -477,7 +477,7 @@ export default async function BoardPage({
 
       {/* Advanced filters — collapsed by default, in-memory over fetched list */}
       <details className="mt-4">
-        <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
+        <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
           Advanced filters
         </summary>
         <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -515,14 +515,14 @@ export default async function BoardPage({
 
           <Link
             href={boardHref({ hasSlots: hasSlots !== "1" })}
-            className={hasSlots === "1" ? "text-[13px] font-medium text-[var(--accent-1)]" : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"}
+            className={hasSlots === "1" ? "text-[length:var(--text-body)] font-medium text-[var(--accent-1)]" : "text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--text)]"}
           >
             {hasSlots === "1" ? "✓ Has open slots" : "Has open slots"}
           </Link>
 
           <Link
             href={boardHref({ assignedToMe: assignedToMe !== "1" })}
-            className={assignedToMe === "1" ? "text-[13px] font-medium text-[var(--accent-1)]" : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"}
+            className={assignedToMe === "1" ? "text-[length:var(--text-body)] font-medium text-[var(--accent-1)]" : "text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--text)]"}
           >
             {assignedToMe === "1" ? "✓ Assigned to me" : "Assigned to me"}
           </Link>
@@ -539,7 +539,7 @@ export default async function BoardPage({
           />
 
           {(attention || phaseId || duration || hasSlots === "1" || assignedToMe === "1" || dueWithin) && (
-            <Link href={boardHref({ attention: null, phaseId: null, duration: null, hasSlots: false, assignedToMe: false, dueWithin: null })} className="text-[13px] text-[var(--text-muted)] hover:text-[var(--danger)]">
+            <Link href={boardHref({ attention: null, phaseId: null, duration: null, hasSlots: false, assignedToMe: false, dueWithin: null })} className="text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--danger)]">
               Clear all
             </Link>
           )}
@@ -549,20 +549,20 @@ export default async function BoardPage({
       {isDutyHolder && (
         <section className="mt-6 rounded-[var(--radius-md)] border border-[var(--border)] p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
-            <h2 className="text-[15px] font-semibold text-[var(--text)]">Backstop duty</h2>
-            <span className="text-[12px] text-[var(--text-muted)]">
+            <h2 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">Backstop duty</h2>
+            <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
               The critical tasks your backstop covers — you&rsquo;re the named party responsible until each is moving.
             </span>
           </div>
           {dutyTasks.length === 0 && (
-            <p className="mt-3 text-[13px] text-[var(--text-muted)]">No critical tasks in your scope right now.</p>
+            <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">No critical tasks in your scope right now.</p>
           )}
           <ul className="mt-3 flex flex-col gap-2">
             {dutyTasks.map((t) => (
               <li key={t.id} className="flex flex-wrap items-center gap-2">
                 <Link
                   href={`/tasks/${t.id}`}
-                  className="text-[13px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]"
+                  className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]"
                 >
                   {t.title}
                 </Link>
@@ -573,13 +573,13 @@ export default async function BoardPage({
                   </Tag>
                 )}
                 {t.assignments.length === 0 && (
-                  <span className="text-[12px] text-[var(--text-muted)]">
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                     unclaimed — claimable by anyone
                     {backstopNameFor(t) ? `, backstop: ${backstopNameFor(t)}` : ""}
                   </span>
                 )}
                 {t.assignments.length > 0 && (
-                  <span className="text-[12px] text-[var(--text-muted)]">
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                     held by {t.assignments.map((a) => a.memberName).join(", ")}
                   </span>
                 )}
@@ -592,7 +592,7 @@ export default async function BoardPage({
       {activeView === "unclaimed" && (
         <div className="mt-6">
           <div className="mb-3 flex items-center gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+            <span className="text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
               Attention queue
             </span>
             <Tag>{unclaimedQueue.length}</Tag>
@@ -633,7 +633,7 @@ export default async function BoardPage({
             return (
               <div key={col.status}>
                 <div className="mb-3 flex items-center gap-2 border-b border-[var(--border)] pb-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                  <span className="text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                     {col.label}
                   </span>
                   <Tag>{colTasks.length}</Tag>

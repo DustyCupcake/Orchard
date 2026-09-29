@@ -31,7 +31,7 @@ export default function SegmentedControl<T extends string>({
           aria-checked={value === opt.value}
           onClick={() => onChange(opt.value)}
           className={`rounded-[var(--radius-sm)] font-medium transition-colors ${
-            size === "sm" ? "px-2.5 py-1 text-[12px]" : "px-3 py-1.5 text-[13px]"
+            size === "sm" ? "px-2.5 py-1 text-[length:var(--text-meta)]" : "px-3 py-1.5 text-[length:var(--text-body)]"
           } ${
             value === opt.value
               ? "bg-[var(--accent-1)] text-[var(--accent-1-fg)]"

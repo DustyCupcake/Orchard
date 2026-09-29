@@ -85,8 +85,8 @@ export default async function ProposalsPage({
 
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Proposals</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Proposals</h1>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         The review queue —{" "}
         <Link href="/propose" className="text-[var(--accent-1)] hover:underline">
           propose a task
@@ -98,7 +98,7 @@ export default async function ProposalsPage({
       {submitted && <div className="mt-4"><Banner tone="success">Proposal submitted — thank you!</Banner></div>}
       {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
 
-      {proposals.length === 0 && <p className="mt-6 text-[13px] text-[var(--text-muted)]">Nothing here.</p>}
+      {proposals.length === 0 && <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">Nothing here.</p>}
 
       <div className="mt-6">
         {proposals.map((p) => (

@@ -25,8 +25,8 @@ export default async function SchedulingPollsPage() {
 
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Scheduling polls</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Scheduling polls</h1>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Blind availability — you only ever see the aggregate, never who submitted what, until a
         slot is confirmed.
       </p>
@@ -34,17 +34,17 @@ export default async function SchedulingPollsPage() {
         Open a poll
       </Link>
 
-      {polls.length === 0 && <p className="mt-6 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+      {polls.length === 0 && <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
       <div className="mt-6">
         {polls.map((p) => (
           <div
             key={p.id}
             className="mb-2 flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5"
           >
-            <Link href={`/scheduling-polls/${p.id}`} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
+            <Link href={`/scheduling-polls/${p.id}`} className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
               {p.title}
             </Link>
-            <span className="flex shrink-0 items-center gap-2 text-[12px] text-[var(--text-muted)]">
+            <span className="flex shrink-0 items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               {branchNameById.get(p.branchId) ?? "—"}
               {p.confirmedSlotStart ? (
                 <Tag tone="success">confirmed {new Date(p.confirmedSlotStart).toLocaleDateString()}</Tag>

@@ -26,10 +26,10 @@ export default async function PairPage({
   if (!found) {
     return (
       <main className="mx-auto max-w-[560px] px-6 py-16">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">
+        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">
           This link isn&rsquo;t valid
         </h1>
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Ask whoever sent it for a fresh one — the person you named should still have it.
         </p>
       </main>
@@ -44,8 +44,8 @@ export default async function PairPage({
   if (viewer && !isNamer) {
     return (
       <main className="mx-auto max-w-[560px] px-6 py-16">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Not your link</h1>
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Not your link</h1>
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           This one is for {found.namerName}, who named somebody as the person they&rsquo;re coming
           with. There&rsquo;s nothing to do here.
         </p>
@@ -55,12 +55,12 @@ export default async function PairPage({
 
   return (
     <main className="mx-auto max-w-[560px] px-6 py-16">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">
         {isNamer ? "Is this who you meant?" : "You're applying with someone"}
       </h1>
 
       {!isNamer && (
-        <p className="mt-2 text-[14px] text-[var(--text-muted)]">
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           {found.namerName} said you&rsquo;re coming to {found.communityName} together. Carry on
           with your application below — nothing about it changes because of this.
         </p>
@@ -68,12 +68,12 @@ export default async function PairPage({
 
       {isNamer && found.pair.secondResponseId && (
         <>
-          <p className="mt-2 text-[14px] text-[var(--text-muted)]">
+          <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
             The person who used your link has sent an application. If it&rsquo;s the person you had
             in mind, say so — and if it isn&rsquo;t, they&rsquo;re still welcome on their own
             account, this just isn&rsquo;t the pairing.
           </p>
-          <p className="mt-3 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Confirming this does one thing: you can both be offered a single interview together
             instead of two. Nobody decides anything else from it, and either of you can decline that
             later.
@@ -94,11 +94,11 @@ export default async function PairPage({
 
       {isNamer ? (
         found.pair.status === "accepted" ? (
-          <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
             You&rsquo;ve already confirmed this pairing.
           </p>
         ) : found.pair.status === "declined" ? (
-          <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
             You turned this pairing down. They&rsquo;re still applying on their own account — nothing
             about that has changed.
           </p>
@@ -113,7 +113,7 @@ export default async function PairPage({
             </button>
           </form>
         ) : (
-          <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Nobody&rsquo;s used this link yet. There&rsquo;s nothing to confirm — you&rsquo;ll get a
             link of your own to send if you want to.
           </p>
@@ -124,7 +124,7 @@ export default async function PairPage({
         </a>
       )}
 
-      <p className="mt-8 text-[12px] text-[var(--text-muted)]">
+      <p className="mt-8 text-[length:var(--text-meta)] text-[var(--text-muted)]">
         <Link href="/" className="underline">
           Back to the start
         </Link>

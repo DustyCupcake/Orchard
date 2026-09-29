@@ -39,7 +39,7 @@ export default function ProfileQuestionEditor({
           value={field.label}
           onChange={(e) => setField({ ...field, label: e.target.value })}
           placeholder="Question label"
-          className="mb-2 w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none"
+          className="mb-2 w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[length:var(--text-body)] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none"
         />
         <FieldShapeEditor
           value={field}
@@ -53,7 +53,7 @@ export default function ProfileQuestionEditor({
       </div>
 
       <div className="min-w-[14rem] flex-1 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] p-3">
-        <p className="mb-2 text-[11px] uppercase tracking-wide text-[var(--text-muted)]">
+        <p className="mb-2 text-[length:var(--text-micro)] uppercase tracking-wide text-[var(--text-muted)]">
           Preview — not submittable
         </p>
         <FieldPreview field={toPreviewShape(field)} disabled />

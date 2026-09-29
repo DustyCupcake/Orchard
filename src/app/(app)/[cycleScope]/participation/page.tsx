@@ -85,7 +85,7 @@ function toDatetimeLocal(date: Date) {
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 // "Who's actually planning to be there, and how much room is left" —
@@ -158,7 +158,7 @@ export default async function ParticipationPage({
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Events</h1>
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Events</h1>
 
       {error && (
         <div className="mt-4">
@@ -277,7 +277,7 @@ async function EventIndex({ viewing, allCycles }: { viewing: Member; allCycles: 
 
   if (allCycles.length === 0) {
     return (
-      <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+      <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
         No events yet. Until one exists there&rsquo;s nothing to declare participation against.
       </p>
     );
@@ -292,14 +292,14 @@ async function EventIndex({ viewing, allCycles }: { viewing: Member; allCycles: 
           className={`${CARD} block transition-colors hover:border-[var(--accent-1)]`}
         >
           <div className="flex flex-wrap items-baseline gap-x-2">
-            <span className="text-[15px] font-medium text-[var(--text)]">{c.name}</span>
+            <span className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">{c.name}</span>
             {c.myStatus !== "unknown" && (
               <Tag tone={c.myStatus === "coming" ? "success" : c.myStatus === "maybe" ? "warning" : undefined}>
                 {PARTICIPATION_LABEL[c.myStatus]}
               </Tag>
             )}
           </div>
-          <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+          <p className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             {dateRange(c.startDate, c.endDate)}
             {c.capacity !== null && (
               <>
@@ -320,7 +320,7 @@ async function EventIndex({ viewing, allCycles }: { viewing: Member; allCycles: 
           the summary so the history's size is known before opening it. */}
       {closedCycles.length > 0 && (
         <details className="mt-2">
-          <summary className="cursor-pointer text-[13px] text-[var(--accent-1)] hover:underline">
+          <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)] hover:underline">
             {closedCycles.length} past event{closedCycles.length === 1 ? "" : "s"}
           </summary>
           <div className="mt-2 flex flex-col gap-1.5">
@@ -328,11 +328,11 @@ async function EventIndex({ viewing, allCycles }: { viewing: Member; allCycles: 
               <Link
                 key={c.id}
                 href={`/${c.id}/participation`}
-                className="flex flex-wrap items-baseline gap-x-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] transition-colors hover:border-[var(--accent-1)]"
+                className="flex flex-wrap items-baseline gap-x-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[length:var(--text-body)] transition-colors hover:border-[var(--accent-1)]"
                 style={{ opacity: 0.75 }}
               >
                 <span className="font-medium text-[var(--text)]">{c.name}</span>
-                <span className="text-[12px] text-[var(--text-muted)]">
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   {dateRange(c.startDate, c.endDate)}
                 </span>
               </Link>
@@ -412,8 +412,8 @@ async function StartNewCycleSection({
 
       {typesWithDefaultPack.length > 0 && (
         <div className={`mt-4 ${CARD}`}>
-          <h3 className="text-[15px] font-medium text-[var(--text)]">Quick-start from an Event type&rsquo;s default pack</h3>
-          <ul className="mt-2 flex flex-col gap-1 text-[13px]">
+          <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Quick-start from an Event type&rsquo;s default pack</h3>
+          <ul className="mt-2 flex flex-col gap-1 text-[length:var(--text-body)]">
             {typesWithDefaultPack.map((t) => (
               <li key={t.id}>
                 <Link
@@ -430,8 +430,8 @@ async function StartNewCycleSection({
 
       {hasPreviousCycle && (
         <div className={`mt-4 ${CARD}`}>
-          <h3 className="text-[15px] font-medium text-[var(--text)]">Preview a clone</h3>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Preview a clone</h3>
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             See what cloning the most recent event would resolve to against a hypothetical
             start/end, before committing to anything. Reuses the exact same recompute the real
             event settings form above uses, so this always matches what actually lands once you
@@ -505,7 +505,7 @@ async function StartNewCycleSection({
           <span className={LABEL}>End date (optional)</span>
           <input type="date" name="endDate" className={INPUT} />
         </label>
-        <p className="text-[12px] text-[var(--text-muted)]">
+        <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Setting a clone&rsquo;s dates here resolves its phased boundaries and re-derives its shift
           roster&rsquo;s occurrence timestamps immediately; a clone started without them defers the
           shift occurrences until you set dates in the event settings form above.
@@ -606,7 +606,7 @@ async function ParticipationForCycle({
           <SectionHeading>{cycleName}</SectionHeading>
           {closed && <Tag>closed, read-only</Tag>}
         </div>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
           {summary.capacity === null ? (
             "No capacity cap set — unlimited."
           ) : (
@@ -619,7 +619,7 @@ async function ParticipationForCycle({
           )}
         </p>
         {summary.returningWindowClosesAt && (
-          <p className={`mt-1 text-[13px] ${summary.returningWindowOpen ? "text-[var(--success)]" : "text-[var(--text-muted)]"}`}>
+          <p className={`mt-1 text-[length:var(--text-body)] ${summary.returningWindowOpen ? "text-[var(--success)]" : "text-[var(--text-muted)]"}`}>
             Returning-priority window {summary.returningWindowOpen ? "open" : "closed"} — closes{" "}
             {new Date(summary.returningWindowClosesAt).toLocaleString()}.
           </p>
@@ -630,7 +630,7 @@ async function ParticipationForCycle({
         <section className="mt-6">
           <SectionHeading>Shift roster</SectionHeading>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <span className="text-[13px] text-[var(--text-muted)]">
+            <span className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               {roster.manager
                 ? `Managed by ${roster.manager.name}.`
                 : "No shift manager selected — this roster stays closed until someone holds a shift_management-granted task in this event."}
@@ -653,16 +653,16 @@ async function ParticipationForCycle({
           )}
 
           {roster.series.length === 0 ? (
-            <p className="mt-3 text-[13px] text-[var(--text-muted)]">Nothing placed in this roster yet.</p>
+            <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">Nothing placed in this roster yet.</p>
           ) : (
             <div className="mt-3 flex flex-col gap-3">
               {roster.series.map(({ series: s, confirmedAt, occurrences }) => (
                 <div key={s.id} className={CARD}>
                   <div className="flex flex-wrap items-center gap-2">
                     {!confirmedAt && <Tag tone="warning">proposal — pending confirmation</Tag>}
-                    <span className="text-[14px] font-medium text-[var(--text)]">{s.title}</span>
+                    <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{s.title}</span>
                   </div>
-                  {s.description && <p className="mt-1 text-[13px] text-[var(--text)]">{s.description}</p>}
+                  {s.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{s.description}</p>}
                   {!confirmedAt && !closed && roster.isManager && (
                     <form action={confirmShiftProposalAction} className="mt-2">
                       <input type="hidden" name="seriesId" value={s.id} />
@@ -675,14 +675,14 @@ async function ParticipationForCycle({
                   {occurrences.length > 0 ? (
                     <ul className="mt-2 flex flex-col gap-0.5">
                       {occurrences.map(({ occurrence, capacity, signupCount }) => (
-                        <li key={occurrence.id} className="text-[13px] text-[var(--text)]">
+                        <li key={occurrence.id} className="text-[length:var(--text-body)] text-[var(--text)]">
                           {new Date(occurrence.startsAt).toLocaleString()} — {signupCount}/{capacity} signed up
                         </li>
                       ))}
                     </ul>
                   ) : (
                     confirmedAt && (
-                      <p className="mt-2 text-[12px] text-[var(--text-muted)]">No occurrences generated yet.</p>
+                      <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">No occurrences generated yet.</p>
                     )
                   )}
                 </div>
@@ -696,7 +696,7 @@ async function ParticipationForCycle({
         <section className="mt-6">
           <SectionHeading>Your plans</SectionHeading>
           {eventQuestions.length > 0 && (
-            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
               Your community also asks{" "}
               {eventQuestions.length === 1 ? "one question" : `${eventQuestions.length} questions`} about this
               event —{" "}
@@ -741,7 +741,7 @@ async function ParticipationForCycle({
       {canConfigure && !closed && (
         <section className="mt-6">
           <SectionHeading>Event settings</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Visible to you because you can start an event for this Community — the same authority
             configures its capacity, returning-priority window, and joining config (§4.3/8c).
           </p>
@@ -787,7 +787,7 @@ async function ParticipationForCycle({
                     </option>
                   ))}
               </SelectField>
-              <span className="text-[12px] text-[var(--text-muted)]">
+              <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 The event&rsquo;s joining window runs from the returning-priority close above until the
                 deadline below; both doors are shut outside it and once capacity is reached.
               </span>
@@ -849,8 +849,8 @@ async function ParticipationForCycle({
               whatever it happened to be set to. */}
           <div className="mt-6 flex max-w-[600px] flex-col gap-3">
             <div>
-              <h3 className="text-[15px] font-medium text-[var(--text)]">This event&rsquo;s own admission rules</h3>
-              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">This event&rsquo;s own admission rules</h3>
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 {customLaneCount === 0 ? (
                   <>
                     Every lane works exactly as the community has set it — this event doesn&rsquo;t
@@ -877,12 +877,12 @@ async function ParticipationForCycle({
                     className="rounded-[var(--radius-md)] border border-[var(--border)] p-3"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[13px] font-medium text-[var(--text)]">{lane.title}</span>
+                      <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{lane.title}</span>
                       <Tag tone={lane.isCustom ? "warning" : undefined}>
                         {lane.isCustom ? "this event's own rule" : "the community's rule"}
                       </Tag>
                     </div>
-                    <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                    <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                       {laneSummary(lane.effective)}
                     </p>
                   </div>
@@ -897,7 +897,7 @@ async function ParticipationForCycle({
                   const override = cycleLaneRules.get(lane.key);
                   return (
                     <div key={lane.key} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-                      <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+                      <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                         <input
                           type="checkbox"
                           name={`lane.${lane.key}.override`}
@@ -907,7 +907,7 @@ async function ParticipationForCycle({
                         />
                         <span>
                           This event has its own rule for <strong>{lane.title}</strong>
-                          <span className="block text-[12px] text-[var(--text-muted)]">
+                          <span className="block text-[length:var(--text-meta)] text-[var(--text-muted)]">
                             Right now: {laneSummary(lane.effective)}
                           </span>
                         </span>
@@ -935,7 +935,7 @@ async function ParticipationForCycle({
                               />
                             </label>
                           )}
-                          <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                          <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                             <input
                               type="hidden"
                               name={`lane.${lane.key}.applicationRequired`}
@@ -949,7 +949,7 @@ async function ParticipationForCycle({
                             />
                             They fill in the application form
                           </label>
-                          <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                          <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                             <input type="hidden" name={`lane.${lane.key}.interviewRequired`} value="off" />
                             <input
                               type="checkbox"
@@ -959,7 +959,7 @@ async function ParticipationForCycle({
                             />
                             They have an interview
                           </label>
-                          <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                          <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                             <input type="hidden" name={`lane.${lane.key}.applyInsteadAvailable`} value="off" />
                             <input
                               type="checkbox"
@@ -997,7 +997,7 @@ async function ParticipationForCycle({
       {canConfigure && (
         <section className="mt-6">
           <SectionHeading>Export as a Task Pack</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Save this event&rsquo;s full task set (or a hand-picked subset, from the board&rsquo;s own
             bulk selection) as a named, downloadable pack — see{" "}
             <Link href="/task-packs" className="text-[var(--accent-1)] hover:underline">
@@ -1026,7 +1026,7 @@ async function ParticipationForCycle({
       {isAdminNow && !closed && (
         <section className="mt-6 border-t border-[var(--border)] pt-6">
           <SectionHeading>Close this event</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Locks everything about this event — no exception. Reaching a closed event afterward is
             a normal, read-only state, not an error.
           </p>
@@ -1074,12 +1074,12 @@ function PhaseDatesSection({
   return (
     <section className="mt-6">
       <SectionHeading>Phase dates</SectionHeading>
-      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
         A phase&rsquo;s dates are either set outright or placed against the event&rsquo;s own start and
         end, so moving the event moves them along with it. Each phase says where it sits in words;
         open its edit to change the dates.
       </p>
-      {phases.length === 0 && <p className="mt-3 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+      {phases.length === 0 && <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
       <div className="mt-3 flex flex-col gap-2">
         {phases.map((p) => (
           <PhaseRowCard
@@ -1093,7 +1093,7 @@ function PhaseDatesSection({
       </div>
 
       <details className="mt-4 max-w-[500px] rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-        <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Add a phase</summary>
+        <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">Add a phase</summary>
         <form action={addPhaseAction} className="mt-3 flex flex-col gap-2">
           <input type="hidden" name="cycleId" value={cycleId} />
           <input type="hidden" name="cycleScope" value={cycleScope} />
@@ -1148,20 +1148,20 @@ function PhaseRowCard({
   return (
     <div className={`max-w-[500px] ${CARD}`}>
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-[15px] font-medium text-[var(--text)]">{p.name}</h3>
+        <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">{p.name}</h3>
         {pinned && <Tag tone="accent">{pinned.label} pinned</Tag>}
       </div>
-      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
         {formatDateRange(p.startDate, p.endDate)}
         {" — "}
         {describeBoundaryWindow(startBoundaryOf(p), endBoundaryOf(p))}
       </p>
       {p.flags.orderInvalid && (
-        <p className="mt-1 text-[13px] text-[var(--danger)]">This phase&rsquo;s end resolves before its own start.</p>
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--danger)]">This phase&rsquo;s end resolves before its own start.</p>
       )}
 
       <details className="mt-1">
-        <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Edit</summary>
+        <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Edit</summary>
         <form action={updatePhaseBoundaryAction} className="mt-2 flex flex-col gap-2">
           <input type="hidden" name="phaseId" value={p.id} />
           <input type="hidden" name="cycleScope" value={cycleScope} />

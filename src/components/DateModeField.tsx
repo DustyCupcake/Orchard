@@ -60,7 +60,7 @@ export default function DateModeField({
 
   return (
     <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-      <legend className="px-1 text-[12px] text-[var(--text-muted)]">{legend}</legend>
+      <legend className="px-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">{legend}</legend>
       <input type="hidden" name={fieldNames.mode} value={selectedMode} />
 
       <div className="flex flex-col gap-2.5">
@@ -107,10 +107,10 @@ export default function DateModeField({
         )}
 
         {selectedMode === "relative" && relativeHint && (
-          <p className="text-[12px] text-[var(--text-muted)]">{relativeHint}</p>
+          <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{relativeHint}</p>
         )}
         {!relativeAllowed && (
-          <p className="text-[12px] text-[var(--text-muted)]">
+          <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
             A relative date needs at least one date on its parent period.
           </p>
         )}

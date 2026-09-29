@@ -42,11 +42,11 @@ export default function BranchesTab({
                 style={{ background: "var(--warning-soft)", border: "1px solid var(--warning-border)" }}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-[14px] font-medium text-[var(--text)]">{b.name}</span>
+                  <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{b.name}</span>
                   <Tag tone="warning">pending</Tag>
                 </div>
                 {b.description && (
-                  <p className="mt-1 text-[13px] text-[var(--text-muted)]">{b.description}</p>
+                  <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{b.description}</p>
                 )}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <form action={confirmPendingBranchAction}>
@@ -87,7 +87,7 @@ export default function BranchesTab({
       >
         {confirmedBranches.length === 0 && (
           <SettingsPanel>
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               No branches yet. A community with none can&rsquo;t hold a task, so this is the first
               thing to set up.
             </p>

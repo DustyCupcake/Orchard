@@ -35,16 +35,16 @@ export default async function InputRoundsPage({
 
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Input round</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Input round</h1>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Small, task-specific questions batch on a fixed cadence rather than pinging you one at a
         time — pose one from any task&rsquo;s detail page any time; answer everything currently
         open here, in one sitting.
       </p>
 
       <details className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-        <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">What&rsquo;s an Input round?</summary>
-        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+        <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">What&rsquo;s an Input round?</summary>
+        <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Anyone can pose a small, task-specific question from that task&rsquo;s own page, any
           time — posing one doesn&rsquo;t notify anyone. Instead, everything posed queues up and
           batches on a fixed cadence (weekly by default, set per Community): at the cutoff,
@@ -62,15 +62,15 @@ export default async function InputRoundsPage({
         </div>
       )}
 
-      {!round && <p className="mt-6 text-[13px] text-[var(--text-muted)]">No round open right now.</p>}
+      {!round && <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">No round open right now.</p>}
       {round && questions.length === 0 && (
-        <p className="mt-6 text-[13px] text-[var(--text-muted)]">The current round has no questions in it.</p>
+        <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">The current round has no questions in it.</p>
       )}
 
       <div className="mt-6">
         {questions.map(({ question, taskId, taskTitle, branchName, myResponse }) => (
           <div key={question.id} className="mb-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
-            <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
+            <div className="flex flex-wrap items-center gap-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               {branchName} ·{" "}
               <Link href={`/tasks/${taskId}`} className="font-medium text-[var(--accent-1)] hover:underline">
                 {taskTitle}
@@ -78,7 +78,7 @@ export default async function InputRoundsPage({
               {question.priority && <Tag tone="warning">can&rsquo;t move forward without this</Tag>}
               {question.deadline && <Tag>needed by {new Date(question.deadline).toLocaleDateString()}</Tag>}
             </div>
-            <p className="mt-1 text-[14px] font-medium text-[var(--text)]">{question.text}</p>
+            <p className="mt-1 text-[length:var(--text-body)] font-medium text-[var(--text)]">{question.text}</p>
 
             <form action={submitQuestionResponseAction} className="mt-2 flex flex-col gap-2">
               <input type="hidden" name="questionId" value={question.id} />

@@ -184,12 +184,12 @@ export default function ProfileQuestionForm({
       />
 
       {feedsCapacitySignal && (
-        <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+        <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
           Visible to coordinators as
           <SelectField
             name="capacityVisibility"
             defaultValue={defaultCapacityVisibility ?? "flag_only"}
-            className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)]"
+            className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[length:var(--text-body)] text-[var(--text)]"
           >
             <option value="flag_only">a coarse flag only</option>
             <option value="open">the exact number</option>
@@ -205,11 +205,11 @@ export default function ProfileQuestionForm({
            coarser of the two decisions — it decides whether the answer
            exists for anyone else at all, where the share boxes only decide
            which of the configured audiences sees it. */
-        <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+        <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
           <input type="checkbox" name={`consent_${gatingPurpose.key}`} className="mt-0.5" />
           <span>
             I agree to this being recorded for &ldquo;{gatingPurpose.label}&rdquo;
-            <span className="block text-[12px] text-[var(--text-muted)]">
+            <span className="block text-[length:var(--text-meta)] text-[var(--text-muted)]">
               {gatingPurpose.noticeText} You can withdraw this at any time from your profile, and the
               answer stops being shown to anyone else straight away.
             </span>
@@ -282,16 +282,16 @@ function AudienceConsent({
     <div className="flex flex-col gap-1">
       <input type="hidden" name="shareRuleIds" value="" />
       {access.audiences.length === 0 ? (
-        <p className="text-[13px] text-[var(--text-muted)]">
+        <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
           Nobody else can read this &mdash; not the whole community, and not the people who would
           normally be given access. It stays on your own profile, and reachable by whoever
           activates Emergency access on your page, who is recorded when they do.
         </p>
       ) : (
         <>
-          <span className="text-[13px] text-[var(--text)]">Share my answer with</span>
+          <span className="text-[length:var(--text-body)] text-[var(--text)]">Share my answer with</span>
           {access.audiences.map((a) => (
-            <label key={a.ruleId} className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+            <label key={a.ruleId} className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
               <input
                 type="checkbox"
                 name="shareRuleIds"

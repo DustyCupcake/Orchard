@@ -286,8 +286,8 @@ export default async function SettingsPage({
 
   return (
     <main className="mx-auto max-w-[860px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Community settings</h1>
-      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Community settings</h1>
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
         {authorized
           ? "Everything here is the community's own configuration, and every change is written to the change log. Founding settings are the kind of thing a community might want to decide together — there is an Assembly for that."
           : communityRow.adminsEverClaimed

@@ -40,7 +40,7 @@ export default function FormsTab({
       description="Every set of questions in the app is a form — the application, post-event feedback, scheduling polls, anything. A form can be tagged so a field maps onto a profile question, which is how a person's application fills in their own profile instead of asking twice."
     >
       {forms.length === 0 && (
-        <p className="text-[13px] text-[var(--text-muted)]">
+        <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
           No forms yet. The application needs one before any lane that asks for a form has anything
           to ask with.
         </p>
@@ -53,19 +53,19 @@ export default function FormsTab({
           style={f.archivedAt ? { opacity: 0.6 } : undefined}
         >
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[15px] font-medium text-[var(--text)]">{f.title}</h3>
+            <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">{f.title}</h3>
             {f.allowAnonymous && <Tag>anonymous submissions</Tag>}
             {f.archivedAt && <Tag tone="warning">archived</Tag>}
           </div>
           {f.description && (
-            <p className="mt-1 max-w-[560px] text-[12px] text-[var(--text-muted)]">{f.description}</p>
+            <p className="mt-1 max-w-[560px] text-[length:var(--text-meta)] text-[var(--text-muted)]">{f.description}</p>
           )}
-          <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             {(f.fields as FormField[]).map((field) => field.label).join(" · ") || "No fields yet"}
           </p>
 
           <details className="mt-3">
-            <summary className="cursor-pointer text-[13px] font-medium text-[var(--accent-1)]">
+            <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--accent-1)]">
               Edit this form
             </summary>
             <div className="mt-3">

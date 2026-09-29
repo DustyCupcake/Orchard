@@ -49,8 +49,8 @@ export default function EventReviewSection({
 
   return (
     <section className="mt-8 border-t border-[var(--border)] pt-6">
-      <h2 className="text-[22px] font-semibold text-[var(--text)]">Review (scheduling owner)</h2>
-      {proposals.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">No proposals yet.</p>}
+      <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Review (scheduling owner)</h2>
+      {proposals.length === 0 && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">No proposals yet.</p>}
       <div className="mt-3 flex flex-col gap-3">
         {proposals.map((p) => {
           const canAct = !p.publishedAt && p.status !== "declined";
@@ -60,25 +60,25 @@ export default function EventReviewSection({
             <div key={p.id} className={CARD}>
               <div className="flex items-center gap-2">
                 <Tag tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status] ?? p.status}</Tag>
-                <span className="text-[12px] text-[var(--text-muted)]">
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   {memberNameById.get(p.submittedBy) ?? "—"}
                   {p.publishedAt && " · published"}
                 </span>
               </div>
-              <p className="mt-1.5 text-[14px] font-medium text-[var(--text)]">
+              <p className="mt-1.5 text-[length:var(--text-body)] font-medium text-[var(--text)]">
                 {p.title} <span className="font-normal text-[var(--text-muted)]">— hosted by {p.host}</span>
               </p>
-              {p.description && <p className="mt-1 text-[13px] text-[var(--text)]">{p.description}</p>}
-              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              {p.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{p.description}</p>}
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 {p.durationMinutes} min{p.spaceNeeds && <> · {p.spaceNeeds}</>}
               </p>
-              <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text-muted)]">
+              <ul className="mt-1.5 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 {preferredSlots.map((s, i) => (
                   <li key={i}>{formatSlot(s)}</li>
                 ))}
               </ul>
               {confirmedSlot && (
-                <p className="mt-1.5 text-[13px] text-[var(--text)]">Confirmed: {formatSlot(confirmedSlot)}</p>
+                <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--text)]">Confirmed: {formatSlot(confirmedSlot)}</p>
               )}
 
               {canAct && (
@@ -144,7 +144,7 @@ export default function EventReviewSection({
           Publish programme
         </button>
         {unresolved.length > 0 && (
-          <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+          <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             {unresolved.length} proposal(s) still need a confirmed slot or a decline first.
           </p>
         )}

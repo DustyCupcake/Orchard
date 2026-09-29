@@ -65,11 +65,11 @@ export default function BranchCoverageCard({
     <div className="mb-6 rounded-[var(--radius-md)] border border-[var(--border)] p-4">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-[15px] font-semibold text-[var(--text)]">{group.branchName}</h3>
+          <h3 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">{group.branchName}</h3>
           <Tag tone={STATUS_TONE[group.status]}>{STATUS_LABEL[group.status]}</Tag>
         </div>
         {group.counts && (
-          <span className="text-[12px] text-[var(--text-muted)]">
+          <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
             {group.counts.escalated > 0 && <span className="text-[var(--danger)]">{group.counts.escalated} escalated</span>}
             {group.counts.escalated > 0 && group.counts.hard > 0 && " · "}
             {group.counts.hard > 0 && <span className="text-[var(--danger)]">{group.counts.hard} hard</span>}
@@ -82,7 +82,7 @@ export default function BranchCoverageCard({
 
       <div className="mt-3">
         {group.tasks.length === 0 && (
-          <p className="text-[13px] text-[var(--text-muted)]">
+          <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
             {group.counts
               ? "No active tasks in your coordination scope."
               : "Task details are visible to the branch coordination holder."}
@@ -91,7 +91,7 @@ export default function BranchCoverageCard({
         {shown.map(renderTask)}
         {rest.length > 0 && (
           <details>
-            <summary className="cursor-pointer text-[13px] font-medium text-[var(--accent-1)]">
+            <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--accent-1)]">
               Show {rest.length} more
             </summary>
             <div className="mt-3">{rest.map(renderTask)}</div>

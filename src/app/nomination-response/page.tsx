@@ -28,7 +28,7 @@ export default async function NominationResponsePage({
 
   return (
     <main className="mx-auto max-w-[480px] px-6 py-16">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Orchard</h1>
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Orchard</h1>
       <div className="mt-4">
         <Banner tone={STATUS_TONE[key]}>{STATUS_MESSAGE[key]}</Banner>
       </div>

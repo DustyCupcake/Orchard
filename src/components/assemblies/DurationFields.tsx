@@ -126,19 +126,19 @@ export default function DurationFields({ now }: { now: number }) {
                 type="button"
                 aria-pressed={isActive}
                 onClick={() => setAmounts(preset.values)}
-                className={`rounded-[var(--radius-md)] border px-3 py-1.5 text-left text-[13px] transition-colors ${
+                className={`rounded-[var(--radius-md)] border px-3 py-1.5 text-left text-[length:var(--text-body)] transition-colors ${
                   isActive
                     ? "border-[var(--accent-1)] bg-[var(--accent-1-soft)] text-[var(--accent-1)]"
                     : "border-[var(--border)] text-[var(--text)] hover:bg-[var(--neutral-100)]"
                 }`}
               >
                 <span className="font-medium">{preset.label}</span>
-                <span className="ml-1.5 text-[12px] text-[var(--text-muted)]">{preset.hint}</span>
+                <span className="ml-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">{preset.hint}</span>
               </button>
             );
           })}
         </div>
-        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+        <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           A starting point — every window below stays editable.
         </p>
       </div>
@@ -146,7 +146,7 @@ export default function DurationFields({ now }: { now: number }) {
       {boundaries.map((b) => (
         <div key={b.key} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[13px] font-medium text-[var(--text)]">{b.label}</span>
+            <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{b.label}</span>
             <div className="flex items-center gap-1.5">
               <input
                 type="number"
@@ -168,8 +168,8 @@ export default function DurationFields({ now }: { now: number }) {
               <input type="hidden" name={b.name} value={b.minutes} />
             </div>
           </div>
-          <p className="mt-1 text-[12px] text-[var(--text-muted)]">{b.blurb}</p>
-          <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">{b.blurb}</p>
+          <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             {b.key === "agenda" ? (
               b.minutes === 0 ? (
                 <>
@@ -191,7 +191,7 @@ export default function DurationFields({ now }: { now: number }) {
 
       <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-3">
         <span className={LABEL}>What that adds up to</span>
-        <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
+        <ul className="mt-1.5 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text)]">
           <li>Agenda closes {relativeTime(boundaries[0].endsAt, now)}</li>
           <li>Voting opens {relativeTime(boundaries[1].endsAt, now)}</li>
           <li>Everything closes {relativeTime(boundaries[2].endsAt, now)}</li>

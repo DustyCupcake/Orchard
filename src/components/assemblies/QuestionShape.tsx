@@ -50,7 +50,7 @@ export default function QuestionShape({
 
   if (!isChoiceType(type)) {
     return (
-      <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
+      <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
         <Tag tone="neutral">{responseTypeNoun(responseType)}</Tag>
         {hint}
       </p>
@@ -59,7 +59,7 @@ export default function QuestionShape({
 
   return (
     <div className="mt-1.5">
-      <p className="flex flex-wrap items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
+      <p className="flex flex-wrap items-center gap-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
         <Tag tone="accent">{type === "single_choice" ? "Pick one" : "Pick any"}</Tag>
         {count === 0
           ? "No answers listed — this question can't be answered as it stands"
@@ -69,7 +69,7 @@ export default function QuestionShape({
       {showAnswers && count > 0 && (
         <ul className="mt-1.5 flex flex-col gap-0.5">
           {options.map((o) => (
-            <li key={o} className="text-[13px] text-[var(--text)]">
+            <li key={o} className="text-[length:var(--text-body)] text-[var(--text)]">
               · {o}
             </li>
           ))}

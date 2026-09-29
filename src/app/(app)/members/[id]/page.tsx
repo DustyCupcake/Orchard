@@ -45,7 +45,7 @@ export default async function MemberPage({
   if (!target || target.communityId !== viewing.communityId) {
     return (
       <main className="mx-auto max-w-[480px] px-6 py-10 md:px-12 md:py-14">
-        <Link href="/members" className="text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+        <Link href="/members" className="text-[length:var(--text-body)] font-medium text-[var(--accent-1)] hover:underline">
           ← Back to members
         </Link>
         <div className="mt-4">
@@ -83,10 +83,10 @@ export default async function MemberPage({
 
   return (
     <main className="mx-auto max-w-[480px] px-6 py-10 md:px-12 md:py-14">
-      <Link href="/members" className="text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+      <Link href="/members" className="text-[length:var(--text-body)] font-medium text-[var(--accent-1)] hover:underline">
         ← Back to members
       </Link>
-      <h1 className="mt-2 text-[32px] font-semibold leading-tight text-[var(--text)]">{target.name}</h1>
+      <h1 className="mt-2 text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">{target.name}</h1>
       {error && (
         <div className="mt-4">
           <Banner tone="danger">{error}</Banner>
@@ -94,13 +94,13 @@ export default async function MemberPage({
       )}
 
       <section className="mt-6">
-        <h2 className="text-[22px] font-semibold text-[var(--text)]">Contact methods</h2>
+        <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Contact methods</h2>
         {visibleMethods.length === 0 && (
-          <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nothing visible to you right now.</p>
+          <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Nothing visible to you right now.</p>
         )}
         <ul className="mt-2 flex flex-col gap-1">
           {visibleMethods.map((m) => (
-            <li key={m.id} className="text-[13px] text-[var(--text)]">
+            <li key={m.id} className="text-[length:var(--text-body)] text-[var(--text)]">
               {m.type}: {m.value}
             </li>
           ))}
@@ -108,8 +108,8 @@ export default async function MemberPage({
       </section>
 
       <section className="mt-6">
-        <h2 className="text-[22px] font-semibold text-[var(--text)]">Emergency access</h2>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Emergency access</h2>
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Any member can activate this to reveal {target.name}&rsquo;s emergency-only contact info
           when it&rsquo;s genuinely needed. Both of you are notified, and every activation is
           logged — see your <Link href="/dashboard" className="text-[var(--accent-1)] hover:underline">Dashboard</Link> for recent activity.
@@ -147,7 +147,7 @@ export default async function MemberPage({
                       — there's no separate box anyone ticked, exactly as a
                       filled-in emergency contact method has no opt-out from
                       being reachable. Not answering was the only refusal. */}
-                  <p className="mt-1 text-[12px] opacity-80">
+                  <p className="mt-1 text-[length:var(--text-meta)] opacity-80">
                     Answering these is what agreed to them being readable in an emergency.
                   </p>
                   <ul className="mt-1 flex flex-col gap-1">

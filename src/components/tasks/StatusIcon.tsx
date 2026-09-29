@@ -72,7 +72,7 @@ export default function StatusIcon({
   return (
     <span className={`inline-flex items-center gap-1 ${color}`} title={label} aria-label={label} role="img">
       <Icon size={size} weight={escalated ? "fill" : "regular"} />
-      {showLabel && <span className="text-[12px]">{label}</span>}
+      {showLabel && <span className="text-[length:var(--text-meta)]">{label}</span>}
     </span>
   );
 }

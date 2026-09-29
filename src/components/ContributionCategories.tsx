@@ -21,7 +21,7 @@ export default function ContributionCategories({
   averages?: ContributionCategoryAverage[] | null;
 }) {
   if (categories.length === 0) {
-    return <p className="text-[13px] text-[var(--text-muted)]">No task assignments yet.</p>;
+    return <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">No task assignments yet.</p>;
   }
 
   const averageByName = new Map((averages ?? []).map((a) => [a.name, a] as const));
@@ -32,7 +32,7 @@ export default function ContributionCategories({
         const avg = averageByName.get(cat.name);
         return (
           <div key={cat.name} className="mb-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
-            <h3 className="text-[15px] font-semibold text-[var(--text)]">{cat.name}</h3>
+            <h3 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">{cat.name}</h3>
             <div className="mt-2 flex flex-col">
               {(["active", "future", "completed"] as const).map((key) => {
                 const bucket = cat[key];
@@ -41,8 +41,8 @@ export default function ContributionCategories({
                 return (
                   <div key={key} className="border-t border-[var(--border)] py-2 first:border-t-0 first:pt-0">
                     <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
-                      <span className="text-[13px] font-medium text-[var(--text)]">{BUCKET_LABELS[key]}</span>
-                      <span className="text-[12px] text-[var(--text-muted)]">
+                      <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{BUCKET_LABELS[key]}</span>
+                      <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                         {bucket.count} task{bucket.count === 1 ? "" : "s"}
                         {bucket.hours > 0 ? ` · ${bucket.hours}h/week` : ""}
                         {avgBucket && (
@@ -54,7 +54,7 @@ export default function ContributionCategories({
                         )}
                       </span>
                     </div>
-                    <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
+                    <ul className="mt-1.5 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text)]">
                       {bucket.tasks.map((t) => (
                         <li key={t.id}>
                           <Link
@@ -63,7 +63,7 @@ export default function ContributionCategories({
                           >
                             {t.title}
                           </Link>{" "}
-                          <span className="text-[12px] text-[var(--text-muted)]">
+                          <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                             ({t.branchName} · {effortSummary(t.effort, t.effortMagnitude)})
                           </span>
                         </li>
@@ -75,19 +75,19 @@ export default function ContributionCategories({
               {cat.shiftCompletions.count > 0 && (
                 <div className="border-t border-[var(--border)] py-2">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
-                    <span className="text-[13px] font-medium text-[var(--text)]">Shift completions</span>
-                    <span className="text-[12px] text-[var(--text-muted)]">
+                    <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Shift completions</span>
+                    <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                       {cat.shiftCompletions.count} shift{cat.shiftCompletions.count === 1 ? "" : "s"}
                       {avg && avg.shiftCompletions.count > 0 && (
                         <span> (avg {formatAverage(avg.shiftCompletions.count)})</span>
                       )}
                     </span>
                   </div>
-                  <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
+                  <ul className="mt-1.5 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text)]">
                     {cat.shiftCompletions.completions.map((c) => (
                       <li key={c.id}>
                         {c.seriesTitle}{" "}
-                        <span className="text-[12px] text-[var(--text-muted)]">
+                        <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                           ({new Date(c.occurrenceStartsAt).toLocaleDateString()})
                         </span>
                       </li>

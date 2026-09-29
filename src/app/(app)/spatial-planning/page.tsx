@@ -43,7 +43,7 @@ const SLEEP_ARRANGEMENTS = [
 ];
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 // See docs/spec.md's "Spatial planning" and docs/development-plan.md's
@@ -81,8 +81,8 @@ export default async function SpatialPlanningPage({
   if (moduleOn && resolution.kind === "ambiguous") {
     return (
       <main className="mx-auto max-w-[1100px] px-6 py-10 md:px-12 md:py-14">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Spatial planning</h1>
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">Scoped to multiple active events — pick one to see its layout:</p>
+        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Spatial planning</h1>
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Scoped to multiple active events — pick one to see its layout:</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {resolution.candidates.map((c) => (
             <form key={c.id} action={switchToLinkedScopeAction}>
@@ -151,17 +151,17 @@ export default async function SpatialPlanningPage({
 
   return (
     <main className="mx-auto max-w-[1100px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Spatial planning</h1>
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Spatial planning</h1>
 
       {!moduleOn && (
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Not turned on for this Community yet — a current Admins holder can enable it under
           Modules on the Settings screen.
         </p>
       )}
 
       {moduleOn && spatialPlanningGrantingTaskIds.length === 0 && !spatialPlanningOpen && (
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           No Spatial-planning task designated yet — anyone can view once a Plot exists, but nobody
           can draw or edit until a current Admins holder sets one under Settings.
         </p>
@@ -205,7 +205,7 @@ export default async function SpatialPlanningPage({
               <SectionHeading>Placement invites</SectionHeading>
               <div className="mt-2 flex flex-col gap-2">
                 {myPlacementInvites.map((invite) => (
-                  <div key={invite.placementId} className="text-[13px] text-[var(--text)]">
+                  <div key={invite.placementId} className="text-[length:var(--text-body)] text-[var(--text)]">
                     <span className="font-medium">{invite.invitedByName}</span> named you on &ldquo;{invite.placementLabel}&rdquo;.
                     <form action={acceptPlacementInviteAction} className="ml-2 inline">
                       <input type="hidden" name="placementId" value={invite.placementId} />
@@ -230,7 +230,7 @@ export default async function SpatialPlanningPage({
               <SectionHeading>Reverted edits</SectionHeading>
               <div className="mt-2 flex flex-col gap-2">
                 {myRevertNotices.map((n) => (
-                  <div key={n.notice.id} className="text-[13px] text-[var(--text)]">
+                  <div key={n.notice.id} className="text-[length:var(--text-body)] text-[var(--text)]">
                     <span className="font-medium">{n.revertedByName}</span> reverted your change to &ldquo;{n.placementLabel}&rdquo;
                     {n.notice.note && <> — {n.notice.note}</>}.
                     <form action={acknowledgeRevertNoticeAction} className="ml-2 inline">
@@ -250,7 +250,7 @@ export default async function SpatialPlanningPage({
       {moduleOn && (
         <section className="mt-8 max-w-[500px]">
           <SectionHeading>Your Space preferences</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Feeds the layout conversation — informs sizing and grouping, never auto-places you.
           </p>
           <form action={upsertSpacePreferenceAction} className="mt-3 flex flex-col gap-2">
@@ -303,7 +303,7 @@ export default async function SpatialPlanningPage({
             <label className="flex flex-col gap-1">
               <span className={LABEL}>Sharing this space with (comma-separated Member IDs)</span>
               <input type="text" name="sharingWith" defaultValue={mySpacePreference?.sharingWith?.join(", ") ?? ""} className={INPUT} />
-              <span className="text-[12px] text-[var(--text-muted)]">
+              <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 A different question from proximity above — who you expect to actually occupy the
                 same tent/vehicle with.
               </span>
@@ -321,13 +321,13 @@ export default async function SpatialPlanningPage({
 
           {canEdit && (
             <div className="mt-6">
-              <h3 className="text-[15px] font-medium text-[var(--text)]">Everyone&rsquo;s Space preferences</h3>
+              <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Everyone&rsquo;s Space preferences</h3>
               {everyonesSpacePreferences.length === 0 && (
-                <p className="mt-1 text-[13px] text-[var(--text-muted)]">Nobody has set theirs yet.</p>
+                <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">Nobody has set theirs yet.</p>
               )}
               <div className="mt-1 flex flex-col gap-1">
                 {everyonesSpacePreferences.map((row) => (
-                  <p key={row.preference.memberId} className="text-[13px] text-[var(--text)]">
+                  <p key={row.preference.memberId} className="text-[length:var(--text-body)] text-[var(--text)]">
                     <span className="font-medium">{memberNameById.get(row.preference.memberId) ?? row.memberName}</span>
                     {" — "}
                     {SLEEP_ARRANGEMENTS.find((o) => o.value === row.preference.sleepArrangement)?.label}

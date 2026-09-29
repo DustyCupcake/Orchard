@@ -26,17 +26,17 @@ import {
 export default function FoundersAssemblyPrompt() {
   return (
     <div className="rounded-[var(--radius-md)] border border-[var(--accent-1)] bg-[var(--accent-1-softer)] p-3.5">
-      <h2 className="text-[15px] font-semibold text-[var(--text)]">
+      <h2 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">
         Not sure what to set? Decide it together instead.
       </h2>
-      <p className="mt-1 text-[13px] text-[var(--text)]">
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
         An Assembly is this community&rsquo;s own decision-making tool, and a prepared agenda of{" "}
         {FOUNDING_SETTINGS_ITEMS.length} settings questions across{" "}
         {FOUNDING_SETTINGS_GROUPS.length} areas comes with it — recruitment and invites, who holds
         authority, critical tasks and endorsement, which modules are on, how you work together, and
         what you hold about each other.
       </p>
-      <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+      <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
         Anyone can propose it, anyone can add to the agenda, and the whole community votes. Results
         stay advisory — when it closes you get every answer printed next to the setting it applies
         to, and you make the changes by hand. Nothing here decides anything on its own.

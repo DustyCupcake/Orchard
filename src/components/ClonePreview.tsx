@@ -42,7 +42,7 @@ export function ClonePreviewGrid({ preview }: { preview: ClonePreview }) {
   const months = monthsSpanned([...entriesByDate.keys()]);
   if (months.length === 0) {
     return (
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Nothing resolves yet — give both a hypothetical start and end above.
       </p>
     );
@@ -52,10 +52,10 @@ export function ClonePreviewGrid({ preview }: { preview: ClonePreview }) {
     <div className="mt-3">
       {months.map(({ year, month }) => (
         <div key={`${year}-${month}`} className="mb-4">
-          <div className="text-[12px] font-semibold text-[var(--text)]">
+          <div className="text-[length:var(--text-meta)] font-semibold text-[var(--text)]">
             {MONTH_LABEL[month - 1]} {year}
           </div>
-          <table className="mt-1 w-full table-fixed border-collapse text-[11px]">
+          <table className="mt-1 w-full table-fixed border-collapse text-[length:var(--text-micro)]">
             <thead>
               <tr>
                 {WEEKDAY_LABEL.map((w) => (
@@ -75,7 +75,7 @@ export function ClonePreviewGrid({ preview }: { preview: ClonePreview }) {
                     >
                       <div>{Number(day.date.slice(8, 10))}</div>
                       {(entriesByDate.get(day.date) ?? []).slice(0, 2).map((label, i) => (
-                        <div key={i} className="text-[10px] text-[var(--accent-1)]">
+                        <div key={i} className="text-[length:var(--text-nano)] text-[var(--accent-1)]">
                           {label}
                         </div>
                       ))}
@@ -95,7 +95,7 @@ export function ClonePreviewGrid({ preview }: { preview: ClonePreview }) {
 export function ClonePreviewList({ preview }: { preview: ClonePreview }) {
   const cycleAnchored = preview.milestones.filter((m) => !m.phaseName);
   return (
-    <div className="mt-3 text-[13px]">
+    <div className="mt-3 text-[length:var(--text-body)]">
       {preview.phases.length === 0 && cycleAnchored.length === 0 && (
         <p className="text-[var(--text-muted)]">Nothing to carry forward — the source event has no phases or milestones.</p>
       )}

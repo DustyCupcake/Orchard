@@ -18,7 +18,7 @@ export default function FilterSelect({
   return (
     <select
       name={param}
-      className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px]"
+      className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[length:var(--text-body)]"
       value={value ?? ""}
       onChange={(e) => {
         const val = e.target.value;

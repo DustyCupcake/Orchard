@@ -55,10 +55,10 @@ function FeedRow({
     <li className="border-b border-[var(--border)] last:border-b-0">
       <div className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] px-1 py-2.5 hover:bg-[var(--surface-sunken)]">
         <div className="min-w-0">
-          <Link href={href} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
+          <Link href={href} className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
             {title}
           </Link>
-          {meta && <div className="mt-0.5 text-[13px] text-[var(--text-muted)]">{meta}</div>}
+          {meta && <div className="mt-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">{meta}</div>}
         </div>
         {tag && <div className="shrink-0">{tag}</div>}
       </div>
@@ -68,7 +68,7 @@ function FeedRow({
 
 function StatRow({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
-    <li className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-1 py-2 text-[13px] last:border-b-0">
+    <li className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-1 py-2 text-[length:var(--text-body)] last:border-b-0">
       <span className="text-[var(--text)]">{label}</span>
       <span className="text-[var(--text-muted)]">{value}</span>
     </li>
@@ -93,7 +93,7 @@ function FeedSection({
 }) {
   return (
     <div className="mb-5">
-      <h3 className="mb-1 flex flex-wrap items-center gap-2 text-[15px] font-medium text-[var(--text)]">
+      <h3 className="mb-1 flex flex-wrap items-center gap-2 text-[length:var(--text-heading)] font-medium text-[var(--text)]">
         {title}
         {shared && <Tag tone="neutral">open to everyone</Tag>}
       </h3>
@@ -263,7 +263,7 @@ function SnapshotSection({
 }) {
   return (
     <div className="mb-5">
-      <h3 className="mb-1 flex items-center gap-1.5 text-[15px] font-medium text-[var(--text)]">
+      <h3 className="mb-1 flex items-center gap-1.5 text-[length:var(--text-heading)] font-medium text-[var(--text)]">
         {icon}
         {title}
       </h3>
@@ -446,7 +446,7 @@ export default async function DashboardPage({
 
   return (
     <main className="mx-auto max-w-[820px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Dashboard</h1>
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Dashboard</h1>
 
       {error && (
         <div className="mt-4">
@@ -456,11 +456,11 @@ export default async function DashboardPage({
 
       {outstandingRequiredQuestions.length > 0 && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--warning-border)] bg-[var(--warning-soft)] px-4 py-3">
-          <p className="text-[14px] text-[var(--warning)]">
+          <p className="text-[length:var(--text-body)] text-[var(--warning)]">
             {outstandingRequiredQuestions.length === 1
               ? "You have a question you still need to answer."
               : `You have ${outstandingRequiredQuestions.length} questions you still need to answer.`}{" "}
-            <span className="text-[13px]">
+            <span className="text-[length:var(--text-body)]">
               Your community needs these to run the event.
             </span>
           </p>
@@ -486,18 +486,18 @@ export default async function DashboardPage({
 
       {!viewing.hasCompletedOnboarding && (
         <section className="mt-8 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-5">
-          <h2 className="mb-1 text-[20px] font-semibold text-[var(--text)]">
+          <h2 className="mb-1 text-[length:var(--text-title)] font-semibold text-[var(--text)]">
             Welcome — a few things to get you oriented
           </h2>
-          <p className="mb-4 text-[13px] text-[var(--text-muted)]">
+          <p className="mb-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Nothing here is required — skip it any time and it won&rsquo;t come back.
           </p>
 
           <div className="mb-5 grid gap-3 sm:grid-cols-2">
             {ONBOARDING_CARDS.map((card) => (
               <div key={card.title} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-                <h3 className="mb-1 text-[14px] font-medium text-[var(--text)]">{card.title}</h3>
-                <p className="text-[13px] text-[var(--text-muted)]">{card.body}</p>
+                <h3 className="mb-1 text-[length:var(--text-body)] font-medium text-[var(--text)]">{card.title}</h3>
+                <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">{card.body}</p>
               </div>
             ))}
           </div>
@@ -508,11 +508,11 @@ export default async function DashboardPage({
 
           {onboardingQuestions.length > 0 && (
             <div className="mb-5">
-              <h3 className="mb-2 text-[15px] font-medium text-[var(--text)]">A couple of quick questions</h3>
+              <h3 className="mb-2 text-[length:var(--text-heading)] font-medium text-[var(--text)]">A couple of quick questions</h3>
               <div className="flex flex-col gap-2">
                 {onboardingQuestions.map(({ question }) => (
                   <div key={question.id}>
-                    <p className="mb-1 text-[13px] text-[var(--text)]">
+                    <p className="mb-1 text-[length:var(--text-body)] text-[var(--text)]">
                       {question.label}
                       {question.required && <span className="text-[var(--danger)]"> *</span>}
                     </p>
@@ -531,8 +531,8 @@ export default async function DashboardPage({
 
           {onboardingAxes.length > 0 && (
             <div className="mb-5">
-              <h3 className="mb-2 text-[15px] font-medium text-[var(--text)]">How do you like to work?</h3>
-              <p className="-mt-1 mb-2 text-[13px] text-[var(--text-muted)]">
+              <h3 className="mb-2 text-[length:var(--text-heading)] font-medium text-[var(--text)]">How do you like to work?</h3>
+              <p className="-mt-1 mb-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 Helps surface tasks that fit you — never shown to anyone else, never used to assign you
                 anything. A few more of these are settable any time at /profile.
               </p>
@@ -547,7 +547,7 @@ export default async function DashboardPage({
                     <AxisScaleField axis={axis} name="value" />
                     <button
                       type="submit"
-                      className="mt-2 rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3 py-1.5 text-[12px] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)]"
+                      className="mt-2 rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3 py-1.5 text-[length:var(--text-meta)] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)]"
                     >
                       Save
                     </button>
@@ -558,9 +558,9 @@ export default async function DashboardPage({
           )}
 
           <div className="mb-5">
-            <h3 className="mb-2 text-[15px] font-medium text-[var(--text)]">Open tasks that might fit you</h3>
+            <h3 className="mb-2 text-[length:var(--text-heading)] font-medium text-[var(--text)]">Open tasks that might fit you</h3>
             {onboardingSuggestions.length === 0 ? (
-              <p className="text-[13px] text-[var(--text-muted)]">
+              <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
                 Nothing obviously matching yet —{" "}
                 <Link href="/board" className="text-[var(--accent-1)] hover:underline">
                   browse the full board
@@ -574,7 +574,7 @@ export default async function DashboardPage({
                     <FeedRow key={t.id} href={`/tasks/${t.id}`} title={t.title} meta={t.branchName} />
                   ))}
                 </ul>
-                <Link href="/board" className="mt-1 inline-block text-[12px] font-medium text-[var(--accent-1)] hover:underline">
+                <Link href="/board" className="mt-1 inline-block text-[length:var(--text-meta)] font-medium text-[var(--accent-1)] hover:underline">
                   See everything else on the board →
                 </Link>
               </>
@@ -584,7 +584,7 @@ export default async function DashboardPage({
           <form action={completeOnboardingAction}>
             <button
               type="submit"
-              className="rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)]"
+              className="rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[length:var(--text-meta)] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)]"
             >
               I&rsquo;m all set — don&rsquo;t show this again
             </button>
@@ -600,7 +600,7 @@ export default async function DashboardPage({
           urgency and the reason attached. A full list here would push
           those down and repeat them without either. */}
       {heldTasksInView.length > 0 ? (
-        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
           You hold {heldTasksInView.length} task{heldTasksInView.length === 1 ? "" : "s"} —{" "}
           <Link href="/board?assignedToMe=1&view=kanban" className="font-medium text-[var(--accent-1)] hover:underline">
             see them on the board
@@ -616,7 +616,7 @@ export default async function DashboardPage({
            pointed at reads very differently from holding nothing — say
            so, or the "not holding any tasks" line would be a lie and
            would send someone off to claim more work they already have. */
-        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
           You hold {feed.heldTasks.length} task{feed.heldTasks.length === 1 ? "" : "s"}, none of them in the
           event you&rsquo;ve got in view —{" "}
           <Link href="/board?assignedToMe=1&view=kanban" className="font-medium text-[var(--accent-1)] hover:underline">
@@ -630,7 +630,7 @@ export default async function DashboardPage({
            exactly the "go pick something up" surface. Rendered even
            during onboarding, so the page has one obvious next step
            rather than an empty corner. */
-        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
           You&rsquo;re not holding any tasks right now —{" "}
           <Link href="/board" className="font-medium text-[var(--accent-1)] hover:underline">
             see what&rsquo;s unclaimed
@@ -640,15 +640,15 @@ export default async function DashboardPage({
       )}
 
       <section className="mt-8">
-        <h2 className="mb-4 text-[22px] font-semibold text-[var(--text)]">What&rsquo;s next for you</h2>
+        <h2 className="mb-4 text-[length:var(--text-title)] font-semibold text-[var(--text)]">What&rsquo;s next for you</h2>
 
         {!hasFeedItems && (
           <div className="flex flex-col items-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] px-7 py-8 text-center">
             <CheckCircle size={22} className="text-[var(--text-muted)]" />
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               Nothing pending on what you&rsquo;re holding right now.
             </p>
-            <Link href="/board" className="text-[12px] font-medium text-[var(--accent-1)] hover:underline">
+            <Link href="/board" className="text-[length:var(--text-meta)] font-medium text-[var(--accent-1)] hover:underline">
               Browse the board
             </Link>
           </div>
@@ -820,7 +820,7 @@ export default async function DashboardPage({
             where the Community's outstanding work still needs saying. */}
         {hasSharedModuleNeedsAction && (
           <>
-            <p className="mb-3 mt-6 text-[13px] text-[var(--text-muted)]">
+            <p className="mb-3 mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
               Open to everyone — outstanding for the Community rather than assigned to you, so
               they&rsquo;re here rather than in your count. Whoever does hold the task sees
               these as their own.
@@ -837,8 +837,8 @@ export default async function DashboardPage({
       <div className="my-9 h-px bg-[var(--border)]" />
 
       <section>
-        <h2 className="mb-1 text-[22px] font-semibold text-[var(--text)]">Community snapshot</h2>
-        <p className="mb-4 text-[13px] text-[var(--text-muted)]">
+        <h2 className="mb-1 text-[length:var(--text-title)] font-semibold text-[var(--text)]">Community snapshot</h2>
+        <p className="mb-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Aggregate only — nothing here is broken out by individual. See{" "}
           <Link href="/contribution" className="text-[var(--accent-1)] hover:underline">
             your own contribution picture
@@ -848,7 +848,7 @@ export default async function DashboardPage({
 
         {displayedMemberCount !== null && (
           <div className="mb-4">
-            <p className="text-[14px] text-[var(--text)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text)]">
               <strong className="font-semibold">{displayedMemberCount}</strong> member
               {displayedMemberCount === 1 ? "" : "s"} coming
               {showingThisCycle
@@ -861,8 +861,8 @@ export default async function DashboardPage({
                   href="/dashboard?memberCount=cycle"
                   className={
                     showingThisCycle
-                      ? "text-[13px] font-medium text-[var(--accent-1)]"
-                      : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"
+                      ? "text-[length:var(--text-body)] font-medium text-[var(--accent-1)]"
+                      : "text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--text)]"
                   }
                 >
                   This event
@@ -871,8 +871,8 @@ export default async function DashboardPage({
                   href="/dashboard?memberCount=general"
                   className={
                     !showingThisCycle
-                      ? "text-[13px] font-medium text-[var(--accent-1)]"
-                      : "text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"
+                      ? "text-[length:var(--text-body)] font-medium text-[var(--accent-1)]"
+                      : "text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--text)]"
                   }
                 >
                   All open events
@@ -905,7 +905,7 @@ export default async function DashboardPage({
         {snapshot.branchHealth.length > 0 && (
           <SnapshotSection title="Branch health" icon={<ChartLineUp size={16} className="text-[var(--text-muted)]" />}>
             {snapshot.branchHealth.map((b) => (
-              <li key={b.id} className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-1 py-2 text-[13px] last:border-b-0">
+              <li key={b.id} className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-1 py-2 text-[length:var(--text-body)] last:border-b-0">
                 <span className="text-[var(--text)]">{b.name}</span>
                 <span className="flex items-center gap-2">
                   {b.counts && (

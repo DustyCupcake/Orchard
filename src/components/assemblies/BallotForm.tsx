@@ -150,7 +150,7 @@ export default function BallotForm({
         const setOther = (v: string) => setOthers((prev) => ({ ...prev, [q.id]: v }));
         return (
           <fieldset key={q.id} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-            <legend className="px-1 text-[13px] font-medium text-[var(--text)]">
+            <legend className="px-1 text-[length:var(--text-body)] font-medium text-[var(--text)]">
               {i + 1}. {q.text}
             </legend>
 
@@ -233,7 +233,7 @@ export default function BallotForm({
               )}
               {q.responseType === "single_choice" &&
                 q.options.map((o) => (
-                  <label key={o} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                  <label key={o} className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                     <input
                       type="radio"
                       name={`q_${q.id}`}
@@ -248,7 +248,7 @@ export default function BallotForm({
                 q.options.map((o) => {
                   const checked = Array.isArray(mine) && mine.includes(o);
                   return (
-                    <label key={o} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                    <label key={o} className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                       <input
                         type="checkbox"
                         checked={checked}
@@ -268,7 +268,7 @@ export default function BallotForm({
                     placeholder="Your own words"
                     className={INPUT}
                   />
-                  <span className="text-[11px] text-[var(--text-muted)]">
+                  <span className="text-[length:var(--text-micro)] text-[var(--text-muted)]">
                     Only used if you haven&rsquo;t picked one of the answers above — and it shows as
                     its own line in the tally, since words can&rsquo;t be counted against an option.
                   </span>
@@ -277,7 +277,7 @@ export default function BallotForm({
             </div>
 
             {q.myValue != null && (
-              <p className="mt-1.5 text-[12px] text-[var(--success)]">You&rsquo;ve answered this</p>
+              <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--success)]">You&rsquo;ve answered this</p>
             )}
           </fieldset>
         );
@@ -287,7 +287,7 @@ export default function BallotForm({
         <SubmitButton className={BUTTON_PRIMARY} pendingLabel="Saving…">
           {allAnswered ? "Save all my answers" : "Save the answers I've given"}
         </SubmitButton>
-        <span className="text-[12px] text-[var(--text-muted)]">
+        <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
           {answered} of {questions.length} answered ·{" "}
           {allAnswered ? "you can change any of them until voting closes" : "blank ones are skipped"}
         </span>

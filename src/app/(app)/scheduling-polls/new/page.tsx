@@ -34,8 +34,8 @@ export default async function NewSchedulingPollPage({
 
   return (
     <main className="mx-auto max-w-[560px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Open a scheduling poll</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Open a scheduling poll</h1>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Members submit their own availability blind — you&rsquo;ll only see the aggregate overlap,
         never who submitted what, until you confirm a slot.
       </p>
@@ -60,8 +60,8 @@ export default async function NewSchedulingPollPage({
         </label>
 
         <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <legend className="px-1 text-[12px] text-[var(--text-muted)]">Resolution</legend>
-          <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+          <legend className="px-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">Resolution</legend>
+          <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
             <input type="radio" name="resolutionMode" value="max_attendance" defaultChecked /> Maximize
             attendance above a threshold — open to whoever&rsquo;s relevant
           </label>
@@ -70,13 +70,13 @@ export default async function NewSchedulingPollPage({
             <input type="number" name="minAttendance" min={1} defaultValue={1} className={`${INPUT} w-24`} />
           </label>
 
-          <label className="mt-3 flex items-center gap-2 text-[13px] text-[var(--text)]">
+          <label className="mt-3 flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
             <input type="radio" name="resolutionMode" value="must_overlap" /> Must overlap specific people —
             a slot missing any of them isn&rsquo;t an option
           </label>
           <div className="mt-1 flex flex-col gap-0.5 pl-6">
             {members.map((m) => (
-              <label key={m.id} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+              <label key={m.id} className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                 <input type="checkbox" name="requiredParticipantIds" value={m.id} /> {m.name}
               </label>
             ))}
@@ -95,11 +95,11 @@ export default async function NewSchedulingPollPage({
         </div>
 
         <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <legend className="px-1 text-[12px] text-[var(--text-muted)]">
+          <legend className="px-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             Agenda &amp; summary (each falls back to this branch&rsquo;s, then the Community&rsquo;s, default)
           </legend>
           <div className="flex flex-col gap-2">
-            <label className="flex items-center justify-between gap-2 text-[13px] text-[var(--text)]">
+            <label className="flex items-center justify-between gap-2 text-[length:var(--text-body)] text-[var(--text)]">
               Open agenda
               <select name="hasAgenda" defaultValue="" className={INPUT}>
                 <option value="">Inherit default</option>
@@ -107,7 +107,7 @@ export default async function NewSchedulingPollPage({
                 <option value="off">Off</option>
               </select>
             </label>
-            <label className="flex items-center justify-between gap-2 text-[13px] text-[var(--text)]">
+            <label className="flex items-center justify-between gap-2 text-[length:var(--text-body)] text-[var(--text)]">
               Expected summary
               <select name="needsSummary" defaultValue="" className={INPUT}>
                 <option value="">Inherit default</option>
@@ -115,7 +115,7 @@ export default async function NewSchedulingPollPage({
                 <option value="off">Off</option>
               </select>
             </label>
-            <label className="flex items-center justify-between gap-2 text-[13px] text-[var(--text)]">
+            <label className="flex items-center justify-between gap-2 text-[length:var(--text-body)] text-[var(--text)]">
               Require read-confirmation
               <select name="requireRead" defaultValue="" className={INPUT}>
                 <option value="">Inherit default</option>

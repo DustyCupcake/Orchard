@@ -52,10 +52,10 @@ export default function CommunityIndicators({
 
   return (
     <section className="mt-6">
-      <h2 className="text-[13px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+      <h2 className="text-[length:var(--text-body)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
         About this community
       </h2>
-      <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+      <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
         Chosen by this community from its own standing questions. Everyone here chose to answer their
         own; nobody is named.
         {/* Only stated when the population isn't the whole community —
@@ -96,7 +96,7 @@ function Indicator({ indicator }: { indicator: CommunityIndicator }) {
 
   return (
     <li className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
-      <p className="text-[14px] font-medium text-[var(--text)]">{label}</p>
+      <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{label}</p>
       <Coverage
         answered={answered}
         declined={declined}
@@ -128,7 +128,7 @@ function Coverage({
   if (declined > 0) parts.push(`${declined} preferred not to say`);
   if (notAnswered > 0) parts.push(`${notAnswered} haven't`);
   return (
-    <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">{parts.join(" · ")}</p>
+    <p className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">{parts.join(" · ")}</p>
   );
 }
 
@@ -143,7 +143,7 @@ function SplitRows({
 }) {
   if (answered === 0) {
     return (
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Nobody&rsquo;s answered this yet, so there&rsquo;s nothing to show.
       </p>
     );
@@ -165,9 +165,9 @@ function SplitRows({
         const width = Math.round((row.count / widest) * 100);
         return (
           <li key={row.label}>
-            <div className="flex items-baseline justify-between gap-2 text-[13px]">
+            <div className="flex items-baseline justify-between gap-2 text-[length:var(--text-body)]">
               <span className="text-[var(--text)]">{row.label}</span>
-              <span className="text-[12px] text-[var(--text-muted)]">
+              <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 {row.count} · {share}%
               </span>
             </div>
@@ -187,7 +187,7 @@ function SplitRows({
 function SummaryFigures({ data }: { data: Extract<IndicatorData, { family: "summary" }> }) {
   if (data.figures.length === 0) {
     return (
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Nobody&rsquo;s answered this yet, so there&rsquo;s nothing to show.
       </p>
     );
@@ -196,8 +196,8 @@ function SummaryFigures({ data }: { data: Extract<IndicatorData, { family: "summ
     <dl className="mt-2.5 flex flex-wrap gap-x-6 gap-y-1.5">
       {data.figures.map((f) => (
         <div key={f.label}>
-          <dt className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">{f.label}</dt>
-          <dd className="text-[15px] font-medium text-[var(--text)]">{f.value}</dd>
+          <dt className="text-[length:var(--text-micro)] uppercase tracking-wide text-[var(--text-muted)]">{f.label}</dt>
+          <dd className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">{f.value}</dd>
         </div>
       ))}
     </dl>

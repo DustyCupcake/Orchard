@@ -37,7 +37,7 @@ export default async function WikiPageDetail({
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
-      <Link href="/documentation" className="text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+      <Link href="/documentation" className="text-[length:var(--text-body)] font-medium text-[var(--accent-1)] hover:underline">
         ← Back to Documentation
       </Link>
 
@@ -47,14 +47,14 @@ export default async function WikiPageDetail({
         </div>
       )}
 
-      <h1 className="mt-2 flex items-center gap-2 text-[32px] font-semibold leading-tight text-[var(--text)]">
+      <h1 className="mt-2 flex items-center gap-2 text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">
         {page.title}
         {page.questionPending && <Tag tone="warning">unanswered</Tag>}
       </h1>
-      <p className="mt-1 text-[13px] text-[var(--text-muted)]">{branchRow?.name ?? "General"}</p>
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{branchRow?.name ?? "General"}</p>
 
       {alsoAskedAs.length > 0 && (
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Also asked as: {alsoAskedAs.map((p) => p.title).join(", ")}
         </p>
       )}
@@ -62,14 +62,14 @@ export default async function WikiPageDetail({
       <section className="mt-6">
         {currentContent ? (
           <div className={CARD}>
-            <p className="whitespace-pre-wrap text-[13px] text-[var(--text)]">{currentContent}</p>
-            <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+            <p className="whitespace-pre-wrap text-[length:var(--text-body)] text-[var(--text)]">{currentContent}</p>
+            <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               Last edited by {memberNameById.get(revisions[0].editedBy) ?? "—"} on{" "}
               {new Date(revisions[0].editedAt).toLocaleString()}
             </p>
           </div>
         ) : (
-          <p className="text-[13px] text-[var(--text-muted)]">
+          <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
             No answer yet — be the first to write one up, or mark this as a duplicate of an
             existing page below.
           </p>
@@ -92,10 +92,10 @@ export default async function WikiPageDetail({
 
         {revisions.length > 1 && (
           <details className="mt-2">
-            <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
+            <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
               Revision history ({revisions.length})
             </summary>
-            <ul className="mt-2 flex flex-col gap-1 text-[12px] text-[var(--text-muted)]">
+            <ul className="mt-2 flex flex-col gap-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               {revisions.slice(1).map((rev) => (
                 <li key={rev.id}>
                   {memberNameById.get(rev.editedBy) ?? "—"} —{" "}
@@ -109,7 +109,7 @@ export default async function WikiPageDetail({
 
       {page.questionPending && duplicateCandidates.length > 0 && (
         <details className="mt-6">
-          <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
+          <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
             This already exists elsewhere — mark as a duplicate
           </summary>
           <form action={markDuplicateAction} className="mt-2 flex gap-2">

@@ -56,7 +56,7 @@ export default async function CycleScopeEscalationPage({
   if (!authorized) {
     return (
       <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Escalation</h1>
+        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Escalation</h1>
         <div className="mt-4">
           <Banner tone="danger">
             Only a current coordination holder, or the backstop of a scope, can see this — you&rsquo;re
@@ -72,8 +72,8 @@ export default async function CycleScopeEscalationPage({
 
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Escalation</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Escalation</h1>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Tasks that have escalated — no owner, past the point staleness/deadline tolerates.
         Cross-branch placement is encouraged: taking one of these is always a visible, deliberate
         act.
@@ -90,10 +90,10 @@ export default async function CycleScopeEscalationPage({
         <ul className="mt-6">
           {tasks.map((t) => (
             <li key={t.id} className="flex items-center justify-between gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
-              <Link href={`/tasks/${t.id}`} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
+              <Link href={`/tasks/${t.id}`} className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
                 {t.title}
               </Link>
-              <span className="flex shrink-0 items-center gap-2 text-[12px] text-[var(--text-muted)]">
+              <span className="flex shrink-0 items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 {t.branchName} · {t.status}
                 {t.critical && <Tag tone="danger">critical</Tag>}
               </span>

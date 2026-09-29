@@ -14,7 +14,7 @@ import SelectField from "@/components/ui/SelectField";
 export const dynamic = "force-dynamic";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 export default async function FeedbackPage({
@@ -62,10 +62,10 @@ export default async function FeedbackPage({
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Feedback</h1>
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Feedback</h1>
 
       {!form && (
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Not set up for this Community yet — a current Admins holder can define a form and pick
           it as the post-event feedback survey on the Settings screen.
         </p>
@@ -86,13 +86,13 @@ export default async function FeedbackPage({
 
           <section className="mt-6">
             <SectionHeading>{form.title}</SectionHeading>
-            {form.description && <p className="mt-1 text-[13px] text-[var(--text-muted)]">{form.description}</p>}
+            {form.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{form.description}</p>}
 
             <form action={submitFeedbackAction} className="mt-4 flex flex-col gap-4">
               {cycles.length > 0 && (
                 <label className="flex flex-col gap-1">
-                  <span className="text-[13px] font-medium text-[var(--text)]">Which event is this about?</span>
-                  <span className="text-[12px] text-[var(--text-muted)]">
+                  <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Which event is this about?</span>
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                     Defaults to the most recent event; pick “General” for feedback not tied to one.
                   </span>
                   <SelectField name="cycleId" defaultValue={cycles[0].id} className={SELECT}>
@@ -125,18 +125,18 @@ export default async function FeedbackPage({
           {canReview && (
             <section className="mt-8">
               <SectionHeading>Responses ({responses.length})</SectionHeading>
-              {responses.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+              {responses.length === 0 && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
               <div className="mt-3 flex flex-col gap-2">
                 {responses.map((r) => (
                   <div key={r.id} className={CARD}>
-                    <p className="text-[12px] text-[var(--text-muted)]">
+                    <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                       {r.submittedBy ? memberNameById.get(r.submittedBy) ?? "—" : "Anonymous"}
                       {" — "}
                       {r.cycleId ? cycleNameById.get(r.cycleId) ?? "—" : "General"}
                       {" — "}
                       {new Date(r.submittedAt).toLocaleString()}
                     </p>
-                    <ul className="mt-2 flex flex-col gap-1 text-[13px] text-[var(--text)]">
+                    <ul className="mt-2 flex flex-col gap-1 text-[length:var(--text-body)] text-[var(--text)]">
                       {fields.map((f) => {
                         const v = (r.values as Record<string, unknown>)[f.key];
                         const display = Array.isArray(v) ? v.join(", ") : String(v ?? "");

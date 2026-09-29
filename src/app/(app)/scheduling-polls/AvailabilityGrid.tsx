@@ -115,7 +115,7 @@ export default function AvailabilityGrid({
           {Array.from({ length: ROW_COUNT }).map((_, rowIdx) => (
             <div
               key={rowIdx}
-              className={`h-[18px] pr-1 text-right text-[11px] text-[var(--text-muted)] ${rowIdx % ROWS_PER_HOUR === 0 ? "visible" : "invisible"}`}
+              className={`h-[18px] pr-1 text-right text-[length:var(--text-micro)] text-[var(--text-muted)] ${rowIdx % ROWS_PER_HOUR === 0 ? "visible" : "invisible"}`}
             >
               {cellDate(days[0] ?? new Date(), rowIdx).toLocaleTimeString(undefined, {
                 hour: "numeric",
@@ -126,7 +126,7 @@ export default function AvailabilityGrid({
         </div>
         {days.map((day) => (
           <div key={day.toISOString()} className="flex w-16 shrink-0 flex-col">
-            <div className="h-8 text-center text-[12px] text-[var(--text-muted)]">
+            <div className="h-8 text-center text-[length:var(--text-meta)] text-[var(--text-muted)]">
               {day.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
             </div>
             {Array.from({ length: ROW_COUNT }).map((_, rowIdx) => {
@@ -150,8 +150,8 @@ export default function AvailabilityGrid({
           <button type="button" onClick={save} disabled={saving} className={BUTTON_PRIMARY}>
             {saving ? "Saving…" : "Save my availability"}
           </button>
-          {saved && <span className="text-[13px] text-[var(--success)]">Saved.</span>}
-          <span className="text-[12px] text-[var(--text-muted)]">
+          {saved && <span className="text-[length:var(--text-body)] text-[var(--success)]">Saved.</span>}
+          <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
             Click, or click-and-drag, to paint the windows you&rsquo;re free. Shown in your own local time.
           </span>
         </div>

@@ -60,7 +60,7 @@ function AssemblyRow({
       <div className="flex flex-wrap items-center gap-2">
         <Link
           href={`/assemblies/${a.id}`}
-          className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]"
+          className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]"
         >
           {a.title}
         </Link>
@@ -68,14 +68,14 @@ function AssemblyRow({
         {templateTitle && <Tag tone="accent2">Prepared agenda</Tag>}
       </div>
 
-      <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+      <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
         {nextBoundary(a, now)}
         {a.questionCount > 0 && ` · ${a.questionCount} agenda ${a.questionCount === 1 ? "item" : "items"}`}
         {a.responseCount > 0 && ` · ${a.responseCount} ${a.responseCount === 1 ? "response" : "responses"}`}
       </p>
 
       {open && a.questionCount > 0 && (
-        <p className="mt-1 text-[12px]">
+        <p className="mt-1 text-[length:var(--text-meta)]">
           {a.myResponseCount > 0 ? (
             <span className="text-[var(--success)]">
               You&rsquo;ve answered {a.myResponseCount} of {a.questionCount}
@@ -114,8 +114,8 @@ export default async function AssembliesPage() {
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Assemblies</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Assemblies</h1>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Community-wide decisions — anything from a genuinely urgent one-off to a slower, deliberate
         structural question. Any member can propose one; results are always advisory, never applied
         automatically.
@@ -134,8 +134,8 @@ export default async function AssembliesPage() {
 
       {assemblies.length === 0 ? (
         <div className="mt-6 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] p-6 text-center">
-          <p className="text-[13px] text-[var(--text)]">No Assemblies yet.</p>
-          <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+          <p className="text-[length:var(--text-body)] text-[var(--text)]">No Assemblies yet.</p>
+          <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             Anything the whole community should weigh in on belongs here — a placement decision, or a
             slower question about how the community runs itself.
           </p>
@@ -144,7 +144,7 @@ export default async function AssembliesPage() {
         <>
           {needsMyAnswer.length > 0 && (
             <section className="mt-6">
-              <h2 className="text-[13px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              <h2 className="text-[length:var(--text-body)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                 Waiting on you
               </h2>
               <div className="mt-2 flex flex-col gap-2">
@@ -157,7 +157,7 @@ export default async function AssembliesPage() {
 
           {restOpen.length > 0 && (
             <section className="mt-6">
-              <h2 className="text-[13px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              <h2 className="text-[length:var(--text-body)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                 Open
               </h2>
               <div className="mt-2 flex flex-col gap-2">
@@ -170,7 +170,7 @@ export default async function AssembliesPage() {
 
           {closed.length > 0 && (
             <section className="mt-6">
-              <h2 className="text-[13px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              <h2 className="text-[length:var(--text-body)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                 Closed
               </h2>
               <div className="mt-2 flex flex-col gap-2">

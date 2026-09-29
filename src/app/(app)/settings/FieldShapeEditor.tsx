@@ -60,7 +60,7 @@ export default function FieldShapeEditor({
           value={value.label}
           onChange={(e) => onChange({ ...value, label: e.target.value })}
           placeholder="Field label"
-          className="min-w-[10rem] flex-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none"
+          className="min-w-[10rem] flex-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[length:var(--text-body)] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none"
         />
         <select
           value={value.responseType}
@@ -74,7 +74,7 @@ export default function FieldShapeEditor({
             // construction.
             onChange({ ...toFieldShape({ ...value, responseType: next }), responseType: next, label: value.label, required: value.required });
           }}
-          className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px] text-[var(--text)]"
+          className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[length:var(--text-body)] text-[var(--text)]"
         >
           {allowedResponseTypes.map((rt) => (
             <option key={rt} value={rt}>
@@ -82,7 +82,7 @@ export default function FieldShapeEditor({
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+        <label className="flex items-center gap-1.5 text-[length:var(--text-meta)] text-[var(--text)]">
           <input
             type="checkbox"
             checked={value.required}
@@ -92,7 +92,7 @@ export default function FieldShapeEditor({
         </label>
         {showRoleTags && (
           <>
-            <label className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+            <label className="flex items-center gap-1.5 text-[length:var(--text-meta)] text-[var(--text)]">
               <input
                 type="checkbox"
                 checked={value.isNameField ?? false}
@@ -100,7 +100,7 @@ export default function FieldShapeEditor({
               />{" "}
               name field
             </label>
-            <label className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+            <label className="flex items-center gap-1.5 text-[length:var(--text-meta)] text-[var(--text)]">
               <input
                 type="checkbox"
                 checked={value.isEmailField ?? false}
@@ -137,7 +137,7 @@ export default function FieldShapeEditor({
                 type="button"
                 onClick={onRemove}
                 title="Remove field"
-                className="inline-flex h-7 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border)] px-2 text-[12px] text-[var(--text-muted)] hover:bg-[var(--neutral-100)] hover:text-[var(--danger)]"
+                className="inline-flex h-7 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border)] px-2 text-[length:var(--text-meta)] text-[var(--text-muted)] hover:bg-[var(--neutral-100)] hover:text-[var(--danger)]"
               >
                 ✕
               </button>
@@ -159,7 +159,7 @@ export default function FieldShapeEditor({
                   onChange({ ...value, options: next });
                 }}
                 placeholder={`Option ${i + 1}`}
-                className="min-w-0 flex-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none"
+                className="min-w-0 flex-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[length:var(--text-body)] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none"
               />
               <button
                 type="button"
@@ -174,12 +174,12 @@ export default function FieldShapeEditor({
           <button
             type="button"
             onClick={() => onChange({ ...value, options: [...value.options, ""] })}
-            className="mt-0.5 w-fit text-[12px] font-medium text-[var(--accent-1)] hover:underline"
+            className="mt-0.5 w-fit text-[length:var(--text-meta)] font-medium text-[var(--accent-1)] hover:underline"
           >
             + Add option
           </button>
           {optionsError && !value.allowOther && (
-            <p className="mt-0.5 text-[12px] text-[var(--danger)]">
+            <p className="mt-0.5 text-[length:var(--text-meta)] text-[var(--danger)]">
               A {RESPONSE_TYPE_LABELS[value.responseType].toLowerCase()} field needs at least one option.
             </p>
           )}
@@ -188,7 +188,7 @@ export default function FieldShapeEditor({
               closed list with no way out either excludes people or
               forces them into a wrong answer. This keeps the vocabulary
               aggregatable while capturing the tail as text. */}
-          <label className="mt-1 flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+          <label className="mt-1 flex items-center gap-1.5 text-[length:var(--text-meta)] text-[var(--text)]">
             <input
               type="checkbox"
               checked={value.allowOther}
@@ -197,7 +197,7 @@ export default function FieldShapeEditor({
             let people write their own answer instead
           </label>
           {value.allowOther && (
-            <p className="text-[11px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-micro)] text-[var(--text-muted)]">
               A box labelled &ldquo;Other&rdquo; appears under the options, next to a field they type
               their answer into. Their words are kept with the option they didn&rsquo;t choose, so the
               list still counts cleanly.
@@ -212,7 +212,7 @@ export default function FieldShapeEditor({
           control. */}
       {value.responseType === "text" && (
         <div className="mt-2 flex flex-wrap items-center gap-3 pl-1">
-          <label className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+          <label className="flex items-center gap-1.5 text-[length:var(--text-meta)] text-[var(--text)]">
             <input
               type="checkbox"
               checked={value.multiline}
@@ -220,12 +220,12 @@ export default function FieldShapeEditor({
             />
             long answer (a paragraph, not a line)
           </label>
-          <label className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+          <label className="flex items-center gap-1.5 text-[length:var(--text-meta)] text-[var(--text)]">
             check the format
             <select
               value={value.validation}
               onChange={(e) => onChange({ ...value, validation: e.target.value as TextValidation })}
-              className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[12px] text-[var(--text)]"
+              className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[length:var(--text-meta)] text-[var(--text)]"
             >
               {TEXT_VALIDATIONS.map((v) => (
                 <option key={v} value={v}>
@@ -246,13 +246,13 @@ export default function FieldShapeEditor({
               ["step", "in steps of"],
             ] as const
           ).map(([key, labelText]) => (
-            <label key={key} className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+            <label key={key} className="flex items-center gap-1.5 text-[length:var(--text-meta)] text-[var(--text)]">
               {labelText}
               <input
                 type="number"
                 value={value[key] ?? ""}
                 onChange={(e) => onChange({ ...value, [key]: e.target.value === "" ? null : Number(e.target.value) })}
-                className="w-24 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[12px] text-[var(--text)]"
+                className="w-24 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[length:var(--text-meta)] text-[var(--text)]"
               />
             </label>
           ))}
@@ -261,14 +261,14 @@ export default function FieldShapeEditor({
 
       {profileQuestionOptions && profileQuestionOptions.length > 0 && (
         <div className="mt-2">
-          <label className="flex items-center gap-2 text-[12px] text-[var(--text)]">
+          <label className="flex items-center gap-2 text-[length:var(--text-meta)] text-[var(--text)]">
             Maps to profile question
             <select
               value={value.mapsToProfileQuestionId ?? ""}
               onChange={(e) =>
                 onChange({ ...value, mapsToProfileQuestionId: e.target.value || undefined })
               }
-              className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[13px] text-[var(--text)]"
+              className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[length:var(--text-body)] text-[var(--text)]"
             >
               <option value="">— none —</option>
               {profileQuestionOptions.map((q) => (
@@ -282,7 +282,7 @@ export default function FieldShapeEditor({
       )}
 
       {fieldKey && (
-        <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">key: {fieldKey}</p>
+        <p className="mt-1.5 text-[length:var(--text-micro)] text-[var(--text-muted)]">key: {fieldKey}</p>
       )}
     </div>
   );

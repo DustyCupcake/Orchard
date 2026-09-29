@@ -27,8 +27,8 @@ export default async function ContributionPage() {
 
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Your contribution</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Your contribution</h1>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         What you&rsquo;ve done, what you&rsquo;re carrying now, and what&rsquo;s coming — nothing
         entered by hand, all read off your task assignments.
       </p>
@@ -39,11 +39,11 @@ export default async function ContributionPage() {
           {viewing.contributionVisible ? "Make this private again" : "Share this with the rest of the community"}
         </button>
         {viewing.contributionVisible && (
-          <span className="text-[12px] text-[var(--text-muted)]">Currently visible to others.</span>
+          <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">Currently visible to others.</span>
         )}
       </form>
 
-      <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+      <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
         {communityAverage
           ? "Each category also shows the average across this event’s currently active members (Participation “coming”) in parentheses."
           : (
@@ -63,11 +63,11 @@ export default async function ContributionPage() {
 
       {others.length > 0 && (
         <section className="mt-8">
-          <h2 className="mb-3 text-[22px] font-semibold text-[var(--text)]">Shared by others</h2>
+          <h2 className="mb-3 text-[length:var(--text-title)] font-semibold text-[var(--text)]">Shared by others</h2>
           <ul>
             {others.map((m) => (
               <li key={m.id} className="border-b border-[var(--border)] py-2 last:border-b-0">
-                <Link href={`/contribution/${m.id}`} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
+                <Link href={`/contribution/${m.id}`} className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
                   {m.name}
                 </Link>
               </li>

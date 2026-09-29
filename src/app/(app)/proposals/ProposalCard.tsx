@@ -114,14 +114,14 @@ export default function ProposalCard({
   return (
     <div className="mb-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-[14px] font-semibold text-[var(--text)]">{proposal.title}</span>
+        <span className="text-[length:var(--text-body)] font-semibold text-[var(--text)]">{proposal.title}</span>
         {proposal.status !== "pending" && <Tag tone={proposal.status === "declined" ? "danger" : "success"}>{proposal.status}</Tag>}
       </div>
-      <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+      <div className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
         Proposed by {submitterName} · {new Date(proposal.createdAt).toLocaleDateString()}
       </div>
       {proposal.activatedTaskId && (
-        <p className="mt-1.5 text-[13px] text-[var(--text)]">
+        <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--text)]">
           Now on the board as{" "}
           <Link
             href={`/tasks/${proposal.activatedTaskId}`}
@@ -131,21 +131,21 @@ export default function ProposalCard({
           </Link>
         </p>
       )}
-      {proposal.description && <p className="mt-1.5 text-[13px] text-[var(--text)]">{proposal.description}</p>}
+      {proposal.description && <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--text)]">{proposal.description}</p>}
       {proposal.wantsToClaim && (
-        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">{submitterName} would like to claim this themselves.</p>
+        <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">{submitterName} would like to claim this themselves.</p>
       )}
       {suggestedMemberName && (
-        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+        <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Suggested for: {suggestedMemberName}
           {proposal.suggestedMemberNote && ` — ${proposal.suggestedMemberNote}`}
         </p>
       )}
       {suggested.length > 0 && (
-        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">Proposer suggested: {suggested.join(" · ")}</p>
+        <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">Proposer suggested: {suggested.join(" · ")}</p>
       )}
       {proposal.status === "declined" && proposal.declineReason && (
-        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">Declined: {proposal.declineReason}</p>
+        <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">Declined: {proposal.declineReason}</p>
       )}
 
       {proposal.status === "pending" && (
@@ -215,7 +215,7 @@ export default function ProposalCard({
             )}
 
             <label className="flex flex-col gap-1">
-              <span className="text-[12px] text-[var(--text-muted)]">Due date (optional — becomes a task milestone)</span>
+              <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">Due date (optional — becomes a task milestone)</span>
               <input
                 type="date"
                 name="dueDate"
@@ -225,9 +225,9 @@ export default function ProposalCard({
             </label>
 
             <details className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-              <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">More options</summary>
+              <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">More options</summary>
               <div className="mt-3 flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+                <label className="flex items-center gap-1.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
                   Capacity:
                   <input
                     type="number"
@@ -238,7 +238,7 @@ export default function ProposalCard({
                     className={`${INPUT} w-20`}
                   />
                 </label>
-                <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                   <input type="checkbox" name="critical" defaultChecked={proposal.suggestedCritical ?? false} /> Critical
                 </label>
               </div>
@@ -259,12 +259,12 @@ export default function ProposalCard({
                   className={`${INPUT} w-44`}
                 />
                 <input type="datetime-local" name="browsePeriodEnd" className={INPUT} />
-                <span className="text-[12px] text-[var(--text-muted)]">(if community-endorsed)</span>
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">(if community-endorsed)</span>
               </div>
             </details>
 
             <details className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-              <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Add a requirement (optional)</summary>
+              <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">Add a requirement (optional)</summary>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <select name="requirementType" defaultValue="" className={INPUT}>
                   <option value="">No requirement</option>
@@ -288,11 +288,11 @@ export default function ProposalCard({
                     </option>
                   ))}
                 </select>
-                <span className="text-[12px] text-[var(--text-muted)]">(if type = tier)</span>
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">(if type = tier)</span>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <input type="text" name="requirementLanguage" placeholder="language" className={INPUT} />
-                <span className="text-[12px] text-[var(--text-muted)]">(if type = language)</span>
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">(if type = language)</span>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <select name="requirementCompletedTaskId" defaultValue="" className={INPUT}>
@@ -303,17 +303,17 @@ export default function ProposalCard({
                     </option>
                   ))}
                 </select>
-                <span className="text-[12px] text-[var(--text-muted)]">(if type = completed task)</span>
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">(if type = completed task)</span>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <input type="text" name="requirementFlag" placeholder="custom flag" className={INPUT} />
-                <span className="text-[12px] text-[var(--text-muted)]">(if type = custom)</span>
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">(if type = custom)</span>
               </div>
             </details>
 
             <details className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-              <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Depends on (optional)</summary>
-              <p className="mt-1 text-[12px] text-[var(--text-muted)]">ctrl/cmd-click to select more than one</p>
+              <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">Depends on (optional)</summary>
+              <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">ctrl/cmd-click to select more than one</p>
               <select name="dependsOnTaskIds" multiple className={`${INPUT} mt-2 h-24`}>
                 {communityTasks.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -325,10 +325,10 @@ export default function ProposalCard({
 
             {canGrantPermissions && (
               <details className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-                <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
+                <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
                   Permissions granted by this task (optional)
                 </summary>
-                <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   One rule, same as everywhere grants are edited (docs/cycle-scope-remediation-plan.md
                   §5.4): a task grants what it sits in — wherever this proposal lands on the board,
                   each checked module is granted for that task&rsquo;s own scope only. Budget authority
@@ -343,13 +343,13 @@ export default function ProposalCard({
                           the point of ticking it, since the branch and
                           event selects sit right there. */}
                       {moduleKey === "community_coordination" && (
-                        <p className="ml-6 text-[12px] text-[var(--text-muted)]">
+                        <p className="ml-6 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                           Ignores the branch. Placed in an event, it coordinates that event; left
                           outside one, it coordinates the whole community.
                         </p>
                       )}
                       {elsewhereHolderByModule[moduleKey] && (
-                        <p className="ml-6 text-[12px] text-[var(--text-muted)]">
+                        <p className="ml-6 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                           Currently held by &ldquo;{elsewhereHolderByModule[moduleKey]}&rdquo; — checking this
                           moves it here.
                         </p>

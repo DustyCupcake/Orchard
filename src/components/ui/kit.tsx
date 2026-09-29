@@ -26,7 +26,7 @@ export const ATTENTION_TONE: Record<string, Tone> = { soft: "warning", hard: "da
 export function Tag({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-[var(--radius-sm)] px-2 py-0.5 text-[11px] font-medium tracking-wide ${TONE_CLASSES[tone]}`}
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-[var(--radius-sm)] px-2 py-0.5 text-[length:var(--text-micro)] font-medium tracking-wide ${TONE_CLASSES[tone]}`}
     >
       {children}
     </span>
@@ -40,7 +40,7 @@ export function Banner({ tone, children }: { tone: Exclude<Tone, "neutral" | "ac
   const toneVar = tone === "warning" ? "warning" : tone === "danger" ? "danger" : "success";
   return (
     <div
-      className="mb-4 rounded-[var(--radius-md)] px-3.5 py-2.5 text-[13px]"
+      className="mb-4 rounded-[var(--radius-md)] px-3.5 py-2.5 text-[length:var(--text-body)]"
       style={{
         background: `var(--${toneVar}-soft)`,
         border: `1px solid var(--${toneVar}-border)`,
@@ -53,13 +53,13 @@ export function Banner({ tone, children }: { tone: Exclude<Tone, "neutral" | "ac
 }
 
 export const BUTTON_PRIMARY =
-  "rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)] active:bg-[var(--accent-1-active)] disabled:opacity-45 disabled:cursor-not-allowed";
+  "rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3.5 py-1.5 text-[length:var(--text-body)] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)] active:bg-[var(--accent-1-active)] disabled:opacity-45 disabled:cursor-not-allowed";
 export const BUTTON_SECONDARY =
-  "rounded-[var(--radius-md)] border border-[var(--border)] bg-transparent px-3.5 py-1.5 text-[13px] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)] disabled:opacity-45 disabled:cursor-not-allowed";
+  "rounded-[var(--radius-md)] border border-[var(--border)] bg-transparent px-3.5 py-1.5 text-[length:var(--text-body)] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)] disabled:opacity-45 disabled:cursor-not-allowed";
 export const BUTTON_GHOST =
-  "rounded-[var(--radius-md)] bg-transparent px-2.5 py-1.5 text-[13px] font-medium text-[var(--accent-1)] hover:bg-[var(--accent-1-softer)] disabled:opacity-45 disabled:cursor-not-allowed";
+  "rounded-[var(--radius-md)] bg-transparent px-2.5 py-1.5 text-[length:var(--text-body)] font-medium text-[var(--accent-1)] hover:bg-[var(--accent-1-softer)] disabled:opacity-45 disabled:cursor-not-allowed";
 export const BUTTON_DESTRUCTIVE =
-  "rounded-[var(--radius-md)] bg-[var(--danger)] px-3.5 py-1.5 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-45 disabled:cursor-not-allowed";
+  "rounded-[var(--radius-md)] bg-[var(--danger)] px-3.5 py-1.5 text-[length:var(--text-body)] font-medium text-white hover:opacity-90 disabled:opacity-45 disabled:cursor-not-allowed";
 // 36x36, icon only — see design_handoff_conventions/README.md's Buttons
 // entry. Works on both <button> and <summary> (a zero-JS disclosure
 // toggle); callers using <summary> should also add
@@ -86,14 +86,14 @@ export function CheckField({
   defaultChecked?: boolean;
 }) {
   return (
-    <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+    <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
       <input type="checkbox" name={name} value={value} defaultChecked={defaultChecked} /> {label}
     </label>
   );
 }
 
 export const INPUT =
-  "rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none";
+  "rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[length:var(--text-body)] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none";
 export const SELECT = INPUT;
 export const CARD = "rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4";
-export const LABEL = "text-[12px] font-medium text-[var(--text-muted)]";
+export const LABEL = "text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]";

@@ -20,7 +20,7 @@ function formatBalance(n: number) {
   return { text: `${formatAmount(Math.abs(rounded))} ${label}`, color };
 }
 
-const TH = "border-b border-[var(--border)] px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]";
+const TH = "border-b border-[var(--border)] px-2 py-2 text-left text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]";
 const TD = "border-b border-[var(--border)] px-2 py-2 text-[var(--text)]";
 
 // The voting/confirmed half of /budget — see docs/spec.md's Budget
@@ -73,16 +73,16 @@ export default function BudgetVotingSection({
 
   return (
     <>
-      <h3 className="mt-6 text-[15px] font-medium text-[var(--text)]">
+      <h3 className="mt-6 text-[length:var(--text-heading)] font-medium text-[var(--text)]">
         {currentCycle.status === "confirmed" ? "Results" : "Voting"} — {voteCount} of {memberCount}{" "}
         members have voted
       </h3>
-      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Pledged so far: {formatAmount(totalPledged)} ({pledgeCount} of {voteCount} voters signaled an amount)
         {attendeeCount !== null && <> · {attendeeCount} attendee{attendeeCount === 1 ? "" : "s"} coming</>}
       </p>
       {currentCycle.status === "confirmed" && confirmedTotal !== null && confirmedBalance !== null && (
-        <p className="mt-1 text-[13px] text-[var(--text)]">
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
           Confirmed budget: {formatAmount(confirmedTotal)} total — pledges leave a{" "}
           <span style={{ color: formatBalance(confirmedBalance).color, fontWeight: 500 }}>
             {formatBalance(confirmedBalance).text}
@@ -90,7 +90,7 @@ export default function BudgetVotingSection({
         </p>
       )}
       <div className="mt-2 overflow-x-auto">
-        <table className="w-full border-collapse text-[13px]">
+        <table className="w-full border-collapse text-[length:var(--text-body)]">
           <thead>
             <tr>
               <th className={TH}>Rank</th>
@@ -138,7 +138,7 @@ export default function BudgetVotingSection({
       </div>
 
       {currentCycle.status === "confirmed" && (
-        <div className="mt-3 text-[13px] text-[var(--text)]">
+        <div className="mt-3 text-[length:var(--text-body)] text-[var(--text)]">
           {currentCycle.confirmationRationale && (
             <p className="text-[var(--text-muted)]">
               <span className="font-medium text-[var(--text)]">Confirmation rationale:</span> {currentCycle.confirmationRationale}
@@ -155,14 +155,14 @@ export default function BudgetVotingSection({
 
       {currentCycle.status === "voting" && ballotOrder.length > 0 && (
         <>
-          <h3 className="mt-6 text-[15px] font-medium text-[var(--text)]">
+          <h3 className="mt-6 text-[length:var(--text-heading)] font-medium text-[var(--text)]">
             Your ranking{myVote ? " (currently submitted — resubmitting replaces it)" : ""}
           </h3>
           <form action={submitBudgetVoteAction} className="mt-2 flex max-w-[500px] flex-col gap-2">
             <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
             <input type="hidden" name="cycleScope" value={cycleScope} />
             {ballotOrder.map((r) => (
-              <label key={r.proposal.id} className="flex items-center justify-between gap-2 text-[13px] text-[var(--text)]">
+              <label key={r.proposal.id} className="flex items-center justify-between gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                 <span>
                   {r.proposal.title} ({formatAmount(r.liveTotal)})
                 </span>
@@ -192,12 +192,12 @@ export default function BudgetVotingSection({
 
       {currentCycle.status === "voting" && isOwner && (
         <>
-          <h3 className="mt-6 text-[15px] font-medium text-[var(--text)]">Confirm budget</h3>
+          <h3 className="mt-6 text-[length:var(--text-heading)] font-medium text-[var(--text)]">Confirm budget</h3>
           <form action={confirmBudgetCycleAction} className="mt-2 flex max-w-[500px] flex-col gap-2">
             <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
             <input type="hidden" name="cycleScope" value={cycleScope} />
             {ranked.map((r) => (
-              <label key={r.proposal.id} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+              <label key={r.proposal.id} className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                 <input type="checkbox" name="confirmedProposalIds" value={r.proposal.id} />
                 {r.proposal.title} ({formatAmount(r.liveTotal)})
               </label>

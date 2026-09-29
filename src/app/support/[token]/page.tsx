@@ -32,8 +32,8 @@ export default async function SupportPage({
   if (!view) {
     return (
       <main className="mx-auto max-w-[560px] px-6 py-16">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">This link isn&rsquo;t valid</h1>
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">This link isn&rsquo;t valid</h1>
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Support links are tied to one person&rsquo;s arrival. Ask whoever sent it to you for a fresh
           one — they can always make another.
         </p>
@@ -57,20 +57,20 @@ export default async function SupportPage({
     }
     return (
       <main className="mx-auto max-w-[560px] px-6 py-16">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">
+        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">
           Someone&rsquo;s waiting on a second
         </h1>
-        <p className="mt-2 text-[14px] text-[var(--text-muted)]">
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           The link you followed asked other members of the community whether they know this person.
           You&rsquo;re not signed in, so there&rsquo;s nothing for you to say here — and you shouldn&rsquo;t
           have to.
         </p>
-        <p className="mt-3 text-[14px] text-[var(--text-muted)]">
+        <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">
           If you&rsquo;re the person it&rsquo;s for, you can carry on with the application below and
           come back to this later — nobody is held up by it.
         </p>
         {deadline && (
-          <p className="mt-3 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">
             The wait ends on its own on {deadline}, and they carry on either way.
           </p>
         )}
@@ -83,10 +83,10 @@ export default async function SupportPage({
 
   return (
     <main className="mx-auto max-w-[560px] px-6 py-16">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">
         {view.supportedByMe ? "You&rsquo;ve already backed this up" : "Can you vouch for someone?"}
       </h1>
-      <p className="mt-2 text-[14px] text-[var(--text-muted)]">
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         {view.supportedByMe
           ? "Thanks — that's on the record, and they can see your name. You can change what you said about how you know them until the wait is over."
           : `${laneCopy.who} Somebody has asked you to say how you know them.`}
@@ -107,8 +107,8 @@ export default async function SupportPage({
         className="mt-5 rounded-[var(--radius-md)] border border-[var(--border)] p-3"
         style={{ background: "var(--neutral-100)" }}
       >
-        <p className="text-[12px] font-medium text-[var(--text-muted)]">What they&rsquo;re in for</p>
-        <p className="mt-1 text-[13px] text-[var(--text)]">{describeLaneConsequence(view.rule)}</p>
+        <p className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">What they&rsquo;re in for</p>
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{describeLaneConsequence(view.rule)}</p>
       </div>
 
       {!waiting ? (
@@ -121,9 +121,9 @@ export default async function SupportPage({
       ) : (
         <>
           <div className="mt-5 flex flex-col gap-2">
-            <p className="text-[12px] font-medium text-[var(--text-muted)]">How do you know them?</p>
+            <p className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">How do you know them?</p>
             {view.supports.length > 0 && (
-              <p className="text-[13px] text-[var(--text-muted)]">
+              <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
                 {view.supports.length >= view.supportCount
                   ? "That's enough — they're unblocked."
                   : `${view.supports.length} of ${view.supportCount} so far: ${view.supports.map((s) => s.name).join(", ")}.`}
@@ -133,26 +133,26 @@ export default async function SupportPage({
 
           <form action={recordSupportAction} className="mt-4 flex flex-col gap-2">
             <input type="hidden" name="token" value={token} />
-            <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+            <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
               <input type="checkbox" name="knowsPersonally" defaultChecked={view.supportedByMe?.knowsPersonally} className="mt-0.5" />
               <span>
                 I know this person personally
-                <span className="block text-[12px] text-[var(--text-muted)]">
+                <span className="block text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   The strongest thing you can say, and the only one some lanes ask for.
                 </span>
               </span>
             </label>
-            <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+            <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
               <input type="checkbox" name="thinksGoodFit" defaultChecked={view.supportedByMe?.thinksGoodFit} className="mt-0.5" />
               <span>
                 I don&rsquo;t know them, but I&rsquo;d expect them to fit
-                <span className="block text-[12px] text-[var(--text-muted)]">
+                <span className="block text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   A judgement about the fit rather than a relationship. Perfectly good — just a
                   different kind of proof.
                 </span>
               </span>
             </label>
-            <p className="text-[12px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
               At least one of these has to be ticked: a click with nothing behind it isn&rsquo;t
               anything they can count.
             </p>
@@ -162,7 +162,7 @@ export default async function SupportPage({
           </form>
 
           {deadline && (
-            <p className="mt-4 text-[12px] text-[var(--text-muted)]">
+            <p className="mt-4 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               If nobody gets to it by {deadline}, nothing happens to them — the wait just ends and
               they carry on. This is not a chance to refuse someone.
             </p>
@@ -172,10 +172,10 @@ export default async function SupportPage({
 
       {view.applyInsteadAvailable && waiting && view.subjectKind === "invite" && (
         <details className="mt-8 border-t border-dashed border-[var(--border)] pt-4">
-          <summary className="cursor-pointer text-[13px] font-medium text-[var(--text-muted)]">
+          <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text-muted)]">
             I&rsquo;m the person this is about
           </summary>
-          <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
             You can skip the wait and carry on. Nobody has to support you for that to work, and it
             doesn&rsquo;t count against you — the wait ending on its own does the same thing. You&rsquo;ll
             go wherever your invite&rsquo;s own rules send you: the application, or straight in.

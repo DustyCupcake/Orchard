@@ -35,7 +35,7 @@ const MESSAGE_SCOPE_LABEL: Record<string, string> = {
 
 function SectionHeading({ href, title }: { href: string; title: string }) {
   return (
-    <h2 className="mb-1 text-[15px] font-medium">
+    <h2 className="mb-1 text-[length:var(--text-heading)] font-medium">
       <Link href={href} className="text-[var(--text)] hover:text-[var(--accent-1)]">
         {title}
       </Link>
@@ -48,10 +48,10 @@ function Row({ href, title, meta }: { href: string; title: string; meta?: React.
     <li className="border-b border-[var(--border)] last:border-b-0">
       <div className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] px-1 py-2.5 hover:bg-[var(--surface-sunken)]">
         <div className="min-w-0">
-          <Link href={href} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
+          <Link href={href} className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
             {title}
           </Link>
-          {meta && <div className="mt-0.5 text-[13px] text-[var(--text-muted)]">{meta}</div>}
+          {meta && <div className="mt-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">{meta}</div>}
         </div>
       </div>
     </li>
@@ -119,7 +119,7 @@ export default async function CommunicationPage({
       )}
 
       {!anySectionHasItems && (
-        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Nothing waiting on you right now — it&rsquo;ll light up here the moment any of these surfaces needs you.
         </p>
       )}
@@ -181,16 +181,16 @@ export default async function CommunicationPage({
 
       {feed.pendingNominations.length > 0 && (
         <Section href="/board" title={`Task nominations (${feed.pendingNominations.length})`}>
-          <p className="-mt-0.5 mb-2 text-[13px] text-[var(--text-muted)]">
+          <p className="-mt-0.5 mb-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
             You&rsquo;re already holding these — a yes, no, or not-now are all fine. No response by the
             deadline releases it back automatically.
           </p>
           {feed.pendingNominations.map(({ nomination, taskTitle, nominatorName }) => (
             <li key={nomination.id} className="border-b border-[var(--border)] px-1 py-2.5 last:border-b-0">
-              <Link href={`/tasks/${nomination.taskId}`} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
+              <Link href={`/tasks/${nomination.taskId}`} className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
                 {taskTitle}
               </Link>{" "}
-              <span className="text-[13px] text-[var(--text-muted)]">
+              <span className="text-[length:var(--text-body)] text-[var(--text-muted)]">
                 — {nominatorName} thinks this is a fit, respond by {new Date(nomination.respondByDeadline).toLocaleString()}
                 {nomination.message && <>: &ldquo;{nomination.message}&rdquo;</>}
               </span>
@@ -200,7 +200,7 @@ export default async function CommunicationPage({
                   type="submit"
                   name="response"
                   value="accepted"
-                  className="rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3 py-1.5 text-[12px] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)]"
+                  className="rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3 py-1.5 text-[length:var(--text-meta)] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)]"
                 >
                   Accept
                 </button>
@@ -208,7 +208,7 @@ export default async function CommunicationPage({
                   type="submit"
                   name="response"
                   value="declined"
-                  className="rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)]"
+                  className="rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[length:var(--text-meta)] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)]"
                 >
                   Not for me
                 </button>
@@ -216,7 +216,7 @@ export default async function CommunicationPage({
                   type="submit"
                   name="response"
                   value="not_now"
-                  className="rounded-[var(--radius-md)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--accent-1)] hover:bg-[var(--accent-1-softer)]"
+                  className="rounded-[var(--radius-md)] px-2.5 py-1.5 text-[length:var(--text-meta)] font-medium text-[var(--accent-1)] hover:bg-[var(--accent-1-softer)]"
                 >
                   Not right now
                 </button>

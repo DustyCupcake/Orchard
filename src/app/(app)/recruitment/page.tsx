@@ -64,7 +64,7 @@ function timeSince(date: Date): string {
   return days === 1 ? "1 day" : `${days} days`;
 }
 
-const TH = "border-b border-[var(--border)] px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]";
+const TH = "border-b border-[var(--border)] px-2 py-2 text-left text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]";
 const TD = "border-b border-[var(--border)] px-2 py-2 text-[var(--text)]";
 
 // How many per-event door rows to resolve on this page. The hub is a
@@ -104,7 +104,7 @@ export default async function RecruitmentHubPage() {
     return (
       <main className="mx-auto max-w-[860px] px-6 py-10 md:px-12 md:py-14">
         <PageHeader title="Recruitment" />
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Recruitment isn&rsquo;t turned on for this Community yet — a current Admins holder can
           enable it under Modules on the Settings screen.
         </p>
@@ -199,8 +199,8 @@ export default async function RecruitmentHubPage() {
       {/* 1. The shared, always-true part. Every member can act on all of
           this, which is the point: the old page had nothing here. */}
       <section className="mt-6">
-        <h2 className="text-[22px] font-semibold text-[var(--text)]">Bringing someone in</h2>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Bringing someone in</h2>
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
           {hasForm
             ? "Anyone can apply, and any member can create a single-use invite link."
             : "Any member can still create a single-use invite link — an Admins holder picks an application form under Recruitment on the Settings screen."}
@@ -214,13 +214,13 @@ export default async function RecruitmentHubPage() {
                 {communityRow.recruitmentApplicationsOpen ? "open" : "closed"}
               </Tag>
             </div>
-            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
               {hasForm
                 ? "Anyone with the link can fill in the form and become an applicant — no account needed to start."
                 : "No application form is configured, so there is nothing to apply with yet."}
             </p>
             {hasForm && (
-              <p className="mt-1 text-[13px] text-[var(--text)]">
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
                 Share <span className="break-all">{appUrl}/apply</span>
               </p>
             )}
@@ -237,7 +237,7 @@ export default async function RecruitmentHubPage() {
           event's own participation page. */}
       {eventRows.length > 0 && (
         <section className="mt-6">
-          <h2 className="text-[22px] font-semibold text-[var(--text)]">Events accepting people</h2>
+          <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Events accepting people</h2>
           <ul className="mt-3 flex flex-col gap-2">
             {eventRows.map(({ cycle: c, state }) => {
               const admitting = state.applicationsOpen || state.invitesOpen;
@@ -246,7 +246,7 @@ export default async function RecruitmentHubPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
                       href={`/${c.id}/participation`}
-                      className="text-[15px] font-medium text-[var(--text)] hover:underline"
+                      className="text-[length:var(--text-heading)] font-medium text-[var(--text)] hover:underline"
                     >
                       {c.name}
                     </Link>
@@ -254,7 +254,7 @@ export default async function RecruitmentHubPage() {
                     {state.applicationsOpen && <Tag tone="accent">applications</Tag>}
                     {state.invitesOpen && <Tag tone="accent">invites</Tag>}
                   </div>
-                  <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                  <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                     {state.capacity === null
                       ? "No capacity limit"
                       : state.remainingCapacity !== null && state.remainingCapacity > 0
@@ -268,7 +268,7 @@ export default async function RecruitmentHubPage() {
             })}
           </ul>
           {hiddenCycleCount > 0 && (
-            <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+            <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               And {hiddenCycleCount} more open event{hiddenCycleCount === 1 ? "" : "s"} — see{" "}
               <Link href="/participation" className="text-[var(--accent-1)] hover:underline">
                 Events
@@ -384,23 +384,23 @@ export default async function RecruitmentHubPage() {
           config assumed existed ("reachable from within Recruitment
           itself") and /invites in particular had none of. */}
       <section className="mt-6">
-        <h2 className="text-[22px] font-semibold text-[var(--text)]">Your part in it</h2>
+        <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Your part in it</h2>
         <ul className="mt-3 flex flex-col gap-2">
           <li className={CARD}>
-            <Link href="/applications" className="text-[15px] font-medium text-[var(--text)] hover:underline">
+            <Link href="/applications" className="text-[length:var(--text-heading)] font-medium text-[var(--text)] hover:underline">
               Applications
             </Link>
-            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
               {isHolder
                 ? "Full applicant answers, your recommendations, decisions and the wider-discussion window."
                 : "Subscribe to see that something is pending, raise an objection while wider discussion is open, and submit your availability for intro calls."}
             </p>
           </li>
           <li className={CARD}>
-            <Link href="/invites" className="text-[15px] font-medium text-[var(--text)] hover:underline">
+            <Link href="/invites" className="text-[length:var(--text-heading)] font-medium text-[var(--text)] hover:underline">
               Invites
             </Link>
-            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
               {isHolder
                 ? "Your invite links, plus the inquiry inbox."
                 : "Create invite links and see the ones you've made."}
@@ -409,7 +409,7 @@ export default async function RecruitmentHubPage() {
         </ul>
 
         {!isHolder && (
-          <p className="mt-3 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">
             {subscription?.active ? (
               <>
                 You&rsquo;re subscribed to application alerts
@@ -448,14 +448,14 @@ export default async function RecruitmentHubPage() {
           live on /applications. */}
       {!isHolder && subscription?.active && (
         <section className="mt-6">
-          <h2 className="text-[22px] font-semibold text-[var(--text)]">
+          <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">
             Pending applications ({alerts.length})
           </h2>
           {alerts.length === 0 && (
-            <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nothing pending.</p>
+            <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Nothing pending.</p>
           )}
           {alerts.length > 0 && (
-            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
               Stage only — you&rsquo;re not a current recruitment-task holder, so not the
               applicant&rsquo;s own answers.
             </p>
@@ -464,7 +464,7 @@ export default async function RecruitmentHubPage() {
             <ul className="mt-3 flex flex-col gap-2">
               {alerts.map((a) => (
                 <li key={a.id} className={CARD}>
-                  <p className="text-[13px] text-[var(--text)]">
+                  <p className="text-[length:var(--text-body)] text-[var(--text)]">
                     Submitted {new Date(a.submittedAt).toLocaleDateString()} ·{" "}
                     {a.evaluationsFiled}/{a.evaluatorsNeeded} evaluations filed
                     {a.outcome && (
@@ -479,7 +479,7 @@ export default async function RecruitmentHubPage() {
             </ul>
           )}
           {alerts.some((a) => a.widerDiscussionStatus === "open") && (
-            <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
               A wider-discussion window is open — you can object to one of these on{" "}
               <Link href="/applications" className="text-[var(--accent-1)] hover:underline">
                 Applications
@@ -494,13 +494,13 @@ export default async function RecruitmentHubPage() {
       {isHolder && (
         <>
           <section className="mt-6">
-            <h2 className="text-[22px] font-semibold text-[var(--text)]">Context</h2>
-            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Context</h2>
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
               Informational only — never a scoring formula. What &ldquo;balanced&rdquo; means for
               this group is a human call.
             </p>
             {pipeline?.capacity ? (
-              <p className="mt-2 text-[13px] text-[var(--text)]">
+              <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
                 Capacity {pipeline.capacity.capacity ?? "unset"} · {pipeline.capacity.comingCount} coming
                 this event
                 {pipeline.capacity.holds > 0 && ` · ${pipeline.capacity.holds} held`}
@@ -514,18 +514,18 @@ export default async function RecruitmentHubPage() {
                 )}
               </p>
             ) : (
-              <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+              <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 No current event — remaining capacity isn&rsquo;t tracked.
               </p>
             )}
 
             {pipeline && pipeline.composition.tierCounts.length > 0 && (
-              <p className="mt-1 text-[13px] text-[var(--text)]">
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
                 Tiers: {pipeline.composition.tierCounts.map((t) => `${t.name} ${t.count}`).join(" · ")}
               </p>
             )}
             {pipeline && pipeline.composition.branchSpread.length > 0 && (
-              <p className="mt-1 text-[13px] text-[var(--text)]">
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
                 Branches:{" "}
                 {pipeline.composition.branchSpread.map((b) => `${b.name} ${b.memberCount}`).join(" · ")}
               </p>
@@ -533,15 +533,15 @@ export default async function RecruitmentHubPage() {
           </section>
 
           <section className="mt-6">
-            <h2 className="text-[22px] font-semibold text-[var(--text)]">
+            <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">
               Candidates ({pipeline?.candidates.length ?? 0})
             </h2>
             {pipeline?.candidates.length === 0 && (
-              <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nobody in flight right now.</p>
+              <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Nobody in flight right now.</p>
             )}
             {pipeline && pipeline.candidates.length > 0 && (
               <div className="mt-3 overflow-x-auto">
-                <table className="w-full border-collapse text-[13px]">
+                <table className="w-full border-collapse text-[length:var(--text-body)]">
                   <thead>
                     <tr>
                       <th className={TH}>Submitted</th>
@@ -566,7 +566,7 @@ export default async function RecruitmentHubPage() {
                 </table>
               </div>
             )}
-            <p className="mt-3 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">
               Evaluate recommendations, manage the wider-discussion window, or view an
               applicant&rsquo;s own answers on{" "}
               <Link href="/applications" className="text-[var(--accent-1)] hover:underline">
@@ -585,11 +585,11 @@ export default async function RecruitmentHubPage() {
               a hint about who. */}
           {standingObjections.length > 0 && (
             <section className="mt-6">
-              <h2 className="flex items-center gap-2 text-[22px] font-semibold text-[var(--text)]">
+              <h2 className="flex items-center gap-2 text-[length:var(--text-title)] font-semibold text-[var(--text)]">
                 Concerns the community has raised
                 <Tag tone="warning">{standingObjections.length} standing</Tag>
               </h2>
-              <p className="mt-1 max-w-[620px] text-[13px] text-[var(--text-muted)]">
+              <p className="mt-1 max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">
                 Someone has raised a concern about {standingObjections.length}{" "}
                 {standingObjections.length === 1 ? "arrival" : "arrivals"}, and{" "}
                 {standingObjections.length === 1 ? "it" : "they"} stand until the mediation body
@@ -598,7 +598,7 @@ export default async function RecruitmentHubPage() {
               </p>
               <ul className="mt-3 flex flex-col gap-1.5">
                 {standingObjections.map((o) => (
-                  <li key={o.id} className="text-[13px] text-[var(--text-muted)]">
+                  <li key={o.id} className="text-[length:var(--text-body)] text-[var(--text-muted)]">
                     {o.formResponseId ? "An application" : "An announced arrival"} —
                     raised {timeSince(o.raisedAt)}{" "}
                     {isMediationMemberNow && (
@@ -620,8 +620,8 @@ export default async function RecruitmentHubPage() {
               decided something. */}
           {pairings.length > 0 && (
             <section className="mt-6">
-              <h2 className="text-[22px] font-semibold text-[var(--text)]">Coming together</h2>
-              <p className="mt-1 max-w-[620px] text-[13px] text-[var(--text-muted)]">
+              <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Coming together</h2>
+              <p className="mt-1 max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">
                 People who named each other as the person they&rsquo;re arriving with. That is all
                 this is: a fact, recorded so the two of you can see each other and be offered one
                 interview together. Nothing about how either of you is assessed depends on it.
@@ -629,7 +629,7 @@ export default async function RecruitmentHubPage() {
               <div className="mt-3 flex flex-col gap-2">
                 {pairings.map((p) => (
                   <div key={p.id} className={`${CARD} flex flex-wrap items-center gap-2`}>
-                    <span className="text-[13px] text-[var(--text)]">
+                    <span className="text-[length:var(--text-body)] text-[var(--text)]">
                       {p.namer?.name ?? "Someone"} · {p.namedMember ? p.namedMember.name : "someone applying"}
                     </span>
                     <Tag
@@ -654,8 +654,8 @@ export default async function RecruitmentHubPage() {
 
           {sharedOffers.length > 0 && (
             <section className="mt-6">
-              <h2 className="text-[22px] font-semibold text-[var(--text)]">Shared interviews to offer</h2>
-              <p className="mt-1 max-w-[620px] text-[13px] text-[var(--text-muted)]">
+              <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Shared interviews to offer</h2>
+              <p className="mt-1 max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">
                 Both sides of these pairs are at the interview stage. Offering one interview between
                 them is opt-in and never automatic — §2.8 is explicit about that, because a joint
                 call is the one place a pair could quietly become a stronger unit than either person.
@@ -664,7 +664,7 @@ export default async function RecruitmentHubPage() {
                 {sharedOffers.map((o) => (
                   <form key={o.pairId} action={answerSharedInterviewAction} className={`${CARD} flex flex-wrap items-center gap-2`}>
                     <input type="hidden" name="pairId" value={o.pairId} />
-                    <span className="text-[13px] text-[var(--text)]">Two applicants, one interview</span>
+                    <span className="text-[length:var(--text-body)] text-[var(--text)]">Two applicants, one interview</span>
                     <button type="submit" name="accept" value="1" className={BUTTON_SECONDARY}>
                       Offer it
                     </button>

@@ -66,8 +66,8 @@ export default function LaneRulesEditor({ initial }: { initial: InitialLaneRules
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--border)] p-3">
-        <p className="text-[12px] font-medium text-[var(--text-muted)]">Start from a preset</p>
-        <p className="mt-1 max-w-[560px] text-[12px] text-[var(--text-muted)]">
+        <p className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Start from a preset</p>
+        <p className="mt-1 max-w-[560px] text-[length:var(--text-meta)] text-[var(--text-muted)]">
           A preset fills all four lanes at once. Everything stays editable afterwards — nothing here
           is a mode you&rsquo;re locked into, and a community that relaxes one lane after picking a
           preset is in exactly the configuration the cards below describe.
@@ -84,7 +84,7 @@ export default function LaneRulesEditor({ initial }: { initial: InitialLaneRules
             </Button>
           ))}
         </div>
-        <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+        <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           {matchingPreset
             ? `Right now this matches “${matchingPreset.label}”.`
             : "Right now this is a mix — which is a perfectly good answer, and the cards below say what it means."}
@@ -118,10 +118,10 @@ function LaneCard({
   return (
     <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-[15px] font-medium text-[var(--text)]">{copy.title}</h3>
-        <span className="text-[12px] text-[var(--text-muted)]">{summarizeLaneRule(rule)}</span>
+        <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">{copy.title}</h3>
+        <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{summarizeLaneRule(rule)}</span>
       </div>
-      <p className="mt-1 max-w-[560px] text-[12px] text-[var(--text-muted)]">{copy.who}</p>
+      <p className="mt-1 max-w-[560px] text-[length:var(--text-meta)] text-[var(--text-muted)]">{copy.who}</p>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <Select
@@ -135,7 +135,7 @@ function LaneCard({
         />
         {rule.verificationMode === "nomination" && (
           <div className="flex flex-col gap-1">
-            <label className="text-[12px] font-medium text-[var(--text-muted)]" htmlFor={`lane.${lane}.supportCount`}>
+            <label className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]" htmlFor={`lane.${lane}.supportCount`}>
               How many people have to back it up
             </label>
             <input
@@ -145,9 +145,9 @@ function LaneCard({
               min={1}
               max={50}
               defaultValue={rule.supportCount}
-              className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none"
+              className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[length:var(--text-body)] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none"
             />
-            <span className="text-[12px] text-[var(--text-muted)]">
+            <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
               One is the usual answer. More than one only makes sense if the community is large enough
               that one person&rsquo;s word about someone they&rsquo;ve never met is worth checking.
             </span>
@@ -155,7 +155,7 @@ function LaneCard({
         )}
       </div>
 
-      <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+      <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
         {VERIFICATION_OPTIONS.find((o) => o.value === rule.verificationMode)?.blurb}
       </p>
 
@@ -182,7 +182,7 @@ function LaneCard({
         )}
       </div>
 
-      <p className="mt-3 border-t border-dashed border-[var(--border)] pt-2 text-[13px] text-[var(--text)]">
+      <p className="mt-3 border-t border-dashed border-[var(--border)] pt-2 text-[length:var(--text-body)] text-[var(--text)]">
         <span className="text-[var(--text-muted)]">What actually happens: </span>
         {describeLaneConsequence(rule)}
       </p>

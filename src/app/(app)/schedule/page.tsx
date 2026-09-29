@@ -31,7 +31,7 @@ function formatSlotsRaw(slots: EventSlot[]) {
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 // See docs/spec.md's "Event scheduling" and docs/development-plan.md's
@@ -69,8 +69,8 @@ export default async function SchedulePage({
   if (moduleOn && resolution.kind === "ambiguous") {
     return (
       <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Programme</h1>
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Programme</h1>
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Scoped to multiple active events — pick one to see its programme:
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -117,10 +117,10 @@ export default async function SchedulePage({
 
   return (
     <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Programme</h1>
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Programme</h1>
 
       {!moduleOn && (
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Not turned on for this Community yet — a current Admins holder can enable it under
           Modules on the Settings screen.
         </p>
@@ -167,7 +167,7 @@ export default async function SchedulePage({
           <section className="mt-6">
             <SectionHeading>Published programme</SectionHeading>
             {publishedSchedule.filter((p) => p.status === "confirmed").length === 0 && (
-              <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nothing published yet.</p>
+              <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Nothing published yet.</p>
             )}
             <div className="mt-3 flex flex-col gap-2">
               {publishedSchedule
@@ -176,14 +176,14 @@ export default async function SchedulePage({
                   const confirmedSlot = p.confirmedSlot as EventSlot | null;
                   return (
                     <div key={p.id} className={CARD}>
-                      <p className="text-[14px] font-medium text-[var(--text)]">
+                      <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
                         {p.title} <span className="font-normal text-[var(--text-muted)]">— hosted by {p.host}</span>
                       </p>
-                      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                         {confirmedSlot && formatSlot(confirmedSlot)}
                         {p.spaceNeeds && <> · {p.spaceNeeds}</>}
                       </p>
-                      {p.description && <p className="mt-1 text-[13px] text-[var(--text)]">{p.description}</p>}
+                      {p.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{p.description}</p>}
                     </div>
                   );
                 })}
@@ -192,7 +192,7 @@ export default async function SchedulePage({
 
           <section className="mt-8">
             <SectionHeading>My proposals</SectionHeading>
-            {myProposals.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+            {myProposals.length === 0 && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
             <div className="mt-3 flex flex-col gap-3">
               {myProposals.map((p) => {
                 const editable = !p.publishedAt && (p.status === "proposed" || p.status === "conflict");
@@ -201,23 +201,23 @@ export default async function SchedulePage({
                 return (
                   <div key={p.id} className={CARD}>
                     <Tag tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status] ?? p.status}</Tag>
-                    <p className="mt-1.5 text-[14px] font-medium text-[var(--text)]">
+                    <p className="mt-1.5 text-[length:var(--text-body)] font-medium text-[var(--text)]">
                       {p.title} <span className="font-normal text-[var(--text-muted)]">— hosted by {p.host}</span>
                     </p>
-                    {p.description && <p className="mt-1 text-[13px] text-[var(--text)]">{p.description}</p>}
-                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                    {p.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{p.description}</p>}
+                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                       {p.durationMinutes} min{p.spaceNeeds && <> · {p.spaceNeeds}</>}
                     </p>
-                    <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text-muted)]">
+                    <ul className="mt-1.5 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
                       {(p.preferredSlots as EventSlot[]).map((s, i) => (
                         <li key={i}>{formatSlot(s)}</li>
                       ))}
                     </ul>
                     {confirmedSlot && (
-                      <p className="mt-1.5 text-[13px] text-[var(--text)]">Confirmed: {formatSlot(confirmedSlot)}</p>
+                      <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--text)]">Confirmed: {formatSlot(confirmedSlot)}</p>
                     )}
                     {pings.length > 0 && (
-                      <p className="mt-1.5 text-[13px] text-[var(--warning)]">
+                      <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--warning)]">
                         The scheduling owner has flagged this conflict {pings.length} time(s) — propose a
                         different slot, or reach out to sort it out directly.
                       </p>
@@ -225,7 +225,7 @@ export default async function SchedulePage({
 
                     {editable && (
                       <details className="mt-2">
-                        <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Edit</summary>
+                        <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Edit</summary>
                         <form action={updateEventProposalAction} className="mt-2 flex max-w-md flex-col gap-2">
                           <input type="hidden" name="proposalId" value={p.id} />
                           <label className="flex flex-col gap-1">
@@ -275,7 +275,7 @@ export default async function SchedulePage({
               })}
             </div>
 
-            <h3 className="mt-6 text-[15px] font-medium text-[var(--text)]">Submit a proposal</h3>
+            <h3 className="mt-6 text-[length:var(--text-heading)] font-medium text-[var(--text)]">Submit a proposal</h3>
             <form action={submitEventProposalAction} className="mt-2 flex max-w-[500px] flex-col gap-2">
               <input type="hidden" name="cycleId" value={cycleId ?? ""} />
               <label className="flex flex-col gap-1">

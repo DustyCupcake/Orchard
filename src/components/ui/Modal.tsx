@@ -55,11 +55,11 @@ export default function Modal({
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 id="modal-title" className="text-[15px] font-medium">
+            <h2 id="modal-title" className="text-[length:var(--text-heading)] font-medium">
               {title}
             </h2>
             {description && (
-              <p className="mt-1 max-w-[520px] text-[12px] leading-relaxed text-[var(--text-muted)]">
+              <p className="mt-1 max-w-[520px] text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
                 {description}
               </p>
             )}

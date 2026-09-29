@@ -73,9 +73,9 @@ export default function PhaseCard({
   return (
     <div className="mb-6 rounded-[var(--radius-md)] border border-[var(--border)] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
-        <h3 className="text-[15px] font-semibold text-[var(--text)]">{group.name}</h3>
+        <h3 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">{group.name}</h3>
         {(group.startDate || group.endDate) && (
-          <span className="text-[12px] text-[var(--text-muted)]">
+          <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
             <span title={`${startLabel.exact} – ${endLabel.exact}`}>
                <time dateTime={group.startDate ?? undefined} aria-label={startLabel.exact}>{startLabel.visible}</time> – <time dateTime={group.endDate ?? undefined} aria-label={endLabel.exact}>{endLabel.visible}</time>
              </span>
@@ -91,11 +91,11 @@ export default function PhaseCard({
       </div>
 
       <div className="mt-3">
-        {group.tasks.length === 0 && <p className="text-[13px] text-[var(--text-muted)]">No tasks.</p>}
+        {group.tasks.length === 0 && <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">No tasks.</p>}
         {shown.map(renderTask)}
         {rest.length > 0 && (
           <details>
-            <summary className="cursor-pointer text-[13px] font-medium text-[var(--accent-1)]">
+            <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--accent-1)]">
               Show {rest.length} more
             </summary>
             <div className="mt-3">{rest.map(renderTask)}</div>

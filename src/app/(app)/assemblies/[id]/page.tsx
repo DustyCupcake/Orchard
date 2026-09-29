@@ -104,7 +104,7 @@ export default async function AssemblyDetailPage({
 
     return (
       <div key={q.id} className={CARD}>
-        <p className="text-[14px] font-medium text-[var(--text)]">{q.text}</p>
+        <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{q.text}</p>
 
         <QuestionShape
           responseType={q.responseType}
@@ -116,12 +116,12 @@ export default async function AssemblyDetailPage({
         {/* Who put this here. An agenda anyone can add to is a shared
             document, and "who wants this decided?" is the first
             question a member asks reading someone else's motion. */}
-        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+        <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Added by {q.addedBy === viewing.id ? "you" : addedByName}
         </p>
 
         {q.settingsMapping && (
-          <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             Applies to: {q.settingsMapping}
           </p>
         )}
@@ -130,7 +130,7 @@ export default async function AssemblyDetailPage({
             agenda-building it's the only signal of whether anything is
             happening, and during voting it's the "how many of us are we
             actually waiting on" number the old page never showed. */}
-        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+        <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           {total === 0
             ? "No responses yet"
             : `${total} ${total === 1 ? "response" : "responses"}`}
@@ -146,7 +146,7 @@ export default async function AssemblyDetailPage({
             <input type="hidden" name="questionId" value={q.id} />
             <button
               type="submit"
-              className="w-fit text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--danger)] hover:underline"
+              className="w-fit text-[length:var(--text-meta)] font-medium text-[var(--text-muted)] hover:text-[var(--danger)] hover:underline"
             >
               Withdraw this item
             </button>
@@ -178,7 +178,7 @@ export default async function AssemblyDetailPage({
               const share = total > 0 ? Math.round((count / total) * 100) : 0;
               return (
                 <li key={o}>
-                  <div className="flex items-baseline justify-between gap-2 text-[13px]">
+                  <div className="flex items-baseline justify-between gap-2 text-[length:var(--text-body)]">
                     <span className={mine ? "font-medium text-[var(--accent-1)]" : "text-[var(--text)]"}>
                       {/* The space is load-bearing, not decoration: without
                           it the text content reads "Yes, weeklyyour
@@ -186,10 +186,10 @@ export default async function AssemblyDetailPage({
                           even though the margin makes it look right. */}
                       {o}
                       {mine && (
-                        <span className="ml-1.5 text-[11px] font-normal"> your answer</span>
+                        <span className="ml-1.5 text-[length:var(--text-micro)] font-normal"> your answer</span>
                       )}
                     </span>
-                    <span className="text-[12px] text-[var(--text-muted)]">
+                    <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                       {count} · {share}%
                     </span>
                   </div>
@@ -212,7 +212,7 @@ export default async function AssemblyDetailPage({
               return (
                 <li
                   key={r.id}
-                  className={`rounded-[var(--radius-sm)] px-2 py-1 text-[13px] ${
+                  className={`rounded-[var(--radius-sm)] px-2 py-1 text-[length:var(--text-body)] ${
                     mine
                       ? "bg-[var(--accent-1-softer)] text-[var(--accent-1)]"
                       : "bg-[var(--surface-sunken)] text-[var(--text)]"
@@ -234,8 +234,8 @@ export default async function AssemblyDetailPage({
 
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">{a.title}</h1>
-      {a.description && <p className="mt-2 text-[13px] text-[var(--text)]">{a.description}</p>}
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">{a.title}</h1>
+      {a.description && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">{a.description}</p>}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Tag tone={PHASE_TONE[a.phase]}>{PHASE_LABEL[a.phase] ?? a.phase}</Tag>
         {templateTitle && <Tag tone="accent2">Prepared agenda</Tag>}
@@ -246,26 +246,26 @@ export default async function AssemblyDetailPage({
           keeps the absolute timestamp underneath for the plan-down-to-
           the-hour case. */}
       {a.phase === "agenda" && (
-        <p className="mt-2 text-[13px] text-[var(--text)]">
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
           You can add to the agenda for another{" "}
           <strong>{relativeTime(a.agendaEndsAt, now)}</strong> — it closes{" "}
           {a.agendaEndsAt.toLocaleString()}.
         </p>
       )}
       {a.phase === "notice" && (
-        <p className="mt-2 text-[13px] text-[var(--text)]">
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
           Voting opens <strong>{relativeTime(a.noticeEndsAt, now)}</strong> — at{" "}
           {a.noticeEndsAt.toLocaleString()}. The agenda is locked but fully readable below.
         </p>
       )}
       {a.phase === "voting" && (
-        <p className="mt-2 text-[13px] text-[var(--text)]">
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
           Voting closes <strong>{relativeTime(a.votingEndsAt, now)}</strong> —{" "}
           {a.votingEndsAt.toLocaleString()}.
         </p>
       )}
       {a.phase === "closed" && (
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Closed {a.votingEndsAt.toLocaleString()}. Results below are final — turning any of this
           into an actual change is a separate, deliberate step someone takes by hand.
         </p>
@@ -273,7 +273,7 @@ export default async function AssemblyDetailPage({
 
       {a.phase === "voting" && questions.length > 0 && (
         <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-2">
-          <p className="text-[13px] text-[var(--text)]">
+          <p className="text-[length:var(--text-body)] text-[var(--text)]">
             {answeredCount === questions.length ? (
               <>
                 You&rsquo;ve answered all {questions.length}.
@@ -310,14 +310,14 @@ export default async function AssemblyDetailPage({
       )}
 
       <details className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-        <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
+        <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
           What&rsquo;s an Assembly?
         </summary>
-        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+        <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           A way to gather the whole community&rsquo;s view on something — anything from a genuinely
           urgent one-off to a slower, deliberate structural question. It moves through four phases:
         </p>
-        <ul className="mt-1.5 flex flex-col gap-1 text-[12px] text-[var(--text-muted)]">
+        <ul className="mt-1.5 flex flex-col gap-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           <li>
             <strong className="text-[var(--text)]">Agenda</strong> — any member can add agenda
             items: the specific questions or motions people will vote on.
@@ -335,7 +335,7 @@ export default async function AssemblyDetailPage({
             are final.
           </li>
         </ul>
-        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+        <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Results are always advisory, never applied automatically — turning any of this into an
           actual change is a separate, deliberate step someone takes by hand.
         </p>
@@ -348,7 +348,7 @@ export default async function AssemblyDetailPage({
       )}
 
       {questions.length === 0 && (
-        <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
           No agenda items yet.
           {a.phase === "agenda" && " Add the first one below — anyone can."}
         </p>
@@ -384,7 +384,7 @@ export default async function AssemblyDetailPage({
       )}
 
       {a.phase === "voting" && questions.length > 0 && (
-        <h2 className="mt-8 text-[13px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+        <h2 className="mt-8 text-[length:var(--text-body)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
           What everyone has said so far
         </h2>
       )}
@@ -393,7 +393,7 @@ export default async function AssemblyDetailPage({
         <div className="mt-6 flex flex-col gap-5">
           {groupOrder.map((group) => (
             <section key={group}>
-              <h2 className="text-[13px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              <h2 className="text-[length:var(--text-body)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                 {group}
               </h2>
               <div className="mt-2 flex flex-col gap-2">
@@ -405,7 +405,7 @@ export default async function AssemblyDetailPage({
           ))}
           {questions.filter((q) => !templateGroupForMapping(q.settingsMapping)).length > 0 && (
             <section>
-              <h2 className="text-[13px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              <h2 className="text-[length:var(--text-body)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                 Added during the window
               </h2>
               <div className="mt-2 flex flex-col gap-2">

@@ -26,7 +26,7 @@ export default function AxisScaleField({
     return (
       <div className="flex flex-col gap-1">
         {positions.map((value, i) => (
-          <label key={value} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+          <label key={value} className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
             <input type="radio" name={name} value={value} defaultChecked={defaultValue === value} />
             {axis.optionLabels[i]}
           </label>
@@ -37,15 +37,15 @@ export default function AxisScaleField({
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-[12px] text-[var(--text-muted)]">{axis.lowLabel}</span>
+      <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{axis.lowLabel}</span>
       <div className="flex items-center gap-3">
         {positions.map((value) => (
-          <label key={value} className="flex flex-col items-center gap-0.5 text-[11px] text-[var(--text-muted)]">
+          <label key={value} className="flex flex-col items-center gap-0.5 text-[length:var(--text-micro)] text-[var(--text-muted)]">
             <input type="radio" name={name} value={value} defaultChecked={defaultValue === value} />
           </label>
         ))}
       </div>
-      <span className="text-[12px] text-[var(--text-muted)]">{axis.highLabel}</span>
+      <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{axis.highLabel}</span>
     </div>
   );
 }

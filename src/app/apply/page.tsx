@@ -132,17 +132,17 @@ export default async function ApplyPage({
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-16">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">{heading}</h1>
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">{heading}</h1>
 
       {cycleMissing ? (
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">That event doesn&apos;t exist — check the link.</p>
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">That event doesn&apos;t exist — check the link.</p>
       ) : directInvite ? (
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           That invite doesn&rsquo;t need an application — whoever sent it can tell you what to do
           instead, and it will be quicker for you both.
         </p>
       ) : notAccepting ? (
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           {cycleContext
             ? cycleContext.atCapacity
               ? "This event is at capacity — applications for it are closed."
@@ -156,14 +156,14 @@ export default async function ApplyPage({
       ) : (
         <>
           {pairing && (
-            <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
               {pairing.namerName} said you&rsquo;re coming together. That&rsquo;s all we do with it —
               we record it so you can see each other&rsquo;s name and be offered one interview
               between you if you both want that. It doesn&rsquo;t change how either of you is
               assessed.
             </p>
           )}
-          {form.description && <p className="mt-2 text-[13px] text-[var(--text-muted)]">{form.description}</p>}
+          {form.description && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">{form.description}</p>}
           {error && (
             <div className="mt-4">
               <Banner tone="danger">{error}</Banner>
@@ -192,15 +192,15 @@ export default async function ApplyPage({
               <div className="flex flex-col gap-2">
                 <input type="hidden" name="disclosure" value={disclosure} />
                 <div
-                  className="rounded-[var(--radius-md)] border border-[var(--border)] p-3 text-[13px] text-[var(--text-muted)]"
+                  className="rounded-[var(--radius-md)] border border-[var(--border)] p-3 text-[length:var(--text-body)] text-[var(--text-muted)]"
                   style={{ background: "var(--neutral-100)" }}
                 >
-                  <p className="mb-1 text-[12px] font-medium text-[var(--text)]">
+                  <p className="mb-1 text-[length:var(--text-meta)] font-medium text-[var(--text)]">
                     Before you send this — please read this
                   </p>
                   {disclosure}
                 </div>
-                <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+                <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                   <input type="checkbox" name="consentAccepted" required className="mt-0.5" />
                   <span>
                     I&rsquo;ve read that and understood my arrival would be announced to {communityName},
@@ -220,7 +220,7 @@ export default async function ApplyPage({
             // honestly. This is a bonus, not a gate, and saying so is the
             // difference between asking and expecting; §2.5/J6 is
             // explicit that a lapsed nomination falls through.
-            <p className="mt-4 text-[12px] text-[var(--text-muted)]">
+            <p className="mt-4 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               Once you&rsquo;ve sent this we&rsquo;ll give you a link to pass to people in the
               community who know you. It&rsquo;s entirely optional and nobody is waiting on it — if
               nobody uses it, or you decide not to bother, your application carries on exactly as it
@@ -230,7 +230,7 @@ export default async function ApplyPage({
         </>
       )}
 
-      <p className="mt-8 max-w-[560px] text-[12px] text-[var(--text-muted)]">
+      <p className="mt-8 max-w-[560px] text-[length:var(--text-meta)] text-[var(--text-muted)]">
         What happens to this application: {lowerFirst(describeLaneConsequence(rule))}
       </p>
     </main>
@@ -252,7 +252,7 @@ function SubmittedNotice({
         <Banner tone="success">Thanks — your application was submitted.</Banner>
       </div>
       {rule.verificationMode === "nomination" && (
-        <div className="mt-3 text-[13px] text-[var(--text-muted)]">
+        <div className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">
           <p>
             There&rsquo;s one optional thing you can do: ask people in the community who know you to
             back you up. Nobody is waiting on it, and it changes nothing if nobody does — it usually
@@ -274,7 +274,7 @@ function SubmittedNotice({
         </div>
       )}
       {rule.verificationMode === "consensus" && (
-        <p className="mt-3 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Because this community announces arrivals, yours will be announced and any member has{" "}
           {windowHours} hours to raise a concern. A concern doesn&rsquo;t disappear on a timer — the
           mediation team talks it through, and unless they agree it&rsquo;s resolved, your arrival is

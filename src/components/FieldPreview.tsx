@@ -114,7 +114,7 @@ export default function FieldPreview({
   return (
     <label className="flex flex-col gap-1.5">
       {!hideLabel && (
-        <span className="text-[13px] font-medium text-[var(--text)]">
+        <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
           {label || <span className="text-[var(--text-muted)]">(untitled field)</span>}
           {required ? " *" : ""}
         </span>
@@ -154,7 +154,7 @@ export default function FieldPreview({
             { value: "true", label: "Yes" },
             { value: "false", label: "No" },
           ].map((o) => (
-            <label key={o.value} className="flex items-center gap-1.5 text-[13px] font-normal text-[var(--text)]">
+            <label key={o.value} className="flex items-center gap-1.5 text-[length:var(--text-body)] font-normal text-[var(--text)]">
               <input
                 type="radio"
                 name={name}
@@ -200,13 +200,13 @@ export default function FieldPreview({
       {responseType === "single_choice" && (
         <div className="flex flex-col gap-1">
           {options.length === 0 && !allowOther && (
-            <span className="text-[13px] text-[var(--text-muted)]">(no options yet)</span>
+            <span className="text-[length:var(--text-body)] text-[var(--text-muted)]">(no options yet)</span>
           )}
           {/* The real options only. The escape hatch is its own row below —
               marker and field side by side — rather than an "Other" entry in
               this list with a text box hanging off it underneath. */}
           {options.map((o) => (
-            <label key={o} className="flex items-center gap-2 text-[13px] font-normal text-[var(--text)]">
+            <label key={o} className="flex items-center gap-2 text-[length:var(--text-body)] font-normal text-[var(--text)]">
               <input
                 type="radio"
                 name={name}
@@ -234,10 +234,10 @@ export default function FieldPreview({
       {responseType === "multi_choice" && (
         <div className="flex flex-col gap-1">
           {options.length === 0 && !allowOther && (
-            <span className="text-[13px] text-[var(--text-muted)]">(no options yet)</span>
+            <span className="text-[length:var(--text-body)] text-[var(--text-muted)]">(no options yet)</span>
           )}
           {options.map((o) => (
-            <label key={o} className="flex items-center gap-2 text-[13px] font-normal text-[var(--text)]">
+            <label key={o} className="flex items-center gap-2 text-[length:var(--text-body)] font-normal text-[var(--text)]">
               <input
                 type="checkbox"
                 name={name}

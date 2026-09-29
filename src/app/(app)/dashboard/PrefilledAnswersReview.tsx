@@ -58,7 +58,7 @@ export default function PrefilledAnswersReview({
   if (!editing) {
     return (
       <div className="mb-5 flex items-start justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-        <p className="text-[13px] text-[var(--text)]">
+        <p className="text-[length:var(--text-body)] text-[var(--text)]">
           <span className="font-medium">Already on file from your application — </span>
           {answers.map(({ question, answer }) => `${question.label}: ${formatValue(answer.value)}`).join(" · ")}
         </p>
@@ -79,7 +79,7 @@ export default function PrefilledAnswersReview({
       action={handleSubmit}
       className="mb-5 flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3"
     >
-      <p className="text-[13px] font-medium text-[var(--text)]">Review your application answers</p>
+      <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Review your application answers</p>
       {answers.map(({ question, answer }) => (
         <div key={question.id}>
           <input type="hidden" name="questionId" value={question.id} />

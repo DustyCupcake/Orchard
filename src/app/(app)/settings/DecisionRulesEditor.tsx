@@ -162,7 +162,7 @@ export default function DecisionRulesEditor({ initial }: { initial: RecruitmentD
             className="flex flex-col gap-2.5 rounded-[var(--radius-md)] border border-[var(--border)] p-3"
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[12px] font-medium text-[var(--text-muted)]">
+              <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">
                 Rule {i + 1}
                 {isLast ? " — the fallback" : ""}
               </span>
@@ -190,7 +190,7 @@ export default function DecisionRulesEditor({ initial }: { initial: RecruitmentD
             {/* The sentence is the field's real output; the controls below
                 it are how you get there. Putting it first means a reader
                 who has skimmed the whole page has still read every rule. */}
-            <p className="text-[13px] leading-relaxed text-[var(--text)]">{sentence(rule)}</p>
+            <p className="text-[length:var(--text-body)] leading-relaxed text-[var(--text)]">{sentence(rule)}</p>
 
             <div className="flex flex-wrap items-end gap-2">
               {RECOMMENDATIONS.map((r) => (
@@ -217,7 +217,7 @@ export default function DecisionRulesEditor({ initial }: { initial: RecruitmentD
             </div>
 
             <label className="flex items-center gap-2">
-              <span className="text-[12px] font-medium text-[var(--text-muted)]">Then</span>
+              <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Then</span>
               <select
                 name={`rule.${i}.outcome`}
                 value={rule.outcome}
@@ -231,7 +231,7 @@ export default function DecisionRulesEditor({ initial }: { initial: RecruitmentD
                     ? { outcome, defaultResolution: rule.defaultResolution ?? "proceed" }
                     : { outcome, defaultResolution: undefined });
                 }}
-                className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none"
+                className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[length:var(--text-body)] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none"
               >
                 {OUTCOMES.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -243,7 +243,7 @@ export default function DecisionRulesEditor({ initial }: { initial: RecruitmentD
 
             {rule.outcome === "wider_discussion" && (
               <label className="flex items-center gap-2">
-                <span className="text-[12px] font-medium text-[var(--text-muted)]">
+                <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">
                   If nobody objects in the check window
                 </span>
                 <select
@@ -255,7 +255,7 @@ export default function DecisionRulesEditor({ initial }: { initial: RecruitmentD
                         (e.target.value || undefined) as RecruitmentDecisionRule["defaultResolution"],
                     })
                   }
-                  className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none"
+                  className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[length:var(--text-body)] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none"
                 >
                   <option value="">— pick one —</option>
                   <option value="proceed">Admit them</option>
@@ -284,14 +284,14 @@ export default function DecisionRulesEditor({ initial }: { initial: RecruitmentD
       </div>
 
       {lastHasConditions && (
-        <p className="text-[12px] text-[var(--text)]">
+        <p className="text-[length:var(--text-meta)] text-[var(--text)]">
           The last rule has conditions on it, so it can&rsquo;t be the fallback — every application
           that matches nothing would go undecided. Clear its conditions, or add a rule after it with
           none.
         </p>
       )}
       {missingResolution && (
-        <p className="text-[12px] text-[var(--text)]">
+        <p className="text-[length:var(--text-meta)] text-[var(--text)]">
           A rule that announces to the community has to say what happens if nobody objects.
         </p>
       )}
@@ -304,7 +304,7 @@ export default function DecisionRulesEditor({ initial }: { initial: RecruitmentD
       <input type="hidden" name="recruitmentDecisionRulesRaw" value={JSON.stringify(rules)} />
 
       {showJson && (
-        <pre className="overflow-x-auto rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--neutral-100)] p-3 text-[12px] leading-relaxed text-[var(--text-muted)]">
+        <pre className="overflow-x-auto rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--neutral-100)] p-3 text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
           {JSON.stringify(rules, null, 2)}
         </pre>
       )}
@@ -336,7 +336,7 @@ function NumberField({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[12px] text-[var(--text-muted)]">{label}</span>
+      <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{label}</span>
       <input
         // No `name` on the visible input: these values are already in the
         // hidden JSON, and two inputs with the same meaning is how a form
@@ -348,7 +348,7 @@ function NumberField({
         value={value}
         placeholder="—"
         onChange={(e) => onChange(e.target.value)}
-        className="w-20 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none"
+        className="w-20 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[length:var(--text-body)] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none"
       />
     </label>
   );
@@ -367,12 +367,12 @@ function MarkField({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[12px] text-[var(--text-muted)]">{label}</span>
+      <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{label}</span>
       <select
         name={name}
         value={value === undefined ? "" : value ? "yes" : "no"}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none"
+        className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[length:var(--text-body)] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none"
       >
         <option value="">Any</option>
         <option value="yes">Yes</option>

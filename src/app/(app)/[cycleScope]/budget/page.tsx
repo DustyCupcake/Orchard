@@ -102,7 +102,7 @@ const STATUS_TONE: Record<string, Tone> = {
 };
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 // See docs/spec.md's Budget and docs/development-plan.md's Phases
@@ -161,8 +161,8 @@ export default async function BudgetPage({
   if (moduleOn && resolution.kind === "ambiguous") {
     return (
       <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Budget</h1>
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">Scoped to multiple active events — pick one to see its budget:</p>
+        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Budget</h1>
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Scoped to multiple active events — pick one to see its budget:</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {resolution.candidates.map((c) => (
             <Link key={c.id} href={`/${c.id}/budget`} className={BUTTON_SECONDARY}>
@@ -237,10 +237,10 @@ export default async function BudgetPage({
 
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Budget</h1>
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Budget</h1>
 
       {!moduleOn && (
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Not turned on for this Community yet — a current Admins holder can enable it under
           Modules on the Settings screen.
         </p>
@@ -295,7 +295,7 @@ export default async function BudgetPage({
                 <SectionHeading>{currentCycle.title}</SectionHeading>
                 <Tag tone={STATUS_TONE[currentCycle.status]}>{STATUS_LABEL[currentCycle.status] ?? currentCycle.status}</Tag>
               </div>
-              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 Proposal deadline {new Date(currentCycle.proposalDeadline).toLocaleString()}
                 <br />
                 Budget authority is configured separately under Settings → Access &amp; permissions.
@@ -303,7 +303,7 @@ export default async function BudgetPage({
 
               {isOwner && currentCycle.status === "proposals_open" && (
                 <details className="mt-2">
-                  <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
+                  <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
                     Edit title / fixed costs / deadline
                   </summary>
                   <form action={updateBudgetCycleAction} className="mt-2 flex max-w-[640px] flex-col gap-2">
@@ -336,7 +336,7 @@ export default async function BudgetPage({
               {isOwner && currentCycle.status === "confirmed" && (
                 <div className="mt-2">
                   {currentCycle.ownerMarkedDoneAt ? (
-                    <p className="text-[13px] text-[var(--success)]">
+                    <p className="text-[length:var(--text-body)] text-[var(--success)]">
                       Marked done — closing this event won&rsquo;t warn about its Budget.
                     </p>
                   ) : (
@@ -351,12 +351,12 @@ export default async function BudgetPage({
                 </div>
               )}
 
-              <h3 className="mt-4 text-[15px] font-medium text-[var(--text)]">
+              <h3 className="mt-4 text-[length:var(--text-heading)] font-medium text-[var(--text)]">
                 Fixed costs {fixedCosts.length > 0 && <>({formatAmount(fixedTotal)} total)</>}
               </h3>
-              {fixedCosts.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None entered.</p>}
+              {fixedCosts.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None entered.</p>}
               {fixedCosts.length > 0 && (
-                <ul className="mt-1 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
+                <ul className="mt-1 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text)]">
                   {fixedCosts.map((c, i) => (
                     <li key={i}>
                       {c.label}: {formatLineItemDetail(c, attendeeCount)}
@@ -368,10 +368,10 @@ export default async function BudgetPage({
 
               {branchTotals.size > 0 && (
                 <>
-                  <h3 className="mt-4 text-[15px] font-medium text-[var(--text)]">
+                  <h3 className="mt-4 text-[length:var(--text-heading)] font-medium text-[var(--text)]">
                     {currentCycle.status === "confirmed" ? "Confirmed budget by branch" : "Requested so far, by branch"}
                   </h3>
-                  <ul className="mt-1 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
+                  <ul className="mt-1 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text)]">
                     {[...branchTotals.entries()]
                       .sort((a, b) => b[1] - a[1])
                       .map(([branchId, total]) => (
@@ -385,11 +385,11 @@ export default async function BudgetPage({
 
               {currentCycle.status === "proposals_open" && (
                 <>
-                  <h3 className="mt-6 text-[15px] font-medium text-[var(--text)]">
+                  <h3 className="mt-6 text-[length:var(--text-heading)] font-medium text-[var(--text)]">
                     Proposals ({proposals.length}
                     {proposals.length > 0 && <>, {formatAmount(proposalsTotal)} total</>})
                   </h3>
-                  {proposals.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+                  {proposals.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
                   <div className="mt-2 flex flex-col gap-2">
                     {proposals.map((p) => {
                       const items = p.lineItems as BudgetLineItem[];
@@ -397,14 +397,14 @@ export default async function BudgetPage({
                       const mine = p.submittedBy === viewing.id;
                       return (
                         <div key={p.id} className={CARD}>
-                          <p className="text-[12px] text-[var(--text-muted)]">
+                          <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                             {memberNameById.get(p.submittedBy) ?? "—"}
                             {p.branchId && <> · {branchNameById.get(p.branchId) ?? "—"}</>} ·{" "}
                             {formatAmount(liveTotal)} total
                           </p>
-                          <p className="mt-1 text-[14px] font-medium text-[var(--text)]">{p.title}</p>
-                          {p.description && <p className="mt-1 text-[13px] text-[var(--text)]">{p.description}</p>}
-                          <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text-muted)]">
+                          <p className="mt-1 text-[length:var(--text-body)] font-medium text-[var(--text)]">{p.title}</p>
+                          {p.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{p.description}</p>}
+                          <ul className="mt-1.5 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
                             {items.map((it, i) => (
                               <li key={i}>
                                 {it.label}: {formatLineItemDetail(it, attendeeCount)}
@@ -417,7 +417,7 @@ export default async function BudgetPage({
 
                           {mine && currentCycle.status === "proposals_open" && (
                             <details className="mt-2">
-                              <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Edit</summary>
+                              <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Edit</summary>
                               <form action={updateBudgetProposalAction} className="mt-2 flex flex-col gap-2">
                                 <input type="hidden" name="proposalId" value={p.id} />
                                 <input type="hidden" name="cycleScope" value={cycleScope} />
@@ -443,7 +443,7 @@ export default async function BudgetPage({
                     })}
                   </div>
 
-                  <h3 className="mt-6 text-[15px] font-medium text-[var(--text)]">Submit a proposal</h3>
+                  <h3 className="mt-6 text-[length:var(--text-heading)] font-medium text-[var(--text)]">Submit a proposal</h3>
                   <form action={submitBudgetProposalAction} className="mt-2 flex max-w-[640px] flex-col gap-2">
                     <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
                     <input type="hidden" name="cycleScope" value={cycleScope} />
@@ -520,7 +520,7 @@ export default async function BudgetPage({
                   <span className={LABEL}>Proposal deadline</span>
                   <input type="datetime-local" name="proposalDeadline" required className={`${INPUT} w-fit`} />
                 </label>
-                <p className="text-[12px] text-[var(--text-muted)]">
+                <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   Designate this scope&rsquo;s Budget owner under Settings → Access &amp; permissions.
                 </p>
                 <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>

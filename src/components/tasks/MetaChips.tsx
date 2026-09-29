@@ -15,7 +15,7 @@ import {
 export function MetaChip({ icon, children, title }: { icon: ReactNode; children: ReactNode; title?: string }) {
   return (
     <span
-      className="inline-flex items-center gap-1 text-[12px] text-[var(--text-muted)]"
+      className="inline-flex items-center gap-1 text-[length:var(--text-meta)] text-[var(--text-muted)]"
       title={title}
     >
       <span className="shrink-0" aria-hidden="true">{icon}</span>

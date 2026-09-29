@@ -65,7 +65,7 @@ export default async function RecruitmentMediationPage({
     return (
       <main className="mx-auto max-w-[860px] px-6 py-10 md:px-12 md:py-14">
         <PageHeader title="Recruitment mediation" />
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Recruitment is switched off for this community, so there is nothing to mediate.
         </p>
       </main>
@@ -87,7 +87,7 @@ export default async function RecruitmentMediationPage({
             nobody else — not to the evaluators, not to the person being objected to, and not to
             their inviter.
           </Banner>
-          <p className="mt-3 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">
             An Admin can grant the role under Access &amp; permissions, on the
             &ldquo;Recruitment mediation&rdquo; row. It can go on the recruitment task, the conflict
             team&rsquo;s task, or a task of its own — the community decides, and by default nothing
@@ -147,7 +147,7 @@ export default async function RecruitmentMediationPage({
       )}
 
       <section className="mt-6">
-        <h2 className="text-[22px] font-semibold text-[var(--text)]">The body</h2>
+        <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">The body</h2>
         {queue.authority ? (
           <div className="mt-2 max-w-[620px]">
             <Banner tone="warning">
@@ -159,7 +159,7 @@ export default async function RecruitmentMediationPage({
             </Banner>
           </div>
         ) : (
-          <p className="mt-1 max-w-[620px] text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">
             {body.length === 1 ? "One person: " : `${body.length} people: `}
             {body.map((m) => m.name).join(", ")}.
             {body.length > 1
@@ -169,13 +169,13 @@ export default async function RecruitmentMediationPage({
         )}
 
         <div className="mt-3 max-w-[620px] rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <p className="text-[12px] font-medium text-[var(--text-muted)]">The overrule, when there is one</p>
-          <p className="mt-1 text-[13px] text-[var(--text)]">
+          <p className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">The overrule, when there is one</p>
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
             Admitting somebody <em>over</em> a concern is the exception, not the way this works. If
             mediation doesn&rsquo;t clear the concern, the default is that it stands and the person
             doesn&rsquo;t join.
           </p>
-          <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
             {queue.community.recruitmentObjectionOverrule === "majority" ? (
               <>
                 This community needs a majority of the body as it stands right now —{" "}
@@ -192,18 +192,18 @@ export default async function RecruitmentMediationPage({
             )}
           </p>
           {!queue.overrule.available && queue.overrule.reason && (
-            <p className="mt-2 text-[13px] text-[var(--warning)]">{queue.overrule.reason}</p>
+            <p className="mt-2 text-[length:var(--text-body)] text-[var(--warning)]">{queue.overrule.reason}</p>
           )}
         </div>
       </section>
 
       <section className="mt-8">
-        <h2 className="flex items-center gap-2 text-[22px] font-semibold text-[var(--text)]">
+        <h2 className="flex items-center gap-2 text-[length:var(--text-title)] font-semibold text-[var(--text)]">
           Outstanding concerns
           {queue.standing.length > 0 && <Tag tone="warning">{queue.standing.length}</Tag>}
         </h2>
         {queue.standing.length === 0 ? (
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Nothing is waiting on the body. A new concern appears here the moment a member raises one.
           </p>
         ) : (
@@ -225,8 +225,8 @@ export default async function RecruitmentMediationPage({
 
       {queue.settled.length > 0 && (
         <section className="mt-8">
-          <h2 className="text-[22px] font-semibold text-[var(--text)]">Settled</h2>
-          <p className="mt-1 max-w-[620px] text-[13px] text-[var(--text-muted)]">
+          <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Settled</h2>
+          <p className="mt-1 max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">
             The record the plan asks for: every outcome, with the note the body wrote at the time. A
             pattern of concerns being overruled is visible here without anybody keeping a private
             tally of it.
@@ -239,30 +239,30 @@ export default async function RecruitmentMediationPage({
                 style={{ opacity: 0.75 }}
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[14px] font-medium text-[var(--text)]">
+                  <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
                     {SUBJECT_LABEL[item.subject.kind]}
                   </span>
                   <Tag tone={item.resolution === "overruled" ? "warning" : "neutral"}>
                     {RESOLUTION_LABEL[item.resolution] ?? item.resolution}
                   </Tag>
-                  <span className="text-[12px] text-[var(--text-muted)]">
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                     raised {new Date(item.raisedAt).toLocaleDateString()}
                     {item.resolvedAt
                       ? ` · settled ${new Date(item.resolvedAt).toLocaleDateString()}`
                       : ""}
                   </span>
                 </div>
-                <p className="mt-1.5 text-[13px] text-[var(--text-muted)]">{item.note}</p>
+                <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--text-muted)]">{item.note}</p>
                 {item.resolutionNote && (
-                  <p className="mt-1.5 text-[13px] text-[var(--text)]">
-                    <span className="text-[12px] font-medium text-[var(--text-muted)]">
+                  <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--text)]">
+                    <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">
                       The body&rsquo;s note:{" "}
                     </span>
                     {item.resolutionNote}
                   </p>
                 )}
                 {item.objectorName && (
-                  <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+                  <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                     Raised by {item.objectorName} — you can see that because you raised it.
                   </p>
                 )}
@@ -297,25 +297,25 @@ function StandingObjection({
       style={{ background: "var(--warning-soft)", borderColor: "var(--warning-border)" }}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[15px] font-medium text-[var(--text)]">
+        <span className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">
           {SUBJECT_LABEL[item.subject.kind]}
         </span>
         <Tag tone="warning">standing</Tag>
-        <span className="text-[12px] text-[var(--text-muted)]">
+        <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
           raised {new Date(item.raisedAt).toLocaleDateString()}
         </span>
         {item.subject.kind === "invite" && item.subject.consentAt && (
-          <span className="text-[12px] text-[var(--text-muted)]">
+          <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
             · the invitee consented on {new Date(item.subject.consentAt).toLocaleDateString()}
           </span>
         )}
       </div>
 
-      <p className="mt-2 text-[13px] text-[var(--text)]">{item.note}</p>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">{item.note}</p>
       {item.subject.kind === "application" && (
         <Link
           href={`/applications#response-${item.subject.formResponseId}`}
-          className="mt-1 inline-block text-[13px] text-[var(--accent-1)] underline"
+          className="mt-1 inline-block text-[length:var(--text-body)] text-[var(--accent-1)] underline"
         >
           Open the application
         </Link>
@@ -329,7 +329,7 @@ function StandingObjection({
           consented={parties.consented}
         />
       ) : (
-        <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+        <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Who raised this is shielded — from the applicant, from their inviter, and from the
           evaluators. The person who raised it can recuse anyone from this queue, and can consent
           for one named person to be told.
@@ -355,7 +355,7 @@ function StandingObjection({
             </button>
           )}
         </div>
-        <p className="text-[12px] text-[var(--text-muted)]">
+        <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
           {canOverrule
             ? "The overrule is the exception: it exists for a mediation split where the body still wants them in, and because it is an exception your note goes onto the permanent record."
             : "No overrule is available here, so a concern mediation can't clear means the person doesn't join. That is the default, and it is the whole reason a concern is never thrown out by a timer."}
@@ -379,23 +379,23 @@ function ObjectorControls({
   const nameOf = (memberId: string) => body.find((m) => m.memberId === memberId)?.name ?? "Someone";
   return (
     <details className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-      <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
+      <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
         Your controls over who finds out{" "}
         <span className="font-normal text-[var(--text-muted)]">
           ({excluded.length} recused, {consented.length} told)
         </span>
       </summary>
       <div className="mt-3 flex flex-col gap-3">
-        <p className="text-[13px] text-[var(--text-muted)]">
+        <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
           Nobody is told you raised this, and nobody will be unless you say so. You can take people
           off the list that can see it at all, and name one person to be told — the shield holds
           either way, because being told is not the same as being able to see it.
         </p>
         {excluded.length > 0 && (
           <div className="flex flex-col gap-1.5">
-            <span className="text-[12px] font-medium text-[var(--text-muted)]">Recused</span>
+            <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Recused</span>
             {excluded.map((memberId) => (
-              <div key={memberId} className="flex items-center justify-between gap-2 text-[13px]">
+              <div key={memberId} className="flex items-center justify-between gap-2 text-[length:var(--text-body)]">
                 <span className="text-[var(--text)]">{nameOf(memberId)}</span>
                 <form action={withdrawConsentToObjectionAction}>
                   <input type="hidden" name="objectionId" value={objectionId} />
@@ -410,9 +410,9 @@ function ObjectorControls({
         )}
         {consented.length > 0 && (
           <div className="flex flex-col gap-1.5">
-            <span className="text-[12px] font-medium text-[var(--text-muted)]">Told</span>
+            <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Told</span>
             {consented.map((memberId) => (
-              <div key={memberId} className="flex items-center justify-between gap-2 text-[13px]">
+              <div key={memberId} className="flex items-center justify-between gap-2 text-[length:var(--text-body)]">
                 <span className="text-[var(--text)]">{nameOf(memberId)}</span>
                 <form action={withdrawConsentToObjectionAction}>
                   <input type="hidden" name="objectionId" value={objectionId} />

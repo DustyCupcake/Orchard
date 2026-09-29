@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
 // Local, like conflict-reports/page.tsx and documentation/page.tsx —
 // two call sites of an identical four-line h2 isn't a third.
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 const FLAG_LABEL: Record<string, string> = {
@@ -89,7 +89,7 @@ export default async function CycleScopeCoordinationPage({
   if (!authorized) {
     return (
       <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Coordination</h1>
+        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Coordination</h1>
         <div className="mt-4">
           <Banner tone="danger">
             Only a current coordination holder can see this — event-independent coordination covers the
@@ -137,7 +137,7 @@ export default async function CycleScopeCoordinationPage({
           Each figure is a link to the module that acts on it, so the
           count is a door rather than a readout. */}
       <section className="mt-6">
-        <h2 className="text-[22px] font-semibold text-[var(--text)]">Tasks in your scope</h2>
+        <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Tasks in your scope</h2>
         {counts.total === 0 ? (
           <div className="mt-3">
             <Banner tone="success">No tasks in this scope yet.</Banner>
@@ -158,7 +158,7 @@ export default async function CycleScopeCoordinationPage({
               <CountChip label="Claimed" value={counts.claimed} tone="accent" />
               <CountChip label="Done" value={counts.done} tone="success" />
             </div>
-            <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
               {counts.total} task{counts.total === 1 ? "" : "s"} in total
               {counts.stuck > 0 && `, ${counts.stuck} of them unclaimed and flagged`}.
             </p>
@@ -169,7 +169,7 @@ export default async function CycleScopeCoordinationPage({
       {responseQueue.total > 0 && (
         <section className="mt-8" id="waiting-on-you">
           <SectionHeading>Waiting on you</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             {responseQueue.total} thing{responseQueue.total === 1 ? "" : "s"} someone raised or is holding on
             for you in this scope.
           </p>
@@ -185,16 +185,16 @@ export default async function CycleScopeCoordinationPage({
       {suggestions.length > 0 && (
         <section className="mt-8" id="suggestions">
           <SectionHeading>Someone suggested a person</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             A proposer named someone for these. Open the task to ask them, if it looks right.
           </p>
           <ul className="mt-3">
             {suggestions.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
-                <Link href={`/tasks/${s.id}`} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
+                <Link href={`/tasks/${s.id}`} className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
                   {s.title}
                 </Link>
-                <span className="shrink-0 text-[12px] text-[var(--text-muted)]">
+                <span className="shrink-0 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   suggested {s.suggestedMemberName} · {s.branchName}
                 </span>
               </li>
@@ -220,16 +220,16 @@ export default async function CycleScopeCoordinationPage({
       {overdueCheckins.length > 0 && (
         <section className="mt-8" id="checkins">
           <SectionHeading>Check-ins nobody answered</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             A task was parked with a check-in date, and the nudge went out without a reply.
           </p>
           <ul className="mt-3">
             {overdueCheckins.map((c) => (
               <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
-                <Link href={`/tasks/${c.id}`} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
+                <Link href={`/tasks/${c.id}`} className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
                   {c.title}
                 </Link>
-                <span className="shrink-0 text-[12px] text-[var(--text-muted)]">
+                <span className="shrink-0 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   {c.holderName} · due {c.nextCheckinAt?.toLocaleDateString()}
                   {c.waitingNote && ` · ${c.waitingNote}`}
                 </span>
@@ -249,13 +249,13 @@ export default async function CycleScopeCoordinationPage({
       {engagementPatterns.length > 0 && (
         <section className="mt-8">
           <SectionHeading>Engagement patterns</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Members on tasks you coordinate with open non-responses — never an automatic
             consequence, just a real signal worth a human conversation.
           </p>
           <ul className="mt-3">
             {engagementPatterns.map((p) => (
-              <li key={p.memberId} className="flex items-center justify-between gap-3 border-b border-[var(--border)] py-2 text-[13px] last:border-b-0">
+              <li key={p.memberId} className="flex items-center justify-between gap-3 border-b border-[var(--border)] py-2 text-[length:var(--text-body)] last:border-b-0">
                 <span className="text-[var(--text)]">{p.memberName}</span>
                 <span className="flex items-center gap-2">
                   <span className="text-[var(--text-muted)]">
@@ -272,13 +272,13 @@ export default async function CycleScopeCoordinationPage({
       <section className="mt-8">
         <SectionHeading>Availability</SectionHeading>
         {!phaseName && (
-          <p className="text-[13px] text-[var(--text-muted)]">
+          <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
             No current phase to show Availability for — a phase needs an end date in the future (or
             none set) on the most recently started event.
           </p>
         )}
         {phaseName && !questionLabel && (
-          <p className="text-[13px] text-[var(--text-muted)]">
+          <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
             Current phase is &ldquo;{phaseName}&rdquo;, but no Profile question feeds the capacity
             signal for it yet — add one on the settings screen (scope &ldquo;phase&rdquo;, phase name
             &ldquo;{phaseName}&rdquo;, feeds capacity signal on).
@@ -286,16 +286,16 @@ export default async function CycleScopeCoordinationPage({
         )}
         {phaseName && questionLabel && (
           <>
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               &ldquo;{questionLabel}&rdquo; for the current phase (&ldquo;{phaseName}&rdquo;).
             </p>
-            <table className="mt-3 w-full border-collapse text-[13px]">
+            <table className="mt-3 w-full border-collapse text-[length:var(--text-body)]">
               <thead>
                 <tr>
-                  <th className="border-b border-[var(--border)] px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                  <th className="border-b border-[var(--border)] px-2 py-2 text-left text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                     Member
                   </th>
-                  <th className="border-b border-[var(--border)] px-2 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                  <th className="border-b border-[var(--border)] px-2 py-2 text-left text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                     Availability
                   </th>
                 </tr>
@@ -336,7 +336,7 @@ export default async function CycleScopeCoordinationPage({
 function ScopeLine({ coverage }: { coverage: { communityWide: boolean; branches: { name: string }[]; cycles: { name: string }[] } }) {
   if (coverage.communityWide) {
     return (
-      <p className="text-[13px] text-[var(--text-muted)]">
+      <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
         You coordinate the whole community.
       </p>
     );
@@ -347,13 +347,13 @@ function ScopeLine({ coverage }: { coverage: { communityWide: boolean; branches:
   ];
   if (parts.length === 0) {
     return (
-      <p className="text-[13px] text-[var(--text-muted)]">
+      <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
         You coordinate no branches or events right now.
       </p>
     );
   }
   return (
-    <p className="text-[13px] text-[var(--text-muted)]">
+    <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
       You coordinate {parts.join(", ")}.
     </p>
   );
@@ -370,7 +370,7 @@ function CountChip({
   value: number;
   tone: Tone;
 }) {
-  const className = `inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[13px] font-medium ${TONE_TEXT[tone]}`;
+  const className = `inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[length:var(--text-body)] font-medium ${TONE_TEXT[tone]}`;
   if (!href) {
     return (
       <span className={className}>
@@ -403,10 +403,10 @@ function TaskRows({ tasks }: { tasks: CoordinationScopeTask[] }) {
     <ul className="mt-3">
       {tasks.map((t) => (
         <li key={t.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] py-2.5 last:border-b-0">
-          <Link href={`/tasks/${t.id}`} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
+          <Link href={`/tasks/${t.id}`} className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
             {t.title}
           </Link>
-          <span className="flex shrink-0 flex-wrap items-center gap-2 text-[12px] text-[var(--text-muted)]">
+          <span className="flex shrink-0 flex-wrap items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             <Tag tone={STATUS_TONE[t.status] ?? "neutral"}>{t.status}</Tag>
             {t.attentionLevel !== "ok" && <Tag tone="danger">{t.attentionLevel}</Tag>}
             {t.critical && <Tag tone="danger">critical</Tag>}
@@ -430,12 +430,12 @@ function ResponseGroup({
   if (items.length === 0) return null;
   return (
     <div>
-      <h3 className="text-[13px] font-medium text-[var(--text)]">
+      <h3 className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
         {title} <span className="text-[var(--text-muted)]">({items.length})</span>
       </h3>
       <ul className="mt-1">
         {items.map((i) => (
-          <li key={i.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] py-1.5 text-[13px] last:border-b-0">
+          <li key={i.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] py-1.5 text-[length:var(--text-body)] last:border-b-0">
             <span className="text-[var(--text)]">
               <Link href={`/tasks/${i.taskId}`} className="font-medium hover:text-[var(--accent-1)]">
                 {i.taskTitle}

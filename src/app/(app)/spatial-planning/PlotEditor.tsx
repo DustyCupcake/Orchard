@@ -781,12 +781,12 @@ export default function PlotEditor({
   if (!plotRow) {
     return (
       <section className="mt-4">
-        {cycleName && <p className="text-[13px] text-[var(--text-muted)]">Planning for: {cycleName}</p>}
+        {cycleName && <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">Planning for: {cycleName}</p>}
         {!canEdit ? (
-          <p className="text-[13px] text-[var(--text-muted)]">No Plot yet for this Event.</p>
+          <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">No Plot yet for this Event.</p>
         ) : (
           <div className="flex max-w-[480px] flex-col gap-4">
-            <p className="text-[13px] text-[var(--text)]">No Plot yet for this Event — start one:</p>
+            <p className="text-[length:var(--text-body)] text-[var(--text)]">No Plot yet for this Event — start one:</p>
             {error && <Banner tone="danger">{error}</Banner>}
             <label className="flex flex-col gap-1">
               <span className={LABEL}>Name</span>
@@ -800,12 +800,12 @@ export default function PlotEditor({
             </label>
 
             <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-              <legend className="px-1 text-[12px] text-[var(--text-muted)]">Import a base image</legend>
-              <input type="file" accept="image/*" disabled={creating} onChange={handleImageUpload} className="text-[13px] text-[var(--text)]" />
+              <legend className="px-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">Import a base image</legend>
+              <input type="file" accept="image/*" disabled={creating} onChange={handleImageUpload} className="text-[length:var(--text-body)] text-[var(--text)]" />
             </fieldset>
 
             <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-              <legend className="px-1 text-[12px] text-[var(--text-muted)]">Import a vector/GeoJSON boundary</legend>
+              <legend className="px-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">Import a vector/GeoJSON boundary</legend>
               <textarea
                 rows={4}
                 value={vectorText}
@@ -819,7 +819,7 @@ export default function PlotEditor({
             </fieldset>
 
             <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-              <legend className="px-1 text-[12px] text-[var(--text-muted)]">Or draw from scratch</legend>
+              <legend className="px-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">Or draw from scratch</legend>
               <button type="button" disabled={creating} onClick={() => createPlot({})} className={BUTTON_SECONDARY}>
                 Start blank
               </button>
@@ -827,7 +827,7 @@ export default function PlotEditor({
 
             {cloneCandidates.length > 0 && (
               <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-                <legend className="px-1 text-[12px] text-[var(--text-muted)]">Or clone a previous Event&rsquo;s Plot</legend>
+                <legend className="px-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">Or clone a previous Event&rsquo;s Plot</legend>
                 <select value={cloneSourceCycleId} onChange={(e) => setCloneSourceCycleId(e.target.value)} className={INPUT}>
                   <option value="">— choose an Event —</option>
                   {cloneCandidates.map((c) => (
@@ -877,7 +877,7 @@ export default function PlotEditor({
             <Banner tone="danger">{error}</Banner>
           </div>
         )}
-        <p className="text-[13px] text-[var(--text-muted)]">
+        <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
           {plotRow.name}
           {cycleName && ` · ${cycleName}`}
           {!plotRow.scaleCalibration && " · not calibrated yet"}
@@ -1139,12 +1139,12 @@ export default function PlotEditor({
 
         {mode === "calibrate" && (
           <div className="mt-2 flex max-w-[400px] flex-col gap-2">
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               Click two points on the plan ({calPoints.length}/2 placed).
             </p>
             {calPoints.length === 2 && (
               <>
-                <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                   <input type="checkbox" checked={calUseGps} onChange={(e) => setCalUseGps(e.target.checked)} />
                   Use GPS coordinates instead of a distance (geo-anchors this Plot)
                 </label>
@@ -1215,7 +1215,7 @@ export default function PlotEditor({
 
         {mode === "draw-zone" && (
           <div className="mt-2 flex max-w-[400px] flex-col gap-2">
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               Click to add points ({drawPoints.length} so far). Needs at least 3.
             </p>
             <input
@@ -1284,7 +1284,7 @@ export default function PlotEditor({
             <button type="button" disabled={selectedVertex === null || editPoints.length <= 3} onClick={deleteSelectedVertex} className={BUTTON_SECONDARY}>
               Delete selected point
             </button>
-            <span className="text-[12px] text-[var(--text-muted)]">
+            <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
               Drag a point to move it, click a small circle on an edge to add a point there.
             </span>
           </div>
@@ -1355,7 +1355,7 @@ export default function PlotEditor({
                   </button>
                 )}
                 {(draftShapeType === "polygon" || draftShapeType === "line") && (
-                  <p className="text-[13px] text-[var(--text-muted)]">
+                  <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
                     Click on the plan to add points ({draftPoints.length} so far,{" "}
                     {draftShapeType === "polygon" ? "at least 3" : "at least 2"} needed).
                   </p>
@@ -1366,12 +1366,12 @@ export default function PlotEditor({
             {(draftGeometry || draftPoints.length > 0) && (
               <>
                 {(draftShapeType === "rectangle" || draftShapeType === "circle") && (
-                  <p className="text-[12px] text-[var(--text-muted)]">
+                  <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                     Drag the shape to reposition it{draftShapeType === "rectangle" && "; drag the small handle to rotate it"}.
                   </p>
                 )}
                 {selfServiceMode && (
-                  <p className="text-[13px] text-[var(--text-muted)]">
+                  <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
                     Moving &ldquo;{placementFields.label}&rdquo; — this will apply immediately but flag it
                     pending until the Spatial-planning holder reviews it.
                   </p>
@@ -1408,10 +1408,10 @@ export default function PlotEditor({
                     </label>
                     {communityMembers.length > 0 && (
                       <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-                        <legend className="px-1 text-[12px] text-[var(--text-muted)]">Linked Members</legend>
+                        <legend className="px-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">Linked Members</legend>
                         <div className="flex flex-col gap-1">
                           {communityMembers.map((m) => (
-                            <label key={m.id} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                            <label key={m.id} className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                               <input
                                 type="checkbox"
                                 checked={placementFields.memberIds.includes(m.id)}
@@ -1510,10 +1510,10 @@ export default function PlotEditor({
       <div className="min-w-[220px]">
         {categories.length > 0 && (
           <fieldset className="mb-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-            <legend className="px-1 text-[12px] text-[var(--text-muted)]">Layers</legend>
+            <legend className="px-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">Layers</legend>
             <div className="flex flex-col gap-1">
               {categories.map((c) => (
-                <label key={c} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                <label key={c} className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                   <input
                     type="checkbox"
                     checked={!hiddenCategories.has(c)}
@@ -1533,13 +1533,13 @@ export default function PlotEditor({
           </fieldset>
         )}
 
-        <h3 className="text-[15px] font-medium text-[var(--text)]">Zones</h3>
-        {zones.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+        <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Zones</h3>
+        {zones.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
         <div className="mt-1 flex flex-col gap-1.5">
           {zones.map((z) => (
             <div
               key={z.id}
-              className={`rounded-[var(--radius-md)] border p-2 text-[13px] ${z.id === selectedZoneId ? "border-[var(--accent-1)]" : "border-[var(--border)]"}`}
+              className={`rounded-[var(--radius-md)] border p-2 text-[length:var(--text-body)] ${z.id === selectedZoneId ? "border-[var(--accent-1)]" : "border-[var(--border)]"}`}
             >
               <div className="flex items-center gap-1.5">
                 <span className="inline-block h-2.5 w-2.5 shrink-0" style={{ background: z.color }} />
@@ -1565,13 +1565,13 @@ export default function PlotEditor({
           ))}
         </div>
 
-        <h3 className="mt-4 text-[15px] font-medium text-[var(--text)]">Placements</h3>
-        {placements.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+        <h3 className="mt-4 text-[length:var(--text-heading)] font-medium text-[var(--text)]">Placements</h3>
+        {placements.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
         <div className="mt-1 flex flex-col gap-1.5">
           {placements.map((p) => (
             <div
               key={p.id}
-              className={`rounded-[var(--radius-md)] border p-2 text-[13px] ${p.id === selectedPlacementId ? "border-[var(--accent-1)]" : "border-[var(--border)]"}`}
+              className={`rounded-[var(--radius-md)] border p-2 text-[length:var(--text-body)] ${p.id === selectedPlacementId ? "border-[var(--accent-1)]" : "border-[var(--border)]"}`}
             >
               <div className="flex flex-wrap items-center gap-1.5">
                 <span

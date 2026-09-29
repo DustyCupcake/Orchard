@@ -40,7 +40,7 @@ function GroupLabel({ label, open, onToggle }: { label: string; open: boolean; o
     <button
       onClick={onToggle}
       aria-expanded={open}
-      className="flex w-full items-center gap-1 px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)] hover:text-[var(--text)]"
+      className="flex w-full items-center gap-1 px-2.5 pb-1 pt-2 text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)] hover:text-[var(--text)]"
     >
       <NavIcon name="chevronDown" size={12} className={`shrink-0 transition-transform ${open ? "" : "-rotate-90"}`} />
       <span>{label}</span>
@@ -86,7 +86,7 @@ function NavLink({
       <Link
         href={item.href}
         title={collapsed ? item.label : undefined}
-        className={`flex flex-1 items-center gap-3 py-2 text-[13px] ${
+        className={`flex flex-1 items-center gap-3 py-2 text-[length:var(--text-body)] ${
           collapsed ? "justify-center px-2.5" : showIcon ? "px-2.5" : "pl-10 pr-2.5"
         }`}
       >
@@ -94,7 +94,7 @@ function NavLink({
           <span className="relative shrink-0">
             <NavIcon name={item.icon} weight={active ? "fill" : "regular"} />
             {Boolean(badge) && (
-              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[10px] font-semibold leading-none text-white">
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[length:var(--text-nano)] font-semibold leading-none text-white">
                 {badge}
               </span>
             )}
@@ -148,7 +148,7 @@ function NavGroupBlock({
           <Link
             href={primaryHref}
             title={group.label}
-            className={`flex items-center justify-center rounded-[var(--radius-sm)] px-2.5 py-2 text-[13px] transition-colors ${
+            className={`flex items-center justify-center rounded-[var(--radius-sm)] px-2.5 py-2 text-[length:var(--text-body)] transition-colors ${
               groupActive
                 ? "bg-[var(--accent-1-soft)] text-[var(--accent-1)]"
                 : "text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
@@ -157,7 +157,7 @@ function NavGroupBlock({
             <span className="relative shrink-0">
               <NavIcon name={group.icon} weight={groupActive ? "fill" : "regular"} />
               {Boolean(badge) && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[10px] font-semibold leading-none text-white">
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[length:var(--text-nano)] font-semibold leading-none text-white">
                   {badge}
                 </span>
               )}
@@ -186,11 +186,11 @@ function NavGroupBlock({
               : "text-[var(--text-muted)] hover:bg-[var(--surface-sunken)] hover:text-[var(--text)]"
           }`}
         >
-          <Link href={groupHref} className="flex flex-1 items-center gap-3 px-2.5 py-2 text-[13px]">
+          <Link href={groupHref} className="flex flex-1 items-center gap-3 px-2.5 py-2 text-[length:var(--text-body)]">
             <span className="relative shrink-0">
               <NavIcon name={group.icon} weight={groupActive ? "fill" : "regular"} />
               {Boolean(badge) && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[10px] font-semibold leading-none text-white">
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[length:var(--text-nano)] font-semibold leading-none text-white">
                   {badge}
                 </span>
               )}
@@ -365,9 +365,19 @@ function SidebarNavList({
 function BrandMark({ name, logoUrl }: { name: string; logoUrl: string | null }) {
   if (logoUrl) {
     // eslint-disable-next-line @next/next/no-img-element -- a community-supplied external URL, not an optimizable local/remote-pattern asset
-    return <img src={logoUrl} alt={name} className="h-6 w-6 shrink-0 rounded-[var(--radius-sm)] object-cover" />;
+    return <img src={logoUrl} alt={name} className="h-7 w-7 shrink-0 rounded-[var(--radius-sm)] object-cover" />;
   }
-  return <span className="truncate text-sm font-semibold text-[var(--text)]">{name}</span>;
+  // Set in the display face, and the one place in the app where the
+  // community's name is treated as a name rather than as a string in a
+  // nav row. It's the app's own front door — the landing page, the login
+  // screen, and the top of this sidebar all lead with it — and it was
+  // previously an undifferentiated 14px Inter span identical to every
+  // other piece of text in the rail.
+  return (
+    <span className="truncate font-[family-name:var(--font-display)] text-[length:var(--text-heading)] font-semibold leading-tight tracking-[var(--tracking-title)] text-[var(--text)]">
+      {name}
+    </span>
+  );
 }
 
 function SidebarHeader({

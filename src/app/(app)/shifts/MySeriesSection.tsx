@@ -39,7 +39,7 @@ export default function MySeriesSection({
 }) {
   return (
     <section className="mt-8 border-t border-[var(--border)] pt-6">
-      <h2 className="text-[22px] font-semibold text-[var(--text)]">My series</h2>
+      <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">My series</h2>
       <div className="mt-3 flex flex-col gap-4">
         {series.map(({ series: s, occurrences, signups }) => {
           const signupsByOccurrence = new Map<string, ShiftSignupRow[]>();
@@ -59,10 +59,10 @@ export default function MySeriesSection({
               <div className="flex flex-wrap items-center gap-2">
                 <Tag tone={s.archivedAt ? "neutral" : "success"}>{s.archivedAt ? "Archived" : "Active"}</Tag>
                 <Tag tone="neutral">{scopeLabel}</Tag>
-                <span className="text-[12px] text-[var(--text-muted)]">default capacity {s.defaultCapacity}</span>
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">default capacity {s.defaultCapacity}</span>
               </div>
-              <p className="mt-1.5 text-[14px] font-medium text-[var(--text)]">{s.title}</p>
-              {s.description && <p className="mt-1 text-[13px] text-[var(--text)]">{s.description}</p>}
+              <p className="mt-1.5 text-[length:var(--text-body)] font-medium text-[var(--text)]">{s.title}</p>
+              {s.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{s.description}</p>}
 
               {replacementOptions.length > 0 && (
                 <form action={setShiftSeriesScopeAction} className="mt-2 flex max-w-[440px] items-end gap-2">
@@ -90,14 +90,14 @@ export default function MySeriesSection({
                 </button>
               </form>
 
-              <h4 className="mt-4 text-[13px] font-medium text-[var(--text)]">Occurrences</h4>
-              {occurrences.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+              <h4 className="mt-4 text-[length:var(--text-body)] font-medium text-[var(--text)]">Occurrences</h4>
+              {occurrences.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
               <div className="mt-1.5 flex flex-col gap-2">
                 {occurrences.map((o) => {
                   const roster = signupsByOccurrence.get(o.id) ?? [];
                   const ended = new Date(o.endsAt) <= new Date();
                   return (
-                    <div key={o.id} className="text-[13px] text-[var(--text)]">
+                    <div key={o.id} className="text-[length:var(--text-body)] text-[var(--text)]">
                       <span className="font-medium">{formatRange(o.startsAt, o.endsAt)}</span>{" "}
                       <span className="text-[var(--text-muted)]">
                         — capacity {o.capacity ?? s.defaultCapacity} — {roster.length} signed up
@@ -125,11 +125,11 @@ export default function MySeriesSection({
               </div>
 
               <details className="mt-3">
-                <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Generate occurrences</summary>
+                <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Generate occurrences</summary>
 
                 <div className="mt-3 flex flex-col gap-4">
                   <div>
-                    <h5 className="text-[12px] font-medium text-[var(--text-muted)]">Weekly pattern</h5>
+                    <h5 className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Weekly pattern</h5>
                     <form action={generateOccurrencesAction} className="mt-1.5 flex max-w-[400px] flex-col gap-2">
                       <input type="hidden" name="seriesId" value={s.id} />
                       <input type="hidden" name="mode" value="weekly" />
@@ -141,7 +141,7 @@ export default function MySeriesSection({
                         <span className={LABEL}>To</span>
                         <input type="date" name="endDate" required className={INPUT} />
                       </label>
-                      <div className="flex flex-wrap gap-3 text-[13px] text-[var(--text)]">
+                      <div className="flex flex-wrap gap-3 text-[length:var(--text-body)] text-[var(--text)]">
                         {DAY_LABELS.map((label, i) => (
                           <label key={i} className="flex items-center gap-1">
                             <input type="checkbox" name="daysOfWeek" value={i} /> {label}
@@ -163,7 +163,7 @@ export default function MySeriesSection({
                   </div>
 
                   <div>
-                    <h5 className="text-[12px] font-medium text-[var(--text-muted)]">Explicit list</h5>
+                    <h5 className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Explicit list</h5>
                     <form action={generateOccurrencesAction} className="mt-1.5 flex max-w-[400px] flex-col gap-2">
                       <input type="hidden" name="seriesId" value={s.id} />
                       <input type="hidden" name="mode" value="explicit" />

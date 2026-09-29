@@ -53,8 +53,8 @@ export default async function BulkImportPage({
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Import members</h1>
-      <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Import members</h1>
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
         <Link href="/members" className="text-[var(--accent-1)] hover:underline">
           ← Members
         </Link>
@@ -86,15 +86,15 @@ export default async function BulkImportPage({
             <>
               <div className="flex flex-col gap-4">
                 <div>
-                  <h3 className="text-[15px] font-medium text-[var(--text)]">
+                  <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">
                     Will be created ({state.newRows.length})
                   </h3>
                   {state.newRows.length === 0 ? (
-                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                       Nobody — everyone is already a member.
                     </p>
                   ) : (
-                    <ul className="mt-1 list-inside list-disc text-[13px] text-[var(--text-muted)]">
+                    <ul className="mt-1 list-inside list-disc text-[length:var(--text-body)] text-[var(--text-muted)]">
                       {state.newRows.map((r) => (
                         <li key={`${r.name}-${r.email}`}>
                           {r.name} — {r.email}
@@ -104,13 +104,13 @@ export default async function BulkImportPage({
                   )}
                 </div>
                 <div>
-                  <h3 className="text-[15px] font-medium text-[var(--text)]">
+                  <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">
                     Already a member, skipped ({state.alreadyExistsRows.length})
                   </h3>
                   {state.alreadyExistsRows.length === 0 ? (
-                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">None.</p>
+                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None.</p>
                   ) : (
-                    <ul className="mt-1 list-inside list-disc text-[13px] text-[var(--text-muted)]">
+                    <ul className="mt-1 list-inside list-disc text-[length:var(--text-body)] text-[var(--text-muted)]">
                       {state.alreadyExistsRows.map((r) => (
                         <li key={r.email}>{r.email}</li>
                       ))}
@@ -119,10 +119,10 @@ export default async function BulkImportPage({
                 </div>
                 {state.malformedLines.length > 0 && (
                   <div>
-                    <h3 className="text-[15px] font-medium text-[var(--text)]">
+                    <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">
                       Couldn&rsquo;t read, skipped ({state.malformedLines.length})
                     </h3>
-                    <ul className="mt-1 list-inside list-disc text-[13px] text-[var(--text-muted)]">
+                    <ul className="mt-1 list-inside list-disc text-[length:var(--text-body)] text-[var(--text-muted)]">
                       {state.malformedLines.map((line) => (
                         <li key={line}>{line}</li>
                       ))}
@@ -130,7 +130,7 @@ export default async function BulkImportPage({
                   </div>
                 )}
               </div>
-              <p className="text-[12px] text-[var(--text-muted)]">
+              <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 The review lives in this page&rsquo;s address, so coming back needs the tab open.
               </p>
               <div className="flex flex-wrap items-center gap-2">

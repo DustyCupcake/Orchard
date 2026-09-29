@@ -55,7 +55,7 @@ export default function ActionMenu({ children, label = "More actions" }: { child
             // action revalidates/redirects to replaces it anyway.
             setTimeout(() => setOpen(false), 0);
           }}
-          className="absolute right-0 top-8 z-20 flex w-52 flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-md,0_4px_14px_rgba(0,0,0,0.08))] [&_button]:w-full [&_button]:rounded-none [&_button]:border-0 [&_button]:bg-transparent [&_button]:px-3 [&_button]:py-2 [&_button]:text-left [&_button]:text-[13px] [&_button]:text-[var(--text)] [&_button]:hover:bg-[var(--surface-sunken)] [&_a]:block [&_a]:px-3 [&_a]:py-2 [&_a]:text-[13px] [&_a]:text-[var(--text)] [&_a]:hover:bg-[var(--surface-sunken)]"
+          className="absolute right-0 top-8 z-20 flex w-52 flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-md,0_4px_14px_rgba(0,0,0,0.08))] [&_button]:w-full [&_button]:rounded-none [&_button]:border-0 [&_button]:bg-transparent [&_button]:px-3 [&_button]:py-2 [&_button]:text-left [&_button]:text-[length:var(--text-body)] [&_button]:text-[var(--text)] [&_button]:hover:bg-[var(--surface-sunken)] [&_a]:block [&_a]:px-3 [&_a]:py-2 [&_a]:text-[length:var(--text-body)] [&_a]:text-[var(--text)] [&_a]:hover:bg-[var(--surface-sunken)]"
         >
           {children}
         </div>

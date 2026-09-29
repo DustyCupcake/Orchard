@@ -26,12 +26,12 @@ export function Select({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[12px] font-medium text-[var(--text-muted)]">{label}</span>
+      <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">{label}</span>
       <select
         name={name}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none"
+        className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[length:var(--text-body)] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -58,7 +58,7 @@ export function Toggle({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+    <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
       <input type="hidden" name={name} value="off" />
       <input type="checkbox" name={name} value="on" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       {label}
@@ -99,7 +99,7 @@ export function Button({
       title={title}
       disabled={disabled}
       aria-label={ariaLabel}
-      className="rounded-[var(--radius-md)] border border-[var(--border)] bg-transparent px-3 py-1 text-[13px] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+      className="rounded-[var(--radius-md)] border border-[var(--border)] bg-transparent px-3 py-1 text-[length:var(--text-body)] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
     >
       {children}
     </button>

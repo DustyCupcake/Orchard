@@ -78,7 +78,7 @@ const KIND_TONE: Record<CalendarEntry["kind"], Tone> = {
 const WEEKDAY_LABEL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 // The page used to stack Month grid / Upcoming / Invites / Your calendar entries /
@@ -213,28 +213,28 @@ export default async function CalendarPage({
         <div className="flex items-center justify-between">
           <Link
             href={`/calendar?month=${monthParam(prev.year, prev.month)}`}
-            className="flex items-center gap-1 text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"
+            className="flex items-center gap-1 text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--text)]"
           >
             <CaretLeftIcon size={14} /> {MONTH_LABEL[(prev.month - 1 + 12) % 12]}
           </Link>
-          <h2 className="text-[16px] font-semibold text-[var(--text)]">
+          <h2 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">
             {MONTH_LABEL[monthNum - 1]} {year}
           </h2>
           <Link
             href={`/calendar?month=${monthParam(next.year, next.month)}`}
-            className="flex items-center gap-1 text-[13px] text-[var(--text-muted)] hover:text-[var(--text)]"
+            className="flex items-center gap-1 text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--text)]"
           >
             {MONTH_LABEL[(next.month - 1 + 12) % 12]} <CaretRightIcon size={14} />
           </Link>
         </div>
 
-        <table className="mt-3 w-full table-fixed border-collapse text-[12px]">
+        <table className="mt-3 w-full table-fixed border-collapse text-[length:var(--text-meta)]">
           <thead>
             <tr>
               {WEEKDAY_LABEL.map((w) => (
                 <th
                   key={w}
-                  className="border border-[var(--border)] bg-[var(--surface-sunken)] p-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]"
+                  className="border border-[var(--border)] bg-[var(--surface-sunken)] p-1 text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]"
                 >
                   {w}
                 </th>
@@ -251,20 +251,20 @@ export default async function CalendarPage({
                       key={day.date}
                       className={`h-24 border border-[var(--border)] p-1 align-top ${day.inMonth ? "bg-[var(--surface)]" : "bg-[var(--surface-sunken)] text-[var(--text-muted)]"} ${day.isToday ? "ring-2 ring-inset ring-[var(--accent-1)]" : ""}`}
                     >
-                      <div className="text-[11px] text-[var(--text-muted)]">{Number(day.date.slice(8, 10))}</div>
+                      <div className="text-[length:var(--text-micro)] text-[var(--text-muted)]">{Number(day.date.slice(8, 10))}</div>
                       <div className="mt-0.5 flex flex-col gap-0.5">
                         {dayEntries.slice(0, 3).map((e, i) => (
                           <a
                             key={i}
                             href={e.href}
-                            className={`truncate rounded-[var(--radius-sm)] px-1 py-0.5 text-[10px] leading-tight ${TONE_CLASSES[KIND_TONE[e.kind]]}`}
+                            className={`truncate rounded-[var(--radius-sm)] px-1 py-0.5 text-[length:var(--text-nano)] leading-tight ${TONE_CLASSES[KIND_TONE[e.kind]]}`}
                             title={e.label}
                           >
                             {e.label}
                           </a>
                         ))}
                         {dayEntries.length > 3 && (
-                          <span className="text-[10px] text-[var(--text-muted)]">+{dayEntries.length - 3} more</span>
+                          <span className="text-[length:var(--text-nano)] text-[var(--text-muted)]">+{dayEntries.length - 3} more</span>
                         )}
                       </div>
                     </td>
@@ -280,12 +280,12 @@ export default async function CalendarPage({
       {activeTab === "upcoming" && (
       <section className="mt-4">
         <SectionHeading>Upcoming</SectionHeading>
-        {upcoming.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">Nothing dated ahead right now.</p>}
+        {upcoming.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">Nothing dated ahead right now.</p>}
         <ul className="mt-2">
           {upcoming.map((e, i) => (
             <li
               key={i}
-              className="flex items-center gap-3 border-b border-[var(--border)] py-2 text-[13px] last:border-b-0"
+              className="flex items-center gap-3 border-b border-[var(--border)] py-2 text-[length:var(--text-body)] last:border-b-0"
             >
               <span className="w-24 shrink-0 text-[var(--text-muted)]" title={calendarEntryDateLabel(e).exact}>
                 <time dateTime={e.date} aria-label={calendarEntryDateLabel(e).exact}>{calendarEntryDateLabel(e).visible}</time>
@@ -362,8 +362,8 @@ export default async function CalendarPage({
           <SectionHeading>Invites waiting on you</SectionHeading>
           {myInvites.map((i) => (
             <div key={i.eventId} className={`mt-3 ${CARD}`}>
-              <p className="text-[14px] font-medium text-[var(--text)]">{i.eventTitle}</p>
-              <p className="mt-0.5 text-[13px] text-[var(--text-muted)]">
+              <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{i.eventTitle}</p>
+              <p className="mt-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 Invited by {i.invitedByName}, {new Date(i.invitedAt).toLocaleDateString()}
               </p>
               <div className="mt-3 flex gap-2">
@@ -387,28 +387,28 @@ export default async function CalendarPage({
 
       <section className="mt-8">
         <SectionHeading>Your calendar entries</SectionHeading>
-        {myOwnEvents.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+        {myOwnEvents.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
         {myOwnEvents.map((e) => {
           const eventInvites = inviteListsByEventId.get(e.id) ?? [];
           return (
             <div key={e.id} className={`mt-3 ${CARD}`}>
               <div className="flex items-baseline gap-2">
-                <p className="text-[14px] font-medium text-[var(--text)]">{e.title}</p>
+                <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{e.title}</p>
                 <Tag>{SHARE_LABEL[e.shareTarget]}</Tag>
               </div>
-              <p className="mt-0.5 text-[13px] text-[var(--text-muted)]" title={eventDateLabel(e).exact}>
+              <p className="mt-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]" title={eventDateLabel(e).exact}>
                 <time dateTime={e.date ?? undefined} aria-label={eventDateLabel(e).exact}>{eventDateLabel(e).visible}</time>
               </p>
-              {e.description && <p className="mt-2 text-[13px] text-[var(--text)]">{e.description}</p>}
+              {e.description && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">{e.description}</p>}
 
               {eventInvites.length > 0 && (
-                <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+                <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   Invited: {eventInvites.map((i) => `${i.memberName} (${i.invite.status})`).join(", ")}
                 </p>
               )}
 
               <details className="mt-2">
-                <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Edit</summary>
+                <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Edit</summary>
                 <form action={updateCalendarEventAction} className="mt-2 flex max-w-md flex-col gap-2">
                   <input type="hidden" name="eventId" value={e.id} />
                   <label className="flex flex-col gap-1">
@@ -457,7 +457,7 @@ export default async function CalendarPage({
               </details>
 
               <details className="mt-2">
-                <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Invite people</summary>
+                <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Invite people</summary>
                 <div className="mt-2 flex flex-col gap-2">
                   <form action={inviteMemberAction} className="flex gap-2">
                     <input type="hidden" name="eventId" value={e.id} />
@@ -514,7 +514,7 @@ export default async function CalendarPage({
           <SectionHeading>On your calendar</SectionHeading>
           <ul className="mt-2">
             {acceptedEvents.map((e) => (
-              <li key={e.id} className="border-b border-[var(--border)] py-2 text-[13px] last:border-b-0">
+              <li key={e.id} className="border-b border-[var(--border)] py-2 text-[length:var(--text-body)] last:border-b-0">
                 <span className="font-medium text-[var(--text)]">{e.title}</span>{" "}
                 <span className="text-[var(--text-muted)]" title={eventDateLabel(e).exact}>
                   — <time dateTime={e.date ?? undefined} aria-label={eventDateLabel(e).exact}>{eventDateLabel(e).visible}</time>

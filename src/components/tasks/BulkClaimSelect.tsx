@@ -251,7 +251,7 @@ function ExportPanel({ selection }: { selection: TaskSelectionContextValue }) {
   return (
     <div className="mt-3 border-t border-[var(--border)] pt-3">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-[13px] font-semibold text-[var(--text)]">
+        <h3 className="text-[length:var(--text-body)] font-semibold text-[var(--text)]">
           Export selected as a Task Pack
         </h3>
         <button type="button" onClick={selection.closeExport} className={BUTTON_SECONDARY}>
@@ -259,7 +259,7 @@ function ExportPanel({ selection }: { selection: TaskSelectionContextValue }) {
         </button>
       </div>
       {selection.selectedExportableTasks.length === 0 ? (
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Select one or more cards in this event before exporting.
         </p>
       ) : (
@@ -269,7 +269,7 @@ function ExportPanel({ selection }: { selection: TaskSelectionContextValue }) {
           {selection.selectedExportableTasks.map((task) => (
             <input key={task.id} type="hidden" name="taskIds" value={task.id} />
           ))}
-          <label className="flex flex-col gap-1 text-[13px] text-[var(--text-muted)]">
+          <label className="flex flex-col gap-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Pack name
             <input
               type="text"
@@ -279,7 +279,7 @@ function ExportPanel({ selection }: { selection: TaskSelectionContextValue }) {
               placeholder="e.g. Prep weekend pack"
             />
           </label>
-          <ul className="max-h-40 overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--border)] p-2 text-[12px] text-[var(--text-muted)]">
+          <ul className="max-h-40 overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--border)] p-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             {selection.selectedExportableTasks.map((task) => (
               <li key={task.id} className="py-0.5">
                 {task.title} <span>({task.branchName})</span>
@@ -306,13 +306,13 @@ function MovePanel({ selection }: { selection: TaskSelectionContextValue }) {
   return (
     <div className="mt-3 border-t border-[var(--border)] pt-3">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-[13px] font-semibold text-[var(--text)]">Move selected tasks</h3>
+        <h3 className="text-[length:var(--text-body)] font-semibold text-[var(--text)]">Move selected tasks</h3>
         <button type="button" onClick={selection.closeMove} className={BUTTON_SECONDARY}>
           Close
         </button>
       </div>
       {selection.selectedMovableTaskIds.length === 0 ? (
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Select one or more cards before moving them.
         </p>
       ) : (
@@ -321,7 +321,7 @@ function MovePanel({ selection }: { selection: TaskSelectionContextValue }) {
             <input key={id} type="hidden" name="taskIds" value={id} />
           ))}
           <input type="hidden" name="returnTo" value={selection.returnTo} />
-          <label className="flex flex-col gap-1 text-[13px] text-[var(--text-muted)]">
+          <label className="flex flex-col gap-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Branch
             <select name="branchId" defaultValue="" className={INPUT}>
               <option value="">Keep current branch</option>
@@ -332,7 +332,7 @@ function MovePanel({ selection }: { selection: TaskSelectionContextValue }) {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-[13px] text-[var(--text-muted)]">
+          <label className="flex flex-col gap-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Event
             <select
               name="cycleId"
@@ -353,7 +353,7 @@ function MovePanel({ selection }: { selection: TaskSelectionContextValue }) {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-[13px] text-[var(--text-muted)]">
+          <label className="flex flex-col gap-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Phase
             <select
               name="phaseId"
@@ -371,7 +371,7 @@ function MovePanel({ selection }: { selection: TaskSelectionContextValue }) {
               ))}
             </select>
           </label>
-          <p className="text-[12px] text-[var(--text-muted)]">
+          <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
             Leave a field on &ldquo;keep current&rdquo; to change only the placement you choose. Choose a
             event before choosing a phase; an event change clears an incompatible phase, and each
             task is validated independently.
@@ -405,7 +405,7 @@ export function TaskSelectionBar() {
         >
           Select tasks
         </button>
-        <span className="ml-3 text-[12px] text-[var(--text-muted)]">
+        <span className="ml-3 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Tick cards to claim, export, or move them in one go.
         </span>
       </div>
@@ -422,7 +422,7 @@ export function TaskSelectionBar() {
     <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
       <div className="flex flex-wrap items-center gap-3">
         <label
-          className={`flex items-center gap-2 text-[13px] text-[var(--text)] ${
+          className={`flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)] ${
             selection.availableIds.size === 0 ? "opacity-50" : ""
           }`}
         >
@@ -435,15 +435,15 @@ export function TaskSelectionBar() {
           />
           Select all tasks in this view
         </label>
-        <span className="text-[12px] text-[var(--text-muted)]" aria-live="polite">
+        <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]" aria-live="polite">
           {selection.selectedCount} selected
         </span>
         {selection.selectedCount > 0 && (
-          <button type="button" onClick={selection.clear} className="text-[12px] text-[var(--accent-1)] hover:underline">
+          <button type="button" onClick={selection.clear} className="text-[length:var(--text-meta)] text-[var(--accent-1)] hover:underline">
             Clear selection
           </button>
         )}
-        <span className="text-[12px] text-[var(--text-muted)]">
+        <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Claim, export, and move are available from the ⋯ menu; each action applies only to
           eligible selected cards. A tag filter can define a cluster to select in one step.
         </span>
@@ -469,7 +469,7 @@ export function TaskSelectionActionMenu() {
         </button>
       ) : (
         <>
-          <span className="px-3 py-2 text-[12px] text-[var(--text-muted)]">
+          <span className="px-3 py-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             {selection.selectedCount === 0
               ? "Tick cards to enable batch actions"
               : `${selection.selectedCount} task${selection.selectedCount === 1 ? "" : "s"} selected`}
@@ -491,7 +491,7 @@ export function TaskSelectionActionMenu() {
                 Export selected as a Task Pack ({selection.selectedExportableTasks.length} of {selection.selectedCount})
               </button>
             ) : (
-              <span className="px-3 py-2 text-[12px] text-[var(--text-muted)]">
+              <span className="px-3 py-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 Narrow to one event to export a Task Pack
               </span>
             )

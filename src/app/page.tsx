@@ -45,8 +45,15 @@ export default async function Home() {
           // eslint-disable-next-line @next/next/no-img-element -- a community-supplied external URL, not an optimizable local/remote-pattern asset
           <img src={community.logoUrl} alt={community.name} className="h-16 w-16 rounded-[var(--radius-md)] object-cover" />
         ) : null}
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">{community.name}</h1>
-        <p className="text-[13px] text-[var(--text-muted)]">Task-based, distributed-effort coordination.</p>
+        {/* The app's front door, so the community's name is set as a name
+            — display face, tight tracking — rather than as another
+            32px-semibold heading. The tagline below it stays in the body
+            face at body size, which is the whole contrast: this is a
+            title, that is a caption. */}
+        <h1 className="font-[family-name:var(--font-display)] text-[length:var(--text-hero)] font-semibold leading-[1.1] tracking-[var(--tracking-display)] text-[var(--text)]">
+          {community.name}
+        </h1>
+        <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">Task-based, distributed-effort coordination.</p>
       </div>
 
       <div className="mt-8 flex items-center gap-3">
@@ -67,8 +74,8 @@ export default async function Home() {
       </div>
 
       <details className="mt-16 w-full max-w-sm">
-        <summary className="cursor-pointer text-center text-[12px] text-[var(--text-muted)]">System status</summary>
-        <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3 font-mono text-[12px]">
+        <summary className="cursor-pointer text-center text-[length:var(--text-meta)] text-[var(--text-muted)]">System status</summary>
+        <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3 font-mono text-[length:var(--text-meta)]">
           {status.ok ? (
             <>
               <p className="text-[var(--success)]">Database connection: OK.</p>

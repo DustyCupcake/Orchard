@@ -144,7 +144,7 @@ export default async function MembersPage({
       {error && <Banner tone="danger">{error}</Banner>}
 
       {members.length === 0 ? (
-        <p className="text-[13px] text-[var(--text-muted)]">
+        <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
           {scopedCycle
             ? "Nobody has said they're coming to this event yet."
             : "This community has no members yet."}
@@ -154,11 +154,11 @@ export default async function MembersPage({
           {members.map((m) => (
             <li key={m.id} className="flex items-center justify-between gap-2 border-b border-[var(--border)] py-2.5 last:border-b-0">
               {m.id === viewing.id ? (
-                <Link href="/profile" className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
+                <Link href="/profile" className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
                   {m.name} (you)
                 </Link>
               ) : (
-                <Link href={`/members/${m.id}`} className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
+                <Link href={`/members/${m.id}`} className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
                   {m.name}
                 </Link>
               )}

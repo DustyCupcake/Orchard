@@ -37,7 +37,7 @@ function formatRange(startsAt: Date | string, endsAt: Date | string) {
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 // See docs/spec.md's "Shifts / rota" and docs/development-plan.md's
@@ -180,10 +180,10 @@ export default async function ShiftsPage({
 
   return (
     <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Shifts</h1>
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Shifts</h1>
 
       {!moduleOn && (
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Not turned on for this Community yet — a current Admins holder can enable it under
           Modules on the Settings screen.
         </p>
@@ -255,7 +255,7 @@ export default async function ShiftsPage({
           <section className="mt-6">
             <SectionHeading>Upcoming shifts</SectionHeading>
             {upcoming.length === 0 && (
-              <p className="mt-2 text-[13px] text-[var(--text-muted)]">None scheduled.</p>
+              <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">None scheduled.</p>
             )}
 
             {orderedCycleIds.map((cycleId) => {
@@ -265,7 +265,7 @@ export default async function ShiftsPage({
               const manager = managersByScope.get(cycleId);
               return (
                 <div key={cycleId} className="mt-4">
-                  <h3 className="text-[15px] font-semibold text-[var(--text)]">
+                  <h3 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">
                     {cycleRow ? `Event ${cycleRow.name} roster` : "Event roster"}
                   </h3>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -274,7 +274,7 @@ export default async function ShiftsPage({
                     ) : (
                       <Tag tone="neutral">Collecting — sign-ups closed</Tag>
                     )}
-                    <span className="text-[12px] text-[var(--text-muted)]">
+                    <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                       {manager ? `managed by ${manager.memberName}` : "no shift manager selected — this roster stays closed"}
                     </span>
                   </div>
@@ -310,8 +310,8 @@ export default async function ShiftsPage({
 
             {standingUpcoming.length > 0 && (
               <div className={`mt-4 ${standingUpcoming.length > 0 ? "" : ""}`}>
-                <h3 className="text-[15px] font-semibold text-[var(--text)]">Standing series</h3>
-                <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                <h3 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">Standing series</h3>
+                <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   Community-wide, always open.
                   {standingManager
                     ? ` Standing-series management is held by ${standingManager.name}.`
@@ -338,14 +338,14 @@ export default async function ShiftsPage({
           {myPastPendingSignups.length > 0 && (
             <section className="mt-8">
               <SectionHeading>My past shifts</SectionHeading>
-              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 Self-reported — mark a shift completed once it&rsquo;s actually happened.
               </p>
               <div className="mt-3 flex flex-col gap-2">
                 {myPastPendingSignups.map(({ signup, occurrence, series }) => (
                   <div key={signup.id} className={CARD}>
-                    <p className="text-[14px] font-medium text-[var(--text)]">{series.title}</p>
-                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">{formatRange(occurrence.startsAt, occurrence.endsAt)}</p>
+                    <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{series.title}</p>
+                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{formatRange(occurrence.startsAt, occurrence.endsAt)}</p>
                     <form action={markShiftSignupCompletedAction} className="mt-2">
                       <input type="hidden" name="signupId" value={signup.id} />
                       <button type="submit" className={BUTTON_SECONDARY}>
@@ -400,7 +400,7 @@ export default async function ShiftsPage({
                 <label className="flex flex-col gap-1">
                   <span className={LABEL}>Rotated from an existing task? (optional)</span>
                   <input type="text" name="sourceTaskId" placeholder="paste the task's ID from its /tasks/… URL" className={INPUT} />
-                  <span className="text-[12px] text-[var(--text-muted)]">
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                     Placement into a still-collecting event is open to any member; once a roster&rsquo;s
                     sign-ups are open, new placements land as proposals for its shift manager to
                     confirm. Standing series can only be added by the standing scope&rsquo;s shift manager.
@@ -411,7 +411,7 @@ export default async function ShiftsPage({
                 </button>
               </form>
             ) : (
-              <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+              <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 There&rsquo;s nothing to add a series to — no open events to place into, and standing
                 series can only be added by the standing scope&rsquo;s shift manager.
               </p>
@@ -421,14 +421,14 @@ export default async function ShiftsPage({
           {pendingProposals.length > 0 && (
             <section className="mt-8">
               <SectionHeading>Pending proposals</SectionHeading>
-              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 Series placed after their event&rsquo;s roster opened — confirm the ones you want on it.
               </p>
               <div className="mt-3 flex flex-col gap-2">
                 {pendingProposals.map(({ series, cycleName }) => (
                   <div key={series.id} className={CARD}>
-                    <p className="text-[14px] font-medium text-[var(--text)]">{series.title}</p>
-                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                    <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{series.title}</p>
+                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                       Proposal for Event {cycleName}
                     </p>
                     <form action={confirmShiftProposalAction} className="mt-2">
@@ -483,15 +483,15 @@ function OccurrenceCard({
   const full = count >= capacity;
   return (
     <div className={CARD}>
-      <p className="text-[14px] font-medium text-[var(--text)]">
+      <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
         {series.title}
         {series.branchId && (
           <span className="font-normal text-[var(--text-muted)]"> · {branchNameById.get(series.branchId) ?? "—"}</span>
         )}
       </p>
-      <p className="mt-1 text-[13px] text-[var(--text-muted)]">{formatRange(occurrence.startsAt, occurrence.endsAt)}</p>
-      {series.description && <p className="mt-1 text-[13px] text-[var(--text)]">{series.description}</p>}
-      <p className="mt-1.5 flex items-center gap-2 text-[13px] text-[var(--text)]">
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{formatRange(occurrence.startsAt, occurrence.endsAt)}</p>
+      {series.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{series.description}</p>}
+      <p className="mt-1.5 flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
         {count}/{capacity} signed up
         {full && !iAmSignedUp && <Tag tone="warning">full</Tag>}
         {!signupsOpen && <Tag tone="neutral">not open yet</Tag>}

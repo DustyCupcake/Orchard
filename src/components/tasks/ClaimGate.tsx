@@ -66,7 +66,7 @@ export default function ClaimGate({
         <input type="hidden" name="taskId" value={taskId} />
         <button
           type="submit"
-          className="rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)] active:bg-[var(--accent-1-active)]"
+          className="rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3.5 py-1.5 text-[length:var(--text-body)] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)] active:bg-[var(--accent-1-active)]"
         >
           {claimLabel}
         </button>
@@ -79,7 +79,7 @@ export default function ClaimGate({
       <button
         type="button"
         onClick={() => ref.current?.showModal()}
-        className="rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)] active:bg-[var(--accent-1-active)]"
+        className="rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3.5 py-1.5 text-[length:var(--text-body)] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)] active:bg-[var(--accent-1-active)]"
       >
         {claimLabel}
       </button>
@@ -88,10 +88,10 @@ export default function ClaimGate({
         aria-labelledby="claim-gate-title"
         className="m-auto w-[calc(100vw-2rem)] max-w-lg rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-5 text-[var(--text)] shadow-[var(--shadow-md,0_4px_14px_rgba(0,0,0,0.08))] backdrop:bg-black/40"
       >
-        <h2 id="claim-gate-title" className="text-[15px] font-medium">
+        <h2 id="claim-gate-title" className="text-[length:var(--text-heading)] font-medium">
           Are you sure there isn&rsquo;t someone with just the skills for this?
         </h2>
-        <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-muted)]">
+        <p className="mt-1 text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
           You coordinate this one, so it&rsquo;s worth checking who else fits before you take it.
         </p>
         {/* onSubmit bubbles from any nested form, so this covers the
@@ -106,7 +106,7 @@ export default function ClaimGate({
             <input type="hidden" name="taskId" value={taskId} />
             <button
               type="submit"
-              className="self-start rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3.5 py-1.5 text-[13px] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)]"
+              className="self-start rounded-[var(--radius-md)] bg-[var(--accent-1)] px-3.5 py-1.5 text-[length:var(--text-body)] font-medium text-[var(--accent-1-fg)] hover:bg-[var(--accent-1-hover)]"
             >
               Yes, I&rsquo;ll take it
             </button>
@@ -116,7 +116,7 @@ export default function ClaimGate({
           <button
             type="button"
             onClick={() => ref.current?.close()}
-            className="self-start px-1 text-[13px] text-[var(--accent-1)] hover:underline"
+            className="self-start px-1 text-[length:var(--text-body)] text-[var(--accent-1)] hover:underline"
           >
             Cancel
           </button>

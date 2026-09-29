@@ -38,7 +38,7 @@ export default function CopyLinkButton({
           type="button"
           onClick={() => copy(path)}
           title={copied ? "Copied!" : "Copy link"}
-          className="inline-flex h-7 items-center gap-1 rounded-l-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 text-[12px] text-[var(--text-muted)] hover:text-[var(--text)]"
+          className="inline-flex h-7 items-center gap-1 rounded-l-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 text-[length:var(--text-meta)] text-[var(--text-muted)] hover:text-[var(--text)]"
         >
           <LinkIcon />
           {copied && <span className="text-[var(--success)]">✓</span>}
@@ -48,7 +48,7 @@ export default function CopyLinkButton({
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
-              className="inline-flex h-7 items-center rounded-r-[var(--radius-md)] border border-l-0 border-[var(--border)] bg-[var(--surface)] px-1 text-[10px] text-[var(--text-muted)] hover:text-[var(--text)]"
+              className="inline-flex h-7 items-center rounded-r-[var(--radius-md)] border border-l-0 border-[var(--border)] bg-[var(--surface)] px-1 text-[length:var(--text-nano)] text-[var(--text-muted)] hover:text-[var(--text)]"
               title="More link options"
             >
               ▼
@@ -58,7 +58,7 @@ export default function CopyLinkButton({
                 <button
                   type="button"
                   onClick={() => copy(scopedPath)}
-                  className="w-full rounded px-2 py-1 text-left text-[12px] text-[var(--text)] hover:bg-[var(--surface-sunken)]"
+                  className="w-full rounded px-2 py-1 text-left text-[length:var(--text-meta)] text-[var(--text)] hover:bg-[var(--surface-sunken)]"
                 >
                   Copy {scopedLabel} link
                 </button>
@@ -73,7 +73,7 @@ export default function CopyLinkButton({
           readOnly
           value={url}
           onFocus={(e) => e.currentTarget.select()}
-          className="w-56 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[12px] text-[var(--text)]"
+          className="w-56 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[length:var(--text-meta)] text-[var(--text)]"
         />
       )}
     </span>

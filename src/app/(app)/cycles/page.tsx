@@ -59,9 +59,9 @@ export default async function CyclesSearchPage({
         </button>
       </form>
 
-      {query && results.length === 0 && <p className="mt-4 text-[13px] text-[var(--text-muted)]">No closed event matches.</p>}
+      {query && results.length === 0 && <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">No closed event matches.</p>}
       {results.length > 0 && (
-        <ul className="mt-4 space-y-2 text-[13px]">
+        <ul className="mt-4 space-y-2 text-[length:var(--text-body)]">
           {results.map((c) => (
             <li key={c.id} className="text-[var(--text)]">
               <a href={`/${c.id}/participation`} className="text-[var(--accent-1)] hover:underline">{c.name}</a>

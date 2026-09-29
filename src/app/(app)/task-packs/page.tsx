@@ -47,9 +47,9 @@ export default async function TaskPacksPage({
       {imported && <Banner tone="success">Uploaded — see it below.</Banner>}
 
       <section className="mt-6">
-        <h2 className="text-[22px] font-semibold text-[var(--text)]">Upload a pack file</h2>
+        <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Upload a pack file</h2>
         <form action={importTaskPackFromFileAction} encType="multipart/form-data" className="mt-3 flex items-center gap-2">
-          <input type="file" name="file" accept="application/json,.json" required className="text-[13px] text-[var(--text)]" />
+          <input type="file" name="file" accept="application/json,.json" required className="text-[length:var(--text-body)] text-[var(--text)]" />
           <button type="submit" className={BUTTON_PRIMARY}>
             Upload
           </button>
@@ -57,22 +57,22 @@ export default async function TaskPacksPage({
       </section>
 
       <section className="mt-6">
-        <h2 className="text-[22px] font-semibold text-[var(--text)]">Saved packs</h2>
-        {active.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nothing saved yet.</p>}
+        <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Saved packs</h2>
+        {active.length === 0 && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Nothing saved yet.</p>}
         <ul className="mt-3 list-none space-y-3 p-0">
           {active.map((p) => (
             <li key={p.id} className={CARD}>
               <strong className="text-[var(--text)]">{p.name}</strong>{" "}
               {p.domainTags.length > 0 && (
-                <span className="text-[12px] text-[var(--text-muted)]">({p.domainTags.join(", ")})</span>
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">({p.domainTags.join(", ")})</span>
               )}
-              {p.description && <p className="mt-1 text-[13px] text-[var(--text-muted)]">{p.description}</p>}
-              <div className="mt-2 flex items-center gap-3 text-[13px]">
+              {p.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{p.description}</p>}
+              <div className="mt-2 flex items-center gap-3 text-[length:var(--text-body)]">
                 <Link href={`/task-packs/import/${p.id}`} className="text-[var(--accent-1)] hover:underline">Import into a new event</Link>
                 <a href={`/api/task-packs/${p.id}/download`} className="text-[var(--accent-1)] hover:underline">Download</a>
                 <form action={archiveTaskPackAction}>
                   <input type="hidden" name="packId" value={p.id} />
-                  <button type="submit" className="cursor-pointer bg-transparent p-0 text-[13px] text-[var(--danger)] hover:underline">
+                  <button type="submit" className="cursor-pointer bg-transparent p-0 text-[length:var(--text-body)] text-[var(--danger)] hover:underline">
                     Archive
                   </button>
                 </form>
@@ -84,10 +84,10 @@ export default async function TaskPacksPage({
 
       {archived.length > 0 && (
         <section className="mt-6">
-          <h2 className="text-[22px] font-semibold text-[var(--text)]">Archived</h2>
+          <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Archived</h2>
           <ul className="mt-2 list-none p-0">
             {archived.map((p) => (
-              <li key={p.id} className="border-b border-[var(--border)] py-2 text-[13px] text-[var(--text-muted)]">
+              <li key={p.id} className="border-b border-[var(--border)] py-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 {p.name}{" "}
                 <form action={unarchiveTaskPackAction} className="inline">
                   <input type="hidden" name="packId" value={p.id} />

@@ -69,11 +69,11 @@ export default async function CommunityAssembliesSection({ viewing }: { viewing:
   return (
     <section className="mt-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-[13px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+        <h2 className="text-[length:var(--text-body)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
           Open Assemblies
         </h2>
         {awaitingCount > 0 && (
-          <span className="text-[12px] text-[var(--warning)]">
+          <span className="text-[length:var(--text-meta)] text-[var(--warning)]">
             {awaitingCount === 1
               ? "1 is waiting on your answer"
               : `${awaitingCount} are waiting on your answer`}
@@ -89,7 +89,7 @@ export default async function CommunityAssembliesSection({ viewing }: { viewing:
               <div className="flex flex-wrap items-center gap-2">
                 <Link
                   href={`/assemblies/${a.id}`}
-                  className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]"
+                  className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]"
                 >
                   {a.title}
                 </Link>
@@ -98,7 +98,7 @@ export default async function CommunityAssembliesSection({ viewing }: { viewing:
                 {a.needsMyAnswer && <Tag tone="warning">Waiting on you</Tag>}
               </div>
 
-              <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+              <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 {nextBoundary(a, now)}
                 {a.questionCount > 0 &&
                   ` · ${a.questionCount} agenda ${a.questionCount === 1 ? "item" : "items"}`}

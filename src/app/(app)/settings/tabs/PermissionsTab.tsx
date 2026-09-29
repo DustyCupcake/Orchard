@@ -36,7 +36,7 @@ export default function PermissionsTab({
 }) {
   return (
     <div className="flex flex-col gap-7">
-      <p className="max-w-[620px] text-[13px] text-[var(--text-muted)]">
+      <p className="max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">
         A task grants what it sits in. Add or replace a grant from a row&rsquo;s{" "}
         <span className="text-[var(--text)]">Set</span> button; a task&rsquo;s own screen has the
         same control.
@@ -50,7 +50,7 @@ export default function PermissionsTab({
       </datalist>
       {PERMISSION_MODULE_SECTIONS.map((section) => (
         <section key={section.key} className="flex flex-col gap-1">
-          <h2 className="text-[22px] font-semibold text-[var(--text)]">{section.title}</h2>
+          <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{section.title}</h2>
           {section.moduleKeys.map((moduleKey) => (
             <PermissionRow
               key={moduleKey}
@@ -128,11 +128,11 @@ function PermissionRow({
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] py-2 last:border-b-0">
       <div className="min-w-[12rem] flex-1">
-        <p className="text-[14px] text-[var(--text)]">{label}</p>
-        <p className="text-[12px] text-[var(--text-muted)]">{describeState(grants, open, holders)}</p>
+        <p className="text-[length:var(--text-body)] text-[var(--text)]">{label}</p>
+        <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{describeState(grants, open, holders)}</p>
       </div>
       {unheld && (
-        <span className="text-[12px] text-[var(--text-muted)]">no one named</span>
+        <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">no one named</span>
       )}
       <Modal
         trigger="Set"
@@ -150,7 +150,7 @@ function PermissionRow({
           <form action={setModuleOpenAction} className="flex flex-col gap-1.5">
             <input type="hidden" name="moduleKey" value={moduleKey} />
             <input type="hidden" name="tab" value="permissions" />
-            <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+            <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
               <input type="checkbox" name="open" defaultChecked={open} className="mt-0.5" />
               <span>Everyone has this permission</span>
             </label>
@@ -158,18 +158,18 @@ function PermissionRow({
                 standing warning. `admin` and `support` are the two that
                 genuinely change what the whole community can do. */}
             {blastRadiusOf(moduleKey) && (
-              <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+              <p className="text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
                 {blastRadiusOf(moduleKey)}
               </p>
             )}
             {open && (
-              <p className="text-[12px] text-[var(--text-muted)]">
+              <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 No task is needed while this is on. Keep one if you want someone named as
                 responsible.
               </p>
             )}
             {sensitiveFieldsGatedByThisModule.length > 0 && (
-              <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+              <p className="text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
                 Opening this does not unlock {sensitiveFieldsGatedByThisModule.join(", ")} — that is
                 keyed to whoever <em>holds</em> the task.
               </p>
@@ -181,7 +181,7 @@ function PermissionRow({
             </div>
           </form>
         ) : (
-          <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+          <p className="text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
             This one can&rsquo;t be open to everyone: when nobody is named, there is nobody to notify.
             It needs a holder.
           </p>
@@ -199,7 +199,7 @@ function PermissionRow({
             {grants.map((g) => {
               const taskHolders = holdersByTaskId.get(g.taskId) ?? [];
               return (
-                <li key={g.taskId} className="flex flex-col gap-1 text-[13px] text-[var(--text)]">
+                <li key={g.taskId} className="flex flex-col gap-1 text-[length:var(--text-body)] text-[var(--text)]">
                   <div className="flex flex-wrap items-center gap-2">
                     {g.title} — {g.branchName}
                     <span className="text-[var(--text-muted)]">
@@ -219,7 +219,7 @@ function PermissionRow({
                       it, so a single-cardinality module could be handed to
                       five people with no indication here. */}
                   {taskHolders.length === 0 ? (
-                    <p className="text-[12px] text-[var(--text-muted)]">
+                    <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                       Nobody is holding this{" "}
                       <Link href={`/tasks/${g.taskId}`} className="text-[var(--accent-1)] hover:underline">
                         open the task
@@ -227,7 +227,7 @@ function PermissionRow({
                       to put yourself forward.
                     </p>
                   ) : (
-                    <p className="text-[12px] text-[var(--text-muted)]">
+                    <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                       {taskHolders.length <= 3 ? (
                         <>Held by {taskHolders.map((h) => h.name).join(", ")}</>
                       ) : (
@@ -251,7 +251,7 @@ function PermissionRow({
             })}
           </ul>
         ) : (
-          <p className="text-[13px] text-[var(--text-muted)]">
+          <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
             {open
               ? "No task grants this, which is fine while it's open."
               : "No task grants this yet."}
@@ -259,7 +259,7 @@ function PermissionRow({
         )}
 
         {!multi && grants.length > 0 && (
-          <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+          <p className="text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
             One task per scope: adding a task in the same scope moves it here rather than adding a
             second.
           </p>

@@ -31,8 +31,8 @@ const HUB_LINKS = [
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-      <div className="text-[22px] font-semibold leading-tight text-[var(--text)]">{value}</div>
-      <div className="mt-1 text-[12px] font-medium uppercase tracking-wide text-[var(--text-muted)]">{label}</div>
+      <div className="text-[length:var(--text-title)] font-semibold leading-tight text-[var(--text)]">{value}</div>
+      <div className="mt-1 text-[length:var(--text-meta)] font-medium uppercase tracking-wide text-[var(--text-muted)]">{label}</div>
     </div>
   );
 }
@@ -108,10 +108,10 @@ export default async function CommunityPage({
 
       {snapshot.tierCounts.length > 0 && (
         <div className="mt-6">
-          <h2 className="text-[13px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Tiers</h2>
+          <h2 className="text-[length:var(--text-body)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Tiers</h2>
           <ul className="mt-2 flex flex-col gap-1.5">
             {snapshot.tierCounts.map((t) => (
-              <li key={t.id} className="flex items-center justify-between border-b border-[var(--border)] py-2 text-[13px] last:border-b-0">
+              <li key={t.id} className="flex items-center justify-between border-b border-[var(--border)] py-2 text-[length:var(--text-body)] last:border-b-0">
                 <span className="text-[var(--text)]">{t.name}</span>
                 <span className="text-[var(--text-muted)]">{t.count}</span>
               </li>

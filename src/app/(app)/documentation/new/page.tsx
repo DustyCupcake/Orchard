@@ -21,8 +21,8 @@ export default async function NewWikiPagePage({
 
   return (
     <main className="mx-auto max-w-[520px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">New page</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">New page</h1>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Leave the content blank to post it as an open question instead — it&rsquo;ll sit flagged
         as unanswered until someone fills one in.
       </p>

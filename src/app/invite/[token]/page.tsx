@@ -75,19 +75,19 @@ export default async function InvitePage({
   if (announced && invite?.consensusState === "announced") {
     return (
       <main className="mx-auto max-w-[560px] px-6 py-16">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">You&rsquo;re in — with one thing still open</h1>
-        <p className="mt-2 text-[14px] text-[var(--text-muted)]">
+        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">You&rsquo;re in — with one thing still open</h1>
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Your account is created and you&rsquo;re a member of {communityName}. Because this invite goes
           through a community check, your arrival has been announced and any member has{" "}
           {windowHours} hours to raise a concern.
         </p>
-        <p className="mt-3 text-[14px] text-[var(--text-muted)]">
+        <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">
           If nobody does, your place is settled automatically. If someone does, it doesn&rsquo;t get
           dropped on a timer — the mediation team talks it through with everyone involved, and
           unless they agree the concern is resolved, you&rsquo;re held rather than quietly let in or
           quietly pushed out. Nobody is told who raised it.
         </p>
-        <p className="mt-3 text-[14px] text-[var(--text-muted)]">
+        <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">
           You can ask us to stop at any time, without giving a reason.
         </p>
         <a href="/dashboard" className={`${BUTTON_PRIMARY} mt-6 inline-flex`}>
@@ -99,7 +99,7 @@ export default async function InvitePage({
 
   return (
     <main className="mx-auto max-w-[520px] px-6 py-16">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Join</h1>
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Join</h1>
 
       {status !== "valid" ? (
         <div className="mt-4">
@@ -107,7 +107,7 @@ export default async function InvitePage({
         </div>
       ) : (
         <>
-          <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
             You&rsquo;ve been invited to join. Enter your email to create your account.
           </p>
           {error && (
@@ -132,15 +132,15 @@ export default async function InvitePage({
               <div className="mt-2 flex flex-col gap-2">
                 <input type="hidden" name="disclosure" value={disclosure} />
                 <div
-                  className="rounded-[var(--radius-md)] border border-[var(--border)] p-3 text-[13px] text-[var(--text-muted)]"
+                  className="rounded-[var(--radius-md)] border border-[var(--border)] p-3 text-[length:var(--text-body)] text-[var(--text-muted)]"
                   style={{ background: "var(--neutral-100)" }}
                 >
-                  <p className="mb-1 text-[12px] font-medium text-[var(--text)]">
+                  <p className="mb-1 text-[length:var(--text-meta)] font-medium text-[var(--text)]">
                     Before you join — please read this
                   </p>
                   {disclosure}
                 </div>
-                <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+                <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                   <input type="checkbox" name="consentAccepted" required className="mt-0.5" />
                   <span>
                     I&rsquo;ve read that and understood my arrival is announced to {communityName}, and

@@ -117,8 +117,8 @@ export default function AgendaItemForm({
       <input type="hidden" name="max" value={isNumber ? max : ""} />
 
       <div>
-        <h2 className="text-[15px] font-semibold text-[var(--text)]">Add an agenda item</h2>
-        <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+        <h2 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">Add an agenda item</h2>
+        <p className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Anyone can add items until the agenda-building window closes, and can withdraw anything
           they added themselves.
         </p>
@@ -143,7 +143,7 @@ export default function AgendaItemForm({
         <legend className={LABEL}>How should members answer it?</legend>
         <div className="flex flex-col gap-1">
           {RESPONSE_TYPES.map((rt) => (
-            <label key={rt.value} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+            <label key={rt.value} className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
               <input
                 type="radio"
                 name="responseTypeChoice"
@@ -197,17 +197,17 @@ export default function AgendaItemForm({
           <button
             type="button"
             onClick={() => setOptions([...options, ""])}
-            className="w-fit text-[12px] font-medium text-[var(--accent-1)] hover:underline"
+            className="w-fit text-[length:var(--text-meta)] font-medium text-[var(--accent-1)] hover:underline"
           >
             + Add another answer
           </button>
           {dupe && (
-            <p className="text-[12px] text-[var(--danger)]">
+            <p className="text-[length:var(--text-meta)] text-[var(--danger)]">
               Two answers are worded the same — members couldn&apos;t tell them apart when voting.
             </p>
           )}
           {incomplete && !dupe && (
-            <p className="text-[12px] text-[var(--danger)]">
+            <p className="text-[length:var(--text-meta)] text-[var(--danger)]">
               A {responseType === "single_choice" ? "pick-one" : "pick-any"} question needs at least
               two answers.
             </p>
@@ -220,7 +220,7 @@ export default function AgendaItemForm({
               pick one, and offering this by default would quietly turn
               half of them into something untallied. */}
           {choice && (
-            <label className="mt-1 flex items-start gap-2 text-[12px] text-[var(--text-muted)]">
+            <label className="mt-1 flex items-start gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               <input
                 type="checkbox"
                 checked={allowOther}
@@ -238,7 +238,7 @@ export default function AgendaItemForm({
       )}
 
       {isText && (
-        <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+        <label className="flex items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           <input
             type="checkbox"
             checked={multiline}
@@ -251,7 +251,7 @@ export default function AgendaItemForm({
       {isNumber && (
         <div className="flex flex-wrap items-center gap-3">
           <span className={LABEL}>Bounds (optional)</span>
-          <label className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+          <label className="flex items-center gap-1.5 text-[length:var(--text-meta)] text-[var(--text)]">
             at least
             <input
               type="number"
@@ -260,7 +260,7 @@ export default function AgendaItemForm({
               className={`${INPUT} w-24`}
             />
           </label>
-          <label className="flex items-center gap-1.5 text-[12px] text-[var(--text)]">
+          <label className="flex items-center gap-1.5 text-[length:var(--text-meta)] text-[var(--text)]">
             at most
             <input
               type="number"

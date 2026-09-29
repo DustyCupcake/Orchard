@@ -174,7 +174,7 @@ export default function TaskCard({
     // Park needs inputs (date + note), so it's a disclosure, not a menu row.
     secondaryAction = (
       <details className="w-full">
-        <summary className="inline-flex cursor-pointer items-center text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text)]">
+        <summary className="inline-flex cursor-pointer items-center text-[length:var(--text-meta)] font-medium text-[var(--text-muted)] hover:text-[var(--text)]">
           Park until a check-in date…
         </summary>
         <form action={parkAction} className="mt-2 flex flex-wrap items-center gap-2">
@@ -245,7 +245,7 @@ export default function TaskCard({
             <FlameIcon size={14} weight="fill" />
           </span>
         )}
-        <Link href={`/tasks/${task.id}`} className="text-[14px] font-semibold text-[var(--text)] hover:text-[var(--accent-1)]">
+        <Link href={`/tasks/${task.id}`} className="text-[length:var(--text-body)] font-semibold text-[var(--text)] hover:text-[var(--accent-1)]">
           {task.title}
         </Link>
         {attention && <Tag tone={ATTENTION_TONE[task.attentionLevel] ?? "neutral"}>{attention.label}</Tag>}
@@ -268,28 +268,28 @@ export default function TaskCard({
       </div>
 
       {task.description && (
-        <p className="mt-1.5 line-clamp-2 text-[13px] text-[var(--text)]">{task.description}</p>
+        <p className="mt-1.5 line-clamp-2 text-[length:var(--text-body)] text-[var(--text)]">{task.description}</p>
       )}
 
       {realAssignments.length > 0 && (
-        <p className="mt-1.5 text-[12px] text-[var(--text)]">
+        <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text)]">
           Held by: {realAssignments.map((a) => a.memberName).join(", ")}
         </p>
       )}
       {shadowAssignments.length > 0 && (
-        <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+        <p className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Shadowed by: {shadowAssignments.map((a) => a.memberName).join(", ")}
         </p>
       )}
       {task.status === "waiting" && (
-        <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-[var(--text)]">
+        <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[length:var(--text-meta)] text-[var(--text)]">
           <DateChip date={task.nextCheckinAt ?? "—"} label="Check-in" />
           {task.waitingNote && <span className="text-[var(--text-muted)]">— {task.waitingNote}</span>}
         </p>
       )}
 
       {(unmetGateReqs.length > 0 || metGateCount > 0 || coverageReqs.length > 0) && (
-        <ul className="my-1.5 flex flex-col gap-0.5 text-[12px]">
+        <ul className="my-1.5 flex flex-col gap-0.5 text-[length:var(--text-meta)]">
           {unmetGateReqs.map((r) => (
             <li key={r.id} className="text-[var(--danger)]">
               {describeRequirement(r, tierNames)} (not met)
@@ -322,7 +322,7 @@ export default function TaskCard({
 
         {myPendingRequestId && (
           <>
-            <span className="text-[12px] text-[var(--text-muted)]">Request pending</span>
+            <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">Request pending</span>
             <form action={withdrawRequestAction}>
               <input type="hidden" name="taskId" value={task.id} />
               <input type="hidden" name="requestId" value={myPendingRequestId} />
@@ -333,19 +333,19 @@ export default function TaskCard({
           </>
         )}
         {blockedByRequirements && (
-          <span className="text-[12px] text-[var(--danger)]">Not eligible — see unmet requirements</span>
+          <span className="text-[length:var(--text-meta)] text-[var(--danger)]">Not eligible — see unmet requirements</span>
         )}
         {claimIsGated && (
-          <Link href={`/tasks/${task.id}`} className="text-[12px] font-medium text-[var(--accent-1)] hover:underline">
+          <Link href={`/tasks/${task.id}`} className="text-[length:var(--text-meta)] font-medium text-[var(--accent-1)] hover:underline">
             Ask someone else about this →
           </Link>
         )}
         {isCommunityEndorsed && !holds && (
-          <Link href={`/tasks/${task.id}`} className="text-[12px] font-medium text-[var(--accent-1)] hover:underline">
+          <Link href={`/tasks/${task.id}`} className="text-[length:var(--text-meta)] font-medium text-[var(--accent-1)] hover:underline">
             Put yourself forward or endorse a candidate →
           </Link>
         )}
-        {shadowing && <span className="text-[12px] text-[var(--text-muted)]">Shadowing</span>}
+        {shadowing && <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">Shadowing</span>}
 
         {menuItems.length > 0 && (
           <span className="ml-auto">

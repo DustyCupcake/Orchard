@@ -124,7 +124,7 @@ export default async function InvitesPage({
       <PageHeader title="Invites" />
 
       {!moduleOn && (
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Recruitment isn&rsquo;t turned on for this Community yet — a current Admins holder can
           enable it under Modules on the Settings screen.
         </p>
@@ -146,17 +146,17 @@ export default async function InvitesPage({
 
           {focusedInvite && focusedNomination && (
             <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--accent-1)] p-4">
-              <p className="text-[13px] font-medium text-[var(--text)]">Your support link</p>
-              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Your support link</p>
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 Hand this to whoever you trust to answer, or name them below and let the platform
                 send it. Either way it&rsquo;s per-person: nobody&rsquo;s name is announced to anybody
                 else.
               </p>
-              <p className="mt-2 break-all text-[13px] text-[var(--text)]">
+              <p className="mt-2 break-all text-[length:var(--text-body)] text-[var(--text)]">
                 {appUrl}/support/{focusedNomination.supportToken}
               </p>
               {focusedNomination.deadline && (
-                <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   Open until{" "}
                   {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
                     focusedNomination.deadline,
@@ -171,7 +171,7 @@ export default async function InvitesPage({
                   than a role list. */}
               <form action={pokeForSupportAction} className="mt-3 flex flex-col gap-2">
                 <input type="hidden" name="inviteId" value={focusedInvite.id} />
-                <p className="text-[12px] font-medium text-[var(--text-muted)]">
+                <p className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">
                   Who else might know them?
                 </p>
                 <select name="pokeMemberId" multiple size={6} className={`${INPUT} h-auto`}>
@@ -181,7 +181,7 @@ export default async function InvitesPage({
                     </option>
                   ))}
                 </select>
-                <p className="text-[12px] text-[var(--text-muted)]">
+                <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   Hold ⌘/Ctrl to pick more than one. Each of them gets their own email with the
                   link; nobody else hears anything, and if none of them answer nothing happens to
                   this person.
@@ -194,8 +194,8 @@ export default async function InvitesPage({
           )}
 
           <section className="mt-6">
-            <h2 className="text-[22px] font-semibold text-[var(--text)]">Create an invite link</h2>
-            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Create an invite link</h2>
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
               Always single-use — shows nothing about you or the community&rsquo;s roster to whoever
               opens it, just a path to become a member.
             </p>
@@ -229,7 +229,7 @@ export default async function InvitesPage({
                     </option>
                   ))}
                 </select>
-                <span className="text-[12px] text-[var(--text-muted)]">
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   An event can have its own admission rules, set on the event&rsquo;s own settings
                   page — what you see above is the community-wide default.
                 </span>
@@ -237,7 +237,7 @@ export default async function InvitesPage({
               <label className="flex flex-col gap-1">
                 <span className={LABEL}>Expires at (optional)</span>
                 <input type="datetime-local" name="expiresAt" className={INPUT} />
-                <span className="text-[12px] text-[var(--text-muted)]">
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   A direct invite into a capacity-capped event holds a place until it&rsquo;s used,
                   revoked or expired, so one of those needs a real date.
                 </span>
@@ -249,8 +249,8 @@ export default async function InvitesPage({
           </section>
 
           <section className="mt-8">
-            <h2 className="text-[22px] font-semibold text-[var(--text)]">Your invite links</h2>
-            {myInvites.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+            <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Your invite links</h2>
+            {myInvites.length === 0 && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
             <div className="mt-3 space-y-3">
               {myInvites.map((invite) => {
                 const status = communityInviteStatus(invite);
@@ -264,11 +264,11 @@ export default async function InvitesPage({
                       {invite.consensusState === "withheld" && <Tag tone="danger">objected to</Tag>}
                     </div>
                     {status === "valid" && (
-                      <p className="mt-1 break-all text-[13px] text-[var(--text)]">
+                      <p className="mt-1 break-all text-[length:var(--text-body)] text-[var(--text)]">
                         {appUrl}/invite/{invite.token}
                       </p>
                     )}
-                    <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                    <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                       {invite.cycleId && cycleNames.has(invite.cycleId) && (
                         <span className="font-medium text-[var(--text)]">{cycleNames.get(invite.cycleId)} · </span>
                       )}
@@ -291,19 +291,19 @@ export default async function InvitesPage({
 
           {isHolder && (
             <section className="mt-8">
-              <h2 className="text-[22px] font-semibold text-[var(--text)]">Inquiry inbox</h2>
-              <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Inquiry inbox</h2>
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 Visible to you because you hold the recruitment task. Claim one so two people
                 don&rsquo;t unknowingly reach out to the same person.
               </p>
               {inquiries.length === 0 && (
-                <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nothing pending.</p>
+                <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Nothing pending.</p>
               )}
               <div className="mt-3 space-y-3">
                 {inquiries.map((inq) => (
                   <div key={inq.id} className={CARD}>
-                    <p className="text-[13px] text-[var(--text)]">{inq.message}</p>
-                    <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+                    <p className="text-[length:var(--text-body)] text-[var(--text)]">{inq.message}</p>
+                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                       Contact: {inq.contactInfo} · submitted {new Date(inq.submittedAt).toLocaleString()}
                     </p>
                     <p className="mt-1">

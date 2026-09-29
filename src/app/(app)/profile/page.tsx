@@ -52,7 +52,7 @@ const CONTACT_VISIBILITY_LABELS: Record<(typeof CONTACT_METHOD_VISIBILITIES)[num
 export const dynamic = "force-dynamic";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 // Phase 46: an inline consent prompt shown only when a field has a
@@ -147,7 +147,7 @@ export default async function ProfilePage({
 
   return (
     <main className="mx-auto max-w-[480px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Your profile</h1>
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Your profile</h1>
       {error && (
         <div className="mt-4">
           <Banner tone="danger">{error}</Banner>
@@ -164,7 +164,7 @@ export default async function ProfilePage({
       )}
 
       <section className="mt-4">
-        <p className="mb-2 text-[13px] text-[var(--text-muted)]">
+        <p className="mb-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Theme — yours alone, not a community setting. Defaults to your device.
         </p>
         <ThemeToggle />
@@ -178,7 +178,7 @@ export default async function ProfilePage({
             <option value="exact">Exact calendar dates</option>
             <option value="period">Period name + weekday when available</option>
           </SelectField>
-          <span className="text-[12px] text-[var(--text-muted)]">
+          <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
             Read-only date labels only; date inputs and exact dates remain available.
           </span>
         </label>
@@ -207,10 +207,10 @@ export default async function ProfilePage({
 
         {manualTiers.length > 0 && (
           <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-            <legend className="px-1 text-[12px] text-[var(--text-muted)]">Tiers (manual assignment)</legend>
+            <legend className="px-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">Tiers (manual assignment)</legend>
             <div className="flex flex-col gap-1">
               {manualTiers.map((t) => (
-                <label key={t.id} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                <label key={t.id} className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                   <input type="checkbox" name="tierIds" value={t.id} defaultChecked={viewing.tierIds.includes(t.id)} />
                   {t.name}
                 </label>
@@ -232,14 +232,14 @@ export default async function ProfilePage({
 
       <section className="mt-8">
         <SectionHeading>Languages</SectionHeading>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Any you speak, at whatever level — used for a task&rsquo;s language Requirement.
         </p>
-        {ownLanguages.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">None added yet.</p>}
+        {ownLanguages.length === 0 && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">None added yet.</p>}
         <div className="mt-2 flex flex-col gap-2">
           {ownLanguages.map((l) => (
             <div key={l.id} className={`flex items-center gap-2 ${CARD}`}>
-              <span className="flex-1 text-[13px] text-[var(--text)]">
+              <span className="flex-1 text-[length:var(--text-body)] text-[var(--text)]">
                 {l.language} — {LANGUAGE_LEVEL_LABELS[l.level]}
               </span>
               <form action={deleteMemberLanguageAction}>
@@ -270,7 +270,7 @@ export default async function ProfilePage({
       {traitAxes.length > 0 && (
         <section className="mt-8">
           <SectionHeading>How you like to work</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Helps surface tasks that fit you — never shown to anyone else, never used to assign you
             anything.
           </p>
@@ -291,12 +291,12 @@ export default async function ProfilePage({
       {cycleTypeProgress.length > 0 && (
         <section className="mt-8">
           <SectionHeading>Event-type progress</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Computed live off your declared Participation — see /participation.
           </p>
           <div className="mt-2 flex flex-col gap-0.5">
             {cycleTypeProgress.map((p) => (
-              <p key={p.tierId} className={`text-[13px] ${p.held ? "text-[var(--success)]" : "text-[var(--text-muted)]"}`}>
+              <p key={p.tierId} className={`text-[length:var(--text-body)] ${p.held ? "text-[var(--success)]" : "text-[var(--text-muted)]"}`}>
                 {p.tierName} ({p.cycleTypeName}): {p.count}/{p.minCount} {p.held ? "— earned" : ""}
               </p>
             ))}
@@ -318,7 +318,7 @@ export default async function ProfilePage({
               edits already-given answers in place, which /questions
               deliberately doesn't cover. */}
           <div className={`mt-2 ${CARD}`}>
-            <p className="text-[13px] text-[var(--text)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text)]">
               {outstanding.length === 1
                 ? "You have 1 question still to answer."
                 : `You have ${outstanding.length} questions still to answer.`}
@@ -346,7 +346,7 @@ export default async function ProfilePage({
       {pendingAudienceConsents.length > 0 && (
         <section className="mt-8">
           <SectionHeading>Extend who can see your answers</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Since you answered, your Community has widened what it can read &mdash; a new group on
             a question, or a question marked so it can be pulled out in a crisis. Neither can reach
             your answer until you say so, and nothing changes if you leave these alone: whoever
@@ -362,7 +362,7 @@ export default async function ProfilePage({
                    list would blur which one a button was agreeing to. */
                 <form key={`e:${pending.answerId}`} action={agreeToEmergencyRevealAction} className={`${CARD} flex flex-wrap items-center gap-2`}>
                   <input type="hidden" name="answerId" value={pending.answerId} />
-                  <span className="flex-1 text-[13px] text-[var(--text)]">
+                  <span className="flex-1 text-[length:var(--text-body)] text-[var(--text)]">
                     {pending.questionLabel} &mdash; your Community has marked this one so it can be
                     read by whoever activates Emergency access on your page, and you weren&rsquo;t
                     asked about that. It isn&rsquo;t readable that way until you say so. Whoever does
@@ -376,7 +376,7 @@ export default async function ProfilePage({
                 <form key={`r:${pending.answerId}:${pending.ruleId}`} action={extendAnswerConsentAction} className={`${CARD} flex flex-wrap items-center gap-2`}>
                   <input type="hidden" name="answerId" value={pending.answerId} />
                   <input type="hidden" name="ruleId" value={pending.ruleId} />
-                  <span className="flex-1 text-[13px] text-[var(--text)]">
+                  <span className="flex-1 text-[length:var(--text-body)] text-[var(--text)]">
                     {pending.questionLabel} &mdash; share with{" "}
                     {pending.audienceLabel ?? "another group in this Community"}
                   </span>
@@ -396,17 +396,17 @@ export default async function ProfilePage({
           <div className="mt-2 flex flex-col gap-2">
             {onceEverAnswers.map(({ question, answer }) => (
               <div key={question.id} className={CARD}>
-                <p className="text-[14px] font-medium text-[var(--text)]">{question.label}</p>
+                <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{question.label}</p>
                 {/* A stored deferral or decline needs saying out loud here
                     — the form below is a blank "Save" box otherwise, which
                     reads as though nothing is on record. */}
                 {answer.status === "deferred" && (
-                  <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                  <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                     You said you didn&rsquo;t know yet. Save a value below if you&rsquo;ve since worked it out.
                   </p>
                 )}
                 {answer.status === "declined" && (
-                  <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+                  <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                     You chose not to answer this. Save a value below if you&rsquo;d like to change that.
                   </p>
                 )}
@@ -444,7 +444,7 @@ export default async function ProfilePage({
 
       <section className="mt-8">
         <SectionHeading>Contact methods</SectionHeading>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
           You control who sees each one. &ldquo;Emergency only&rdquo; means any member can activate
           Emergency access to reveal it when needed — both of you get notified, and every activation
           is logged. See <code className="font-mono">/members</code> for other members&rsquo; visible methods.
@@ -453,7 +453,7 @@ export default async function ProfilePage({
             reason the primary row below exists: where does the community's
             mail actually go? Stated as a fact, because it falls back to the
             login address for anyone who hasn't chosen a primary. */}
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Your email goes to{" "}
           <strong className="font-semibold text-[var(--text)]">{deliveryAddress ?? "no address yet"}</strong>
           {deliveryAddressIsLogin && " — the address you sign in with. Add another address below and point your email at it instead."}
@@ -465,7 +465,7 @@ export default async function ProfilePage({
         {verify && (
           <form action={confirmContactMethodVerificationAction} className={`mt-3 flex flex-wrap items-center gap-2 ${CARD}`}>
             <input type="hidden" name="token" value={verify} />
-            <span className="flex-1 text-[13px] text-[var(--text)]">
+            <span className="flex-1 text-[length:var(--text-body)] text-[var(--text)]">
               Confirm this address to make it the one your email goes to.
             </span>
             <button type="submit" className={BUTTON_PRIMARY}>
@@ -474,7 +474,7 @@ export default async function ProfilePage({
           </form>
         )}
 
-        {ownContactMethods.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">No contact methods yet.</p>}
+        {ownContactMethods.length === 0 && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">No contact methods yet.</p>}
         <div className="mt-2 flex flex-col gap-2">
           {ownContactMethods.map((m) => {
             const emailish = isEmailContactMethod(m);
@@ -520,7 +520,7 @@ export default async function ProfilePage({
                   // No Delete button at all: the lib refuses it, and a
                   // control that exists only to be rejected is worse than
                   // its absence. The state is stated instead.
-                  <span className="px-2.5 py-1.5 text-[13px] text-[var(--text-muted)]">
+                  <span className="px-2.5 py-1.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
                     Your email goes here
                   </span>
                 ) : (
@@ -555,14 +555,14 @@ export default async function ProfilePage({
       {myConsentStatus.length > 0 && (
         <section className="mt-8">
           <SectionHeading>Your consent</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Every purpose your Community has defined, and whether you currently have it active.
             Withdrawing takes effect immediately — anything it gates stops showing right away.
           </p>
           <div className="mt-2 flex flex-col gap-2">
             {myConsentStatus.map(({ purpose, active, grantedAt }) => (
               <div key={purpose.id} className={CARD}>
-                <p className="text-[14px] font-medium text-[var(--text)]">
+                <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
                   {purpose.label}
                   {purpose.gatesQuestionId && (
                     <span className="font-normal text-[var(--text-muted)]">
@@ -571,10 +571,10 @@ export default async function ProfilePage({
                     </span>
                   )}
                 </p>
-                <p className="mt-1 text-[12px] text-[var(--text-muted)]">{purpose.noticeText}</p>
+                <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">{purpose.noticeText}</p>
                 {active ? (
                   <div className="mt-2 flex items-center gap-2">
-                    <span className="text-[13px] text-[var(--success)]">
+                    <span className="text-[length:var(--text-body)] text-[var(--success)]">
                       Active{grantedAt ? ` since ${new Date(grantedAt).toLocaleDateString()}` : ""}
                     </span>
                     <form action={withdrawConsentAction}>

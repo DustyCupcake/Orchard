@@ -36,21 +36,53 @@ Each accent derives a small ramp at runtime via CSS `color-mix()` — no need to
 Defaults if a community hasn't set one yet: Accent 1 `#3a6cd9` (cobalt), Accent 2 `#8a3fa8` (plum).
 
 ### Status colors — fixed, never themed by community accent
-Light: danger `#dc2626` / soft `#fef2f2` / border `#fecaca` — warning `#b45309` / soft `#fffbeb` / border `#fde68a` — success `#15803d` / soft `#f0fdf4` / border `#bbf7d0`
-Dark: danger `#f87171` — warning `#fbbf24` — success `#4ade80` (soft/border: same accent-style `color-mix` pattern against the dark base colors at 18%/38%)
+Light: danger `#a8322a` / soft `#fdf1f0` / border `#f2cdca` — warning `#8a5a00` / soft `#fdf8ec` / border `#f0dcae` — success `#2c6b45` / soft `#eff8f1` / border `#bfe3cd`
+Dark: danger `#f08a80` — warning `#e0a63f` — success `#6fc48c` (soft/border: the same accent-style `color-mix` pattern against the dark surface at 20%/40%)
+
+These were Tailwind's `red-600`/`amber-700`/`green-700` verbatim. Every pair is now darker and slightly desaturated at the same role, so a status colour on its own soft background clears 5.6:1 rather than sitting at the edge.
 
 ### Typography
-Font: **Inter** (400/500/600/700), fallback `system-ui, sans-serif` — replaces the current plain `system-ui`. Scale: H1 32px/600, H2 24px/600, H3 18px/600, Label 15px/500, Body 15px/400, Small 13px/400 muted, Mono 12px (ids/counts/code) via `ui-monospace, monospace`.
+
+**Two families and a mono, each with exactly one job.**
+
+- **`--font-body` — IBM Plex Sans** (variable) for the interface. Every control, every label, every line of body copy.
+- **`--font-display` — Fraunces** (variable) for anything that is a *heading*: `h1`–`h4`, the community wordmark, the landing hero. Applied as a base rule, not per call site — opt one out with `font-[family-name:var(--font-body)]` where a serif genuinely doesn't fit (a figure in a stat tile).
+- **`--font-mono` — IBM Plex Mono** (400/500 only) for figures that are *identifiers* rather than prose: ids, paths, counts, anything someone may have to read aloud or type back.
+
+Fraunces rather than Newsreader because its optical-size axis lets one family set a 32px page title and a 16px card title without one being a shrunken copy of the other. Its `WONK` axis is pinned off — that's the character, and also what makes it read as a display face, and this is an all-day tool.
+
+**The scale.** Named tokens in `globals.css`, consumed as `text-[length:var(--text-body)]`:
+
+| Token | px | For |
+|---|---|---|
+| `--text-hero` | 40 | the landing page only |
+| `--text-display` | 32 | page title (`h1`) |
+| `--text-title` | 22 | section heading (`h2`) |
+| `--text-heading` | 16 | card/subsection heading (`h3`) |
+| `--text-body` | 15 | **body copy — the default** |
+| `--text-meta` | 13 | caption, hint, secondary line |
+| `--text-micro` | 12 | table header, chip, disclosure |
+| `--text-nano` | 11 | badge numerals |
+
+**Body is 15px.** The old scale had **689 uses of `text-[13px]`** and 350 of `text-[12px]` — 13px wasn't a decision, it was what fits. The tail of the new scale is kept deliberately: small is correct for a caption, and it was wrong for everything else. Every page is one token change away from a different body size now; that is the point of doing this at the token layer.
+
+`--tracking-display` (`-0.02em`) and `--tracking-title` (`-0.015em`) tighten large text, which is most of why a heading reads as set rather than as the first tag in the markup.
+
+**Two traps, both of which cost real time:**
+1. `text-[var(--text-body)]` is ambiguous — Tailwind emits `color` for it, not `font-size`, and every affected element silently falls back to the browser's 16px default. Always write `text-[length:var(--text-body)]`. Only *size* tokens need the hint; colour tokens (`text-[var(--text-muted)]`) are fine as-is.
+2. Base styles must live inside `@layer base`. Unlayered CSS outranks every `@layer utilities` rule regardless of specificity, so an unlayered `h1 { font-size }` silently beats Tailwind's own utilities.
 
 ### Spacing (balanced density)
 `space-1..8` = `4px 8px 12px 16px — 24px — 32px` (space-5/7 unused, kept sparse intentionally).
 
-### Radius — sharp, overriding Nocturne
-`sm 2px` (checkboxes, small tags), `md 4px` (buttons, inputs, cards), `lg 4px` (dialogs — same as md, no larger radius anywhere). No pill shapes except an optional small round status dot.
+### Radius — sharp, kept from the original overrides
+`sm 3px` (checkboxes, small tags), `md 5px` (buttons, inputs, cards), `lg 5px` (dialogs — same as md, no larger radius anywhere). No pill shapes except an optional small round status dot. The old 2/4/4 was fractionally too tight against the new warm neutrals; 3/5/5 is the same decision, not a reversal of it.
 
 ### Elevation
-Light: `sm 0 1px 2px rgba(0,0,0,.06)` / `md 0 4px 14px rgba(0,0,0,.08)` / `lg 0 16px 40px rgba(0,0,0,.14)`
-Dark: `sm 0 0 0 1px #333648` / `md 0 0 0 1px #3a3d52, 0 8px 24px rgba(0,0,0,.55)` / `lg 0 0 0 1px #565a72, 0 20px 48px rgba(0,0,0,.65)`
+Reserved for the three things that genuinely float — the `⋯` overflow menu, the mobile drawer, a modal. A card that means nothing does not cast a shadow; the surface/border tokens carry it.
+
+Light: `sm 0 1px 2px rgba(28,26,21,.07)` / `md 0 2px 6px rgba(28,26,21,.09), 0 1px 2px rgba(28,26,21,.06)` / `lg 0 12px 32px rgba(28,26,21,.16), 0 2px 8px rgba(28,26,21,.08)`
+Dark: `sm 0 0 0 1px #38352c` / `md 0 0 0 1px #403c33, 0 8px 24px rgba(0,0,0,.5)` / `lg 0 0 0 1px #5c574b, 0 20px 48px rgba(0,0,0,.6)`
 
 ### Icons
 **Phosphor** (phosphoricons.com), Regular weight, 20px in grids / 16px inline. The **Fill** weight, tinted Accent 1, is reserved for the active/selected state only (e.g. the active sidebar item) — never for a default icon. This replaces the app's current hand-rolled `Icon.tsx` SVG paths; recommend `@phosphor-icons/react` and retiring `Icon.tsx` once every call site is migrated (grep `nav-config.ts`'s icon keys for the mapping).
@@ -62,7 +94,7 @@ See the reference file for exact markup/states of each — reproduce as Tailwind
 - **Form fields**: text input, select, textarea, checkbox (custom square with check icon, not the browser default), radio (custom dot), segmented control (2–3 options) — border/focus states in Accent 1.
 - **Cards**: kicker/title/body/meta pattern (matches `TaskCard.tsx`'s content shape) plus an elevated variant.
 - **Table**: uppercase 11px muted header, row hover tint, bottom-rule per row.
-- **Sidebar**: extend `AppShell.tsx` — logo slot replaces the "Orchard" text wordmark when a community sets one (falls back to community name in Inter 600); active nav item becomes Accent-1-soft background + Accent-1 text + Fill-weight icon (currently `bg-neutral-200/70` neutral).
+- **Sidebar**: extend `AppShell.tsx` — logo slot replaces the "Orchard" text wordmark when a community sets one (falls back to the community name set in the display face at `--text-heading`/semibold); active nav item becomes Accent-1-soft background + Accent-1 text + Fill-weight icon (currently `bg-neutral-200/70` neutral).
 - **Banners**: info (Accent-1-soft, e.g. the View-as banner), warning (fixed amber, e.g. On-site mode), danger (fixed red, e.g. conflict alerts) — same three-banner pattern already used in `AppShell.tsx`, just restyled onto the new tokens.
 - **Tabs**: underline style, Accent 1 on the active tab.
 - **Empty state**: centered icon + line + ghost action, dashed border container.
@@ -168,8 +200,9 @@ No logo asset exists yet — it's a per-community upload, empty by default (fall
 Living checklist — update it in the same commit whenever a page/piece moves from ⬜ to ✅, so any session can tell at a glance what still needs a pass. "Restyled" means: onto the tokens below (colors/type/spacing/radius via CSS custom properties, not hardcoded hex/`system-ui`), sharp radii, Phosphor icons where the page has icons at all — not necessarily a re-layout of the page's actual content/fields.
 
 **Foundations — done**
-- ✅ Design tokens (`src/app/globals.css`): neutral ramp, accent-1/2 ramps, status colors, spacing/radius/shadow, both themes.
-- ✅ Typography: Inter via `next/font` (`src/app/layout.tsx`).
+- ✅ Design tokens (`src/app/globals.css`): warm neutral ramp, three distinct surfaces per theme, accent-1/2 ramps, status colors, spacing/radius/shadow, both themes.
+- ✅ Typography: Fraunces (display) + IBM Plex Sans (body) + IBM Plex Mono (identifiers) via `next/font` (`src/app/layout.tsx`), on an eight-step `--text-*` scale applied as `text-[length:var(--text-body)]`. Replaced Inter on a 13px-everywhere scale; see the Typography section above.
+- ✅ Identity: `src/app/icon.svg` (favicon — `public/` had been empty, so every install served the default Next.js mark), the community wordmark set in the display face in the sidebar and as the landing hero, and `<title>` generated from the community's name (`generateMetadata`) instead of the literal `"Orchard"` every install shared.
 - ✅ Icons: `@phosphor-icons/react` installed; `src/components/nav/phosphor-icon-map.tsx` maps existing nav icon keys. `src/components/nav/Icon.tsx` (the old hand-rolled SVGs) is **not yet retired** — still the only icon source for every unrestyled page below.
 - ✅ Community branding: `community.accentPrimary`/`accentSecondary`/`logoUrl` columns + migration, settings-page color/URL inputs, dynamic `--accent-1`/`--accent-2` injected inline on `<html>` in the root layout (falls back to the documented cobalt/plum defaults when a community hasn't set its own). Logo is a plain hosted-image URL field — no upload/storage utility exists in this codebase, building one is still out of scope.
 - ✅ Personal theme preference: `data-theme="light"/"dark"` override on `<html>`, `localStorage`-only (no DB field — matches the README's own "skip unless cross-device sync matters"), a System/Light/Dark control on `/profile` (`ThemeToggle.tsx`), a blocking init script in the root layout to avoid a flash.

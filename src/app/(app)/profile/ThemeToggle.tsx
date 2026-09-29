@@ -51,7 +51,7 @@ export default function ThemeToggle() {
           key={o.key}
           type="button"
           onClick={() => choose(o.key)}
-          className={`px-3.5 py-1.5 text-[13px] font-medium ${i > 0 ? "border-l border-[var(--border)]" : ""} ${
+          className={`px-3.5 py-1.5 text-[length:var(--text-body)] font-medium ${i > 0 ? "border-l border-[var(--border)]" : ""} ${
             pref === o.key ? "bg-[var(--surface-sunken)] text-[var(--text)]" : "text-[var(--text-muted)] hover:bg-[var(--surface-sunken)]"
           }`}
         >

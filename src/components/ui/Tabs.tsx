@@ -21,7 +21,7 @@ export default function Tabs<T extends string>({
         <Link
           key={t.key}
           href={hrefFor(t.key)}
-          className={`border-b-2 pb-2.5 text-[13px] font-medium transition-colors ${
+          className={`border-b-2 pb-2.5 text-[length:var(--text-body)] font-medium transition-colors ${
             active === t.key
               ? "border-[var(--accent-1)] text-[var(--accent-1)]"
               : "border-transparent text-[var(--text-muted)] hover:text-[var(--text)]"

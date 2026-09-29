@@ -30,7 +30,7 @@ export default function LoginForm() {
 
   if (status === "sent") {
     return (
-      <p className="text-[13px] text-[var(--success)]">
+      <p className="text-[length:var(--text-body)] text-[var(--success)]">
         Check your email for a login link — it works once and expires in 15 minutes.
       </p>
     );
@@ -49,7 +49,7 @@ export default function LoginForm() {
       <button type="submit" disabled={status === "submitting"} className={BUTTON_PRIMARY}>
         {status === "submitting" ? "Sending…" : "Send login link"}
       </button>
-      {status === "error" && <p className="text-[13px] text-[var(--danger)] sm:self-center">Something went wrong — try again.</p>}
+      {status === "error" && <p className="text-[length:var(--text-body)] text-[var(--danger)] sm:self-center">Something went wrong — try again.</p>}
     </form>
   );
 }

@@ -31,8 +31,8 @@ export default async function NewAssemblyPage({
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Propose an Assembly</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Propose an Assembly</h1>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         A way to gather the whole community&rsquo;s view on something — anything from a genuinely
         urgent one-off to a slower, deliberate structural question. Once proposed, it moves through
         three windows in order: <strong className="text-[var(--text)]">agenda-building</strong>, where
@@ -53,11 +53,11 @@ export default async function NewAssemblyPage({
           <input type="hidden" name="templateKey" value={FOUNDING_SETTINGS_TEMPLATE_KEY} />
 
           <div className="rounded-[var(--radius-md)] border border-[var(--accent-1)] bg-[var(--accent-1-softer)] p-3">
-            <h2 className="text-[15px] font-semibold text-[var(--text)]">{FOUNDING_SETTINGS_TITLE}</h2>
-            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            <h2 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">{FOUNDING_SETTINGS_TITLE}</h2>
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
               {FOUNDING_SETTINGS_DESCRIPTION}
             </p>
-            <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+            <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               {FOUNDING_SETTINGS_ITEMS.length} agenda items across{" "}
               {FOUNDING_SETTINGS_GROUPS.length} areas will be added as the starting agenda. You can
               remove any of them and add your own while the agenda-building window is open.
@@ -69,11 +69,11 @@ export default async function NewAssemblyPage({
               const items = FOUNDING_SETTINGS_ITEMS.filter((i) => i.group === group.title);
               return (
                 <li key={group.title} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-                  <p className="text-[13px] font-medium text-[var(--text)]">{group.title}</p>
-                  <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">{group.blurb}</p>
+                  <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{group.title}</p>
+                  <p className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">{group.blurb}</p>
                   <ul className="mt-1.5 flex flex-col gap-0.5">
                     {items.map((item) => (
-                      <li key={item.text} className="text-[12px] text-[var(--text-muted)]">
+                      <li key={item.text} className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                         · {item.text}
                         <span className="text-[var(--text)]">
                           {" "}
@@ -104,7 +104,7 @@ export default async function NewAssemblyPage({
           </label>
 
           <fieldset className="flex flex-col gap-2">
-            <legend className="text-[13px] font-medium text-[var(--text)]">How long should each window run?</legend>
+            <legend className="text-[length:var(--text-body)] font-medium text-[var(--text)]">How long should each window run?</legend>
             {/* Anchored to render time so the preview reads "from now"
                 rather than drifting between server and client renders. */}
             <DurationFields now={Date.now()} />
@@ -132,7 +132,7 @@ export default async function NewAssemblyPage({
           </label>
 
           <fieldset className="flex flex-col gap-2">
-            <legend className="text-[13px] font-medium text-[var(--text)]">
+            <legend className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
               How long should each window run?
             </legend>
             <DurationFields now={Date.now()} />

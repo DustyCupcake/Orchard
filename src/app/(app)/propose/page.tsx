@@ -40,8 +40,8 @@ export default async function ProposePage({
 
   return (
     <main className="mx-auto max-w-[520px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Propose a task</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Propose a task</h1>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Just a title and a rough description is enough — no need to know its branch, tags, or
         criticality. Whoever does branch coordination will fill that in when they review it.
       </p>
@@ -59,12 +59,12 @@ export default async function ProposePage({
           <textarea name="description" rows={4} className={INPUT} />
         </label>
 
-        <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+        <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
           <input type="checkbox" name="wantsToClaim" /> I&rsquo;d like to claim this myself
         </label>
 
         <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <legend className="px-1 text-[12px] text-[var(--text-muted)]">I&rsquo;d suggest this person (optional)</legend>
+          <legend className="px-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">I&rsquo;d suggest this person (optional)</legend>
           <select name="suggestedMemberId" defaultValue="" className={`${INPUT} w-full`}>
             <option value="">— nobody in particular —</option>
             {communityMembers.map((m) => (
@@ -82,8 +82,8 @@ export default async function ProposePage({
         </fieldset>
 
         <details className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Add more, if you know it (optional)</summary>
-          <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+          <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">Add more, if you know it (optional)</summary>
+          <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             Still just a suggestion — whoever reviews this can change any of it before activating.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -133,11 +133,11 @@ export default async function ProposePage({
           )}
 
           <div className="mt-2 flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+            <label className="flex items-center gap-1.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
               Capacity:
               <input type="number" name="capacity" placeholder="1" min={1} className={`${INPUT} w-20`} />
             </label>
-            <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+            <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
               <input type="checkbox" name="critical" /> Critical
             </label>
           </div>

@@ -150,7 +150,7 @@ const ENGAGEMENT_TONE: Record<string, Tone> = { noted: "neutral", soft_flag: "wa
 // shows nearly all of them) so the section itself, not a fixed layout,
 // is what has to carry the visual structure.
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 // Same zero-JS "?tab= + shared Tabs bar" pattern settings/page.tsx uses
@@ -458,7 +458,7 @@ export default async function TaskDetailPage({
               <form action={nominateForTaskAction} className="flex flex-col gap-2">
                 <input type="hidden" name="taskId" value={taskRow.id} />
                 <label className="flex flex-col gap-1">
-                  <span className="text-[12px] font-medium text-[var(--text-muted)]">
+                  <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">
                     Ask someone else instead
                   </span>
                   <select name="memberId" required defaultValue="" className={INPUT}>
@@ -578,7 +578,7 @@ export default async function TaskDetailPage({
 
   return (
     <main className="mx-auto max-w-[1100px] px-6 py-10 md:px-12 md:py-14">
-      <Link href="/board" className="text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+      <Link href="/board" className="text-[length:var(--text-body)] font-medium text-[var(--accent-1)] hover:underline">
         ← Back to board
       </Link>
 
@@ -647,7 +647,7 @@ export default async function TaskDetailPage({
             />
             <Link
               href={schedulePollHref}
-              className="inline-flex h-7 items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 text-[12px] text-[var(--text-muted)] hover:text-[var(--text)]"
+              className="inline-flex h-7 items-center gap-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 text-[length:var(--text-meta)] text-[var(--text-muted)] hover:text-[var(--text)]"
               title="Find a time"
             >
               <CalendarIcon />
@@ -657,14 +657,14 @@ export default async function TaskDetailPage({
         }
       />
       {parentTask && (
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Part of{" "}
           <Link href={`/tasks/${parentTask.id}`} className="font-medium text-[var(--accent-1)] hover:underline">
             {parentTask.title}
           </Link>
         </p>
       )}
-      {taskRow.description && <p className="mt-3 text-[14px] text-[var(--text)]">{taskRow.description}</p>}
+      {taskRow.description && <p className="mt-3 text-[length:var(--text-body)] text-[var(--text)]">{taskRow.description}</p>}
 
       {/* Edit task — the only place a task's core details (title,
           description, branch, cycle, phase, effort, capacity, critical,
@@ -674,22 +674,22 @@ export default async function TaskDetailPage({
           dencies are open to any member" posture this page already
           had — the controls just moved in here. */}
       <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
-        <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Edit task</summary>
+        <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">Edit task</summary>
 
         <form action={updateTaskAction} className="mt-3 flex flex-col gap-3">
           <input type="hidden" name="taskId" value={taskRow.id} />
           <label className="flex flex-col gap-1">
-            <span className="text-[12px] font-medium text-[var(--text-muted)]">Title</span>
+            <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Title</span>
             <input type="text" name="title" defaultValue={taskRow.title} className={INPUT} />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[12px] font-medium text-[var(--text-muted)]">Description</span>
+            <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Description</span>
             <textarea name="description" rows={3} defaultValue={taskRow.description ?? ""} className={INPUT} />
           </label>
 
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1">
-              <span className="text-[12px] font-medium text-[var(--text-muted)]">Branch</span>
+              <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Branch</span>
               <select name="branchId" defaultValue={taskRow.branchId} key={taskRow.branchId} className={INPUT}>
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>
@@ -700,7 +700,7 @@ export default async function TaskDetailPage({
             </label>
             {communityRow.cyclesEnabled && (
               <label className="flex flex-col gap-1">
-                <span className="text-[12px] font-medium text-[var(--text-muted)]">Event</span>
+                <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Event</span>
                 <select name="cycleId" defaultValue={taskRow.cycleId ?? ""} key={taskRow.cycleId ?? ""} className={INPUT}>
                   <option value="">No event (unscoped)</option>
                   {allCycles.map((c) => (
@@ -712,7 +712,7 @@ export default async function TaskDetailPage({
               </label>
             )}
             <label className="flex flex-col gap-1">
-              <span className="text-[12px] font-medium text-[var(--text-muted)]">Phase</span>
+              <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Phase</span>
               <select name="phaseId" defaultValue={taskRow.phaseId ?? ""} key={taskRow.phaseId ?? ""} className={INPUT}>
                 <option value="">No phase</option>
                 {cyclePhases.map((p) => (
@@ -726,7 +726,7 @@ export default async function TaskDetailPage({
 
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
-              <span className="text-[12px] font-medium text-[var(--text-muted)]">Effort</span>
+              <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Effort</span>
               <div className="flex flex-wrap items-center gap-2">
                 <EffortFields
                   defaultEffort={taskRow.effort}
@@ -738,16 +738,16 @@ export default async function TaskDetailPage({
               </div>
             </div>
             <label className="flex flex-col gap-1">
-              <span className="text-[12px] font-medium text-[var(--text-muted)]">Capacity (blank = uncapped)</span>
+              <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Capacity (blank = uncapped)</span>
               <input type="number" name="capacity" min={1} defaultValue={taskRow.capacity ?? ""} className={`${INPUT} w-24`} />
             </label>
-            <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+            <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
               <input type="checkbox" name="critical" defaultChecked={taskRow.critical} /> Critical
             </label>
           </div>
 
           <label className="flex flex-col gap-1">
-            <span className="text-[12px] font-medium text-[var(--text-muted)]">Tags (comma-separated)</span>
+            <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Tags (comma-separated)</span>
             <input type="text" name="tags" defaultValue={(taskRow.tags ?? []).join(", ")} className={INPUT} />
           </label>
 
@@ -757,16 +757,16 @@ export default async function TaskDetailPage({
         </form>
 
         <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <p className="text-[13px] font-medium text-[var(--text)]">Requirements</p>
-          {requirements.length === 0 && <p className="mt-1 text-[12px] text-[var(--text-muted)]">None yet.</p>}
+          <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Requirements</p>
+          {requirements.length === 0 && <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">None yet.</p>}
           <ul className="mt-2 flex flex-col gap-2">
             {requirements.map((r) => {
               const value = r.value as { tierId?: string; language?: string; taskId?: string; flag?: string };
               return (
-                <li key={r.id} className="flex flex-wrap items-center gap-3 text-[13px] text-[var(--text)]">
+                <li key={r.id} className="flex flex-wrap items-center gap-3 text-[length:var(--text-body)] text-[var(--text)]">
                   <span>{describeRequirement(r, tierNames)}</span>
                   <details>
-                    <summary className="cursor-pointer text-[12px] text-[var(--accent-1)]">Edit</summary>
+                    <summary className="cursor-pointer text-[length:var(--text-meta)] text-[var(--accent-1)]">Edit</summary>
                     <form action={updateRequirementAction} className="mt-2 flex flex-wrap items-center gap-2">
                       <input type="hidden" name="taskId" value={taskRow.id} />
                       <input type="hidden" name="requirementId" value={r.id} />
@@ -815,7 +815,7 @@ export default async function TaskDetailPage({
           </ul>
 
           <details className="mt-2">
-            <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Add a requirement</summary>
+            <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Add a requirement</summary>
             <form action={addRequirementAction} className="mt-2 flex max-w-[420px] flex-col gap-2">
               <input type="hidden" name="taskId" value={taskRow.id} />
               <div className="flex flex-wrap items-center gap-2">
@@ -834,7 +834,7 @@ export default async function TaskDetailPage({
                   <option value="soft_priority">Soft priority</option>
                 </select>
               </div>
-              <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+              <label className="flex items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 <select name="requirementTierId" defaultValue="" className={INPUT}>
                   <option value="">Tier…</option>
                   {tierOptions.map((t) => (
@@ -845,11 +845,11 @@ export default async function TaskDetailPage({
                 </select>
                 (if type = tier)
               </label>
-              <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+              <label className="flex items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 <input type="text" name="requirementLanguage" placeholder="language" className={INPUT} />
                 (if type = language)
               </label>
-              <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+              <label className="flex items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 <select name="requirementCompletedTaskId" defaultValue="" className={INPUT}>
                   <option value="">Task…</option>
                   {communityTasks.map((t) => (
@@ -860,7 +860,7 @@ export default async function TaskDetailPage({
                 </select>
                 (if type = completed task)
               </label>
-              <label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
+              <label className="flex items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 <input type="text" name="requirementFlag" placeholder="custom flag" className={INPUT} />
                 (if type = custom)
               </label>
@@ -872,11 +872,11 @@ export default async function TaskDetailPage({
         </div>
 
         <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <p className="text-[13px] font-medium text-[var(--text)]">Dependencies</p>
-          {dependencies.length === 0 && <p className="mt-1 text-[12px] text-[var(--text-muted)]">None.</p>}
+          <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Dependencies</p>
+          {dependencies.length === 0 && <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">None.</p>}
           <ul className="mt-2 flex flex-col gap-1.5">
             {dependencies.map((d) => (
-              <li key={d.dependsOnTaskId} className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text)]">
+              <li key={d.dependsOnTaskId} className="flex flex-wrap items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                 <Link href={`/tasks/${d.dependsOnTaskId}`} className="font-medium text-[var(--accent-1)] hover:underline">
                   {d.title}
                 </Link>
@@ -894,7 +894,7 @@ export default async function TaskDetailPage({
 
           {dependencyOptions.length > 0 && (
             <details className="mt-2">
-              <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">Add dependencies</summary>
+              <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Add dependencies</summary>
               <form action={addDependencyAction} className="mt-2 flex max-w-[420px] flex-col gap-2">
                 <input type="hidden" name="taskId" value={taskRow.id} />
                 <select name="dependsOnTaskIds" multiple className={`${INPUT} h-32`}>
@@ -922,8 +922,8 @@ export default async function TaskDetailPage({
             <FlagIcon size={18} />
           </summary>
           <div className="mt-2 w-[min(90vw,420px)] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
-            <p className="text-[13px] font-medium text-[var(--text)]">Signal something</p>
-            <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Signal something</p>
+            <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               A quiet, anonymous nudge to that branch&rsquo;s coordination — no detail required, and
               nothing here says it was you.
             </p>
@@ -943,9 +943,9 @@ export default async function TaskDetailPage({
 
             {isCoordHolderForBranch && (
               <div className="mt-3">
-                {openSignals.length === 0 && <p className="text-[13px] text-[var(--text-muted)]">No open signals.</p>}
+                {openSignals.length === 0 && <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">No open signals.</p>}
                 {openSignals.map((s) => (
-                  <div key={s.id} className="mb-1.5 flex items-center gap-2 text-[13px] text-[var(--text)]">
+                  <div key={s.id} className="mb-1.5 flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                     <span>
                       {SIGNAL_LABELS[s.kind] ?? s.kind} — {new Date(s.createdAt).toLocaleDateString()}
                     </span>
@@ -960,10 +960,10 @@ export default async function TaskDetailPage({
                 ))}
                 {resolvedSignals.length > 0 && (
                   <details className="mt-2">
-                    <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
+                    <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
                       Dismissed signals ({resolvedSignals.length})
                     </summary>
-                    <ul className="mt-2 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
+                    <ul className="mt-2 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text)]">
                       {resolvedSignals.map((s) => (
                         <li key={s.id}>{SIGNAL_LABELS[s.kind] ?? s.kind}</li>
                       ))}
@@ -983,13 +983,13 @@ export default async function TaskDetailPage({
             <QuestionIcon size={18} />
           </summary>
           <div className="mt-2 w-[min(90vw,520px)] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
-            <p className="text-[13px] font-medium text-[var(--text)]">Questions</p>
-            <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Questions</p>
+            <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               Anyone can ask something tied to this task — it queues silently and bundles into the
               next Input round, no ping sent now. Answers stay visible here once the round&rsquo;s open.
             </p>
 
-            {questions.length === 0 && <p className="mt-3 text-[13px] text-[var(--text-muted)]">No questions yet.</p>}
+            {questions.length === 0 && <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">No questions yet.</p>}
             <div className="mt-3">
               {questions.map((q) => {
                 // Answers that aren't any listed option — only reachable
@@ -1022,9 +1022,9 @@ export default async function TaskDetailPage({
                   : null;
                 return (
                   <div key={q.id} className="mb-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-3.5">
-                    <p className="flex flex-wrap items-center gap-1.5 text-[13px]">
+                    <p className="flex flex-wrap items-center gap-1.5 text-[length:var(--text-body)]">
                       <span className="font-medium text-[var(--text)]">{q.text}</span>
-                      <span className="text-[12px] text-[var(--text-muted)]">
+                      <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                         {q.status === "queued" && "queued for the next round"}
                         {q.status === "open" && (
                           <>
@@ -1039,7 +1039,7 @@ export default async function TaskDetailPage({
                       </span>
                     </p>
                     {tally && q.responses.length > 0 && (
-                      <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
+                      <ul className="mt-1.5 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text)]">
                         {tally.map((t) => (
                           <li key={t.option}>
                             {t.option}: {t.count}
@@ -1048,7 +1048,7 @@ export default async function TaskDetailPage({
                       </ul>
                     )}
                     {!tally && q.responses.length > 0 && (
-                      <ul className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
+                      <ul className="mt-1.5 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text)]">
                         {q.responses.map((r) => (
                           <li key={r.id}>{formatFieldValue(r.value, q.responseType)}</li>
                         ))}
@@ -1076,11 +1076,11 @@ export default async function TaskDetailPage({
               </select>
               <input type="text" name="options" placeholder="options for choice types, comma-separated" className={INPUT} />
               <input type="hidden" name="multiline" value="on" />
-              <label className="flex items-center gap-2 text-[13px] text-[var(--text-muted)]">
+              <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
                 Deadline (optional)
                 <input type="date" name="deadline" className={INPUT} />
               </label>
-              <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+              <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                 <input type="checkbox" name="priority" /> Can&rsquo;t move forward without this
               </label>
               <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
@@ -1094,7 +1094,7 @@ export default async function TaskDetailPage({
       {/* Attention nudge actions — what to do when a task "needs attention" */}
       {holdsTask && taskRow.status === "claimed" && taskRow.attentionLevel !== "ok" && (
         <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--warning-border)] bg-[var(--warning-soft)] p-3">
-          <p className="text-[13px] font-medium text-[var(--warning)]">
+          <p className="text-[length:var(--text-body)] font-medium text-[var(--warning)]">
             This task is flagged &ldquo;{ATTENTION_STYLES[taskRow.attentionLevel]?.label ?? taskRow.attentionLevel}&rdquo;
             {taskRow.attentionLevel === "soft" && " — it hasn't moved recently."}
             {taskRow.attentionLevel === "hard" && " — it's been stale for a while."}
@@ -1106,7 +1106,7 @@ export default async function TaskDetailPage({
                 type="text"
                 name="note"
                 placeholder="Quick update (optional)"
-                className={`${INPUT} min-w-0 text-[13px]`}
+                className={`${INPUT} min-w-0 text-[length:var(--text-body)]`}
               />
               <button type="submit" className={BUTTON_PRIMARY}>
                 Still on it
@@ -1114,12 +1114,12 @@ export default async function TaskDetailPage({
             </form>
             <form action={parkAction} className="flex items-center gap-2">
               <input type="hidden" name="taskId" value={taskRow.id} />
-              <input type="date" name="nextCheckinAt" required className={`${INPUT} min-w-0 text-[13px]`} />
+              <input type="date" name="nextCheckinAt" required className={`${INPUT} min-w-0 text-[length:var(--text-body)]`} />
               <input
                 type="text"
                 name="waitingNote"
                 placeholder="waiting on…"
-                className={`${INPUT} min-w-0 text-[13px]`}
+                className={`${INPUT} min-w-0 text-[length:var(--text-body)]`}
               />
               <button type="submit" className={BUTTON_SECONDARY}>
                 Park
@@ -1144,7 +1144,7 @@ export default async function TaskDetailPage({
       {/* Waiting nudge actions — all 4 spec'd options directly available */}
       {holdsTask && taskRow.status === "waiting" && (
         <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-3">
-          <p className="text-[13px] text-[var(--text-muted)]">
+          <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
             Check-in was {taskRow.nextCheckinAt && taskRow.nextCheckinAt < new Date() ? "due " + taskRow.nextCheckinAt.toLocaleDateString() : "set for " + taskRow.nextCheckinAt?.toLocaleDateString()}
             {taskRow.waitingNote && <> — <em>{taskRow.waitingNote}</em></>}
           </p>
@@ -1163,12 +1163,12 @@ export default async function TaskDetailPage({
             </form>
             <form action={resnoozeTaskAction} className="flex items-center gap-2">
               <input type="hidden" name="taskId" value={taskRow.id} />
-              <input type="date" name="nextCheckinAt" required className={`${INPUT} min-w-0 text-[13px]`} />
+              <input type="date" name="nextCheckinAt" required className={`${INPUT} min-w-0 text-[length:var(--text-body)]`} />
               <input
                 type="text"
                 name="waitingNote"
                 placeholder="New waiting note (optional)"
-                className={`${INPUT} min-w-0 text-[13px]`}
+                className={`${INPUT} min-w-0 text-[length:var(--text-body)]`}
               />
               <button type="submit" className={BUTTON_SECONDARY}>
                 Re-snooze
@@ -1186,7 +1186,7 @@ export default async function TaskDetailPage({
 
       {/* Contextual strip — my pending join request */}
       {myRequest && myRequest.status === "pending" && (
-        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-3 text-[13px] text-[var(--text)]">
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-3 text-[length:var(--text-body)] text-[var(--text)]">
           <span>You&rsquo;ve asked to join this task — waiting for a holder&rsquo;s response.</span>
           <form action={withdrawJoinRequestAction}>
             <input type="hidden" name="taskId" value={taskRow.id} />
@@ -1199,13 +1199,13 @@ export default async function TaskDetailPage({
       )}
 
       {myAssignment?.isOutgoing && notes.wikiRevisions.length === 0 && (
-        <p className="mt-2 text-[13px] text-[var(--danger)]">
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--danger)]">
           You&rsquo;ve marked yourself as outgoing on this task — this is the best moment to write
           up the wiki summary below before handing it off, while it&rsquo;s still fresh.
         </p>
       )}
       {myOpenPing && (
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           You&rsquo;ve asked to talk to your coordinator about this task — pending.
         </p>
       )}
@@ -1217,7 +1217,7 @@ export default async function TaskDetailPage({
       {requirements.length > 0 && (
       <section>
         <SectionHeading>Requirements</SectionHeading>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Status only — add, edit, and remove live in the <em>Edit task</em> panel above.
         </p>
         <ul className="mt-2 flex flex-col gap-2">
@@ -1244,7 +1244,7 @@ export default async function TaskDetailPage({
                     ? "not met"
                     : "met";
             return (
-              <li key={r.id} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-2.5 text-[13px]">
+              <li key={r.id} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-2.5 text-[length:var(--text-body)]">
                 <span style={{ color: statusColor }}>
                   {describeRequirement(r, tierNames)} — {statusLabel}
                 </span>
@@ -1258,13 +1258,13 @@ export default async function TaskDetailPage({
       {dependencies.length > 0 && (
       <section className="mt-6">
         <SectionHeading>Dependencies</SectionHeading>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
           This task can&rsquo;t be finished while any of these are still open. Add and remove live
           in the <em>Edit task</em> panel above.
         </p>
         <ul className="mt-2 flex flex-col gap-1.5">
           {dependencies.map((d) => (
-            <li key={d.dependsOnTaskId} className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text)]">
+            <li key={d.dependsOnTaskId} className="flex flex-wrap items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
               <Link href={`/tasks/${d.dependsOnTaskId}`} className="font-medium text-[var(--accent-1)] hover:underline">
                 {d.title}
               </Link>
@@ -1277,10 +1277,10 @@ export default async function TaskDetailPage({
 
       {canGrantPermissions && (
         <details className="mt-6 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
+          <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
             Permissions granted by this task
           </summary>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Check which module-level access gate(s) whoever currently holds this task should get —
             the identical <code>PermissionGrant</code> rows the settings panel&rsquo;s Access &amp;
             permissions tab edits, grouped there by how far each reaches. A grant&rsquo;s scope comes
@@ -1297,7 +1297,7 @@ export default async function TaskDetailPage({
                   value={moduleKey}
                   defaultChecked={grantedByThisTask.has(moduleKey)}
                 />
-                <p className="ml-6 text-[12px] text-[var(--text-muted)]">
+                <p className="ml-6 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   {describeGrantScope(moduleKey, taskRow.cycleId, taskCycle?.name ?? null)}
                   {isMisplacedCommunityGrant(moduleKey, taskRow.cycleId) && (
                     <>
@@ -1308,7 +1308,7 @@ export default async function TaskDetailPage({
                   )}
                 </p>
                 {elsewhereHolderByModule.has(moduleKey) && (
-                  <p className="ml-6 text-[12px] text-[var(--text-muted)]">
+                  <p className="ml-6 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                     Currently held by &ldquo;{elsewhereHolderByModule.get(moduleKey)}&rdquo; — checking this
                     moves it here.
                   </p>
@@ -1325,7 +1325,7 @@ export default async function TaskDetailPage({
       {/* Notes render inline, never tab-gated — spec: "not buried
           behind a toggle, a mode switch, or a different part of the
           app." */}
-      <p className="mt-8 text-[13px] text-[var(--text-muted)]">
+      <p className="mt-8 text-[length:var(--text-body)] text-[var(--text-muted)]">
         The description above is the goal, not the method. Everything here is optional notes on
         how it&rsquo;s actually been done — never mistaken for the instructions.
       </p>
@@ -1334,14 +1334,14 @@ export default async function TaskDetailPage({
         <SectionHeading>Wiki summary</SectionHeading>
         {notes.wikiRevisions.length > 0 ? (
           <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
-            <p className="whitespace-pre-wrap text-[13px] text-[var(--text)]">{notes.wikiRevisions[0].content}</p>
-            <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+            <p className="whitespace-pre-wrap text-[length:var(--text-body)] text-[var(--text)]">{notes.wikiRevisions[0].content}</p>
+            <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               Last edited by {memberNameById.get(notes.wikiRevisions[0].editedBy) ?? "—"} on{" "}
               {new Date(notes.wikiRevisions[0].editedAt).toLocaleString()}
             </p>
           </div>
         ) : (
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">Nothing written up yet.</p>
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">Nothing written up yet.</p>
         )}
 
         <form action={editWikiAction} className="mt-3 flex flex-col gap-2">
@@ -1361,10 +1361,10 @@ export default async function TaskDetailPage({
 
         {notes.wikiRevisions.length > 1 && (
           <details className="mt-2">
-            <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
+            <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
               Revision history ({notes.wikiRevisions.length})
             </summary>
-            <ul className="mt-2 flex flex-col gap-1.5 text-[13px] text-[var(--text)]">
+            <ul className="mt-2 flex flex-col gap-1.5 text-[length:var(--text-body)] text-[var(--text)]">
               {notes.wikiRevisions.slice(1).map((rev) => (
                 <li key={rev.id}>
                   <span className="text-[var(--text-muted)]">
@@ -1380,14 +1380,14 @@ export default async function TaskDetailPage({
 
       <section className="mt-8">
         <SectionHeading>Comments</SectionHeading>
-        {notes.comments.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">No comments yet.</p>}
+        {notes.comments.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">No comments yet.</p>}
         <div className="mt-2">
           {notes.comments.map((c) => (
             <div key={c.id} className="mb-2">
-              <div className="text-[12px] text-[var(--text-muted)]">
+              <div className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 {memberNameById.get(c.memberId) ?? "—"} — {new Date(c.createdAt).toLocaleString()}
               </div>
-              <p className="text-[13px] text-[var(--text)]">{c.body}</p>
+              <p className="text-[length:var(--text-body)] text-[var(--text)]">{c.body}</p>
             </div>
           ))}
         </div>
@@ -1403,10 +1403,10 @@ export default async function TaskDetailPage({
 
       <section className="mt-8">
         <SectionHeading>Resources</SectionHeading>
-        {notes.resources.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">No resources linked yet.</p>}
+        {notes.resources.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">No resources linked yet.</p>}
         <ul className="mt-2 flex flex-col gap-1">
           {notes.resources.map((r) => (
-            <li key={r.id} className="text-[13px]">
+            <li key={r.id} className="text-[length:var(--text-body)]">
               <a href={r.url} target="_blank" rel="noopener noreferrer" className="font-medium text-[var(--accent-1)] hover:underline">
                 {r.label}
               </a>
@@ -1428,23 +1428,23 @@ export default async function TaskDetailPage({
 
       <section className="mt-8">
         <SectionHeading>Milestones</SectionHeading>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
           A current holder adds/edits/removes these directly; anyone else&rsquo;s addition shows
           immediately but lands pending until a holder confirms or rejects it (an unclaimed task
           confirms immediately either way).
         </p>
-        {milestones.length === 0 && <p className="mt-3 text-[13px] text-[var(--text-muted)]">None yet.</p>}
+        {milestones.length === 0 && <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
         <div className="mt-3">
           {milestones.map((m) => (
             <div key={m.id} className="mb-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[13px] font-medium text-[var(--text)]">{m.label}</span>
+                <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{m.label}</span>
                 {m.isDeadline && <Tag tone="accent">deadline</Tag>}
                 {m.status === "pending" && (
                   <Tag tone="warning">pending — proposed by {memberNameById.get(m.proposedBy) ?? "—"}</Tag>
                 )}
               </div>
-              <div className="mt-0.5 text-[12px] text-[var(--text-muted)]" title={milestoneDateLabel(m).exact}>
+              <div className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]" title={milestoneDateLabel(m).exact}>
                 <time dateTime={m.resolvedDate ?? undefined} aria-label={milestoneDateLabel(m).exact}>{milestoneDateLabel(m).visible}</time>
               </div>
 
@@ -1460,7 +1460,7 @@ export default async function TaskDetailPage({
                       cycleEndDate={taskCycle?.endDate ?? null}
                       taskPhaseId={taskRow.phaseId}
                     />
-                    <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                    <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                       <input type="checkbox" name="isDeadline" defaultChecked={m.isDeadline} />
                       This is the deadline
                     </label>
@@ -1495,7 +1495,7 @@ export default async function TaskDetailPage({
         </div>
 
         <details className="mt-4">
-          <summary className="inline-flex cursor-pointer items-center gap-1 text-[13px] font-medium text-[var(--accent-1)] hover:underline">
+          <summary className="inline-flex cursor-pointer items-center gap-1 text-[length:var(--text-body)] font-medium text-[var(--accent-1)] hover:underline">
             <PlusIcon /> Add milestone
           </summary>
           <form action={addMilestoneAction} className="mt-2 flex max-w-[420px] flex-col gap-2">
@@ -1507,7 +1507,7 @@ export default async function TaskDetailPage({
               cycleEndDate={taskCycle?.endDate ?? null}
               taskPhaseId={taskRow.phaseId}
             />
-            <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+            <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
               <input type="checkbox" name="isDeadline" />
               This is the deadline
             </label>
@@ -1520,7 +1520,7 @@ export default async function TaskDetailPage({
 
       {canWaive && (
         <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
+          <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
             Waive a requirement and claim for someone
           </summary>
           <form action={waiveAndClaimAction} className="mt-3 flex max-w-[400px] flex-col gap-2">
@@ -1551,10 +1551,10 @@ export default async function TaskDetailPage({
 
       {canNominate && (
         <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">
+          <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
             Nominate someone for this task
           </summary>
-          <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             Claims it for them right away — they get a yes/no/not-now window to confirm or
             release it, no action required if it&rsquo;s a genuine fit.
           </p>
@@ -1562,7 +1562,7 @@ export default async function TaskDetailPage({
               task_proposal.suggested_member_id across) — the coordinator
               asked, and this is the door that acts on it. */}
           {taskRow.suggestedMemberId && taskRow.status === "unclaimed" && (
-            <p className="mt-2 text-[13px] text-[var(--text)]">
+            <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
               Suggested for{" "}
               <span className="font-medium">
                 {memberNameById.get(taskRow.suggestedMemberId) ?? "a member"}
@@ -1595,7 +1595,7 @@ export default async function TaskDetailPage({
       {isCommunityEndorsed && (
         <section className="mt-8">
           <SectionHeading>Candidacy</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Needs {taskRow.endorsementThreshold} endorsement
             {taskRow.endorsementThreshold === 1 ? "" : "s"} to confirm · browse window{" "}
             {taskRow.browsePeriodEnd
@@ -1606,13 +1606,13 @@ export default async function TaskDetailPage({
           </p>
 
           {openCandidacies.length === 0 && resolvedCandidacies.length === 0 && (
-            <p className="mt-3 text-[13px] text-[var(--text-muted)]">Nobody has put themselves forward yet.</p>
+            <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">Nobody has put themselves forward yet.</p>
           )}
 
           <div className="mt-3">
             {openCandidacies.map((c) => (
               <div key={c.id} className="mb-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-                <p className="text-[13px] text-[var(--text)]">
+                <p className="text-[length:var(--text-body)] text-[var(--text)]">
                   {memberNameById.get(c.memberId) ?? "—"} — {c.endorsementCount}/{taskRow.endorsementThreshold} endorsements
                 </p>
                 {c.memberId === viewing.id && (
@@ -1625,7 +1625,7 @@ export default async function TaskDetailPage({
                   </form>
                 )}
                 {c.memberId !== viewing.id && myEndorsements.has(c.id) && (
-                  <span className="text-[12px] text-[var(--text-muted)]">You&rsquo;ve endorsed this</span>
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">You&rsquo;ve endorsed this</span>
                 )}
                 {c.memberId !== viewing.id && !myEndorsements.has(c.id) && browseWindowOpen && (
                   <form action={endorseCandidacyAction} className="mt-2">
@@ -1642,10 +1642,10 @@ export default async function TaskDetailPage({
 
           {resolvedCandidacies.length > 0 && (
             <details className="mt-2">
-              <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
+              <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
                 Resolved candidacies ({resolvedCandidacies.length})
               </summary>
-              <ul className="mt-2 flex flex-col gap-1 text-[13px] text-[var(--text)]">
+              <ul className="mt-2 flex flex-col gap-1 text-[length:var(--text-body)] text-[var(--text)]">
                 {resolvedCandidacies.map((c) => (
                   <li key={c.id}>
                     {memberNameById.get(c.memberId) ?? "—"} — {c.status} ({c.endorsementCount}/
@@ -1670,7 +1670,7 @@ export default async function TaskDetailPage({
       {/* The pending-request notice lives in the contextual strip at
           the top now — only the declined outcome stays down here. */}
       {myRequest && myRequest.status === "declined" && (
-        <p className="mt-4 text-[13px] text-[var(--text)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text)]">
           Your request to join was declined
           {myRequest.declineReason ? `: ${myRequest.declineReason}` : "."}
         </p>
@@ -1679,11 +1679,11 @@ export default async function TaskDetailPage({
       {(pendingRequests.length > 0 || resolvedRequests.length > 0) && requestGated && (
         <section className="mt-8">
           <SectionHeading>Join requests</SectionHeading>
-          {pendingRequests.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None pending.</p>}
+          {pendingRequests.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None pending.</p>}
           <div className="mt-3">
             {pendingRequests.map((r) => (
               <div key={r.id} className="mb-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-                <p className="text-[13px] text-[var(--text)]">
+                <p className="text-[length:var(--text-body)] text-[var(--text)]">
                   {memberNameById.get(r.memberId) ?? "—"} asked to join — {new Date(r.requestedAt).toLocaleString()}
                 </p>
                 {canApproveRequests && (
@@ -1711,10 +1711,10 @@ export default async function TaskDetailPage({
 
           {resolvedRequests.length > 0 && (
             <details className="mt-2">
-              <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
+              <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
                 Resolved requests ({resolvedRequests.length})
               </summary>
-              <ul className="mt-2 flex flex-col gap-1 text-[13px] text-[var(--text)]">
+              <ul className="mt-2 flex flex-col gap-1 text-[length:var(--text-body)] text-[var(--text)]">
                 {resolvedRequests.map((r) => (
                   <li key={r.id}>
                     {memberNameById.get(r.memberId) ?? "—"} — {r.status}
@@ -1734,7 +1734,7 @@ export default async function TaskDetailPage({
       {accompaniedMemberId && accompanimentEngagement && (
         <section className="mt-8">
           <SectionHeading>Engagement record</SectionHeading>
-          <p className="mt-2 flex items-center gap-2 text-[13px] text-[var(--text)]">
+          <p className="mt-2 flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
             {memberNameById.get(accompaniedMemberId) ?? "This member"}
             {accompanimentEngagement.level === "none" ? (
               <Tag tone="success">no open non-responses</Tag>
@@ -1754,7 +1754,7 @@ export default async function TaskDetailPage({
           <SectionHeading>Nominations</SectionHeading>
           <ul className="mt-2 flex flex-col gap-1.5">
             {nominations.map(({ nomination, nomineeName }) => (
-              <li key={nomination.id} className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text)]">
+              <li key={nomination.id} className="flex flex-wrap items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                 {nomineeName}
                 <Tag tone={NOMINATION_STATUS_TONE[nomination.status] ?? "neutral"}>
                   {NOMINATION_STATUS_LABEL[nomination.status] ?? nomination.status}
@@ -1774,10 +1774,10 @@ export default async function TaskDetailPage({
       {isCoordHolderForBranch && (openPings.length > 0 || resolvedPings.length > 0) && (
         <section className="mt-8">
           <SectionHeading>Talk-to-coordinator pings</SectionHeading>
-          {openPings.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None open.</p>}
+          {openPings.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None open.</p>}
           <div className="mt-2">
             {openPings.map((p) => (
-              <div key={p.id} className="mb-1.5 flex items-center gap-2 text-[13px] text-[var(--text)]">
+              <div key={p.id} className="mb-1.5 flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                 <span>
                   {memberNameById.get(p.requestedBy) ?? "—"} would like to talk about this task —{" "}
                   {new Date(p.createdAt).toLocaleString()}
@@ -1794,10 +1794,10 @@ export default async function TaskDetailPage({
           </div>
           {resolvedPings.length > 0 && (
             <details className="mt-2">
-              <summary className="cursor-pointer text-[13px] text-[var(--accent-1)]">
+              <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
                 Resolved pings ({resolvedPings.length})
               </summary>
-              <ul className="mt-2 flex flex-col gap-0.5 text-[13px] text-[var(--text)]">
+              <ul className="mt-2 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text)]">
                 {resolvedPings.map((p) => (
                   <li key={p.id}>{memberNameById.get(p.requestedBy) ?? "—"}</li>
                 ))}
@@ -1812,11 +1812,11 @@ export default async function TaskDetailPage({
       {showSubtasksTab && (
         <section className="mt-8">
           <SectionHeading>Subtasks</SectionHeading>
-          {subtasks.length === 0 && <p className="mt-1 text-[13px] text-[var(--text-muted)]">None broken off yet.</p>}
+          {subtasks.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None broken off yet.</p>}
           {subtasks.length > 0 && (
             <ul className="mt-2 flex flex-col gap-1">
               {subtasks.map((s) => (
-                <li key={s.id} className="flex items-center gap-2 text-[13px]">
+                <li key={s.id} className="flex items-center gap-2 text-[length:var(--text-body)]">
                   <Link href={`/tasks/${s.id}`} className="font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
                     {s.title}
                   </Link>
@@ -1828,7 +1828,7 @@ export default async function TaskDetailPage({
 
           {holdsTask && (
             <details className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-              <summary className="cursor-pointer text-[13px] font-medium text-[var(--text)]">Split off a subtask</summary>
+              <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">Split off a subtask</summary>
               <form action={splitSubtaskAction} className="mt-3 flex flex-col gap-2">
                 <input type="hidden" name="taskId" value={taskRow.id} />
                 <input type="text" name="title" required placeholder="Title" className={INPUT} />
@@ -1847,11 +1847,11 @@ export default async function TaskDetailPage({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+                  <label className="flex items-center gap-1.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
                     Capacity:
                     <input type="number" name="capacity" defaultValue={1} min={1} className={`${INPUT} w-20`} />
                   </label>
-                  <label className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                  <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                     <input type="checkbox" name="critical" /> Critical
                   </label>
                 </div>
@@ -1870,30 +1870,30 @@ export default async function TaskDetailPage({
           quiet admin disclosures. Stacks below the main column under lg. */}
       <aside className="flex flex-col gap-4">
         <section className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Status</h2>
+          <h2 className="text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Status</h2>
           <div className="mt-2">
             <StatusIcon status={taskRow.status} attentionLevel={taskRow.attentionLevel} showLabel />
           </div>
           {realAssignments.length > 0 && (
-            <p className="mt-2 text-[13px] text-[var(--text)]">
+            <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
               Held by: {realAssignments.map((a) => memberNameById.get(a.memberId) ?? "—").join(", ")}
             </p>
           )}
           {shadowAssignments.length > 0 && (
-            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
               Shadowed by: {shadowAssignments.map((a) => memberNameById.get(a.memberId) ?? "—").join(", ")}
             </p>
           )}
           {realAssignments
             .filter((a) => a.gateWaivedBy)
             .map((a) => (
-              <p key={a.memberId} className="mt-1 text-[13px] text-[var(--warning)]">
+              <p key={a.memberId} className="mt-1 text-[length:var(--text-body)] text-[var(--warning)]">
                 {memberNameById.get(a.memberId) ?? "—"}&rsquo;s requirement was waived by{" "}
                 {memberNameById.get(a.gateWaivedBy!) ?? "—"}: {a.gateWaivedReason}
               </p>
             ))}
           {taskRow.status === "waiting" && (
-            <p className="mt-2 text-[13px] text-[var(--text)]">
+            <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
               Next check-in: {taskRow.nextCheckinAt ? new Date(taskRow.nextCheckinAt).toLocaleDateString() : "—"}
               {taskRow.waitingNote && <span className="text-[var(--text-muted)]"> — {taskRow.waitingNote}</span>}
             </p>
@@ -1903,7 +1903,7 @@ export default async function TaskDetailPage({
               carries its own Park form). */}
           {holdsTask && taskRow.status === "claimed" && !flagged && (
             <details className="mt-3">
-              <summary className="cursor-pointer text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text)]">
+              <summary className="cursor-pointer text-[length:var(--text-meta)] font-medium text-[var(--text-muted)] hover:text-[var(--text)]">
                 Park until a check-in date…
               </summary>
               <form action={parkAction} className="mt-2 flex flex-col gap-2">
@@ -1920,10 +1920,10 @@ export default async function TaskDetailPage({
 
         {requirements.length > 0 && (
           <section className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
-            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+            <h2 className="text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
               Requirements
             </h2>
-            <ul className="mt-2 flex flex-col gap-1 text-[13px]">
+            <ul className="mt-2 flex flex-col gap-1 text-[length:var(--text-body)]">
               {requirements.map((r) => {
                 const covered = r.mode === "group_coverage" ? (groupCoverage.get(r.id) ?? false) : null;
                 const colorClass =
@@ -2024,7 +2024,7 @@ function MilestoneDateFields({
       footer={
         milestone &&
         resolvedDate && (
-          <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+          <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             Currently: {resolvedDate}
             {recipe && ` — ${recipe}`}
           </p>

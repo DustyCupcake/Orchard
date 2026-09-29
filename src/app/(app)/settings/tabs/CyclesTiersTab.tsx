@@ -34,7 +34,7 @@ export default function CyclesTiersTab({
       >
         {cycleTypes.length === 0 && (
           <SettingsPanel>
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               None yet. Event types are optional — an event can simply be an event.
             </p>
           </SettingsPanel>
@@ -118,7 +118,7 @@ export default function CyclesTiersTab({
       >
         {tiers.length === 0 && (
           <SettingsPanel>
-            <p className="text-[13px] text-[var(--text-muted)]">
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
               No tiers yet. Without at least one, anything gated by a tier is unreachable.
             </p>
           </SettingsPanel>

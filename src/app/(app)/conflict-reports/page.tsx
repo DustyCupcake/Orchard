@@ -24,7 +24,7 @@ import {
 export const dynamic = "force-dynamic";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 export default async function ConflictReportsPage({
@@ -69,10 +69,10 @@ export default async function ConflictReportsPage({
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Conflict management</h1>
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Conflict management</h1>
 
       {!moduleOn && (
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Not set up for this Community yet — a current Admins holder can designate the conflict
           team task on the Settings screen.
         </p>
@@ -80,7 +80,7 @@ export default async function ConflictReportsPage({
 
       {moduleOn && (
         <>
-          <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Reports are visible only to you and whoever&rsquo;s handling it, unless you choose to
             escalate. Filing one takes nothing but wanting to talk to someone.
           </p>
@@ -102,12 +102,12 @@ export default async function ConflictReportsPage({
               />
               {excludableMembers.length > 0 && (
                 <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-                  <legend className="px-1 text-[12px] text-[var(--text-muted)]">
+                  <legend className="px-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                     Exclude specific current team members from seeing this (optional)
                   </legend>
                   <div className="flex flex-col gap-1">
                     {excludableMembers.map((m) => (
-                      <label key={m.id} className="flex items-center gap-2 text-[13px] text-[var(--text)]">
+                      <label key={m.id} className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                         <input type="checkbox" name="excludeMemberIds" value={m.id} /> {m.name}
                       </label>
                     ))}
@@ -122,7 +122,7 @@ export default async function ConflictReportsPage({
 
           <section className="mt-8">
             <SectionHeading>Reports</SectionHeading>
-            {reports.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nothing visible to you right now.</p>}
+            {reports.length === 0 && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Nothing visible to you right now.</p>}
 
             <div className="mt-3 flex flex-col gap-3">
               {reports.map((r) => {
@@ -136,29 +136,29 @@ export default async function ConflictReportsPage({
                 return (
                   <div key={r.id} className={CARD}>
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-[12px] text-[var(--text-muted)]">
+                      <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                         Reported by {memberNameById.get(r.reportedBy) ?? "—"} —{" "}
                         {new Date(r.createdAt).toLocaleString()}
                       </p>
                       {r.escalated && <Tag tone="warning">escalated</Tag>}
                       {overdue && <Tag tone="danger">overdue for acknowledgment</Tag>}
                     </div>
-                    {r.description && <p className="mt-2 text-[13px] text-[var(--text)]">{r.description}</p>}
+                    {r.description && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">{r.description}</p>}
 
                     {exclusions.length > 0 && (
-                      <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+                      <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                         Excluded: {exclusions.map((e) => memberNameById.get(e.memberId) ?? "—").join(", ")}
                       </p>
                     )}
 
-                    {!r.acknowledgedAt && <p className="mt-2 text-[13px] text-[var(--text-muted)]">Not yet acknowledged.</p>}
+                    {!r.acknowledgedAt && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Not yet acknowledged.</p>}
                     {r.acknowledgedAt && !r.resolvedAt && (
-                      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+                      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
                         Point of contact: {memberNameById.get(r.acknowledgedBy!) ?? "—"}
                       </p>
                     )}
                     {r.resolvedAt && (
-                      <p className="mt-2 text-[13px] text-[var(--success)]">Resolved: {r.resolutionNote}</p>
+                      <p className="mt-2 text-[length:var(--text-body)] text-[var(--success)]">Resolved: {r.resolutionNote}</p>
                     )}
 
                     <div className="mt-3 flex flex-wrap gap-2">

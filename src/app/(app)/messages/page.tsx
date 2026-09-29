@@ -36,7 +36,7 @@ function describeScope(scope: string, scopeRef: unknown, cycleNameById: Map<stri
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 export default async function MessagesPage({
@@ -65,8 +65,8 @@ export default async function MessagesPage({
 
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Messages</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Messages</h1>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         Every send is logged below — an announcement&rsquo;s log is visible to everyone; a targeted
         message&rsquo;s log is visible only to you and whoever it went to. Delivery follows each
         member&rsquo;s own email preference (see /profile).
@@ -122,7 +122,7 @@ export default async function MessagesPage({
       {canArrivalWindow && (
         <section className="mt-6">
           <SectionHeading>Message people arriving in a window</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Goes to everyone marked coming/maybe for the current event whose declared arrival date
             falls in this range.
           </p>
@@ -148,7 +148,7 @@ export default async function MessagesPage({
       {myAnnouncementCycles.length > 0 && (
         <section className="mt-6">
           <SectionHeading>Message an event roster</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Goes to members who&rsquo;ve said they&rsquo;re coming and/or maybe for the chosen event.
             Pick which of those two groups should get it — they often need different messages.
           </p>
@@ -162,11 +162,11 @@ export default async function MessagesPage({
               ))}
             </select>
             <div className="flex flex-wrap gap-4">
-              <label className="flex items-center gap-1.5 text-[13px] text-[var(--text)]">
+              <label className="flex items-center gap-1.5 text-[length:var(--text-body)] text-[var(--text)]">
                 <input type="checkbox" name="segments" value="coming" defaultChecked />
                 Coming
               </label>
-              <label className="flex items-center gap-1.5 text-[13px] text-[var(--text)]">
+              <label className="flex items-center gap-1.5 text-[length:var(--text-body)] text-[var(--text)]">
                 <input type="checkbox" name="segments" value="maybe" defaultChecked />
                 Maybe
               </label>
@@ -183,7 +183,7 @@ export default async function MessagesPage({
       {canAnnounce && (
         <section className="mt-6">
           <SectionHeading>Send a community-wide announcement</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Goes to every member in the community. An event-placed announcement task messages that
             event&rsquo;s roster instead — see above.
           </p>
@@ -203,7 +203,7 @@ export default async function MessagesPage({
         !canArrivalWindow &&
         !canAnnounce &&
         myAnnouncementCycles.length === 0 && (
-          <p className="mt-6 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
             You don&rsquo;t currently have access to send anything — coordinate a branch, hold a task
             with a co-holder, be eligible to start an event, or hold an announcement task.
           </p>
@@ -211,15 +211,15 @@ export default async function MessagesPage({
 
       <section className="mt-8">
         <SectionHeading>Sent messages</SectionHeading>
-        {sentMessages.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">Nothing sent yet.</p>}
+        {sentMessages.length === 0 && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Nothing sent yet.</p>}
         <div className="mt-3 flex flex-col gap-2">
           {sentMessages.map((m) => (
             <div key={m.id} className={CARD}>
-              <p className="text-[14px] font-medium text-[var(--text)]">{m.subject}</p>
-              <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+              <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{m.subject}</p>
+              <p className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                 {describeScope(m.scope, m.scopeRef, cycleNameById)} — {new Date(m.sentAt).toLocaleString()}
               </p>
-              <p className="mt-2 whitespace-pre-wrap text-[13px] text-[var(--text)]">{m.body}</p>
+              <p className="mt-2 whitespace-pre-wrap text-[length:var(--text-body)] text-[var(--text)]">{m.body}</p>
             </div>
           ))}
         </div>

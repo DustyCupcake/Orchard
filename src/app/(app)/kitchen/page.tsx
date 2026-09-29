@@ -42,7 +42,7 @@ import type { MealWithDishes, PurchaseListRow, ScaledIngredient, MealConstraintP
 export const dynamic = "force-dynamic";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[22px] font-semibold text-[var(--text)]">{children}</h2>;
+  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
 function TextField({
@@ -146,8 +146,8 @@ function MealBlock({
     <div className={CARD}>
       <div className="flex items-center justify-between gap-2">
         <div>
-          <span className="text-[15px] font-medium text-[var(--text)]">{meal.label}</span>
-          <span className="ml-2 text-[13px] text-[var(--text-muted)]">
+          <span className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">{meal.label}</span>
+          <span className="ml-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
             {new Date(meal.date).toLocaleDateString(undefined, {
               weekday: "short",
               month: "short",
@@ -157,25 +157,25 @@ function MealBlock({
         </div>
         <Tag tone={meal.headCount ? "accent" : "neutral"}>{meal.headCount ? `${meal.headCount} eaters` : "no headcount"}</Tag>
       </div>
-      {meal.notes && <p className="mt-1 text-[13px] text-[var(--text-muted)]">{meal.notes}</p>}
+      {meal.notes && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{meal.notes}</p>}
 
       {meal.dishes.map((dishRow) => (
         <div key={dishRow.id} className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <span className="text-[14px] font-medium text-[var(--text)]">{dishRow.name}</span>
-              {dishRow.serves && <span className="ml-2 text-[12px] text-[var(--text-muted)]">serves {dishRow.serves}</span>}
+              <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{dishRow.name}</span>
+              {dishRow.serves && <span className="ml-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">serves {dishRow.serves}</span>}
               {dishRow.dietaryNote && (
-                <span className="ml-2 text-[12px] text-[var(--text-muted)]">— {dishRow.dietaryNote}</span>
+                <span className="ml-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">— {dishRow.dietaryNote}</span>
               )}
             </div>
             {dishRow.source === "from_idea" && <Tag tone="accent2">from a suggestion</Tag>}
           </div>
-          {dishRow.description && <p className="mt-1 text-[13px] text-[var(--text-muted)]">{dishRow.description}</p>}
+          {dishRow.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{dishRow.description}</p>}
           <FlagTags flags={dishRow.allergenFlags} />
 
           {dishRow.ingredients.length > 0 && (
-            <ul className="mt-2 space-y-0.5 text-[13px] text-[var(--text)]">
+            <ul className="mt-2 space-y-0.5 text-[length:var(--text-body)] text-[var(--text)]">
               {dishRow.ingredients.map((ing) => (
                 <li key={ing.id} className="flex items-center justify-between gap-2">
                   <span>
@@ -183,7 +183,7 @@ function MealBlock({
                   </span>
                   {isOwner && (
                     <span className="flex items-center gap-1">
-                      <details className="text-[12px]">
+                      <details className="text-[length:var(--text-meta)]">
                         <summary className="cursor-pointer text-[var(--text-muted)]">edit</summary>
                         <form
                           action={updateDishIngredientAction}
@@ -233,7 +233,7 @@ function MealBlock({
               </form>
 
               {scaled.get(meal.id)?.some((s) => s.dishId === dishRow.id && s.scaled) && (
-                <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+                <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   {scaled
                     .get(meal.id)!
                     .filter((s) => s.dishId === dishRow.id)
@@ -242,7 +242,7 @@ function MealBlock({
                 </p>
               )}
 
-              <details className="mt-2 text-[12px]">
+              <details className="mt-2 text-[length:var(--text-meta)]">
                 <summary className="cursor-pointer text-[var(--text-muted)]">edit dish</summary>
                 <form action={updateDishAction} className="mt-1 flex max-w-[560px] flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
                   <input type="hidden" name="dishId" value={dishRow.id} />
@@ -270,7 +270,7 @@ function MealBlock({
       ))}
 
       {isOwner && (
-        <details className="mt-3 text-[12px]">
+        <details className="mt-3 text-[length:var(--text-meta)]">
           <summary className="cursor-pointer text-[var(--text-muted)]">add a dish</summary>
           <form action={createDishAction} className="mt-1 flex max-w-[560px] flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
             <input type="hidden" name="mealId" value={meal.id} />
@@ -290,7 +290,7 @@ function MealBlock({
       {isOwner && meal.headCount !== null && (purchases.get(meal.id) ?? []).length > 0 && (
         <div className="mt-3 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] p-3">
           <span className={LABEL}>Purchasing list ({meal.headCount} eaters)</span>
-          <ul className="mt-1 space-y-0.5 text-[13px] text-[var(--text)]">
+          <ul className="mt-1 space-y-0.5 text-[length:var(--text-body)] text-[var(--text)]">
             {(purchases.get(meal.id) ?? []).map((row) => (
               <li key={row.name}>
                 {row.amount} {row.unit} {row.name}
@@ -303,7 +303,7 @@ function MealBlock({
       {isOwner && panels.has(meal.id) && panels.get(meal.id)!.dishes.length > 0 && (
         <div className="mt-3 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] p-3">
           <span className={LABEL}>Constraint check ({panels.get(meal.id)!.disclosedEaters} eaters with disclosed allergies)</span>
-          <ul className="mt-1 space-y-1 text-[13px] text-[var(--text)]">
+          <ul className="mt-1 space-y-1 text-[length:var(--text-body)] text-[var(--text)]">
             {panels.get(meal.id)!.dishes.map((d) => (
               <li key={d.dishId}>
                 <Tag tone="warning">{d.dishName}</Tag> may conflict with{" "}
@@ -352,8 +352,8 @@ export default async function KitchenPage({
   if (moduleOn && resolution.kind === "ambiguous") {
     return (
       <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
-        <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Kitchen</h1>
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Kitchen</h1>
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
           Scoped to multiple active events — pick one to see its menu:
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -410,8 +410,8 @@ export default async function KitchenPage({
 
   return (
     <main className="mx-auto max-w-[860px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Kitchen</h1>
-      <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Kitchen</h1>
+      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         The community&rsquo;s food schedule — menus, recipes scaled to the eaters, and food ideas anyone can suggest. See
         docs/spec.md&rsquo;s &ldquo;Food &amp; drinks&rdquo; and docs/food-drinks-module-plan.md.
       </p>
@@ -441,7 +441,7 @@ export default async function KitchenPage({
             <div className="mt-3 flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
               {visiblePlan ? (
                 <>
-                  <span className="flex-1 text-[15px] font-medium text-[var(--text)]">{visiblePlan.title}</span>
+                  <span className="flex-1 text-[length:var(--text-heading)] font-medium text-[var(--text)]">{visiblePlan.title}</span>
                   {visiblePlan.publishedAt ? (
                     <Tag tone="accent">published</Tag>
                   ) : (
@@ -457,9 +457,9 @@ export default async function KitchenPage({
                   )}
                 </>
               ) : (
-                <span className="flex-1 text-[13px] text-[var(--text-muted)]">No menu plan here yet.</span>
+                <span className="flex-1 text-[length:var(--text-body)] text-[var(--text-muted)]">No menu plan here yet.</span>
               )}
-              <details className="text-[12px]">
+              <details className="text-[length:var(--text-meta)]">
                 <summary className="cursor-pointer text-[var(--text-muted)]">start a new menu plan</summary>
                 <form action={createMenuPlanAction} className="mt-2 flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
                   <input type="hidden" name="cycleId" value={cycleId ?? ""} />
@@ -473,12 +473,12 @@ export default async function KitchenPage({
           )}
 
           {visiblePlan && visiblePlan.publishedAt && !isOwner && (
-            <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
               {visiblePlan.title} — published {new Date(visiblePlan.publishedAt).toLocaleDateString()}.
             </p>
           )}
           {visiblePlan && isOwner && visiblePlan.publishedAt && (
-            <p className="mt-2 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
               Published menus lock further edits — start a new draft above for the next menu.
             </p>
           )}
@@ -490,13 +490,13 @@ export default async function KitchenPage({
               ))}
             </div>
           ) : (
-            <p className="mt-3 text-[13px] text-[var(--text-muted)]">
+            <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">
               No meals on this menu yet.
             </p>
           )}
 
           {isOwner && visiblePlan && !visiblePlan.publishedAt && (
-            <details className="mt-4 text-[12px]">
+            <details className="mt-4 text-[length:var(--text-meta)]">
               <summary className="cursor-pointer text-[var(--text-muted)]">add a meal</summary>
               <form action={createMealAction} className="mt-2 flex max-w-[560px] flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
                 <input type="hidden" name="menuPlanId" value={visiblePlan.id} />
@@ -514,7 +514,7 @@ export default async function KitchenPage({
           {isOwner && visiblePlan && !visiblePlan.publishedAt && overview && (
             <div className="mt-4 flex flex-col gap-1">
               {overview.meals.map((m) => (
-                <details key={`edit-${m.id}`} className="text-[12px]">
+                <details key={`edit-${m.id}`} className="text-[length:var(--text-meta)]">
                   <summary className="cursor-pointer text-[var(--text-muted)]">edit/remove {m.label}</summary>
                   <form action={updateMealAction} className="mt-1 flex max-w-[560px] flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
                     <input type="hidden" name="mealId" value={m.id} />
@@ -542,7 +542,7 @@ export default async function KitchenPage({
       {moduleOn && ideasTarget && (
         <section className="mt-8">
           <SectionHeading>Suggest something</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Open-ended and attributed — recipes, requests, or preferences for the menu. No login-gated anonymity; a cook
             may need to ask about your suggestion.
           </p>
@@ -568,7 +568,7 @@ export default async function KitchenPage({
       {moduleOn && isOwner && openIdeas.length > 0 && (
         <section className="mt-8">
           <SectionHeading>Ideas inbox</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             On {visiblePlan!.title}. Adopting creates the dish on a meal of this draft; declining closes it with an
             optional reason.
           </p>
@@ -577,16 +577,16 @@ export default async function KitchenPage({
               <div key={idea.id} className={CARD}>
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <span className="text-[14px] font-medium text-[var(--text)]">{idea.title}</span>
+                    <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{idea.title}</span>
                     <Tag tone="accent2">{idea.kind.replace("_", " ")}</Tag>
-                    <span className="ml-2 text-[12px] text-[var(--text-muted)]">
+                    <span className="ml-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                       from {memberNameById.get(idea.suggestedBy) ?? "a member"}
                     </span>
                   </div>
                 </div>
-                {idea.body && <p className="mt-1 text-[13px] text-[var(--text-muted)]">{idea.body}</p>}
+                {idea.body && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{idea.body}</p>}
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <details className="text-[12px]">
+                  <details className="text-[length:var(--text-meta)]">
                     <summary className="cursor-pointer text-[var(--text-muted)]">adopt into a meal</summary>
                     <form action={adoptIdeaAction} className="mt-1 flex items-end gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-2">
                       <input type="hidden" name="ideaId" value={idea.id} />
@@ -609,7 +609,7 @@ export default async function KitchenPage({
                       </button>
                     </form>
                   </details>
-                  <details className="text-[12px]">
+                  <details className="text-[length:var(--text-meta)]">
                     <summary className="cursor-pointer text-[var(--text-muted)]">decline</summary>
                     <form action={declineIdeaAction} className="mt-1 flex items-end gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-2">
                       <input type="hidden" name="ideaId" value={idea.id} />
@@ -629,7 +629,7 @@ export default async function KitchenPage({
       {moduleOn && isOwner && supplyTasks.length > 0 && (
         <section className="mt-8">
           <SectionHeading>Ordering &amp; equipment</SectionHeading>
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Open tasks in this scope tagged as supply work (ordering/equipment/supply), with their resources.
           </p>
           <div className="mt-3 flex flex-col gap-2">
@@ -638,7 +638,7 @@ export default async function KitchenPage({
                 <div className="flex items-center justify-between gap-2">
                   <Link
                     href={`/tasks/${t.id}`}
-                    className="text-[14px] font-medium text-[var(--text)] hover:text-[var(--accent-1)]"
+                    className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]"
                   >
                     {t.title}
                   </Link>
@@ -649,7 +649,7 @@ export default async function KitchenPage({
                   </div>
                 </div>
                 {t.resources.length > 0 && (
-                  <ul className="mt-1 space-y-0.5 text-[13px] text-[var(--text-muted)]">
+                  <ul className="mt-1 space-y-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
                     {t.resources.map((r) => (
                       <li key={r.id}>
                         <a href={r.url} className="text-[var(--accent-1)] hover:underline" target="_blank" rel="noreferrer">

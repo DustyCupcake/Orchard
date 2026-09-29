@@ -50,11 +50,11 @@ export default function InviteMarkPicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[12px] font-medium text-[var(--text-muted)]">
+      <p className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">
         What do you know about this person?
       </p>
 
-      <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+      <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
         <input
           type="checkbox"
           name="inviterKnowsPersonally"
@@ -64,14 +64,14 @@ export default function InviteMarkPicker({
         />
         <span>
           I personally know this person
-          <span className="block text-[12px] text-[var(--text-muted)]">
+          <span className="block text-[length:var(--text-meta)] text-[var(--text-muted)]">
             A real relationship, not a judgement. This is the stronger of the two marks, and ticking
             both is read as this one.
           </span>
         </span>
       </label>
 
-      <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+      <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
         <input
           type="checkbox"
           name="inviterThinksGoodFit"
@@ -81,7 +81,7 @@ export default function InviteMarkPicker({
         />
         <span>
           I think this person is a good fit
-          <span className="block text-[12px] text-[var(--text-muted)]">
+          <span className="block text-[length:var(--text-meta)] text-[var(--text-muted)]">
             Not a relationship — a judgement. Perfectly good on its own; it just asks something
             different of the community.
           </span>
@@ -92,15 +92,15 @@ export default function InviteMarkPicker({
         className="mt-1 rounded-[var(--radius-md)] border border-[var(--border)] p-3"
         style={{ background: "var(--neutral-100)" }}
       >
-        <p className="text-[12px] font-medium text-[var(--text-muted)]">
+        <p className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">
           {JOINING_LANE_COPY[lane].title} — {summarizeLaneRule(rule)}
         </p>
-        <p className="mt-1 text-[13px] text-[var(--text)]">
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
           <span className="text-[var(--text-muted)]">They </span>
           {lowerFirst(describeLaneConsequence(rule))}
         </p>
         {path === "nomination" && (
-          <p className="mt-2 text-[12px] text-[var(--text-muted)]">
+          <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             You&rsquo;ll get a support link straight after you create this, so you can pass it on or
             ask specific people directly.
           </p>
@@ -114,12 +114,12 @@ export default function InviteMarkPicker({
         // tell the person. Better to stop the inviter here than to
         // discover at redemption that the link exists and nobody's ready
         // for it.
-        <label className="mt-1 flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--warning-border)] p-3 text-[13px] text-[var(--text)]" style={{ background: "var(--warning-soft)" }}>
+        <label className="mt-1 flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--warning-border)] p-3 text-[length:var(--text-body)] text-[var(--text)]" style={{ background: "var(--warning-soft)" }}>
           <input type="checkbox" name="awarenessConfirmed" required className="mt-0.5" />
           <span>
             I&rsquo;ve told them that joining means their arrival is announced to {communityName}, and
             that any member can raise a concern in the days after
-            <span className="block text-[12px] text-[var(--text-muted)]">
+            <span className="block text-[length:var(--text-meta)] text-[var(--text-muted)]">
               This is awareness, not consent — they&rsquo;ll be asked to agree for themselves at the
               other end. But an invite that goes out without this has broken the deal the lane makes,
               so it can&rsquo;t be sent.

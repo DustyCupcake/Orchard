@@ -14,7 +14,7 @@ export default function BranchFilter({
   const searchParams = useSearchParams();
 
   return (
-    <label className="flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+    <label className="flex items-center gap-1.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
       Branch
       <select
         defaultValue={selectedBranchId ?? ""}

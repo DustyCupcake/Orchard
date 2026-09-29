@@ -46,7 +46,7 @@ export default async function LoginPage({
 
   return (
     <main className="mx-auto max-w-[480px] px-6 py-16">
-      <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Log in to Orchard</h1>
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Log in to Orchard</h1>
 
       {error && ERROR_MESSAGES[error] && (
         <div className="mt-4">
@@ -64,7 +64,7 @@ export default async function LoginPage({
 
       <div className="mt-6">
         {ssoIsPrimary && (
-          <p className="mb-2 text-[13px] text-[var(--text-muted)]">
+          <p className="mb-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Magic-link only works if you already have a Zitadel-linked account here.
           </p>
         )}
@@ -72,7 +72,7 @@ export default async function LoginPage({
       </div>
 
       {error === "no_account" && (
-        <p className="mt-4 text-[13px] text-[var(--text-muted)]">
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           <Link href="/inquiry" className="text-[var(--accent-1)] hover:underline">
             Send us a message
           </Link>{" "}

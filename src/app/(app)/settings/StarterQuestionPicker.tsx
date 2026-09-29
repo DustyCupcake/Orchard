@@ -78,9 +78,9 @@ function initialRow(seed: DefaultQuestionSeed): RowState {
 }
 
 const selectClass =
-  "rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none";
+  "rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[length:var(--text-body)] text-[var(--text)] focus:border-[var(--accent-1)] focus:outline-none";
 const inputClass =
-  "rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none";
+  "rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[length:var(--text-body)] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-1)] focus:outline-none";
 
 export default function StarterQuestionPicker({
   tiers,
@@ -107,7 +107,7 @@ export default function StarterQuestionPicker({
 
   return (
     <div className="mt-3 flex flex-col gap-4">
-      <p className="text-[13px] text-[var(--text-muted)]">
+      <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
         {chosen} of {all.length} selected. Unticking one leaves it out entirely — a
         question you don&rsquo;t add is better than one you add and then archive, and
         everything you keep stays editable afterwards.
@@ -116,7 +116,7 @@ export default function StarterQuestionPicker({
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          className="text-[12px] text-[var(--accent-1)] hover:underline"
+          className="text-[length:var(--text-meta)] text-[var(--accent-1)] hover:underline"
           onClick={() =>
             setRows(Object.fromEntries(all.map((q) => [q.key, { ...rows[q.key], include: true }])))
           }
@@ -125,7 +125,7 @@ export default function StarterQuestionPicker({
         </button>
         <button
           type="button"
-          className="text-[12px] text-[var(--accent-1)] hover:underline"
+          className="text-[length:var(--text-meta)] text-[var(--accent-1)] hover:underline"
           onClick={() =>
             setRows(Object.fromEntries(all.map((q) => [q.key, { ...rows[q.key], include: false }])))
           }
@@ -136,8 +136,8 @@ export default function StarterQuestionPicker({
 
       {DEFAULT_PROFILE_QUESTION_GROUPS.map((group) => (
         <fieldset key={group.title} className="flex flex-col gap-2">
-          <legend className="text-[13px] font-semibold text-[var(--text)]">{group.title}</legend>
-          <p className="text-[12px] text-[var(--text-muted)]">{group.blurb}</p>
+          <legend className="text-[length:var(--text-body)] font-semibold text-[var(--text)]">{group.title}</legend>
+          <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{group.blurb}</p>
           {group.questions.map((seed) => {
             const row = rows[seed.key];
             return (
@@ -146,7 +146,7 @@ export default function StarterQuestionPicker({
                 className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3"
                 style={{ opacity: row.include ? 1 : 0.55 }}
               >
-                <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+                <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                   <input
                     type="checkbox"
                     checked={row.include}
@@ -162,8 +162,8 @@ export default function StarterQuestionPicker({
                     className={`${inputClass} flex-1`}
                   />
                 </label>
-                <p className="mt-1 pl-6 text-[12px] text-[var(--text-muted)]">{seed.why}</p>
-                <p className="mt-1 pl-6 text-[12px] text-[var(--text-muted)]">
+                <p className="mt-1 pl-6 text-[length:var(--text-meta)] text-[var(--text-muted)]">{seed.why}</p>
+                <p className="mt-1 pl-6 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   Answers once, for good &mdash; not re-asked per event.
                   {!seed.allowPreferNotToSay &&
                     " No “prefer not to say” button, so a member has to answer this one."}
@@ -171,7 +171,7 @@ export default function StarterQuestionPicker({
 
                 {row.include && (
                   <div className="mt-2 flex flex-col gap-2 pl-6">
-                    <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+                    <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                       <input
                         type="checkbox"
                         checked={row.sensitive}
@@ -201,7 +201,7 @@ export default function StarterQuestionPicker({
                     {row.sensitive && (
                       <>
                         <label className="flex flex-col gap-1">
-                          <span className="text-[12px] text-[var(--text-muted)]">
+                          <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                             Who may read it in the ordinary course
                           </span>
                           {/* No "nobody" option, and that is the point: a
@@ -223,7 +223,7 @@ export default function StarterQuestionPicker({
                         </label>
                         {row.route === "grant" && (
                           <label className="flex flex-col gap-1">
-                            <span className="text-[12px] text-[var(--text-muted)]">Permission</span>
+                            <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">Permission</span>
                             <select
                               value={row.grantModuleKey ?? ""}
                               onChange={(e) =>
@@ -244,7 +244,7 @@ export default function StarterQuestionPicker({
                         )}
                         {row.route === "tier" && (
                           <label className="flex flex-col gap-1">
-                            <span className="text-[12px] text-[var(--text-muted)]">Tier</span>
+                            <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">Tier</span>
                             <select
                               value={row.tierId}
                               onChange={(e) => set(seed.key, { tierId: e.target.value })}
@@ -261,7 +261,7 @@ export default function StarterQuestionPicker({
                         )}
                         {row.route === "task" && (
                           <label className="flex flex-col gap-1">
-                            <span className="text-[12px] text-[var(--text-muted)]">Task ID</span>
+                            <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">Task ID</span>
                             <input
                               type="text"
                               value={row.taskId}
@@ -271,7 +271,7 @@ export default function StarterQuestionPicker({
                             />
                           </label>
                         )}
-                        <label className="flex items-start gap-2 text-[13px] text-[var(--text)]">
+                        <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                           <input
                             type="checkbox"
                             checked={row.emergencyAccess}
@@ -283,7 +283,7 @@ export default function StarterQuestionPicker({
                             &mdash; whoever activates Emergency access on someone&rsquo;s page
                           </span>
                         </label>
-                        <p className="text-[12px] text-[var(--text-muted)]">
+                        <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                           {row.route === "none"
                             ? seed.needsChosenAudience
                               ? "Pick who should have this. The platform won't guess: none of the permissions means \u201cresponds to emergencies\u201d, and the person who manages settings isn't automatically the person who should hold someone's welfare details. Or untick restricted and leave it out of the set."

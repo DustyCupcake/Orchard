@@ -23,8 +23,8 @@ export default function PageHeader({
     <div className="mb-6">
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0">
-          <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">{title}</h1>
-          {description && <div className="mt-2 text-[13px] text-[var(--text-muted)]">{description}</div>}
+          <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">{title}</h1>
+          {description && <div className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">{description}</div>}
         </div>
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
