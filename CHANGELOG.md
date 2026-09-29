@@ -70,6 +70,22 @@ Both now go through one `tallyChoiceValues` in `field-shape.ts`, which routes ev
 
 Also corrected: the settings field builder's own description of the escape hatch said "They pick 'Other' and type it", describing an interaction that no longer exists.
 
+## Unreleased: the test suite runs itself, and stops eating the machine
+
+`npm test` now runs `scripts/test.sh`, which creates the test database if it isn't there, migrates it, and runs every file in batches — restarting the database when it crosses a memory budget read from the VM's actual size. No setup steps, nothing to remember, and no per-machine edits. The raw runner is still there as `npm run test:raw`.
+
+**Why it was necessary: the suite's own database grew to 3.2GB.** The tests truncate between files, and a long-lived Postgres grows steadily for the length of a run — **~11MB per test file**, measured at 35MB → 261MB over 20 files. The part that made this unfixable by tuning: the growth **does not fall back** between files or between separate `vitest` invocations. It accumulates in the server, which is doing 36,000+ transactions against a ~20MB database. A full 88-file suite reached ~3.2GB, which is invisible on a large VM and a hard OOM on a small one — and Docker Desktop's allocation is a fraction of host RAM that the project doesn't control. A `docker restart` returns it to ~24MB in about a second, and the migrated schema lives in a volume, so nothing needs re-migrating (drizzle's migrator is idempotent regardless — 0.2s on an already-migrated database, ~1s from empty).
+
+**This is not a production concern, and the distinction is worth stating.** Production runs the same Postgres against the same schema and never truncates; its memory is already capped by the deployed `shared_buffers=128MB` / `max_connections=50`. Measured: production Postgres sat at ~80MB after two hours of uptime, against 3.2GB for the test database. The growth is a property of the test harness, not of the app.
+
+**The test database now runs under production's Postgres settings.** The documented `docker run` used to start on stock defaults, so a suite could pass locally and still break against the configuration actually deployed — a real gap, not a hypothetical one, and free to close.
+
+**The container is recreated when it's gone.** It's `--rm`, so it does not survive a Docker restart; the failure mode without this was a bare connection error after a `docker compose up`.
+
+**Verified, not assumed:** the runner was checked to exit nonzero on a failing batch (both a single failing file and a failing file mixed into a passing batch), to bootstrap from no container at all, and to report memory per batch. A cold `npm test` runs 88 files / **1769 tests** green in 5:41 with a 345MB peak, and the per-batch count matches a static `it()`/`test()` count of the whole suite exactly — so batching loses, duplicates and skips nothing.
+
+One thing this entry is also a correction of: an earlier diagnosis blamed the kernel's `dentry` cache. That was wrong — `/proc/slabinfo` inside a container is **VM-wide and unnamespaced**, so the number read was the host's total, not the test database's. The `docker stats` figure the script actually uses is namespaced per container, which is why the script reads that instead.
+
 ## Unreleased: a member is told who is reading, and gets to choose which of them
 
 The answer form was asking a member to agree to something nobody had described. It offered a single tick for "the people this Community has given access to it" — a set the member never saw, covering the kitchen team, the welfare team and anybody added next year, with no way to accept the first while declining the second. Meanwhile two facts about the question sat nowhere at all: whether the answer is counted in a published community figure, and whether a crisis can reach it. The fix is mostly disclosure, plus one change in granularity that turns out to be the load-bearing part.

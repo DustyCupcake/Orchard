@@ -88,13 +88,13 @@ To run it locally instead: copy `.env.example` to `.env`, fill in `DOMAIN=localh
 
 ## Testing
 
-The lifecycle/CRUD test suite runs against a real Postgres (no mocks — see `tests/`). Point it at any disposable database:
+The lifecycle/CRUD test suite runs against a real Postgres (no mocks — see `tests/`). One command, with no setup:
 
 ```bash
-DATABASE_URL=postgres://orchard:test@localhost:5432/orchard SESSION_SECRET=test npm test
+npm test
 ```
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full local setup and manual-verification workflow.
+That's it — it starts a throwaway Postgres if there isn't one, migrates it, and runs the suite against a container on the same Node version this app is deployed on. Don't hand-roll the `docker run` + `migrate` + `vitest` sequence; `scripts/test.sh` exists because getting it right is easy to get subtly wrong (a test database on different Postgres settings than production, or a single run that grows the database to 3GB of memory). See [`CONTRIBUTING.md`](CONTRIBUTING.md) for why, the environment overrides, and the manual-verification workflow.
 
 ## Who this is for
 

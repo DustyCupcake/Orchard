@@ -10,7 +10,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.mjs",
     "db:seed": "tsx scripts/seed.ts",
-    "test": "vitest run"
+    "test": "bash scripts/test.sh",
+    "test:raw": "vitest run"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

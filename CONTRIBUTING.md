@@ -37,15 +37,30 @@ Or skip straight to a full deployment-shaped stack with `docker compose up -d` (
 
 ## Testing
 
-**Tests run against a real, disposable Postgres — never mocked.** This project's whole `tests/` suite exercises the actual database through the actual Drizzle queries; a passing test means the SQL genuinely works, not that a mock was configured to agree with the code. Point it at any throwaway database:
+**Tests run against a real, disposable Postgres — never mocked.** This project's whole `tests/` suite exercises the actual database through the actual Drizzle queries; a passing test means the SQL genuinely works, not that a mock was configured to agree with the code.
+
+**One command, and it needs no setup:**
 
 ```bash
-docker run --rm -d -p 5433:5432 -e POSTGRES_USER=orchard -e POSTGRES_PASSWORD=test -e POSTGRES_DB=orchard --name orchard-test-pg postgres:16-alpine
-DATABASE_URL=postgres://orchard:test@localhost:5433/orchard node scripts/migrate.mjs
-DATABASE_URL=postgres://orchard:test@localhost:5433/orchard SESSION_SECRET=test npm test
+npm test
 ```
 
-(`SESSION_SECRET` is required even for tests that don't look auth-related — anything touching magic links or the generic action-token infrastructure throws immediately without it.) Never treat a phase's database-touching logic as verified from unit-level assertions alone if there's no real query behind them.
+That's it. `scripts/test.sh` (what `npm test` now runs) creates the test database if it isn't there, migrates it, runs every test file, and manages the one resource this suite actually stresses. Don't hand-roll the `docker run` + `migrate` + `vitest` sequence any more — the script exists because getting it right by hand is exactly the kind of thing that has to be rediscovered, and getting it wrong fails confusingly.
+
+Run a subset by naming files: `./scripts/test.sh tests/coordination.test.ts`. The raw runner is still available as `npm run test:raw` if you want vitest's own output with nothing in the way, but it has the memory behaviour below.
+
+**Why the script batches and restarts the database, which is not an optimisation.** The suite truncates between files (`tests/helpers.ts`), and a long-lived Postgres grows steadily for the length of a run — measured at **~11MB per test file** (35MB → 261MB over 20 files). Crucially the growth **does not fall back** between files or between separate `vitest` invocations; it accumulates in the server, which is doing 36,000+ transactions against a ~20MB database. Left alone, a full 88-file suite reached **~3.2GB**. That is fine on a large VM and fatal on a small one, and Docker Desktop's allocation is a fraction of your host RAM that you don't control — so the script runs in batches and `docker restart`s the container when it crosses a budget read from the VM's actual size. A restart returns ~3.2GB to ~24MB in about a second, and the migrated schema survives in the volume, so nothing needs re-migrating.
+
+This is **not** a production concern, and worth being explicit about why. Production runs the same Postgres against the same schema but never truncates, and its memory is already capped by the deployed `shared_buffers` / `max_connections` in `docker-compose.yml`. Measured: production Postgres sat at ~80MB after two hours.
+
+Two other things the script gets right that are easy to get wrong by hand:
+
+- **The test database runs under production's Postgres settings** (`shared_buffers=128MB`, `max_connections=50`). The documented `docker run` used to start on stock Postgres defaults, so a suite could pass locally and still break on the configuration you'd actually deploy.
+- **It recreates the container if it's gone.** The test container is `--rm`, so it does not survive a Docker restart — which is why a `docker compose up` after a VM memory change can leave you with no database and a confusing connection error.
+
+Override when needed, no editing required: `ORCHARD_TEST_BUDGET_MB`, `ORCHARD_TEST_BATCH`, `ORCHARD_TEST_CONTAINER`, `ORCHARD_TEST_PORT`.
+
+`SESSION_SECRET` is defaulted by the script (still required by anything touching magic links or the generic action-token infrastructure — those throw without it). Never treat a phase's database-touching logic as verified from unit-level assertions alone if there's no real query behind them.
 
 **Then verify manually against a real deployment.** Automated tests prove the logic; they don't prove the actual page renders, the actual button does the right thing, or that a redirect lands somewhere real. Build and run the real `docker-compose.yml` stack, log in through the real magic-link flow, and exercise the feature through the real UI. A `docker-compose.override.yml` with `ports: ["3000:3000"]` on the `app` service (gitignored, not meant to be committed) gives direct plain-HTTP access for this, bypassing Caddy's self-signed local TLS.
 
