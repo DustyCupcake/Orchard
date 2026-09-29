@@ -3,14 +3,14 @@ import { db } from "@/db";
 import {
   community,
   member,
-  participation,
   profileAnswer,
   profileQuestion,
 } from "@/db/schema";
 import type { member as memberTable, profileQuestion as profileQuestionTable } from "@/db/schema";
 import { ConflictError } from "../errors";
-import { toFieldShape } from "../field-shape";
+import { toFieldShape, CATCH_ALL_LABEL, tallyChoiceValues } from "../field-shape";
 import { formatExactDate } from "../dates/display";
+import { listComingMembers } from "../participation";
 
 type Member = typeof memberTable.$inferSelect;
 type ProfileQuestion = typeof profileQuestionTable.$inferSelect;
@@ -277,25 +277,18 @@ async function readCycleIndicatorPolicy(communityId: string) {
 }
 
 /**
- * Members who declared they're coming to a cycle and haven't opted out of
- * indicators — the population an event-scoped indicator describes.
+ * Members who declared they're coming to a cycle — the population an
+ * event-scoped indicator describes.
+ *
+ * `listComingMembers` is the same query /members' cycle-scoped directory
+ * lists, and the two have to be the same: a chart reading "of 8" above a
+ * directory of nine names is the disagreement this whole denominator
+ * mechanism exists to prevent. The "haven't opted out of indicators"
+ * clause that used to sit here went in 0081 with the standing consent.
  */
-async function eventPopulationIds(communityId: string, cycleId: string): Promise<string[]> {
-  const rows = await db
-    .selectDistinct({ memberId: participation.memberId })
-    .from(participation)
-    .innerJoin(member, eq(participation.memberId, member.id))
-    .where(
-      and(
-        eq(participation.cycleId, cycleId),
-        eq(participation.status, "coming"),
-        // Scoping to another community's cycle is impossible via
-        // participation, but the member filter doubles as the community
-        // check.
-        eq(member.communityId, communityId),
-      ),
-    );
-  return rows.map((r) => r.memberId);
+async function eventPopulationIds(actor: Member, cycleId: string): Promise<string[]> {
+  const rows = await listComingMembers(actor, cycleId);
+  return rows.map((r) => r.id);
 }
 
 /**
@@ -360,7 +353,7 @@ export async function listCommunityIndicators(
   // exists to prevent, just with a mismatched denominator instead of a
   // wrong label.
   const populationFor = async (s: IndicatorScope) =>
-    s.kind === "event" ? eventPopulationIds(actor.communityId, s.cycleId) : communityPopulationIds(actor.communityId);
+    s.kind === "event" ? eventPopulationIds(actor, s.cycleId) : communityPopulationIds(actor.communityId);
 
   let scope = requested;
   let scopeFallback: string | null = null;
@@ -512,33 +505,20 @@ function aggregateIndicator(
   // question nobody has answered still shows its own shape rather than
   // rendering as an empty box, and so an option nobody picked shows as a
   // real zero instead of vanishing.
-  const counts = new Map<string, number>();
-  for (const option of shape.options) counts.set(option, 0);
-
   // The escape hatch's answers are stored as an ordinary string in an
   // option's own slot (that's the point of the design — an aggregate
   // needs no special case to count the real options), which means an
-  // unrecognised value here is a member's own words. They are counted
-  // together under one visible label and never printed, because
-  // publishing what someone typed is a disclosure no "publish this
-  // indicator" toggle can consent to on their behalf — the count is the
-  // aggregate; the sentence is theirs.
-  let otherCount = 0;
-  for (const value of values) {
-    const picked = Array.isArray(value) ? value : [value];
-    for (const v of picked) {
-      if (typeof v !== "string") continue;
-      if (counts.has(v)) {
-        counts.set(v, (counts.get(v) ?? 0) + 1);
-      } else {
-        otherCount++;
-      }
-    }
-  }
+  // unrecognised value here is a member's own words, and the tally routes
+  // those into `otherCount` instead of dropping them. They are counted
+  // together under one visible label and never printed, because publishing
+  // what someone typed is a disclosure no "publish this indicator" toggle
+  // can consent to on their behalf — the count is the aggregate; the
+  // sentence is theirs.
+  const { counts, otherCount } = tallyChoiceValues(values, shape.options);
 
   const rows: IndicatorRow[] = [...counts].map(([label, count]) => ({ label, count }));
   if (otherCount > 0) {
-    rows.push({ label: "Something else", count: otherCount });
+    rows.push({ label: CATCH_ALL_LABEL, count: otherCount });
   }
   // Reachable only for a choice type — number, date and boolean returned
   // above, text can't be published at all — so the family is one of the

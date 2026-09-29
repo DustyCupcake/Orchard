@@ -1,12 +1,13 @@
 import { and, desc, eq, lt } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { community, member, memberIdentity, task, taskAssignment, taskNomination } from "@/db/schema";
+import { community, member, task, taskAssignment, taskNomination } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { isCoordinationHolder } from "../coordination";
 import { issueActionToken, consumeActionToken } from "../notifications";
 import { sendTaskNominationEmail } from "../mailer";
+import { resolvePrimaryEmail } from "../contact-methods";
 import { logEngagementEvent, resolveEngagementForMember } from "../engagement";
 import { performClaimInTx, releaseAssignmentInTx } from "./lifecycle";
 
@@ -62,12 +63,12 @@ export const nominateForTaskInput = z.object({
 });
 export type NominateForTaskInput = z.infer<typeof nominateForTaskInput>;
 
+// The one address this member's own email goes to — see
+// `resolvePrimaryEmail`. Was a bare `memberIdentity` read, which meant a
+// nomination landed at the login address even after a member had moved
+// their delivery somewhere else on purpose.
 async function findMemberEmail(memberId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ loginEmail: memberIdentity.loginEmail })
-    .from(memberIdentity)
-    .where(eq(memberIdentity.memberId, memberId));
-  return row?.loginEmail ?? null;
+  return resolvePrimaryEmail(memberId);
 }
 
 function buildResponseUrl(appUrl: string, token: string): string {

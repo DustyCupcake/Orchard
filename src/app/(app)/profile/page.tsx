@@ -6,8 +6,8 @@ import { profileQuestion, tier } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { listOnceEverAnswers, listOutstandingQuestions } from "@/lib/profile-questions";
 import { getCycleTypeCountProgress } from "@/lib/settings";
-import { listPendingAudienceConsents } from "@/lib/sensitive-data";
-import { CONTACT_METHOD_VISIBILITIES, listOwnContactMethods } from "@/lib/contact-methods";
+import { listPendingAudienceConsents, listAudienceConsentsForAnswers, listAudiencesForQuestions } from "@/lib/sensitive-data";
+import { CONTACT_METHOD_VISIBILITIES, isEmailContactMethod, listOwnContactMethods, resolvePrimaryEmail } from "@/lib/contact-methods";
 import { listMyConsentStatus } from "@/lib/consent";
 import { listAllDistinctTags } from "@/lib/tags";
 import { listOwnMemberLanguages, MEMBER_LANGUAGE_LEVELS, type MemberLanguageLevel } from "@/lib/member-languages";
@@ -20,11 +20,14 @@ import ThemeToggle from "./ThemeToggle";
 import {
   addMemberLanguageAction,
   agreeToEmergencyRevealAction,
+  confirmContactMethodVerificationAction,
   createContactMethodAction,
   deleteContactMethodAction,
   deleteMemberLanguageAction,
   extendAnswerConsentAction,
   grantConsentAction,
+  requestContactMethodVerificationAction,
+  setPrimaryContactMethodAction,
   submitProfileAnswerAction,
   updateContactMethodAction,
   updateMemberAxisAction,
@@ -61,14 +64,14 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 export default async function ProfilePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; verify?: string; sent?: string; verified?: string }>;
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
   }
 
-  const { error } = await searchParams;
+  const { error, verify, sent, verified } = await searchParams;
 
   const [
     communityTiers,
@@ -117,12 +120,46 @@ export default async function ProfilePage({
     : [];
   const questionLabelById = new Map(gatedQuestions.map((q) => [q.id, q.label]));
 
+  // Who may read each answered question, and which of those audiences this
+  // member has already agreed to. Resolved here rather than inside the form
+  // because a form can't enumerate its own audiences, and because both reads
+  // are batched across the whole list instead of once per question.
+  const audiencesByQuestion = await listAudiencesForQuestions(
+    viewing.communityId,
+    onceEverAnswers.map(({ question }) => question.id),
+  );
+  const consentsByAnswer = await listAudienceConsentsForAnswers(
+    onceEverAnswers.map(({ answer }) => answer.id),
+  );
+
+  // Where this member's own mail goes, and whether that's the address they
+  // sign in with. Resolved through the same `resolvePrimaryEmail` every
+  // send uses, so the line on the page cannot drift from the behaviour —
+  // it is not a second definition of "where does email go" that happens to
+  // be rendered near the right controls.
+  const deliveryAddress = await resolvePrimaryEmail(viewing.id);
+  // Compared against the resolved value rather than "is there a primary
+  // row", because a primary that lost its verification falls back too — and
+  // such a member is on the login address exactly as a member who never
+  // chose one is, so they deserve the same sentence.
+  const primaryRow = ownContactMethods.find((m) => m.isPrimary);
+  const deliveryAddressIsLogin = !primaryRow || primaryRow.value !== deliveryAddress;
+
   return (
     <main className="mx-auto max-w-[480px] px-6 py-10 md:px-12 md:py-14">
       <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Your profile</h1>
       {error && (
         <div className="mt-4">
           <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
+      {(sent || verified) && (
+        <div className="mt-4">
+          <Banner tone="success">
+            {sent
+              ? "Check that inbox for a link to confirm the address."
+              : "Confirmed. That address is now yours to point your email at."}
+          </Banner>
         </div>
       )}
 
@@ -380,43 +417,30 @@ export default async function ProfilePage({
                   feedsCapacitySignal={question.feedsCapacitySignal}
                   allowDeferral={question.allowDeferral}
                   allowPreferNotToSay={question.allowPreferNotToSay}
-                  sensitive={question.sensitive}
+                  publishedAsIndicator={question.publishedAsIndicator}
+                  emergencyAccess={question.emergencyAccess}
+                  access={
+                    question.sensitive
+                      ? {
+                          kind: "restricted",
+                          audiences: audiencesByQuestion.get(question.id) ?? [],
+                          // A member editing an answer they already gave is
+                          // shown the audiences they actually agreed to, not
+                          // all of them: re-saving with everything re-ticked
+                          // would quietly undo a decision they made last
+                          // time.
+                          defaultSharedRuleIds: [...(consentsByAnswer.get(answer.id) ?? [])],
+                        }
+                      : { kind: "public" }
+                  }
                   defaultValue={answer.value}
                   defaultCapacityVisibility={answer.capacityVisibility}
-                  defaultShareWithAudience={answer.shareWithAudience}
                 />
               </div>
             ))}
           </div>
         </section>
       )}
-
-      {/*
-          Its own section rather than tucked into "Your answers", which
-          only renders once there's something to show. The whole point of
-          a standing opt-out is that it can be set *before* answering
-          anything — a member who wants to be in the questions but out of
-          the aggregates has to be able to say so first, and a control
-          that appears only after you've already answered is a control
-          that informed nobody.
-      */}
-      <section className="mt-8">
-        <SectionHeading>Community indicators</SectionHeading>
-        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-          Some standing questions can be published as a collective picture on{" "}
-          <Link href="/community" className="text-[var(--accent-1)] hover:underline">
-            the Community page
-          </Link>{" "}
-          &mdash; a proportion, a distribution or a range, never anybody&rsquo;s individual answer.
-          Only questions the whole Community can already read individually are ever
-          published, so a published figure says nothing the underlying answers don&rsquo;t
-          already say.
-        </p>
-        <p className="mt-2 text-[13px] text-[var(--text-muted)]">
-          Your lever is the <strong>prefer not to say</strong> box on each question, which appears
-          on every question that can be published. Answering it keeps your answer on your profile
-          and out of the figures; declining outright keeps it out of both.
-        </p>      </section>
 
       <section className="mt-8">
         <SectionHeading>Contact methods</SectionHeading>
@@ -425,33 +449,91 @@ export default async function ProfilePage({
           Emergency access to reveal it when needed — both of you get notified, and every activation
           is logged. See <code className="font-mono">/members</code> for other members&rsquo; visible methods.
         </p>
+        {/* The one thing a member could not previously find out, and the
+            reason the primary row below exists: where does the community's
+            mail actually go? Stated as a fact, because it falls back to the
+            login address for anyone who hasn't chosen a primary. */}
+        <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+          Your email goes to{" "}
+          <strong className="font-semibold text-[var(--text)]">{deliveryAddress ?? "no address yet"}</strong>
+          {deliveryAddressIsLogin && " — the address you sign in with. Add another address below and point your email at it instead."}
+        </p>
+
+        {/* The confirmation step, rendered from the ?verify= link in the
+            emailed message. A button rather than a mutation on render, so
+            a link preview can't spend the token. */}
+        {verify && (
+          <form action={confirmContactMethodVerificationAction} className={`mt-3 flex flex-wrap items-center gap-2 ${CARD}`}>
+            <input type="hidden" name="token" value={verify} />
+            <span className="flex-1 text-[13px] text-[var(--text)]">
+              Confirm this address to make it the one your email goes to.
+            </span>
+            <button type="submit" className={BUTTON_PRIMARY}>
+              Confirm this address
+            </button>
+          </form>
+        )}
+
         {ownContactMethods.length === 0 && <p className="mt-2 text-[13px] text-[var(--text-muted)]">No contact methods yet.</p>}
         <div className="mt-2 flex flex-col gap-2">
-          {ownContactMethods.map((m) => (
-            <div key={m.id} className={`flex flex-wrap items-center gap-2 ${CARD}`}>
-              <form action={updateContactMethodAction} className="flex flex-1 flex-wrap items-center gap-2">
-                <input type="hidden" name="id" value={m.id} />
-                <input type="text" name="type" defaultValue={m.type} className={`${INPUT} w-24`} />
-                <input type="text" name="value" defaultValue={m.value} className={`${INPUT} min-w-[160px] flex-1`} />
-                <SelectField name="visibility" defaultValue={m.visibility} className={INPUT}>
-                  {CONTACT_METHOD_VISIBILITIES.map((v) => (
-                    <option key={v} value={v}>
-                      {CONTACT_VISIBILITY_LABELS[v]}
-                    </option>
-                  ))}
-                </SelectField>
-                <button type="submit" className={BUTTON_SECONDARY}>
-                  Save
-                </button>
-              </form>
-              <form action={deleteContactMethodAction}>
-                <input type="hidden" name="id" value={m.id} />
-                <button type="submit" className={BUTTON_GHOST}>
-                  Delete
-                </button>
-              </form>
-            </div>
-          ))}
+          {ownContactMethods.map((m) => {
+            const emailish = isEmailContactMethod(m);
+            return (
+              <div key={m.id} className={`flex flex-wrap items-center gap-2 ${CARD}`}>
+                <form action={updateContactMethodAction} className="flex flex-1 flex-wrap items-center gap-2">
+                  <input type="hidden" name="id" value={m.id} />
+                  <input type="text" name="type" defaultValue={m.type} className={`${INPUT} w-24`} />
+                  <input type="text" name="value" defaultValue={m.value} className={`${INPUT} min-w-[160px] flex-1`} />
+                  <SelectField name="visibility" defaultValue={m.visibility} className={INPUT}>
+                    {CONTACT_METHOD_VISIBILITIES.map((v) => (
+                      <option key={v} value={v}>
+                        {CONTACT_VISIBILITY_LABELS[v]}
+                      </option>
+                    ))}
+                  </SelectField>
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Save
+                  </button>
+                </form>
+
+                {/* Verification and the primary choice are per-row and
+                    only offered on rows that could actually be one, rather
+                    than as a column of controls that mostly say "not
+                    available". */}
+                {emailish && !m.verifiedAt && (
+                  <form action={requestContactMethodVerificationAction}>
+                    <input type="hidden" name="id" value={m.id} />
+                    <button type="submit" className={BUTTON_GHOST}>
+                      Confirm this address
+                    </button>
+                  </form>
+                )}
+                {emailish && m.verifiedAt && !m.isPrimary && (
+                  <form action={setPrimaryContactMethodAction}>
+                    <input type="hidden" name="id" value={m.id} />
+                    <button type="submit" className={BUTTON_GHOST}>
+                      Send my email here
+                    </button>
+                  </form>
+                )}
+                {m.isPrimary ? (
+                  // No Delete button at all: the lib refuses it, and a
+                  // control that exists only to be rejected is worse than
+                  // its absence. The state is stated instead.
+                  <span className="px-2.5 py-1.5 text-[13px] text-[var(--text-muted)]">
+                    Your email goes here
+                  </span>
+                ) : (
+                  <form action={deleteContactMethodAction}>
+                    <input type="hidden" name="id" value={m.id} />
+                    <button type="submit" className={BUTTON_GHOST}>
+                      Delete
+                    </button>
+                  </form>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <form action={createContactMethodAction} className="mt-3 flex flex-wrap items-center gap-2">

@@ -14,6 +14,7 @@ import {
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, NotFoundError } from "./errors";
 import { getGatingPurposesForQuestions, listMembersWithActiveConsent } from "./consent";
+import { recordSettingChanges } from "./settings/history";
 import {
   listGrantingTaskIds,
   PERMISSION_MODULE_KEYS,
@@ -112,16 +113,53 @@ export async function createSensitiveFieldAccessRule(
     }
   }
 
-  const [created] = await db
-    .insert(sensitiveFieldAccessRule)
-    .values({
-      communityId: actor.communityId,
-      questionId: input.questionId,
-      unlockedByTaskId: input.unlockedByTaskId ?? null,
-      unlockedByTierId: input.unlockedByTierId ?? null,
-      unlockedByGrantModuleKey: input.unlockedByGrantModuleKey ?? null,
-    })
-    .returning();
+  // The question's label is fetched here for the log's entityLabel. It is a
+  // second read of a row already fetched above (as archivedAt only) rather
+  // than widening that select, because that select's result is also what
+  // decides two throws and keeping it narrow keeps the throws legible.
+  const [forLog] = await db
+    .select({ label: profileQuestion.label })
+    .from(profileQuestion)
+    .where(eq(profileQuestion.id, input.questionId));
+
+  const created = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(sensitiveFieldAccessRule)
+      .values({
+        communityId: actor.communityId,
+        questionId: input.questionId,
+        unlockedByTaskId: input.unlockedByTaskId ?? null,
+        unlockedByTierId: input.unlockedByTierId ?? null,
+        unlockedByGrantModuleKey: input.unlockedByGrantModuleKey ?? null,
+      })
+      .returning();
+
+    // Who can now see this question's answers is a widening of access to
+    // other people's data, so it is one of the most consequential rows this
+    // log will ever hold — and the entity is the *question*, not the rule,
+    // because a rule has no name of its own and a reader asking "who can
+    // see the answer to 'Do you have a health condition?'" needs to land on
+    // the question.
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "sensitive_field_rule",
+      action: "created",
+      entityId: row.id,
+      entityLabel: forLog?.label ?? null,
+      current: {},
+      changes: {
+        question: forLog?.label ?? "a question that no longer exists",
+        // Exactly one of these three is non-null — createSensitiveFieldAccessRule
+        // refuses anything else — so the other two are omitted rather than
+        // logged as "unlocked by: nothing", which would read as if the rule
+        // were broken.
+        unlockedByTaskId: row.unlockedByTaskId,
+        unlockedByTierId: row.unlockedByTierId,
+        unlockedByGrantModuleKey: row.unlockedByGrantModuleKey,
+      },
+    });
+    return row;
+  });
 
   // Deliberately no back-fill of consent here, and that is the fix rather
   // than an omission. If this question already has answers, adding a rule
@@ -139,32 +177,207 @@ export async function createSensitiveFieldAccessRule(
 }
 
 /**
+ * One audience, as a member reads it: a name, not an id.
+ *
+ * Shared by the two places a member is asked about an audience — the answer
+ * form and the "extend who can see your answers" prompt — because those two
+ * asking about the same group in two different words is how somebody ends
+ * up agreeing to what they took to be a different audience. The names
+ * arrive from the caller, which batches its lookups.
+ */
+export type Audience = { ruleId: string; label: string };
+
+type AudienceRule = typeof sensitiveFieldAccessRule.$inferSelect;
+
+/**
+ * A rule's audience in the words a member would use for it.
+ *
+ * The three branches are the three routes `createSensitiveFieldAccessRule`
+ * accepts. Every branch falls back rather than asserting, including the
+ * last: a rule carrying no route at all is readable by nobody, and calling
+ * it "another group in this Community" would be a lie that reads as a
+ * rendering fault. The settings tab's `ruleRoute` is the admin-facing twin
+ * of this and falls back the same way.
+ */
+export function describeAudience(
+  rule: {
+    // The grant module key, typed rather than `string`, because
+    // PERMISSION_MODULE_LABELS is a closed map — indexing it with an
+    // arbitrary string is the difference between a label and "undefined"
+    // rendered into a consent prompt a member is being asked to agree to.
+    // A key with no label falls back rather than printing one.
+    unlockedByGrantModuleKey: PermissionModuleKey | null;
+    unlockedByTierId: string | null;
+    unlockedByTaskId: string | null;
+  },
+  names: { tierName?: string | null; taskName?: string | null } = {},
+): string {
+  if (rule.unlockedByGrantModuleKey) {
+    const label = PERMISSION_MODULE_LABELS[rule.unlockedByGrantModuleKey];
+    return `anyone holding a ${label ?? "permission"} grant`;
+  }
+  if (rule.unlockedByTierId) {
+    return `anyone in the ${names.tierName ?? "Tier this Community has since removed"} Tier`;
+  }
+  if (rule.unlockedByTaskId) {
+    return `anyone holding the “${names.taskName ?? "Task this Community has since removed"}” Task`;
+  }
+  return "a group with no audience";
+}
+
+/** A `describeAudience` caller with the Tier and Task names already
+ *  resolved — two queries for the whole batch rather than one per rule. */
+async function audiencer(rules: AudienceRule[]) {
+  const tierIds = [...new Set(rules.map((r) => r.unlockedByTierId).filter((id): id is string => Boolean(id)))];
+  const taskIds = [...new Set(rules.map((r) => r.unlockedByTaskId).filter((id): id is string => Boolean(id)))];
+  const tierNames = new Map(
+    tierIds.length === 0
+      ? []
+      : (await db.select({ id: tier.id, name: tier.name }).from(tier).where(inArray(tier.id, tierIds))).map((r) => [r.id, r.name]),
+  );
+  const taskNames = new Map(
+    taskIds.length === 0
+      ? []
+      : (await db.select({ id: task.id, title: task.title }).from(task).where(inArray(task.id, taskIds))).map((r) => [r.id, r.title]),
+  );
+  return (rule: AudienceRule) =>
+    describeAudience(rule, {
+      tierName: rule.unlockedByTierId ? tierNames.get(rule.unlockedByTierId) : null,
+      taskName: rule.unlockedByTaskId ? taskNames.get(rule.unlockedByTaskId) : null,
+    });
+}
+
+/**
+ * Every audience currently on each of these questions, by name.
+ *
+ * The answer form needs this to ask for the audiences *actually* on, one box
+ * each, rather than for a single undifferentiated "the people this Community
+ * has given access to it" — which was consent to a set the member never saw.
+ * Batched because /questions renders every outstanding question's form on
+ * one page.
+ */
+export async function listAudiencesForQuestions(
+  communityId: string,
+  questionIds: string[],
+): Promise<Map<string, Audience[]>> {
+  const out = new Map<string, Audience[]>();
+  if (questionIds.length === 0) return out;
+  const rules = await db
+    .select()
+    .from(sensitiveFieldAccessRule)
+    .where(
+      and(
+        eq(sensitiveFieldAccessRule.communityId, communityId),
+        inArray(sensitiveFieldAccessRule.questionId, questionIds),
+      ),
+    );
+  if (rules.length === 0) return out;
+  const label = await audiencer(rules);
+  for (const rule of rules) {
+    const list = out.get(rule.questionId) ?? [];
+    list.push({ ruleId: rule.id, label: label(rule) });
+    out.set(rule.questionId, list);
+  }
+  return out;
+}
+
+/**
+ * Which audiences each of these answers is already agreed to.
+ *
+ * Read back so the boxes default to the member's *existing* choices rather
+ * than to all-ticked: somebody who declined one audience last time must not
+ * find it silently re-ticked the next time they save an unrelated field on
+ * the same question.
+ */
+export async function listAudienceConsentsForAnswers(answerIds: string[]): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  if (answerIds.length === 0) return out;
+  const rows = await db
+    .select({ answerId: profileAnswerRuleConsent.answerId, ruleId: profileAnswerRuleConsent.ruleId })
+    .from(profileAnswerRuleConsent)
+    .where(inArray(profileAnswerRuleConsent.answerId, answerIds));
+  for (const row of rows) {
+    const set = out.get(row.answerId) ?? new Set<string>();
+    set.add(row.ruleId);
+    out.set(row.answerId, set);
+  }
+  return out;
+}
+
+/** This question's current audience rule ids.
+ *
+ *  Separate from `listAudiencesForQuestions` because the write side needs
+ *  the bare ids with no name resolution: `answerProfileQuestion` uses them
+ *  to decide whether the member's chosen audiences intersect anything at
+ *  all, so `shareWithAudience` records what is true rather than what was
+ *  submitted.
+ */
+export async function listAudienceRuleIds(questionId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: sensitiveFieldAccessRule.id })
+    .from(sensitiveFieldAccessRule)
+    .where(eq(sensitiveFieldAccessRule.questionId, questionId));
+  return rows.map((r) => r.id);
+}
+
+/**
  * Record this answer's agreement to the audience that exists right now.
  *
- * Called once per answer on a sensitive question whose share box was
- * ticked. The member was answering against a known audience — the one the
- * share box is attached to — so that is the audience they agreed to, and
- * this is what "the rules in effect when each answer was given" means in
- * practice.
+ * Called once per answer on a sensitive question, from the answer write
+ * rather than from the rule create. That direction is the fix: a rule added
+ * afterwards has no consent row to read, so it cannot reach the answers that
+ * predate it, which is the difference between a member being asked and a
+ * member being assumed to have agreed.
  *
- * Deliberately per-rule rather than per-question. An answer given when the
- * audience was {kitchen} and an audience later widened to {kitchen,
- * welfare} is not something the single `shareWithAudience` boolean can
- * express: false would hide the answer from the kitchen too, a narrowing
- * nobody asked for and the kitchen did not consent to, and true would
- * expose it to the welfare team, a widening nobody agreed to.
+ * `ruleIds` is the member's per-audience choice when the form offered one box
+ * per audience, and absent otherwise. Absent means every current rule — the
+ * original behaviour, kept for callers with no per-audience UI, and right for
+ * them because a single tick there really was consent to the whole set.
+ * Present means exactly those, which also **revokes** the rows for the boxes
+ * left unticked: re-saving with one cleared has to be able to take an
+ * audience *away*, or the control could only ever add, and a member would
+ * have no way to narrow sharing to a subset of what they had agreed to.
+ *
+ * Foreign or stale rule ids are intersected away rather than honoured, so a
+ * forged POST granting a rule belonging to another question — or to one since
+ * deleted — grants nothing. Failing closed here needs no extra check,
+ * because a rule the answer's own question doesn't have cannot be satisfied
+ * by the audience test anyway.
  */
-export async function consentAnswerToCurrentAudience(answerId: string, questionId: string) {
+export async function consentAnswerToCurrentAudience(
+  answerId: string,
+  questionId: string,
+  ruleIds?: string[],
+) {
   const rules = await db
     .select({ id: sensitiveFieldAccessRule.id })
     .from(sensitiveFieldAccessRule)
     .where(eq(sensitiveFieldAccessRule.questionId, questionId));
   if (rules.length === 0) return 0;
+
+  const currentIds = rules.map((r) => r.id);
+  const chosen = new Set(ruleIds === undefined ? currentIds : currentIds.filter((id) => ruleIds.includes(id)));
+
+  if (ruleIds !== undefined) {
+    const revoked = currentIds.filter((id) => !chosen.has(id));
+    if (revoked.length > 0) {
+      await db
+        .delete(profileAnswerRuleConsent)
+        .where(
+          and(
+            eq(profileAnswerRuleConsent.answerId, answerId),
+            inArray(profileAnswerRuleConsent.ruleId, revoked),
+          ),
+        );
+    }
+  }
+  if (chosen.size === 0) return 0;
+
   await db
     .insert(profileAnswerRuleConsent)
-    .values(rules.map((r) => ({ answerId, ruleId: r.id })))
+    .values([...chosen].map((ruleId) => ({ answerId, ruleId })))
     .onConflictDoNothing();
-  return rules.length;
+  return chosen.size;
 }
 
 /**
@@ -277,23 +490,18 @@ export async function listPendingAudienceConsents(actor: Member) {
     );
   // A name rather than an id, because this string is the entire content of
   // the consent being asked for. "share with 7b3f…" is not a decision
-  // anyone can make; "share with anyone holding a Kitchen grant" is. Three
-  // lookups for an unbounded number of rules, and a fallback for the
+  // anyone can make; "share with anyone holding a Kitchen grant" is. Two
+  // lookups for an unbounded number of rules, a fallback for the
   // dangling-reference case rather than an exception — a member must not
-  // hit an error page because an Admin deleted a Tier. Skipped entirely
-  // when there are no audience rows, which is the common case on a
-  // Community nobody has widened.
-  const tierIds = [...new Set(pending.map((p) => p.ruleTierId).filter((id): id is string => Boolean(id)))];
-  const taskIds = [...new Set(pending.map((p) => p.ruleTaskId).filter((id): id is string => Boolean(id)))];
-  const tierNames = new Map(
-    tierIds.length === 0
-      ? []
-      : (await db.select({ id: tier.id, name: tier.name }).from(tier).where(inArray(tier.id, tierIds))).map((r) => [r.id, r.name]),
-  );
-  const taskNames = new Map(
-    taskIds.length === 0
-      ? []
-      : (await db.select({ id: task.id, title: task.title }).from(task).where(inArray(task.id, taskIds))).map((r) => [r.id, r.title]),
+  // hit an error page because an Admin deleted a Tier — and the *same*
+  // words `describeAudience` gave the answer form, which is the whole
+  // reason somebody can recognise the group on the second asking.
+  const describe = await audiencer(
+    pending.map((p) => ({
+      unlockedByGrantModuleKey: p.ruleModuleKey,
+      unlockedByTierId: p.ruleTierId,
+      unlockedByTaskId: p.ruleTaskId,
+    })) as AudienceRule[],
   );
 
   // The emergency half. No audience join, no cross product, no rule: just
@@ -328,13 +536,11 @@ export async function listPendingAudienceConsents(actor: Member) {
       questionId: p.questionId,
       questionLabel: p.questionLabel,
       ruleId: p.ruleId,
-      audienceLabel: p.ruleModuleKey
-        ? `anyone holding a ${PERMISSION_MODULE_LABELS[p.ruleModuleKey]} grant`
-        : p.ruleTierId
-          ? `anyone in the ${tierNames.get(p.ruleTierId) ?? "Tier this Community has since removed"} Tier`
-          : p.ruleTaskId
-            ? `anyone holding the “${taskNames.get(p.ruleTaskId) ?? "Task this Community has since removed"}” Task`
-            : "another group in this Community",
+      audienceLabel: describe({
+        unlockedByGrantModuleKey: p.ruleModuleKey,
+        unlockedByTierId: p.ruleTierId,
+        unlockedByTaskId: p.ruleTaskId,
+      } as AudienceRule),
     })),
     ...emergency.map((e) => ({
       kind: "emergency" as const,
@@ -364,16 +570,45 @@ export async function listSensitiveFieldAccessRules(actor: Member) {
 }
 
 export async function deleteSensitiveFieldAccessRule(actor: Member, ruleId: string) {
+  // The question's label comes along in the same read, so the log can say
+  // whose answers are affected. Without it the row would be "unlockedByTaskId
+  // removed" with no subject, and a deletion like this is precisely the one a
+  // member might want to trace back later.
   const [existing] = await db
-    .select({ id: sensitiveFieldAccessRule.id })
+    .select({
+      id: sensitiveFieldAccessRule.id,
+      questionId: sensitiveFieldAccessRule.questionId,
+      unlockedByTaskId: sensitiveFieldAccessRule.unlockedByTaskId,
+      unlockedByTierId: sensitiveFieldAccessRule.unlockedByTierId,
+      unlockedByGrantModuleKey: sensitiveFieldAccessRule.unlockedByGrantModuleKey,
+      label: profileQuestion.label,
+    })
     .from(sensitiveFieldAccessRule)
+    .leftJoin(profileQuestion, eq(profileQuestion.id, sensitiveFieldAccessRule.questionId))
     .where(
       and(eq(sensitiveFieldAccessRule.id, ruleId), eq(sensitiveFieldAccessRule.communityId, actor.communityId)),
     );
   if (!existing) {
     throw new NotFoundError("Rule not found");
   }
-  await db.delete(sensitiveFieldAccessRule).where(eq(sensitiveFieldAccessRule.id, ruleId));
+
+  await db.transaction(async (tx) => {
+    await tx.delete(sensitiveFieldAccessRule).where(eq(sensitiveFieldAccessRule.id, ruleId));
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "sensitive_field_rule",
+      action: "deleted",
+      entityId: ruleId,
+      entityLabel: existing.label,
+      current: existing,
+      changes: {
+        question: existing.label ?? "a question that no longer exists",
+        unlockedByTaskId: null,
+        unlockedByTierId: null,
+        unlockedByGrantModuleKey: null,
+      },
+    });
+  });
 }
 
 /**

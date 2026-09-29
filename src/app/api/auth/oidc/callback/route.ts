@@ -71,6 +71,7 @@ export async function GET(request: NextRequest) {
   const memberRow = await findOrCreateMemberByOidcSubject(community, {
     sub: result.sub,
     email: result.email,
+    emailVerified: result.emailVerified,
     name: result.name,
   });
   await createSession(memberRow.id);

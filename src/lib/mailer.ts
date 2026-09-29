@@ -129,6 +129,25 @@ export async function sendTaskNominationEmail(
   );
 }
 
+// "Confirm this address receives mail" — the last step before a member
+// points their delivery at it, and therefore everything
+// `contact_method.verified_at` is asserting. One action, one URL, and no
+// login needed to read it: the token carries the member id, so this points
+// at /profile?verify=… rather than a route of its own, and the profile
+// consumes the token on arrival.
+export async function sendEmailVerificationEmail(email: string, url: string) {
+  const subject = "Confirm this email address";
+  const text = [
+    `Someone asked to make ${email} the address Orchard emails them at.`,
+    ``,
+    `Confirm it here:`,
+    url,
+    ``,
+    `The link works once and lasts a day. If you didn't ask for this, ignore it — the address stays exactly as it was.`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `email verification for ${email}:\n${url}`);
+}
+
 // A plain outbound message (targeted or community-wide announcement) —
 // see docs/spec.md's Outbound communications and
 // docs/development-plan.md's Phase 53. One-way, no action tokens: "a

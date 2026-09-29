@@ -59,8 +59,8 @@ export default function CommunityIndicators({
         Chosen by this community from its own standing questions. Everyone here chose to answer their
         own; nobody is named.
         {/* Only stated when the population isn't the whole community —
-            on /community it would just be noise, and the heading already
-            says who's being described. */}
+            on /members, which asks for no scope, it would just be noise,
+            and the heading already says who's being described. */}
         {scope.kind === "event" ? (
           <>
             {" "}

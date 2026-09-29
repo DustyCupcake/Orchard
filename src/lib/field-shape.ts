@@ -406,21 +406,52 @@ export function formatFieldValue(value: unknown, responseType: string): string {
   return value;
 }
 
+/**
+ * One choice submission, read back: the real options ticked, plus the
+ * escape hatch's text if — and only if — the member ticked its marker.
+ *
+ * The single definition, because two readers had this logic inline and
+ * they must not disagree about when a typed answer counts. `forms.ts`'s
+ * `formValuesFromFormData` is the batch twin of
+ * `fieldValueFromFormData` below, and a Form response and a ProfileQuestion
+ * answer are the same shape read the same way.
+ *
+ * **The marker gates the text, and the form ticks it for you.** That is the
+ * whole design of the control: `OtherFieldInput` ticks the marker on the
+ * first keystroke, so "typed an answer" and "said they want it counted" are
+ * the same state by the time anyone could submit, and unticking afterwards
+ * is a deliberate retraction rather than a box somebody failed to notice.
+ * The earlier behaviour — read the text whenever it was non-empty, marker or
+ * not — was forgiving, and its cost was a control that decided nothing:
+ * unticking it changed no outcome, so the pair of controls was really one
+ * control wearing a disguise.
+ *
+ * A ticked real option still outranks the text for pick-one. That ordering
+ * is what the sibling name exists for: the two can both be present in one
+ * submission, and without it the winner would depend on DOM order.
+ *
+ * `shape.allowOther` is re-checked here, not trusted from the submission, so
+ * a forged POST naming the marker on a question with no escape hatch still
+ * yields no free text.
+ */
+export function choiceValuesFromFormData(shape: FieldShape, formData: FormData, name: string): string[] {
+  const ticked = formData.getAll(name).map(String);
+  const chosen = ticked.filter((v) => shape.options.includes(v));
+  const marked = ticked.includes(OTHER_MARKER_VALUE);
+  const otherText = marked ? String(formData.get(otherInputName(name)) ?? "").trim() : "";
+  const freeText = otherText && shape.allowOther ? [otherText] : [];
+  return [...chosen, ...freeText];
+}
+
 // A submitted field read back out of a FormData, given the shape it was
-// rendered from. The same logic the Form path uses
-// (forms.ts's formValuesFromFormData) reduced to one field, so a
-// ProfileQuestion answer and a Form response are read identically —
-// including the escape hatch's sibling text input, and a multi_choice's
-// several values under one name.
+// rendered from. The Form path uses `formValuesFromFormData`, which reads
+// its choice values through `choiceValuesFromFormData` above — so a
+// ProfileQuestion answer and a Form response cannot disagree about the
+// escape hatch.
 export function fieldValueFromFormData(shape: FieldShape, formData: FormData, name: string): unknown {
   if (isChoiceType(shape.responseType)) {
-    const ticked = formData.getAll(name).map(String);
-    const chosen = ticked.filter((v) => shape.options.includes(v));
-    const otherText = String(formData.get(otherInputName(name)) ?? "").trim();
-    const freeText = otherText && shape.allowOther ? [otherText] : [];
-    return shape.responseType === "multi_choice"
-      ? [...chosen, ...freeText]
-      : (chosen[0] ?? freeText[0] ?? "");
+    const values = choiceValuesFromFormData(shape, formData, name);
+    return shape.responseType === "multi_choice" ? values : (values[0] ?? "");
   }
   return String(formData.get(name) ?? "");
 }
@@ -477,12 +508,85 @@ export function toEditableFieldShape(input: {
   };
 }
 
-// A choice field's options with the escape hatch appended when it's on,
-// so a renderer and a validator agree on the full set. The hatch is a
-// rendering concern only — the text it collects is stored as an ordinary
-// string (see validateFieldValue's single_choice/multi_choice cases), so
-// nothing downstream needs to know this function exists.
+// The escape hatch's marker: what the checkbox/radio beside the "other"
+// text field submits under the field's own name.
+//
+// Its own constant because it is a contract, not a label. The renderer
+// emits it, `otherInputName`'s sibling text is read back independently of
+// it (see `fieldValueFromFormData` — the text counts whenever it is
+// non-empty), and the review surfaces have counted a bucket of their own
+// under the same word. Two spellings of it in a codebase this particular
+// about one-definition rules would be asking for the bug where an
+// indicator's "Something else" row and a report's "Other" row mean the
+// same thing and say different names.
+export const OTHER_MARKER_VALUE = "Other";
+
+/**
+ * What a *count* of unlisted values is called, as distinct from what the
+ * control they came from is called.
+ *
+ * The distinction is not pedantry. The catch-all is not only "somebody wrote
+ * their own words": an answer holding the label of an option an Admin
+ * *deleted* after people answered also matches no current option, and this
+ * bucket is where it lands. "Other" would assert a provenance that cannot be
+ * recovered from the stored value, so the count takes a name neutral about
+ * the cause — and, not coincidentally, it is the name the community indicator
+ * already used, so the two aggregates of the same answers stop disagreeing.
+ */
+export const CATCH_ALL_LABEL = "Something else";
+
+/**
+ * Count a batch of choice answers into their real options plus a catch-all.
+ *
+ * One definition because two aggregates needed it and one of them got it
+ * wrong: the published indicator counted anything unrecognised into a
+ * "Something else" row, while `/members/data`'s per-option breakdown offered
+ * a row literally labelled "Other" and then only incremented rows whose label
+ * equalled the stored value. Since free text *is* the member's own words and
+ * never equals the string "Other", that row was structurally guaranteed to
+ * read zero — a plausible-looking chip that could never report anything.
+ *
+ * Every value that is a string and matches no option lands in the catch-all,
+ * which is what makes the number above mean anything: it counts what it
+ * claims to count instead of dropping what it doesn't recognise. Scalars and
+ * arrays are both accepted, because a `single_choice` answer is a bare string
+ * and a `multi_choice` one is a list.
+ *
+ * Whether to *show* a zero catch-all is left to the caller, because the two
+ * want different things: the indicator omits it when empty, while the
+ * member-data grid deliberately shows unpicked options at zero so the shape
+ * of the answer is visible rather than inferred from an absent row.
+ */
+export function tallyChoiceValues(
+  answerValues: unknown[],
+  options: string[],
+): { counts: Map<string, number>; otherCount: number } {
+  const counts = new Map<string, number>(options.map((o) => [o, 0]));
+  let otherCount = 0;
+  for (const value of answerValues) {
+    for (const v of Array.isArray(value) ? value : [value]) {
+      if (typeof v !== "string") continue;
+      if (counts.has(v)) {
+        counts.set(v, (counts.get(v) ?? 0) + 1);
+      } else {
+        otherCount++;
+      }
+    }
+  }
+  return { counts, otherCount };
+}
+
+// A choice field's options, with the escape hatch appended when it's on.
+//
+// No longer what the renderer draws — the hatch is its own row, marker
+// beside its text field, rather than one more entry in this list — so
+// nothing should read this as "the rows a member sees". It stays because
+// it remains the one place that knows the hatch belongs to the option set
+// at all, and because the stored answer is an ordinary string in an
+// option's own slot (see `validateFieldValue`'s single_choice and
+// multi_choice cases), which means no reader of a *stored* answer needs
+// it either.
 export function optionsWithOther(shape: FieldShape): { value: string; label: string; isOther: boolean }[] {
   const base = shape.options.map((o) => ({ value: o, label: o, isOther: false }));
-  return shape.allowOther ? [...base, { value: "Other", label: "Other", isOther: true }] : base;
+  return shape.allowOther ? [...base, { value: OTHER_MARKER_VALUE, label: OTHER_MARKER_VALUE, isOther: true }] : base;
 }

@@ -23,6 +23,32 @@ export const contactMethod = pgTable("contact_method", {
   type: text("type").notNull(),
   value: text("value").notNull(),
   visibility: contactMethodVisibilityEnum("visibility").notNull().default("everyone"),
+  // The one address the platform sends *this member's own* email to —
+  // announcements, targeted messages, task nominations, backstop alerts.
+  //
+  // Until this existed, every one of those read `memberIdentity.loginEmail`
+  // instead, which no member could see or change: /profile offered a
+  // contact-method form, and nothing anywhere ever sent mail to what came
+  // out of it. So a second email was decorative and the address actually
+  // in use was invisible. At most one primary per member, enforced in
+  // src/lib/contact-methods.ts (clear-then-set in one transaction) rather
+  // than by a partial unique index, because "at most one" is an
+  // application rule about *which* row moves and this table's other
+  // invariants already live there.
+  //
+  // Deliberately independent of `visibility`. Visibility is about who else
+  // may *read* the row; this is about who the platform *writes* to. The
+  // seeded primary row is emergency-only precisely because those are
+  // orthogonal — a member's delivery address need not be on their public
+  // profile, and most will not want it there.
+  isPrimary: boolean("is_primary").notNull().default(false),
+  // Set by clicking a link mailed to `value`, and **cleared whenever
+  // `value` changes** — verification is a fact about an address, so editing
+  // the address is what invalidates it. Required before a row can be
+  // primary, which is the only thing this gate is protecting: without it,
+  // pointing delivery at an address you don't control would be a way to
+  // aim the community's mail at a stranger.
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

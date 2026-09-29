@@ -9,12 +9,13 @@ import {
   TEXT_VALIDATIONS,
   isBlankValue,
   isChoiceType,
-  otherInputName,
+  choiceValuesFromFormData,
   toFieldShape,
   validateFieldValue,
   type FieldShape,
 } from "./field-shape";
 import { isModuleOpenToEveryone, listGrantingTaskIds } from "./permissions";
+import { recordSettingChanges } from "./settings/history";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -107,15 +108,16 @@ export function formValuesFromFormData(
     const name = `${namePrefix}${f.key}`;
     if (isChoiceType(f.responseType)) {
       const shape = formFieldShape(f);
-      const ticked = formData.getAll(name).map(String);
-      const chosen = ticked.filter((v) => shape.options.includes(v));
-      const otherText = String(formData.get(otherInputName(name)) ?? "").trim();
-      const freeText = otherText && shape.allowOther ? [otherText] : [];
+      // The same reader the single-field path uses, so a Form response and a
+      // ProfileQuestion answer cannot disagree about the escape hatch — and
+      // in particular cannot disagree about whether the marker gates the
+      // text. See field-shape.ts's choiceValuesFromFormData.
+      const read = choiceValuesFromFormData(shape, formData, name);
       if (f.responseType === "multi_choice") {
-        values[f.key] = [...chosen, ...freeText];
+        values[f.key] = read;
       } else {
         // A single choice is one value; a ticked option outranks any text.
-        values[f.key] = chosen[0] ?? freeText[0] ?? "";
+        values[f.key] = read[0] ?? "";
       }
       continue;
     }
@@ -239,18 +241,34 @@ export async function createForm(actor: Member, input: CreateFormInput) {
   requireValidFields(input.fields);
   await requireValidMappedProfileQuestions(actor.communityId, input.fields);
 
-  const [created] = await db
-    .insert(form)
-    .values({
-      communityId: actor.communityId,
-      title: input.title,
-      description: input.description ?? null,
-      fields: input.fields,
-      allowAnonymous: input.allowAnonymous ?? false,
-      createdBy: actor.id,
-    })
-    .returning();
-  return created;
+  return db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(form)
+      .values({
+        communityId: actor.communityId,
+        title: input.title,
+        description: input.description ?? null,
+        fields: input.fields,
+        allowAnonymous: input.allowAnonymous ?? false,
+        createdBy: actor.id,
+      })
+      .returning();
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "form",
+      action: "created",
+      entityId: created.id,
+      entityLabel: created.title,
+      current: {},
+      changes: {
+        title: created.title,
+        description: created.description,
+        questions: summarizeFields(created.fields),
+        allowAnonymous: created.allowAnonymous,
+      },
+    });
+    return created;
+  });
 }
 
 // fields is now editable too (docs/development-plan.md's Phase 58 —
@@ -281,44 +299,89 @@ export async function updateForm(actor: Member, formId: string, input: UpdateFor
     await requireValidMappedProfileQuestions(actor.communityId, input.fields);
   }
 
-  const [updated] = await db
-    .update(form)
-    .set({
-      ...(input.title !== undefined && { title: input.title }),
-      ...(input.description !== undefined && { description: input.description }),
-      ...(input.fields !== undefined && { fields: input.fields }),
-    })
-    .where(and(eq(form.id, formId), eq(form.communityId, actor.communityId)))
-    .returning();
-  if (!updated) {
-    throw new NotFoundError("Form not found");
-  }
-  return updated;
+  return db.transaction(async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(form)
+      .where(and(eq(form.id, formId), eq(form.communityId, actor.communityId)));
+    if (!before) {
+      throw new NotFoundError("Form not found");
+    }
+
+    const [row] = await tx
+      .update(form)
+      .set({
+        ...(input.title !== undefined && { title: input.title }),
+        ...(input.description !== undefined && { description: input.description }),
+        ...(input.fields !== undefined && { fields: input.fields }),
+      })
+      .where(and(eq(form.id, formId), eq(form.communityId, actor.communityId)))
+      .returning();
+
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "form",
+      action: "updated",
+      entityId: formId,
+      entityLabel: row.title,
+      current: { ...before, questions: summarizeFields(before.fields) },
+      // `fields` is replaced by `questions` on both sides, because the raw
+      // jsonb is a list of objects that describesChange would truncate to
+      // "[object Object]" — the log needs the labels, not the shape.
+      changes: { ...input, fields: undefined, questions: summarizeFields(row.fields) },
+    });
+    return row;
+  });
+}
+
+/** A form's questions as one readable line, for the change log. */
+function summarizeFields(fields: unknown): string {
+  if (!Array.isArray(fields)) return "—";
+  const labels = fields.map((f) => {
+    const o = f as { label?: unknown; key?: unknown };
+    return typeof o.label === "string" ? o.label : String(o.key ?? "?");
+  });
+  if (labels.length === 0) return "no questions";
+  return `${labels.length} question${labels.length === 1 ? "" : "s"}: ${labels.join(", ")}`;
 }
 
 // Archive, not delete — past responses stay attached to a real form.
+// One helper for both directions, as with trait axes above.
+async function setFormArchived(actor: Member, formId: string, archived: boolean, action: "archived" | "unarchived") {
+  return db.transaction(async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(form)
+      .where(and(eq(form.id, formId), eq(form.communityId, actor.communityId)));
+    if (!before) {
+      throw new NotFoundError("Form not found");
+    }
+
+    const [row] = await tx
+      .update(form)
+      .set({ archivedAt: archived ? new Date() : null })
+      .where(and(eq(form.id, formId), eq(form.communityId, actor.communityId)))
+      .returning();
+
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "form",
+      action,
+      entityId: formId,
+      entityLabel: row.title,
+      current: before,
+      changes: { archivedAt: row.archivedAt },
+    });
+    return row;
+  });
+}
+
 export async function archiveForm(actor: Member, formId: string) {
-  const [updated] = await db
-    .update(form)
-    .set({ archivedAt: new Date() })
-    .where(and(eq(form.id, formId), eq(form.communityId, actor.communityId)))
-    .returning();
-  if (!updated) {
-    throw new NotFoundError("Form not found");
-  }
-  return updated;
+  return setFormArchived(actor, formId, true, "archived");
 }
 
 export async function unarchiveForm(actor: Member, formId: string) {
-  const [updated] = await db
-    .update(form)
-    .set({ archivedAt: null })
-    .where(and(eq(form.id, formId), eq(form.communityId, actor.communityId)))
-    .returning();
-  if (!updated) {
-    throw new NotFoundError("Form not found");
-  }
-  return updated;
+  return setFormArchived(actor, formId, false, "unarchived");
 }
 
 export async function listForms(actor: Member, options: { includeArchived?: boolean } = {}) {

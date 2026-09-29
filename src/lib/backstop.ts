@@ -1,9 +1,10 @@
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
-import { member, memberIdentity, permissionGrant, task, taskAssignment } from "@/db/schema";
+import { member, permissionGrant, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ForbiddenError } from "./errors";
 import { sendBackstopHardFlagEmail } from "./mailer";
+import { resolvePrimaryEmail } from "./contact-methods";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -135,14 +136,10 @@ export async function notifyBackstopOfHardFlag(input: {
   const holder = await resolveBackstopHolder(input.communityId, input.cycleId);
   if (!holder || !holder.emailNotificationsEnabled) return;
 
-  const [identity] = await db
-    .select({ email: memberIdentity.loginEmail })
-    .from(memberIdentity)
-    .where(and(eq(memberIdentity.memberId, holder.id), inArray(memberIdentity.provider, ["magic_link", "oidc"])))
-    .limit(1);
-  if (!identity) return;
+  const address = await resolvePrimaryEmail(holder.id);
+  if (!address) return;
 
-  await sendBackstopHardFlagEmail(identity.email, {
+  await sendBackstopHardFlagEmail(address, {
     taskTitle: input.taskTitle,
     taskUrl: `/tasks/${input.taskId}`,
   });

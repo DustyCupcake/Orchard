@@ -1,9 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { maybeSeedDefaultProfileQuestions } from "./profile-questions/defaults";
-import { member, memberIdentity, community as communityTable } from "@/db/schema";
+import { member, memberIdentity, community as communityTable, contactMethod } from "@/db/schema";
 import { isModuleEnabled } from "./modules";
 import { isOidcConfigured } from "./oidc";
+import { seedPrimaryContactMethod } from "./contact-methods";
 
 // Finds the Member already linked to this email via a magic_link
 // identity, or creates both a new Member and that identity — first
@@ -44,6 +45,27 @@ export async function findOrCreateMemberByEmail(community: typeof communityTable
     return existingOidc.member;
   }
 
+  // And the member's own *primary* address, which is the one they were told
+  // their email goes to. Without this, moving your primary to a second
+  // address would move every notification but leave you unable to log in
+  // there — a "this is where we email you" that isn't true of the one
+  // thing this app emails you about most.
+  //
+  // This is not a credential store: a match still only produces a link
+  // *sent to that address*, so what proves you is possession of the inbox,
+  // exactly as above. A member who points their primary at an address they
+  // don't control has misconfigured their own account, and gets no further
+  // than a link nobody receives.
+  const [existingPrimary] = await db
+    .select({ member })
+    .from(contactMethod)
+    .innerJoin(member, eq(contactMethod.memberId, member.id))
+    .where(and(eq(contactMethod.isPrimary, true), eq(contactMethod.value, email)));
+
+  if (existingPrimary) {
+    return existingPrimary.member;
+  }
+
   // Once a Community has SSO configured *and* made it primary (a
   // separate opt-in — oidcPrimary — from merely having OIDC working;
   // see src/db/schema/community.ts's own comment), magic-link stops
@@ -71,6 +93,13 @@ export async function findOrCreateMemberByEmail(community: typeof communityTable
       provider: "magic_link",
       loginEmail: email,
     });
+
+    // Verified without asking: a magic link only ever arrives at an address
+    // its recipient controls, and reaching this line at all means this
+    // person clicked the one that did. Same transaction as the identity it
+    // mirrors, so a member never exists without somewhere their own mail
+    // can go.
+    await seedPrimaryContactMethod(tx, created.id, email, { verified: true });
 
     return created;
   });
@@ -101,7 +130,7 @@ export async function findOrCreateMemberByEmail(community: typeof communityTable
 // never checks the role gate itself.
 export async function findOrCreateMemberByOidcSubject(
   community: { id: string },
-  input: { sub: string; email: string; name: string | null },
+  input: { sub: string; email: string; emailVerified: boolean | null; name: string | null },
 ) {
   const [existing] = await db
     .select({ member, identity: memberIdentity })
@@ -136,6 +165,15 @@ export async function findOrCreateMemberByOidcSubject(
       providerSubject: input.sub,
       loginEmail: input.email,
     });
+
+    // Seeded from the IdP's own assertion, and marked verified only when the
+    // IdP actually verified it. An IdP that returns `email` with no
+    // `email_verified` is common, and treating that silence as proof is
+    // precisely how an unverified claim would end up looking like a
+    // confirmed one — so those members get an unverified primary and a
+    // one-click link to confirm it, which is the same path anyone adding a
+    // second address takes.
+    await seedPrimaryContactMethod(tx, created.id, input.email, { verified: input.emailVerified === true });
 
     return created;
   });

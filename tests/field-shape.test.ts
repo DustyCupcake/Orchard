@@ -10,6 +10,7 @@ import {
   isChoiceType,
   isTextType,
   otherInputName,
+  OTHER_MARKER_VALUE,
   responseTypeNoun,
   toFieldShape,
   validateFieldValue,
@@ -103,29 +104,34 @@ describe("fieldValueFromFormData: reading a submission back", () => {
     fd.append("value", "north");
     fd.append(otherInputName("value"), "the hill");
     // The sibling input is named so a real option and free text can both
-    // be present in one submission without colliding on the name.
+    // be present in one submission without colliding on the name. The
+    // marker isn't sent at all, so the text is not even considered.
     expect(fieldValueFromFormData(shape({ allowOther: true }), fd, "value")).toBe("north");
   });
 
-  it("uses the escape-hatch text when no option is ticked", () => {
+  it("uses the escape-hatch text when the marker is ticked and no option is", () => {
     const fd = new FormData();
+    fd.append("value", OTHER_MARKER_VALUE);
     fd.append(otherInputName("value"), "  the hill  ");
     expect(fieldValueFromFormData(shape({ allowOther: true }), fd, "value")).toBe("the hill");
   });
 
   it("ignores the escape-hatch text when the question doesn't offer one", () => {
     const fd = new FormData();
+    fd.append("value", OTHER_MARKER_VALUE);
     fd.append(otherInputName("value"), "the hill");
     // Otherwise a stray input would put an answer on a question whose
     // options don't include it, which the validator would then reject as
     // an invalid option — a confusing error for something the member
-    // couldn't see.
+    // couldn't see. The marker arriving from a forged POST is checked
+    // against the shape rather than trusted.
     expect(fieldValueFromFormData(shape({}), fd, "value")).toBe("");
   });
 
   it("appends the escape-hatch text to a picked set rather than replacing it", () => {
     const fd = new FormData();
     fd.append("value", "north");
+    fd.append("value", OTHER_MARKER_VALUE);
     fd.append(otherInputName("value"), "the hill");
     expect(
       fieldValueFromFormData(
@@ -134,6 +140,56 @@ describe("fieldValueFromFormData: reading a submission back", () => {
         "value",
       ),
     ).toEqual(["north", "the hill"]);
+  });
+
+  // The gate itself, and the two states either side of it. The form ticks the
+  // marker on the first keystroke (`OtherFieldInput`), which is what makes
+  // "typed" and "marked" the same state by the time anyone can submit — so
+  // the gate below cannot silently swallow a typed answer.
+  it("discards the text when the marker is unticked, and that is a deliberate retraction", () => {
+    const fd = new FormData();
+    fd.append(otherInputName("value"), "the hill");
+    // Text present, marker absent. The member typed, watched the box tick
+    // itself, and then unticked it — which is a statement that this text is
+    // not their answer. Reading it anyway would make the control inert
+    // again, which is the bug this gate exists to close.
+    expect(fieldValueFromFormData(shape({ allowOther: true }), fd, "value")).toBe("");
+  });
+
+  it("discards the text for a picked set too, so unticking actually withdraws it", () => {
+    // The multi_choice half of the same retraction: a member who ticks
+    // "north", types an alternative, and then un-ticks must be left with
+    // just "north" rather than silently keeping words they withdrew.
+    const fd = new FormData();
+    fd.append("value", "north");
+    fd.append(otherInputName("value"), "the hill");
+    expect(
+      fieldValueFromFormData(shape({ responseType: "multi_choice", allowOther: true }), fd, "value"),
+    ).toEqual(["north"]);
+  });
+
+  it("reads a ticked marker with an empty field as no answer, not an empty one", () => {
+    // The marker and its field are separate controls, so they can disagree.
+    // Ticking and leaving the field blank must not store "" as though the
+    // member had answered — for a required question `validateFieldValue`'s
+    // blank check then reports it as owed, which is the right outcome.
+    const fd = new FormData();
+    fd.append("value", OTHER_MARKER_VALUE);
+    fd.append(otherInputName("value"), "");
+    expect(fieldValueFromFormData(shape({ allowOther: true }), fd, "value")).toBe("");
+  });
+
+  it("keeps the marker on the field's own name and the text on its sibling", () => {
+    // Exactly what OtherFieldInput emits. If either half moved, every answer
+    // given in someone's own words would stop being read back — so this is
+    // asserted rather than trusted.
+    const fd = new FormData();
+    fd.append("value", OTHER_MARKER_VALUE);
+    fd.append(otherInputName("value"), "  the hill  ");
+    expect(fieldValueFromFormData(shape({ allowOther: true }), fd, "value")).toBe("the hill");
+    // And the marker is the one value the renderer uses, not a second
+    // spelling of it.
+    expect(OTHER_MARKER_VALUE).toBe("Other");
   });
 });
 

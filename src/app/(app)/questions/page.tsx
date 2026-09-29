@@ -4,6 +4,7 @@ import { getViewingContext } from "@/lib/view-as";
 import { listOutstandingQuestions } from "@/lib/profile-questions";
 import { toFieldShape } from "@/lib/field-shape";
 import { listOpenCycles } from "@/lib/cycles";
+import { listAudienceConsentsForAnswers, listAudiencesForQuestions, type Audience } from "@/lib/sensitive-data";
 import ProfileQuestionForm from "@/components/ProfileQuestionForm";
 import { Banner, CARD } from "@/components/ui/kit";
 import { submitQuestionAnswerAction } from "./actions";
@@ -52,6 +53,22 @@ export default async function QuestionsPage({
   const perEvent = outstanding.filter((o) => o.question.scope === "per_cycle");
   const perPhase = outstanding.filter((o) => o.question.scope === "phase");
 
+  // Who may read each of these questions, named. The answer form asks for
+  // consent to the audiences that are actually on, one box each, and a form
+  // cannot enumerate its own audiences — so the page resolves them and hands
+  // them in. One batched read for the whole page, not one per question: this
+  // page renders every outstanding question at once.
+  const audiencesByQuestion = await listAudiencesForQuestions(
+    viewing.communityId,
+    outstanding.map((o) => o.question.id),
+  );
+  // Which of them each already-answered question has agreed to, so a member
+  // returning to fix one field isn't shown boxes that don't match the
+  // decisions they already made.
+  const consentsByAnswer = await listAudienceConsentsForAnswers(
+    outstanding.map((o) => o.existingAnswer?.id).filter((id): id is string => Boolean(id)),
+  );
+
   return (
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
       <h1 className="text-[32px] font-semibold leading-tight text-[var(--text)]">Your questions</h1>
@@ -93,6 +110,8 @@ export default async function QuestionsPage({
             title="About you, once"
             blurb="These don't change between events — answer them once and you're done."
             items={onceEver}
+            audiencesByQuestion={audiencesByQuestion}
+            consentsByAnswer={consentsByAnswer}
             cycleId={null}
           />
           {perEvent.length > 0 && (
@@ -100,6 +119,8 @@ export default async function QuestionsPage({
               title={focus ? `For ${focus.name}` : "For your current event"}
               blurb="Asked fresh for each event, since the answer can legitimately differ every time."
               items={perEvent}
+              audiencesByQuestion={audiencesByQuestion}
+              consentsByAnswer={consentsByAnswer}
               cycleId={focusCycleId}
             />
           )}
@@ -108,6 +129,8 @@ export default async function QuestionsPage({
               title="For this phase of the event"
               blurb="Asked again as the event moves through its phases."
               items={perPhase}
+              audiencesByQuestion={audiencesByQuestion}
+              consentsByAnswer={consentsByAnswer}
               cycleId={focusCycleId}
             />
           )}
@@ -121,11 +144,15 @@ function QuestionGroup({
   title,
   blurb,
   items,
+  audiencesByQuestion,
+  consentsByAnswer,
   cycleId,
 }: {
   title: string;
   blurb: string;
   items: Awaited<ReturnType<typeof listOutstandingQuestions>>;
+  audiencesByQuestion: Map<string, Audience[]>;
+  consentsByAnswer: Map<string, Set<string>>;
   // Stamped onto each form so a per-event answer lands against the event
   // this page is focused on rather than whatever the member last declared
   // on. Null for the once-ever group, which never carries an event.
@@ -159,7 +186,22 @@ function QuestionGroup({
               feedsCapacitySignal={question.feedsCapacitySignal}
               allowDeferral={question.allowDeferral}
               allowPreferNotToSay={question.allowPreferNotToSay}
-              sensitive={question.sensitive}
+              publishedAsIndicator={question.publishedAsIndicator}
+              emergencyAccess={question.emergencyAccess}
+              access={
+                question.sensitive
+                  ? {
+                      kind: "restricted",
+                      audiences: audiencesByQuestion.get(question.id) ?? [],
+                      // Only a real answer has consents to restore; a
+                      // deferral holds nothing, so its boxes start where
+                      // the next real answer would.
+                      defaultSharedRuleIds: existingAnswer
+                        ? [...(consentsByAnswer.get(existingAnswer.id) ?? [])]
+                        : undefined,
+                    }
+                  : { kind: "public" }
+              }
             />
           </div>
         ))}

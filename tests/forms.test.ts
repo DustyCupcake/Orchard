@@ -242,22 +242,35 @@ describe("Form submissions validate against their fields", () => {
       ],
     });
 
-    // What a browser posts for "they/them" plus text in the other box.
+    // What a browser posts for "they/them" plus an escape hatch that was
+    // marked and filled in: the marker under the field's own name, the text
+    // under its sibling.
     const fd = new FormData();
     fd.append("field_pronouns", "they/them");
-    fd.append("field_pronouns__other", "xe/xem");
     fd.append("field_needs", "bed");
+    fd.append("field_needs", "Other");
     fd.append("field_needs__other", "a tent pole");
     const values = formValuesFromFormData(form.fields as FormField[], fd);
 
     expect(values).toEqual({ pronouns: "they/them", needs: ["bed", "a tent pole"] });
 
-    // A ticked real option outranks leftover text in the other box.
+    // A ticked real option outranks text in the other box, because a
+    // pick-one can only have been submitted with one radio checked.
     const onlyOption = new FormData();
     onlyOption.append("field_pronouns", "they/them");
     onlyOption.append("field_pronouns__other", "leftover typing");
     expect(formValuesFromFormData(form.fields as FormField[], onlyOption)).toMatchObject({
       pronouns: "they/them",
+    });
+
+    // And text whose marker was never ticked is not read — the same gate
+    // the single-field path enforces, asserted here because this reader is a
+    // separate function that could drift from it.
+    const withdrawn = new FormData();
+    withdrawn.append("field_needs", "bed");
+    withdrawn.append("field_needs__other", "a tent pole");
+    expect(formValuesFromFormData(form.fields as FormField[], withdrawn)).toMatchObject({
+      needs: ["bed"],
     });
   });
 
@@ -487,7 +500,7 @@ describe("post-cycle feedback consumer", () => {
       updateCommunity(alice, { postCycleFeedbackFormId: strangerForm.id }),
     ).rejects.toThrow(NotFoundError);
     await expect(
-      setPermissionGrant(alice.communityId, "feedback_review", strangerTask.id),
+      setPermissionGrant(alice, "feedback_review", strangerTask.id),
     ).rejects.toThrow(NotFoundError);
   });
 });

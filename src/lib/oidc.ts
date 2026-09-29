@@ -107,6 +107,17 @@ export function hasRequiredRole(
 export interface OidcLoginResult {
   sub: string;
   email: string;
+  /**
+   * The standard `email_verified` claim, or null when the IdP doesn't send
+   * one.
+   *
+   * Kept as three states on purpose rather than a boolean: plenty of IdPs
+   * return an `email` claim with no verification status at all, and
+   * collapsing "said no" into "said nothing" would make an unverified claim
+   * indistinguishable from a confirmed one. Callers use it to decide
+   * whether the address they provision is a proven one.
+   */
+  emailVerified: boolean | null;
   name: string | null;
   hasRequiredRole: boolean;
 }
@@ -136,6 +147,11 @@ export async function handleOidcCallback(
   return {
     sub: claims.sub,
     email: claims.email,
+    // Absent claim → null, not false. An IdP that has no opinion about
+    // verification is not the same as one asserting the address is
+    // unverified, and only the first of those is safe to provision a
+    // primary from.
+    emailVerified: typeof claims.email_verified === "boolean" ? claims.email_verified : null,
     name: typeof claims.name === "string" ? claims.name : null,
     hasRequiredRole: hasRequiredRole(claims as Record<string, unknown>, community.oidcRequiredRole),
   };

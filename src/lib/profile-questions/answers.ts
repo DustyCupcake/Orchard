@@ -8,7 +8,7 @@ import { toFieldShape, validateFieldValue, type TextValidation } from "../field-
 import { phaseForCycle } from "./capacity";
 import { getMemberDeclaredCycleId } from "../participation";
 import { getGatingPurposesForQuestions, hasActiveConsent } from "../consent";
-import { consentAnswerToCurrentAudience, resolveReadableQuestions } from "../sensitive-data";
+import { consentAnswerToCurrentAudience, listAudienceRuleIds, resolveReadableQuestions } from "../sensitive-data";
 
 type Member = typeof memberTable.$inferSelect;
 type ProfileQuestion = typeof profileQuestionTable.$inferSelect;
@@ -54,7 +54,20 @@ export const submitAnswerInput = z.object({
   // *sensitive* question. Only offered there, and forced back to true
   // elsewhere — see the write side below for why the column can never be
   // allowed to disagree with the question it belongs to.
+  //
+  // Kept as a boolean *and* superseded by `shareRuleIds`, because the two
+  // are different granularity and the form now offers one box per audience
+  // rather than a single tick for a set the member couldn't see. A caller
+  // that sends only the boolean is saying "the whole audience", which is
+  // what that control always meant; a caller that sends the ids is
+  // answering per audience, and its `shareWithAudience` is ignored. Both
+  // paths reach the same place, so the read side stays one definition.
   shareWithAudience: z.boolean().optional(),
+  // The specific audiences this member agreed to, when the form offered
+  // one box per audience. Ids the question doesn't currently have are
+  // intersected away by `consentAnswerToCurrentAudience`, so a forged POST
+  // granting a foreign rule grants nothing.
+  shareRuleIds: z.array(z.string()).optional(),
 });
 export type SubmitAnswerInput = z.infer<typeof submitAnswerInput>;
 
@@ -174,7 +187,30 @@ export async function answerProfileQuestion(
       ),
     );
 
-  const sharing = question.sensitive ? (input.shareWithAudience ?? true) : true;
+  // The member's per-audience choice, intersected against the question's
+  // own rules *before* the column is decided. Intersecting here rather than
+  // only inside `consentAnswerToCurrentAudience` is what keeps
+  // `shareWithAudience` honest: a forged or stale id leaves the chosen set
+  // empty, and the answer is then stored as unshared rather than as shared
+  // with an audience nothing can ever be. The consent intersection is
+  // repeated inside that function for its other callers, because failing
+  // closed is not something the write path should have to remember to do.
+  const chosenRuleIds =
+    input.shareRuleIds === undefined
+      ? undefined
+      : (await listAudienceRuleIds(questionId)).filter((id) => input.shareRuleIds!.includes(id));
+
+  // Two ways of saying the same thing, and the ids win when both arrive.
+  // "At least one audience" rather than "the form had boxes": a member who
+  // unticks every one of them has made the same choice the boolean's `false`
+  // always meant — reduce this to yourself and emergency — and the read
+  // path's Level-2 test is this column, so it has to be false for that to
+  // hold rather than true-with-no-consent-rows.
+  const sharing = question.sensitive
+    ? chosenRuleIds !== undefined
+      ? chosenRuleIds.length > 0
+      : (input.shareWithAudience ?? true)
+    : true;
   const row = {
     status: input.status,
     value,
@@ -204,14 +240,16 @@ export async function answerProfileQuestion(
       .where(eq(profileAnswer.id, existing.id))
       .returning();
     // Re-answering also re-consents, and for the same reason answering
-    // does: the member has just been shown the question and the audience
-    // it is shared with, and answering again is them agreeing to that
-    // audience afresh. It is also the only way a *new* rule ever reaches
-    // an old answer without a separate prompt — a member who already
-    // knows the question and re-answers it is agreeing to the audience
-    // that exists now, so making them find a separate "extend sharing"
-    // button for the same fact would be a second thing to remember.
-    await recordAudienceConsent(updated, question);
+    // does: the member has just been shown the question and the audiences
+    // it is shared with, and answering again is them agreeing to those
+    // audiences afresh — including the ones they had ticked last time,
+    // which is what keeps a re-save from silently *revoking* something
+    // they agreed to. It is also the only way a *new* rule ever reaches an
+    // old answer without a separate prompt — a member who already knows the
+    // question and re-answers it is agreeing to the audience that exists
+    // now, so making them find a separate "extend sharing" button for the
+    // same fact would be a second thing to remember.
+    await recordAudienceConsent(updated, question, chosenRuleIds);
     return updated;
   }
 
@@ -219,7 +257,7 @@ export async function answerProfileQuestion(
     .insert(profileAnswer)
     .values({ memberId: actor.id, questionId, cycleId, ...row })
     .returning();
-  await recordAudienceConsent(created, question);
+  await recordAudienceConsent(created, question, chosenRuleIds);
   return created;
 }
 
@@ -240,10 +278,11 @@ export async function answerProfileQuestion(
 async function recordAudienceConsent(
   answer: { id: string; status: string; shareWithAudience: boolean } | undefined,
   question: { id: string; sensitive: boolean },
+  ruleIds?: string[],
 ) {
   if (!answer) return 0;
   if (!question.sensitive || answer.status !== "answered" || !answer.shareWithAudience) return 0;
-  return consentAnswerToCurrentAudience(answer.id, question.id);
+  return consentAnswerToCurrentAudience(answer.id, question.id, ruleIds);
 }
 
 export type OutstandingQuestion = {

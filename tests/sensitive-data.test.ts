@@ -19,6 +19,8 @@ import {
   deleteSensitiveFieldAccessRule,
   listReadableSensitiveQuestionIds,
   listSensitiveFieldAccessRules,
+  listAudiencesForQuestions,
+  describeAudience,
   extendAnswerConsent,
   listPendingAudienceConsents,
   questionsReadableBy,
@@ -696,6 +698,245 @@ describe("widening an audience", () => {
     await expect(extendAnswerConsent(alice, answer.id, otherRule.id)).rejects.toThrow(
       /doesn't apply to this answer/,
     );
+  });
+});
+
+// What the answer form does now: one box per audience, so consent is
+// granted *and withdrawn* per group. The widening half of this was already
+// per (answer, rule) and is covered above; what is new here is that the
+// first asking is per audience too, so the two halves of the model finally
+// agree with each other.
+describe("consenting per audience on the answer form", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("shares with exactly the audiences ticked, and no others", async () => {
+    const { alice, community } = await createFixtures();
+    const welfare = await insertTier({ communityId: community.id }, "Welfare");
+    const kitchen = await insertTier({ communityId: community.id }, "Kitchen");
+    const medical = await insertTier({ communityId: community.id }, "Medical");
+    const question = await restrictedQuestion(alice, "Allergies", { unlockedByTierId: welfare.id });
+    for (const id of [kitchen.id, medical.id]) {
+      await createSensitiveFieldAccessRule(alice, { questionId: question.id, unlockedByTierId: id });
+    }
+    const rules = await listSensitiveFieldAccessRules(alice);
+    const byTier = (tierId: string) => rules.find((r) => r.unlockedByTierId === tierId)!.id;
+
+    // The form offered all three, and the member unticked the Medical Tier.
+    await answerProfileQuestion(alice, question.id, {
+      status: "answered",
+      value: "peanuts",
+      shareRuleIds: [byTier(welfare.id), byTier(kitchen.id)],
+    });
+
+    for (const [viewerTier, expected] of [
+      [welfare.id, true],
+      [kitchen.id, true],
+      [medical.id, false],
+    ] as const) {
+      const [viewer] = await db
+        .insert(memberTable)
+        .values({ communityId: community.id, name: `V-${viewerTier.slice(0, 4)}`, tierIds: [viewerTier] })
+        .returning();
+      const readable = await resolveReadableAnswersForCommunity(viewer);
+      expect(questionsReadableBy(readable, alice.id).has(question.id)).toBe(expected);
+    }
+  });
+
+  it("takes an audience *away* when a box is cleared on a re-save", async () => {
+    // The half that makes per-audience boxes worth having. Without the
+    // revoke, a control that could only ever add would be worse than the
+    // single box it replaced: the member would have no way to narrow
+    // sharing to a subset of what they'd already agreed to.
+    const { alice, community } = await createFixtures();
+    const welfare = await insertTier({ communityId: community.id }, "Welfare");
+    const kitchen = await insertTier({ communityId: community.id }, "Kitchen");
+    const question = await restrictedQuestion(alice, "Allergies", { unlockedByTierId: welfare.id });
+    const kitchenRule = await createSensitiveFieldAccessRule(alice, {
+      questionId: question.id,
+      unlockedByTierId: kitchen.id,
+    });
+    await answerProfileQuestion(alice, question.id, {
+      status: "answered",
+      value: "peanuts",
+      shareRuleIds: (await listSensitiveFieldAccessRules(alice)).map((r) => r.id),
+    });
+
+    const [kitchenReader] = await db
+      .insert(memberTable)
+      .values({ communityId: community.id, name: "Kitchen reader", tierIds: [kitchen.id] })
+      .returning();
+    expect(
+      questionsReadableBy(await resolveReadableAnswersForCommunity(kitchenReader), alice.id).has(question.id),
+    ).toBe(true);
+
+    // Same answer, saved again, with only the Welfare Tier still ticked.
+    const welfareRule = (await listSensitiveFieldAccessRules(alice)).find(
+      (r) => r.unlockedByTierId === welfare.id,
+    )!;
+    await answerProfileQuestion(alice, question.id, {
+      status: "answered",
+      value: "peanuts",
+      shareRuleIds: [welfareRule.id],
+    });
+
+    expect(
+      questionsReadableBy(await resolveReadableAnswersForCommunity(kitchenReader), alice.id).has(question.id),
+    ).toBe(false);
+    const [answer] = await db.select().from(profileAnswer).where(eq(profileAnswer.questionId, question.id));
+    const rows = await db
+      .select()
+      .from(profileAnswerRuleConsent)
+      .where(eq(profileAnswerRuleConsent.answerId, answer.id));
+    expect(rows.map((r) => r.ruleId)).toEqual([welfareRule.id]);
+    expect(rows.map((r) => r.ruleId)).not.toContain(kitchenRule.id);
+  });
+
+  it("stores the answer as unshared when every box is unticked", async () => {
+    // "Nobody on the list" is the same decision the old single box's
+    // unticked state meant — reduce to yourself and emergency — so the
+    // read path's Level-2 test has to see it as such rather than as
+    // "shared with an empty set".
+    const { alice } = await createFixtures();
+    const question = await restrictedQuestion(alice, "Allergies", {
+      unlockedByTierId: (await insertTier({ communityId: alice.communityId }, "Welfare")).id,
+    });
+    await answerProfileQuestion(alice, question.id, {
+      status: "answered",
+      value: "peanuts",
+      shareRuleIds: [],
+    });
+    const [answer] = await db.select().from(profileAnswer).where(eq(profileAnswer.questionId, question.id));
+    expect(answer.shareWithAudience).toBe(false);
+  });
+
+  it("grants nothing for a rule belonging to another question", async () => {
+    // A forged POST naming a foreign rule id must not consent to anything.
+    // The ids are intersected against the question's own rules rather than
+    // checked one by one, so this fails closed with no extra lookup.
+    const { alice, community } = await createFixtures();
+    const welfare = await insertTier({ communityId: community.id }, "Welfare");
+    const kitchen = await insertTier({ communityId: community.id }, "Kitchen");
+    const question = await restrictedQuestion(alice, "Allergies", { unlockedByTierId: welfare.id });
+    const foreign = await restrictedQuestion(alice, "Medication", { unlockedByTierId: kitchen.id });
+    const foreignRule = (await listSensitiveFieldAccessRules(alice)).find(
+      (r) => r.questionId === foreign.id,
+    )!;
+
+    await answerProfileQuestion(alice, question.id, {
+      status: "answered",
+      value: "peanuts",
+      shareRuleIds: [foreignRule.id],
+    });
+    // Not shared — and the foreign question is untouched by any of it.
+    const [answer] = await db.select().from(profileAnswer).where(eq(profileAnswer.questionId, question.id));
+    expect(answer.shareWithAudience).toBe(false);
+    const foreignConsent = await db
+      .select()
+      .from(profileAnswerRuleConsent)
+      .where(eq(profileAnswerRuleConsent.ruleId, foreignRule.id));
+    expect(foreignConsent).toEqual([]);
+  });
+
+  it("still consents the whole audience for a caller that sends only the boolean", async () => {
+    // The old call shape has to keep working and keep meaning what it
+    // meant: a surface with no per-audience UI really was offering one tick
+    // for the whole set, so treating it as consent to all of it is correct
+    // rather than a silent upgrade to per-audience.
+    const { alice, community } = await createFixtures();
+    const welfare = await insertTier({ communityId: community.id }, "Welfare");
+    const question = await restrictedQuestion(alice, "Allergies", { unlockedByTierId: welfare.id });
+    const [reader] = await db
+      .insert(memberTable)
+      .values({ communityId: community.id, name: "Welfare reader", tierIds: [welfare.id] })
+      .returning();
+
+    await answerProfileQuestion(alice, question.id, {
+      status: "answered",
+      value: "peanuts",
+      shareWithAudience: true,
+    });
+    expect(
+      questionsReadableBy(await resolveReadableAnswersForCommunity(reader), alice.id).has(question.id),
+    ).toBe(true);
+  });
+});
+
+describe("naming an audience", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("gives every audience on a question, by name", async () => {
+    const { alice, community } = await createFixtures();
+    const welfare = await insertTier({ communityId: community.id }, "Welfare");
+    const question = await restrictedQuestion(alice, "Allergies", { unlockedByTierId: welfare.id });
+    await createSensitiveFieldAccessRule(alice, { questionId: question.id, unlockedByGrantModuleKey: "kitchen" });
+
+    const audiences = await listAudiencesForQuestions(community.id, [question.id]);
+    expect(audiences.get(question.id)?.map((a) => a.label).sort()).toEqual([
+      "anyone holding a Kitchen grant",
+      "anyone in the Welfare Tier",
+    ]);
+  });
+
+  it("uses the same words the second asking does", async () => {
+    // The form and the widening prompt are the same consent asked twice.
+    // If they described the group differently, a member could agree to the
+    // Kitchen in one place and to something else in the other.
+    const { alice, community } = await createFixtures();
+    const welfare = await insertTier({ communityId: community.id }, "Welfare");
+    const question = await restrictedQuestion(alice, "Allergies", { unlockedByTierId: welfare.id });
+    await answerProfileQuestion(alice, question.id, {
+      status: "answered",
+      value: "peanuts",
+      // Ticking only the Welfare Tier leaves the Kitchen grant as the one
+      // audience still to be asked about, which is the prompt under test.
+      shareRuleIds: (await listSensitiveFieldAccessRules(alice)).map((r) => r.id),
+    });
+    await createSensitiveFieldAccessRule(alice, { questionId: question.id, unlockedByGrantModuleKey: "kitchen" });
+
+    const formLabels = (await listAudiencesForQuestions(community.id, [question.id]))
+      .get(question.id)!
+      .map((a) => a.label)
+      .sort();
+    const promptLabels = (await listPendingAudienceConsents(alice))
+      .filter((p) => p.kind === "audience")
+      .map((p) => p.audienceLabel)
+      .sort();
+    expect(promptLabels).toEqual(["anyone holding a Kitchen grant"]);
+    expect(formLabels).toEqual(expect.arrayContaining(promptLabels));
+  });
+
+  it("names a vanished Tier or Task rather than printing an id", () => {
+    // `describeAudience` is pure and this is its whole reason for existing:
+    // the fallback text. Reachable only if a referenced Tier or Task goes
+    // away — which the foreign keys on `sensitive_field_access_rule` in fact
+    // prevent — so the dangling state cannot be built in a database and is
+    // tested here instead. A member must never be asked to agree to
+    // "share with 7b3f…", and a map miss must not print one.
+    expect(
+      describeAudience({ unlockedByGrantModuleKey: null, unlockedByTierId: "tier-1", unlockedByTaskId: null }),
+    ).toBe("anyone in the Tier this Community has since removed Tier");
+    expect(
+      describeAudience({ unlockedByGrantModuleKey: null, unlockedByTierId: null, unlockedByTaskId: "task-1" }),
+    ).toBe("anyone holding the “Task this Community has since removed” Task");
+    // A rule carrying no route at all is readable by nobody, so calling it
+    // "another group in this Community" would be a lie a member is being
+    // asked to agree to.
+    expect(
+      describeAudience({ unlockedByGrantModuleKey: null, unlockedByTierId: null, unlockedByTaskId: null }),
+    ).toBe("a group with no audience");
+  });
+
+  it("reports nothing for a question with no audience at all", async () => {
+    // The form's "nobody else can read this" case depends on this being an
+    // empty list rather than a placeholder row.
+    const { alice } = await createFixtures();
+    const question = await ownerOnlyQuestion(alice, "Allergies");
+    const audiences = await listAudiencesForQuestions(alice.communityId, [question.id]);
+    expect(audiences.get(question.id)).toBeUndefined();
   });
 });
 

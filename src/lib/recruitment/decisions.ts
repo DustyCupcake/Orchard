@@ -20,6 +20,7 @@ import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { createTask } from "../tasks";
 import { createPoll } from "../scheduling-polls";
 import { generateToken } from "../token";
+import { seedPrimaryContactMethod } from "../contact-methods";
 import { getCommunityRow, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
 import { computeRecruitmentOutcome } from "./evaluations";
 import { canScheduleInterview } from "./joining";
@@ -246,6 +247,11 @@ async function maybeConvertApplicantToMember(
           provider: "magic_link",
           loginEmail: rawEmail,
         });
+        // Unverified: this address came out of an application form, and
+        // nobody has received anything at it yet. Same reasoning as the
+        // invite path — the row exists so the member has somewhere to log
+        // in from, not as an assertion that they own the inbox.
+        await seedPrimaryContactMethod(tx, newMember.id, rawEmail, { verified: false });
         return newMember.id;
       });
 

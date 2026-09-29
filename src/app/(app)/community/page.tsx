@@ -8,10 +8,8 @@ import ActionMenu from "@/components/ui/ActionMenu";
 import PageHeader from "@/components/ui/PageHeader";
 import { Banner, BUTTON_PRIMARY } from "@/components/ui/kit";
 import { EventParticipationCards } from "@/components/EventParticipation";
-import CommunityIndicators from "@/components/CommunityIndicators";
 import CommunityAssembliesSection from "./CommunityAssembliesSection";
 import { declareEventStatusAction } from "./actions";
-import { listCommunityIndicators } from "@/lib/profile-questions/indicators";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +17,11 @@ export const dynamic = "force-dynamic";
 // /community) — the group's own destination row plus the same snapshot
 // stats the Dashboard feed already computes, the board's role for
 // Tasks. The directory itself stays at /members; this is the single
-// community-wide landing surface.
+// community-wide landing surface. The numeric half of "what this
+// community looks like" lives here and the charts live on /members:
+// this page's four stats are a summary you read in a second, and a
+// published indicator is several cards of a graph — both on one page
+// meant the graphs pushed the events and assemblies down.
 const HUB_LINKS = [
   { href: "/members", label: "Members" },
   { href: "/assemblies", label: "Assemblies" },
@@ -47,16 +49,14 @@ export default async function CommunityPage({
 
   const { error } = await searchParams;
 
-  const [communityRow, snapshot, indicatorResult] = await Promise.all([
+  const [communityRow, snapshot] = await Promise.all([
     getCommunity(viewing),
+    // The published community indicators used to be read here and are
+    // now on /members. They were the only ProfileQuestion aggregate on
+    // this page, and loading them inside getCommunitySnapshot would put
+    // profile-question reads behind every render of this hub for cards
+    // it no longer shows.
     getCommunitySnapshot(viewing),
-    // Loaded here rather than inside getCommunitySnapshot: an indicator
-    // is a ProfileQuestion aggregate, and folding it into the dashboard
-    // snapshot would put profile-question reads behind every Dashboard
-    // render for a card only two pages show. No scope on this page —
-    // /community isn't under /[cycleScope], so it has no event view to
-    // narrow to, and every indicator here describes every member.
-    listCommunityIndicators(viewing),
   ]);
   const recruitmentOn = isModuleEnabled(communityRow, "recruitment");
 
@@ -103,11 +103,6 @@ export default async function CommunityPage({
       </div>
 
       <EventParticipationCards viewing={viewing} action={declareEventStatusAction} />
-
-      <CommunityIndicators
-        scope={indicatorResult.scope}
-        indicators={indicatorResult.indicators}
-      />
 
       <CommunityAssembliesSection viewing={viewing} />
 

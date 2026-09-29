@@ -87,6 +87,7 @@ describe("findOrCreateMemberByOidcSubject", () => {
     const { community: testCommunity } = await createFixtures();
     const created = await findOrCreateMemberByOidcSubject(testCommunity, {
       sub: "zitadel-sub-1",
+      emailVerified: true,
       email: "carol@example.com",
       name: "Carol Zitadel",
     });
@@ -105,6 +106,7 @@ describe("findOrCreateMemberByOidcSubject", () => {
     const { community: testCommunity } = await createFixtures();
     const created = await findOrCreateMemberByOidcSubject(testCommunity, {
       sub: "zitadel-sub-2",
+      emailVerified: true,
       email: "dave@example.com",
       name: null,
     });
@@ -115,11 +117,13 @@ describe("findOrCreateMemberByOidcSubject", () => {
     const { community: testCommunity } = await createFixtures();
     const first = await findOrCreateMemberByOidcSubject(testCommunity, {
       sub: "zitadel-sub-3",
+      emailVerified: true,
       email: "erin@example.com",
       name: "Erin",
     });
     const second = await findOrCreateMemberByOidcSubject(testCommunity, {
       sub: "zitadel-sub-3",
+      emailVerified: true,
       email: "erin@example.com",
       name: "Erin",
     });
@@ -136,11 +140,13 @@ describe("findOrCreateMemberByOidcSubject", () => {
     const { community: testCommunity } = await createFixtures();
     const first = await findOrCreateMemberByOidcSubject(testCommunity, {
       sub: "zitadel-sub-4",
+      emailVerified: true,
       email: "old-address@example.com",
       name: "Frank",
     });
     const second = await findOrCreateMemberByOidcSubject(testCommunity, {
       sub: "zitadel-sub-4",
+      emailVerified: true,
       email: "new-address@example.com",
       name: "Frank",
     });
@@ -167,6 +173,7 @@ describe("findOrCreateMemberByOidcSubject", () => {
 
     const oidcMember = await findOrCreateMemberByOidcSubject(testCommunity, {
       sub: "zitadel-sub-5",
+      emailVerified: true,
       email: "grace@example.com",
       name: "Grace",
     });

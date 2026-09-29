@@ -5,7 +5,6 @@ import {
   branch,
   cycle,
   member,
-  memberIdentity,
   outboundMessage,
   participation,
   permissionGrant,
@@ -18,6 +17,7 @@ import { isCoordinationHolder, listCoordinationScopeIds } from "./coordination";
 import { requireCycleInitiationEligibility, resolveViewScopeCycleForMember } from "./cycles";
 import { branchRosterMemberIds } from "./calendar-events";
 import { sendOutboundMessageEmail } from "./mailer";
+import { resolvePrimaryEmail } from "./contact-methods";
 import { isModuleOpenToEveryone, listGrantingTaskIdsForScope } from "./permissions";
 
 type Member = typeof memberTable.$inferSelect;
@@ -321,11 +321,18 @@ async function resolveScopeForSend(
   return { scopeRef, recipientIds: recipientIds.filter((id) => id !== actor.id) };
 }
 
-// Best-effort, per-recipient — a missing identity, an opted-out
-// member, or one failed send never blocks the others, since this is
-// now a genuine many-recipient batch rather than Phase 51's own
-// single-nominee send. The OutboundMessage row itself already stands
-// by the time this runs regardless of how delivery goes.
+// Best-effort, per-recipient — a member with no reachable address, an
+// opted-out member, or one failed send never blocks the others, since this
+// is now a genuine many-recipient batch rather than Phase 51's own
+// single-nominee send. The OutboundMessage row itself already stands by the
+// time this runs regardless of how delivery goes.
+//
+// One address per member, resolved by `resolvePrimaryEmail` — never one per
+// identity row. That distinction is not hypothetical bookkeeping: a member
+// with two `memberIdentity` rows (a magic-link and an OIDC identity on one
+// account) used to be mailed at both, so a single announcement arrived
+// twice. `recruitment/pairs.ts` already deduped for exactly this reason;
+// this path hadn't caught up.
 async function deliverToRecipients(recipientIds: string[], senderName: string, subject: string, body: string) {
   if (recipientIds.length === 0) return;
 
@@ -336,13 +343,15 @@ async function deliverToRecipients(recipientIds: string[], senderName: string, s
   const enabledIds = members.filter((m) => m.emailNotificationsEnabled).map((m) => m.id);
   if (enabledIds.length === 0) return;
 
-  const identities = await db
-    .select({ loginEmail: memberIdentity.loginEmail })
-    .from(memberIdentity)
-    .where(inArray(memberIdentity.memberId, enabledIds));
+  const addresses = await Promise.all(enabledIds.map((id) => resolvePrimaryEmail(id)));
 
   await Promise.allSettled(
-    identities.map((i) => sendOutboundMessageEmail(i.loginEmail, { senderName, subject, body })),
+    addresses
+      // One per member and never empty: a member with no reachable address
+      // is skipped rather than mailed at "undefined", which is what the
+      // old inner join would have done had the join gone the other way.
+      .filter((address): address is string => Boolean(address))
+      .map((address) => sendOutboundMessageEmail(address, { senderName, subject, body })),
   );
 }
 

@@ -1,0 +1,38 @@
+-- A member chooses which address the platform writes to.
+--
+-- Adds `contact_method.is_primary` and `contact_method.verified_at`.
+--
+-- The gap this closes: every outbound email in the app read
+-- `member_identity.login_email` -- announcements, targeted messages, task
+-- nominations, the backstop hard-flag. That address is the *login
+-- credential* for the magic-link half of auth, so it is deliberately not
+-- editable, and nothing in the UI ever displayed it. Meanwhile
+-- `contact_method` was the only thing a member could add an address to, and
+-- nothing anywhere ever sent mail to a contact method at all. So a second
+-- email was decorative, and the address actually in use was invisible: the
+-- profile's "Email me targeted messages and announcements" gated delivery
+-- to an address the member could neither see nor change.
+--
+-- `is_primary` marks that address, on the row the member already manages.
+-- "At most one per member" is enforced in src/lib/contact-methods.ts
+-- (clear-then-set in one transaction) rather than by a partial unique
+-- index, because the interesting rule is *which* row moves, and this
+-- table's other invariants already live at the application layer.
+--
+-- `verified_at` is cleared whenever `value` changes, since verification is
+-- a fact about an address rather than about the row. It gates becoming
+-- primary, and that is the only thing it gates: without it, pointing
+-- delivery at an address you don't control would aim the community's mail
+-- at a stranger. It is *not* a gate on ordinary visibility -- a member's
+-- delivery address is theirs to publish or not, and `visibility` already
+-- answers that.
+--
+-- No backfill. The seeded rows arrive through the five provisioning paths
+-- (src/lib/member.ts x2, recruitment/invites.ts, recruitment/decisions.ts,
+-- settings/bulk-members.ts), which is the same "provisioned, not migrated"
+-- choice the other identity-adjacent tables have made: a backfill would
+-- have to invent a verification it had no evidence for. Members with no
+-- primary keep receiving mail at their login address -- the read side falls
+-- back rather than dropping them.
+ALTER TABLE "contact_method" ADD COLUMN "is_primary" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "contact_method" ADD COLUMN "verified_at" timestamp with time zone;

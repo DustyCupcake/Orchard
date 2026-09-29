@@ -12,6 +12,7 @@ import {
 import {
   answerProfileQuestion,
   createProfileQuestion,
+  updateProfileQuestion,
 } from "@/lib/profile-questions";
 import { claimTask } from "@/lib/tasks";
 import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
@@ -105,6 +106,106 @@ describe("the member data grid", () => {
     // …but only that one. The owner-only question is still withheld, which
     // is the whole point of having the state.
     expect(asKitchen.unavailable.map((u) => u.label)).toEqual(["Emergency contact"]);
+  });
+
+  it("counts answers given in someone's own words, in a row that can actually fill", async () => {
+    // The one assertion here that had to be written to fail first. The
+    // breakdown used to offer a row labelled "Other" and then only increment
+    // rows whose label equalled the stored value — but free text *is* the
+    // member's own words and never equals the string "Other", so the chip
+    // rendered "Other 0" no matter how many people wrote one. Nothing tested
+    // it, because nothing looked at it.
+    const { alice, community } = await createFixtures();
+    const [bob] = await db
+      .insert(memberTable)
+      .values({ communityId: community.id, name: "Bob" })
+      .returning();
+    const q = await createProfileQuestion(alice, {
+      label: "What do you need?",
+      responseType: "multi_choice",
+      scope: "once_ever",
+      allowOther: true,
+      options: ["bed", "power"],
+    });
+    // Two people, because a second answer from the same member on the same
+    // once-ever question *replaces* the first rather than adding to it.
+    await answerProfileQuestion(alice, q.id, { status: "answered", value: ["bed", "a tent pole"] });
+    await answerProfileQuestion(bob, q.id, { status: "answered", value: ["bed"] });
+
+    const column = (await getMemberData(alice)).columns.find((c) => c.question.id === q.id)!;
+    expect(column.breakdown).toEqual([
+      { option: "bed", count: 2 },
+      { option: "power", count: 0 },
+      { option: "Something else", count: 1 },
+    ]);
+    // The words themselves are still listed per member underneath — the
+    // count is the aggregate, the entries are what an entitled reader came
+    // for. Neither replaces the other.
+    expect(column.entries.map((e) => e.display).sort()).toEqual(["bed", "bed, a tent pole"]);
+  });
+
+  it("offers the catch-all at zero, like every other unpicked option", async () => {
+    // This page deliberately shows the *shape* of an answer, so a zero row
+    // is information rather than noise. The published indicator omits its
+    // own catch-all when empty; the two want different things from the same
+    // tally, and this is the difference being pinned.
+    const { alice } = await createFixtures();
+    const q = await createProfileQuestion(alice, {
+      label: "What do you need?",
+      responseType: "multi_choice",
+      scope: "once_ever",
+      allowOther: true,
+      options: ["bed"],
+    });
+    await answerProfileQuestion(alice, q.id, { status: "answered", value: ["bed"] });
+
+    const column = (await getMemberData(alice)).columns.find((c) => c.question.id === q.id)!;
+    expect(column.breakdown).toEqual([
+      { option: "bed", count: 1 },
+      { option: "Something else", count: 0 },
+    ]);
+  });
+
+  it("counts an answer whose option was removed, rather than dropping it", async () => {
+    // The same tally catches this for free, and the label is why: an answer
+    // holding a deleted option's text matches no current option, and
+    // "Something else" is neutral about the cause where "Other" would have
+    // claimed it was free text. It was silently absent from both this report
+    // and the indicator before the two were made to share a tally.
+    const { alice } = await createFixtures();
+    const q = await createProfileQuestion(alice, {
+      label: "What do you need?",
+      responseType: "multi_choice",
+      scope: "once_ever",
+      allowOther: true,
+      options: ["bed", "generator"],
+    });
+    await answerProfileQuestion(alice, q.id, { status: "answered", value: ["generator"] });
+    await updateProfileQuestion(alice, q.id, { label: "What do you need?", options: ["bed"] });
+
+    const column = (await getMemberData(alice)).columns.find((c) => c.question.id === q.id)!;
+    expect(column.breakdown).toEqual([
+      { option: "bed", count: 0 },
+      { option: "Something else", count: 1 },
+    ]);
+  });
+
+  it("offers no catch-all at all on a question with no escape hatch", async () => {
+    // Where free text is impossible, a value that matches no option is a
+    // removed option — and a row implying otherwise would describe a hatch
+    // that doesn't exist.
+    const { alice } = await createFixtures();
+    const q = await createProfileQuestion(alice, {
+      label: "What do you need?",
+      responseType: "multi_choice",
+      scope: "once_ever",
+      options: ["bed", "generator"],
+    });
+    await answerProfileQuestion(alice, q.id, { status: "answered", value: ["generator"] });
+    await updateProfileQuestion(alice, q.id, { label: "What do you need?", options: ["bed"] });
+
+    const column = (await getMemberData(alice)).columns.find((c) => c.question.id === q.id)!;
+    expect(column.breakdown).toEqual([{ option: "bed", count: 0 }]);
   });
 
   it("shows another member's public answer, and withholds their restricted one", async () => {

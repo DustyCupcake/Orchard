@@ -3,6 +3,8 @@ import { db } from "@/db";
 import { member, memberIdentity } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { requireAdmins } from "./admins";
+import { recordSettingChanges } from "./history";
+import { seedPrimaryContactMethod } from "../contact-methods";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -90,6 +92,41 @@ export async function commitBulkMemberImport(
         memberId: newMember.id,
         provider: "magic_link",
         loginEmail: row.email,
+      });
+      // Unverified, and deliberately so even though the Admin vouching for
+      // the roster knows these people. `verifiedAt` is a fact about the
+      // inbox, and an Admin's knowledge of it is not proof of it — marking
+      // it here would make the flag mean "somebody in the loop believed
+      // this", which is a different and much weaker thing than the one the
+      // primary gate relies on. Delivery falls back to the login address
+      // meanwhile, which is this same address.
+      await seedPrimaryContactMethod(tx, newMember.id, row.email, { verified: false });
+
+      // One transaction per row rather than one for the whole import, which
+      // is what it was before and is not changed here. The log is written
+      // inside each row's transaction, so it inherits that granularity: a
+      // run of 200 rows writes 200 log rows, one per person, and a partial
+      // failure leaves the log describing exactly the people who did land.
+      // A single log row for the whole import would instead be either lost
+      // wholesale or a summary nobody can reconcile against the roster.
+      //
+      // The email is the one field withheld anywhere in this log, and
+      // withholding it here is the whole reason: member-readable settings
+      // history plus a log of every imported address would hand the whole
+      // community the login addresses of every member an Admin ever
+      // imported. So the row records the name and the fact that an
+      // identity was created, and `valuesWithheld` says the address is not
+      // there rather than leaving a reader to guess whether it was ever
+      // null or merely hidden.
+      await recordSettingChanges(tx, {
+        actor,
+        entity: "bulk_member_import",
+        action: "created",
+        entityId: newMember.id,
+        entityLabel: newMember.name,
+        current: {},
+        changes: { memberName: newMember.name, memberIdentity: { provider: "magic_link", loginEmail: row.email } },
+        withheld: ["memberIdentity"],
       });
     });
   }

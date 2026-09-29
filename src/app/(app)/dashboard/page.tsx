@@ -12,13 +12,12 @@ import {
 import { listTaskFitSuggestions, ONBOARDING_CARDS } from "@/lib/onboarding";
 import { toFieldShape } from "@/lib/field-shape";
 import { listOutstandingOnboardingAxes } from "@/lib/trait-axes";
+import { listAudiencesForQuestions, type Audience } from "@/lib/sensitive-data";
 import { ATTENTION_STYLES } from "@/lib/format";
 import { Tag, type Tone, ATTENTION_TONE, Banner, BUTTON_PRIMARY } from "@/components/ui/kit";
 import AxisScaleField from "@/components/AxisScaleField";
 import ProfileQuestionForm from "@/components/ProfileQuestionForm";
 import { EventComingRibbon, EventParticipationCards } from "@/components/EventParticipation";
-import CommunityIndicators from "@/components/CommunityIndicators";
-import { listCommunityIndicators } from "@/lib/profile-questions/indicators";
 import PrefilledAnswersReview from "./PrefilledAnswersReview";
 import {
   completeOnboardingAction,
@@ -282,6 +281,7 @@ function OnboardingQuestionForm({
   question,
   allowDeferral,
   allowPreferNotToSay,
+  audiences,
 }: {
   questionId: string;
   // The whole question rather than loose shape props, so this wrapper
@@ -291,9 +291,15 @@ function OnboardingQuestionForm({
     allowDeferral: boolean;
     allowPreferNotToSay: boolean;
     sensitive: boolean;
+    emergencyAccess: boolean;
+    publishedAsIndicator: boolean;
   };
   allowDeferral: boolean;
   allowPreferNotToSay: boolean;
+  // The audiences on this question, named. Passed in rather than read here
+  // because the panel renders several forms at once and would otherwise
+  // issue one audience query per question instead of one for the panel.
+  audiences: Audience[];
 }) {
   return (
     <div className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
@@ -303,7 +309,11 @@ function OnboardingQuestionForm({
         shape={toFieldShape(question)}
         allowDeferral={allowDeferral}
         allowPreferNotToSay={allowPreferNotToSay}
-        sensitive={question.sensitive}
+        publishedAsIndicator={question.publishedAsIndicator}
+        emergencyAccess={question.emergencyAccess}
+        access={
+          question.sensitive ? { kind: "restricted", audiences } : { kind: "public" }
+        }
       />
     </div>
   );
@@ -338,9 +348,13 @@ export default async function DashboardPage({
   // "This event" is only ever a real option once the switcher actually
   // resolves to one specific cycle — default to it then (closest to
   // this page's old single-cycle-only behavior), otherwise there's
-  // nothing to default to but "general". Resolved *above* the queries
-  // below because the indicators read it too, and they must land on the
-  // same answer as the member count they sit under.
+  // nothing to default to but "general". This is also why it stays a
+  // separate concept from the switcher: narrowing the switcher to one
+  // event is not the same as the reader having chosen to read the member
+  // count as that event's — and the indicators, when they lived here, made
+  // that distinction matter. They now live on /members, which follows the
+  // switcher directly; this toggle is the Dashboard's own, and is the
+  // only place the two readings exist side by side.
   const memberCountView: "general" | "cycle" =
     memberCount === "general" || memberCount === "cycle"
       ? memberCount
@@ -348,28 +362,9 @@ export default async function DashboardPage({
         ? "cycle"
         : "general";
 
-  const [feed, snapshot, indicatorResult] = await Promise.all([
+  const [feed, snapshot] = await Promise.all([
     getPersonalFeed(viewing),
     getCommunitySnapshot(viewing, { cycleIds: scopeCycleIds, singleCycleId: singleScopeCycle?.id ?? null }),
-    // The indicators follow the *same* "This event / All open events"
-    // choice as the member count, rather than getting a second control.
-    // Two controls for one underlying question ("who are we talking
-    // about?") is two things that can disagree, and a reader would have
-    // no way to tell which population a proportion described.
-    listCommunityIndicators(viewing, {
-      // Not narrowed without a single selected event: there'd be no
-      // event to be about, and the widest population is the honest
-      // answer rather than a guess at which one was meant.
-      requested:
-        memberCountView === "cycle" && singleScopeCycle
-          ? { kind: "event", cycleId: singleScopeCycle.id, cycleName: singleScopeCycle.name }
-          : { kind: "community" },
-      // The Community's own policy on breaking indicators out per event
-      // is read inside listCommunityIndicators — it already knows which
-      // Community it's reading. It resolves the request and reports back
-      // if it narrows it, so the section can say so rather than quietly
-      // showing all-member figures under a toggle that reads "This event".
-    }),
   ]);
   const showingThisCycle = memberCountView === "cycle" && snapshot.activeMemberCount.thisCycle !== null;
   const displayedMemberCount = showingThisCycle
@@ -389,8 +384,17 @@ export default async function DashboardPage({
         listOnceEverAnswers(viewing, { surface: "onboarding" }),
       ]);
 
-  // Required questions this member still owes a real answer to. Lives
-  // here rather than on a nav item or a shell-wide banner: every other
+  // Who may read each onboarding question, named, so the panel can ask for
+  // consent per audience like every other answering surface. One batched
+  // read for the panel rather than one per form — the same reason
+  // /questions batches it, and the reason this is a page-level read rather
+  // than something the wrapper does itself.
+  const onboardingAudiences = await listAudiencesForQuestions(
+    viewing.communityId,
+    onboardingQuestions.map(({ question }) => question.id),
+  );
+
+  // Required questions this member still owes a real answer to. Lives  // here rather than on a nav item or a shell-wide banner: every other
   // outstanding thing in this app already surfaces on this page, and
   // /questions is a supporting page, not a destination in its own right.
   // Same source as the count folded into the Dashboard's nav badge
@@ -517,6 +521,7 @@ export default async function DashboardPage({
                       question={question}
                       allowDeferral={question.allowDeferral}
                       allowPreferNotToSay={question.allowPreferNotToSay}
+                      audiences={onboardingAudiences.get(question.id) ?? []}
                     />
                   </div>
                 ))}
@@ -874,16 +879,6 @@ export default async function DashboardPage({
                 </Link>
               </div>
             )}
-          </div>
-        )}
-
-        {indicatorResult.indicators.length > 0 && (
-          <div className="mb-5">
-            <CommunityIndicators
-              scope={indicatorResult.scope}
-              indicators={indicatorResult.indicators}
-              scopeFallback={indicatorResult.scopeFallback}
-            />
           </div>
         )}
 

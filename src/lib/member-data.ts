@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { member, profileAnswer, profileQuestion } from "@/db/schema";
 import type { member as memberTable, profileQuestion as profileQuestionTable } from "@/db/schema";
-import { formatFieldValue, toFieldShape, type FieldShape } from "./field-shape";
+import { CATCH_ALL_LABEL, formatFieldValue, tallyChoiceValues, toFieldShape, type FieldShape } from "./field-shape";
 import { listReadableSensitiveQuestionIds, resolveReadableAnswersForCommunity } from "./sensitive-data";
 import { getGatingPurposesForQuestions, listMembersWithActiveConsent } from "./consent";
 
@@ -138,23 +138,24 @@ export async function getMemberData(
   const needle = options.filter?.trim().toLowerCase() ?? "";
 
   const byQuestion = new Map<string, MemberDataColumn>();
+  // The multi-choice answers behind each column, collected during the pass
+  // below and tallied once at the end rather than incremented in place. The
+  // tally is `field-shape.ts`'s, shared with the published indicator, because
+  // this page and that one aggregate the same answers and had drifted apart:
+  // the indicator counted anything unrecognised into a catch-all, while this
+  // breakdown offered a row labelled "Other" and only ever incremented rows
+  // whose label equalled the stored value — which free text, being the
+  // member's own words, never does. That row could only ever read zero.
+  const multiChoiceValues = new Map<string, unknown[]>();
   for (const column of columns) {
     if (selectedIds && !selectedIds.has(column.question.id)) continue;
     byQuestion.set(column.question.id, column);
-    // Per-column option tallies, accumulated in the one pass below rather
-    // than by re-scanning the answers per column. A multi-choice answer is
-    // stored as an array, and the per-option counts are the report a menu
-    // planner actually came for ("4 vegan, 2 gluten-free") rather than a
-    // single number with the raw values sitting next to it.
+    // Per-column option tallies are the report a menu planner actually came
+    // for ("4 vegan, 2 gluten-free") rather than a single number with the
+    // raw values sitting next to it. Only a pick-any answer is a set worth
+    // counting this way.
     if (column.question.responseType === "multi_choice") {
-      const offered = [
-        ...column.question.options,
-        ...(column.question.allowOther ? ["Other"] : []),
-      ].filter((o): o is string => typeof o === "string");
-      // Options the community offers but nobody picked are reported as
-      // zero, so the shape of the answer is visible rather than inferred
-      // from an absent row.
-      column.breakdown = offered.map((option) => ({ option, count: 0 }));
+      multiChoiceValues.set(column.question.id, []);
     }
   }
 
@@ -178,13 +179,7 @@ export async function getMemberData(
       continue;
     }
 
-    if (column.breakdown && Array.isArray(answer.value)) {
-      for (const option of answer.value) {
-        if (typeof option !== "string") continue;
-        const row = column.breakdown.find((b) => b.option === option);
-        if (row) row.count += 1;
-      }
-    }
+    multiChoiceValues.get(answer.questionId)?.push(answer.value);
 
     const display = formatFieldValue(answer.value, column.question.responseType);
     if (display === "") continue;
@@ -193,6 +188,22 @@ export async function getMemberData(
       memberName: nameById.get(answer.memberId) ?? "—",
       display,
     });
+  }
+
+  for (const column of byQuestion.values()) {
+    const values = multiChoiceValues.get(column.question.id);
+    if (!values) continue;
+    const { counts, otherCount } = tallyChoiceValues(values, column.question.options);
+    const rows = [...counts].map(([option, count]) => ({ option, count }));
+    // Options the community offers but nobody picked are reported as zero,
+    // so the shape of the answer is visible rather than inferred from an
+    // absent row — and the catch-all is held to the same rule, which is why
+    // it appears at zero rather than being hidden when empty. It is offered
+    // only where free text is actually possible: on a question with no
+    // escape hatch, a value that matches no option is a *removed* option, and
+    // a row implying otherwise would describe a hatch that doesn't exist.
+    if (column.question.allowOther) rows.push({ option: CATCH_ALL_LABEL, count: otherCount });
+    column.breakdown = rows;
   }
 
   for (const column of byQuestion.values()) {

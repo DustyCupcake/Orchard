@@ -134,6 +134,12 @@ export async function submitOnboardingAnswerAction(formData: FormData) {
     await answerProfileQuestion(actor, questionId, {
       status,
       value: status === "answered" ? value : undefined,
+      // One id per audience box ticked, and only on a restricted question
+      // — see /questions' own action for why the empty marker is filtered
+      // out rather than trusted.
+      shareRuleIds: question.sensitive
+        ? formData.getAll("shareRuleIds").map(String).filter(Boolean)
+        : undefined,
     });
   } catch (err) {
     redirectWithError(err);

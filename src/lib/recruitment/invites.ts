@@ -7,6 +7,7 @@ import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../error
 import { requireModuleEnabled } from "../modules";
 import { generateToken } from "../token";
 import { seedCycleParticipation } from "../participation";
+import { seedPrimaryContactMethod } from "../contact-methods";
 import { getCycleJoiningState } from "./joining";
 import { getCommunityRow, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
 import {
@@ -485,6 +486,14 @@ export async function redeemCommunityInvite(
       provider: "magic_link",
       loginEmail: email,
     });
+
+    // Unverified on purpose, unlike the magic-link first-login path. Here
+    // the address is one the *inviter* typed; nobody has yet received
+    // anything at it. It still becomes the primary, so the invitee finds
+    // their login link where they expect it — but until they click it, the
+    // address hasn't been proven by anyone, and `verifiedAt` is the one
+    // column here that must not be a guess.
+    await seedPrimaryContactMethod(tx, created.id, email, { verified: false });
 
     // Re-checked against the current row, not the one read above —
     // narrows (harmlessly) the window for two simultaneous redemptions

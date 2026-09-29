@@ -1,11 +1,11 @@
 import { INPUT } from "@/components/ui/kit";
 import {
-  optionsWithOther,
-  otherInputName,
   toFieldShape,
   type FieldShape,
   type ResponseType,
 } from "@/lib/field-shape";
+import OtherFieldInput, { type MarkerType } from "./OtherFieldInput";
+import type { ComponentProps } from "react";
 
 // The one real render path for "what does answering this field look
 // like" — shared by /apply, /feedback (real, submittable renders),
@@ -47,21 +47,25 @@ export function toPreviewShape(input: {
   return { label: input.label, required: input.required, ...toFieldShape(input) };
 }
 
-// The extra text input that backs the "other" option. A sibling name
-// rather than the same one as the radio/checkbox — see
-// field-shape.ts's otherInputName for why the two must not collide.
-function OtherInput({ name, defaultValue }: { name?: string; defaultValue?: string }) {
-  return (
-    <input
-      type="text"
-      name={name ? otherInputName(name) : undefined}
-      defaultValue={defaultValue}
-      placeholder="Tell us in your own words"
-      aria-label="Other — please specify"
-      maxLength={500}
-      className={`${INPUT} mt-1`}
-    />
-  );
+// The escape hatch, as one control rather than two stacked ones: a marker
+// sitting *beside* a text field whose greyed placeholder reads "Other". It
+// used to be an "Other" row appended to the option list with its own text
+// box indented underneath, which read as two separate things — an option
+// you could pick, and a box that happened to follow it — and left the
+// reader to work out that the box only counted if the row above it was
+// ticked.
+//
+// A radio for pick-one and a checkbox for pick-any, because that is what
+// the marker means: "none of these, my own words" against "these, and also
+// my own words".
+//
+// The control itself is `OtherFieldInput`, a client component, because the
+// marker is ticked by typing — which is the whole reason unticking it can
+// be treated as deliberate rather than as somebody having missed a box. Its
+// siblings-never-nested rule and its ref-not-state choice are explained
+// there.
+function OtherRow(props: Omit<ComponentProps<typeof OtherFieldInput>, "markerType"> & { markerType: MarkerType }) {
+  return <OtherFieldInput {...props} />;
 }
 
 export default function FieldPreview({
@@ -90,7 +94,6 @@ export default function FieldPreview({
   hideLabel?: boolean;
 }) {
   const { label, required, responseType, options, multiline, allowOther, min, max, step, validation } = field;
-  const fullOptions = optionsWithOther(field);
 
   // The prefill, resolved per type once here instead of at each input.
   const asString = typeof defaultValue === "string" ? defaultValue : "";
@@ -199,22 +202,32 @@ export default function FieldPreview({
           {options.length === 0 && !allowOther && (
             <span className="text-[13px] text-[var(--text-muted)]">(no options yet)</span>
           )}
-          {fullOptions.map((o) => (
-            <label key={o.value} className="flex flex-col text-[13px] font-normal text-[var(--text)]">
-              <span className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name={name}
-                  value={o.isOther ? "Other" : o.value}
-                  required={required}
-                  disabled={disabled}
-                  defaultChecked={o.isOther ? otherSelected : asString === o.value}
-                />{" "}
-                {o.label}
-              </span>
-              {o.isOther && <OtherInput name={name} defaultValue={otherDefault} />}
+          {/* The real options only. The escape hatch is its own row below —
+              marker and field side by side — rather than an "Other" entry in
+              this list with a text box hanging off it underneath. */}
+          {options.map((o) => (
+            <label key={o} className="flex items-center gap-2 text-[13px] font-normal text-[var(--text)]">
+              <input
+                type="radio"
+                name={name}
+                value={o}
+                required={required}
+                disabled={disabled}
+                defaultChecked={asString === o}
+              />
+              {o}
             </label>
           ))}
+          {allowOther && (
+            <OtherRow
+              name={name}
+              markerType="radio"
+              defaultValue={otherDefault}
+              defaultChecked={otherSelected}
+              required={required}
+              disabled={disabled}
+            />
+          )}
         </div>
       )}
 
@@ -223,21 +236,27 @@ export default function FieldPreview({
           {options.length === 0 && !allowOther && (
             <span className="text-[13px] text-[var(--text-muted)]">(no options yet)</span>
           )}
-          {fullOptions.map((o) => (
-            <label key={o.value} className="flex flex-col text-[13px] font-normal text-[var(--text)]">
-              <span className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  name={name}
-                  value={o.isOther ? "Other" : o.value}
-                  disabled={disabled}
-                  defaultChecked={o.isOther ? otherSelected : chosen.includes(o.value)}
-                />{" "}
-                {o.label}
-              </span>
-              {o.isOther && <OtherInput name={name} defaultValue={otherDefault} />}
+          {options.map((o) => (
+            <label key={o} className="flex items-center gap-2 text-[13px] font-normal text-[var(--text)]">
+              <input
+                type="checkbox"
+                name={name}
+                value={o}
+                disabled={disabled}
+                defaultChecked={chosen.includes(o)}
+              />
+              {o}
             </label>
           ))}
+          {allowOther && (
+            <OtherRow
+              name={name}
+              markerType="checkbox"
+              defaultValue={otherDefault}
+              defaultChecked={otherSelected}
+              disabled={disabled}
+            />
+          )}
         </div>
       )}
     </label>

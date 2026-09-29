@@ -61,10 +61,16 @@ export async function submitQuestionAnswerAction(formData: FormData) {
       status,
       value: status === "answered" ? value : undefined,
       cycleId,
-      // Only read on a sensitive question; answerProfileQuestion forces it
-      // back to true elsewhere, so a stray box on a plain question can't
-      // store a claim about the world that isn't true.
-      shareWithAudience: formData.get("shareWithAudience") === "on",
+      // The audiences ticked, one id per box, and only on a sensitive
+      // question — answerProfileQuestion forces sharing back to true on a
+      // public one, so a stray box there can't store a claim about the
+      // world that isn't true. `filter(Boolean)` drops the empty marker
+      // input the form renders, which exists so that "every box unticked"
+      // arrives as an empty list rather than as an absent field; absent
+      // means "the whole audience", which is the opposite decision.
+      shareRuleIds: question.sensitive
+        ? formData.getAll("shareRuleIds").map(String).filter(Boolean)
+        : undefined,
     });
   } catch (err) {
     redirectWithError(cycleId, err);

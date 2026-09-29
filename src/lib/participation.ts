@@ -2,14 +2,22 @@ import { and, desc, eq, gt, isNull, ne, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import type { DbOrTx } from "@/db";
-import { communityInvite, cycle, JOINING_LANE_KINDS, participation } from "@/db/schema";
-import type { member as memberTable } from "@/db/schema";
+import {
+  communityInvite,
+  cycle,
+  JOINING_LANE_KINDS,
+  member as memberTable,
+  participation,
+} from "@/db/schema";
 import { NotFoundError } from "./errors";
 import { syncComputedTiers } from "./settings/tiers";
 import { requireCycleOpen } from "./cycles/lifecycle";
 import { listOpenCycles } from "./cycles/crud";
 import { getJoinLaneRulesForContext, laneRedemptionKind, redemptionPathForInvite } from "./recruitment/joining-lanes";
 
+// The `member` table is imported as a value here (listComingMembers below
+// joins against it) and used as the type through this alias, rather than
+// carrying a second type-only import under another name.
 type Member = typeof memberTable.$inferSelect;
 
 async function requireCycleInCommunity(actor: Member, cycleId: string) {
@@ -214,6 +222,43 @@ export async function listComingCycleIds(actor: Member): Promise<string[]> {
       ),
     );
   return rows.map((r) => r.cycleId);
+}
+
+// "Everyone in this Community who has declared Participation `coming`
+// for this one event" — the other half of the pair above, and the ONE
+// definition of who an event's attendees are.
+//
+// It is here, rather than in either of its two callers, because they have
+// to agree: /members' cycle-scoped directory lists these rows, and a
+// community indicator's event population *is* these members. Two queries
+// that look the same and are written twice is a chart reading "of 8" above
+// a list of 9, which is exactly the disagreement the indicator's own
+// denominator exists to prevent (see
+// src/lib/profile-questions/indicators.ts's populationFor).
+//
+// Not "everyone attached to the cycle" — `maybe` and `not_coming` are
+// deliberately absent, because a "coming" count that includes the
+// maybes is a capacity number, and a person who said they'd rather not is
+// not someone a chart or a roster should be counting.
+export async function listComingMembers(
+  actor: Member,
+  cycleId: string,
+): Promise<{ id: string; name: string }[]> {
+  return db
+    .select({ id: memberTable.id, name: memberTable.name })
+    .from(participation)
+    .innerJoin(memberTable, eq(participation.memberId, memberTable.id))
+    .where(
+      and(
+        eq(participation.cycleId, cycleId),
+        eq(participation.status, "coming"),
+        // The actor's own community, not the caller's assumption about
+        // it: scoping to another community's event is impossible via
+        // participation, but the member filter doubles as the check.
+        eq(memberTable.communityId, actor.communityId),
+      ),
+    )
+    .orderBy(memberTable.name);
 }
 
 // "Which open cycle has THIS member actually declared coming/maybe/

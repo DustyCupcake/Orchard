@@ -14,13 +14,17 @@ import { getGatingPurposesForQuestions, grantConsent, withdrawConsent } from "@/
 import { agreeToEmergencyReveal, extendAnswerConsent } from "@/lib/sensitive-data";
 import {
   contactMethodInput,
+  consumeContactMethodVerification,
   createContactMethod,
   deleteContactMethod,
+  requestContactMethodVerification,
+  setPrimaryContactMethod,
   updateContactMethod,
 } from "@/lib/contact-methods";
 import { addMemberLanguage, deleteMemberLanguage, memberLanguageInput } from "@/lib/member-languages";
 import { upsertMemberAxisValue } from "@/lib/trait-axes";
 import { AppError } from "@/lib/errors";
+import { resolveAppUrlFromHeaders } from "@/lib/app-url";
 
 function redirectWithError(err: unknown): never {
   if (err instanceof ZodError) {
@@ -132,7 +136,14 @@ export async function submitProfileAnswerAction(formData: FormData) {
       status,
       value: status === "answered" ? value : undefined,
       capacityVisibility,
-      shareWithAudience: formData.get("shareWithAudience") === "on",
+      // The audiences ticked, one id per box, and only on a restricted
+      // question. `filter(Boolean)` drops the empty marker input the form
+      // renders, which exists so that "every box unticked" arrives as an
+      // empty list rather than as an absent field — absent would mean
+      // "the whole audience", the opposite decision.
+      shareRuleIds: question.sensitive
+        ? formData.getAll("shareRuleIds").map(String).filter(Boolean)
+        : undefined,
     });
   } catch (err) {
     redirectWithError(err);
@@ -224,6 +235,63 @@ export async function deleteContactMethodAction(formData: FormData) {
     redirectWithError(err);
   }
   revalidatePath("/profile");
+}
+
+/**
+ * Point this member's email at one of their own addresses.
+ *
+ * `assertNotViewingAs` is already inside `requireMember`, and it matters
+ * here for the same reason it does on every other self-service write: a
+ * support holder reading somebody else's profile must not be able to
+ * redirect *their* mail. The lib scopes the write to the row's owner as
+ * well, so a forged POST is refused even if it reaches this far.
+ */
+export async function setPrimaryContactMethodAction(formData: FormData) {
+  const current = await requireMember();
+  try {
+    await setPrimaryContactMethod(current, String(formData.get("id") ?? ""));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+/** Mail a fresh confirmation link to one of the member's own addresses. */
+export async function requestContactMethodVerificationAction(formData: FormData) {
+  const current = await requireMember();
+  try {
+    await requestContactMethodVerification(
+      current,
+      String(formData.get("id") ?? ""),
+      await resolveAppUrlFromHeaders(),
+    );
+  } catch (err) {
+    redirectWithError(err);
+  }
+  // `sent` rather than a banner naming the address: the whole point is that
+  // the member is about to check an inbox, and a confirmation that says
+  // which address it went to would be one more place the address is
+  // printed.
+  redirect("/profile?sent=confirm");
+}
+
+/**
+ * Consume the one-time token from a confirmation link.
+ *
+ * A POST rather than a mutation during render, deliberately. The link
+ * arrives as `/profile?verify=…`, and a page that verified the address
+ * simply by being visited would let any mail client or link prefetcher
+ * spend the token — so the page renders a confirm button and this is what
+ * it posts to. The same reasoning as the `<details>`-for-edit pattern
+ * generally: a GET with a side effect is a link that fires itself.
+ */
+export async function confirmContactMethodVerificationAction(formData: FormData) {
+  const current = await requireMember();
+  const result = await consumeContactMethodVerification(current, String(formData.get("token") ?? ""));
+  if (!result.ok) {
+    redirect(`/profile?error=${encodeURIComponent(result.reason)}`);
+  }
+  redirect("/profile?verified=1");
 }
 
 // The general consent list — every purpose in the community, including
