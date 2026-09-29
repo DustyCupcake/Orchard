@@ -489,10 +489,10 @@ describe("cycle-scoped ownership (Phase 68)", () => {
     // remediation).
     const ownerA = await insertOwnerTask(testCommunity.id, testBranch.id, alice.id, "Owner A", cycleA.id);
     await claimTask(alice, ownerA.id);
-    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", ownerA.id);
+    await setPermissionGrant(alice, "event_scheduling_owner", ownerA.id);
     const ownerB = await insertOwnerTask(testCommunity.id, testBranch.id, bob.id, "Owner B", cycleB.id);
     await claimTask(bob, ownerB.id);
-    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", ownerB.id);
+    await setPermissionGrant(alice, "event_scheduling_owner", ownerB.id);
     return { ...fixtures, cycleA, cycleB };
   }
 

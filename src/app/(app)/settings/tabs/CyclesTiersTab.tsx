@@ -45,6 +45,7 @@ export default function CyclesTiersTab({
             action={updateCycleTypeAction}
             submitLabel="Save type"
             title={t.name}
+            stateLabel={`${t.name}, an event type. What a new one of this type is proposed from`}
             state={
               t.defaultPackId
                 ? `A new one is proposed from the saved pack "${taskPacks.find((p) => p.id === t.defaultPackId)?.name ?? "a pack that no longer exists"}".`
@@ -128,6 +129,7 @@ export default function CyclesTiersTab({
             action={updateTierAction}
             submitLabel="Save tier"
             title={t.name}
+            stateLabel={`${t.name}, a tier. How it is reached, and what a new one of it is proposed from`}
             state={
               t.criterionType === "cycle_type_count" ? (
                 <>

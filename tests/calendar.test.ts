@@ -272,7 +272,7 @@ describe("getCalendarView", () => {
         createdBy: alice.id,
       })
       .returning();
-    await setPermissionGrant(alice.communityId, "budget", ownerTask.id);
+    await setPermissionGrant(alice, "budget", ownerTask.id);
     await claimTask(alice, ownerTask.id);
     await createBudgetCycle(alice, {
       title: "Season budget",

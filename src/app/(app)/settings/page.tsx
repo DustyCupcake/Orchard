@@ -2,6 +2,7 @@ import { eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { phase, task } from "@/db/schema";
+import { settingsChangeEntityEnum } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity, listBranches, listCycleTypes, listPendingBranches, listTiers, requireAdmins } from "@/lib/settings";
 import Tabs from "@/components/ui/Tabs";
@@ -33,7 +34,8 @@ import BranchesTab from "./tabs/BranchesTab";
 import CyclesTiersTab from "./tabs/CyclesTiersTab";
 import ProfilePrivacyTab from "./tabs/ProfilePrivacyTab";
 import FormsTab from "./tabs/FormsTab";
-import MembersTab from "./tabs/MembersTab";
+import HistoryTab from "./tabs/HistoryTab";
+import { countSettingsChangesByEntity, listSettingsChanges } from "@/lib/settings/history";
 
 export const dynamic = "force-dynamic";
 
@@ -56,16 +58,16 @@ const TABS = [
   { key: "cycles-tiers", label: "Events & Tiers" },
   { key: "profile-privacy", label: "Profile & Privacy" },
   { key: "forms", label: "Forms" },
-  { key: "members", label: "Members" },
+  { key: "history", label: "History" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
-// Shown to Admins only, not merely read-only for everyone else. The
-// Members tab is a roster-paste tool: its content is other people's
-// names and email addresses, and "should we import this list" is an
-// action rather than a setting the community deliberates about. Every
-// other tab is configuration a member has a stake in reading.
-const ADMIN_ONLY_TABS: readonly TabKey[] = ["members"];
+// There are no Admin-only tabs. The Members tab used to be one — it was
+// the bulk roster import, and a settings screen nobody opens twice should
+// not have had a one-off action on it. That moved to /members/import,
+// which is Admin-gated by a redirect and by requireAdmins in its actions.
+// So every tab here is configuration a member has a stake in reading, and
+// `authorized` below only decides what they can *write*.
 
 function TabBar({ active, tabs }: { active: TabKey; tabs: readonly { key: TabKey; label: string }[] }) {
   return <Tabs tabs={tabs} active={active} hrefFor={(key) => `/settings?tab=${key}`} />;
@@ -80,10 +82,8 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<{
     tab?: string;
+    entity?: string;
     error?: string;
-    bulkStage?: string;
-    bulkState?: string;
-    bulkAdded?: string;
   }>;
 }) {
   const ctx = await getViewingContext();
@@ -92,7 +92,7 @@ export default async function SettingsPage({
   }
   const viewing = ctx.viewing;
 
-  const { error, bulkStage, bulkState: bulkStateRaw, bulkAdded, tab } = await searchParams;
+  const { error, tab, entity } = await searchParams;
 
   let authorized = false;
   try {
@@ -102,8 +102,7 @@ export default async function SettingsPage({
     authorized = false;
   }
 
-  const visibleTabs = authorized ? TABS : TABS.filter((t) => !ADMIN_ONLY_TABS.includes(t.key));
-  const visibleTabKeys = new Set(visibleTabs.map((t) => t.key));
+  const visibleTabKeys = new Set(TABS.map((t) => t.key));
   const requested = (tab ?? "general") as TabKey;
   const activeTab: TabKey = visibleTabKeys.has(requested) ? requested : "general";
 
@@ -259,6 +258,25 @@ export default async function SettingsPage({
     };
   }
 
+  // The change log's two queries, only on the tab that shows it — same
+  // reasoning as the permissions tab's four. The filter comes off the URL
+  // and is validated against the enum by the lib's own type, so a
+  // hand-edited ?entity= is a no-op filter rather than a query error.
+  const historyData =
+    activeTab === "history"
+      ? await (async () => {
+          // Checked against the enum rather than cast to it. A cast would
+          // typecheck fine and then hand Postgres a value the column does
+          // not contain, which is a 500 on a URL anyone can type.
+          const filter = entity && (settingsChangeEntityEnum.enumValues as readonly string[]).includes(entity)
+            ? (entity as (typeof settingsChangeEntityEnum.enumValues)[number])
+            : undefined;
+          const rows = await listSettingsChanges(viewing, { entity: filter });
+          const counts = await countSettingsChangesByEntity(viewing);
+          return { rows, counts, activeEntity: filter ?? null };
+        })()
+      : null;
+
   const ruleTaskIds = [...new Set(rules.map((r) => r.unlockedByTaskId).filter((v): v is string => Boolean(v)))];
   const ruleTaskRows = ruleTaskIds.length
     ? await db.select({ id: task.id, title: task.title }).from(task).where(inArray(task.id, ruleTaskIds))
@@ -288,7 +306,7 @@ export default async function SettingsPage({
       )}
 
       <div className="mt-6">
-        <TabBar active={activeTab} tabs={visibleTabs} />
+        <TabBar active={activeTab} tabs={TABS} />
       </div>
 
       {!authorized && (
@@ -370,8 +388,8 @@ export default async function SettingsPage({
           <FormsTab forms={forms} profileQuestionOptions={onceEverProfileQuestionOptions} />
         )}
 
-        {activeTab === "members" && authorized && (
-          <MembersTab bulkStateRaw={bulkStage === "review" ? bulkStateRaw : undefined} bulkAdded={bulkAdded} />
+        {activeTab === "history" && historyData && (
+          <HistoryTab rows={historyData.rows} counts={historyData.counts} activeEntity={historyData.activeEntity} />
         )}
       </fieldset>
     </main>

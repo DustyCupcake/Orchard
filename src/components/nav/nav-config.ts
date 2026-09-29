@@ -11,6 +11,11 @@ export type NavItem = {
   moduleKey?: ModuleKey;
   // Item only renders for a coordination-view holder. Absent = visible to everyone.
   coordinatorOnly?: boolean;
+  // This item's real page lives under a [cycleScope] segment, so the
+  // href above is a bare redirect shim onto /{cycleScope}{href} — see
+  // `isCycleScopedHref` for why the plain prefix match can't light such
+  // a row up on the page it actually leads to.
+  cycleScoped?: boolean;
 };
 
 export type NavGroup = {
@@ -95,7 +100,14 @@ export const NAV_GROUPS: NavGroup[] = [
       // overflow, so none of them need a duplicate sidebar row.
       { key: "proposals", label: "Proposals", href: "/proposals", icon: "stack" },
       { key: "contribution", label: "My contribution", href: "/contribution", icon: "handheart" },
-      { key: "coordination", label: "Coordination", href: "/coordination", icon: "compass", coordinatorOnly: true },
+      {
+        key: "coordination",
+        label: "Coordination",
+        href: "/coordination",
+        icon: "compass",
+        coordinatorOnly: true,
+        cycleScoped: true,
+      },
       // Input rounds moved to the Communication group — it's an ask-me
       // interaction, not a task mechanic (see that group's comment).
     ],
@@ -166,7 +178,14 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Modules",
     icon: "grid",
     items: [
-      { key: "budget", label: "Budget", href: "/budget", icon: "budget", moduleKey: "budget" },
+      {
+        key: "budget",
+        label: "Budget",
+        href: "/budget",
+        icon: "budget",
+        moduleKey: "budget",
+        cycleScoped: true,
+      },
       {
         key: "spatial-planning",
         label: "Spatial planning",
@@ -240,4 +259,25 @@ export function isItemVisible(item: NavItem, ctx: NavContext): boolean {
   if (item.coordinatorOnly && !ctx.isCoordinator) return false;
   if (item.moduleKey && !ctx.visibleModules[item.moduleKey]) return false;
   return true;
+}
+
+/**
+ * Whether an item's real page lives at `/{cycleScope}{href}` rather than
+ * at `href` itself.
+ *
+ * A cycle-scoped item's `href` is a bare redirect shim: `/coordination`
+ * resolves to `/{cycleScope}/coordination` (docs/cycle-scope-remediation-plan.md
+ * §5.3), so AppShell's plain `pathname === href || startsWith(href + "/")`
+ * matches the shim but never the page it lands on. The row would light up
+ * for exactly the duration of the redirect and then go dark permanently.
+ *
+ * That isn't hypothetical — Budget has been doing it, and the Events row
+ * was deleted outright for the same reason (see the DASHBOARD_ITEM
+ * comment above). Reading `cycleScoped` off the item is what keeps the
+ * next page that moves under [cycleScope] from silently reintroducing it:
+ * the href stays a clean, shareable /coordination, and this is the one
+ * place that knows it resolves further.
+ */
+export function isCycleScopedHref(href: string): boolean {
+  return ALL_ITEMS.some((item) => item.cycleScoped && item.href === href);
 }

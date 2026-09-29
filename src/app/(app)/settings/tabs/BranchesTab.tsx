@@ -100,6 +100,7 @@ export default function BranchesTab({
             action={updateBranchAction}
             submitLabel="Save branch"
             title={b.name}
+            stateLabel={`${b.name}, a branch. Its description and its call defaults`}
             state={
               <>
                 {b.description?.trim() || "No description yet."}{" "}

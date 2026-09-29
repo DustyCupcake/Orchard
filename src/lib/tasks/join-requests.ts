@@ -9,6 +9,20 @@ import { getUnmetRequirements, describeRequirement } from "./requirements";
 import { assignmentCount, loadTaskForUpdate, performClaimInTx } from "./lifecycle";
 import { requireTaskInCommunity } from "./shared";
 
+// The one definition of "a coordinator is about to self-assign something
+// that might suit someone else better" — docs/spec.md's Coordination
+// mechanics: "when anyone with placement authority tries to self-assign a
+// flagged or unclaimed task". The claim path checks it, and both claim
+// surfaces (the task page's header and the board's TaskCard) use it to
+// decide whether their Claim button opens a dialog, so the two can't
+// disagree about who's asked and who isn't. Deliberately takes only the
+// two task fields the rule is about: "flagged" and "unclaimed" are both
+// properties of the task, while "does this actor coordinate it" is a
+// separate authority check each caller already has.
+export function isSelfAssignWorthAskingAbout(task: { status: string; attentionLevel: string }) {
+  return task.status === "unclaimed" || task.attentionLevel !== "ok";
+}
+
 type Member = typeof memberTable.$inferSelect;
 
 // The claim/request fork described in docs/spec.md's "Task openness"
@@ -38,22 +52,24 @@ export async function claimOrRequestToJoin(
       throw new ConflictError(`Cannot claim a task that is ${current.status}`);
     }
 
-    // Self-assign confirmation check — see docs/spec.md's Coordination
-    // mechanics: "when anyone with placement authority tries to self-
-    // assign a flagged or unclaimed task... are you sure there isn't
-    // someone with just the skills for this?" Only fires for someone who
-    // currently does this task's branch's coordination — an ordinary
+    // The self-assign confirmation check. Only fires for someone who
+    // currently does this task's scope's coordination — an ordinary
     // member claiming a flagged or unclaimed task is just claiming one.
     // Scoped to the ordinary claim/request path, not community_endorsed
     // (already its own, more deliberate process) or shadowing (not a
     // placement act).
+    //
+    // The message names the dialog rather than the page: the two claim
+    // surfaces now ask by *opening* this rather than by being replaced
+    // by a standing banner, so the one place a non-dialog caller can still
+    // land is the REST API and the board's bulk claim.
     if (
       !options.confirmed &&
-      (current.status === "unclaimed" || current.attentionLevel !== "ok") &&
+      isSelfAssignWorthAskingAbout(current) &&
       (await isCoordinationHolder(actor, { branchId: current.branchId, cycleId: current.cycleId }))
     ) {
       throw new ConfirmationRequiredError(
-        "You coordinate this branch — confirm on the task's page before self-assigning a flagged or unclaimed task",
+        "You coordinate this task's scope — confirm before self-assigning a flagged or unclaimed task",
       );
     }
 

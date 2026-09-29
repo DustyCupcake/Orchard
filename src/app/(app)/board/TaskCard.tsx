@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { FlameIcon } from "@phosphor-icons/react/dist/ssr";
 import type { requirement as requirementTable } from "@/db/schema";
-import { describeRequirement } from "@/lib/tasks";
+import { describeRequirement, isSelfAssignWorthAskingAbout } from "@/lib/tasks";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import { Tag, ATTENTION_TONE, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT } from "@/components/ui/kit";
 import ActionMenu from "@/components/ui/ActionMenu";
 import { TaskSelectionCheckbox } from "@/components/tasks/BulkClaimSelect";
+import ClaimGate from "@/components/tasks/ClaimGate";
 import { BranchChip, CapacityChip, DateChip, EffortChip } from "@/components/tasks/MetaChips";
 import {
+  boardConfirmClaimAction,
   claimAction,
   escalateTaskAction,
   finishAction,
@@ -95,25 +97,24 @@ export default function TaskCard({
     task.status === "claimed" && realAssignments.length > 0 && requestGated;
   const isCommunityEndorsed = task.openness === "community_endorsed";
 
-  const needsSelfAssignConfirmation =
-    isCoordinationHolderForTask && (task.status === "unclaimed" || task.attentionLevel !== "ok");
+  // A coordinator claiming their own unclaimed/flagged task opens the
+  // self-assign dialog instead of claiming straight away — the same
+  // predicate and the same server-side enforcement as
+  // tasks/[id]/page.tsx (see join-requests.ts's claimOrRequestToJoin),
+  // but the board card keeps a real Claim button either way. It used to
+  // delete the button and link to the task page instead, which is what
+  // made the ask feel permanent rather than something you'd only meet by
+  // actually trying to claim something.
+  const claimIsGated = isCoordinationHolderForTask && isSelfAssignWorthAskingAbout(task);
 
   const canAct =
     !isCommunityEndorsed &&
     !shadowing &&
-    !needsSelfAssignConfirmation &&
     (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
     eligible &&
     !myPendingRequestId;
   const canClaim = canAct && !joiningRequiresRequest;
   const canRequest = canAct && joiningRequiresRequest;
-  const needsConfirmationLink =
-    !isCommunityEndorsed &&
-    !shadowing &&
-    needsSelfAssignConfirmation &&
-    (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
-    eligible &&
-    !myPendingRequestId;
   const blockedByRequirements =
     !isCommunityEndorsed &&
     !shadowing &&
@@ -152,12 +153,12 @@ export default function TaskCard({
 
   if ((canClaim || canRequest) && !holds) {
     primaryAction = (
-      <form action={claimAction}>
-        <input type="hidden" name="taskId" value={task.id} />
-        <button type="submit" className={BUTTON_PRIMARY}>
-          {canRequest ? "Request to join" : "Claim"}
-        </button>
-      </form>
+      <ClaimGate
+        taskId={task.id}
+        claimLabel={canRequest ? "Request to join" : "Claim"}
+        gated={claimIsGated}
+        confirmClaimAction={claimIsGated ? boardConfirmClaimAction : claimAction}
+      />
     );
     if (shadowLink) menuItems.push(shadowLink);
     if (escalateForm) menuItems.push(escalateForm);
@@ -334,9 +335,9 @@ export default function TaskCard({
         {blockedByRequirements && (
           <span className="text-[12px] text-[var(--danger)]">Not eligible — see unmet requirements</span>
         )}
-        {needsConfirmationLink && (
+        {claimIsGated && (
           <Link href={`/tasks/${task.id}`} className="text-[12px] font-medium text-[var(--accent-1)] hover:underline">
-            {joiningRequiresRequest ? "Request to join" : "Claim"} (confirm on task page) →
+            Ask someone else about this →
           </Link>
         )}
         {isCommunityEndorsed && !holds && (

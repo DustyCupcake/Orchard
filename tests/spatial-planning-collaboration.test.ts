@@ -81,7 +81,7 @@ async function setUpModule() {
     testCycle.id,
   );
   await claimTask(alice, holderTask.id);
-  await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id);
+  await setPermissionGrant(alice, "spatial_planning", holderTask.id);
   const plotRow = await createPlot(alice, testCycle.id, {
     name: "Main site",
     scaleCalibration: { pointA: { x: 0, y: 0 }, pointB: { x: 10, y: 0 }, realWorldDistanceMeters: 5 },
@@ -632,12 +632,12 @@ describe("Cycle creation: full-Cycle clone with 'also clone spatial planning?'",
     );
     await claimTask(alice, holderTask.id);
     // Legitimately owns the source cycle's Plot at creation time...
-    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id);
+    await setPermissionGrant(alice, "spatial_planning", holderTask.id);
     await createPlot(alice, sourceCycle.id, { name: "Source site" });
     // ...but by the time cloning happens, only a *different* cycle's
     // holder exists — the source cycle's own grant was removed and
     // replaced by a fresh task placed in the other cycle.
-    await removePermissionGrant(testCommunity.id, "spatial_planning", holderTask.id);
+    await removePermissionGrant(alice, "spatial_planning", holderTask.id);
     const otherHolderTask = await insertSpatialPlanningTask(
       testCommunity.id,
       testBranch.id,
@@ -646,7 +646,7 @@ describe("Cycle creation: full-Cycle clone with 'also clone spatial planning?'",
       otherCycle.id,
     );
     await claimTask(alice, otherHolderTask.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", otherHolderTask.id);
+    await setPermissionGrant(alice, "spatial_planning", otherHolderTask.id);
 
     const cyclesBefore = (await db.select().from(cycle).where(eq(cycle.communityId, testCommunity.id))).length;
     await expect(
@@ -669,7 +669,7 @@ describe("Cycle creation: full-Cycle clone with 'also clone spatial planning?'",
       noPlotCycle.id,
     );
     await claimTask(alice, holderTask.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id);
+    await setPermissionGrant(alice, "spatial_planning", holderTask.id);
 
     const newCycle = await createCycle(alice, {
       source: "clone_previous",

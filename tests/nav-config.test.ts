@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { ALL_ITEMS, NAV_GROUPS, isNavGroupRenderable } from "@/components/nav/nav-config";
+import {
+  ALL_ITEMS,
+  NAV_GROUPS,
+  isCycleScopedHref,
+  isNavGroupRenderable,
+} from "@/components/nav/nav-config";
 
 describe("navigation group visibility", () => {
   // Event management is reached from the view-scope switcher's own
@@ -43,6 +48,46 @@ describe("navigation group visibility", () => {
   it("does not render an empty ordinary group", () => {
     const library = NAV_GROUPS.find((group) => group.key === "library")!;
     expect(isNavGroupRenderable({ ...library, headerIsLink: false })).toBe(false);
+  });
+});
+
+describe("cycle-scoped nav hrefs", () => {
+  // The bug this guards: a nav item whose real page lives at
+  // /{cycleScope}{href} lights up only for the length of the redirect
+  // from the bare href, then goes dark on the page it actually led to.
+  // AppShell's isActive strips the leading scope segment for exactly the
+  // items flagged cycleScoped, so forgetting the flag on a new
+  // cycle-scoped page silently reintroduces the flash.
+  it("marks every item whose page moved under [cycleScope]", () => {
+    // The four real pages under [cycleScope] today. Coordination and
+    // Escalation moved in Phase 65 alongside Participation and Budget.
+    for (const href of ["/participation", "/budget", "/coordination", "/escalation"]) {
+      const items = ALL_ITEMS.filter((item) => item.href === href);
+      if (items.length === 0) continue; // no nav row (participation/escalation)
+      for (const item of items) {
+        expect({ href, cycleScoped: item.cycleScoped }).toEqual({ href, cycleScoped: true });
+      }
+    }
+  });
+
+  it("resolves a href as cycle-scoped only when an item says so", () => {
+    expect(isCycleScopedHref("/coordination")).toBe(true);
+    expect(isCycleScopedHref("/budget")).toBe(true);
+    // A normal top-level destination must not be treated as one, or
+    // /board would light up on any /{scope}/board path.
+    expect(isCycleScopedHref("/board")).toBe(false);
+    expect(isCycleScopedHref("/dashboard")).toBe(false);
+    expect(isCycleScopedHref("/participation")).toBe(false);
+  });
+
+  it("keeps the Coordination row inside the Tasks group and coordinator-only", () => {
+    const tasks = NAV_GROUPS.find((group) => group.key === "tasks")!;
+    const coordination = tasks.items.find((item) => item.key === "coordination");
+    expect(coordination).toMatchObject({
+      href: "/coordination",
+      coordinatorOnly: true,
+      cycleScoped: true,
+    });
   });
 });
 

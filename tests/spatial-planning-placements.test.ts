@@ -70,7 +70,7 @@ async function setUpModule() {
   const testCycle = await insertCycle(testCommunity.id, "Cycle A", new Date("2026-01-01"));
   const holderTask = await insertSpatialPlanningTask(testCommunity.id, testBranch.id, alice.id, testCycle.id);
   await claimTask(alice, holderTask.id);
-  await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id);
+  await setPermissionGrant(alice, "spatial_planning", holderTask.id);
   const plotRow = await createPlot(alice, testCycle.id, {
     name: "Main site",
     scaleCalibration: { pointA: { x: 0, y: 0 }, pointB: { x: 10, y: 0 }, realWorldDistanceMeters: 5 },
@@ -351,7 +351,7 @@ describe("Cloning Placements across Cycles", () => {
       targetCycle.id,
     );
     await claimTask(alice, targetHolderTask.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", targetHolderTask.id);
+    await setPermissionGrant(alice, "spatial_planning", targetHolderTask.id);
     const clonedPlot = await clonePlotFromCycle(alice, targetCycle.id, sourceCycle.id);
 
     const clonedPlacements = await listPlacements(alice, clonedPlot.id);

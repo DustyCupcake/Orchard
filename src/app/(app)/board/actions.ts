@@ -59,6 +59,18 @@ export async function claimAction(formData: FormData) {
   await runAction(() => claimOrRequestToJoin(actor, taskId));
 }
 
+// The board-card half of the coordinator self-assign dialog (see
+// components/tasks/ClaimGate.tsx) — a coordinator claiming their own
+// unclaimed or flagged task from the board lands here instead. The
+// dialog's other options live on the task page, where the member list and
+// the suggest/flag forms already are; the board is a scanning surface, so
+// confirming or stepping away from the card is the whole of it.
+export async function boardConfirmClaimAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  await runAction(() => claimOrRequestToJoin(actor, taskId, { confirmed: true }));
+}
+
 // "Select and claim with exceptions" — see docs/spec.md's Coordination
 // mechanics: bulk task selection. Reuses the ordinary claim path per
 // task rather than a separate bulk-insert, so capacity/Requirement/

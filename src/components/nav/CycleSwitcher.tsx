@@ -15,6 +15,14 @@ import type { NavContext } from "@/lib/nav";
 // segment) — authoritative display truth while actually on a
 // cycle-scoped page; ctx.defaultScopeSegment (server-resolved from
 // Member.lastViewedCycleId) is the fallback everywhere else.
+// The [cycleScope] pages a scope selection can navigate between — the
+// shared vocabulary with AppShell's cycleScopeMatch regex, which parses
+// the sub-path out of the live pathname. Exported so the regex's capture
+// group and this type can't drift apart: a page added to one without the
+// other fails to typecheck, rather than silently refreshing in place
+// instead of navigating.
+export type CycleSubPath = "participation" | "budget" | "coordination" | "escalation";
+
 export default function CycleSwitcher({
   ctx,
   urlScope,
@@ -28,7 +36,7 @@ export default function CycleSwitcher({
   // first consumer of the switcher outside Participation/Budget, and
   // those pages have nowhere scope-specific to navigate to on
   // selection; selectScope below just refreshes them in place instead.
-  subPath: "participation" | "budget" | null;
+  subPath: CycleSubPath | null;
   collapsed: boolean;
 }) {
   const router = useRouter();

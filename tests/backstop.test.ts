@@ -129,7 +129,7 @@ describe("backstop scope resolution", () => {
       cycleId: cycleA.id,
       title: "New backstop",
     });
-    await setPermissionGrant(testCommunity.id, "backstop", replacement.id);
+    await setPermissionGrant(alice, "backstop", replacement.id);
 
     const grants = await backstopGrants(testCommunity.id);
     expect(grants.map((g) => g.taskId)).toEqual(expect.arrayContaining([replacement.id, evergreen.id]));

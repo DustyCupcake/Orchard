@@ -124,7 +124,7 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
     const copied = await insertTask(testCommunity.id, branch.id, alice.id, { title: "Copy" });
 
     // Open on the source side, and granted, so both facts exist to be copied.
-    await setModuleOpen(testCommunity.id, "recruitment", true, alice.id);
+    await setModuleOpen(alice, "recruitment", true);
     await db.transaction((tx) =>
       copyPermissionGrants(
         tx,
@@ -147,10 +147,10 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
     const t = await insertTask(testCommunity.id, branch.id, alice.id);
     await grantPermission(testCommunity.id, "recruitment", t.id);
 
-    await setModuleOpen(testCommunity.id, "recruitment", true, alice.id);
+    await setModuleOpen(alice, "recruitment", true);
     expect(await isModuleOpenToEveryone(testCommunity.id, "recruitment")).toBe(true);
 
-    await setModuleOpen(testCommunity.id, "recruitment", false, alice.id);
+    await setModuleOpen(alice, "recruitment", false);
     // Closed again, and the named holder is untouched.
     expect(await isModuleOpenToEveryone(testCommunity.id, "recruitment")).toBe(false);
     expect(await listGrantingTaskIds(testCommunity.id, "recruitment")).toEqual([t.id]);
@@ -163,13 +163,13 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
     const { community: testCommunity, alice } = await createFixtures();
 
     expect(isOpenableModule("backstop")).toBe(false);
-    expect(await setModuleOpen(testCommunity.id, "backstop", true, alice.id)).toBe(false);
+    expect(await setModuleOpen(alice, "backstop", true)).toBe(false);
     expect(await isModuleOpenToEveryone(testCommunity.id, "backstop")).toBe(false);
 
     // Every other module is openable, and opening twice is idempotent.
     for (const moduleKey of PERMISSION_MODULE_KEYS.filter((k) => k !== "backstop")) {
-      expect(await setModuleOpen(testCommunity.id, moduleKey, true, alice.id)).toBe(true);
-      expect(await setModuleOpen(testCommunity.id, moduleKey, true, alice.id)).toBe(true);
+      expect(await setModuleOpen(alice, moduleKey, true)).toBe(true);
+      expect(await setModuleOpen(alice, moduleKey, true)).toBe(true);
     }
     const open = await db.select().from(openPermissionGrant);
     expect(open).toHaveLength(PERMISSION_MODULE_KEYS.length - 1);
@@ -183,9 +183,9 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
     const taskA = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id, title: "Owns A" });
     const taskB = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleB.id, title: "Owns B" });
     const communityTask = await insertTask(testCommunity.id, branch.id, alice.id, { title: "Owns community" });
-    await setPermissionGrant(testCommunity.id, "spatial_planning", taskA.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", taskB.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", communityTask.id);
+    await setPermissionGrant(alice, "spatial_planning", taskA.id);
+    await setPermissionGrant(alice, "spatial_planning", taskB.id);
+    await setPermissionGrant(alice, "spatial_planning", communityTask.id);
 
     expect((await listGrantingTaskIds(testCommunity.id, "spatial_planning")).sort()).toEqual(
       [taskA.id, taskB.id, communityTask.id].sort(),
@@ -203,14 +203,14 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
     const taskA = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
     const taskB = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleB.id });
 
-    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", taskA.id);
-    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", taskB.id);
+    await setPermissionGrant(alice, "event_scheduling_owner", taskA.id);
+    await setPermissionGrant(alice, "event_scheduling_owner", taskB.id);
     expect(await listGrantingTaskIdsForScope(testCommunity.id, "event_scheduling_owner", cycleA.id)).toEqual([taskA.id]);
     expect(await listGrantingTaskIdsForScope(testCommunity.id, "event_scheduling_owner", cycleB.id)).toEqual([taskB.id]);
 
     // Replacing cycle A's grant with a third task placed in A leaves B's untouched.
     const taskC = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
-    await setPermissionGrant(testCommunity.id, "event_scheduling_owner", taskC.id);
+    await setPermissionGrant(alice, "event_scheduling_owner", taskC.id);
     expect(await listGrantingTaskIdsForScope(testCommunity.id, "event_scheduling_owner", cycleA.id)).toEqual([taskC.id]);
     expect(await listGrantingTaskIdsForScope(testCommunity.id, "event_scheduling_owner", cycleB.id)).toEqual([taskB.id]);
   });
@@ -222,7 +222,7 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
     const cycleB = await createCycle(alice, { source: "blank", name: "B", confirmed: true });
     const t = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
 
-    await setPermissionGrant(testCommunity.id, "spatial_planning", t.id);
+    await setPermissionGrant(alice, "spatial_planning", t.id);
     expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", cycleA.id)).toEqual([t.id]);
     expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", cycleB.id)).toEqual([]);
     expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", null)).toEqual([]);
@@ -241,10 +241,10 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
     const cycleA = await createCycle(alice, { source: "blank", name: "A" });
     const cycleTask = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
     const communityTask = await insertTask(testCommunity.id, branch.id, alice.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", cycleTask.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", communityTask.id);
+    await setPermissionGrant(alice, "spatial_planning", cycleTask.id);
+    await setPermissionGrant(alice, "spatial_planning", communityTask.id);
 
-    await removePermissionGrant(testCommunity.id, "spatial_planning", cycleTask.id);
+    await removePermissionGrant(alice, "spatial_planning", cycleTask.id);
     expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", cycleA.id)).toEqual([]);
     expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", null)).toEqual([communityTask.id]);
   });
@@ -255,8 +255,8 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
     const cycleA = await createCycle(alice, { source: "blank", name: "A" });
     const cycleTask = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id, title: "Owns A" });
     const communityTask = await insertTask(testCommunity.id, branch.id, alice.id, { title: "Owns community" });
-    await setPermissionGrant(testCommunity.id, "spatial_planning", cycleTask.id);
-    await addPermissionGrant(testCommunity.id, "branch_coordination", communityTask.id);
+    await setPermissionGrant(alice, "spatial_planning", cycleTask.id);
+    await addPermissionGrant(alice, "branch_coordination", communityTask.id);
 
     const grants = await listGrantsWithTaskInfo(testCommunity.id);
     // The cycle's auto-created Backstop task (docs/cycle-scope-
@@ -406,16 +406,16 @@ describe("cardinality enforcement in grant functions", () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     const t = await insertTask(testCommunity.id, branch.id, alice.id);
     await expect(
-      setPermissionGrant(testCommunity.id, "admin", t.id),
+      setPermissionGrant(alice, "admin", t.id),
     ).rejects.toThrow(/grants may coexist/);
     await expect(
-      setPermissionGrant(testCommunity.id, "branch_coordination", t.id),
+      setPermissionGrant(alice, "branch_coordination", t.id),
     ).rejects.toThrow(/grants may coexist/);
     await expect(
-      setPermissionGrant(testCommunity.id, "support", t.id),
+      setPermissionGrant(alice, "support", t.id),
     ).rejects.toThrow(/grants may coexist/);
     await expect(
-      setPermissionGrant(testCommunity.id, "kitchen", t.id),
+      setPermissionGrant(alice, "kitchen", t.id),
     ).rejects.toThrow(/grants may coexist/);
   });
 
@@ -423,10 +423,10 @@ describe("cardinality enforcement in grant functions", () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     const t = await insertTask(testCommunity.id, branch.id, alice.id);
     await expect(
-      addPermissionGrant(testCommunity.id, "spatial_planning", t.id),
+      addPermissionGrant(alice, "spatial_planning", t.id),
     ).rejects.toThrow(/allows one granting task per scope/);
     await expect(
-      addPermissionGrant(testCommunity.id, "budget", t.id),
+      addPermissionGrant(alice, "budget", t.id),
     ).rejects.toThrow(/allows one granting task per scope/);
   });
 });
@@ -445,12 +445,12 @@ describe("atomic setPermissionGrant replacement", () => {
     const taskC = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
 
     // Initial grant
-    await setPermissionGrant(testCommunity.id, "spatial_planning", taskA.id);
+    await setPermissionGrant(alice, "spatial_planning", taskA.id);
 
     // Simulate concurrent replacements - both should run and end with exactly one grant
     const [result1, result2] = await Promise.allSettled([
-      setPermissionGrant(testCommunity.id, "spatial_planning", taskB.id),
-      setPermissionGrant(testCommunity.id, "spatial_planning", taskC.id),
+      setPermissionGrant(alice, "spatial_planning", taskB.id),
+      setPermissionGrant(alice, "spatial_planning", taskC.id),
     ]);
 
     // Both should succeed (no throw)
@@ -478,9 +478,9 @@ describe("removePermissionGrant transactional behavior", () => {
     await enableCycles(testCommunity.id);
     const cycleA = await createCycle(alice, { source: "blank", name: "A" });
     const t = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cycleA.id });
-    await setPermissionGrant(testCommunity.id, "spatial_planning", t.id);
+    await setPermissionGrant(alice, "spatial_planning", t.id);
 
-    await removePermissionGrant(testCommunity.id, "spatial_planning", t.id);
+    await removePermissionGrant(alice, "spatial_planning", t.id);
 
     expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", cycleA.id)).toEqual([]);
   });

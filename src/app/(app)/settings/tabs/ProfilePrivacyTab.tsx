@@ -478,6 +478,7 @@ function TraitAxesSection({ traitAxes }: { traitAxes: (typeof traitAxisTable.$in
               {a.archivedAt && <Tag tone="warning">archived</Tag>}
             </span>
           }
+          stateLabel={`${a.highLabel} to ${a.lowLabel}, a trait axis. ${a.optionLabels.length > 0 ? `${a.optionLabels.length} labelled positions` : "a slider"}, ${a.askAtOnboarding ? "asked during onboarding" : "not asked during onboarding"}`}
           state={
             <>
               {a.optionLabels.length > 0

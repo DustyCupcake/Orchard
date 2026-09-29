@@ -5,6 +5,7 @@ import { community, cycle, cycleType, member, participation, tier } from "@/db/s
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, NotFoundError } from "../errors";
 import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
+import { recordSettingChanges } from "./history";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -63,16 +64,36 @@ export async function createTier(actor: Member, input: CreateTierInput) {
   await requireNotOnsiteLockedForCommunity(actor.communityId);
   await requireValidCriterionConfig(actor.communityId, input.criterionType, input.criterionConfig);
 
-  const [created] = await db
-    .insert(tier)
-    .values({
-      communityId: actor.communityId,
-      name: input.name,
-      criterionType: input.criterionType ?? "manual",
-      criterionConfig: input.criterionConfig ?? {},
-    })
-    .returning();
-  return created;
+  return db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(tier)
+      .values({
+        communityId: actor.communityId,
+        name: input.name,
+        criterionType: input.criterionType ?? "manual",
+        criterionConfig: input.criterionConfig ?? {},
+      })
+      .returning();
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "tier",
+      action: "created",
+      entityId: created.id,
+      entityLabel: created.name,
+      current: {},
+      changes: {
+        name: created.name,
+        // criterionConfig is dropped when it is the empty object the insert
+        // defaults to, since "criterion configuration set to {}" describes
+        // the absence of a configuration rather than a chosen one.
+        ...(created.criterionType !== "manual" && { criterionType: created.criterionType }),
+        ...(Object.keys(created.criterionConfig ?? {}).length > 0 && {
+          criterionConfig: created.criterionConfig,
+        }),
+      },
+    });
+    return created;
+  });
 }
 
 export async function updateTier(actor: Member, tierId: string, input: UpdateTierInput) {
@@ -91,15 +112,27 @@ export async function updateTier(actor: Member, tierId: string, input: UpdateTie
     input.criterionConfig ?? (existing.criterionConfig as Record<string, unknown>);
   await requireValidCriterionConfig(actor.communityId, nextCriterionType, nextCriterionConfig);
 
-  const [updated] = await db
-    .update(tier)
-    .set({
-      ...(input.name !== undefined && { name: input.name }),
-      ...(input.criterionType !== undefined && { criterionType: input.criterionType }),
-      ...(input.criterionConfig !== undefined && { criterionConfig: input.criterionConfig }),
-    })
-    .where(and(eq(tier.id, tierId), eq(tier.communityId, actor.communityId)))
-    .returning();
+  const updated = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(tier)
+      .set({
+        ...(input.name !== undefined && { name: input.name }),
+        ...(input.criterionType !== undefined && { criterionType: input.criterionType }),
+        ...(input.criterionConfig !== undefined && { criterionConfig: input.criterionConfig }),
+      })
+      .where(and(eq(tier.id, tierId), eq(tier.communityId, actor.communityId)))
+      .returning();
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "tier",
+      action: "updated",
+      entityId: tierId,
+      entityLabel: row.name,
+      current: existing,
+      changes: input,
+    });
+    return row;
+  });
   return updated;
 }
 
@@ -107,7 +140,7 @@ export async function deleteTier(actor: Member, tierId: string) {
   await requireNotOnsiteLockedForCommunity(actor.communityId);
 
   const [existing] = await db
-    .select({ id: tier.id })
+    .select({ id: tier.id, name: tier.name, criterionType: tier.criterionType, criterionConfig: tier.criterionConfig })
     .from(tier)
     .where(and(eq(tier.id, tierId), eq(tier.communityId, actor.communityId)));
   if (!existing) {
@@ -124,7 +157,18 @@ export async function deleteTier(actor: Member, tierId: string) {
     );
   }
 
-  await db.delete(tier).where(eq(tier.id, tierId));
+  await db.transaction(async (tx) => {
+    await tx.delete(tier).where(eq(tier.id, tierId));
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "tier",
+      action: "deleted",
+      entityId: tierId,
+      entityLabel: existing.name,
+      current: existing,
+      changes: { name: null },
+    });
+  });
 }
 
 // How many distinct Cycles of this type the member has had Participation

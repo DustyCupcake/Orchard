@@ -1,7 +1,11 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, type Tx } from "@/db";
 import { member, openPermissionGrant, permissionGrant, task, taskAssignment } from "@/db/schema";
+import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "./errors";
+import { recordSettingChanges } from "./settings/history";
+
+type Member = typeof memberTable.$inferSelect;
 
 export const PERMISSION_MODULE_KEYS = [
   "admin",
@@ -370,25 +374,62 @@ export async function countHoldersOfTasks(taskIds: readonly string[]): Promise<n
 //
 // Returns false when the module cannot be opened, so the caller can report
 // the refusal rather than silently doing nothing.
+// Takes an actor for the same reason as the three grant functions below:
+// the log needs a member id, and taking it as a parameter means a call site
+// cannot forget. `openedBy` was the member id this already needed, so it is
+// now derived from the actor rather than passed alongside it.
 export async function setModuleOpen(
-  communityId: string,
+  actor: Member,
   moduleKey: PermissionModuleKey,
   open: boolean,
-  openedBy: string,
 ): Promise<boolean> {
+  const communityId = actor.communityId;
   if (open && !isOpenableModule(moduleKey)) return false;
-  if (open) {
-    await db
-      .insert(openPermissionGrant)
-      .values({ communityId, moduleKey, openedBy })
-      .onConflictDoNothing();
-  } else {
-    await db
-      .delete(openPermissionGrant)
-      .where(
-        and(eq(openPermissionGrant.communityId, communityId), eq(openPermissionGrant.moduleKey, moduleKey)),
-      );
-  }
+
+  await db.transaction(async (tx) => {
+    if (open) {
+      // `.onConflictDoNothing()` means an already-open module inserts
+      // nothing, so the log line has to key off whether the row is
+      // actually new — otherwise re-ticking a ticked box writes a change
+      // that never happened.
+      const inserted = await tx
+        .insert(openPermissionGrant)
+        .values({ communityId, moduleKey, openedBy: actor.id })
+        .onConflictDoNothing()
+        .returning({ moduleKey: openPermissionGrant.moduleKey });
+      if (inserted.length > 0) {
+        await recordSettingChanges(tx, {
+          actor,
+          entity: "open_permission_grant",
+          action: "created",
+          // No entityId: open_permission_grant is keyed on
+          // (community_id, module_key) and has no surrogate id of its own.
+          entityId: null,
+          entityLabel: PERMISSION_MODULE_LABELS[moduleKey],
+          current: {},
+          changes: { moduleKey, open: true },
+        });
+      }
+    } else {
+      const deleted = await tx
+        .delete(openPermissionGrant)
+        .where(
+          and(eq(openPermissionGrant.communityId, communityId), eq(openPermissionGrant.moduleKey, moduleKey)),
+        )
+        .returning({ moduleKey: openPermissionGrant.moduleKey });
+      if (deleted.length > 0) {
+        await recordSettingChanges(tx, {
+          actor,
+          entity: "open_permission_grant",
+          action: "deleted",
+          entityId: null,
+          entityLabel: PERMISSION_MODULE_LABELS[moduleKey],
+          current: { moduleKey, open: true },
+          changes: { moduleKey, open: false },
+        });
+      }
+    }
+  });
   return true;
 }
 
@@ -589,11 +630,21 @@ async function requireTaskInCommunity(tx: Tx, communityId: string, taskId: strin
 // nothing left to mean). Never call this for a multi-cardinality
 // module (admin/branch_coordination/support) — it would silently drop
 // every other task already granting it; use addPermissionGrant instead.
+// The three grant functions below take an actor rather than a bare
+// communityId. That is a signature change with a single purpose: the
+// change log needs a member id for every row, and taking it as a parameter
+// means no call site can forget it. Every existing caller already had an
+// actor in hand and was passing `actor.communityId`, so nothing had to be
+// threaded down — which is the good version of this change. It is worth
+// saying that out loud because the bad version (an optional actor, logged
+// only when present) would have compiled too, and would have made the audit
+// trail quietly conditional, which is the one thing it must not be.
 export async function setPermissionGrant(
-  communityId: string,
+  actor: Member,
   moduleKey: PermissionModuleKey,
   taskId: string,
 ): Promise<void> {
+  const communityId = actor.communityId;
   if (allowsMultipleGrants(moduleKey)) {
     throw new AppError(`${PERMISSION_MODULE_LABELS[moduleKey]} grants may coexist; use addPermissionGrant`);
   }
@@ -624,7 +675,7 @@ export async function setPermissionGrant(
           scopeCycleId === null ? isNull(task.cycleId) : eq(task.cycleId, scopeCycleId),
         ),
       );
-    await tx
+    const removed = await tx
       .delete(permissionGrant)
       .where(
         and(
@@ -635,8 +686,41 @@ export async function setPermissionGrant(
             sameScopeTaskIds.map((r) => r.id),
           ),
         ),
-      );
+      )
+      .returning({ taskId: permissionGrant.taskId });
     await tx.insert(permissionGrant).values({ communityId, moduleKey, taskId });
+
+    // A set on a single-cardinality module is a *replacement*, and the row
+    // that got replaced is the interesting half: "budget moved from the
+    // Autumn rota to the Spring rota" is the whole content of this change,
+    // and logging only the new holder would record the destination and lose
+    // the journey. So both ends go in one row, and the removed task's title
+    // is resolved because the new holder's title alone can't say what it
+    // replaced.
+    //
+    // `removed.length > 0` is the test, not the resolved title's presence:
+    // the first-ever grant of a module also reaches this code, and calling
+    // it "updated" would put a replacement in the log where there was no
+    // predecessor. Both rows then read `created`, which is what the
+    // per-field diff already says via its null oldValue.
+    const [replaced] = removed.length
+      ? await tx
+          .select({ title: task.title })
+          .from(task)
+          .where(inArray(task.id, removed.map((r) => r.taskId)))
+          .limit(1)
+      : [undefined];
+    const [held] = await tx.select({ title: task.title }).from(task).where(eq(task.id, taskId));
+
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "permission_grant",
+      action: removed.length > 0 ? "updated" : "created",
+      entityId: null,
+      entityLabel: PERMISSION_MODULE_LABELS[moduleKey],
+      current: { moduleKey, grantingTask: replaced?.title ?? null },
+      changes: { moduleKey, grantingTask: held?.title ?? taskId },
+    });
   });
 }
 
@@ -644,10 +728,11 @@ export async function setPermissionGrant(
 // touching any others already granting the same module. A no-op if
 // this exact (community, module, task) grant already exists.
 export async function addPermissionGrant(
-  communityId: string,
+  actor: Member,
   moduleKey: PermissionModuleKey,
   taskId: string,
 ): Promise<void> {
+  const communityId = actor.communityId;
   if (!allowsMultipleGrants(moduleKey)) {
     throw new AppError(`${PERMISSION_MODULE_LABELS[moduleKey]} allows one granting task per scope; use setPermissionGrant`);
   }
@@ -665,8 +750,21 @@ export async function addPermissionGrant(
           eq(permissionGrant.taskId, taskId),
         ),
       );
+    // Already there: no row, and no log line either. The function is
+    // documented as a no-op in this case, and a log line for a change that
+    // did not happen is the fastest way to make a log untrustworthy.
     if (existing.length === 0) {
       await tx.insert(permissionGrant).values({ communityId, moduleKey, taskId });
+      const [held] = await tx.select({ title: task.title }).from(task).where(eq(task.id, taskId));
+      await recordSettingChanges(tx, {
+        actor,
+        entity: "permission_grant",
+        action: "created",
+        entityId: null,
+        entityLabel: PERMISSION_MODULE_LABELS[moduleKey],
+        current: {},
+        changes: { moduleKey, grantingTask: held?.title ?? taskId },
+      });
     }
   });
 }
@@ -677,10 +775,11 @@ export async function addPermissionGrant(
 // task, and the scope it covered was just that task's placement, so
 // removing the row removes the whole grant.
 export async function removePermissionGrant(
-  communityId: string,
+  actor: Member,
   moduleKey: PermissionModuleKey,
   taskId: string,
 ): Promise<void> {
+  const communityId = actor.communityId;
   await db.transaction(async (tx) => {
     await lockPermissionGrantTask(tx, taskId);
     await requireTaskInCommunity(tx, communityId, taskId);
@@ -695,7 +794,10 @@ export async function removePermissionGrant(
       { communityId, moduleKey, cycleId: scopeCycleId },
     ]);
 
-    await tx
+    // `.returning()` because removing a grant that wasn't there changes
+    // nothing, and a log line for a no-op removal would be a false entry —
+    // "budget revoked from the Autumn rota" when it was never held.
+    const removed = await tx
       .delete(permissionGrant)
       .where(
         and(
@@ -703,7 +805,21 @@ export async function removePermissionGrant(
           eq(permissionGrant.moduleKey, moduleKey),
           eq(permissionGrant.taskId, taskId),
         ),
-      );
+      )
+      .returning({ id: permissionGrant.id });
+
+    if (removed.length > 0) {
+      const [held] = await tx.select({ title: task.title }).from(task).where(eq(task.id, taskId));
+      await recordSettingChanges(tx, {
+        actor,
+        entity: "permission_grant",
+        action: "deleted",
+        entityId: null,
+        entityLabel: PERMISSION_MODULE_LABELS[moduleKey],
+        current: { moduleKey, grantingTask: held?.title ?? taskId },
+        changes: { moduleKey, grantingTask: null },
+      });
+    }
   });
 }
 

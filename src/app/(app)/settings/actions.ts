@@ -18,7 +18,6 @@ import {
 } from "@/lib/permissions";
 import { NotFoundError } from "@/lib/errors";
 import {
-  commitBulkMemberImport,
   confirmPendingBranch,
   createBranch,
   createBranchInput,
@@ -29,8 +28,6 @@ import {
   deleteBranch,
   deleteCycleType,
   deleteTier,
-  parseBulkMemberRows,
-  previewBulkMemberImport,
   rejectPendingBranch,
   requireAdmins,
   updateBranch,
@@ -42,7 +39,6 @@ import {
   updateTier,
   updateTierInput,
 } from "@/lib/settings";
-import { decodeBulkMemberState, encodeBulkMemberState } from "./bulk-members-state";
 import {
   joiningLaneRuleInputSchema,
   setCommunityJoiningLaneRules,
@@ -406,20 +402,43 @@ export async function updateRecruitmentDoorsAction(formData: FormData) {
   revalidatePath("/apply");
 }
 
-// Recruitment → the two time-boxed windows and the overrule threshold
-// (§2.2/J2, §2.6/J7). Per-mechanism periods, not per lane: J2 settled
-// that nomination and consensus are never stacked on one lane precisely
-// because two windows on one lane means two timers and nobody knows who
-// resolves what, so there are exactly three numbers here and each one
-// governs a mechanism.
-export async function updateRecruitmentWindowsAction(formData: FormData) {
+// The two waiting periods, split into two actions to match the tab's
+// pipeline order (see RecruitmentTab's header). They used to be one
+// "windows" card sitting between the application and the doors, which put
+// the support window — a step inside admission — two sections from the lane
+// rule that invokes it, and the check window a screen from the decision rule
+// that triggers it.
+//
+// Still per-mechanism rather than per-lane: nomination and consensus are
+// never stacked on one lane precisely because two windows on one lane means
+// two timers and nobody knows who resolves what. Splitting the card along
+// the pipeline does not split it per lane.
+//
+// The support window's action deliberately does NOT revalidate
+// /recruitment/mediation: nothing on the mediation page depends on how long
+// a nomination waits, and the check window's does because that page renders
+// the overrule threshold.
+export async function updateRecruitmentSupportWindowAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    const input = updateCommunityInput.parse(
+      defined({ recruitmentNominationWindowHours: number(formData, "recruitmentNominationWindowHours") }),
+    );
+    await updateCommunity(actor, input);
+  } catch (err) {
+    redirectWithError(err, "recruitment");
+  }
+  revalidatePath("/settings");
+}
+
+export async function updateRecruitmentCheckWindowAction(formData: FormData) {
   const actor = await requireMember();
   try {
     await requireAdmins(actor);
     const input = updateCommunityInput.parse(
       defined({
         recruitmentWiderDiscussionHours: number(formData, "recruitmentWiderDiscussionHours"),
-        recruitmentNominationWindowHours: number(formData, "recruitmentNominationWindowHours"),
         recruitmentObjectionOverrule: text(formData, "recruitmentObjectionOverrule") as
           | "majority"
           | "quorum"
@@ -504,7 +523,7 @@ export async function setModuleOpenAction(formData: FormData) {
 
     // setModuleOpen refuses the one non-openable module (D11) and reports it,
     // so a forged POST gets the same answer the UI would have given.
-    if (!(await setModuleOpen(actor.communityId, moduleKey, open, actor.id))) {
+    if (!(await setModuleOpen(actor, moduleKey, open))) {
       throw new AppError(
         `${PERMISSION_MODULE_LABELS[moduleKey]} can't be open to everyone — it needs someone named to notify.`,
       );
@@ -545,7 +564,7 @@ export async function setPermissionGrantAction(formData: FormData) {
       taskId: String(formData.get("taskId") ?? "").trim(),
     });
     await requireTaskInActorCommunity(taskId, actor.communityId);
-    await setPermissionGrant(actor.communityId, moduleKey, taskId);
+    await setPermissionGrant(actor, moduleKey, taskId);
   } catch (err) {
     redirectWithError(err, tab);
   }
@@ -570,7 +589,7 @@ export async function addPermissionGrantAction(formData: FormData) {
       taskId: String(formData.get("taskId") ?? "").trim(),
     });
     await requireTaskInActorCommunity(taskId, actor.communityId);
-    await addPermissionGrant(actor.communityId, moduleKey, taskId);
+    await addPermissionGrant(actor, moduleKey, taskId);
   } catch (err) {
     redirectWithError(err, tab);
   }
@@ -588,7 +607,7 @@ export async function removePermissionGrantAction(formData: FormData) {
       moduleKey: String(formData.get("moduleKey") ?? ""),
       taskId: String(formData.get("taskId") ?? ""),
     });
-    await removePermissionGrant(actor.communityId, moduleKey, taskId);
+    await removePermissionGrant(actor, moduleKey, taskId);
   } catch (err) {
     redirectWithError(err, tab);
   }
@@ -1205,57 +1224,4 @@ export async function deleteConsentPurposeAction(formData: FormData) {
   }
 
   revalidatePath("/settings");
-}
-
-// Screen one's submit for bulk-adding an existing group's roster
-// (docs/development-plan.md's Phase 61) — parses the pasted text or
-// uploaded file (a CSV's raw text is the identical "one row per line"
-// shape, so one parser covers both sources) and checks every row
-// against already-claimed emails, but creates nothing yet: "nothing
-// commits until the whole flow confirms," the same posture Task Pack
-// import's own review screen already established.
-export async function reviewBulkMemberImportAction(formData: FormData) {
-  const actor = await requireMember();
-  const file = formData.get("file");
-  const pastedText = String(formData.get("pastedText") ?? "");
-
-  let state: string;
-  try {
-    await requireAdmins(actor);
-    const raw = file instanceof File && file.size > 0 ? await file.text() : pastedText;
-    const { rows, malformedLines } = parseBulkMemberRows(raw);
-    const { newRows, alreadyExistsRows } = await previewBulkMemberImport(actor, rows);
-    state = encodeBulkMemberState({ newRows, alreadyExistsRows, malformedLines });
-  } catch (err) {
-    redirectWithError(err, "members");
-  }
-
-  redirect(`/settings?bulkStage=review&bulkState=${encodeURIComponent(state)}&tab=members`);
-}
-
-// Screen two's submit — only ever reached from the review screen
-// above, decoding exactly the rows it already showed rather than
-// re-parsing raw text a second time. Re-checks for an already-claimed
-// email again inside commitBulkMemberImport itself (defense in depth,
-// same as every other two-step confirm flow in this codebase) in case
-// something changed in the gap between review and confirm.
-export async function confirmBulkMemberImportAction(formData: FormData) {
-  const actor = await requireMember();
-  const stateRaw = String(formData.get("state") ?? "");
-
-  const state = decodeBulkMemberState(stateRaw);
-  if (!state) {
-    redirect(`/settings?error=${encodeURIComponent("That review session expired — start over")}&tab=members`);
-  }
-
-  let created: number;
-  try {
-    await requireAdmins(actor);
-    ({ created } = await commitBulkMemberImport(actor, state.newRows));
-  } catch (err) {
-    redirectWithError(err, "members");
-  }
-
-  revalidatePath("/settings");
-  redirect(`/settings?bulkAdded=${created}&tab=members`);
 }

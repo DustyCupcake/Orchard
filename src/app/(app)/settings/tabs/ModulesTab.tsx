@@ -34,6 +34,7 @@ export default function ModulesTab({
           action={updateModulesSettingsAction}
           submitLabel="Save modules"
           title="Modules"
+        stateLabel="Which modules are switched on"
           state={
             community.modulesEnabled.length === 0
               ? "None switched on — Orchard is running as a task board and nothing else"
@@ -62,6 +63,7 @@ export default function ModulesTab({
           action={updatePostCycleFeedbackAction}
           submitLabel="Save feedback form"
           title="The feedback ask"
+        stateLabel="Which form is sent after every event"
           state={
             forms.find((f) => f.id === community.postCycleFeedbackFormId)
               ? `Sent after every event: "${forms.find((f) => f.id === community.postCycleFeedbackFormId)!.title}"`

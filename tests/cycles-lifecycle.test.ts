@@ -83,7 +83,7 @@ describe("closeCycle", () => {
     const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
 
     const ownerTask = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cyc.id });
-    await setPermissionGrant(testCommunity.id, "budget", ownerTask.id);
+    await setPermissionGrant(alice, "budget", ownerTask.id);
     await claimTask(alice, ownerTask.id);
     const budgetCycleRow = await createBudgetCycle(alice, {
       title: "Season budget",
@@ -103,7 +103,7 @@ describe("closeCycle", () => {
     await markBudgetCycleDone(alice, budgetCycleRow.id);
     const cyc2 = await createCycle(alice, { source: "blank", name: "2028 Season" });
     const ownerTask2 = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cyc2.id });
-    await setPermissionGrant(testCommunity.id, "budget", ownerTask2.id);
+    await setPermissionGrant(alice, "budget", ownerTask2.id);
     await claimTask(alice, ownerTask2.id);
     const budgetCycle2 = await createBudgetCycle(alice, {
       title: "Next season budget",

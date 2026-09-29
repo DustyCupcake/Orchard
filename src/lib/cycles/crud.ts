@@ -216,8 +216,8 @@ export async function createCycle(actor: Member, input: CreateCycleInput) {
   // ConfirmationRequiredError flow tasks/join-requests.ts's self-assign
   // check already established, rather than a new error type — the
   // caller is expected to pre-compute this and show a real confirm
-  // banner (see src/app/(app)/tasks/[id]/page.tsx's
-  // needsSelfAssignConfirmation for the UX pattern).
+  // dialog (see src/app/(app)/[cycleScope]/participation/page.tsx, and
+  // components/tasks/ClaimGate.tsx for the same flow on the task side).
   if (!input.confirmed) {
     const [openCycle] = await db
       .select()

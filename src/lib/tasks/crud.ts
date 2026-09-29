@@ -573,10 +573,20 @@ export async function deleteTask(actor: Member, taskId: string) {
   await db.delete(task).where(eq(task.id, taskId));
 }
 
-// A narrow, standalone mutation for suggested_member_id — reused by
-// the self-assign confirmation check's "suggest a person instead" option
-// (see docs/spec.md's Coordination mechanics), the same field the
-// proposal flow and shadow carry-forward already populate.
+// A narrow, standalone mutation for suggested_member_id — the same field
+// proposal activation, cycle cloning and recruitment already populate.
+//
+// It was originally here for the self-assign check's "suggest a person
+// instead" option, and that button was removed: it wrote this column and
+// nothing in the app read it back, so a coordinator's suggestion told
+// nobody anything. What makes the column meaningful now is that the
+// Coordination view reads it (listPendingSuggestions) — a proposer
+// naming someone on /propose gets their name in front of the coordinator
+// once the task exists. Kept as a function because a caller with only a
+// memberId in hand has no narrower way to record that, even though no
+// Server Action currently calls it: the suggestion arrives by proposal
+// activation, and the coordination response to it is a real nomination
+// (nominateForTask), not a second write to the same column.
 export async function suggestMemberForTask(actor: Member, taskId: string, memberId: string) {
   const [existing] = await db
     .select({ id: task.id })

@@ -76,6 +76,22 @@ describe("self-assign confirmation check", () => {
     );
   });
 
+  it("names confirming in its error, since the ask is now a dialog rather than a page to find", async () => {
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Coordination",
+    });
+    await grantPermission(testCommunity.id, "branch_coordination", coordTask.id);
+    await claimTask(alice, coordTask.id);
+    const target = await insertTask(testCommunity.id, branch.id, alice.id);
+
+    // The old wording told a coordinator to go and confirm "on the
+    // task's page", because the check used to surface as a banner there
+    // and nowhere else. It now opens in place, so the message points at
+    // the act rather than a location.
+    await expect(claimOrRequestToJoin(alice, target.id)).rejects.toThrow(/confirm before/);
+  });
+
   it("does not require confirmation for an ordinary member with no coordination authority", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     const target = await insertTask(testCommunity.id, branch.id, alice.id);

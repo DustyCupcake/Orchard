@@ -17,6 +17,7 @@ export default function CoordinationTab({ community }: { community: typeof commu
           action={updateCoordinationTimingsAction}
           submitLabel="Save deadlines"
           title="Response windows"
+          stateLabel="How long a conflict report can be overdue, and the two response windows for nominations and call summaries"
           state={
             <>
               A conflict report is overdue after {community.conflictAckWindowHours}h · a task
@@ -58,6 +59,7 @@ export default function CoordinationTab({ community }: { community: typeof commu
           action={updateResponseTrackingAction}
           submitLabel="Save thresholds"
           title="When a pattern is a pattern"
+        stateLabel="The two engagement thresholds: when a single response is worth noticing, and when responses count as a pattern"
           state={
             <>
               Worth noticing at {community.engagementSoftFlagThreshold} missed responses · shown to
@@ -86,24 +88,25 @@ export default function CoordinationTab({ community }: { community: typeof commu
 
       <SettingsSection
         title="Indicators"
-        description="Community indicators are the patterns the data shows about who takes part — never published about a person, never gated. This one setting is only about how small a population can be broken out for."
+        description="Community indicators are the patterns the data shows about who takes part — never published about a person, never gated, and shown on /members. This one setting is only about whether a single event's figures may be broken out."
       >
         <SettingsGroup
           action={updateIndicatorSettingsAction}
           submitLabel="Save indicator settings"
           title="Breaking out a single event"
+          stateLabel="Whether the member directory and its indicators narrow to one event at a time"
           state={
             community.cycleIndicatorsEnabled
-              ? "On — each event's figures are shown for whoever is already in it"
-              : "Off — indicators are only ever shown for the community as a whole"
+              ? "On — an event in view describes the people coming to it, and nobody else"
+              : "Off — the directory and the indicators are only ever shown for the community as a whole"
           }
-          description="An event population is both small and identifiable: you know exactly who's coming, so '1 in 8' is one person rather than a rounding error. This is the community's own lever against that."
+          description="An event population is both small and identifiable: you know exactly who's coming, so '1 in 8' is one person rather than a rounding error. This is the community's own lever against that. It takes effect on /members, which already follows the event in view — off, the charts stay community-wide even inside one event, and say so."
         >
           <ToggleField
             label="Break indicators out per event"
             name="cycleIndicatorsEnabled"
             defaultChecked={community.cycleIndicatorsEnabled}
-            hint="Off, indicators are only ever shown for the community as a whole. On, each event gets its own figures for whoever's already in it."
+            hint="Off, /members shows the whole community and its indicators cover everyone. On, an event in view shows only the people coming to it, with the indicators describing that same group."
           />
           {/* The "never below this many members" floor that used to sit
               here is gone, and not because this is a tidier screen. It

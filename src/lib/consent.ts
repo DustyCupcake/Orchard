@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { consentMethodEnum, consentPurpose, consentRecord, profileQuestion } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, NotFoundError } from "./errors";
+import { recordSettingChanges } from "./settings/history";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -90,19 +91,44 @@ export async function createConsentPurpose(actor: Member, input: CreateConsentPu
     }
   }
 
-  const [created] = await db
-    .insert(consentPurpose)
-    .values({
-      communityId: actor.communityId,
-      key: input.key,
-      label: input.label,
-      noticeText: input.noticeText,
-      requiresExplicit,
-      gatesQuestionId: input.gatesQuestionId ?? null,
-      noticeVersion: 1,
-    })
-    .returning();
-  return created;
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(consentPurpose)
+      .values({
+        communityId: actor.communityId,
+        key: input.key,
+        label: input.label,
+        noticeText: input.noticeText,
+        requiresExplicit,
+        gatesQuestionId: input.gatesQuestionId ?? null,
+        noticeVersion: 1,
+      })
+      .returning();
+
+    // noticeText is deliberately *not* logged. It is a member-facing notice,
+    // so a member-readable log that carried the full text of every notice
+    // ever written would be a second, unbounded copy of the document — and
+    // the field a reader actually needs in the log is which question the
+    // notice gates, which is what `gatesQuestionId` below gives. That the
+    // wording changed later is a separate question, and the table has no
+    // update path for it today (see below createConsentPurpose's caller),
+    // so nothing is lost by starting here.
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "consent_purpose",
+      action: "created",
+      entityId: row.id,
+      entityLabel: row.label,
+      current: {},
+      changes: {
+        key: row.key,
+        label: row.label,
+        requiresExplicit: row.requiresExplicit,
+        gatesQuestionId: row.gatesQuestionId,
+      },
+    });
+    return row;
+  });
 }
 
 export async function listConsentPurposes(actor: Member) {
@@ -111,13 +137,34 @@ export async function listConsentPurposes(actor: Member) {
 
 export async function deleteConsentPurpose(actor: Member, purposeId: string) {
   const [existing] = await db
-    .select({ id: consentPurpose.id })
+    .select({
+      id: consentPurpose.id,
+      key: consentPurpose.key,
+      label: consentPurpose.label,
+      requiresExplicit: consentPurpose.requiresExplicit,
+      gatesQuestionId: consentPurpose.gatesQuestionId,
+    })
     .from(consentPurpose)
     .where(and(eq(consentPurpose.id, purposeId), eq(consentPurpose.communityId, actor.communityId)));
   if (!existing) {
     throw new NotFoundError("Consent purpose not found");
   }
-  await db.delete(consentPurpose).where(eq(consentPurpose.id, purposeId));
+
+  await db.transaction(async (tx) => {
+    await tx.delete(consentPurpose).where(eq(consentPurpose.id, purposeId));
+    // A deleted consent purpose is a withdrawal of the notice itself, so
+    // this row is the record that it ever existed and what it covered.
+    // The notice text is not in it — see createConsentPurpose above.
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "consent_purpose",
+      action: "deleted",
+      entityId: purposeId,
+      entityLabel: existing.label,
+      current: existing,
+      changes: { key: null, label: null, gatesQuestionId: null },
+    });
+  });
 }
 
 async function getActiveConsentRecord(memberId: string, purposeId: string) {

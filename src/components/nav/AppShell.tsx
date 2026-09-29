@@ -11,12 +11,14 @@ import {
   CALENDAR_ITEM,
   DASHBOARD_ITEM,
   NAV_GROUPS,
+  isCycleScopedHref,
   isItemVisible,
   isNavGroupRenderable,
   type NavGroup,
   type NavItem,
 } from "./nav-config";
 import type { NavContext } from "@/lib/nav";
+import type { CycleSubPath } from "./CycleSwitcher";
 import { toggleFavoriteNavItem, endViewAsAction } from "@/app/(app)/nav-actions";
 
 const COLLAPSE_KEY = "orchard.sidebar.collapsed";
@@ -571,8 +573,16 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
     router.refresh();
   }
 
+  // A cycle-scoped item's href is a redirect shim onto
+  // /{cycleScope}{href}, so matching the bare href lights the row for
+  // the length of the redirect and never again — see
+  // isCycleScopedHref's comment. Strip the leading scope segment and
+  // retry, so the row is lit on the page it actually leads to.
   function isActive(href: string) {
-    return pathname === href || pathname.startsWith(`${href}/`);
+    if (pathname === href || pathname.startsWith(`${href}/`)) return true;
+    if (!isCycleScopedHref(href)) return false;
+    const withoutScope = pathname.replace(/^\/[^/]+/, "");
+    return withoutScope === href || withoutScope.startsWith(`${href}/`);
   }
 
   // The cycle-switcher's own current scope, read straight out of the
@@ -582,15 +592,20 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
   // [cycleScope] segment and has no server-side way to see it.
   // Everywhere else falls back to ctx.cycleSwitcher.defaultScopeSegment
   // (server-resolved from Member.lastViewedCycleId).
-  const cycleScopeMatch = /^\/([^/]+)\/(participation|budget)(?:\/|$)/.exec(pathname);
+  // Every page that actually lives under [cycleScope]. Coordination and
+  // Escalation moved there in Phase 65 alongside Participation and
+  // Budget; leaving them out of this match meant a coordinator who
+  // picked a different event while reading the Coordination view got a
+  // bare router.refresh() that couldn't change the page they were on,
+  // because that page reads its own [cycleScope] segment, not the
+  // member's remembered default.
+  const cycleScopeMatch = /^\/([^/]+)\/(participation|budget|coordination|escalation)(?:\/|$)/.exec(pathname);
   const urlScope = cycleScopeMatch?.[1] ?? null;
-  // null everywhere except the two pages actually under [cycleScope] —
+  // null everywhere except the four pages actually under [cycleScope] —
   // see CycleSwitcher.tsx's own comment on why that matters for
   // selectScope's navigate-vs-refresh choice.
-  const cycleSubPath: "participation" | "budget" | null = cycleScopeMatch
-    ? cycleScopeMatch[2] === "budget"
-      ? "budget"
-      : "participation"
+  const cycleSubPath: CycleSubPath | null = cycleScopeMatch
+    ? (cycleScopeMatch[2] as CycleSubPath)
     : null;
 
   // Budget is hidden entirely with no cycle open at all to be scoped

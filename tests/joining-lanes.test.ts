@@ -515,7 +515,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     // …and the concern is now a duty item, which is the fix for the
     // veto-by-inaction the plan names.
     const grantTask = await insertTask(c.id, branch.id, alice.id, {});
-    await addPermissionGrant(c.id, "recruitment_mediation", grantTask.id);
+    await addPermissionGrant(alice, "recruitment_mediation", grantTask.id);
     await claimTask(bob, grantTask.id);
     const items = await listMediationActionItems(bob);
     expect(items.personal).toHaveLength(1);
@@ -531,7 +531,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     await raiseInviteObjection(bob, invite.id, "a real concern");
 
     const mediationTask = await insertTask(c.id, branch.id, alice.id, { capacity: 2 });
-    await addPermissionGrant(c.id, "recruitment_mediation", mediationTask.id);
+    await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
     await claimTask(alice, mediationTask.id);
 
     // Majority-of-current-holders, strictly more than half.
@@ -571,7 +571,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     await raiseInviteObjection(bob, invite.id, "a real concern");
 
     const mediationTask = await insertTask(c.id, branch.id, alice.id, {});
-    await addPermissionGrant(c.id, "recruitment_mediation", mediationTask.id);
+    await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
     await claimTask(alice, mediationTask.id);
     const [raised] = await db.select().from(objection).where(eq(objection.inviteId, invite.id));
 
@@ -599,7 +599,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     const raised = await raiseInviteObjection(bob, invite.id, "a real concern");
 
     const mediationTask = await insertTask(c.id, branch.id, alice.id, {});
-    await addPermissionGrant(c.id, "recruitment_mediation", mediationTask.id);
+    await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
     await claimTask(alice, mediationTask.id);
     const evaluatorTask = await insertTask(c.id, branch.id, alice.id, {});
     await grantPermission(c.id, "recruitment", evaluatorTask.id);
@@ -630,7 +630,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     const raised = await raiseInviteObjection(bob, invite.id, "a real concern");
 
     const mediationTask = await insertTask(c.id, branch.id, alice.id, { capacity: 2 });
-    await addPermissionGrant(c.id, "recruitment_mediation", mediationTask.id);
+    await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
     await claimTask(alice, mediationTask.id);
     await claimTask(carol, mediationTask.id);
 
@@ -661,7 +661,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     const raised = await raiseInviteObjection(bob, invite.id, "a real concern");
 
     const mediationTask = await insertTask(c.id, branch.id, alice.id, {});
-    await addPermissionGrant(c.id, "recruitment_mediation", mediationTask.id);
+    await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
     await claimTask(alice, mediationTask.id);
     await expect(
       resolveObjection(bob, { objectionId: raised.id, outcome: "cleared", note: "clearing my own" }),
@@ -684,7 +684,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     await db.insert(recruitmentSubscription).values({ memberId: bob.id, active: true }).returning();
     await raiseInviteObjection(bob, invite.id, "first concern");
     const mediationTask = await insertTask(c.id, branch.id, alice.id, {});
-    await addPermissionGrant(c.id, "recruitment_mediation", mediationTask.id);
+    await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
     await claimTask(alice, mediationTask.id);
 
     const queue = await getMediationQueue(alice);

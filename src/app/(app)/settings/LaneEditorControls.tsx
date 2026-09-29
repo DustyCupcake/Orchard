@@ -66,15 +66,30 @@ export function Toggle({
   );
 }
 
+// `type` is optional and defaults to "button" because a plain
+// `<button>` inside a form defaults to submit, and every one of these is a
+// control that rearranges state rather than a control that should submit
+// the form. LaneRulesEditor's preset select was the case that made this
+// worth defaulting rather than fixing at each call site: an explicit
+// `type="button"` on forty buttons is forty chances to forget one.
+//
+// `disabled` and `aria-label` are here for the same reason: the decision
+// rules editor's row controls need both (the arrows disable at the ends of
+// the list, and each of the four needs a distinct accessible name because
+// the arrows are glyphs).
 export function Button({
-  type,
+  type = "button",
   onClick,
   title,
+  disabled,
+  "aria-label": ariaLabel,
   children,
 }: {
-  type: "button" | "submit";
+  type?: "button" | "submit";
   onClick?: () => void;
   title?: string;
+  disabled?: boolean;
+  "aria-label"?: string;
   children: ReactNode;
 }) {
   return (
@@ -82,7 +97,9 @@ export function Button({
       type={type}
       onClick={onClick}
       title={title}
-      className="rounded-[var(--radius-md)] border border-[var(--border)] bg-transparent px-3 py-1 text-[13px] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)]"
+      disabled={disabled}
+      aria-label={ariaLabel}
+      className="rounded-[var(--radius-md)] border border-[var(--border)] bg-transparent px-3 py-1 text-[13px] font-medium text-[var(--text)] hover:bg-[var(--neutral-100)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
     >
       {children}
     </button>

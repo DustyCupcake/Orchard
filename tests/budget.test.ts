@@ -27,7 +27,7 @@ import { createCycle } from "@/lib/cycles";
 import { declareParticipation } from "@/lib/participation";
 import { removePermissionGrant, setPermissionGrant } from "@/lib/permissions";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { actorFor, createFixtures, resetDatabase } from "./helpers";
 
 async function insertOwnerTask(
   communityId: string,
@@ -47,7 +47,7 @@ async function insertOwnerTask(
       createdBy,
     })
     .returning();
-  await setPermissionGrant(communityId, "budget", row.id);
+  await setPermissionGrant(await actorFor(communityId), "budget", row.id);
   return row;
 }
 
@@ -547,7 +547,7 @@ describe("Budget owner authority", () => {
     await claimTask(alice, ownerTask.id);
     expect(await isBudgetOwner(alice, cycle)).toBe(true);
 
-    await removePermissionGrant(alice.communityId, "budget", ownerTask.id);
+    await removePermissionGrant(alice, "budget", ownerTask.id);
     expect(await isBudgetOwner(alice, cycle)).toBe(false);
   });
 });

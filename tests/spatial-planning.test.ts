@@ -75,7 +75,7 @@ async function addHolderInCycle(
 ) {
   const holderTask = await insertSpatialPlanningTask(communityId, branchId, holder.id, cycleId);
   await claimTask(holder, holderTask.id);
-  await setPermissionGrant(communityId, "spatial_planning", holderTask.id);
+  await setPermissionGrant(holder, "spatial_planning", holderTask.id);
   return holderTask;
 }
 

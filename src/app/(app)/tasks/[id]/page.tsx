@@ -31,6 +31,8 @@ import {
   listTasks,
   tierNameLookup,
   describeRequirement,
+  isSelfAssignWorthAskingAbout,
+  rankByTagFit,
 } from "@/lib/tasks";
 import { getCommunity, isAdmin, listBranches } from "@/lib/settings";
 import {
@@ -100,7 +102,6 @@ import {
   setOutgoingAction,
   splitSubtaskAction,
   stopShadowingAction,
-  suggestSomeoneAction,
   updateMilestoneAction,
   updateRequirementAction,
   updateTaskAction,
@@ -110,6 +111,7 @@ import {
   withdrawJoinRequestAction,
   nominateForTaskAction,
 } from "./actions";
+import ClaimGate from "@/components/tasks/ClaimGate";
 import SelectField from "@/components/ui/SelectField";
 
 const SIGNAL_LABELS: Record<string, string> = {
@@ -351,10 +353,6 @@ export default async function TaskDetailPage({
   const canExpressCandidacy =
     isCommunityEndorsed && browseWindowOpen && !holdsTask && !myCandidacy;
 
-  // Self-assign confirmation check — see docs/spec.md's Coordination
-  // mechanics. Mirrors TaskCard.tsx's board-side gating exactly; the
-  // server (join-requests.ts's claimOrRequestToJoin) is what actually
-  // enforces it either way.
   const hasRoom = taskRow.capacity === null || realAssignments.length < taskRow.capacity;
   const flagged = taskRow.attentionLevel !== "ok";
   const canActBase =
@@ -364,8 +362,13 @@ export default async function TaskDetailPage({
     (taskRow.status === "unclaimed" || (taskRow.status === "claimed" && hasRoom)) &&
     unmetRequirements.length === 0 &&
     !(myRequest && myRequest.status === "pending");
-  const needsSelfAssignConfirmation =
-    canActBase && isCoordHolderForBranch && (taskRow.status === "unclaimed" || flagged);
+  // Whether the *button* opens the coordinator's self-assign ask, rather
+  // than the banner that used to replace the button outright — see
+  // components/tasks/ClaimGate.tsx. Same predicate, same server-side
+  // enforcement (join-requests.ts's claimOrRequestToJoin); what changed
+  // is that the ask is now something the coordinator triggers by trying
+  // to claim, instead of something they're shown for merely looking.
+  const claimIsGated = canActBase && isCoordHolderForBranch && isSelfAssignWorthAskingAbout(taskRow);
 
   const openSignals = signals.filter((s) => !s.resolvedAt);
   const resolvedSignals = signals.filter((s) => s.resolvedAt);
@@ -419,24 +422,79 @@ export default async function TaskDetailPage({
     (isCoordHolderForBranch && (openPings.length > 0 || resolvedPings.length > 0));
   const showSubtasksTab = subtasks.length > 0 || holdsTask;
 
+  // The people a coordinator can ask about this task, ordered by how many
+  // of its tags they carry (spec's "suggest a person (tag-matches
+  // surfaced)"). Ranked, never filtered — a member sharing no tags is
+  // still offerable, just further down, because matching is deferred as
+  // real automation (src/lib/tasks/fit.ts).
+  const askCandidates = rankByTagFit(
+    communityMembers
+      .filter((m) => m.id !== viewing.id && !realAssignments.some((a) => a.memberId === m.id))
+      .map((m) => ({ id: m.id, name: m.name, tags: m.tags })),
+    taskRow.tags,
+  );
+
   // ── Task UI grammar: one primary action in the header ────────────
   // When a contextual nudge panel is showing (attention-flagged claimed,
   // or any waiting state) it carries the state-appropriate actions just
   // below the header, so the header primary is suppressed to avoid
-  // duplicating them. Self-assign confirmation likewise lives in its own
-  // contextual banner, not the header.
+  // duplicating them.
   const nudgePanelShown = holdsTask && (taskRow.status === "waiting" || (taskRow.status === "claimed" && flagged));
   const joiningRequiresRequest = requestGated && taskRow.status === "claimed" && realAssignments.length > 0;
   let primaryHeaderAction: React.ReactNode = null;
-  if (!nudgePanelShown && !needsSelfAssignConfirmation) {
+  if (!nudgePanelShown) {
     if (canActBase) {
+      // A coordinator claiming their own unclaimed/flagged task gets the
+      // Claim button as usual; the button opens the "is there someone
+      // better suited" dialog rather than being withheld behind one.
       primaryHeaderAction = (
-        <form action={claimAction}>
-          <input type="hidden" name="taskId" value={taskRow.id} />
-          <button type="submit" className={BUTTON_PRIMARY}>
-            {joiningRequiresRequest ? "Request to join" : "Claim"}
-          </button>
-        </form>
+        <ClaimGate
+          taskId={taskRow.id}
+          claimLabel={joiningRequiresRequest ? "Request to join" : "Claim"}
+          gated={claimIsGated}
+          confirmClaimAction={claimIsGated ? confirmClaimAction : claimAction}
+          alternatives={
+            claimIsGated && canNominate ? (
+              <form action={nominateForTaskAction} className="flex flex-col gap-2">
+                <input type="hidden" name="taskId" value={taskRow.id} />
+                <label className="flex flex-col gap-1">
+                  <span className="text-[12px] font-medium text-[var(--text-muted)]">
+                    Ask someone else instead
+                  </span>
+                  <select name="memberId" required defaultValue="" className={INPUT}>
+                    <option value="" disabled>
+                      Who fits this?
+                    </option>
+                    {askCandidates.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <input
+                  type="text"
+                  name="message"
+                  placeholder="Why you think this is a fit (optional)"
+                  className={INPUT}
+                />
+                <button type="submit" className={`${BUTTON_SECONDARY} self-start`}>
+                  Ask them
+                </button>
+              </form>
+            ) : null
+          }
+          flagForm={
+            taskRow.attentionLevel !== "escalated" ? (
+              <form action={flagForGroupAction}>
+                <input type="hidden" name="taskId" value={taskRow.id} />
+                <button type="submit" className={`${BUTTON_SECONDARY} self-start`}>
+                  Flag it for the group
+                </button>
+              </form>
+            ) : null
+          }
+        />
       );
     } else if (holdsTask && taskRow.status === "claimed") {
       primaryHeaderAction = (
@@ -1126,49 +1184,6 @@ export default async function TaskDetailPage({
         </div>
       )}
 
-      {/* Contextual strip, continued — coordinator self-assign check.
-          Used to render buried below the active tab's content; the task
-          UI grammar puts it up here where a coordinator actually sees it
-          before claiming. */}
-      {needsSelfAssignConfirmation && (
-        <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--warning-border)] bg-[var(--warning-soft)] p-3">
-          <p className="text-[13px] font-medium text-[var(--warning)]">
-            You coordinate this branch — are you sure there isn&rsquo;t someone with just the
-            skills for this?
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <form action={confirmClaimAction}>
-              <input type="hidden" name="taskId" value={taskRow.id} />
-              <button type="submit" className={BUTTON_PRIMARY}>
-                Yes, I&rsquo;ll take it
-              </button>
-            </form>
-            <form action={suggestSomeoneAction} className="flex gap-2">
-              <input type="hidden" name="taskId" value={taskRow.id} />
-              <select name="memberId" defaultValue="" className={INPUT}>
-                <option value="" disabled>
-                  Suggest someone…
-                </option>
-                {communityMembers.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-              <button type="submit" className={BUTTON_SECONDARY}>
-                Suggest
-              </button>
-            </form>
-            <form action={flagForGroupAction}>
-              <input type="hidden" name="taskId" value={taskRow.id} />
-              <button type="submit" className={BUTTON_SECONDARY}>
-                Flag for the group
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Contextual strip — my pending join request */}
       {myRequest && myRequest.status === "pending" && (
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-3 text-[13px] text-[var(--text)]">
@@ -1543,19 +1558,29 @@ export default async function TaskDetailPage({
             Claims it for them right away — they get a yes/no/not-now window to confirm or
             release it, no action required if it&rsquo;s a genuine fit.
           </p>
+          {/* A proposer named someone for this task (activation copies
+              task_proposal.suggested_member_id across) — the coordinator
+              asked, and this is the door that acts on it. */}
+          {taskRow.suggestedMemberId && taskRow.status === "unclaimed" && (
+            <p className="mt-2 text-[13px] text-[var(--text)]">
+              Suggested for{" "}
+              <span className="font-medium">
+                {memberNameById.get(taskRow.suggestedMemberId) ?? "a member"}
+              </span>
+              .
+            </p>
+          )}
           <form action={nominateForTaskAction} className="mt-3 flex max-w-[400px] flex-col gap-2">
             <input type="hidden" name="taskId" value={taskRow.id} />
             <select name="memberId" required defaultValue="" className={INPUT}>
               <option value="" disabled>
                 Who fits this?
               </option>
-              {communityMembers
-                .filter((m) => !realAssignments.some((a) => a.memberId === m.id))
-                .map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
+              {askCandidates.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
             </select>
             <input type="text" name="message" placeholder="Optional note (why you think this is a fit)" className={INPUT} />
             <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>

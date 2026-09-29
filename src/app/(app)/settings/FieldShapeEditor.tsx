@@ -198,8 +198,9 @@ export default function FieldShapeEditor({
           </label>
           {value.allowOther && (
             <p className="text-[11px] text-[var(--text-muted)]">
-              They pick &ldquo;Other&rdquo; and type it. Their words are kept with the option they
-              didn&rsquo;t choose, so the list still counts cleanly.
+              A box labelled &ldquo;Other&rdquo; appears under the options, next to a field they type
+              their answer into. Their words are kept with the option they didn&rsquo;t choose, so the
+              list still counts cleanly.
             </p>
           )}
         </div>

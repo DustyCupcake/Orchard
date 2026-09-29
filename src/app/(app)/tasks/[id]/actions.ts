@@ -45,7 +45,6 @@ import {
   setOutgoing,
   splitSubtask,
   splitSubtaskInput,
-  suggestMemberForTask,
   updateRequirement,
   updateRequirementInput,
   updateTask,
@@ -468,7 +467,10 @@ export async function setOutgoingAction(formData: FormData) {
 // The plain, ungated claim — the header's primary action on an
 // unclaimed (or joinable claimed) task. Distinct from confirmClaimAction
 // below: that's the coordinator self-assign *confirmation* path, which
-// passes { confirmed: true } to skip the check this one enforces.
+// passes { confirmed: true } to skip the check this one enforces. A
+// coordinator on an unclaimed or flagged task is routed to the latter
+// via components/tasks/ClaimGate.tsx, which is a dialog around the
+// button rather than a banner in place of it.
 export async function claimAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
@@ -483,12 +485,15 @@ export async function claimAction(formData: FormData) {
   revalidatePath("/board");
 }
 
-// Self-assign confirmation check — see docs/spec.md's Coordination
-// mechanics. The three options spec lists: really want it myself
-// (confirmClaimAction, below), suggest a person instead
-// (suggestSomeoneAction), or flag for the group (flagForGroupAction,
-// which reuses the anonymous task signal mechanism rather than
-// inventing a fourth one).
+// The coordinator answering "yes" in the self-assign dialog — see
+// docs/spec.md's Coordination mechanics. The dialog's other two options
+// are nominateForTaskAction (ask someone instead) and flagForGroupAction
+// (below), which reuses the anonymous task signal mechanism rather than
+// inventing a fourth one. The "suggest a person" option spec lists is
+// deliberately gone: it only wrote task.suggested_member_id, which
+// nothing in the app read back, so it was a button that told nobody — the
+// dashboard's suggestion module reads that column now, but the ask itself
+// has to be a real nomination for anyone to actually hear it.
 export async function confirmClaimAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
@@ -503,32 +508,43 @@ export async function confirmClaimAction(formData: FormData) {
   revalidatePath("/board");
 }
 
-export async function suggestSomeoneAction(formData: FormData) {
-  const actor = await requireMember();
-  const taskId = String(formData.get("taskId"));
-  const memberId = String(formData.get("memberId") ?? "");
-
-  try {
-    if (!memberId) throw new AppError("Choose someone to suggest");
-    await suggestMemberForTask(actor, taskId, memberId);
-  } catch (err) {
-    redirectWithError(taskId, err);
-  }
-
-  revalidatePath(`/tasks/${taskId}`);
-}
-
+// The self-assign dialog's third option — "flag it for the group",
+// spec's own third choice. This is the **escalation**, the same call the
+// ⋯ menu's Escalate makes and the same one the Coordinator-initiated
+// check-in paragraph describes: it puts the task on the shared Escalation
+// queue, which every coordinator community-wide sees rather than only
+// this branch's, and which is the mechanism behind "cross-branch
+// placement is encouraged" — a coordinator who decides someone else
+// should take this needs to reach coordinators who don't cover their
+// branch at all, which is exactly what a branch-scoped nudge cannot do.
+//
+// It was a `createSignal` call before, which is a genuinely different
+// thing: an anonymous, dismissable nudge visible only to this task's own
+// branch coordinators. Both are worth having — the signal is spec's own
+// "anonymous task signal", and it's how a non-coordinator raises a
+// concern — but the dialog's "for the group" is the cross-branch one,
+// and escalating is also visible to the wider community as an "escalated"
+// tag, which is a real disclosure and the reason this isn't a quiet
+// nudge.
+//
+// The task's own ⋯ menu keeps its Escalate row, because a coordinator
+// escalating something they don't intend to claim is a normal thing to
+// do; this is the same act offered at the moment the coordinator has
+// just decided not to take the task themselves, which is when it is most
+// likely.
 export async function flagForGroupAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
 
   try {
-    await createSignal(actor, taskId, { kind: "might_need_help" });
+    await escalateTask(actor, taskId);
   } catch (err) {
     redirectWithError(taskId, err);
   }
 
   revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/board");
+  revalidatePath("/dashboard");
 }
 
 export async function waiveAndClaimAction(formData: FormData) {
@@ -785,12 +801,12 @@ export async function updateTaskPermissionGrantsAction(formData: FormData) {
       const current = currentModuleKeys.has(moduleKey);
       if (selected && !current) {
         if (allowsMultipleGrants(moduleKey)) {
-          await addPermissionGrant(actor.communityId, moduleKey, taskId);
+          await addPermissionGrant(actor, moduleKey, taskId);
         } else {
-          await setPermissionGrant(actor.communityId, moduleKey, taskId);
+          await setPermissionGrant(actor, moduleKey, taskId);
         }
       } else if (!selected && current) {
-        await removePermissionGrant(actor.communityId, moduleKey, taskId);
+        await removePermissionGrant(actor, moduleKey, taskId);
       }
     }
   } catch (err) {

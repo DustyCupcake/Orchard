@@ -23,6 +23,7 @@ import {
   type ResponseType,
   type TextValidation,
 } from "../field-shape";
+import { recordSettingChanges } from "../settings/history";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -372,30 +373,70 @@ export async function createProfileQuestion(actor: Member, input: CreateProfileQ
   // seeder's three separate calls. Doing it here makes the create path
   // and the settings form and the starter set one operation instead of
   // three, and removes a dead end from the UI.
-  const [created] = await db
-    .insert(profileQuestion)
-    .values({
-      communityId: actor.communityId,
-      label: input.label,
-      responseType: input.responseType,
-      // ...and the field-shape flags, with the ones that don't apply to
-      // this responseType zeroed in one place (field-shape.ts).
-      ...fieldShapeColumnValues(shapeFrom(input)),
-      scope: input.scope,
-      phaseNameHint: input.scope === "phase" ? input.phaseNameHint : null,
-      required: input.required ?? false,
-      requiredBy: input.requiredBy ?? null,
-      allowDeferral: input.allowDeferral ?? true,
-      allowPreferNotToSay: input.allowPreferNotToSay ?? false,
-      feedsCapacitySignal: input.feedsCapacitySignal ?? false,
-      publishedAsIndicator: input.publishedAsIndicator ?? false,
-      // Written false and set below, so the flag and the rule it depends
-      // on can never disagree — including if the rule insert throws.
-      sensitive: false,
-      emergencyAccess: false,
-      surfaces: input.surfaces ?? [],
-    })
-    .returning();
+  // The insert and its log row are one transaction — see
+  // recordSettingChanges on why a log written outside the write is worse
+  // than no log. The sensitive path below continues after it, deliberately:
+  // createSensitiveFieldAccessRule is a separate operation with its own
+  // log row, and the question it names has to exist before that call can
+  // succeed at all.
+  const created = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(profileQuestion)
+      .values({
+        communityId: actor.communityId,
+        label: input.label,
+        responseType: input.responseType,
+        // ...and the field-shape flags, with the ones that don't apply to
+        // this responseType zeroed in one place (field-shape.ts).
+        ...fieldShapeColumnValues(shapeFrom(input)),
+        scope: input.scope,
+        phaseNameHint: input.scope === "phase" ? input.phaseNameHint : null,
+        required: input.required ?? false,
+        requiredBy: input.requiredBy ?? null,
+        allowDeferral: input.allowDeferral ?? true,
+        allowPreferNotToSay: input.allowPreferNotToSay ?? false,
+        feedsCapacitySignal: input.feedsCapacitySignal ?? false,
+        publishedAsIndicator: input.publishedAsIndicator ?? false,
+        // Written false and set below, so the flag and the rule it depends
+        // on can never disagree — including if the rule insert throws.
+        sensitive: false,
+        emergencyAccess: false,
+        surfaces: input.surfaces ?? [],
+      })
+      .returning();
+
+    // Logged inside this transaction rather than at the end of the
+    // function because a sensitive question takes a second path below (rule
+    // insert, then an update to set the flag), and one create with one log
+    // row beats two rows describing one decision. The audience's own fields
+    // are logged by createSensitiveFieldAccessRule, so the two rows together
+    // read as the whole change.
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "profile_question",
+      action: "created",
+      entityId: row.id,
+      entityLabel: row.label,
+      current: {},
+      changes: {
+        label: row.label,
+        responseType: row.responseType,
+        scope: row.scope,
+        required: row.required,
+        requiredBy: row.requiredBy,
+        allowDeferral: row.allowDeferral,
+        allowPreferNotToSay: row.allowPreferNotToSay,
+        publishedAsIndicator: row.publishedAsIndicator,
+        // From the *input*, not the row: the row says false here because
+        // the sensitive path hasn't run yet, and "restricted: off" on a
+        // question that is about to be restricted would be a lie.
+        sensitive: input.sensitive ?? false,
+        emergencyAccess: input.emergencyAccess ?? false,
+        options: row.options,
+      },
+    });
+    return row;
+  });
 
   if (!input.sensitive) return created;
 
@@ -545,35 +586,73 @@ export async function updateProfileQuestion(
   const submittedRequiredBy = input.requiredBy !== undefined ? input.requiredBy : current.requiredBy;
   const finalRequiredBy = effectiveRequired && effectiveAllowDeferral ? submittedRequiredBy : null;
 
-  const [updated] = await db
-    .update(profileQuestion)
-    .set({
-      ...(input.label !== undefined && { label: input.label }),
-      ...(input.responseType !== undefined && { responseType: input.responseType }),
-      ...(finalShape ?? {}),
-      ...(input.required !== undefined && { required: input.required }),
-      ...(input.requiredBy !== undefined && { requiredBy: finalRequiredBy }),
-      ...(input.requiredBy === undefined &&
-        current.requiredBy !== null &&
-        finalRequiredBy === null && { requiredBy: null }),
-      ...(input.allowDeferral !== undefined && { allowDeferral: input.allowDeferral }),
-      ...(input.allowPreferNotToSay !== undefined && { allowPreferNotToSay: input.allowPreferNotToSay }),
-      ...(input.publishedAsIndicator !== undefined && {
+  const updated = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(profileQuestion)
+      .set({
+        ...(input.label !== undefined && { label: input.label }),
+        ...(input.responseType !== undefined && { responseType: input.responseType }),
+        ...(finalShape ?? {}),
+        ...(input.required !== undefined && { required: input.required }),
+        ...(input.requiredBy !== undefined && { requiredBy: finalRequiredBy }),
+        ...(input.requiredBy === undefined &&
+          current.requiredBy !== null &&
+          finalRequiredBy === null && { requiredBy: null }),
+        ...(input.allowDeferral !== undefined && { allowDeferral: input.allowDeferral }),
+        ...(input.allowPreferNotToSay !== undefined && {
+          allowPreferNotToSay: input.allowPreferNotToSay,
+        }),
+        ...(input.publishedAsIndicator !== undefined && {
+          publishedAsIndicator: input.publishedAsIndicator,
+        }),
+        ...(input.emergencyAccess !== undefined && {
+          emergencyAccess: input.emergencyAccess,
+        }),
+        ...(input.feedsCapacitySignal !== undefined && {
+          feedsCapacitySignal: input.feedsCapacitySignal,
+        }),
+        ...(input.surfaces !== undefined && { surfaces: input.surfaces }),
+      })
+      .where(and(eq(profileQuestion.id, questionId), eq(profileQuestion.communityId, actor.communityId)))
+      .returning();
+    if (!row) {
+      throw new NotFoundError("Profile question not found");
+    }
+
+    // The label is taken *after* the write, so a rename logs against the
+    // question's new name and "label: old → new" reads in one line rather
+    // than leaving the reader to work out which question it was. `options`
+    // is included because changing a dropdown's choices without touching its
+    // label is a real edit that would otherwise be invisible.
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "profile_question",
+      action: "updated",
+      entityId: questionId,
+      entityLabel: row.label,
+      current,
+      changes: {
+        label: input.label,
+        responseType: input.responseType,
+        required: input.required,
+        requiredBy: input.requiredBy,
+        allowDeferral: input.allowDeferral,
+        allowPreferNotToSay: input.allowPreferNotToSay,
         publishedAsIndicator: input.publishedAsIndicator,
-      }),
-      ...(input.emergencyAccess !== undefined && {
         emergencyAccess: input.emergencyAccess,
-      }),
-      ...(input.feedsCapacitySignal !== undefined && {
         feedsCapacitySignal: input.feedsCapacitySignal,
-      }),
-      ...(input.surfaces !== undefined && { surfaces: input.surfaces }),
-    })
-    .where(and(eq(profileQuestion.id, questionId), eq(profileQuestion.communityId, actor.communityId)))
-    .returning();
-  if (!updated) {
-    throw new NotFoundError("Profile question not found");
-  }
+        surfaces: input.surfaces,
+        options: input.options,
+        multiline: input.multiline,
+        validation: input.validation,
+        allowOther: input.allowOther,
+        min: input.min,
+        max: input.max,
+        step: input.step,
+      },
+    });
+    return row;
+  });
 
   // Turning emergency access ON is a widening, and it is the only widening
   // in this function — everything else it writes is the Community changing
@@ -619,25 +698,43 @@ export async function updateProfileQuestion(
 // answers survive" (spec). ProfileAnswer rows keep pointing at a real
 // question either way.
 export async function archiveProfileQuestion(actor: Member, questionId: string) {
-  const [updated] = await db
-    .update(profileQuestion)
-    .set({ archivedAt: new Date() })
-    .where(and(eq(profileQuestion.id, questionId), eq(profileQuestion.communityId, actor.communityId)))
-    .returning();
-  if (!updated) {
-    throw new NotFoundError("Profile question not found");
-  }
-  return updated;
+  return setProfileQuestionArchived(actor, questionId, true, "archived");
 }
 
 export async function unarchiveProfileQuestion(actor: Member, questionId: string) {
-  const [updated] = await db
-    .update(profileQuestion)
-    .set({ archivedAt: null })
-    .where(and(eq(profileQuestion.id, questionId), eq(profileQuestion.communityId, actor.communityId)))
-    .returning();
-  if (!updated) {
-    throw new NotFoundError("Profile question not found");
-  }
-  return updated;
+  return setProfileQuestionArchived(actor, questionId, false, "unarchived");
+}
+
+async function setProfileQuestionArchived(
+  actor: Member,
+  questionId: string,
+  archived: boolean,
+  action: "archived" | "unarchived",
+) {
+  return db.transaction(async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(profileQuestion)
+      .where(and(eq(profileQuestion.id, questionId), eq(profileQuestion.communityId, actor.communityId)));
+    if (!before) {
+      throw new NotFoundError("Profile question not found");
+    }
+
+    const [row] = await tx
+      .update(profileQuestion)
+      .set({ archivedAt: archived ? new Date() : null })
+      .where(and(eq(profileQuestion.id, questionId), eq(profileQuestion.communityId, actor.communityId)))
+      .returning();
+
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "profile_question",
+      action,
+      entityId: questionId,
+      entityLabel: row.label,
+      current: before,
+      changes: { archivedAt: row.archivedAt },
+    });
+    return row;
+  });
 }

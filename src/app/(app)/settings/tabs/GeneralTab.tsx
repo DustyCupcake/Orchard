@@ -30,6 +30,7 @@ export default function GeneralTab({  community,
           action={updateGeneralBasicsAction}
           submitLabel="Save basics"
           title="Name and structure"
+        stateLabel="The community name, whether it runs events, whether events have phases, and how dates are displayed"
           state={
             <>
               {community.name} ·{" "}
@@ -98,6 +99,7 @@ export default function GeneralTab({  community,
           action={updateCallDefaultsAction}
           submitLabel="Save call defaults"
           title="What a call needs to be finished"
+        stateLabel="The community-wide call defaults, which a branch can override"
           state={
             <>
               Defaults only — a branch can override each of these.{" "}
@@ -139,6 +141,7 @@ export default function GeneralTab({  community,
           action={updateBrandingAction}
           submitLabel="Save branding"
           title="Colours and logo"
+        stateLabel="The two accent colours and the logo"
           state={
             <>
               {/* The *resolved* accent, not the raw column: a null accent is
@@ -190,6 +193,7 @@ export default function GeneralTab({  community,
           action={updateSsoAction}
           submitLabel="Save sign-in settings"
           title="Single sign-on (OIDC)"
+        stateLabel="Whether single sign-on is configured, which provider, and whether it is the main way in"
           state={
             community.oidcIssuerUrl ? (
               <>

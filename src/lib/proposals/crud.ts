@@ -205,13 +205,13 @@ export async function activateProposal(
       // nonsense, while this runtime guard also covers forged form/API input.
       if (moduleKey === "budget") continue;
       if (allowsMultipleGrants(moduleKey)) {
-        await addPermissionGrant(actor.communityId, moduleKey, newTask.id);
+        await addPermissionGrant(actor, moduleKey, newTask.id);
       } else {
         // Scope comes from the new task's own placement (task.cycleId —
         // docs/cycle-scope-remediation-plan.md §2.1), so this replaces a
         // sibling grant *in that same scope* only, never a different
         // cycle's owner.
-        await setPermissionGrant(actor.communityId, moduleKey, newTask.id);
+        await setPermissionGrant(actor, moduleKey, newTask.id);
       }
     }
   }

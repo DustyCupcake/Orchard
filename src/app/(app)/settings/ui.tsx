@@ -86,6 +86,56 @@ function CardShell({
   );
 }
 
+// The collapsed state of a card is the *only* thing a non-admin sees —
+// the group is closed and the controls are inside it — so if that text does
+// not reach the accessibility tree, the read-only view of the settings
+// screen reads as a list of unlabelled buttons.
+//
+// It is not certain it doesn't. I could not verify this without a real
+// screen reader, and a snapshot tool's opinion is not one, so this is
+// insurance rather than a demonstrated fix: an explicit `aria-label` on the
+// `<summary>` naming the group and its state, which is reachable whether or
+// not the summary's contents are.
+//
+// The cost is that `stateLabel` repeats what `state` says, and the two can
+// drift. That is accepted rather than avoided for a specific reason: a
+// string that a screen reader reads has to be written to be *read aloud* —
+// no `<code>`, no " · " separators, no unexpanded abbreviations — and
+// compressing fourteen of those states into one readable sentence is a
+// different piece of writing from composing the line itself. Where `state`
+// is already a single string, `stateLabel` is just that string and there is
+// nothing to keep in step. Where it is JSX, `stateLabel` is the short
+// spoken form and is expected to be shorter.
+function summaryLabel(
+  title: ReactNode,
+  state: ReactNode,
+  stateLabel: string | undefined,
+  affordance: string,
+): string | undefined {
+  const name = typeof title === "string" ? title : undefined;
+  // No title and no state: there is nothing to name it by, and an empty
+  // aria-label would actively hide the summary's own contents.
+  if (!name && !stateLabel) return undefined;
+  const spoken = stateLabel ?? (typeof state === "string" ? state : undefined);
+  // A spoken state that restates the title is redundant with it, and one
+  // that began "One rule per lane" while the title was also "One rule per
+  // lane" made a screen reader say the group's name twice. The restatement
+  // is trimmed off the front rather than the whole clause dropped, so the
+  // part that was *not* redundant survives.
+  let trimmed = spoken ?? "";
+  if (name && trimmed.toLowerCase().startsWith(name.toLowerCase())) {
+    trimmed = trimmed.slice(name.length).replace(/^[\s:.,—-]+/, "");
+    // The trimmed remainder is now a clause, not a sentence, so its first
+    // letter is capitalised again — "One rule per lane. verification and
+    // process" is read as two fragments rather than one.
+    trimmed = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  }
+
+  return [name, trimmed, affordance === "Edit" ? "Show settings" : affordance]
+    .filter(Boolean)
+    .join(". ");
+}
+
 // A card that saves itself. `action` is a server action, `submitLabel`
 // the button's own wording — deliberately per-card rather than a global
 // "Save", because "Save" on a screen with nine cards has never once told
@@ -107,6 +157,7 @@ function CardShell({
 export function SettingsCard({
   title,
   state,
+  stateLabel,
   description,
   aside,
   action,
@@ -116,6 +167,9 @@ export function SettingsCard({
 }: {
   title?: ReactNode;
   state?: ReactNode;
+  /** The same information as `state`, as one plain string, for the
+   *  summary's accessible name. See `summaryLabel` below for why. */
+  stateLabel?: string;
   description?: ReactNode;
   aside?: ReactNode;
   action: (formData: FormData) => void | Promise<void>;
@@ -128,7 +182,10 @@ export function SettingsCard({
 }) {
   return (
     <details className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
-      <summary className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1">
+      <summary
+        aria-label={summaryLabel(title, state, stateLabel, affordance)}
+        className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1"
+      >
         {title && <h3 className="text-[15px] font-medium text-[var(--text)]">{title}</h3>}
         {state && (
           <div className="w-full text-[12px] leading-relaxed text-[var(--text-muted)]">{state}</div>
@@ -412,6 +469,7 @@ export function FieldGroup({ legend, children }: { legend: string; children: Rea
 export function SettingsGroup({
   title,
   state,
+  stateLabel,
   description,
   aside,
   action,
@@ -420,6 +478,10 @@ export function SettingsGroup({
 }: {
   title: ReactNode;
   state?: ReactNode;
+  /** The same information as `state` as one readable string, for the
+   *  summary's accessible name — see `summaryLabel` above for why this is
+   *  a separate prop rather than derived. */
+  stateLabel?: string;
   description?: ReactNode;
   // Rendered inside the disclosure but *below* the form, never in the
   // summary: clicking a link inside a `<summary>` toggles the group open
@@ -446,7 +508,10 @@ export function SettingsGroup({
     <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3.5">
       <legend className="px-1 text-[12px] font-medium text-[var(--text-muted)]">{title}</legend>
       <details>
-        <summary className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1">
+        <summary
+          aria-label={summaryLabel(title, state, stateLabel, "Edit")}
+          className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1"
+        >
           {state && (
             <span className="text-[12px] leading-relaxed text-[var(--text-muted)]">{state}</span>
           )}

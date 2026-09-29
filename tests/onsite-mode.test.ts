@@ -224,7 +224,7 @@ describe("read-only-reference: Spatial-planning Zone/Placement edits", () => {
     // community-wide-audience but placement-scoped (no cycle argument).
     const holderTask = await insertTask(testCommunity.id, branch.id, alice.id, testCycle.id);
     await claimTask(alice, holderTask.id);
-    await setPermissionGrant(testCommunity.id, "spatial_planning", holderTask.id);
+    await setPermissionGrant(alice, "spatial_planning", holderTask.id);
     const plot = await createPlot(alice, testCycle.id, {
       name: "Main site",
       scaleCalibration: { pointA: { x: 0, y: 0 }, pointB: { x: 10, y: 0 }, realWorldDistanceMeters: 5 },

@@ -4,6 +4,7 @@ import { db, type DbOrTx } from "@/db";
 import { memberAxisValue, task, taskAxisValue, traitAxis } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "./errors";
+import { recordSettingChanges } from "./settings/history";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -98,19 +99,39 @@ export async function createTraitAxis(actor: Member, input: CreateTraitAxisInput
   const optionLabels = input.optionLabels ?? [];
   requireValidOptionLabels(optionLabels);
 
-  const [created] = await db
-    .insert(traitAxis)
-    .values({
-      communityId: actor.communityId,
-      key: input.key,
-      lowLabel: input.lowLabel,
-      highLabel: input.highLabel,
-      optionLabels,
-      askAtOnboarding: input.askAtOnboarding ?? false,
-      sortOrder: input.sortOrder ?? 0,
-    })
-    .returning();
-  return created;
+  return db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(traitAxis)
+      .values({
+        communityId: actor.communityId,
+        key: input.key,
+        lowLabel: input.lowLabel,
+        highLabel: input.highLabel,
+        optionLabels,
+        askAtOnboarding: input.askAtOnboarding ?? false,
+        sortOrder: input.sortOrder ?? 0,
+      })
+      .returning();
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "trait_axis",
+      action: "created",
+      entityId: created.id,
+      // The axis is identified to a member by its two ends ("direct ↔
+      // collaborative"), not by its slug, so that is what the log keeps.
+      entityLabel: `${created.lowLabel} ↔ ${created.highLabel}`,
+      current: {},
+      changes: {
+        key: created.key,
+        lowLabel: created.lowLabel,
+        highLabel: created.highLabel,
+        optionLabels: created.optionLabels,
+        askAtOnboarding: created.askAtOnboarding,
+        sortOrder: created.sortOrder,
+      },
+    });
+    return created;
+  });
 }
 
 export async function updateTraitAxis(actor: Member, axisId: string, input: UpdateTraitAxisInput) {
@@ -118,45 +139,88 @@ export async function updateTraitAxis(actor: Member, axisId: string, input: Upda
     requireValidOptionLabels(input.optionLabels);
   }
 
-  const [updated] = await db
-    .update(traitAxis)
-    .set({
-      ...(input.lowLabel !== undefined && { lowLabel: input.lowLabel }),
-      ...(input.highLabel !== undefined && { highLabel: input.highLabel }),
-      ...(input.optionLabels !== undefined && { optionLabels: input.optionLabels }),
-      ...(input.askAtOnboarding !== undefined && { askAtOnboarding: input.askAtOnboarding }),
-      ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
-    })
-    .where(and(eq(traitAxis.id, axisId), eq(traitAxis.communityId, actor.communityId)))
-    .returning();
-  if (!updated) {
-    throw new NotFoundError("Trait axis not found");
-  }
-  return updated;
+  // Read inside the transaction, for the log's benefit only — the write
+  // below is scoped to the same community and row either way, so this
+  // changes nothing about which row is touched.
+  return db.transaction(async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(traitAxis)
+      .where(and(eq(traitAxis.id, axisId), eq(traitAxis.communityId, actor.communityId)));
+    if (!before) {
+      throw new NotFoundError("Trait axis not found");
+    }
+
+    const [row] = await tx
+      .update(traitAxis)
+      .set({
+        ...(input.lowLabel !== undefined && { lowLabel: input.lowLabel }),
+        ...(input.highLabel !== undefined && { highLabel: input.highLabel }),
+        ...(input.optionLabels !== undefined && { optionLabels: input.optionLabels }),
+        ...(input.askAtOnboarding !== undefined && { askAtOnboarding: input.askAtOnboarding }),
+        ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
+      })
+      .where(and(eq(traitAxis.id, axisId), eq(traitAxis.communityId, actor.communityId)))
+      .returning();
+
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "trait_axis",
+      action: "updated",
+      entityId: axisId,
+      entityLabel: `${row.lowLabel} ↔ ${row.highLabel}`,
+      current: before,
+      changes: input,
+    });
+    return row;
+  });
+}
+
+// Archive and unarchive share one shape, so they share one helper. The
+// two are separate rows in the log rather than one "archivedAt: date →
+// null" line because "someone put this away" and "someone brought it
+// back" are different decisions, and a reader scanning for reversals
+// should not have to infer which end of a diff they are looking at.
+async function setTraitAxisArchived(
+  actor: Member,
+  axisId: string,
+  archived: boolean,
+  action: "archived" | "unarchived",
+) {
+  return db.transaction(async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(traitAxis)
+      .where(and(eq(traitAxis.id, axisId), eq(traitAxis.communityId, actor.communityId)));
+    if (!before) {
+      throw new NotFoundError("Trait axis not found");
+    }
+
+    const [row] = await tx
+      .update(traitAxis)
+      .set({ archivedAt: archived ? new Date() : null })
+      .where(and(eq(traitAxis.id, axisId), eq(traitAxis.communityId, actor.communityId)))
+      .returning();
+
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "trait_axis",
+      action,
+      entityId: axisId,
+      entityLabel: `${row.lowLabel} ↔ ${row.highLabel}`,
+      current: before,
+      changes: { archivedAt: row.archivedAt },
+    });
+    return row;
+  });
 }
 
 export async function archiveTraitAxis(actor: Member, axisId: string) {
-  const [updated] = await db
-    .update(traitAxis)
-    .set({ archivedAt: new Date() })
-    .where(and(eq(traitAxis.id, axisId), eq(traitAxis.communityId, actor.communityId)))
-    .returning();
-  if (!updated) {
-    throw new NotFoundError("Trait axis not found");
-  }
-  return updated;
+  return setTraitAxisArchived(actor, axisId, true, "archived");
 }
 
 export async function unarchiveTraitAxis(actor: Member, axisId: string) {
-  const [updated] = await db
-    .update(traitAxis)
-    .set({ archivedAt: null })
-    .where(and(eq(traitAxis.id, axisId), eq(traitAxis.communityId, actor.communityId)))
-    .returning();
-  if (!updated) {
-    throw new NotFoundError("Trait axis not found");
-  }
-  return updated;
+  return setTraitAxisArchived(actor, axisId, false, "unarchived");
 }
 
 function requireValidAxisValue(value: number) {

@@ -22,7 +22,7 @@ import { closeProposalsToVoting } from "@/lib/budget";
 import { createEventProposal } from "@/lib/event-scheduling";
 import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
 import { fileConflictReport } from "@/lib/conflict";
-import { createFixtures, grantPermission, grantShiftManagementTo, resetDatabase } from "./helpers";
+import { actorFor, createFixtures, grantPermission, grantShiftManagementTo, resetDatabase } from "./helpers";
 
 async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
@@ -448,7 +448,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
       })
       .returning();
     if (grantModule) {
-      await setPermissionGrant(communityId, grantModule, row.id);
+      await setPermissionGrant(await actorFor(communityId), grantModule, row.id);
     }
     return row;
   }

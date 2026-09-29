@@ -150,6 +150,42 @@ describe("escalateTask / deescalateTask", () => {
     expect(listed.map((t) => t.id)).toContain(target.id);
   });
 
+  // The self-assign dialog's "flag it for the group" is this call, and
+  // the word "group" is the whole point: a branch coordinator deciding
+  // not to take a task has to be able to reach coordinators who don't
+  // cover their branch, so the task lands on the cross-branch queue
+  // rather than a branch-scoped signal. It also raises attention_level,
+  // which is what makes the state legible to the wider community as an
+  // "escalated" tag on the board — the one option in that dialog with
+  // that reach, and a real disclosure.
+  it("puts a branch coordinator's flag-for-the-group in front of other branches' coordinators", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    const [otherBranch] = await db
+      .insert(branchTable)
+      .values({ communityId: testCommunity.id, name: "Wood" })
+      .returning();
+
+    const aliceCoord = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Fruit coordination",
+    });
+    await grantPermission(testCommunity.id, "branch_coordination", aliceCoord.id);
+    await claimTask(alice, aliceCoord.id);
+
+    // A coordinator of a *different* branch, who could never see a
+    // branch-scoped signal on a Fruit task.
+    const bobCoord = await insertTask(testCommunity.id, otherBranch.id, bob.id, {
+      title: "Wood coordination",
+    });
+    await grantPermission(testCommunity.id, "branch_coordination", bobCoord.id);
+    await claimTask(bob, bobCoord.id);
+
+    const target = await insertTask(testCommunity.id, branch.id, alice.id, { title: "Fruit task" });
+    await escalateTask(alice, target.id);
+
+    // Cross-branch: the Wood coordinator sees it on the shared queue.
+    expect((await listEscalatedTasks(bob, [])).map((t) => t.id)).toContain(target.id);
+  });
+
   it("lets a coordinator de-escalate a task", async () => {
     const { community: testCommunity, branch, alice } = await createFixtures();
     const coordTask = await insertTask(testCommunity.id, branch.id, alice.id, {

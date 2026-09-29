@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { branch, community, member, task } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
@@ -21,11 +21,34 @@ type FixtureMember = typeof memberTable.$inferSelect;
 // tagging a task with that string. Route through the domain function for
 // the module's cardinality so fixtures cannot create duplicates that the
 // real Settings action would reject.
+// The grant functions take an actor rather than a communityId so that every
+// grant reaches the settings change log (see setPermissionGrant's own
+// comment). Tests were written against the communityId form, and most of
+// them have a member in scope anyway — but not all: several set up a grant
+// before creating any member. `actorFor` is the answer for those. It
+// synthesises a member rather than requiring one, because a fixture's
+// purpose is to create a permission state, not to exercise membership, and
+// the log only needs *a* member id in the community.
+export async function actorFor(communityId: string): Promise<FixtureMember> {
+  const [existing] = await db
+    .select()
+    .from(member)
+    .where(eq(member.communityId, communityId))
+    .limit(1);
+  if (existing) return existing;
+  const [created] = await db
+    .insert(member)
+    .values({ communityId, name: "Fixture Admin" })
+    .returning();
+  return created;
+}
+
 export async function grantPermission(communityId: string, moduleKey: PermissionModuleKey, taskId: string) {
+  const actor = await actorFor(communityId);
   if (allowsMultipleGrants(moduleKey)) {
-    await addPermissionGrant(communityId, moduleKey, taskId);
+    await addPermissionGrant(actor, moduleKey, taskId);
   } else {
-    await setPermissionGrant(communityId, moduleKey, taskId);
+    await setPermissionGrant(actor, moduleKey, taskId);
   }
 }
 
@@ -53,7 +76,7 @@ export async function grantShiftManagementTo(member: FixtureMember, branchId: st
       createdBy: member.id,
     })
     .returning();
-  await setPermissionGrant(member.communityId, "shift_management", grantTask.id);
+  await setPermissionGrant(member, "shift_management", grantTask.id);
   await claimTask(member, grantTask.id);
   return grantTask;
 }
