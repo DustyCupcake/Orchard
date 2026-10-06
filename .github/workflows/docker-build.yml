@@ -22,10 +22,18 @@ name: Build and publish image
 #                        the branch's job, and the tag is normally the same
 #                        commit).
 # Either way the test suite has to pass first.
+#
+# A pull request runs the test suite and nothing else: no login, no image, no
+# push. That is what gives a Dependabot update or an outside contribution a
+# real answer to "does this break anything" before it is merged, and it is the
+# reason a PR can safely come from a fork — the jobs that need a secret never
+# run for one.
 on:
   push:
     branches: [main]
     tags: ["v*"]
+  pull_request:
+    branches: [main]
   workflow_dispatch: {}
 
 env:
@@ -60,6 +68,8 @@ jobs:
 
   build:
     needs: test
+    # Never for a pull request: this job logs in to Docker Hub and publishes.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
