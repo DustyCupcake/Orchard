@@ -12,6 +12,7 @@ import { fieldValueFromFormData, toFieldShape } from "@/lib/field-shape";
 import { listOutstandingQuestions } from "@/lib/profile-questions/answers";
 import { declareParticipation, declareParticipationInput } from "@/lib/participation";
 import { upsertMemberAxisValue } from "@/lib/trait-axes";
+import { decideTierRequest } from "@/lib/tier-requests";
 import { AppError } from "@/lib/errors";
 
 function redirectWithError(err: unknown): never {
@@ -200,4 +201,18 @@ export async function submitOnboardingPrefilledAnswersAction(formData: FormData)
 
   revalidatePath("/dashboard");
   revalidatePath("/profile");
+}
+
+// Confirming or declining someone's request for a manual tier. The lib
+// decides who may (an Admin, or a member already in that tier — never the
+// requester, bar an Admin); this only carries the click.
+export async function decideTierRequestAction(formData: FormData) {
+  const actor = await requireMember();
+  const decision = String(formData.get("decision") ?? "") === "approved" ? "approved" : "declined";
+  try {
+    await decideTierRequest(actor, String(formData.get("requestId") ?? ""), decision);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/dashboard");
 }

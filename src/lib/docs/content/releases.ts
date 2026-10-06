@@ -28,6 +28,19 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-06",
+    title: "A tier is something you ask for",
+    summary: "You can no longer tick a tier onto your own profile. Someone who can vouch for it confirms.",
+    points: [
+      "Tiers can unlock things — who can read a sensitive answer, who can start an event — so a tier you added to yourself would have been a way to give yourself access.",
+      "On your profile, the Tiers section now has an \"Ask to join\" button for each tier. Asking gives you nothing until an Admin, or someone already in that tier, confirms.",
+      "People who can confirm see the request on their dashboard, with Confirm and Decline buttons. If a request isn't confirmed, your profile says so and you can ask again.",
+      "You can leave a tier whenever you like, and the tiers you already hold are unchanged.",
+      "Opening Admins or View-as to every member now asks for a confirmation that can't be skipped.",
+    ],
+    source: "Unreleased: a manual tier is asked for and confirmed, and opening Admins or View-as needs a confirmation the server checks",
+  },
+  {
+    date: "2026-10-06",
     title: "Sensitive questions are only asked once you've joined",
     summary: "An application can't ask a sensitive question any more, and the documentation is clearer about what's built.",
     points: [

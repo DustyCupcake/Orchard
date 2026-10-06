@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { db } from "@/db";
-import { member, tier } from "@/db/schema";
+import { member } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { assertNotViewingAs } from "@/lib/view-as";
 import { answerProfileQuestion, getProfileQuestion } from "@/lib/profile-questions";
@@ -23,6 +23,7 @@ import {
 } from "@/lib/contact-methods";
 import { addMemberLanguage, deleteMemberLanguage, memberLanguageInput } from "@/lib/member-languages";
 import { upsertMemberAxisValue } from "@/lib/trait-axes";
+import { leaveTier, requestTier, withdrawTierRequest } from "@/lib/tier-requests";
 import { AppError } from "@/lib/errors";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
 
@@ -54,7 +55,6 @@ export async function updateProfile(formData: FormData) {
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean);
-  const submittedTierIds = formData.getAll("tierIds").map(String);
   const emailNotificationsEnabled = formData.get("emailNotificationsEnabled") === "on";
   const hasDateDisplayMode = formData.has("dateDisplayMode");
   const dateDisplayModeRaw = String(formData.get("dateDisplayMode") ?? "inherit");
@@ -67,25 +67,15 @@ export async function updateProfile(formData: FormData) {
     return;
   }
 
-  // Only "manual"-criterion tiers are ever offered as checkboxes on this
-  // form (see page.tsx) — a computed one (cycle_type_count, as of Phase
-  // 40) is owned entirely by its own sync logic
-  // (src/lib/settings/tiers.ts's syncComputedTiers). Since this form
-  // submits the full checkbox set each time, a plain overwrite would
-  // silently drop any already-earned computed tier the moment a member
-  // merely saved their name — so only the manual-criterion slice of
-  // tierIds is ever replaced from this submission; everything else on
-  // the member's existing tierIds (computed, or any other non-manual
-  // criterion) carries forward untouched.
-  const communityTiers = await db.select().from(tier).where(eq(tier.communityId, current.communityId));
-  const manualTierIds = new Set(communityTiers.filter((t) => t.criterionType === "manual").map((t) => t.id));
-  const preserved = current.tierIds.filter((id) => !manualTierIds.has(id));
-  const nextManual = submittedTierIds.filter((id) => manualTierIds.has(id));
-  const tierIds = [...new Set([...preserved, ...nextManual])];
-
+  // Tiers are deliberately not written here. This form used to submit the
+  // manual tiers as checkboxes and overwrite the member's own manual set,
+  // which made a tier a thing you could tick onto yourself — and tiers gate
+  // real access. A manual tier is now asked for and confirmed by someone who
+  // can vouch for it (src/lib/tier-requests.ts), and leaving one is its own
+  // button, so saving a name or some tags can't change what a member holds.
   await db
     .update(member)
-    .set({ name, tags, tierIds, emailNotificationsEnabled, ...(hasDateDisplayMode && { dateDisplayMode }) })
+    .set({ name, tags, emailNotificationsEnabled, ...(hasDateDisplayMode && { dateDisplayMode }) })
     .where(eq(member.id, current.id));
   revalidatePath("/profile");
 }
@@ -369,6 +359,38 @@ export async function agreeToEmergencyRevealAction(formData: FormData) {
   try {
     assertNotViewingAs();
     await agreeToEmergencyReveal(current, String(formData.get("answerId") ?? ""));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+// Tiers: asked for, confirmed by someone else, and left at will. See
+// src/lib/tier-requests.ts for why a tier is no longer a checkbox.
+export async function requestTierAction(formData: FormData) {
+  const current = await requireMember();
+  try {
+    await requestTier(current, String(formData.get("tierId") ?? ""));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+export async function withdrawTierRequestAction(formData: FormData) {
+  const current = await requireMember();
+  try {
+    await withdrawTierRequest(current, String(formData.get("requestId") ?? ""));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/profile");
+}
+
+export async function leaveTierAction(formData: FormData) {
+  const current = await requireMember();
+  try {
+    await leaveTier(current, String(formData.get("tierId") ?? ""));
   } catch (err) {
     redirectWithError(err);
   }

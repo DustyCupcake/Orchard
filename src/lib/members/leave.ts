@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db, type Tx } from "@/db";
 import {
   browseInterest,
@@ -10,6 +10,7 @@ import {
   profileAnswer,
   taskAssignment,
   type member as memberTable,
+  tierRequest,
 } from "@/db/schema";
 
 type Member = typeof memberTable.$inferSelect;
@@ -106,6 +107,13 @@ export async function anonymiseMember(
     await tx.delete(memberAxisValue).where(eq(memberAxisValue.memberId, target.id));
     await tx.delete(memberLanguage).where(eq(memberLanguage.memberId, target.id));
     await tx.delete(browseInterest).where(eq(browseInterest.memberId, target.id));
+    // A pending request for a tier is a claim on access this person is
+    // giving up, and leaving one in place would leave an Admin a request to
+    // confirm for somebody who is no longer here. Decided rows are kept as
+    // the record of who confirmed whom.
+    await tx
+      .delete(tierRequest)
+      .where(and(eq(tierRequest.memberId, target.id), isNull(tierRequest.decidedAt)));
 
     // Task holdings: released rather than left. See the note above.
     const releasedTasks = await releaseAllTaskHoldings(tx, target);

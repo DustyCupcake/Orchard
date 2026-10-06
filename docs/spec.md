@@ -300,7 +300,7 @@ Different mechanics genuinely need different shapes of this, and which shape app
 
 A Member belongs to exactly one Community. **Tier** replaces the old hardcoded "experienced Peach" boolean. A Tier is a named eligibility level with a *criterion* the Community chooses at setup:
 
-- **Manual** — leads designate members into the tier by hand.
+- **Manual** — members are designated into the tier by hand. In the app that is a request and a confirmation: a member asks, and an Admin or someone already in the tier confirms. Asking grants nothing, a member can always leave on their own, and a manual tier is never something a member can add to themselves — tiers gate real access (sensitive-data audiences, who may start an event).
 - **Tenure-based** — member for ≥ N days/months.
 - **Completion-based** — has completed task(s) tagged X, or completed ≥ N tasks total.
 - **Cohort-based** — was active during a past cycle (this is what "experienced Peach" actually was — a special case of completion-based, not a universal default).

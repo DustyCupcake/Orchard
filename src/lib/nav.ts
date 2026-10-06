@@ -359,6 +359,7 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     feed.shiftCoordinatorNeedsAction.personal.length +
     feed.myShiftsNeedingCompletion.length +
     feed.conflictNeedsAction.personal.length +
+    feed.tierRequestsToConfirm.length +
     feed.kitchenNeedsAction.personal.length +
     feed.expiredNominations.length;
 

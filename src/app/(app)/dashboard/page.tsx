@@ -14,13 +14,14 @@ import { toFieldShape } from "@/lib/field-shape";
 import { listOutstandingOnboardingAxes } from "@/lib/trait-axes";
 import { listAudiencesForQuestions, type Audience } from "@/lib/sensitive-data";
 import { ATTENTION_STYLES } from "@/lib/format";
-import { Tag, type Tone, ATTENTION_TONE, Banner, BUTTON_PRIMARY } from "@/components/ui/kit";
+import { Tag, type Tone, ATTENTION_TONE, Banner, BUTTON_PRIMARY, BUTTON_SECONDARY } from "@/components/ui/kit";
 import AxisScaleField from "@/components/AxisScaleField";
 import ProfileQuestionForm from "@/components/ProfileQuestionForm";
 import { EventComingRibbon, EventParticipationCards } from "@/components/EventParticipation";
 import PrefilledAnswersReview from "./PrefilledAnswersReview";
 import {
   completeOnboardingAction,
+  decideTierRequestAction,
   declareEventStatusAction,
   submitOnboardingAnswerAction,
   submitOnboardingAxisAction,
@@ -425,6 +426,7 @@ export default async function DashboardPage({
 
   const hasFeedItems =
     feed.pendingJoinRequests.length > 0 ||
+    feed.tierRequestsToConfirm.length > 0 ||
     feed.upcomingCheckins.length > 0 ||
     feed.flaggedHeldTasks.length > 0 ||
     feed.emergencyAccessActivity.length > 0 ||
@@ -676,6 +678,34 @@ export default async function DashboardPage({
                 title={r.taskTitle}
                 meta={`${r.requestedByName} asked to join, ${new Date(r.requestedAt).toLocaleDateString()}`}
               />
+            ))}
+          </FeedSection>
+        )}
+
+        {feed.tierRequestsToConfirm.length > 0 && (
+          <FeedSection title="Tier requests waiting on you">
+            {feed.tierRequestsToConfirm.map((r) => (
+              <li
+                key={r.id}
+                className="flex flex-wrap items-center gap-2 border-b border-[var(--border)] py-2 last:border-b-0"
+              >
+                <span className="min-w-[12rem] flex-1 text-[length:var(--text-body)] text-[var(--text)]">
+                  {r.memberName} asked to join <strong>{r.tierName}</strong>
+                  <span className="text-[var(--text-muted)]">
+                    {" "}
+                    — {new Date(r.requestedAt).toLocaleDateString()}
+                  </span>
+                </span>
+                <form action={decideTierRequestAction} className="flex gap-2">
+                  <input type="hidden" name="requestId" value={r.id} />
+                  <button type="submit" name="decision" value="approved" className={BUTTON_PRIMARY}>
+                    Confirm
+                  </button>
+                  <button type="submit" name="decision" value="declined" className={BUTTON_SECONDARY}>
+                    Decline
+                  </button>
+                </form>
+              </li>
             ))}
           </FeedSection>
         )}

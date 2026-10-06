@@ -12,6 +12,7 @@ import { listMyConsentStatus } from "@/lib/consent";
 import { listAllDistinctTags } from "@/lib/tags";
 import { listOwnMemberLanguages, MEMBER_LANGUAGE_LEVELS, type MemberLanguageLevel } from "@/lib/member-languages";
 import { listMemberAxisValues, listTraitAxes } from "@/lib/trait-axes";
+import { listOwnTierRequestStates } from "@/lib/tier-requests";
 import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL } from "@/components/ui/kit";
 import AxisScaleField from "@/components/AxisScaleField";
 import ProfileQuestionForm from "@/components/ProfileQuestionForm";
@@ -26,13 +27,16 @@ import {
   deleteMemberLanguageAction,
   extendAnswerConsentAction,
   grantConsentAction,
+  leaveTierAction,
   requestContactMethodVerificationAction,
+  requestTierAction,
   setPrimaryContactMethodAction,
   submitProfileAnswerAction,
   updateContactMethodAction,
   updateMemberAxisAction,
   updateProfile,
   withdrawConsentAction,
+  withdrawTierRequestAction,
 } from "./actions";
 import SelectField from "@/components/ui/SelectField";
 
@@ -85,6 +89,7 @@ export default async function ProfilePage({
     traitAxes,
     ownAxisValues,
     pendingAudienceConsents,
+    tierRequestStates,
   ] = await Promise.all([
     db.select().from(tier).where(eq(tier.communityId, viewing.communityId)),
     listOutstandingQuestions(viewing),
@@ -97,11 +102,13 @@ export default async function ProfilePage({
     listTraitAxes(viewing),
     listMemberAxisValues(viewing.id),
     listPendingAudienceConsents(viewing),
+    listOwnTierRequestStates(viewing),
   ]);
-  // Only a manual-criterion tier is ever hand-toggled here — a computed
-  // one (cycle_type_count, Phase 40) is owned by syncComputedTiers and
-  // shown read-only below instead. See actions.ts's updateProfile for
-  // why the submitted checkbox set can't just overwrite tierIds wholesale.
+  // Only a manual-criterion tier is ever asked for here — a computed one
+  // (cycle_type_count, Phase 40) is owned by syncComputedTiers and shown
+  // read-only below instead. A manual tier is requested, and an Admin or
+  // someone already in it confirms (src/lib/tier-requests.ts); it is never a
+  // checkbox on the profile form.
   const manualTiers = communityTiers.filter((t) => t.criterionType === "manual");
 
   // The label of whatever question each purpose gates, so "Your consent"
@@ -205,20 +212,6 @@ export default async function ProfilePage({
           </datalist>
         </label>
 
-        {manualTiers.length > 0 && (
-          <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-            <legend className="px-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">Tiers (manual assignment)</legend>
-            <div className="flex flex-col gap-1">
-              {manualTiers.map((t) => (
-                <label key={t.id} className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-                  <input type="checkbox" name="tierIds" value={t.id} defaultChecked={viewing.tierIds.includes(t.id)} />
-                  {t.name}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-        )}
-
         <CheckField
           label="Email me targeted messages and announcements"
           name="emailNotificationsEnabled"
@@ -229,6 +222,58 @@ export default async function ProfilePage({
           Save
         </button>
       </form>
+
+      {manualTiers.length > 0 && (
+        <section className="mt-8">
+          <SectionHeading>Tiers</SectionHeading>
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+            A tier can unlock things, so you ask for one and an Admin — or someone already in it — confirms.
+            Asking gives you nothing until they do. You can leave a tier any time.
+          </p>
+          <div className="mt-2 flex flex-col gap-2">
+            {manualTiers.map((t) => {
+              const held = viewing.tierIds.includes(t.id);
+              const state = tierRequestStates.get(t.id);
+              return (
+                <div key={t.id} className={`flex flex-wrap items-center gap-2 ${CARD}`}>
+                  <span className="flex-1 text-[length:var(--text-body)] text-[var(--text)]">
+                    {t.name}
+                    {held && <span className="text-[var(--success)]"> — you&rsquo;re in this tier</span>}
+                    {!held && state?.status === "pending" && (
+                      <span className="text-[var(--text-muted)]"> — waiting for someone to confirm</span>
+                    )}
+                    {!held && state?.status === "declined" && (
+                      <span className="text-[var(--text-muted)]"> — your last request wasn&rsquo;t confirmed</span>
+                    )}
+                  </span>
+                  {held ? (
+                    <form action={leaveTierAction}>
+                      <input type="hidden" name="tierId" value={t.id} />
+                      <button type="submit" className={BUTTON_GHOST}>
+                        Leave
+                      </button>
+                    </form>
+                  ) : state?.status === "pending" ? (
+                    <form action={withdrawTierRequestAction}>
+                      <input type="hidden" name="requestId" value={state.requestId} />
+                      <button type="submit" className={BUTTON_GHOST}>
+                        Withdraw request
+                      </button>
+                    </form>
+                  ) : (
+                    <form action={requestTierAction}>
+                      <input type="hidden" name="tierId" value={t.id} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        {state?.status === "declined" ? "Ask again" : "Ask to join"}
+                      </button>
+                    </form>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <section className="mt-8">
         <SectionHeading>Languages</SectionHeading>

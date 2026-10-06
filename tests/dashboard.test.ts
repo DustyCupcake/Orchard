@@ -83,6 +83,9 @@ describe("getPersonalFeed", () => {
       shiftCoordinatorNeedsAction: { personal: [], shared: [] },
       myShiftsNeedingCompletion: [],
       conflictNeedsAction: { personal: [], shared: [] },
+      // Manual-tier requests this member may confirm; none for someone who is
+      // neither an Admin nor in any tier.
+      tierRequestsToConfirm: [],
       // Kitchen's own needs-action surface (docs/food-drinks-module-plan.md's
       // D2/D5) — empty here because this member holds no kitchen grant.
       kitchenNeedsAction: { personal: [], shared: [] },

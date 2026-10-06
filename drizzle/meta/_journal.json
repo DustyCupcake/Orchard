@@ -617,6 +617,13 @@
       "when": 1791296088420,
       "tag": "0087_first_login_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1791300077631,
+      "tag": "0088_tier_requests",
+      "breakpoints": true
     }
   ]
 }

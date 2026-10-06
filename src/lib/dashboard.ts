@@ -28,6 +28,7 @@ import { listEventSchedulingNeedsAction } from "./event-scheduling";
 import { listMySignupsWithOccurrence, listShiftCoordinatorNeedsAction } from "./shifts";
 import { listConflictNeedsAction } from "./conflict";
 import { listKitchenNeedsAction } from "./kitchen";
+import { listTierRequestsToConfirm } from "./tier-requests";
 import { listMyExpiredNominations, listMyPendingNominations } from "./tasks";
 
 type Member = typeof memberTable.$inferSelect;
@@ -206,6 +207,9 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
     .filter((s) => s.signup.status === "signed_up" && new Date(s.occurrence.endsAt) < new Date())
     .map((s) => ({ signupId: s.signup.id, seriesTitle: s.series.title, endsAt: s.occurrence.endsAt }));
   const conflictNeedsAction = await listConflictNeedsAction(actor);
+  // Manual-tier requests this member may confirm: every one for an Admin,
+  // otherwise only the tiers they are in. See src/lib/tier-requests.ts.
+  const tierRequestsToConfirm = await listTierRequestsToConfirm(actor);
   // Kitchen's own needs-action surface (docs/food-drinks-module-plan.md's
   // Step 4) — module-gated, and listKitchenNeedsAction itself degrades
   // to [] for a non-holder, so a member who's neither enabled-for nor
@@ -300,6 +304,7 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
     shiftCoordinatorNeedsAction,
     myShiftsNeedingCompletion,
     conflictNeedsAction,
+    tierRequestsToConfirm,
     kitchenNeedsAction,
     pendingNominations,
     expiredNominations,
