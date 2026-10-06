@@ -55,7 +55,7 @@ This is **not** a production concern, and worth being explicit about why. Produc
 
 Two other things the script gets right that are easy to get wrong by hand:
 
-- **The test database runs under production's Postgres settings** (`shared_buffers=128MB`, `max_connections=50`). The documented `docker run` used to start on stock Postgres defaults, so a suite could pass locally and still break on the configuration you'd actually deploy.
+- **The test database runs under production's Postgres settings** (`shared_buffers=128MB`, `max_connections=50`). The documented `docker run` used to start on stock Postgres defaults, so a suite could pass locally and still break on the configuration you'd actually deploy. It also runs with `fsync`, `synchronous_commit` and `full_page_writes` **off**, which production does not: the suite's `TRUNCATE`s leave thousands of files for each checkpoint to sync, and with durability on a restart of the database after a heavy batch could outlast the script's patience and abort the run. Those settings change how fast Postgres writes, not what a query returns, and a database that is truncated between every test file has nothing to be durable for. An older container left running on the previous settings is detected and replaced automatically.
 - **It recreates the container if it's gone.** The test container is `--rm`, so it does not survive a Docker restart — which is why a `docker compose up` after a VM memory change can leave you with no database and a confusing connection error.
 
 Override when needed, no editing required: `ORCHARD_TEST_BUDGET_MB`, `ORCHARD_TEST_BATCH`, `ORCHARD_TEST_CONTAINER`, `ORCHARD_TEST_PORT`.

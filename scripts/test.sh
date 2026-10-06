@@ -97,27 +97,62 @@ mem_mb() {
       }'
 }
 
+# Waits for the database to accept connections. The default 30s is for a
+# first start, which is quick. A *restart* after a heavy run is not: see
+# restart_db, which waits much longer and says why when it gives up.
 wait_ready() {
-  for _ in $(seq 1 30); do
+  local seconds="${1:-30}"
+  for _ in $(seq 1 "$seconds"); do
     docker exec "$CONTAINER" pg_isready -U "$DB_USER" >/dev/null 2>&1 && return 0
     sleep 1
   done
+  printf '\n\033[1;31mdatabase not ready after %ss — last of its log:\033[0m\n' "$seconds" >&2
+  docker logs --tail 15 "$CONTAINER" >&2 2>&1 || true
   return 1
 }
 
+# The settings this throwaway database runs with, beyond the two it shares
+# with production (below). `fsync`, `synchronous_commit` and
+# `full_page_writes` are the durability settings, and a test database has
+# nothing to be durable *for* — it is truncated between every test file and
+# rebuilt from the migrations if it is lost. They are not free, though: the
+# suite's TRUNCATEs leave thousands of files behind for each checkpoint to
+# sync (~17,000 on disk for a 22MB database, measured), and on Docker
+# Desktop's VM that made every shutdown checkpoint, and the crash recovery
+# after a shutdown that ran out of time, slow enough that a restart took
+# over 30s and the run aborted with "could not restart". Turning them off
+# changes how fast Postgres writes, never what a query returns, so this is
+# not the "tests passing on a different configuration" gap the shared
+# settings exist to close.
+DB_SETTINGS=(
+  -c shared_buffers=128MB -c max_connections=50
+  -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+)
+
 ensure_container() {
   if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
-    return 0
+    # A container started by an older version of this script is still
+    # running on the old settings, and `docker ps` can't tell. It is
+    # disposable by design, so replace it rather than leave a machine on
+    # the slow, fragile configuration until somebody thinks to.
+    local fsync
+    fsync=$(docker exec "$CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -Atc "show fsync" 2>/dev/null || true)
+    if [ "$fsync" = "off" ]; then
+      return 0
+    fi
+    log "Test database is on an older configuration (fsync=${fsync:-unknown}) — recreating it"
+  else
+    log "Test database not running — creating it (--rm containers do not survive a Docker restart)"
   fi
-  log "Test database not running — creating it (--rm containers do not survive a Docker restart)"
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-  # The two settings the production stack runs with (docker-compose.yml).
-  # This database used to start on stock Postgres defaults, so a suite
-  # could pass locally and still break on the deployed configuration.
+  # Two settings are the ones the production stack runs with
+  # (docker-compose.yml). This database used to start on stock Postgres
+  # defaults, so a suite could pass locally and still break on the deployed
+  # configuration. The rest are explained at DB_SETTINGS.
   docker run --rm -d -p "${PORT}:5432" \
     -e POSTGRES_USER="$DB_USER" -e POSTGRES_PASSWORD="$DB_PASS" -e POSTGRES_DB="$DB_NAME" \
     --name "$CONTAINER" postgres:16-alpine \
-    -c shared_buffers=128MB -c max_connections=50 >/dev/null
+    "${DB_SETTINGS[@]}" >/dev/null
   wait_ready || die "test database did not become ready"
 }
 
@@ -126,9 +161,16 @@ migrate() {
   DATABASE_URL="$HOST_DATABASE_URL" node scripts/migrate.mjs >/dev/null
 }
 
+# `-t 120` is the stop timeout, and it matters: the default is 10s, after
+# which Docker SIGKILLs Postgres. After a heavy batch the shutdown
+# checkpoint can take longer than that, and a killed Postgres has to run
+# crash recovery on the way back up — measured at ~40s here, against ~1s
+# for a clean shutdown. Giving it time to stop properly is what keeps the
+# restart the "about a second" this script's header promises, and the long
+# readiness wait is for the case where it isn't.
 restart_db() {
-  docker restart "$CONTAINER" >/dev/null
-  wait_ready
+  docker restart -t 120 "$CONTAINER" >/dev/null
+  wait_ready 180
 }
 
 ensure_runner_deps() {
