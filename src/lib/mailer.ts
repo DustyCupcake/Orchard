@@ -1,8 +1,13 @@
 import nodemailer from "nodemailer";
 
-let transporter: nodemailer.Transporter | null = null;
+// nodemailer 10 ships its own types (the separate @types package described
+// 8.x and has been removed), and no longer exposes a `Transporter` namespace
+// member; the type of what createTransport returns is the honest spelling.
+type Transporter = ReturnType<typeof nodemailer.createTransport>;
 
-function getTransporter(): nodemailer.Transporter | null {
+let transporter: Transporter | null = null;
+
+function getTransporter(): Transporter | null {
   if (!process.env.SMTP_HOST) {
     return null;
   }
