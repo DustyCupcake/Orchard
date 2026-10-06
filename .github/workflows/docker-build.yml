@@ -20,7 +20,34 @@ env:
   IMAGE: docker.io/dustycupcake/orchard
 
 jobs:
+  # The integration suite, gating the image push below. It runs through
+  # the same scripts/test.sh as `npm test` locally, so CI and a developer
+  # machine start the same Postgres (same shared_buffers/max_connections
+  # as production) and run the same batching. ORCHARD_TEST_HOST=1 runs
+  # vitest on the runner's Node rather than inside a second container:
+  # the runner is already a clean Linux box, and setup-node pins the
+  # version to the one the Dockerfile ships (node:22), which is what the
+  # container indirection exists to guarantee locally. The script still
+  # starts its own Postgres with `docker run`, which ubuntu-latest has.
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Test suite
+        run: ORCHARD_TEST_HOST=1 npm test
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
