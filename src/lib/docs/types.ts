@@ -25,6 +25,15 @@ export type DocBlock =
   | { kind: "list"; items: string[] }
   | { kind: "table"; head: string[]; rows: string[][] }
   | { kind: "callout"; title?: string; text: string }
+  // Something this documentation describes that Orchard does not do yet.
+  // It exists so a page can say where the app is headed without a member
+  // reading it as a description of what the screen in front of them will
+  // do — the failure this fixes is real: pages described browse-mode
+  // auto-claim and a finish-task prompt as live features. Rendered with a
+  // fixed "Planned — not built yet" label so the status can't be left to the
+  // wording, and used for nothing else; a feature that isn't planned and
+  // isn't built belongs in no page at all.
+  | { kind: "planned"; text: string }
   // A link to another page in this section, so the "why" pages can
   // cross-reference the how-to pages and vice versa without hardcoding
   // hrefs. Resolved by the renderer against the registry; an unknown

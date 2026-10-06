@@ -120,7 +120,7 @@ describe("Orchard documentation registry", () => {
     // that looks like a feature.
     //
     // Adding a new kind therefore means: use it, or don't add it.
-    const EXPECTED = ["para", "heading", "list", "table", "callout", "see-also"];
+    const EXPECTED = ["para", "heading", "list", "table", "callout", "planned", "see-also"];
     const used = new Set(ALL_PAGES.flatMap((p) => p.blocks.map((b) => b.kind)));
     for (const kind of EXPECTED) {
       expect(used.has(kind as never), `no page uses the "${kind}" block kind`).toBe(true);

@@ -296,7 +296,7 @@ export const howItWorks: DocSection = {
         },
         {
           kind: "para",
-          text: "Whoever holds the support task can view the app as another member, for troubleshooting. It's logged, it's visible to the person being viewed, and it's bounded in specific ways — there are places it deliberately doesn't reach, because the safety guarantee behind them has to hold against every access path, not just the ordinary one.",
+          text: "Whoever holds the support task can view the app as another member, for troubleshooting. It's logged, it's strictly read-only — nothing can be changed while you're viewing as someone else — and it's bounded in other specific ways — there are places it deliberately doesn't reach, because the safety guarantee behind them has to hold against every access path, not just the ordinary one.",
         },
         {
           kind: "see-also",
@@ -397,7 +397,7 @@ export const howItWorks: DocSection = {
         },
         {
           kind: "para",
-          text: "How much you're carrying is yours alone by default, and there's a toggle on your profile if you'd rather the rest of the camp could see it too. It stays off until you turn it on.",
+          text: "How much you're carrying is yours alone by default, and there's a toggle on your contribution page if you'd rather the rest of the camp could see it too. It stays off until you turn it on.",
         },
         {
           kind: "para",
@@ -478,12 +478,12 @@ export const howItWorks: DocSection = {
         },
         {
           kind: "para",
-          text: "If a contact method is set to emergency-only, any member can surface it when something's genuinely wrong, without asking first. Both people are told either way, there's always a reason attached — which you can add afterwards if the moment didn't allow for it — and every use is logged.",
+          text: "If a contact method is set to emergency-only, any member can surface it when something's genuinely wrong, without asking first. The person it's about is told, every use is logged, and you can add the reason afterwards if the moment didn't allow for it. A question marked for emergency access can be revealed too, but only where the member agreed to that for their own answer, and a reason is required before anything like that is shown.",
         },
         {
           kind: "callout",
           title: "This one isn't a revocable permission, on purpose",
-          text: "A safety net that could quietly stop working because a flag lapsed wouldn't be much of a safety net. So it isn't gated on the same consent machinery as everything else. Choosing emergency-only in the first place is the deliberate act, and the log plus the required explanation is the accountability. The screen where you choose it says plainly what you're agreeing to.",
+          text: "A safety net that could quietly stop working because a flag lapsed wouldn't be much of a safety net. So a contact method set to emergency-only doesn't depend on the same ongoing consent as everything else: choosing it is the deliberate act, and the log is the accountability. Answers are the stricter case, and only reach this path with the member's own agreement for that answer. The screen where you choose it says plainly what you're agreeing to.",
         },
         {
           kind: "see-also",

@@ -33,7 +33,7 @@ export const using: DocSection = {
         },
         {
           kind: "para",
-          text: "Those answers are the only thing Orchard uses to decide what to show you, so they're worth thirty seconds of thought. You can change any of them later on your profile, and changing them changes what gets suggested.",
+          text: "Those answers help decide which tasks get suggested to you, along with your tags and what each task asks for, so they're worth thirty seconds of thought. You can change any of them later on your profile, and changing them changes what gets suggested.",
         },
         {
           kind: "para",
@@ -77,7 +77,7 @@ export const using: DocSection = {
         },
         {
           kind: "para",
-          text: "Tasks are pushed toward the people who could plausibly take them, using what you've said about yourself and what the task asks for. Tasks needing something rarer — a specific skill, a language, someone who's done this before — get pushed a little harder, precisely because fewer people will recognise them as theirs.",
+          text: "Tasks are suggested to the people who could plausibly take them, using what you've said about yourself and what the task asks for: tags you share, whether you meet its requirements, and how your way of working lines up with the task's. Your first suggestions are built this way, and the board can sort by what fits you if you ask it to. Nothing is ever assigned to you.",
         },
         {
           kind: "para",
@@ -161,16 +161,20 @@ export const using: DocSection = {
         },
         {
           kind: "para",
-          text: "Some tasks have a short browse period before claiming opens, so people can put their hand up. If only one person does, it's theirs automatically when the window closes. If several people do and the task has more than one slot, everyone gets a slot.",
+          text: "Some roles — the ones the community endorses rather than simply hands out — have a short browse period first, so people can put their hand up and the community can say who it wants. A candidate who hasn't reached the endorsement the role asks for by the time the window closes doesn't get it.",
         },
         {
           kind: "para",
-          text: "If two people want a task that only has one slot, you're both told plainly, and you can see each other's contact details for exactly that reason. From there the realistic options are: one of you steps back, you open a second slot together, one of you joins as a learner instead, or you split the task into two smaller ones.",
+          text: "If two people want a task that only has one slot, the realistic options are: one of you steps back, you open a second slot together, one of you joins as a learner instead, or you split the task into two smaller ones. You'll need to talk to each other, or to a coordinator, to get there.",
+        },
+        {
+          kind: "planned",
+          text: "A browse period for ordinary tasks that gives the task to a lone interested person when it closes, gives everyone a slot on a multi-slot task, and — when two people want the same single slot — tells you both and shows you each other's contact details so you can sort it out. None of that happens yet; ordinary tasks are claimed directly.",
         },
         {
           kind: "callout",
           title: "Orchard doesn't pick",
-          text: "There's no tiebreak and no button that decides it for you. A genuine standoff between two people who won't budge is a human problem, and if it stalls, a coordinator will offer to help you work it out.",
+          text: "There's no tiebreak and no button that decides it for you. A genuine standoff between two people who won't budge is a human problem, and a coordinator is the person to ask for help working it out.",
         },
         {
           kind: "heading",
@@ -235,7 +239,11 @@ export const using: DocSection = {
         },
         {
           kind: "para",
-          text: "When you finish a task, Orchard asks whether there's anything worth capturing, and drops your answer straight into the comments. It's the easiest way in and it means the knowledge lands where the next person will look.",
+          text: "When you mark yourself as outgoing from a task, Orchard reminds you to write up the summary note while it's fresh, which is where the next person will look.",
+        },
+        {
+          kind: "planned",
+          text: "Asking you whether there's anything worth capturing when you finish a task, and saving your answer straight into the comments. For now the reminder only appears when you step back from a task.",
         },
         {
           kind: "heading",
@@ -279,8 +287,8 @@ export const using: DocSection = {
             [
               "Input rounds",
               "Small questions about a task",
-              "Queue up, then go out together once a week. Free text or a quick pick-one.",
-              "Weekly, on a rhythm",
+              "Queue up, then go out together once per round — weekly unless your community changes it. Free text or a quick pick-one.",
+              "On a rhythm — weekly by default",
             ],
             [
               "Assemblies",
@@ -312,11 +320,11 @@ export const using: DocSection = {
         },
         {
           kind: "para",
-          text: "Instead, questions wait and go out together once a week. You get one reminder, one sitting where you answer everything you care about, and that's it. The answers come back to whoever asked, and stay visible on the task for anyone else who looks.",
+          text: "Instead, questions wait and go out together on a fixed rhythm — weekly unless your community has set something else. You get one reminder, one sitting where you answer everything you care about, and that's it. The answers come back to whoever asked, and stay visible on the task for anyone else who looks.",
         },
         {
           kind: "callout",
-          title: "Nothing here is faster than the weekly rhythm, on purpose",
+          title: "Nothing here is faster than the rhythm, on purpose",
           text: "If something is genuinely urgent, an input round is the wrong tool — it will still be sitting in the queue. Use a message, or talk to your coordinator. The round exists so the small constant questions don't turn into a stream of pings to manage.",
         },
         {
@@ -354,7 +362,7 @@ export const using: DocSection = {
         },
         {
           kind: "para",
-          text: "Once a slot is confirmed it goes on everyone's calendar, and only for the people who actually submitted availability for it.",
+          text: "Once a slot is confirmed it appears on the calendar.",
         },
         {
           kind: "heading",
@@ -389,7 +397,7 @@ export const using: DocSection = {
         },
         {
           kind: "para",
-          text: "By default this is yours alone. There's a toggle on your profile if you'd rather the rest of the camp could see it too, and it stays off unless you turn it on.",
+          text: "By default this is yours alone. There's a toggle on your contribution page if you'd rather the rest of the camp could see it too, and it stays off unless you turn it on.",
         },
         {
           kind: "heading",

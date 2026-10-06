@@ -206,7 +206,7 @@ export const why: DocSection = {
         {
           kind: "callout",
           title: "The one place that goes the other way",
-          text: "Emergency access is the deliberate exception, and it works differently on purpose. A safety net that could quietly stop working because a flag lapsed wouldn't be much of a safety net, so anyone can surface someone's emergency-only contact in a real crisis without asking first. Both people are always told, and there's always a reason attached — even if it's added afterwards.",
+          text: "Emergency access is the deliberate exception, and it works differently on purpose. A safety net that could quietly stop working because a flag lapsed wouldn't be much of a safety net, so anyone can surface someone's emergency-only contact in a real crisis without asking first. The person it's about is always told, every use is logged, and a reason is attached — required first for anything beyond a contact method, and addable afterwards for a contact method alone.",
         },
         {
           kind: "see-also",

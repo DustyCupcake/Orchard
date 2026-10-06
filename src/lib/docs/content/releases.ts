@@ -28,6 +28,19 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-06",
+    title: "Sensitive questions are only asked once you've joined",
+    summary: "An application can't ask a sensitive question any more, and the documentation is clearer about what's built.",
+    points: [
+      "A sensitive question can't be put on an application form. It's asked when you first join, where you're shown who can read your answer before you give it.",
+      "If the community ever removes its last Admins task, settings open to every member again rather than locking everyone out — and removing the last one asks you to confirm first.",
+      "Opening conflict reports to every member now tells you how many existing reports that would show people, and asks you to confirm.",
+      "While someone is viewing as another member, nothing can be changed — including by routes that previously let it through.",
+      "Pages in the documentation that described things not built yet now say so, with a \"Planned — not built yet\" label.",
+    ],
+    source: "Unreleased: a form can't ask a sensitive question, the last Admins grant is a way out and not a trap, REST writes respect View-as, and the docs stop describing things that don't exist",
+  },
+  {
+    date: "2026-10-06",
     title: "Your first login asks what you'd like to be called",
     summary: "The roster was a list of email prefixes. Now each person is asked, once.",
     points: [

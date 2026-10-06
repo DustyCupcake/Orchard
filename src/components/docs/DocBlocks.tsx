@@ -101,6 +101,19 @@ function Block({ block }: { block: DocBlock }) {
         </aside>
       );
 
+    // Not reasoning (that is the callout) and not a state message (that is
+    // a Banner): a fixed label that says this is intended and not built, so
+    // the status doesn't depend on how the sentence beside it is worded.
+    case "planned":
+      return (
+        <aside className="rounded-[var(--radius-md)] border border-dashed border-[var(--border-strong)] px-3.5 py-3">
+          <p className="text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+            Planned — not built yet
+          </p>
+          <p className="mt-1 text-[length:var(--text-body)] leading-relaxed text-[var(--text-muted)]">{block.text}</p>
+        </aside>
+      );
+
     case "see-also":
       return (
         <nav className="mt-2 border-t border-[var(--border)] pt-3">
