@@ -166,7 +166,12 @@ async function requireValidMappedProfileQuestions(communityId: string, fields: F
   if (ids.length === 0) return;
 
   const rows = await db
-    .select({ id: profileQuestion.id, scope: profileQuestion.scope, archivedAt: profileQuestion.archivedAt })
+    .select({
+      id: profileQuestion.id,
+      scope: profileQuestion.scope,
+      archivedAt: profileQuestion.archivedAt,
+      sensitive: profileQuestion.sensitive,
+    })
     .from(profileQuestion)
     .where(and(inArray(profileQuestion.id, ids), eq(profileQuestion.communityId, communityId)));
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -178,6 +183,19 @@ async function requireValidMappedProfileQuestions(communityId: string, fields: F
     }
     if (row.scope !== "once_ever") {
       throw new AppError("A field can only map to a once-ever profile question");
+    }
+    // A sensitive question is never asked on a form. Who may read an
+    // application's responses is decided by the community and is not the
+    // same group as the question's own audience, so mapping one would
+    // present two different answers to "who sees this?" on one page — and
+    // the applicant, who has no account yet to be shown the audience on,
+    // would be consenting to a group they were never told about. Sensitive
+    // questions are asked at onboarding instead, where the member is shown
+    // who can read the answer before giving it.
+    if (row.sensitive) {
+      throw new AppError(
+        "A sensitive question can't be asked on a form — it is asked when the person first joins, where they are shown who can read their answer",
+      );
     }
   }
 }

@@ -169,11 +169,12 @@ export default async function SettingsPage({
 
   // The Forms tab's "maps to profile question" dropdown
   // (src/lib/forms.ts's mapsToProfileQuestionId) only ever accepts a
-  // once_ever, non-archived question — see requireValidMappedProfileQuestions
-  // — so an archived or per_cycle/phase one isn't offered as an option to
-  // begin with, rather than being rejected only after submitting.
+  // once_ever, non-archived, non-sensitive question — see
+  // requireValidMappedProfileQuestions — so an archived, sensitive or
+  // per_cycle/phase one isn't offered as an option to begin with, rather
+  // than being rejected only after submitting.
   const onceEverProfileQuestionOptions = profileQuestions
-    .filter((q) => q.scope === "once_ever" && !q.archivedAt)
+    .filter((q) => q.scope === "once_ever" && !q.archivedAt && !q.sensitive)
     .map((q) => ({ id: q.id, label: q.label }));
 
   // The permissions tab's derived maps. Only built when that tab is the

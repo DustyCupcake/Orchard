@@ -10,6 +10,7 @@ import {
   memberLanguage,
   evaluation,
   objection,
+  profileQuestion,
   recruitmentApplicationInvite,
   recruitmentDecision,
   task,
@@ -280,6 +281,16 @@ async function maybeConvertApplicantToMember(
       for (const field of mappedFields) {
         const rawValue = values[field.key];
         if (rawValue === undefined || rawValue === null || rawValue === "") continue;
+        // A form saved before sensitive questions were refused as mapping
+        // targets (src/lib/forms.ts) may still point at one. The answer is
+        // dropped rather than saved: answerProfileQuestion would share it
+        // with the question's whole audience, which the applicant was
+        // never shown. They are asked at onboarding like anyone else.
+        const [mappedQuestion] = await db
+          .select({ sensitive: profileQuestion.sensitive })
+          .from(profileQuestion)
+          .where(eq(profileQuestion.id, field.mapsToProfileQuestionId!));
+        if (mappedQuestion?.sensitive) continue;
         try {
           await answerProfileQuestion(memberRow, field.mapsToProfileQuestionId!, {
             status: "answered",

@@ -11,6 +11,8 @@ import {
   recruitmentDecision,
   recruitmentSubscription,
   task,
+  profileAnswer,
+  profileQuestion,
 } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
 import { createCycle } from "@/lib/cycles";
@@ -353,6 +355,41 @@ describe("Recruitment: applicant→Member conversion", () => {
     // must not ask for it again.
     const outstanding = await listOutstandingQuestions(newMember, { surface: "onboarding" });
     expect(outstanding.find((o) => o.question.id === pronouns.id)).toBeUndefined();
+  });
+
+  // A form saved before sensitive questions were refused as mapping targets
+  // can still point at one. The answer must not be saved: the applicant was
+  // never shown the question's audience, and saving it would share it with
+  // all of them. Conversion carries on; the member is asked at onboarding.
+  it("does not save an answer to a sensitive question mapped by an older form, and still converts", async () => {
+    const fixtures = await createFixtures();
+    const medical = await createProfileQuestion(fixtures.alice, {
+      label: "Medical needs",
+      responseType: "text",
+      scope: "once_ever",
+      surfaces: ["onboarding"],
+    });
+    const fieldsWithMapping: CreateFormInput["fields"] = [
+      ...taggedFields,
+      { key: "medical", label: "Medical needs", responseType: "text", mapsToProfileQuestionId: medical.id },
+    ];
+    const setupResult = await setUp(fixtures, fieldsWithMapping);
+    // The form was valid when saved; the question became sensitive after.
+    await db.update(profileQuestion).set({ sensitive: true }).where(eq(profileQuestion.id, medical.id));
+
+    const application = await submitRecruitmentApplication(setupResult.communityId, {
+      values: { name: "Harlow Applicant", email: "harlow@example.com", medical: "a private thing" },
+    });
+    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+
+    expect(decision!.convertedMemberId).not.toBeNull();
+    const saved = await db
+      .select()
+      .from(profileAnswer)
+      .where(eq(profileAnswer.memberId, decision!.convertedMemberId!));
+    expect(saved).toEqual([]);
   });
 
   it("skips a mapped field that doesn't validate against its target question's shape, without blocking conversion", async () => {

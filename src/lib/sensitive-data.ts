@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/db";
+import { db, type DbOrTx } from "@/db";
 import {
   member,
   profileAnswer,
@@ -68,6 +68,11 @@ export type CreateSensitiveFieldAccessRuleInput = z.infer<typeof createSensitive
 export async function createSensitiveFieldAccessRule(
   actor: Member,
   input: CreateSensitiveFieldAccessRuleInput,
+  // Defaults to the shared connection. createProfileQuestion passes its own
+  // transaction so that a question created sensitive is one atomic act: the
+  // row, the rule that restricts it and the flag that says so either all
+  // exist or none do.
+  executor: DbOrTx = db,
 ) {
   const chosen = [input.unlockedByTaskId, input.unlockedByTierId, input.unlockedByGrantModuleKey].filter(
     Boolean,
@@ -76,7 +81,7 @@ export async function createSensitiveFieldAccessRule(
     throw new AppError("Pick exactly one of a task, a tier, or a grant module to unlock this for");
   }
 
-  const [target] = await db
+  const [target] = await executor
     .select({ archivedAt: profileQuestion.archivedAt })
     .from(profileQuestion)
     .where(and(eq(profileQuestion.id, input.questionId), eq(profileQuestion.communityId, actor.communityId)));
@@ -95,7 +100,7 @@ export async function createSensitiveFieldAccessRule(
   // a future widening — see below on why that needs consent.
 
   if (input.unlockedByTaskId) {
-    const [taskRow] = await db
+    const [taskRow] = await executor
       .select({ id: task.id })
       .from(task)
       .where(and(eq(task.id, input.unlockedByTaskId), eq(task.communityId, actor.communityId)));
@@ -104,7 +109,7 @@ export async function createSensitiveFieldAccessRule(
     }
   }
   if (input.unlockedByTierId) {
-    const [tierRow] = await db
+    const [tierRow] = await executor
       .select({ id: tier.id })
       .from(tier)
       .where(and(eq(tier.id, input.unlockedByTierId), eq(tier.communityId, actor.communityId)));
@@ -117,12 +122,12 @@ export async function createSensitiveFieldAccessRule(
   // second read of a row already fetched above (as archivedAt only) rather
   // than widening that select, because that select's result is also what
   // decides two throws and keeping it narrow keeps the throws legible.
-  const [forLog] = await db
+  const [forLog] = await executor
     .select({ label: profileQuestion.label })
     .from(profileQuestion)
     .where(eq(profileQuestion.id, input.questionId));
 
-  const created = await db.transaction(async (tx) => {
+  const created = await executor.transaction(async (tx) => {
     const [row] = await tx
       .insert(sensitiveFieldAccessRule)
       .values({

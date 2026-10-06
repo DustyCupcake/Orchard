@@ -9,6 +9,7 @@ import {
   profileQuestion,
   profileAnswerRuleConsent,
   sensitiveFieldAccessRule,
+  settingsChange,
   taskAssignment,
   tier,
 } from "@/db/schema";
@@ -985,5 +986,53 @@ describe("the rules table is question-only", () => {
   it("and the consent purpose has only the question target left", () => {
     expect(Object.keys(consentPurpose)).toContain("gatesQuestionId");
     expect(Object.keys(consentPurpose)).not.toContain("gatesSensitiveField");
+  });
+});
+
+// createProfileQuestion used to commit the question, then create its rule,
+// then set the sensitive flag — three steps. A failure in the middle (a
+// task deleted since the form rendered, say) left a question that was NOT
+// sensitive and so readable by everyone, with the Admin shown an error,
+// and because `sensitive` can't be changed afterwards it could only be
+// archived once members had answered it as a public question.
+describe("creating a sensitive question is all-or-nothing", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("leaves no question, no rule and no log row behind when the audience can't be created", async () => {
+    const { alice } = await createFixtures();
+    const questionsBefore = await db.select().from(profileQuestion);
+    const logBefore = await db.select().from(settingsChange);
+
+    await expect(
+      createProfileQuestion(alice, {
+        label: "Allergies",
+        responseType: "text",
+        scope: "once_ever",
+        sensitive: true,
+        // A task that doesn't exist: passes the shape checks, fails inside
+        // the rule creation — i.e. after the question row has been written.
+        audience: { unlockedByTaskId: crypto.randomUUID() },
+      }),
+    ).rejects.toThrow(NotFoundError);
+
+    expect(await db.select().from(profileQuestion)).toHaveLength(questionsBefore.length);
+    expect(await db.select().from(sensitiveFieldAccessRule)).toEqual([]);
+    expect(await db.select().from(settingsChange)).toHaveLength(logBefore.length);
+  });
+
+  it("still creates the question, its rule and the flag together when it can", async () => {
+    const { alice } = await createFixtures();
+    const created = await createProfileQuestion(alice, {
+      label: "Allergies",
+      responseType: "text",
+      scope: "once_ever",
+      sensitive: true,
+      audience: { unlockedByGrantModuleKey: "kitchen" },
+    });
+    expect(created.sensitive).toBe(true);
+    const rules = await db.select().from(sensitiveFieldAccessRule).where(eq(sensitiveFieldAccessRule.questionId, created.id));
+    expect(rules).toHaveLength(1);
   });
 });

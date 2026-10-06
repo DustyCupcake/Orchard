@@ -373,13 +373,18 @@ export async function createProfileQuestion(actor: Member, input: CreateProfileQ
   // seeder's three separate calls. Doing it here makes the create path
   // and the settings form and the starter set one operation instead of
   // three, and removes a dead end from the UI.
-  // The insert and its log row are one transaction — see
-  // recordSettingChanges on why a log written outside the write is worse
-  // than no log. The sensitive path below continues after it, deliberately:
-  // createSensitiveFieldAccessRule is a separate operation with its own
-  // log row, and the question it names has to exist before that call can
-  // succeed at all.
-  const created = await db.transaction(async (tx) => {
+  // One transaction for the whole of it, including the sensitive path. This
+  // used to commit the question first and then create the rule and set the
+  // flag as separate steps, so a failure between them (a task or tier
+  // that had been deleted since the form rendered, say) left a question
+  // that was *not* sensitive, readable by everyone, with the Admin shown an
+  // error that read as "nothing happened" — and because `sensitive` can't be
+  // changed after creation, it could never be fixed, only archived, after
+  // members had already answered it as a public question. Now either the
+  // question exists with its restriction or it does not exist at all.
+  // recordSettingChanges runs in the same transaction for the reason it
+  // always did: a log written outside the write is worse than no log.
+  return db.transaction(async (tx) => {
     const [row] = await tx
       .insert(profileQuestion)
       .values({
@@ -397,20 +402,17 @@ export async function createProfileQuestion(actor: Member, input: CreateProfileQ
         allowPreferNotToSay: input.allowPreferNotToSay ?? false,
         feedsCapacitySignal: input.feedsCapacitySignal ?? false,
         publishedAsIndicator: input.publishedAsIndicator ?? false,
-        // Written false and set below, so the flag and the rule it depends
-        // on can never disagree — including if the rule insert throws.
+        // Written false and set below, once the rule exists, so the flag
+        // and the rule it depends on are never visibly out of step.
         sensitive: false,
         emergencyAccess: false,
         surfaces: input.surfaces ?? [],
       })
       .returning();
 
-    // Logged inside this transaction rather than at the end of the
-    // function because a sensitive question takes a second path below (rule
-    // insert, then an update to set the flag), and one create with one log
-    // row beats two rows describing one decision. The audience's own fields
-    // are logged by createSensitiveFieldAccessRule, so the two rows together
-    // read as the whole change.
+    // One create, one log row for the question; the audience's own fields
+    // are logged by createSensitiveFieldAccessRule, so the two rows
+    // together read as the whole change.
     await recordSettingChanges(tx, {
       actor,
       entity: "profile_question",
@@ -435,27 +437,22 @@ export async function createProfileQuestion(actor: Member, input: CreateProfileQ
         options: row.options,
       },
     });
-    return row;
-  });
 
-  if (!input.sensitive) return created;
+    if (!input.sensitive) return row;
 
-  const rule = await createSensitiveFieldAccessRule(actor, {
-    ...input.audience!,
-    questionId: created.id,
+    await createSensitiveFieldAccessRule(actor, { ...input.audience!, questionId: row.id }, tx);
+    // One last UPDATE rather than an amend of the insert above, because the
+    // rule needs the id and the id only exists after the insert.
+    const [finished] = await tx
+      .update(profileQuestion)
+      .set({
+        sensitive: true,
+        emergencyAccess: input.emergencyAccess ?? false,
+      })
+      .where(eq(profileQuestion.id, row.id))
+      .returning();
+    return finished;
   });
-  // One last UPDATE rather than an amend of the insert above, because the
-  // rule needs the id and the id only exists after the insert.
-  const [finished] = await db
-    .update(profileQuestion)
-    .set({
-      sensitive: true,
-      emergencyAccess: input.emergencyAccess ?? false,
-    })
-    .where(eq(profileQuestion.id, created.id))
-    .returning();
-  void rule;
-  return finished;
 }
 
 export async function updateProfileQuestion(

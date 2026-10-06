@@ -359,6 +359,40 @@ describe("Form fields: mapsToProfileQuestionId", () => {
     ).rejects.toThrow(/no longer exists/);
   });
 
+  it("rejects a field mapped to a sensitive profile question", async () => {
+    const { alice } = await createFixtures();
+    const dietary = await createProfileQuestion(alice, {
+      label: "Medical needs",
+      responseType: "text",
+      scope: "once_ever",
+      sensitive: true,
+      audience: { unlockedByGrantModuleKey: "kitchen" },
+    });
+    // Control: the same question is a perfectly valid mapping target if it
+    // isn't sensitive, so the refusal below is about sensitivity and not
+    // about this fixture being malformed.
+    const pronouns = await createProfileQuestion(alice, { label: "Pronouns", responseType: "text", scope: "once_ever" });
+    await createForm(alice, {
+      title: "Fine",
+      fields: [{ key: "a", label: "A", responseType: "text", mapsToProfileQuestionId: pronouns.id }],
+    });
+
+    await expect(
+      createForm(alice, {
+        title: "Bad form",
+        fields: [{ key: "a", label: "A", responseType: "text", mapsToProfileQuestionId: dietary.id }],
+      }),
+    ).rejects.toThrow(/sensitive question can't be asked on a form/);
+
+    // And on update, which is a separate door into the same validation.
+    const ok = await createForm(alice, { title: "Original", fields: surveyFields });
+    await expect(
+      updateForm(alice, ok.id, {
+        fields: [{ key: "a", label: "A", responseType: "text", mapsToProfileQuestionId: dietary.id }],
+      }),
+    ).rejects.toThrow(/sensitive question can't be asked on a form/);
+  });
+
   it("rejects a field mapped to a profile question from a different community", async () => {
     const { alice } = await createFixtures();
     const { alice: strangerAlice } = await createFixtures();
