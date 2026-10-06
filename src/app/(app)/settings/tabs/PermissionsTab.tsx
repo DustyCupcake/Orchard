@@ -6,6 +6,7 @@ import {
   describeGrantScope,
   isMisplacedCommunityGrant,
   isOpenableModule,
+  OPEN_BLAST_RADIUS,
   PERMISSION_MODULE_HINTS,
   PERMISSION_MODULE_LABELS,
   PERMISSION_MODULE_SECTIONS,
@@ -165,7 +166,13 @@ function PermissionRow({
             {/* D13's blast radius, and now a confirm step rather than a
                 standing warning. `admin` and `support` are the two that
                 genuinely change what the whole community can do. */}
-            {blastRadiusOf(moduleKey) && (
+            {blastRadiusOf(moduleKey) && !open && (
+              <label className="flex items-start gap-2 text-[length:var(--text-meta)] leading-relaxed text-[var(--warning)]">
+                <input type="checkbox" name="confirmedBlastRadius" className="mt-0.5" />
+                <span>{blastRadiusOf(moduleKey)} Tick this to confirm.</span>
+              </label>
+            )}
+            {blastRadiusOf(moduleKey) && open && (
               <p className="text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
                 {blastRadiusOf(moduleKey)}
               </p>
@@ -335,11 +342,5 @@ function describeState(grants: GrantRow[], open: boolean, holders: number): stri
  *  high-blast-radius modules are named in one place and the test can reach
  *  them. */
 function blastRadiusOf(moduleKey: PermissionModuleKey): string | null {
-  if (moduleKey === "support") {
-    return "Every member will be able to view the platform read-only, exactly as any other member would — including the people who hold sensitive-data and permission access.";
-  }
-  if (moduleKey === "admin") {
-    return "Every member will be able to change every setting, including who holds which permissions.";
-  }
-  return null;
+  return OPEN_BLAST_RADIUS[moduleKey] ?? null;
 }

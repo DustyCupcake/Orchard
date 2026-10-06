@@ -366,6 +366,17 @@ export async function countHoldersOfTasks(taskIds: readonly string[]): Promise<n
   return (await listHoldersOfTasks(taskIds)).length;
 }
 
+// What opening each of these to everyone does, in the words the settings
+// screen shows beside the checkbox and the server repeats when it refuses
+// without confirmation. They are the two modules that genuinely change what
+// the whole community can do (D13); every other module's open state widens a
+// permission without widening who can change the rules themselves.
+export const OPEN_BLAST_RADIUS: Partial<Record<PermissionModuleKey, string>> = {
+  support:
+    "Opening View-as means every member will be able to view the platform read-only, exactly as any other member would — including the people who hold sensitive-data and permission access.",
+  admin: "Opening Admins means every member will be able to change every setting, including who holds which permissions.",
+};
+
 // How many conflict reports every member of the team can currently read:
 // the two states in which visibility widens from "the reporter and the
 // point of contact" to the whole non-excluded team (see listConflictReports
@@ -404,12 +415,26 @@ export async function setModuleOpen(
   actor: Member,
   moduleKey: PermissionModuleKey,
   open: boolean,
-  options: { confirmedReportExposure?: boolean } = {},
+  options: { confirmedReportExposure?: boolean; confirmedBlastRadius?: boolean } = {},
 ): Promise<boolean> {
   const communityId = actor.communityId;
   if (open && !isOpenableModule(moduleKey)) return false;
 
   await db.transaction(async (tx) => {
+    // Two kinds of "this is more than a checkbox" are enforced here rather
+    // than in the settings UI, because a confirmation that lives only in the
+    // browser is one a forged POST skips: the two modules whose open state
+    // changes what the whole community can do (admin, support), and the
+    // conflict team when it would expose reports that already exist.
+    if (open && !options.confirmedBlastRadius && OPEN_BLAST_RADIUS[moduleKey]) {
+      const alreadyOpen = await tx
+        .select({ moduleKey: openPermissionGrant.moduleKey })
+        .from(openPermissionGrant)
+        .where(and(eq(openPermissionGrant.communityId, communityId), eq(openPermissionGrant.moduleKey, moduleKey)));
+      if (alreadyOpen.length === 0) {
+        throw new ConfirmationRequiredError(`${OPEN_BLAST_RADIUS[moduleKey]} Tick the box to confirm.`);
+      }
+    }
     if (open && moduleKey === "conflict_team" && !options.confirmedReportExposure) {
       const alreadyOpen = await tx
         .select({ moduleKey: openPermissionGrant.moduleKey })

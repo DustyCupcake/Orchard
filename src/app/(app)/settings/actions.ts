@@ -523,7 +523,10 @@ export async function setModuleOpenAction(formData: FormData) {
 
     // setModuleOpen refuses the one non-openable module (D11) and reports it,
     // so a forged POST gets the same answer the UI would have given.
-    if (!(await setModuleOpen(actor, moduleKey, open, { confirmedReportExposure: formData.get("confirmedReportExposure") === "on" }))) {
+    if (!(await setModuleOpen(actor, moduleKey, open, {
+      confirmedReportExposure: formData.get("confirmedReportExposure") === "on",
+      confirmedBlastRadius: formData.get("confirmedBlastRadius") === "on",
+    }))) {
       throw new AppError(
         `${PERMISSION_MODULE_LABELS[moduleKey]} can't be open to everyone — it needs someone named to notify.`,
       );

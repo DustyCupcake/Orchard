@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community, openPermissionGrant, task } from "@/db/schema";
 import { createCycle } from "@/lib/cycles";
+import { ConfirmationRequiredError } from "@/lib/errors";
 import {
   addPermissionGrant,
   copyPermissionGrants,
@@ -168,8 +169,11 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
 
     // Every other module is openable, and opening twice is idempotent.
     for (const moduleKey of PERMISSION_MODULE_KEYS.filter((k) => k !== "backstop")) {
-      expect(await setModuleOpen(alice, moduleKey, true)).toBe(true);
-      expect(await setModuleOpen(alice, moduleKey, true)).toBe(true);
+      // Confirmed, because admin and support refuse to open without it —
+      // which is its own test below; this one is about idempotence.
+      const confirmed = { confirmedBlastRadius: true, confirmedReportExposure: true };
+      expect(await setModuleOpen(alice, moduleKey, true, confirmed)).toBe(true);
+      expect(await setModuleOpen(alice, moduleKey, true, confirmed)).toBe(true);
     }
     const open = await db.select().from(openPermissionGrant);
     expect(open).toHaveLength(PERMISSION_MODULE_KEYS.length - 1);
@@ -483,5 +487,43 @@ describe("removePermissionGrant transactional behavior", () => {
     await removePermissionGrant(alice, "spatial_planning", t.id);
 
     expect(await listGrantingTaskIdsForScope(testCommunity.id, "spatial_planning", cycleA.id)).toEqual([]);
+  });
+});
+
+// Opening Admins or View-as to everyone changes what the whole community can
+// do. The settings screen asks for a tick, but a confirmation that exists only
+// in the browser is one a forged request skips, so the server asks too.
+describe("opening the two high-impact modules needs confirmation", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it.each(["admin", "support"] as const)("refuses to open %s without it, and opens with it", async (moduleKey) => {
+    const { community: testCommunity, alice } = await createFixtures();
+
+    await expect(setModuleOpen(alice, moduleKey, true)).rejects.toThrow(ConfirmationRequiredError);
+    expect(await isModuleOpenToEveryone(testCommunity.id, moduleKey)).toBe(false);
+
+    expect(await setModuleOpen(alice, moduleKey, true, { confirmedBlastRadius: true })).toBe(true);
+    expect(await isModuleOpenToEveryone(testCommunity.id, moduleKey)).toBe(true);
+  });
+
+  it("says what it will do when it refuses", async () => {
+    const { alice } = await createFixtures();
+    await expect(setModuleOpen(alice, "support", true)).rejects.toThrow(/view the platform read-only/);
+    await expect(setModuleOpen(alice, "admin", true)).rejects.toThrow(/change every setting/);
+  });
+
+  it("needs no confirmation to close, or to re-submit while already open", async () => {
+    const { alice } = await createFixtures();
+    await setModuleOpen(alice, "support", true, { confirmedBlastRadius: true });
+    // The settings form re-submits its checkbox on every unrelated save.
+    expect(await setModuleOpen(alice, "support", true)).toBe(true);
+    expect(await setModuleOpen(alice, "support", false)).toBe(true);
+  });
+
+  it("leaves every other module a plain checkbox", async () => {
+    const { alice } = await createFixtures();
+    expect(await setModuleOpen(alice, "recruitment", true)).toBe(true);
   });
 });
