@@ -10,6 +10,7 @@ import {
   listGrantsWithTaskInfo,
   listHoldersByTaskId,
   listOpenModuleKeys,
+  countConflictReportsVisibleToWholeTeam,
   type PermissionModuleKey,
 } from "@/lib/permissions";
 import { listTasks } from "@/lib/tasks";
@@ -192,6 +193,7 @@ export default async function SettingsPage({
     holdersByTaskId: Map<string, { memberId: string; name: string }[]>;
     sensitiveFieldsByModule: Map<PermissionModuleKey, string[]>;
     communityTasksForPicker: { id: string; title: string; branchName: string }[];
+    conflictReportsAtStake: number;
   } | null = null;
   if (activeTab === "permissions") {
     const allGrants = await listGrantsWithTaskInfo(communityRow.id);
@@ -247,6 +249,9 @@ export default async function SettingsPage({
     }
 
     permissionsData = {
+      conflictReportsAtStake: openModuleKeys.has("conflict_team")
+        ? 0
+        : await countConflictReportsVisibleToWholeTeam(communityRow.id),
       grantsFor: (moduleKey) => grantsByModule.get(moduleKey) ?? [],
       openModuleKeys,
       holdersByTaskId,

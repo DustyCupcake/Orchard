@@ -1,8 +1,8 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { db, type Tx } from "@/db";
-import { member, openPermissionGrant, permissionGrant, task, taskAssignment } from "@/db/schema";
+import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { db, type DbOrTx, type Tx } from "@/db";
+import { conflictReport, member, openPermissionGrant, permissionGrant, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { AppError, NotFoundError } from "./errors";
+import { AppError, ConfirmationRequiredError, NotFoundError } from "./errors";
 import { recordSettingChanges } from "./settings/history";
 
 type Member = typeof memberTable.$inferSelect;
@@ -366,6 +366,28 @@ export async function countHoldersOfTasks(taskIds: readonly string[]): Promise<n
   return (await listHoldersOfTasks(taskIds)).length;
 }
 
+// How many conflict reports every member of the team can currently read:
+// the two states in which visibility widens from "the reporter and the
+// point of contact" to the whole non-excluded team (see listConflictReports
+// in conflict.ts — unacknowledged, or escalated). Opening `conflict_team` to
+// everyone makes every member part of that team, so this is exactly the
+// number of reports whose readership it would change.
+//
+// Lives here and not in conflict.ts because conflict.ts imports this file,
+// and the count is needed by setModuleOpen.
+export async function countConflictReportsVisibleToWholeTeam(communityId: string, executor: DbOrTx = db) {
+  const [row] = await executor
+    .select({ n: sql<number>`count(*)::int` })
+    .from(conflictReport)
+    .where(
+      and(
+        eq(conflictReport.communityId, communityId),
+        or(isNull(conflictReport.acknowledgedAt), eq(conflictReport.escalated, true)),
+      ),
+    );
+  return row?.n ?? 0;
+}
+
 // Writes the open flag, or clears it when `open` is false. One upsert/delete
 // rather than a separate set/clear pair: the row's whole existence is the
 // fact, so there is nothing for a "replace" to distinguish (contrast
@@ -382,11 +404,26 @@ export async function setModuleOpen(
   actor: Member,
   moduleKey: PermissionModuleKey,
   open: boolean,
+  options: { confirmedReportExposure?: boolean } = {},
 ): Promise<boolean> {
   const communityId = actor.communityId;
   if (open && !isOpenableModule(moduleKey)) return false;
 
   await db.transaction(async (tx) => {
+    if (open && moduleKey === "conflict_team" && !options.confirmedReportExposure) {
+      const alreadyOpen = await tx
+        .select({ moduleKey: openPermissionGrant.moduleKey })
+        .from(openPermissionGrant)
+        .where(and(eq(openPermissionGrant.communityId, communityId), eq(openPermissionGrant.moduleKey, moduleKey)));
+      if (alreadyOpen.length === 0) {
+        const exposed = await countConflictReportsVisibleToWholeTeam(communityId, tx);
+        if (exposed > 0) {
+          throw new ConfirmationRequiredError(
+            `${exposed} existing conflict ${exposed === 1 ? "report is" : "reports are"} unacknowledged or escalated, which means every team member can read ${exposed === 1 ? "it" : "them"} — and opening this makes everyone a team member. A report is hidden from the people its reporter excluded when it was filed, but the reporter could only pick from the team as it was then, so anyone it concerns who wasn't on that team is not excluded. Acknowledge or resolve ${exposed === 1 ? "it" : "them"} first, or tick the box to open it anyway.`,
+          );
+        }
+      }
+    }
     if (open) {
       // `.onConflictDoNothing()` means an already-open module inserts
       // nothing, so the log line has to key off whether the row is
@@ -774,15 +811,51 @@ export async function addPermissionGrant(
 // cardinality modules). No cycle argument: the grant row is keyed by
 // task, and the scope it covered was just that task's placement, so
 // removing the row removes the whole grant.
+//
+// Removing the *last* Admins grant is the one removal that changes who is
+// allowed to do things community-wide rather than who holds a role: with no
+// Admins task left, settings go back to being editable by every member (see
+// requireAdmins). That is the intended way back from a community with no
+// working Admins task, so it is allowed — but it must be meant, so it needs
+// `confirmedLastAdmin`, and says what it will do when it doesn't have it.
 export async function removePermissionGrant(
   actor: Member,
   moduleKey: PermissionModuleKey,
   taskId: string,
+  options: { confirmedLastAdmin?: boolean } = {},
 ): Promise<void> {
   const communityId = actor.communityId;
   await db.transaction(async (tx) => {
     await lockPermissionGrantTask(tx, taskId);
     await requireTaskInCommunity(tx, communityId, taskId);
+
+    if (moduleKey === "admin" && !options.confirmedLastAdmin) {
+      const remaining = await tx
+        .select({ id: permissionGrant.id })
+        .from(permissionGrant)
+        .where(
+          and(
+            eq(permissionGrant.communityId, communityId),
+            eq(permissionGrant.moduleKey, "admin"),
+            ne(permissionGrant.taskId, taskId),
+          ),
+        );
+      const [thisOne] = await tx
+        .select({ id: permissionGrant.id })
+        .from(permissionGrant)
+        .where(
+          and(
+            eq(permissionGrant.communityId, communityId),
+            eq(permissionGrant.moduleKey, "admin"),
+            eq(permissionGrant.taskId, taskId),
+          ),
+        );
+      if (thisOne && remaining.length === 0) {
+        throw new ConfirmationRequiredError(
+          "This is the last Admins grant. Removing it means every member can change community settings until a new one is added. Tick the box to confirm.",
+        );
+      }
+    }
 
     // Read the task's placement to derive the scope for locking
     const [grantingTask] = await tx

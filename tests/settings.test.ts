@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, member, task, taskAssignment } from "@/db/schema";
+import { community, member, permissionGrant, task, taskAssignment } from "@/db/schema";
+import { removePermissionGrant } from "@/lib/permissions";
 import {
   createBranch,
   createTier,
@@ -26,7 +27,7 @@ import { listConsentPurposes } from "@/lib/consent";
 import { listTaskPacks } from "@/lib/task-packs";
 import { listTasks } from "@/lib/tasks";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
 
 describe("community settings", () => {
   beforeEach(async () => {
@@ -302,6 +303,15 @@ describe("Admins gate (requireAdmins)", () => {
       })
       .returning();
     await db.insert(taskAssignment).values({ taskId: adminsTask.id, memberId: alice.id });
+    // The community does have an Admins task — a different one, which Alice
+    // does not hold. Without it there would be no Admins grant at all, and
+    // that state is open to every member (see the last-grant tests below),
+    // which would make this prove nothing about the tag.
+    const realAdmins = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Admins",
+      openness: "community_endorsed",
+    });
+    await grantPermission(testCommunity.id, "admin", realAdmins.id);
     await db
       .update(community)
       .set({ adminsEverClaimed: true })
@@ -311,12 +321,76 @@ describe("Admins gate (requireAdmins)", () => {
   });
 
   it("stays gated during a gap with no current Admins holder, once ever claimed", async () => {
-    const { alice } = await createFixtures();
+    const { community: testCommunity, branch, alice } = await createFixtures();
+    // An Admins grant that exists but that nobody holds right now: a role
+    // waiting to be claimed, which is a different state from having no
+    // Admins grant at all.
+    const vacant = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Admins",
+      openness: "community_endorsed",
+    });
+    await grantPermission(testCommunity.id, "admin", vacant.id);
     await db
       .update(community)
       .set({ adminsEverClaimed: true })
       .where(eq(community.id, alice.communityId));
 
     await expect(requireAdmins(alice)).rejects.toThrow(ForbiddenError);
+  });
+
+  // A community whose Admins task has been claimed: one real Admins grant,
+  // held by Alice, with the ever-claimed latch set.
+  async function claimedAdmins() {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    const adminsTask = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Admins",
+      openness: "community_endorsed",
+    });
+    await grantPermission(testCommunity.id, "admin", adminsTask.id);
+    await db.insert(taskAssignment).values({ taskId: adminsTask.id, memberId: alice.id });
+    await db.update(community).set({ adminsEverClaimed: true }).where(eq(community.id, testCommunity.id));
+    return { testCommunity, branch, alice, bob };
+  }
+
+  // The way out of a community with no working Admins task. This used to be
+  // a trap: the ever-claimed latch was checked first and a missing grant
+  // then threw, so removing the last Admins grant locked everyone out of the
+  // only screen that could create a new one.
+  it("opens to every member again when no Admins grant exists, even after Admins were once claimed", async () => {
+    const { alice, bob } = await createFixtures();
+    await db
+      .update(community)
+      .set({ adminsEverClaimed: true })
+      .where(eq(community.id, alice.communityId));
+
+    await expect(requireAdmins(alice)).resolves.toBeUndefined();
+    await expect(requireAdmins(bob)).resolves.toBeUndefined();
+  });
+
+  it("removing the last Admins grant asks for confirmation, then opens settings to everyone", async () => {
+    const { testCommunity, branch, alice, bob } = await claimedAdmins();
+    const [grant] = await db.select().from(permissionGrant).where(eq(permissionGrant.communityId, testCommunity.id));
+    await expect(requireAdmins(bob)).rejects.toThrow(ForbiddenError);
+
+    // Not without being told it is meant: the message says what it will do.
+    await expect(removePermissionGrant(alice, "admin", grant!.taskId)).rejects.toThrow(/last Admins grant/);
+    await expect(requireAdmins(bob)).rejects.toThrow(ForbiddenError);
+
+    await removePermissionGrant(alice, "admin", grant!.taskId, { confirmedLastAdmin: true });
+    await expect(requireAdmins(bob)).resolves.toBeUndefined();
+    void branch;
+  });
+
+  it("removing one of several Admins grants needs no confirmation and keeps the gate closed", async () => {
+    const { testCommunity, branch, alice, bob } = await claimedAdmins();
+    const second = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Admins (second)",
+      openness: "community_endorsed",
+    });
+    await grantPermission(testCommunity.id, "admin", second.id);
+
+    await removePermissionGrant(alice, "admin", second.id);
+    await expect(requireAdmins(bob)).rejects.toThrow(ForbiddenError);
+    await expect(requireAdmins(alice)).resolves.toBeUndefined();
   });
 });

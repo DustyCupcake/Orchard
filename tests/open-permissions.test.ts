@@ -579,12 +579,19 @@ describe("open capability resolvers (Step 4)", () => {
   // open half: the pre-existing 1506 tests already pin every module's holder
   // behaviour, and these prove none of it moved.
   it("admin: requireAdmins, with the open check ahead of the bootstrap (D2)", async () => {
-    const { community: testCommunity, alice, bob } = await createFixtures();
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
 
     // Latch the bootstrap shut: without this, the `adminsEverClaimed` early
     // return would let everyone in regardless and prove nothing. Set
     // directly — it isn't part of updateCommunity's settable surface.
     await db.update(community).set({ adminsEverClaimed: true }).where(eq(community.id, testCommunity.id));
+    // ...and give the community a real Admins grant, because with none at
+    // all requireAdmins is open to every member too.
+    const adminsTask = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Admins",
+      openness: "community_endorsed",
+    });
+    await grantPermission(testCommunity.id, "admin", adminsTask.id);
     const refetchedBob = (await db.select().from(member).where(eq(member.id, bob.id)))[0];
 
     await expect(requireAdmins(refetchedBob)).rejects.toThrow();

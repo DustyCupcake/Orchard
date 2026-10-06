@@ -27,12 +27,17 @@ export default function PermissionsTab({
   holdersByTaskId,
   sensitiveFieldsByModule,
   communityTasksForPicker,
+  conflictReportsAtStake,
 }: {
   grantsFor: (moduleKey: PermissionModuleKey) => GrantRow[];
   openModuleKeys: Set<PermissionModuleKey>;
   holdersByTaskId: Map<string, { memberId: string; name: string }[]>;
   sensitiveFieldsByModule: Map<PermissionModuleKey, string[]>;
   communityTasksForPicker: { id: string; title: string; branchName: string }[];
+  // Existing conflict reports the whole team can read, which opening
+  // `conflict_team` to everyone would hand to every member. Zero when it is
+  // already open.
+  conflictReportsAtStake: number;
 }) {
   return (
     <div className="flex flex-col gap-7">
@@ -61,6 +66,7 @@ export default function PermissionsTab({
               openable={isOpenableModule(moduleKey)}
               holdersByTaskId={holdersByTaskId}
               sensitiveFieldsGatedByThisModule={sensitiveFieldsByModule.get(moduleKey) ?? []}
+              reportsAtStake={moduleKey === "conflict_team" ? conflictReportsAtStake : 0}
             />
           ))}
         </section>
@@ -111,6 +117,7 @@ function PermissionRow({
   openable,
   holdersByTaskId,
   sensitiveFieldsGatedByThisModule,
+  reportsAtStake,
 }: {
   moduleKey: PermissionModuleKey;
   scopeRule: string;
@@ -119,6 +126,7 @@ function PermissionRow({
   openable: boolean;
   holdersByTaskId: Map<string, { memberId: string; name: string }[]>;
   sensitiveFieldsGatedByThisModule: string[];
+  reportsAtStake: number;
 }) {
   const multi = allowsMultipleGrants(moduleKey);
   const label = PERMISSION_MODULE_LABELS[moduleKey];
@@ -161,6 +169,20 @@ function PermissionRow({
               <p className="text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
                 {blastRadiusOf(moduleKey)}
               </p>
+            )}
+            {/* Opening the conflict team makes everyone a team member, and a
+                team member can read every unacknowledged or escalated report.
+                The server refuses without this box (setModuleOpen). */}
+            {reportsAtStake > 0 && !open && (
+              <label className="flex items-start gap-2 text-[length:var(--text-meta)] leading-relaxed text-[var(--warning)]">
+                <input type="checkbox" name="confirmedReportExposure" className="mt-0.5" />
+                <span>
+                  {reportsAtStake} existing {reportsAtStake === 1 ? "report" : "reports"} would become readable by every
+                  member, including anyone {reportsAtStake === 1 ? "it concerns" : "they concern"} who wasn&rsquo;t on the team
+                  when {reportsAtStake === 1 ? "it was" : "they were"} filed, and so couldn&rsquo;t be excluded. Acknowledge or
+                  resolve {reportsAtStake === 1 ? "it" : "them"} first, or tick this to open it anyway.
+                </span>
+              </label>
             )}
             {open && (
               <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
@@ -205,10 +227,20 @@ function PermissionRow({
                     <span className="text-[var(--text-muted)]">
                       — {describeGrantScope(moduleKey, g.cycleId, g.cycleName)}
                     </span>
-                    <form action={removePermissionGrantAction}>
+                    <form action={removePermissionGrantAction} className="flex flex-wrap items-center gap-2">
                       <input type="hidden" name="moduleKey" value={moduleKey} />
                       <input type="hidden" name="taskId" value={g.taskId} />
                       <input type="hidden" name="tab" value="permissions" />
+                      {/* The last Admins grant is the one removal that opens
+                          settings to every member (requireAdmins), so it is
+                          asked for in the same breath rather than being
+                          refused after the fact. The server enforces it too. */}
+                      {moduleKey === "admin" && grants.length === 1 && (
+                        <label className="flex items-center gap-1.5 text-[length:var(--text-micro)] text-[var(--text-muted)]">
+                          <input type="checkbox" name="confirmedLastAdmin" />
+                          This is the last one — let every member change settings until another is added
+                        </label>
+                      )}
                       <button type="submit" className={BUTTON_SECONDARY}>
                         Remove
                       </button>

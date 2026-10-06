@@ -523,7 +523,7 @@ export async function setModuleOpenAction(formData: FormData) {
 
     // setModuleOpen refuses the one non-openable module (D11) and reports it,
     // so a forged POST gets the same answer the UI would have given.
-    if (!(await setModuleOpen(actor, moduleKey, open))) {
+    if (!(await setModuleOpen(actor, moduleKey, open, { confirmedReportExposure: formData.get("confirmedReportExposure") === "on" }))) {
       throw new AppError(
         `${PERMISSION_MODULE_LABELS[moduleKey]} can't be open to everyone — it needs someone named to notify.`,
       );
@@ -607,7 +607,9 @@ export async function removePermissionGrantAction(formData: FormData) {
       moduleKey: String(formData.get("moduleKey") ?? ""),
       taskId: String(formData.get("taskId") ?? ""),
     });
-    await removePermissionGrant(actor, moduleKey, taskId);
+    await removePermissionGrant(actor, moduleKey, taskId, {
+      confirmedLastAdmin: formData.get("confirmedLastAdmin") === "on",
+    });
   } catch (err) {
     redirectWithError(err, tab);
   }

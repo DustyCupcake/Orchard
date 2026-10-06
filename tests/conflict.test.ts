@@ -14,7 +14,8 @@ import {
   recuseSelf,
   resolveConflictReport,
 } from "@/lib/conflict";
-import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
+import { setModuleOpen } from "@/lib/permissions";
+import { AppError, ConfirmationRequiredError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
 
 async function insertConflictTeamTask(communityId: string, branchId: string, createdBy: string) {
@@ -261,5 +262,62 @@ describe("acknowledge / resolve / escalate", () => {
     const report = await fileConflictReport(carol, {});
     await escalateConflictReport(carol, report.id);
     await expect(escalateConflictReport(carol, report.id)).rejects.toThrow(ConflictError);
+  });
+});
+
+// Opening conflict_team to everyone makes every member a team member, and a
+// team member reads every report that is unacknowledged or escalated. The
+// people a reporter excluded stay excluded — that is the anti-join in
+// listConflictReports and it does not care whether the team is open — but
+// the reporter could only exclude from the team *as it was*, so a person the
+// report concerns who wasn't on it has never been excluded. Opening the team
+// therefore changes who can read reports that already exist, and has to be
+// meant.
+describe("opening the conflict team to everyone", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("is refused while a report would become readable to everyone, and says how many", async () => {
+    const { alice, bob, carol } = await setUpTeam();
+    await fileConflictReport(carol, { description: "something happened", excludeMemberIds: [bob.id] });
+
+    await expect(setModuleOpen(alice, "conflict_team", true)).rejects.toThrow(ConfirmationRequiredError);
+    await expect(setModuleOpen(alice, "conflict_team", true)).rejects.toThrow(/1 existing conflict report/);
+    // Nothing changed: Carol, a non-team member, still can't be on the team.
+    expect(await isConflictTeamMember(carol)).toBe(false);
+  });
+
+  it("goes ahead when confirmed, and an excluded member still cannot see the report", async () => {
+    const { alice, bob, carol } = await setUpTeam();
+    const report = await fileConflictReport(carol, { description: "about Bob", excludeMemberIds: [bob.id] });
+
+    expect(await setModuleOpen(alice, "conflict_team", true, { confirmedReportExposure: true })).toBe(true);
+
+    // Everyone is on the team now...
+    expect(await isConflictTeamMember(carol)).toBe(true);
+    // ...Alice, who wasn't excluded, can read the unacknowledged report...
+    expect((await listConflictReports(alice)).map((r) => r.id)).toEqual([report.id]);
+    // ...and Bob, whom the reporter excluded, still reads nothing at all.
+    expect(await listConflictReports(bob)).toEqual([]);
+    await expect(getConflictReport(bob, report.id)).rejects.toThrow(NotFoundError);
+  });
+
+  it("needs no confirmation when there is nothing it would expose", async () => {
+    const { alice, bob, carol } = await setUpTeam();
+    // Acknowledged and not escalated: visible only to the reporter and the
+    // point of contact, which opening the team does not change.
+    const report = await fileConflictReport(carol, { description: "handled" });
+    await acknowledgeConflictReport(alice, report.id);
+
+    expect(await setModuleOpen(alice, "conflict_team", true)).toBe(true);
+    expect(await listConflictReports(bob)).toEqual([]);
+  });
+
+  it("needs no confirmation to close it again", async () => {
+    const { alice, carol } = await setUpTeam();
+    await setModuleOpen(alice, "conflict_team", true);
+    await fileConflictReport(carol, { description: "filed while open" });
+    expect(await setModuleOpen(alice, "conflict_team", false)).toBe(true);
   });
 });

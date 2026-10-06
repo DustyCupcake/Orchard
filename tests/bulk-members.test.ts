@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, member, memberIdentity } from "@/db/schema";
+import { community, member, memberIdentity, taskAssignment } from "@/db/schema";
 import {
   commitBulkMemberImport,
   parseBulkMemberRows,
   previewBulkMemberImport,
 } from "@/lib/settings";
 import { ForbiddenError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
 
 describe("parseBulkMemberRows", () => {
   it("parses Name,email pairs one per line, lowercasing the email", () => {
@@ -63,7 +63,15 @@ describe("bulk member import CRUD", () => {
   });
 
   it("rejects a non-admin once the Admins task has ever been claimed", async () => {
-    const { alice, bob } = await createFixtures();
+    const { alice, bob, branch } = await createFixtures();
+    // A real Admins grant, held by Alice. With none at all the gate is open
+    // to every member (requireAdmins), so a bare latch proves nothing.
+    const adminsTask = await insertTask(alice.communityId, branch.id, alice.id, {
+      title: "Admins",
+      openness: "community_endorsed",
+    });
+    await grantPermission(alice.communityId, "admin", adminsTask.id);
+    await db.insert(taskAssignment).values({ taskId: adminsTask.id, memberId: alice.id });
     await db
       .update(community)
       .set({ adminsEverClaimed: true })

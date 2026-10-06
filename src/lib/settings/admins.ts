@@ -38,14 +38,27 @@ export async function requireAdmins(actor: Member) {
     return;
   }
 
-  const communityRow = await getCommunity(actor);
-  if (!communityRow.adminsEverClaimed) {
+  // No Admins grant at all means no Admins task exists to hold, which is
+  // the same state as before the first one was ever made — and gets the
+  // same answer: every member may. It has to, because otherwise it is a
+  // trap with no way out. This used to be checked *after* the
+  // ever-claimed latch and threw, so a community that removed its last
+  // Admins grant (or whose granting task was deleted) was locked out of
+  // the one screen that could make a new one, for ever, with no recovery
+  // short of editing the database. A grant that exists but has nobody
+  // holding it right now is a different state and stays gated: that is a
+  // role waiting to be claimed, and the endorsement process is the way back.
+  //
+  // Removing the last grant is therefore a real decision, and
+  // removePermissionGrant refuses to do it without being told it is meant.
+  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "admin");
+  if (grantingTaskIds.length === 0) {
     return;
   }
 
-  const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "admin");
-  if (grantingTaskIds.length === 0) {
-    throw new ForbiddenError("Only a current Admins holder can change community settings");
+  const communityRow = await getCommunity(actor);
+  if (!communityRow.adminsEverClaimed) {
+    return;
   }
 
   const [holding] = await db
