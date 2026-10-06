@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import {
   generateShiftOccurrences,
   generateShiftOccurrencesInput,
@@ -26,7 +26,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 // Coordinator-only, enforced inside generateShiftOccurrences.
 export async function POST(request: NextRequest, { params }: Params) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const { id } = await params;
     const body = generateShiftOccurrencesInput.parse(await request.json());
     const created = await generateShiftOccurrences(actor, id, body);

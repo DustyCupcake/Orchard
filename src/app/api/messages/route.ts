@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { listOutboundMessagesVisibleTo, sendMessageInput, sendOutboundMessage } from "@/lib/messages";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const body = sendMessageInput.parse(await request.json());
     const created = await sendOutboundMessage(actor, body);
     return NextResponse.json({ message: created }, { status: 201 });

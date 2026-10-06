@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { errorResponse, requireWriteMember } from "@/lib/api";
 import { resolveWiderDiscussionInput, resolveWiderDiscussionManually } from "@/lib/recruitment";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // waiting out) wider-discussion window.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const { id } = await params;
     const body = resolveWiderDiscussionInput.parse(await request.json());
     const decision = await resolveWiderDiscussionManually(actor, id, body);

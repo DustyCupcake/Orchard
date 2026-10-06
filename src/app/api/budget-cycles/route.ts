@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { createBudgetCycle, createBudgetCycleInput, getCurrentBudgetCycle } from "@/lib/budget";
 import { requireAdmins } from "@/lib/settings";
 
@@ -24,7 +24,7 @@ export async function GET() {
 // Access & permissions.
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     await requireAdmins(actor);
     const body = createBudgetCycleInput.parse(await request.json());
     const created = await createBudgetCycle(actor, body);

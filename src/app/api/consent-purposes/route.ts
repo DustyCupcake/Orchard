@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { createConsentPurpose, createConsentPurposeInput, listConsentPurposes } from "@/lib/consent";
 import { requireAdmins } from "@/lib/settings";
 
@@ -19,7 +19,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     await requireAdmins(actor);
     const body = createConsentPurposeInput.parse(await request.json());
     const created = await createConsentPurpose(actor, body);

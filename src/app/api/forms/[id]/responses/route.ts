@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { listFormResponses, submitFormResponse, submitFormResponseInput } from "@/lib/forms";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
 export async function POST(request: NextRequest, { params }: Params) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const { id } = await params;
     const body = submitFormResponseInput.parse(await request.json());
     const created = await submitFormResponse(actor, id, body);

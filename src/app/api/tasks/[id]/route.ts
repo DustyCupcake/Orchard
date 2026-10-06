@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { deleteTask, getTask, updateTask, updateTaskInput } from "@/lib/tasks";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const { id } = await params;
     const body = updateTaskInput.parse(await request.json());
     const updated = await updateTask(actor, id, body);
@@ -31,7 +31,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 export async function DELETE(_request: NextRequest, { params }: Params) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const { id } = await params;
     await deleteTask(actor, id);
     return new NextResponse(null, { status: 204 });

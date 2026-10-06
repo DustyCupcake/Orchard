@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireMember, errorResponse } from "@/lib/api";
+import { errorResponse, requireWriteMember } from "@/lib/api";
 import { addEmergencyAccessExplanation } from "@/lib/emergency-access";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ type Params = { params: Promise<{ id: string }> };
 // activator-only, any time.
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const { id } = await params;
     const body = explanationInput.parse(await request.json());
     const updated = await addEmergencyAccessExplanation(actor, id, body.explanation);

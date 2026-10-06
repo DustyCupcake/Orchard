@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { errorResponse, requireWriteMember } from "@/lib/api";
 import { archiveForm } from "@/lib/forms";
 import { requireAdmins } from "@/lib/settings";
 
@@ -9,7 +9,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function POST(_request: NextRequest, { params }: Params) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     await requireAdmins(actor);
     const { id } = await params;
     const updated = await archiveForm(actor, id);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { errorResponse, requireWriteMember } from "@/lib/api";
 import { removePlacementMember } from "@/lib/spatial-planning";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; memberId: string }> },
 ) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const { id, memberId } = await params;
     await removePlacementMember(actor, id, memberId);
     return NextResponse.json({ ok: true });

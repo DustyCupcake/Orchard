@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { activateEmergencyAccess, listEmergencyAccessActivity } from "@/lib/emergency-access";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const body = activateInput.parse(await request.json());
     const { log, methods } = await activateEmergencyAccess(actor, body.targetMemberId, body.explanation);
     return NextResponse.json({ log, methods }, { status: 201 });

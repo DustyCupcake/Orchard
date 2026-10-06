@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { getEventProposal, updateEventProposal, updateEventProposalInput } from "@/lib/event-scheduling";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 // Submitter-only, enforced inside updateEventProposal.
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const { id } = await params;
     const body = updateEventProposalInput.parse(await request.json());
     const updated = await updateEventProposal(actor, id, body);

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { errorResponse, requireWriteMember } from "@/lib/api";
 import { recomputeAttentionLevels } from "@/lib/attention";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // useful for verification, and a reasonable "run now" for later.
 export async function POST() {
   try {
-    await requireMember();
+    await requireWriteMember();
     const result = await recomputeAttentionLevels();
     return NextResponse.json(result);
   } catch (err) {

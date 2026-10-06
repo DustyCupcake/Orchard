@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { getBudgetProposal, updateBudgetProposal, updateBudgetProposalInput } from "@/lib/budget";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 // src/lib/budget/proposals.ts.
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const { proposalId } = await params;
     const body = updateBudgetProposalInput.parse(await request.json());
     const updated = await updateBudgetProposal(actor, proposalId, body);

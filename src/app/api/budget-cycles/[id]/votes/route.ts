@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { errorResponse, requireWriteMember } from "@/lib/api";
 import { submitBudgetVote, submitBudgetVoteInput } from "@/lib/budget";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 // contribution signal." Replaceable in place, see submitBudgetVote.
 export async function POST(request: NextRequest, { params }: Params) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const { id } = await params;
     const body = submitBudgetVoteInput.parse(await request.json());
     const vote = await submitBudgetVote(actor, id, body);

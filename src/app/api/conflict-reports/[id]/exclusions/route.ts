@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { listConflictReportExclusions, recusePeer } from "@/lib/conflict";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
 export async function POST(request: NextRequest, { params }: Params) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const { id } = await params;
     const body = recusePeerInput.parse(await request.json());
     const exclusion = await recusePeer(actor, id, body.memberId);

@@ -133,21 +133,19 @@ export async function getViewingContext() {
 // rejected server-side regardless" (this), per
 // docs/development-plan.md's Phase 54 Done-when.
 //
-// Deliberately NOT wired into src/lib/api.ts's requireMember() — that
-// function is shared by ~150 REST routes' GET *and* write handlers
-// alike, and by the one client component that reads through it
-// (Scheduling polls' AvailabilityGrid, over `/api/scheduling-polls/
-// [id]/availability`'s GET). Guarding it there would also break
-// legitimate REST *reads* made through the same session while View-as
-// happens to be on — a real regression, since the REST surface is a
-// separate, non-page-rendering access path this codebase already
-// treats independently everywhere else (curl-driven testing, this
-// grid's own client fetches). View-as governs page-rendered, Server-
-// Action-driven mutations; REST always operates as the real
-// authenticated member, unaffected — except that one route's POST
-// handler, a dedicated write-only endpoint with no shared read traffic
-// to protect, which calls this directly since nothing else could catch
-// a write coming from that one client-JS exception.
+// REST routes get the same guarantee through src/lib/api.ts's
+// requireWriteMember(), which every mutating handler (POST/PUT/PATCH/
+// DELETE) calls instead of requireMember(). It is a separate function
+// rather than a check inside requireMember() because requireMember() is
+// shared by ~150 routes' GET handlers and by client components that read
+// through it (Scheduling polls' AvailabilityGrid, over `/api/scheduling-
+// polls/[id]/availability`'s GET) — guarding it there would break
+// legitimate reads made while View-as happens to be on. Until
+// requireWriteMember() existed this file said REST "always operates as
+// the real authenticated member, unaffected", which was true and meant a
+// REST write during a View-as session went through; that is no longer the
+// case, and tests/api-write-guard.test.ts fails on a mutating handler
+// that skips it.
 export async function assertNotViewingAs() {
   if (await getActiveViewAs()) {
     throw new ForbiddenError("Writes are disabled while viewing as another member");

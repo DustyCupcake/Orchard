@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { getOwnContribution, updateContributionVisibility, updateContributionVisibilityInput } from "@/lib/contribution";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const body = updateContributionVisibilityInput.parse(await request.json());
     const updated = await updateContributionVisibility(actor, body);
     return NextResponse.json({ member: updated });

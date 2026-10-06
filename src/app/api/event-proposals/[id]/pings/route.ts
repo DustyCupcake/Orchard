@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { listMyEventProposalPings, pingConflictHost } from "@/lib/event-scheduling";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 // Owner-only, enforced inside pingConflictHost.
 export async function POST(_request: NextRequest, { params }: Params) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const { id } = await params;
     const created = await pingConflictHost(actor, id);
     return NextResponse.json({ ping: created }, { status: 201 });

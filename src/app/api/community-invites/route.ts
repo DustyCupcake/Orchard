@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { createCommunityInvite, createCommunityInviteInput, listMyCommunityInvites } from "@/lib/recruitment";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export async function GET() {
 // still blocks it while Recruitment is off.
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const body = createCommunityInviteInput.parse(await request.json());
     const invite = await createCommunityInvite(actor, body);
     return NextResponse.json({ invite }, { status: 201 });

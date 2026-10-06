@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { getCommunity, requireAdmins, updateCommunity, updateCommunityInput } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     await requireAdmins(actor);
     const body = updateCommunityInput.parse(await request.json());
     const updated = await updateCommunity(actor, body);

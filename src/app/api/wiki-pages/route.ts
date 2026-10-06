@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMember, errorResponse } from "@/lib/api";
+import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
 import { createWikiPage, createWikiPageInput, listWikiPages } from "@/lib/wiki-pages";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireMember();
+    const actor = await requireWriteMember();
     const body = createWikiPageInput.parse(await request.json());
     const created = await createWikiPage(actor, body);
     return NextResponse.json({ page: created }, { status: 201 });
