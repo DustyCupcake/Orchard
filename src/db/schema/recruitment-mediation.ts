@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { member } from "./member";
 import { objection } from "./recruitment";
 
@@ -54,3 +54,33 @@ export const objectionPartyConsent = pgTable("objection_party_consent", {
   // worst possible moment for the person on the receiving end.
   note: text("note"),
 });
+
+// One mediation-body member's support for overruling an objection.
+//
+// The overrule is the one exception to "an objection stands" and the
+// plan (§2.6/J7) says it takes a *majority of the body* (or the fixed
+// quorum the community chose). That needs somewhere for each holder's
+// agreement to live: without it the only thing a threshold could mean
+// was "the body is big enough", and a single holder's click was the
+// whole decision. A row here is one holder saying "I would overrule
+// this", with the reason they would; the objection is overruled when
+// enough current holders have a row, and every one of these notes is
+// carried into the permanent record.
+//
+// Unique per (objection, member): support is a position, and changing
+// your mind about the wording is an update, not a second vote.
+export const objectionOverruleSupport = pgTable(
+  "objection_overrule_support",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    objectionId: uuid("objection_id")
+      .notNull()
+      .references(() => objection.id),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => member.id),
+    note: text("note").notNull(),
+    supportedAt: timestamp("supported_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("objection_overrule_support_objection_id_member_id_unique").on(t.objectionId, t.memberId)],
+);

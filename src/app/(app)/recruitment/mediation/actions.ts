@@ -37,16 +37,20 @@ function redirectWithError(err: unknown): never {
 // carries the note that becomes the audit record.
 export async function resolveObjectionAction(formData: FormData) {
   const actor = await requireMember();
+  let settled = true;
   try {
-    await resolveObjection(actor, {
+    const result = await resolveObjection(actor, {
       objectionId: String(formData.get("objectionId") ?? ""),
       outcome: String(formData.get("outcome") ?? "cleared") as "cleared" | "upheld" | "overruled",
       note: String(formData.get("note") ?? "").trim(),
     });
+    // An overrule that hasn't reached the threshold records this holder's
+    // support and leaves the objection standing.
+    settled = result.resolution !== "standing";
   } catch (err) {
     redirectWithError(err);
   }
-  redirect("/recruitment/mediation?resolved=1");
+  redirect(settled ? "/recruitment/mediation?resolved=1" : "/recruitment/mediation?overruleSupported=1");
 }
 
 // The objector's own controls. These are the two levers §2.6 says they

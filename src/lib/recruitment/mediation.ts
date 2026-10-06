@@ -8,6 +8,7 @@ import {
   member,
   objection,
   objectionPartyConsent,
+  objectionOverruleSupport,
   objectionPartyExclusion,
   recruitmentDecision,
   task,
@@ -314,6 +315,10 @@ export type MediationItem = {
   objectorName: string | null;
   recusedCount: number;
   consentCount: number;
+  // Body members who have said they would overrule this, so the body can
+  // see how far an overrule is from the threshold. Visible to the body
+  // only — the queue itself is — and never includes the objector's identity.
+  overruleSupporters: { memberId: string; name: string }[];
 };
 
 export type MediationQueue = {
@@ -384,6 +389,10 @@ export async function getMediationQueue(actor: Member): Promise<MediationQueue> 
       objectorName: maySee ? (objector[0]?.name ?? null) : null,
       recusedCount: excluded.length,
       consentCount: consented.length,
+      overruleSupporters:
+        row.resolution === "standing"
+          ? (await countedOverruleSupporters(row.id, body)).map(({ memberId, name }) => ({ memberId, name }))
+          : [],
     });
   }
 
@@ -514,12 +523,47 @@ export async function resolveObjection(actor: Member, input: ResolveObjectionInp
     throw new NotFoundError("Community not found");
   }
 
+  // The note that is written onto the record. For every outcome but a
+  // multi-person overrule it is simply what the resolver wrote.
+  let resolutionNote = input.note;
+
   if (input.outcome === "overruled") {
     const body = await listMediationMembers(actor.communityId);
     const availability = overruleAvailability(communityRow, body.length);
     if (!availability.available) {
       throw new AppError(availability.reason ?? "The overrule isn't available here");
     }
+    // The overrule is the one outcome that is not one person's call. It
+    // takes the community's threshold of the body *agreeing*, so what
+    // this action does for an overrule is record that this holder agrees
+    // and then check whether that is now enough. Before this, the only
+    // thing checked was that the body was big enough to reach the
+    // threshold in principle (overruleAvailability), so any single
+    // holder's click settled it — which is the "lone objector must win
+    // the room" protection turned inside out for the other side.
+    //
+    // Open-to-everyone mediation lets any member see and clear an
+    // objection, but the threshold is defined over the people who hold
+    // the role, so only those can add to an overrule.
+    if (!body.some((m) => m.memberId === actor.id)) {
+      throw new ForbiddenError("Only someone who currently holds the mediation role can support an overrule");
+    }
+    await db
+      .insert(objectionOverruleSupport)
+      .values({ objectionId: row.id, memberId: actor.id, note: input.note })
+      .onConflictDoUpdate({
+        target: [objectionOverruleSupport.objectionId, objectionOverruleSupport.memberId],
+        set: { note: input.note, supportedAt: new Date() },
+      });
+
+    const supporters = await countedOverruleSupporters(row.id, body);
+    if (supporters.length < availability.threshold) {
+      // Support recorded, objection still standing. Returned as the row
+      // it was rather than thrown: nothing went wrong, the queue just has
+      // more to show (`overruleSupporters`).
+      return row;
+    }
+    resolutionNote = composeOverruleRecord(supporters, body.length);
   }
 
   const [updated] = await db
@@ -533,7 +577,7 @@ export async function resolveObjection(actor: Member, input: ResolveObjectionInp
       // and we're fine" and "we talked and we're not" are both things
       // the next person to read this record needs, and an overrule
       // without a stated reason is the one that most obviously does.
-      resolutionNote: input.note,
+      resolutionNote,
     })
     .where(and(eq(objection.id, row.id), eq(objection.resolution, "standing")))
     .returning();
@@ -543,6 +587,44 @@ export async function resolveObjection(actor: Member, input: ResolveObjectionInp
 
   await applyObjectionOutcomeToSubject(updated, input.outcome, actor);
   return updated;
+}
+
+export type OverruleSupporter = { memberId: string; name: string; note: string };
+
+// Who has said they would overrule this objection *and still counts*.
+// Support is recorded against a person, but the threshold is defined over
+// the body as it stands now, so a supporter who has since left the role,
+// or whom the objector has since recused, no longer counts towards it —
+// the same "right now" reading overruleThreshold uses for the denominator.
+async function countedOverruleSupporters(objectionId: string, body: MediationMember[]): Promise<OverruleSupporter[]> {
+  const [rows, recused] = await Promise.all([
+    db
+      .select({ memberId: objectionOverruleSupport.memberId, note: objectionOverruleSupport.note })
+      .from(objectionOverruleSupport)
+      .where(eq(objectionOverruleSupport.objectionId, objectionId))
+      .orderBy(objectionOverruleSupport.supportedAt),
+    db
+      .select({ memberId: objectionPartyExclusion.memberId })
+      .from(objectionPartyExclusion)
+      .where(eq(objectionPartyExclusion.objectionId, objectionId)),
+  ]);
+  const recusedIds = new Set(recused.map((r) => r.memberId));
+  const nameById = new Map(body.map((m) => [m.memberId, m.name]));
+  return rows
+    .filter((r) => nameById.has(r.memberId) && !recusedIds.has(r.memberId))
+    .map((r) => ({ memberId: r.memberId, name: nameById.get(r.memberId)!, note: r.note }));
+}
+
+// The permanent record of an exception. One supporter is just their note;
+// more than one names each of them and what they said, because "the body
+// overruled this" with no names is exactly the unaccountable exception
+// §2.6 says must stay visible on the body's own records.
+function composeOverruleRecord(supporters: OverruleSupporter[], bodySize: number): string {
+  if (supporters.length === 1) return supporters[0].note;
+  return [
+    `Overruled with ${supporters.length} of ${bodySize} in support.`,
+    ...supporters.map((s) => `${s.name}: ${s.note}`),
+  ].join("\n\n");
 }
 
 async function isRecusedFrom(objectionId: string, memberId: string) {

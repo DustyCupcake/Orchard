@@ -19,9 +19,8 @@ import {
 import type { DateBoundaryInput } from "@/lib/dates";
 import { exportCycleAsTaskPack } from "@/lib/task-packs";
 import {
-  deleteCycleJoiningLaneRules,
   joiningLaneRuleInputSchema,
-  setCycleJoiningLaneRules,
+  updateCycleLaneRules,
   type JoiningLaneRuleInput,
 } from "@/lib/recruitment/joining-lanes";
 import { JOINING_LANE_ORDER } from "@/lib/recruitment/lanes";
@@ -203,8 +202,7 @@ export async function updateCycleLaneRulesAction(formData: FormData) {
         applyInsteadAvailable: formData.getAll(`lane.${lane}.applyInsteadAvailable`).includes("on"),
       });
     }
-    await setCycleJoiningLaneRules(actor.communityId, cycleId, rules);
-    await deleteCycleJoiningLaneRules(actor.communityId, cycleId, dropped);
+    await updateCycleLaneRules(actor, cycleId, rules, dropped);
   } catch (err) {
     redirectWithError(cycleScope, err);
   }

@@ -49,6 +49,7 @@ export default async function RecruitmentMediationPage({
   searchParams: Promise<{
     error?: string;
     resolved?: string;
+    overruleSupported?: string;
     recused?: string;
     consented?: string;
     consentWithdrawn?: string;
@@ -115,6 +116,8 @@ export default async function RecruitmentMediationPage({
 
   const flash = [
     params.resolved && "The objection has been settled.",
+    params.overruleSupported &&
+      "Your support for overruling is recorded. It goes through only once enough of the body have added theirs; until then the concern stands.",
     params.recused && "That person is now recused from this objection.",
     params.consented && "That person may now be told who raised it.",
     params.consentWithdrawn && "That consent is withdrawn.",
@@ -217,6 +220,7 @@ export default async function RecruitmentMediationPage({
                 canOverrule={queue.overrule.available}
                 threshold={queue.overrule.threshold}
                 bodySize={queue.overrule.bodySize}
+                viewerId={actor.id}
               />
             ))}
           </div>
@@ -282,6 +286,7 @@ function StandingObjection({
   canOverrule,
   threshold,
   bodySize,
+  viewerId,
 }: {
   item: MediationItem;
   body: MediationMember[];
@@ -289,8 +294,15 @@ function StandingObjection({
   canOverrule: boolean;
   threshold: number;
   bodySize: number;
+  viewerId: string;
 }) {
   const isObjector = item.objectorName !== null;
+  // An overrule that needs more than one person is a pledge, not an act:
+  // the button records this holder's agreement and the objection stays
+  // standing until enough of the body have recorded theirs.
+  const needsOthers = threshold > 1;
+  const supporters = item.overruleSupporters;
+  const iSupport = supporters.some((s) => s.memberId === viewerId);
   return (
     <article
       className="rounded-[var(--radius-md)] border p-4"
@@ -351,13 +363,24 @@ function StandingObjection({
           </button>
           {canOverrule && (
             <button type="submit" name="outcome" value="overruled" className={BUTTON_SECONDARY}>
-              Overrule anyway ({threshold} of {bodySize})
+              {needsOthers
+                ? `${iSupport ? "Update my support for an overrule" : "Support an overrule"} (${supporters.length} of ${threshold} so far)`
+                : "Overrule anyway"}
             </button>
           )}
         </div>
+        {canOverrule && needsOthers && (
+          <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+            An overrule takes {threshold} of the {bodySize} people on the body, each adding their own
+            note. {supporters.length === 0
+              ? "Nobody has supported it yet."
+              : `Supported so far by ${supporters.map((s) => s.name).join(", ")}.`}{" "}
+            Until enough have, the concern stands.
+          </p>
+        )}
         <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
           {canOverrule
-            ? "The overrule is the exception: it exists for a mediation split where the body still wants them in, and because it is an exception your note goes onto the permanent record."
+            ? "The overrule is the exception: it exists for a mediation split where the body still wants them in, and because it is an exception every note goes onto the permanent record."
             : "No overrule is available here, so a concern mediation can't clear means the person doesn't join. That is the default, and it is the whole reason a concern is never thrown out by a timer."}
         </p>
       </form>

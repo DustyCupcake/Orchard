@@ -1,8 +1,11 @@
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { joiningLane } from "@/db/schema";
+import { cycle, joiningLane, type member as memberTable } from "@/db/schema";
 import type { JoinLaneKind } from "@/db/schema";
+import { NotFoundError } from "../errors";
+import { requireCycleInitiationEligibility } from "../cycles/crud";
+import { requireCycleOpen } from "../cycles/lifecycle";
 import {
   JOINING_LANE_DEFAULTS,
   joiningLaneForInvite,
@@ -267,6 +270,40 @@ export async function listLaneOverridesByCycle(
   return [...byCycle.entries()]
     .map(([cycleId, lanes]) => ({ cycleId, lanes: lanes.sort() }))
     .sort((a, b) => a.cycleId.localeCompare(b.cycleId));
+}
+
+// §5.2 — the per-event rule editor's Save, as one authorised operation.
+//
+// The two writers below take a community id and nothing about who is
+// asking, which is right for a tested primitive and wrong as the thing a
+// server action calls directly: the action used to do exactly that, so
+// the only thing between any logged-in member and an event's admission
+// rules was the form being hidden from them. This is the gate, in the
+// lib where every caller gets it.
+//
+// The authority is the same one that configures the rest of an event
+// (updateCycleSettings, boundary edits): whoever may start a Cycle. The
+// event has to be in the actor's own community and still open — a
+// closed event's admission rules are history, not configuration.
+export async function updateCycleLaneRules(
+  actor: typeof memberTable.$inferSelect,
+  cycleId: string,
+  rules: Partial<Record<JoinLaneKind, JoiningLaneRuleInput>>,
+  dropped: JoinLaneKind[],
+) {
+  await requireCycleInitiationEligibility(actor);
+
+  const [row] = await db
+    .select()
+    .from(cycle)
+    .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, actor.communityId)));
+  if (!row) {
+    throw new NotFoundError("Event not found");
+  }
+  requireCycleOpen(row);
+
+  await setCycleJoiningLaneRules(actor.communityId, cycleId, rules);
+  await deleteCycleJoiningLaneRules(actor.communityId, cycleId, dropped);
 }
 
 // §5.2's "untick to inherit". Removing the row *is* the reset, because

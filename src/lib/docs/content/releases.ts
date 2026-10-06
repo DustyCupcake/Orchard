@@ -27,6 +27,18 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-10-06",
+    title: "Overruling a concern now takes the people who hold the role",
+    summary: "The exception to \"a concern stands\" was one person's click. It's now the whole threshold.",
+    points: [
+      "If mediation can't clear a concern, it stands and the person doesn't join. The one exception is an overrule — and it now needs the number of the mediation body your community set, not just one of them.",
+      "Each person on the body adds their own support and their own reason. Until enough have, the concern stands and the queue shows who has supported it so far.",
+      "The permanent record names everyone who supported an overrule and what they said.",
+      "Changing an event's own admission rules is now limited to whoever can start an event; it was open to any member who knew how to ask.",
+    ],
+    source: "Unreleased: an audit's three real faults — event admission rules, the overrule threshold, a migration that only worked on empty databases — and the suite runs in CI",
+  },
+  {
     date: "2026-09-29",
     title: "The three-dot menu works on your phone",
     summary: "The actions were there the whole time. They were just off the side of the screen.",

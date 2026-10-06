@@ -591,6 +591,78 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     expect(settlement!.resolutionNote).toBe("the record of why");
   });
 
+  // The overrule is the exception to "an objection stands", and the plan
+  // makes it a majority of the body *agreeing* — not a body big enough to
+  // have a majority. These pin the difference: before, any single holder's
+  // click settled it as long as the threshold was reachable in principle.
+  describe("an overrule takes the threshold of the body, not one holder", () => {
+    async function threeHolderBody() {
+      const { community: c, alice, branch, bob, carol } = await fixturesOfFour();
+      const [dave] = await db.insert(member).values({ communityId: c.id, name: "Dave" }).returning();
+      await enableRecruitment(c.id);
+      const { invite } = await announceArrival(c.id, alice);
+      await db.insert(recruitmentSubscription).values({ memberId: bob.id, active: true }).returning();
+      await raiseInviteObjection(bob, invite.id, "a real concern");
+      const mediationTask = await insertTask(c.id, branch.id, alice.id, { capacity: 3 });
+      await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
+      for (const holder of [alice, carol, dave]) await claimTask(holder, mediationTask.id);
+      const [raised] = await db.select().from(objection).where(eq(objection.inviteId, invite.id));
+      const inviteState = async () =>
+        (await db.select().from(communityInvite).where(eq(communityInvite.id, invite.id)))[0]!.consensusState;
+      return { alice, bob, carol, dave, raised: raised!, inviteState };
+    }
+
+    it("records one holder's support and leaves the concern standing", async () => {
+      const { alice, raised, inviteState } = await threeHolderBody();
+
+      const result = await resolveObjection(alice, { objectionId: raised.id, outcome: "overruled", note: "I'd let them in" });
+      expect(result.resolution).toBe("standing");
+      expect(await inviteState()).not.toBe("admitted");
+
+      // Pressing it again is the same position, not a second vote.
+      await resolveObjection(alice, { objectionId: raised.id, outcome: "overruled", note: "still would" });
+      const [afterTwice] = await db.select().from(objection).where(eq(objection.id, raised.id));
+      expect(afterTwice!.resolution).toBe("standing");
+      const queue = await getMediationQueue(alice);
+      expect(queue.standing[0]!.overruleSupporters.map((s) => s.name)).toEqual(["Alice"]);
+    });
+
+    it("admits once enough of the body agree, and the record names each of them", async () => {
+      const { alice, carol, raised, inviteState } = await threeHolderBody();
+
+      await resolveObjection(alice, { objectionId: raised.id, outcome: "overruled", note: "known them for years" });
+      const settled = await resolveObjection(carol, { objectionId: raised.id, outcome: "overruled", note: "I vouch for the context" });
+
+      expect(settled.resolution).toBe("overruled");
+      expect(await inviteState()).toBe("admitted");
+      expect(settled.resolutionNote).toContain("2 of 3");
+      expect(settled.resolutionNote).toContain("Alice: known them for years");
+      expect(settled.resolutionNote).toContain("Carol: I vouch for the context");
+    });
+
+    it("stops counting a supporter the objector has since recused", async () => {
+      const { alice, bob, carol, dave, raised, inviteState } = await threeHolderBody();
+
+      await resolveObjection(alice, { objectionId: raised.id, outcome: "overruled", note: "I would" });
+      await recuseFromObjection(bob, { objectionId: raised.id, memberId: alice.id });
+
+      // Alice's earlier support no longer counts, so Carol's makes one, not two.
+      const afterCarol = await resolveObjection(carol, { objectionId: raised.id, outcome: "overruled", note: "and I would" });
+      expect(afterCarol.resolution).toBe("standing");
+      expect(await inviteState()).not.toBe("admitted");
+
+      const afterDave = await resolveObjection(dave, { objectionId: raised.id, outcome: "overruled", note: "me too" });
+      expect(afterDave.resolution).toBe("overruled");
+      expect(afterDave.resolutionNote).not.toContain("Alice:");
+    });
+
+    it("lets a single holder clear or uphold without anyone else, as before", async () => {
+      const { alice, raised } = await threeHolderBody();
+      const settled = await resolveObjection(alice, { objectionId: raised.id, outcome: "cleared", note: "we talked" });
+      expect(settled.resolution).toBe("cleared");
+    });
+  });
+
   it("shields the objector's identity from the evaluators, the applicant and the inviter", async () => {
     const { community: c, alice, branch, bob, carol } = await fixturesOfFour();
     await enableRecruitment(c.id);

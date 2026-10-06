@@ -80,20 +80,29 @@ ALTER TABLE "community_invite" ADD COLUMN "consent_at" timestamp with time zone;
 ALTER TABLE "community_invite" ADD COLUMN "consent_disclosure" text;--> statement-breakpoint
 ALTER TABLE "community_invite" ADD COLUMN "consensus_state" "invite_consensus_state" DEFAULT 'not_required' NOT NULL;--> statement-breakpoint
 ALTER TABLE "community_invite" ADD COLUMN "consensus_deadline" timestamp with time zone;--> statement-breakpoint
-ALTER TABLE "objection" ADD COLUMN "community_id" uuid NOT NULL;--> statement-breakpoint
+ALTER TABLE "objection" ADD COLUMN "community_id" uuid;--> statement-breakpoint
 -- community_id is denormalized onto objection so the mediation queue can
--- scope by community without joining through either subject. The column
--- is NOT NULL, so the pre-existing rows have to be filled from the one
--- subject they have: form_response -> form -> community. Rows that
--- somehow have no response behind them (impossible before this
--- migration, which is exactly why it is safe to assume a response) are
--- attached to nothing and would fail the ALTER, deliberately — a
--- silently-missing community would be a shielded objection no mediation
--- body could ever find.
+-- scope by community without joining through either subject. It ends up
+-- NOT NULL, but it cannot be *added* NOT NULL: Postgres checks that
+-- constraint against the rows already in the table the moment the column
+-- exists, before any UPDATE can run, so on a database with even one
+-- objection the ADD COLUMN itself fails — and the whole migration batch
+-- with it, and with it the container's boot. (An earlier version of this
+-- file did exactly that and described the failure as deliberate; it only
+-- ever ran against empty databases.) So: add it nullable, fill it, then
+-- tighten it.
+--
+-- The pre-existing rows are filled from the one subject they have:
+-- form_response -> form -> community. A row that somehow has no response
+-- behind them (impossible before this migration, which is exactly why it
+-- is safe to assume a response) is attached to nothing and fails the
+-- SET NOT NULL below, deliberately — a silently-missing community would
+-- be a shielded objection no mediation body could ever find.
 --
 -- Hand-written: drizzle-kit diffs schemas, not data, and cannot emit a
--- backfill for a NOT NULL column it has just added.
+-- backfill for a column it has just added.
 UPDATE "objection" o SET "community_id" = f."community_id" FROM "form_response" fr JOIN "form" f ON f."id" = fr."form_id" WHERE fr."id" = o."form_response_id";--> statement-breakpoint
+ALTER TABLE "objection" ALTER COLUMN "community_id" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "objection" ADD COLUMN "invite_id" uuid;--> statement-breakpoint
 ALTER TABLE "objection" ADD COLUMN "resolution" "objection_resolution" DEFAULT 'standing' NOT NULL;--> statement-breakpoint
 ALTER TABLE "objection" ADD COLUMN "resolved_at" timestamp with time zone;--> statement-breakpoint
