@@ -4,7 +4,25 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 **This file is not what members read.** It names migrations, functions and test counts, which is right for whoever maintains this and wrong for someone opening the app on a phone. The member-facing account of what changed lives separately, in `src/lib/docs/content/releases.ts`, and renders in the app under **Library → Orchard documentation → What's new**. A notable user-facing change should add a line there as well as an entry here; `tests/orchard-docs.test.ts` checks that every curated note still cites a `##` heading below that exists, so a renamed or deleted entry fails the suite rather than leaving a silent dead reference. The two are written for different readers and drift apart on purpose — the test that keeps the citation honest is the part that isn't optional.
 
-## Unreleased: a manual tier is asked for and confirmed, and opening Admins or View-as needs a confirmation the server checks
+## Unreleased
+
+Nothing yet. A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
+
+## 0.1.0 — 2026-10-06
+
+The first tagged release, cut so there is a known point to deploy, pin and upgrade from. Everything below, to the end of this file, is how the application got here: it was written as the work landed and was never grouped by release, so it isn't split into versions after the fact. From the next entry on, work is grouped under the version it ships in.
+
+## migrations are tested on data that already exists, and the repository is set up to be picked up by someone else
+
+**The migration that would have crash-looped a deploy now has a test that catches it.** The suite migrates an empty database once and truncates between tests, so every migration runs on no rows — the one case in which a migration that breaks on real data looks fine. `tests/migration-helpers.ts` builds a throwaway database on the same server, migrates it to just before the migration under test, lets a test insert rows in the *old* shape with plain SQL, runs the rest and reads back what happened. `tests/migrations.test.ts` uses it for the four migrations that rewrite existing rows: 0083 (the `objection.community_id` backfill — with the original SQL restored the test fails with exactly `column "community_id" of relation "objection" contains null values`), 0082 (emergency consent fails closed for answers that predate it and keeps what was already agreed), 0085 (one primary contact method per member, none duplicated, an existing primary or a self-added login address untouched, an OIDC email not marked verified) and 0087. `tests/migration-lint.test.ts` is the static backstop: it fails on any `ADD COLUMN … NOT NULL` without a `DEFAULT` (with an explicit, reasoned marker comment for a table that has no rows), and runs `scripts/check-migrations.mjs`, which existed since e902f19 but was wired in nowhere. Both guards were mutation-checked against the original 0083.
+
+**Releases.** A release is a `vX.Y.Z` tag. Pushing one makes CI publish `:X.Y.Z` and `:X.Y` alongside `:latest` and `:<sha>`, so an instance can pin a version instead of following `main`; the suite still has to pass first. The CHANGELOG now has an `## Unreleased` section and a `## 0.1.0` heading: the forty entries that were each headed "Unreleased:" (the whole of the post-Phase-69 era, with no way to tell what had shipped) are one release, and `releases.ts` cites them by their new headings. `CONTRIBUTING.md` gains *Releases and upgrading*: how to cut one, back up before an upgrade, rehearse a data-rewriting migration on a restored copy, and — as of the first tag — **a migration that has shipped is never edited**, because editing the file changes nothing for an instance that already ran it. (0083 was edited in place; that was safe only because nothing had been tagged and nobody else had deployed.)
+
+**For people who find the repository.** `SECURITY.md` says how to report a vulnerability privately (GitHub's private reporting), what counts, and which versions are supported. `.github/dependabot.yml` opens grouped weekly minor/patch updates for npm and monthly ones for Actions and the base image, and deliberately ignores majors — Next, Drizzle and TypeScript are planned work, not green PRs. The README states plainly that it is pre-1.0 with one small community using it. `CONTRIBUTING.md` no longer says the plan docs are "never committed" while both are tracked; they are described as what they are, working notes and not specification.
+
+**`nodemailer` 9 → 10.** The audit listed seven advisories against the old version, among them recipient-address parsing bypasses and denial-of-service in address parsing, which is reachable here because addresses typed by applicants and invitees end up in `sendMail`. The in-range update to 9.1.1 closed some of them; the rest are fixed only in version 10. `mailer.ts` uses only `createTransport` and `sendMail`, which are unchanged; v10 ships its own types, so `@types/nodemailer` is removed and the one `Transporter` annotation is spelled `ReturnType<typeof nodemailer.createTransport>`. Smoke-tested with the JSON transport, type-checked, and `next build` passes. Still open in `npm audit --omit=dev`: `drizzle-orm` (the SQL-injection advisory needs identifier or alias input, and the app uses neither — a major upgrade is planned work), `next`/`postcss` (needs Next 16), and `sharp` (an optional image library that Next pulls in; the app stores no uploaded images).
+
+## a manual tier is asked for and confirmed, and opening Admins or View-as needs a confirmation the server checks
 
 **A manual tier is no longer a checkbox on your own profile.** The spec says leads designate members into a manual tier; the app let anyone tick any of them. Tiers gate real access — a sensitive-data audience can be "unlocked by tier X", starting an event can be limited to a tier — so every tier-keyed gate was, for a manual tier, a self-service one. Now a member asks (`tier_request`, migration 0088), and an Admin or someone already in that tier confirms. A pending request grants nothing; `member.tierIds` changes only on approval, in the same transaction as the decision, and a request is decided once however many people press the button. The requester can't confirm their own — except an Admin, who could already redefine the tier and who may hold it, and would otherwise lock a one-Admin community out of its own tiers. Leaving a tier needs nobody. A declined request is shown to the member (they can ask again); decided rows are kept as the record of who confirmed whom, and a member leaving the community takes their pending ones with them. A tier that is deleted takes its requests with it.
 
@@ -12,7 +30,7 @@ Where it shows: the profile's tier checkboxes are replaced by a Tiers section (a
 
 **Opening Admins or View-as to everyone needs a confirmation the server checks.** The settings dialog asked, but a confirmation that exists only in the browser is one a forged request skips. `setModuleOpen` now refuses to open `admin` or `support` without `confirmedBlastRadius`, repeating what it would do; closing, re-submitting an already-open module and every other module are unchanged. The wording lives in one place (`OPEN_BLAST_RADIUS`) and both the settings row and the refusal read it.
 
-## Unreleased: a form can't ask a sensitive question, the last Admins grant is a way out and not a trap, REST writes respect View-as, and the docs stop describing things that don't exist
+## a form can't ask a sensitive question, the last Admins grant is a way out and not a trap, REST writes respect View-as, and the docs stop describing things that don't exist
 
 The second batch from the audit, after the three faults in the entry below. Five code changes and one documentation pass, each with tests that fail on the old behaviour.
 
@@ -28,7 +46,7 @@ The second batch from the audit, after the three faults in the entry below. Five
 
 **The in-app documentation says what exists.** Pages described browse-mode auto-claim and contested-slot resolution, a finish-task capture prompt, View-as being visible to the person viewed, a "weekly" input round that is actually configurable, an emergency-access reason that is always required, the contribution toggle being on the profile, and polls going on everyone's calendar. Each was checked against the code. Real behaviour is described as such; what is intended but unbuilt is marked with a new `planned` block (types, renderer and test updated) that carries a fixed "Planned — not built yet" label so the status can't depend on wording. Two claims were removed outright rather than marked: that rarer skills are "pushed harder" (nothing weights by rarity, and it isn't in the spec) and that View-as is visible to the person viewed (the spec only promises it is logged). The README's stale "Members tab" sentence now points at `/members/import`.
 
-## Unreleased: a first-login screen, and the name a member is actually called
+## a first-login screen, and the name a member is actually called
 
 ### Nobody was ever asked their name
 
@@ -76,7 +94,7 @@ Five OIDC tests failed on a clean checkout of this branch, before any of the abo
 
 ---
 
-## Unreleased: an audit's three real faults — event admission rules, the overrule threshold, a migration that only worked on empty databases — and the suite runs in CI
+## an audit's three real faults — event admission rules, the overrule threshold, a migration that only worked on empty databases — and the suite runs in CI
 
 An independent review of the work done since 2026-09-26 (by reading, not by trusting the commit messages) turned up three faults that the suite could not see, because each lives in a place the tests did not look. All three are fixed here with tests that fail on the old behaviour; the full suite was green before and after.
 
@@ -88,7 +106,7 @@ An independent review of the work done since 2026-09-26 (by reading, not by trus
 
 **The suite now runs in CI, and gates the image push.** `.github/workflows/docker-build.yml` gains a `test` job that runs `ORCHARD_TEST_HOST=1 npm test` — the same `scripts/test.sh` as locally, so the same production-tuned Postgres and batching — on Node 22, and `build` now `needs: test`. Before this, every push to `main` published `:latest` after only lint and a type-check.
 
-## Unreleased: the app stops looking like every other app built in the last two years
+## the app stops looking like every other app built in the last two years
 
 A design pass with a narrow scope — tokens and identity, no per-page work — aimed at one thing: this is a tool for a specific community with a specific voice, and it was carrying the house style of a design system bound to it by a handoff document. `docs/design_handoff_conventions/README.md` said so in its own words: *"This design project has Anthropic's Nocturne design system bound to it (dark, soft-8px-radius, Inter, mono-accent, outline-only buttons)."* `globals.css` implemented all eight of Nocturne's hexes verbatim, its neutral ramp was Tailwind's `neutral` scale — the file even said *"matches the Tailwind neutral scale"* — and the body was set at 13px in **689 places**, with a further 350 at 12px.
 
@@ -106,7 +124,7 @@ A design pass with a narrow scope — tokens and identity, no per-page work — 
 
 Verified by `npx tsc --noEmit` and `npm run lint` (clean; the 7 warnings are pre-existing and all in test files), and by probing the running app in a real browser across `/`, `/login`, `/dashboard`, `/board`, `/calendar`, `/members`, `/community`, `/settings`, `/documentation`, `/shifts` and `/recruitment` in both themes — computed font resolution per element, plus checks for horizontal document scroll, clipped text and overflowing nav rows, all of which are clean and unchanged from the pre-change baseline. **`npm test` could not be used as a signal on this machine**: run against a clean tree with these changes stashed it already reports 535 failures, of which 222 are `the database system is shutting down` and 128 `starting up` — the test Postgres container cycling mid-run on a memory-constrained host. That is pre-existing and unrelated, but it does mean this change is unverified by the suite rather than verified as not breaking it.
 
-## Unreleased: the ⋯ overflow menu is unusable on a phone
+## the ⋯ overflow menu is unusable on a phone
 
 Reported from Chrome on an iPhone: tapping the three-dot overflow opened the menu, and the actions in it were not there. Not a styling nit and not a broken tap handler — the menu rendered, correctly, in a place that was mostly off the screen. On the task detail page and the board header the actions all sit in one right-aligned row, so on a narrow screen that row wraps and the trigger lands wherever the wrap leaves it. The menu was anchored by `absolute right-0 top-8` inside the button's own inline-block span, which only ever positions it correctly relative to that trigger — it never once asks where the trigger is on the *screen*. With the trigger near the left edge, `left` came out at **-156px on a 320px-wide iPhone SE**: every row in the menu rendered to the left of the viewport, clipped, so the menu opened looking empty. The same unmeasured anchor also let a menu open downward off the bottom of the screen, which the board's own action menu does in selection mode, where it reaches nine rows.
 
@@ -116,7 +134,7 @@ Reported from Chrome on an iPhone: tapping the three-dot overflow opened the men
 
 Verified by measurement in a real browser rather than by eye, driving the actual component at iPhone SE (320×568) and iPhone 15 (393×852) sizes: the left-edge menu that the old anchor put at `left: -93` now clamps to `left: 8` and shows all its rows; a trigger near the bottom flips the menu above itself; the nine-row menu stays fully on screen with its first row visible and its last row reachable by scrolling. Plus a sweep in `tests/menu-placement.test.ts` asserting that *no* trigger position on either phone screen puts any row off-screen or covers the button that opened it. Six tests, no database.
 
-## Unreleased: every page 500s in dev, and the dev database runs out of connections
+## every page 500s in dev, and the dev database runs out of connections
 
 `next dev` served a 500 on *every* route — including `/login` — with an error about `require('stream')` in nodemailer. The dev database also died independently with `sorry, too many clients already` after a few minutes of editing. Neither reaches production, and that asymmetry is what made both look like environment flakiness for a long time.
 
@@ -130,7 +148,7 @@ Also found while here: the host runs **Node 23.11.0** while the Dockerfile, the 
 
 Verified: `next dev` now serves 200 across dashboard, board, members, calendar, settings, propose, proposals, messages, assemblies, contribution, questions, feedback and the whole documentation section; the scheduler still registers all nine cron jobs; connection count flat across recompiles; `tsc` clean, `eslint` 0 errors, `next build` clean with both documentation routes, and the full suite green (1786 tests, 89 files).
 
-## Unreleased: the Library gets a documentation section, and the "why" moves out of the interface
+## the Library gets a documentation section, and the "why" moves out of the interface
 
 The design conventions' copy rule — UI copy answers *what does this control do*, never why it was built that way, what the design rejected, or which reading of the spec it implements, with the reasoning in a code comment instead — is being applied right now, across settings, tasks and recruitment. It is the right rule and the pages are much better for it. But a code comment is only complete for the next person editing the code, and "reasoning lives in a comment" was quietly leaving members with nowhere to ask *why*.
 
@@ -150,7 +168,7 @@ So: `/documentation` gains a third section. **Orchard documentation** is how the
 
 Sixteen structural tests, no database: unique slugs across the flat namespace, every `see-also` resolving, table rows matching their header, neighbours walking the whole set across section boundaries, and release notes newest-first with each one citing a CHANGELOG heading that still exists. That last one is the whole mechanism keeping the curated feed honest, and it's why the pointer at the top of `CHANGELOG.md` and in `docs/roadmap.md` names the file rather than gesturing at it. One of the tests caught a real broken link during the build — three pages pointing at a privacy page that hadn't been written yet, which became `privacy-and-access` rather than three deletions of a reference that turned out to be a genuine gap.
 
-## Unreleased: the Coordination view becomes a dashboard, and the self-assign check stops being a wall
+## the Coordination view becomes a dashboard, and the self-assign check stops being a wall
 
 Three things that turned out to be one problem. The Coordination view had no tasks in it, its menu item lit up for exactly as long as a redirect took, and the coordinator self-assign check deleted the Claim button on every unclaimed or flagged task in a coordinator's scope whether or not they were trying to claim anything.
 
@@ -198,7 +216,7 @@ The suggestion is also surfaced on the task page's existing Nominate disclosure,
 
 Verified by `tsc`, `eslint` (0 errors), `next build` clean, and the full suite green (1753 tests, 88 files) against a throwaway database migrated from empty, including 15 new tests covering scope isolation in both directions, the suggestion lifecycle, the grace window, the queue, tag-fit ordering, and the cycle-scoped nav flags.
 
-## Unreleased: "Other" is one control, not two stacked ones
+## "Other" is one control, not two stacked ones
 
 The escape hatch on a choice field was the only part of the question form that took two clicks and still wasn't obvious. It rendered as an **"Other" row appended to the option list**, with its own text box indented underneath and the placeholder "Tell us in your own words" — which reads as two separate things: an option you can pick, and a box that happens to follow it. The reader had to work out that the box only counted if the row above it was ticked, which was never stated and not quite true.
 
@@ -218,7 +236,7 @@ Both now go through one `tallyChoiceValues` in `field-shape.ts`, which routes ev
 
 Also corrected: the settings field builder's own description of the escape hatch said "They pick 'Other' and type it", describing an interaction that no longer exists.
 
-## Unreleased: the test suite runs itself, and stops eating the machine
+## the test suite runs itself, and stops eating the machine
 
 `npm test` now runs `scripts/test.sh`, which creates the test database if it isn't there, migrates it, and runs every file in batches — restarting the database when it crosses a memory budget read from the VM's actual size. No setup steps, nothing to remember, and no per-machine edits. The raw runner is still there as `npm run test:raw`.
 
@@ -234,7 +252,7 @@ Also corrected: the settings field builder's own description of the escape hatch
 
 One thing this entry is also a correction of: an earlier diagnosis blamed the kernel's `dentry` cache. That was wrong — `/proc/slabinfo` inside a container is **VM-wide and unnamespaced**, so the number read was the host's total, not the test database's. The `docker stats` figure the script actually uses is namespaced per container, which is why the script reads that instead.
 
-## Unreleased: a member is told who is reading, and gets to choose which of them
+## a member is told who is reading, and gets to choose which of them
 
 The answer form was asking a member to agree to something nobody had described. It offered a single tick for "the people this Community has given access to it" — a set the member never saw, covering the kitchen team, the welfare team and anybody added next year, with no way to accept the first while declining the second. Meanwhile two facts about the question sat nowhere at all: whether the answer is counted in a published community figure, and whether a crisis can reach it. The fix is mostly disclosure, plus one change in granularity that turns out to be the load-bearing part.
 
@@ -250,7 +268,7 @@ The answer form was asking a member to agree to something nobody had described. 
 
 Verified by `tsc`, `eslint` (0 errors) and the full suite green, including nine new tests: per-audience grant, per-audience revocation, the all-unticked case, a forged foreign rule id, the legacy whole-audience boolean, and the naming fallbacks.
 
-## Unreleased: the member directory gets its primary action back, and mail finally has an address you chose
+## the member directory gets its primary action back, and mail finally has an address you chose
 
 Two changes that both came out of actually using the pages, and both of which are mostly *removals* — of paragraphs, of a duplicated surface, and of a rule that had quietly become untrue.
 
@@ -282,7 +300,7 @@ Two changes that both came out of actually using the pages, and both of which ar
 
 Verified by `tsc`, `eslint` (0 errors) and the full suite green.
 
-## Unreleased: who joins, how, and what the community decides — plus a settings screen you can read
+## who joins, how, and what the community decides — plus a settings screen you can read
 
 `docs/joining-admission-plan.md` had been sitting half-built: the lane table, the resolution chain and the `direct | referral` retirement landed, and steps 2–8 of its own work plan — the third door, the mediation grant, support and nomination, consensus, pairing, and every surface that would show any of it — had not. This is the rest of it, and a rebuild of `/settings` around it.
 
@@ -334,7 +352,7 @@ This landed on a `main` that had moved three commits ahead, and the two changes 
 - **`db:generate` was broken on `main` and had to be repaired first.** `profile_answer_rule_consent` (`0081`) and `profile_answer.emergency_consent` (`0082`) were hand-written into their snapshots in an older format — no `primaryKey` on columns, no `name`/`schema`/`isRLSEnabled` on the table, `hasDefault` instead of `default`, index `columns` as strings instead of `{expression}` objects, foreign keys qualified as `public.foo`. zod rejects it, so `npm run db:generate` failed with `0081_snapshot.json data is malformed` and **no** migration could be generated, not just this one. Both entries were rewritten in the current format from their schema definitions; nothing about them changed semantically.
 - **The migration is `0083`, not `0080`**, and its one hand-written statement is the `objection.community_id` backfill, which drizzle-kit cannot emit for a `NOT NULL` column it has just added.
 
-## Unreleased: a saved dropdown no longer reverts on screen — 23 more sites, and the diagnosis the first commit didn't carry
+## a saved dropdown no longer reverts on screen — 23 more sites, and the diagnosis the first commit didn't carry
 
 Changing a setting and watching the control snap back to its old value, then finding the change *had* saved, is a bug that punishes the person who just did the right thing: it reads as "my edit was rejected" and invites a second, contradictory save. Found on `/settings` → Events & Tiers, where changing an event type's suggested starting event appeared to revert, and a refresh showed it had worked.
 
@@ -359,7 +377,7 @@ A settings form is uncontrolled in both renders, so that second condition is `fa
 
 Verified by `tsc` and `eslint` clean and the full suite green. **Not verified in a browser** — the argument is read out of react-dom's own source and the remount is a documented React guarantee, but the dropdown holding its new value after a real save has not been watched happen, and that is the one claim worth a real pass on `/settings` → Events & Tiers.
 
-## Unreleased: an event's admission rules are stated to the whole community, and a community rule says which events it won't reach
+## an event's admission rules are stated to the whole community, and a community rule says which events it won't reach
 
 A community can set four admission lanes — one member's word, N members' backing, announced to the community — and each event can run differently by overriding a lane, falling back to the community's. Both halves of that were already built: `joiningLane.cycleId` is nullable, resolution is cycle-then-community-then-default, and the event page has had a per-lane "this event has its own rule for…" checkbox for a while. **Two things were missing, and both were the same omission — nobody could see the state.**
 
@@ -373,7 +391,7 @@ A community can set four admission lanes — one member's word, N members' backi
 
 Verified by `tsc` and `eslint` clean, `next build` clean, and the full suite green. **Not verified in a browser** — moving a block out of a gated section into its own member-visible one, and the read-only variant of the lane list, both want a real look.
 
-## Unreleased: the events page becomes an index of events, and stops stacking a whole event's settings per open event
+## the events page becomes an index of events, and stops stacking a whole event's settings per open event
 
 `/participation` in its aggregate form — the "manage events" view — rendered `ParticipationForCycle` **once per open cycle**. That was the mixing. A community with three open events got three complete configuration blocks stacked on one page: three sets of capacity controls, joining config, the four admission-lane cards, phase dates and Task Pack export, each identifiable only by an `<h2>`. And because the index *was* the per-event page, there was nowhere to go to configure one event on its own.
 
@@ -387,7 +405,7 @@ One thing this does **not** do: it doesn't change the per-event page's own inter
 
 Verified by `tsc` and `eslint` clean, `next build` clean, and 54 tests across `participation`, `cycles`, `cycles-lifecycle` and `board-cycle-scope` green. **Not verified in a browser** — this replaces a page's entire structure, and whether an event card reads as obviously clickable, and whether a member who lands here without event-starting rights finds what they came for, both want a real look.
 
-## Unreleased: every settings card states what the setting currently is
+## every settings card states what the setting currently is
 
 The settings screen had been rebuilt into one-card-one-save, which fixed the real hazard — a rejected decision-rule set silently reverting the doors — but left the screen unreadable as a *description of the community*. Every card was a form. Opening the tab told you how many cards there were and nothing about what any of them was set to: not how many branches exist, not whether single sign-on is on, not what a tier's threshold was, not whether anyone can apply. Reading the configuration meant opening all ten tabs' worth of cards and reading the controls.
 
@@ -410,7 +428,7 @@ Not done here: the decision-rules JSON editor itself is still a textarea (the jo
 
 Verified by `tsc` and `eslint` clean, `next build` clean, and the full suite green. **Not verified in a browser** — this change is almost entirely about what a collapsed card looks like, which is the one thing static checks cannot see. The two-click cost of editing anything, and whether a list of twenty collapsed cards reads better than twenty open forms, both want a real look before this is trusted.
 
-## Unreleased: a question's audience moves onto the question, and the Access rules section goes
+## a question's audience moves onto the question, and the Access rules section goes
 
 Restricted-question access was configured in two places on the same screen. The audience was chosen in the question's own form at creation, and the separate **Access rules** section existed only to append a group to a question that already had one — a list flattened across every question, identifiable only by reading the question label inside each row. Answering "who can read this?" meant finding a question's row in one section, and changing it meant visiting another.
 
@@ -428,7 +446,7 @@ Nothing about the question list's organisation changed — the public/restricted
 
 Verified by `tsc` and `eslint` clean, `next build` clean, and the full suite green. **Not verified in a browser** — the audience line, the options line and the relocated disclosure have not been seen rendered, and the cards' collapsed/expanded balance is exactly the kind of thing that wants a real look.
 
-## Unreleased: `sensitive` becomes the one immutable thing, and widening an audience starts asking
+## `sensitive` becomes the one immutable thing, and widening an audience starts asking
 
 **The flag that governs who can read a person's answers could be flipped by anyone with settings access, in both directions.** Ticking it made a question restricted; un-ticking it made every answer given so far readable by the whole Community — including answers given while it was restricted to the kitchen, by people who answered against that narrower audience. No confirmation copy makes that a setting rather than a disclosure, so `sensitive` is now **absent from `updateProfileQuestionInput` entirely** rather than validated-and-refused. It is the one profile-question attribute with no update counterpart, and unrepresentable is the stronger of the two: a validation can be bypassed by a caller that doesn't go through the schema, an absent field cannot be set at all. The remedy is the one the codebase already has for questions — archive and re-add, which leaves the old answers on the old question rather than reinterpreting them. Emergency access stays mutable, because switching it *off* discloses nothing; the two flags are deliberately not symmetric.
 
@@ -454,7 +472,7 @@ Two populations are deliberately not asked, and both are cases where **nothing a
 
 Verified by `tsc`, `eslint` (0 errors) and `next build` clean, and the full suite green (1627 tests, 83 files) against a throwaway database. The tests are the interesting part: the ladder tests were rewritten around a `createRestrictedQuestion` helper because the three-step create/rule/flag incantation was the only order the old write side permitted, and a shape that has to be spelled out in thirty places is a shape that will be wrong in one of them. New coverage asserts the property that decides the disclosure — a rule added after an answer does not reach it, in both the narrow and the batch resolver, and agreeing to one group does not agree to the next — plus the kitchen case where getting it wrong hurts somebody, since a nut allergy nobody could see is the sharp end.
 
-## Unreleased: the dev deployment can be updated again, and two bugs a passing test suite had missed
+## the dev deployment can be updated again, and two bugs a passing test suite had missed
 
 `scripts/rebuild.sh` had one path, written for the production VPS: pin the image to `git rev-parse HEAD`, `docker compose pull app`, restart. That is right for a 1-2GB box where building caused the "Ineffective mark-compacts near heap limit" OOM and the "no space left on device" that moved the build to GitHub Actions in the first place (`03ce132`), and it is still the default. It is wrong for a development machine, for a reason that is not about resources: **a pull can only ever deploy a commit that CI has already finished building.** Working-tree changes — which is what a session produces — are undeployable. To look at your own work in a browser you had to commit, push, wait for Actions, then pull, and that is how a run of changes ended up carrying "not verified in a browser" through several changelog entries when the browser was sitting right there on `localhost:3000`. The running container had drifted to a two-week-old `:latest` while HEAD was three commits ahead, so even committed work wasn't reaching the dev box.
 
@@ -462,7 +480,7 @@ Verified by `tsc`, `eslint` (0 errors) and `next build` clean, and the full suit
 
 Two things the build surfaced while fixing it. `docker compose build` in Compose v5 has no `--target`, so the `checks` stage is run with `docker buildx build --target checks --output=type=cacheonly` — which is exactly what the CI workflow already does, and restores the fast lint-then-build pre-check the Dockerfile's own comment describes but the script had stopped doing. And the review-step import that broke the build (see below) is the documented reason `defaults-table.ts` exists: a client component cannot import anything from a module that reaches `@/db`.
 
-## Unreleased: the two sensitive-data systems collapse into one, and the audience ladder finally runs
+## the two sensitive-data systems collapse into one, and the audience ladder finally runs
 
 There were two. The four fixed `member` columns (health conditions, allergies, emergency contact, orientation) had a module toggle, a roster grid at `/sensitive-data`, a consent gate, and exactly one live reader between them — the kitchen's dietary panel, for allergies. Sensitive profile questions had a per-answer audience, indicators, emergency reveal, a per-answer share switch — and **no cross-member read surface at all**. They shared the access-rule table and nothing else.
 
@@ -492,7 +510,7 @@ Also fixed from what the browser showed: a stale sentence in the Access rules co
 
 The `scripts/rebuild.sh` change is the other half of this, and it is a fix to a broken loop rather than a feature: see the entry above.
 
-## Unreleased: every member can read the settings — only Admins can still change them
+## every member can read the settings — only Admins can still change them
 
 `/settings` refused non-Admins outright: *"Only a current holder of an Admins-granting task can view or change these."* The write half was always the one that mattered, since every action in `actions.ts` calls `requireAdmins` itself regardless of what renders. The read half was gating a screen `docs/spec.md` says a community is supposed to be deciding collectively — assembly results are "always advisory, never auto-applied" (`:1257`), a foundational-settings change is expected to reach quorum against the whole roster "before Admins act on it" (`:430`), and decisions about what data is collected and who sees it belong to "the Community's collective decision-making … not to whoever currently holds the sysadmin task" (`:1267`). None of that is reachable while the settings themselves are unreadable: the body weighing a change has to be able to read what it is weighing. The gate moves from the read to the write.
 
@@ -508,7 +526,7 @@ Verified by `tsc` and `eslint` clean, `next build` clean, and three new tests in
 
 **Not verified in a browser.** This deployment runs a prebuilt Docker image, so none of it is in it.
 
-## Unreleased: settings changes leave a record — one row per changed field, and only the fields that really moved
+## settings changes leave a record — one row per changed field, and only the fields that really moved
 
 `docs/open-permissions-plan.md` §9.1 recorded, as a deliberate deferral, that **"there is no audit mechanism for settings changes at all"** — no audit, history or revision table anywhere in the schema, with the schema comments on `profile-question.ts` and `call.ts` explicitly disclaiming one. What exists was incidental: `proposedBy` on a milestone as "a pure audit field", `objection.raisedBy` as "a real audit trail" that is deliberately never surfaced back out. Those are columns that fell out of a feature, not a log. The plan kept only the cheap half (`opened_by` on `open_permission_grant`, already built) and deferred the rest, on the reasoning that a faithful log has to cover every `requireAdmins` action behind the ten settings tabs rather than just the community row.
 
@@ -530,7 +548,7 @@ Two things carried in the schema rather than left to convention: no index on `(c
 
 Verified by `tsc` and `eslint` clean, and 12 new tests in `tests/settings-change.test.ts` covering the per-field diff, the unchanged-resubmit case, unsubmitted fields, array and object round-tripping, both directions of the ordering question, a refused update leaving no row, per-community isolation, the withheld flag, and that a withheld row still records its actor and timestamp. **Not verified in a browser** — nothing renders this yet.
 
-## Unreleased: the sensitive-question work, finished — the starter set is reviewed before it lands, and an audience can be set at all
+## the sensitive-question work, finished — the starter set is reviewed before it lands, and an audience can be set at all
 
 Four separate gaps in the question work, three of them reachable only by a new community and all four of them the kind that look finished. The sensitive questions, their access rules, and the default set were all built and tested; what was missing was the last mile of each, and in one case the code was unreachable from the UI entirely.
 
@@ -548,7 +566,7 @@ The table and its types moved to `src/lib/profile-questions/defaults-table.ts`, 
 
 Verified by `tsc`, `eslint`, and `next build` clean, and the full suite green (1597 tests, 81 files) — including 28 in `tests/profile-question-defaults.test.ts` and 26 in `tests/sensitive-data.test.ts`. Tests ran against a throwaway database rather than the deployed one, since the suite truncates between files. **Not verified in a browser**: this deployment runs a prebuilt Docker image, so the new review form isn't in it.
 
-## Unreleased: event management moves into the view selector
+## event management moves into the view selector
 
 The Events page was promoted out of the Community nav group to its own top-level sidebar row in `b50c1d0`. It shouldn't have been: **what that row is for is managing whichever event you already have selected**, and the app already has a control for exactly that question — the view-scope switcher, sitting at the top of the sidebar above every nav item. The row and the switcher were answering the same question twice, in two different places, and the row was the worse answer of the two, because it couldn't even resolve to an event: `/participation` is a redirect shim onto `/[cycleScope]/participation`, so a plain prefix check never lit the row up on the page it actually led to. It needed a special case in `AppShell`'s `isActive` purely to paper over that (that special case is now gone with the row).
 
@@ -562,7 +580,7 @@ The Events page was promoted out of the Community nav group to its own top-level
 
 Verified by `tsc` and `eslint` clean on the touched files and `tests/nav-config.test.ts` green. **Not verified in a browser** — this deployment runs a prebuilt Docker image, so the change isn't in it, and driving a real login against the accumulated data wasn't worth it for a nav relocation.
 
-## Unreleased: batch selection is something you start, not something you're looking at
+## batch selection is something you start, not something you're looking at
 
 The board's checkboxes were visible on every card, in every view, all the time. That was never the design — the original 54-line version had them inside a collapsed disclosure, opened on purpose. Widening selection to all four views and all three batch actions (Claim, Task Pack export, bulk Move) kept the gate and dropped the mode, so the cost of a feature that most visits never use is paid by every visit: a column of empty tick boxes down the left of a board whose actual job is being read.
 
@@ -570,7 +588,7 @@ The board's checkboxes were visible on every card, in every view, all the time. 
 
 **Leaving discards the selection rather than hiding it.** "Done" clears the set along with the checkboxes. Keeping a selection alive under a hidden UI is how you end up with a menu confidently promising "3 tasks selected" that nobody can see or revise — the count would be real and unfalsifiable from the screen. The mode is also escapable when a filter change empties the selectable set mid-selection: select-all goes disabled and greyed rather than checked, and the bar stays put with its Done button instead of vanishing and stranding the user in a mode with no exit.
 
-## Unreleased: closing the gaps in open permissions — what travels, and what a shared item says
+## closing the gaps in open permissions — what travels, and what a shared item says
 
 The open-permissions work landed in two commits; this is the part that turned out not to be finished by them, and all of it is small.
 
@@ -582,7 +600,7 @@ The open-permissions work landed in two commits; this is the part that turned ou
 
 Also: a spec section for the whole mechanic under Transparency & access, since it's a principle a reader of the spec would otherwise not know existed, and the plan document marked through to done — including the one item where the plan's own advice turned out to be wrong, recorded as withdrawn rather than quietly deleted.
 
-## Unreleased: permissions a Community can open to everyone, and a Recruitment pipeline that can finish
+## permissions a Community can open to everyone, and a Recruitment pipeline that can finish
 
 Every permission in the system was task-gated: a capability existed because whoever currently held a task carrying a `permission_grant` row could do it, and nobody else could. That is a good default — authority you can point at, that goes away when the person leaves. But it has one failure mode with no way out. A Community that wants everyone to be able to evaluate applications, or draw the Zone plan, or close the budget has no way to say so, and the alternative — inventing tasks and claiming them so a resolver returns true — is not a setting anyone would find.
 
@@ -596,7 +614,7 @@ Two smaller things fell out of doing it honestly. The needs-action lists were pe
 
 Still deliberately not done: opening a module does **not** unlock a sensitive field gated to that module's grant. That coupling is real and invisible, and whether it should compose is a separate question about profile questions and consent — being worked out on its own.
 
-## Unreleased: a phase you can read at a glance, and a number that stops being a number
+## a phase you can read at a glance, and a number that stops being a number
 
 The phase list on `/participation` rendered each phase's entire authoring form inline — two bordered date fieldsets with a segmented control apiece, a "Save dates" button, and a module-picker row — and buried the phase itself underneath. With a handful of phases the section became a wall of controls, and the one thing you'd come to check (when *is* this phase?) was the thing you had to read past the form to find. The rules below are all consequences of taking the summary seriously enough to write.
 
@@ -615,7 +633,7 @@ The phase list on `/participation` rendered each phase's entire authoring form i
 
   Verified by `tests/dates-describe.test.ts` (13 cases pinning each rule, including the two-recipes-one-instant equivalence and the clamp at both ends), the existing `dates-resolve`/`date-display` suites, `tsc`, `eslint`, and a clean `next build`. Not verified in a browser: this working tree carries uncommitted migrations `0063`–`0074` that the local Postgres has never been migrated to, so every DB-backed test and the running app both fail on `cycle_indicators_enabled` regardless of this change — pre-existing, and reproduced on a clean stash to confirm it.
 
-## Unreleased: community-wide coordination, and a permissions tab you can scan
+## community-wide coordination, and a permissions tab you can scan
 
 - **Coordination can now skip the branch, for a community too small to want a coordinator per branch.** Coordination was already two widths — a branch column (an event-independent task in branch B covers all of branch B) and an event row (a task in event C covers all of C) — but a small community had no third answer, because **a branch is the smallest unit a task can be placed in**: `task.branchId` is `NOT NULL`, so no arrangement of ordinary tasks can express "every branch". The only workarounds were a coordination task per branch (exactly the duplication being avoided) or letting one branch's column quietly stand in for the whole community.
 
@@ -627,12 +645,12 @@ The phase list on `/participation` rendered each phase's entire authoring form i
 
 - **The permissions tab is grouped by how far each gate reaches — "Community-wide" and "Per-event" — and the per-module text is gone.** Fourteen modules each led their hint with the same "a task grants what it sits in" clause: one rule, stated fourteen times, in ~600 words of near-identical paragraph, with the part that actually differs (what holding the role *lets you do*) buried at the end of each. The shared rule is now stated once per section header, and the hints are reduced to the capability. The split is **derived from the tier table** rather than hand-listed, so a new module can't land in no section or in two — `tests/permissions.test.ts` asserts the two sections partition the module keys. Only the community-shaped tier earns its own section; the cycle-shaped and cycle-variant tiers share the per-event one, because the rule a reader needs is the same for both and the only real difference is the label each row already prints ("Evergreen" vs "Community-wide"). The task-detail checkbox list isn't sectioned, so it instead shows the derived scope under each checkbox — the same information, where the reader is actually deciding what to grant.
 
-## Unreleased: open Assemblies on the Community hub, and a quieter sidebar
+## open Assemblies on the Community hub, and a quieter sidebar
 
 - **An open Assembly now shows on `/community`, and the Community nav item carries a badge.** But the badge deliberately counts only Assemblies you're actually still owed an answer on — a voting-phase one you haven't finished — never every open one. `spec.md` is emphatic that an Assembly gets "no built-in urgent notification, on purpose", and a badge lit for anything open would work straight against that: it would nag about a notice-phase agenda you can't vote on yet, and about an open agenda where nobody is waiting on anyone. So `isAwaitingMyAnswer` counts voting-phase only, and that one predicate is the single definition behind three surfaces — the hub's "N are waiting on your answer", the sidebar badge, and the /assemblies list's "Waiting on you" — so they cannot drift apart. The *listing* is passive and breaks no rule: nothing is sent, nothing interrupts, which is exactly how the "Current and upcoming events" cards on the same page are already treated, and why it lives on the community-wide page rather than the personal Dashboard. One shared `assemblyParticipationById` query serves the badge and the hub, and the hub reads `listOpenAssemblies` — so the badge is literally a count of what that page shows.
 - **Link-header nav groups (Tasks, Community, Communication) now start collapsed; Modules starts open.** A `headerIsLink` group is a *link* first and a container second, so the row you click is its own destination and the sub-list is only alternate routes into it — expanding all of them by default turned the sidebar into a wall of indented text duplicating hubs each header already links to. Modules is the opposite shape: its header isn't a destination, so its items *are* the group, and collapsing it would hide the only content it has. The default is data in `nav-config.ts` as a new `defaultOpen`, and the sidebar's persisted state had to change shape to permit that: it stored a *set of closed groups* against a fixed "everything open" default, which can only ever add to the closed list — so a group now defaulting to closed could never be opened again, since clicking its chevron would have meant "close it" regardless of intent. It stores the chosen state per group instead, so opening works in both directions. The old `closedGroups` key is read once and converted rather than discarded, so nobody's sidebar springs back open because the format changed, and a test pins that `defaultOpen: false` can only appear on a group that both has a header link and has items — a header-less group collapsed by default has nowhere to go.
 
-## Unreleased: Assemblies you can actually read, and one to decide your settings with
+## Assemblies you can actually read, and one to decide your settings with
 
 Assemblies had all the right data and none of it reached the screen. Reading an agenda was the worst of it: `options` was only ever rendered as the *inputs* of a vote form, and only once voting was open — so during agenda-building you couldn't check the options you'd just typed were right, and during **notice** (the phase whose entire purpose is "the agenda is locked and visible") a pick-one question was visually identical to a written-answer one. Nobody could read what they were about to vote on. Everything below follows from taking that seriously.
 
@@ -673,14 +691,14 @@ Assemblies had all the right data and none of it reached the screen. Reading an 
 - Reachable from `/assemblies/new` ("Use the Founding settings agenda") and prompted on `/settings` — the one place someone goes *because* they're about to configure something. The prompt disappears the moment a Founding-settings Assembly exists (read off `assembly.templateKey`, so the truth stays with the Assembly rather than being mirrored, and deleting it correctly brings the offer back), and otherwise on its own after a fortnight. It has no dismiss button: the two weeks *are* the answer to "I don't want this", and a "no thanks" would just mean it reappeared for the next person who didn't click it. The clock anchor is `community.foundersAssemblyPromptedAt` — deliberately "when we first showed it", not "how old the install is", since this is single-tenant self-hosted software and a deployment that has been running for a year and only just started using the tool properly must still be offered it.
 - Three nullable columns, one migration (`0066`), no backfill: `assembly.template_key`, `assembly_question.settings_mapping`, `community.founders_assembly_prompted_at`. `template_key` is free text rather than a pgEnum on purpose — adding a template shouldn't cost a migration.
 
-## Unreleased: board selection, navigation, and import follow-up
+## board selection, navigation, and import follow-up
 
 - The board's Unclaimed/Kanban/phase/coverage views now share card-level selection with Claim, filtered Task Pack export, and bulk placement Move actions. A tag filter can define a selectable cluster; uncapped tasks correctly count as having open slots.
 - Branch coverage keeps its health status public while limiting detailed task lists, counts, and triage ordering to the relevant branch/cycle coordination scope.
 - The Library header-only nav destination renders, `/community` is the single Community hub, and `/members` is directory-only.
 - Pack-import reassignment supports selecting multiple declined tasks and applying one existing branch while retaining per-task overrides.
 
-## Unreleased: question field shapes
+## question field shapes
 
 - **Six answer types, with the variations as flags rather than as more types.** `text` (one line or long), `single_choice`, `multi_choice`, `boolean` (yes/no), `date` and `number`, replacing `free_text`/`single_choice`/`multi_choice`/`date`. The point of keeping the list at six is that the orthogonal parts stay orthogonal: short-vs-long and a format check (none/email/phone/url) are two independent settings on a text field, because "an email is still a text field, still short, still deferrable" — a flat list would need `short_text`, `long_text`, `email`, `long_email`, `phone` and a branch in every renderer and validator for each. `free_text` is gone because it described neither its length nor anything else; existing rows migrate to `text` with the long-answer flag on, so no question changes how it renders.
 - **A choice field can offer an "other" escape hatch.** This is the one that makes a closed list usable: a vocabulary you can count, with a way for people to answer in their own words, which is otherwise a choice between a list that excludes people and free text you can't aggregate. The words are stored as an ordinary string in the option's own slot, so an aggregate needs no special case to count the options. Deliberately **not** a ranking: pronouns aren't a priority order, and requiring a primary asks people to invent a fact about themselves. It does imply a list, so a list is also expected — a free-text-only pronoun field can't feed a diversity indicator, and shouldn't be asked to.
@@ -697,7 +715,7 @@ Assemblies had all the right data and none of it reached the screen. Reading an 
 - **Describing a shape in words is one definition too.** `RESPONSE_TYPE_HINTS` and `RESPONSE_TYPE_NOUNS` join the label map, because the copy was being hand-written per surface and the failure mode is concrete: `QuestionShape` treated "not a choice" as "is prose", so the moment an agenda item could be a date, a figure or a yes/no it printed "Written answer — Everyone answers in their own words" under all three. A lookup can't drift like that, and a test pins that no type is missing a label, a hint or a noun. `agenda.ts`'s own `isChoiceType` and `AssemblyResponseType` are re-exports of the shared ones rather than lookalikes.
 - **The Assembly ballot had to learn the new types too**, and this is the part that made the change more than a schema change. It's a controlled client component, so it can't use `FieldPreview`; but the agenda composer can now create a date, a figure or a yes/no, and leaving the ballot unable to render them would have let a community author questions its own voting form couldn't answer. It renders all six itself and serialises `false` and `0` as answers rather than absences. Its "N of M answered" count and its payload are now derived from one function instead of two parallel derivations, which is the case where a field the count called answered got dropped from the submission.
 
-## Unreleased: a member's standing opt-out from published indicators
+## a member's standing opt-out from published indicators
 
 - **A member can now drop out of every published community indicator at once**, from a new "Community indicators" section on `/profile` (migration `0071`, one boolean on `member`). This is the consent mechanism that was missing: `allowPreferNotToSay` is a *response to one question* — still required on every published indicator — but neither that nor ticking the box on a question is the same as a member deciding once, "don't put me in any aggregate". A question invented in year two has no decline for them to have used.
 - **It is a reporting exclusion, not an answering gate.** You can still answer every question while opted out, and answering still costs nothing in outstanding-question terms. Suppressing answering too would be a way to drop someone out of a *required* question by hiding the control, which is the opposite of what the control says on the tin. A test pins that the answer is still written.
@@ -708,7 +726,7 @@ Assemblies had all the right data and none of it reached the screen. Reading an 
 - **Known sharp edge, not hidden:** anyone who answered a question *before* its community published it was counted from the moment it was published, with no consent step at answer time. Opting out is immediate for them, but they had to find this first. The real fix is the one still open — publishing is currently an Admin's decision rather than the Community's, which `docs/spec.md`'s two-tiers rule says foundational settings should not be. **That remains the bigger gap.**
 - Also corrected a wrong comment: the consent floor claimed `listCommunityIndicators` was "the JSON API's path in". There is no such route — both call sites are pages — so the read-side re-check is now documented as what it is, a defence against a row that predates a rule.
 
-## Unreleased: sensitive profile questions, emergency access, and a settled consent model
+## sensitive profile questions, emergency access, and a settled consent model
 
 The three-category question taxonomy (public / logistics / gated) is replaced by independent attributes, and the per-publication consent machinery built earlier in this same branch is **removed**. Migration `0076` adds `profile_question.sensitive` and `profile_question.emergency_access`; `0077` drops `member.excluded_from_indicators`, `profile_answer.indicator_consent` and the `indicator_consent` enum.
 
@@ -728,7 +746,7 @@ The three-category question taxonomy (public / logistics / gated) is replaced by
 
 **Still to come on this design:** access rules retargeted from a field enum to a question id, the per-answer share-with-audience checkbox (sensitive only, default on), required `emergencyAccessLog.explanation` for question reads, task-derived questions, the community-chosen prominent profile set, and setup-time seeding of the default question set.
 
-## Unreleased: sensitive profile questions actually restrict something
+## sensitive profile questions actually restrict something
 
 `sensitive` and `emergency_access` were columns in the previous entry and nothing more. This is the read side that makes the first one mean something, plus the third way a question can contradict publication. Migration `0078` gives an access rule and a consent purpose a question to name, and adds the per-answer share flag.
 
@@ -748,7 +766,7 @@ The three-category question taxonomy (public / logistics / gated) is replaced by
 
 **Still to come on this design:** emergency *reads* are not wired to the log yet (`emergency_access` is stored and guarded, but activating emergency mode doesn't yet surface question answers, and `emergencyAccessLog.explanation` being nullable still needs making required for question reads); task-derived questions inheriting their task's scope; the community-chosen prominent profile set; and setup-time seeding of the default question set.
 
-## Unreleased: community indicators — publishing an answer as a fact about everyone
+## community indicators — publishing an answer as a fact about everyone
 
 - **A community can now choose which of its standing questions are aggregated on `/community`.** A new `publishedAsIndicator` flag on `ProfileQuestion` plus an `indicator_visibility` enum (`public` / `coordination`), migration `0070`. This is the payoff of having asked something like pronouns in a shape that keeps its options countable: an answer that stays private teaches the community nothing, and an answer published without anyone choosing to is a disclosure no member agreed to. The section renders as "About this community", and reads "Chosen by this community from its own standing questions. Everyone here chose to answer their own; nobody is named."
 - **Nobody chooses the display form — it's derived from the answer type**, because the alternatives are worse in a specific way each. Three families cover every publishable type: **split** (`single_choice`, `boolean` — everyone contributes exactly one thing, so the parts are shares of a whole), **distribution** (`multi_choice` — everyone may contribute several, so each count is "how many people chose this" and the counts deliberately *don't* sum to the answerer count), and **summary** (`number`, `date` — a magnitude or a point in time, which has nothing to split, and bucketing one would invent a histogram nobody asked for). A hand-picked chart option would let someone put a pick-any question in a pie, and a pie of "who picked what" implies slices of one whole when five people choosing three options each is fifteen slices over five people. `text` has no family and **cannot be published at all** — not "shows badly", but because the only honest total of a text field is the members' own words.
@@ -765,7 +783,7 @@ The three-category question taxonomy (public / logistics / gated) is replaced by
 - **The reason is phrased as a noun phrase, not a sentence**, because both callers splice it into their own: "published as a community indicator, and *<reason>*." reads badly when the reason is itself a clause with an "and" in it. Same class of bug as the publish/stop remedy split below.
 - **Worth knowing before turning this on for a sensitive question:** an event population is *smaller and more identifiable* than a community — "1 of 8 people coming uses they/them" is a sharper disclosure than "1 of 40 members do", because the reader knows exactly who the eight are. The `coordination` gate is the tool for that case and still applies when scoped, and the decline above is what makes being counted a choice. There is deliberately still **no automatic small-n suppression**: a hidden threshold would make a published indicator read as broken with no way to tell why, and inventing a disclosure rule nobody agreed to is worse than the community choosing.
 
-## Unreleased: declaring participation from a dashboard, and per-event questions
+## declaring participation from a dashboard, and per-event questions
 
 - **Saying you're coming is now a one-click thing on a dashboard.** The Community hub carries "Current and upcoming events" unconditionally — one long horizontal card per open event with its name, date span, how many people are coming (out of the cap when one is set, plus outstanding held invite slots and an over-capacity marker), and a Coming/Maybe/Not coming control. The Dashboard carries the same strip whenever the nav switcher isn't already narrowed to one specific event, and a top-of-page ribbon ("You're not down as coming for *event*") when it is. Nothing was ever missing from the data model for this: `listOpenEventParticipationCards` just reads the open cycles through the same `getCycleParticipationSummary`/`getMyParticipation` the Events page uses, so the count can't drift from the real figure.
 - **A status-only declaration no longer wipes the dates and note.** Clicking "Coming" sends only a status; the arrival date, departure date, and note someone typed into the Events page's full form are left alone. `declareParticipation` now treats an omitted field as "leave as-is" while an explicit `null` still clears it — which is exactly what that form has always sent. Without this, a one-click nudge would quietly destroy real data.

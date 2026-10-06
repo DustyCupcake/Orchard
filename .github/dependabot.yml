@@ -1,0 +1,41 @@
+# Dependency updates, as pull requests.
+#
+# Security updates are always opened, whatever is configured below. What this
+# adds is a steady trickle of minor and patch updates, grouped so they arrive
+# as one reviewable PR rather than thirty.
+#
+# Major versions are ignored on purpose. A major bump of Next, Drizzle,
+# TypeScript or the React packages changes how the app builds or how its
+# database layer behaves, and is a piece of work to be planned and tested, not
+# a PR to be merged because it is green. (Drizzle in particular: an upgrade
+# changes how migrations are generated, and applied migrations are immutable.)
+# When one is wanted it is done by hand, and this list is where to remember
+# that it has been deferred.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+    ignore:
+      # The runtime image is pinned to the Node major the app is tested on
+      # (scripts/test.sh runs the suite on the same one).
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]

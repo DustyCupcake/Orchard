@@ -11,9 +11,21 @@ name: Build and publish image
 # ghcr.io is unreachable from it, full stop. registry-1.docker.io,
 # auth.docker.io, and its Cloudflare-fronted blob storage are all
 # dual-stack, confirmed by DNS lookup before switching.
+#
+# Two kinds of push produce an image:
+#   - main            -> :latest and :<full commit sha>, as before. What the
+#                        deployed community pulls.
+#   - a tag `vX.Y.Z`  -> :X.Y.Z and :X.Y as well. A release is a tag, and an
+#                        instance that wants to stay put on a known version
+#                        pins one of those instead of following :latest.
+#                        Pushing the tag does not also move :latest (that is
+#                        the branch's job, and the tag is normally the same
+#                        commit).
+# Either way the test suite has to pass first.
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch: {}
 
 env:
@@ -76,13 +88,26 @@ jobs:
           username: dustycupcake
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Computes the tag list from what triggered the run (see the comment
+      # on `on:`). `prefix=` on the sha keeps it identical to the bare commit
+      # sha this workflow has always published.
+      - name: Work out the image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long,prefix=
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

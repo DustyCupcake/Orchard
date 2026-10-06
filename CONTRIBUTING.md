@@ -58,6 +58,8 @@ Two other things the script gets right that are easy to get wrong by hand:
 - **The test database runs under production's Postgres settings** (`shared_buffers=128MB`, `max_connections=50`). The documented `docker run` used to start on stock Postgres defaults, so a suite could pass locally and still break on the configuration you'd actually deploy. It also runs with `fsync`, `synchronous_commit` and `full_page_writes` **off**, which production does not: the suite's `TRUNCATE`s leave thousands of files for each checkpoint to sync, and with durability on a restart of the database after a heavy batch could outlast the script's patience and abort the run. Those settings change how fast Postgres writes, not what a query returns, and a database that is truncated between every test file has nothing to be durable for. An older container left running on the previous settings is detected and replaced automatically.
 - **It recreates the container if it's gone.** The test container is `--rm`, so it does not survive a Docker restart — which is why a `docker compose up` after a VM memory change can leave you with no database and a confusing connection error.
 
+**A migration that changes rows that already exist needs a test on data that already exists.** The suite migrates an empty database, which is the one case where a migration that breaks on real data looks fine — that is how 0083 (a `NOT NULL` column added with no default, backfilled afterwards) passed every test and would have crash-looped a real deployment on boot. `tests/migration-helpers.ts` builds a throwaway database, migrates it to just before the migration under test, lets you insert rows in the *old* shape with plain SQL, then runs the rest; `tests/migrations.test.ts` has the examples. Add one whenever a migration backfills, moves, tightens or drops data. A new table or a nullable column needs nothing. `tests/migration-lint.test.ts` is the static backstop: it fails on any `ADD COLUMN … NOT NULL` without a `DEFAULT` unless the line above carries `-- migration-lint: allow-not-null-no-default <why the table has no rows>`, and on a journal that disagrees with the `.sql` files on disk (`scripts/check-migrations.mjs`, worth knowing about if two people are generating migrations at once).
+
 Override when needed, no editing required: `ORCHARD_TEST_BUDGET_MB`, `ORCHARD_TEST_BATCH`, `ORCHARD_TEST_CONTAINER`, `ORCHARD_TEST_PORT`.
 
 `SESSION_SECRET` is defaulted by the script (still required by anything touching magic links or the generic action-token infrastructure — those throw without it). Never treat a phase's database-touching logic as verified from unit-level assertions alone if there's no real query behind them.
@@ -77,7 +79,29 @@ Override when needed, no editing required: `ORCHARD_TEST_BUDGET_MB`, `ORCHARD_TE
 - **One commit per coherent, phase-sized change** — not one commit per file, not a giant commit bundling several unrelated changes. Look at `git log` for the established granularity before deciding how to split your own work.
 - **Write a detailed commit message.** What was built, real bugs found and fixed along the way, what automated tests cover, and what manual verification actually exercised. These messages are themselves documentation — `CHANGELOG.md`'s own entries are written at exactly this level of detail, and future readers (including future sessions of whoever's building this) reconstruct context from git log and CHANGELOG, not from re-reading every diff.
 - **Update `CHANGELOG.md` (and `README.md`'s feature list, if the change is user-facing) in the same commit as the code** — not a separate follow-up commit.
-- **Never commit `docs/development-plan.md` or `docs/development-plan.full-archive.md`.** Both are deliberately local-only working notes (see their own text) — everything durable belongs in `CHANGELOG.md`, `docs/roadmap.md`, or `docs/spec.md` instead, all of which are committed.
+- **`docs/development-plan.md` and `docs/development-plan.full-archive.md` are working notes, not specification.** They are committed, because they carry the reasoning behind how the original build was sequenced, but they are neither normative nor kept current: the current state of the system is `docs/spec.md`, `docs/roadmap.md` and `CHANGELOG.md`, and anything durable belongs there. The archive is the historical plan for Phases 0–69 and is not edited; `development-plan.md` is scratch space for whatever is being scoped next.
+
+## Releases and upgrading
+
+Orchard is pre-1.0 and has one community running it, but it is published and AGPL-licensed, so anyone could be running it too. A few conventions keep that safe without a heavy process.
+
+**Versions are tags.** `vMAJOR.MINOR.PATCH`, in the semver spirit while below 1.0: a new feature or a migration bumps the minor, a fix bumps the patch, and anything below 1.0 may still break. `package.json`'s `version` matches the latest tag. Pushing a `v*` tag makes CI publish the image as `:X.Y.Z` and `:X.Y` as well as the usual `:latest` and `:<sha>` (`.github/workflows/docker-build.yml`), so an instance that wants to stay put pins a version instead of following `:latest`.
+
+**Cutting a release.**
+1. `main` is green in CI.
+2. In `CHANGELOG.md`, give the `## Unreleased` section a heading `## X.Y.Z — YYYY-MM-DD` and put a fresh, empty `## Unreleased` above it. (Entries keep their headings — `src/lib/docs/content/releases.ts` cites them by exact text.)
+3. Bump `package.json` (and the lockfile) to `X.Y.Z`; commit as `release: vX.Y.Z`.
+4. `git tag -a vX.Y.Z -m "vX.Y.Z"` and push the tag. Copy the CHANGELOG section into a GitHub release.
+
+**Upgrading an instance.** Back the database up first — migrations run when the container starts and only go forward:
+
+```bash
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup-$(date +%F).sql
+```
+
+then pull or rebuild and let the migrations run. For a change that rewrites data, rehearse it first: restore that backup into a scratch Postgres and run `node scripts/migrate.mjs` against it. A migration is the one thing a fresh-database test run can't tell you about.
+
+**A migration that has shipped is never edited.** Once a version containing it is out, another instance may have run it, and editing the file changes nothing for them while changing what everyone else gets. Fix a mistake with a *new* migration. (0083 was edited in place after it was found to fail on a populated database; that was safe only because nothing had been tagged and nobody else had deployed. It is the exception that this rule exists to end.)
 
 ## Where things live
 
@@ -85,7 +109,7 @@ Override when needed, no editing required: `ORCHARD_TEST_BUDGET_MB`, `ORCHARD_TE
 - [`docs/overview.md`](docs/overview.md) — the plain-language, non-technical pitch. Useful for understanding *why* a mechanic is shaped the way it is, not *how* it's implemented.
 - [`CHANGELOG.md`](CHANGELOG.md) — what's been built, phase by phase, and how it was verified.
 - [`docs/roadmap.md`](docs/roadmap.md) — what's deliberately not built yet, and why.
-- `docs/development-plan.md` — local-only scratch space for scoping whatever gets built next. Not part of the repo's history; don't expect it to reflect anything durable.
+- `docs/development-plan.md` — scratch space for scoping whatever gets built next. Committed, but don't expect it to reflect anything durable; `docs/development-plan.full-archive.md` is the historical Phases 0–69 plan.
 
 ## Questions or design feedback
 

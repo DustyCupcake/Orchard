@@ -11,10 +11,12 @@
 // should add a line here, the same way it adds an entry there.
 //
 // `source` is the CHANGELOG heading this note came from, and is
-// asserted to still exist by tests/orchard-docs.test.ts. That catches
-// a note whose source entry has been renamed or deleted, and — via
-// the same test — a CHANGELOG entry that grew a fresh "Unreleased:"
-// heading and was never summarised here.
+// asserted to still exist by tests/orchard-docs.test.ts, so a note
+// whose source entry has been renamed or deleted fails the suite
+// instead of quietly outliving what it summarises. What it does not
+// catch is an entry that was never summarised here at all; whether a
+// change is one a member would notice is a judgement, and adding the
+// line is part of finishing the change.
 
 export type ReleaseNote = {
   date: string;
@@ -37,7 +39,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "You can leave a tier whenever you like, and the tiers you already hold are unchanged.",
       "Opening Admins or View-as to every member now asks for a confirmation that can't be skipped.",
     ],
-    source: "Unreleased: a manual tier is asked for and confirmed, and opening Admins or View-as needs a confirmation the server checks",
+    source: "a manual tier is asked for and confirmed, and opening Admins or View-as needs a confirmation the server checks",
   },
   {
     date: "2026-10-06",
@@ -50,7 +52,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "While someone is viewing as another member, nothing can be changed — including by routes that previously let it through.",
       "Pages in the documentation that described things not built yet now say so, with a \"Planned — not built yet\" label.",
     ],
-    source: "Unreleased: a form can't ask a sensitive question, the last Admins grant is a way out and not a trap, REST writes respect View-as, and the docs stop describing things that don't exist",
+    source: "a form can't ask a sensitive question, the last Admins grant is a way out and not a trap, REST writes respect View-as, and the docs stop describing things that don't exist",
   },
   {
     date: "2026-10-06",
@@ -63,7 +65,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Signing in with a login link now also confirms that address as yours, so the profile no longer offers to \"send me a confirmation\" for an address you just proved.",
       "Redeeming an invite with an address you already use for signing in now takes you to your existing account instead of making a second one.",
     ],
-    source: "Unreleased: a first-login screen, and the name a member is actually called",
+    source: "a first-login screen, and the name a member is actually called",
   },
   {
     date: "2026-10-06",
@@ -75,7 +77,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "The permanent record names everyone who supported an overrule and what they said.",
       "Changing an event's own admission rules is now limited to whoever can start an event; it was open to any member who knew how to ask.",
     ],
-    source: "Unreleased: an audit's three real faults — event admission rules, the overrule threshold, a migration that only worked on empty databases — and the suite runs in CI",
+    source: "an audit's three real faults — event admission rules, the overrule threshold, a migration that only worked on empty databases — and the suite runs in CI",
   },
   {
     date: "2026-09-29",
@@ -86,7 +88,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "A menu that doesn't fit above or below its button now opens the other way, or scrolls, rather than running off the bottom of the screen.",
       "The menu keeps up with the page when you scroll, and with your phone when you turn it.",
     ],
-    source: "Unreleased: the ⋯ overflow menu is unusable on a phone",
+    source: "the ⋯ overflow menu is unusable on a phone",
   },
   {
     date: "2026-09-29",
@@ -97,7 +99,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "There's a 'What's new' list alongside it, describing what changed in terms of what it means for you rather than what changed in the code.",
       "It's read-only. None of it can be edited or deleted from inside the app, and it's the same on every installation.",
     ],
-    source: 'Unreleased: the Library gets a documentation section, and the "why" moves out of the interface',
+    source: 'the Library gets a documentation section, and the "why" moves out of the interface',
   },
   {
     date: "2026-09-29",
@@ -111,7 +113,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "\"Put it in front of the coordinators\" now reaches every coordinator, not just the ones covering your branch — which is the whole point of the button. It's visible to the whole community too, because that's a disclosure and shouldn't look like a private nudge.",
       "If a coordinator suggests someone for a task, that suggestion now survives the task actually being created, which is the moment someone could act on it.",
     ],
-    source: "Unreleased: the Coordination view becomes a dashboard, and the self-assign check stops being a wall",
+    source: "the Coordination view becomes a dashboard, and the self-assign check stops being a wall",
   },
   {
     date: "2026-09-29",
@@ -122,7 +124,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "If more than one group can read a question, you get a box per group. You can accept the kitchen team and decline next year's welfare team, which one combined box didn't let you do.",
       "Un-ticking a box now removes that group's access rather than doing nothing. Previously the control could only ever add, so there was no way to narrow sharing once you'd agreed to something.",
     ],
-    source: "Unreleased: a member is told who is reading, and gets to choose which of them",
+    source: "a member is told who is reading, and gets to choose which of them",
   },
   {
     date: "2026-09-29",
@@ -134,7 +136,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Every member can read the settings now. Only Admins can change them.",
       "Changes to community settings leave a record of what actually moved.",
     ],
-    source: "Unreleased: who joins, how, and what the community decides — plus a settings screen you can read",
+    source: "who joins, how, and what the community decides — plus a settings screen you can read",
   },
   {
     date: "2026-09-29",
@@ -144,7 +146,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "On 24 pages, a saved dropdown would revert to its previous value on screen immediately after saving. The save had worked; the display just hadn't updated.",
       "If something you changed in Settings appeared not to stick, this is why. Nothing you did was wrong.",
     ],
-    source: "Unreleased: a saved dropdown no longer reverts on screen — 23 more sites, and the diagnosis the first commit didn't carry",
+    source: "a saved dropdown no longer reverts on screen — 23 more sites, and the diagnosis the first commit didn't carry",
   },
   {
     date: "2026-09-28",
@@ -155,7 +157,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Marking a question sensitive is now a one-way door. Turning it off would make every answer given so far readable by everyone, including answers people gave while it was restricted — so it can't be done at all rather than being done behind a warning.",
       "A group added to a question's audience after you've answered can't reach your existing answer. You're asked separately, and a no is a no.",
     ],
-    source: "Unreleased: a question's audience moves onto the question, and the Access rules section goes",
+    source: "a question's audience moves onto the question, and the Access rules section goes",
   },
   {
     date: "2026-09-28",
@@ -166,7 +168,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "A community can now say a particular event isn't open to outside applicants at all, which is the case that didn't have anywhere to be configured.",
       "Someone raising a concern about an arrival can't be waved through. It holds the admission until the point is talked through, and over-ruling it takes a decision the platform won't make for you.",
     ],
-    source: "Unreleased: an event's admission rules are stated to the whole community, and a community rule says which events it won't reach",
+    source: "an event's admission rules are stated to the whole community, and a community rule says which events it won't reach",
   },
   {
     date: "2026-09-28",
@@ -176,7 +178,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Managing an event is now a page you choose from a list, rather than a page that was showing a whole event's settings at once for every open event.",
       "Which event you're looking at is chosen from the same switcher used everywhere else, rather than being implicit in the page.",
     ],
-    source: "Unreleased: the events page becomes an index of events, and stops stacking a whole event's settings per open event",
+    source: "the events page becomes an index of events, and stops stacking a whole event's settings per open event",
   },
   {
     date: "2026-09-28",
@@ -186,6 +188,6 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Picking \"Other\" and then typing into a separate box underneath read as two unrelated controls, and it wasn't obvious that the text only counted if the row above was ticked.",
       "It's now a marker next to the text field, and typing in the field ticks it — so un-ticking it afterwards is a real decision rather than a no-op.",
     ],
-    source: 'Unreleased: "Other" is one control, not two stacked ones',
+    source: '"Other" is one control, not two stacked ones',
   },
 ];
