@@ -610,6 +610,13 @@
       "when": 1791290814701,
       "tag": "0086_objection_overrule_support",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1791296088420,
+      "tag": "0087_first_login_profile",
+      "breakpoints": true
     }
   ]
 }

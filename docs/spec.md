@@ -584,6 +584,7 @@ Each boundary is either an absolute date or a canonical relative recipe. A relat
 | joined_at    | timestamp        |                                                                |
 | referred_by_member_id | uuid → Member, nullable | set on invite-link redemption (see Recruitment: Invite links); powers the Accompaniment default suggestion |
 | joined_via_invite_id  | uuid → CommunityInvite, nullable | which specific link was redeemed, if any                                                            |
+| profile_completed_at | timestamp, nullable | when this member was last offered first-login profile setup (see Member onboarding & first session); null = never asked. A "when", never a "should we block" — nothing gates on it |
 
 **MemberLanguage** — repeatable (a member can speak several), so it's its own table rather than a ProfileQuestion answer: `member_id → Member`, `language` (free text), `level` (enum: basic/conversational/fluent/native). Checked by Requirement's `language` type, any level.
 
@@ -1385,6 +1386,14 @@ Separate from Recruitment's application/evaluation flow (getting someone in) —
 5. **Related tasks** — finishing one task surfaces a nudge toward the next. This is the growth engine for the "start small, take on more" participation type.
 
 The goal, regardless of domain: a new member's first session should end with at least one task claimed, not just toured.
+
+**A first-login screen for the profile values the rest of the platform assumes are real, asked once, on the way in.** The five ways a Member comes into existence (magic-link first login, SSO first login, invite redemption, accepted application, admin roster import) all derive `name` from something that isn't a name — an email's local part, or an IdP claim — and none of them ask. So the community's roster is a list of `t.doe` and `toby.w` until each person thinks to visit `/profile`, which most never do. The screen is `/welcome`, reached by a redirect on login rather than a gate: it asks for a name (pre-filled with the derived one, so the common case is editing `t.doe` to `Toby` rather than retyping it), for who may read each contact method, and for languages.
+
+**It is a redirect, never a barrier, and that is the whole design constraint.** Nothing reads `profile_completed_at` to decide whether to *block* anyone — the login entry points read it to decide where to send someone *once*, and the screen sets it whether the member fills the form in or skips it. A member who closes the tab is in the app on their next click like anyone else. This is the same posture the Dashboard's onboarding panel has always taken, and deliberately a *separate* flag: `has_completed_onboarding` means "has seen the orientation panel", which is where step 3's task suggestions live, and folding the two together would mean finishing here silently deletes those.
+
+**The three paths genuinely differ, and the difference is what the screen shows.** An application already captured a name, and a form tagged `isLanguageField` already captured languages — so that member's screen is mostly confirmation. An invitee was named by whoever typed their email, and their address is unverified until they click the link they just clicked. An SSO member gets their name from the IdP's `nickname` claim, falling back to `given_name` and then to the email's local part: the standard full-name `name` claim is never read, because a roster entry is a name somebody chose to be called and "Toby Whitfield" is the least useful thing an IdP can offer for that.
+
+**A proven login link is a proof, and three of the five paths were throwing it away.** Invite redemption, application conversion and roster import all seed a primary contact method with `verifiedAt: null`, on the reasoning that nobody has yet received anything at an address somebody else typed. But the first magic-link login *is* that receipt — a link only ever arrives at an address its recipient controls. So the verify route now records it, scoped to the member it just logged in as rather than to the address, because the address is a string an unauthenticated caller chooses.
 
 ### <a id="member-contact-preferences--emergency-access"></a>Member contact preferences & emergency access
 

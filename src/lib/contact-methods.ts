@@ -1,4 +1,4 @@
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { contactMethod, memberIdentity, task, taskAssignment } from "@/db/schema";
@@ -290,6 +290,38 @@ export async function seedPrimaryContactMethod(
       verifiedAt: options.verified ? new Date() : null,
     })
     .returning();
+}
+
+/**
+ * Mark one of *this* member's own methods as verified, because they proved
+ * they receive mail at it.
+ *
+ * Scoped to `memberId` and to the one address, deliberately, in that
+ * order. A global "verify whichever contact method has this value" would
+ * trust a caller to have already established which member it is talking
+ * about, and the value being matched is one this app sends a login link
+ * to — i.e. a string an unauthenticated caller can choose. Two members
+ * may legitimately hold the same address as a non-primary method, and
+ * the honest answer for both of them is "we don't know"; the one whose
+ * identity the link was actually issued to is the only one this can say
+ * anything true about.
+ *
+ * Idempotent and best-effort: an already-verified row matches nothing
+ * and returns null, which is a success, not a failure.
+ */
+export async function verifyOwnContactMethodByValue(memberId: string, value: string) {
+  const [updated] = await db
+    .update(contactMethod)
+    .set({ verifiedAt: new Date() })
+    .where(
+      and(
+        eq(contactMethod.memberId, memberId),
+        eq(contactMethod.value, value),
+        isNull(contactMethod.verifiedAt),
+      ),
+    )
+    .returning();
+  return updated ?? null;
 }
 
 // "people I share a task or group with" (docs/spec.md's contact-method

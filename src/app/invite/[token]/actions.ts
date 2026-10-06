@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import { redirect } from "next/navigation";
 import { redeemCommunityInvite, redeemCommunityInviteInput } from "@/lib/recruitment";
 import { createSession } from "@/lib/session";
+import { firstLoginDestinationFor } from "@/lib/first-login";
 import { AppError } from "@/lib/errors";
 
 function redirectWithError(token: string, err: unknown): never {
@@ -40,14 +41,15 @@ export async function redeemInviteAction(formData: FormData) {
 
   if (outcome.kind === "member") {
     await createSession(outcome.memberId);
-    redirect("/dashboard");
+    redirect(await firstLoginDestinationFor(outcome.memberId));
   }
   if (outcome.kind === "announced") {
     // A consensus arrival: they are a member (and get a session, because
     // they need to be able to see the community while the window runs)
     // but their place in the event is not settled, so they land on the
     // page that says so rather than the dashboard's unqualified
-    // welcome.
+    // welcome. That page's own button then hands them on to /welcome if
+    // they haven't been through it — same single hop, one page later.
     await createSession(outcome.memberId);
     redirect(`/invite/${token}?announced=1`);
   }

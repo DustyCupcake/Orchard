@@ -4,6 +4,7 @@ import { getOrCreateCommunity } from "@/lib/community";
 import { findOrCreateMemberByOidcSubject } from "@/lib/member";
 import { handleOidcCallback, OIDC_FLOW_COOKIE } from "@/lib/oidc";
 import { createSession } from "@/lib/session";
+import { firstLoginDestination } from "@/lib/first-login";
 import { resolveAppUrl } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
@@ -72,9 +73,10 @@ export async function GET(request: NextRequest) {
     sub: result.sub,
     email: result.email,
     emailVerified: result.emailVerified,
-    name: result.name,
+    nickname: result.nickname,
+    givenName: result.givenName,
   });
   await createSession(memberRow.id);
 
-  return NextResponse.redirect(new URL("/dashboard", appUrl));
+  return NextResponse.redirect(new URL(firstLoginDestination(memberRow), appUrl));
 }

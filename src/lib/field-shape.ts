@@ -456,14 +456,16 @@ export function fieldValueFromFormData(shape: FieldShape, formData: FormData, na
   return String(formData.get(name) ?? "");
 }
 
-// The three tags a *Form* field carries on top of a plain shape: which
-// field holds the submitter's name, which their email, and which
-// once-ever ProfileQuestion this field's answer should seed. Split out
-// because they belong to Form.fields and not to the shape itself — a
-// ProfileQuestion has no notion of "the name field".
+// The four tags a *Form* field carries on top of a plain shape: which
+// field holds the submitter's name, which their email, which the
+// languages they speak, and which once-ever ProfileQuestion this field's
+// answer should seed. Split out because they belong to Form.fields and not
+// to the shape itself — a ProfileQuestion has no notion of "the name
+// field".
 export type FormRoleTags = {
   isNameField?: boolean;
   isEmailField?: boolean;
+  isLanguageField?: boolean;
   mapsToProfileQuestionId?: string;
 };
 
@@ -496,6 +498,7 @@ export function toEditableFieldShape(input: {
   step?: number | null;
   isNameField?: boolean;
   isEmailField?: boolean;
+  isLanguageField?: boolean;
   mapsToProfileQuestionId?: string;
 }): EditableFieldShape {
   return {
@@ -504,6 +507,7 @@ export function toEditableFieldShape(input: {
     ...toFieldShape(input),
     isNameField: input.isNameField,
     isEmailField: input.isEmailField,
+    isLanguageField: input.isLanguageField,
     mapsToProfileQuestionId: input.mapsToProfileQuestionId,
   };
 }

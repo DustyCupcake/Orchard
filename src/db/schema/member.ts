@@ -96,6 +96,26 @@ export const member = pgTable("member", {
   // "never blocks access behind a required flow" posture this codebase
   // takes everywhere else. Gates Dashboard's onboarding panel only.
   hasCompletedOnboarding: boolean("has_completed_onboarding").notNull().default(false),
+  // The first-login screen (`/welcome`) — the one place a member is asked
+  // for the profile values the rest of the app assumes are real: their
+  // name, who may read their contact details, and what languages they
+  // speak. Every path that creates a Member derives `name` from something
+  // that is not really a name (an email local part, an IdP claim), so
+  // without this the whole community's roster is a list of `toby.w` until
+  // each person thinks to go and fix it at /profile — which most never do.
+  //
+  // Deliberately NOT the same flag as `hasCompletedOnboarding` above,
+  // despite both being "first session" state. That one means "has seen the
+  // Dashboard orientation panel", and the panel is where the spec's "a new
+  // member's first session should end with at least one task claimed"
+  // lives; folding this into it would mean finishing here silently
+  // deletes the task suggestions. Two different questions, two flags.
+  //
+  // Set on submit *or* on skip, which is what makes it "redirect on
+  // entry, once" rather than a gate: there is no layout-level guard
+  // reading this, so a member who walks away from /welcome is in the app
+  // like anyone else, and simply never sees it again.
+  profileCompletedAt: timestamp("profile_completed_at", { withTimezone: true }),
   // The nav switcher's persisted selection (Phase 65) — null means the
   // aggregate "all active cycles" default. Plain uuid, NOT a real FK:
   // cycle.ts already imports member.ts (for started_by/closed_by), so

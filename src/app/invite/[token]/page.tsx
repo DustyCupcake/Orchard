@@ -6,6 +6,7 @@ import {
   getCommunityInviteRedemptionPath,
 } from "@/lib/recruitment";
 import { redirect } from "next/navigation";
+import { firstLoginDestinationFor } from "@/lib/first-login";
 import { Banner, BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
 import { redeemInviteAction } from "./actions";
 
@@ -73,6 +74,13 @@ export default async function InvitePage({
   const disclosure = consensusDisclosure(communityName, windowHours);
 
   if (announced && invite?.consensusState === "announced") {
+    // One hop further than the direct path, not a different flow: the
+    // consent invitee reads what was decided about their arrival *before*
+    // being asked to fill in a profile, and this button is the only place
+    // that ordering can be expressed. /welcome bounces anyone who has
+    // already been through it straight back to the Dashboard, so a
+    // returning member following a stale link lands where they'd expect.
+    const onward = await firstLoginDestinationFor(invite.redeemedByMemberId ?? "");
     return (
       <main className="mx-auto max-w-[560px] px-6 py-16">
         <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">You&rsquo;re in — with one thing still open</h1>
@@ -90,8 +98,8 @@ export default async function InvitePage({
         <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">
           You can ask us to stop at any time, without giving a reason.
         </p>
-        <a href="/dashboard" className={`${BUTTON_PRIMARY} mt-6 inline-flex`}>
-          Go to the dashboard
+        <a href={onward} className={`${BUTTON_PRIMARY} mt-6 inline-flex`}>
+          {onward === "/welcome" ? "Set up your profile" : "Go to the dashboard"}
         </a>
       </main>
     );

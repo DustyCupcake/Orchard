@@ -7,6 +7,7 @@ import {
   formResponse,
   member,
   memberIdentity,
+  memberLanguage,
   evaluation,
   objection,
   recruitmentApplicationInvite,
@@ -208,6 +209,12 @@ async function maybeConvertApplicantToMember(
   const emailField = fields.find((f) => f.isEmailField);
   if (!nameField || !emailField) return decision;
 
+  // Read up here, alongside the name/email fields, so the "this form can
+  // produce a person" precondition and the "this form also knows their
+  // languages" question are answered from the same array. Optional by
+  // design: a form that never asks about languages still converts.
+  const languageField = fields.find((f) => f.isLanguageField);
+
   const values = responseRow.values as Record<string, unknown>;
   const name = typeof values[nameField.key] === "string" ? (values[nameField.key] as string).trim() : "";
   const rawEmail = typeof values[emailField.key] === "string" ? (values[emailField.key] as string).trim().toLowerCase() : "";
@@ -280,6 +287,49 @@ async function maybeConvertApplicantToMember(
           });
         } catch {
           // best-effort — see comment above
+        }
+      }
+    }
+  }
+
+  // A form field tagged isLanguageField seeds real `member_language` rows,
+  // for the same reason the mapped questions above do: this applicant has
+  // already said this, and a first-login screen that asks again is a form
+  // asking twice.
+  //
+  // `member_language` is repeatable where a ProfileQuestion holds one
+  // value, which is why this needed its own tag rather than riding
+  // mapsToProfileQuestionId — the starter set's "Languages you speak" is
+  // a single free-text blob and a Requirement's language check queries
+  // structured rows, so a blob would never satisfy one. Split on commas
+  // and newlines because that is what someone writes in one box, and drop
+  // anything empty so "Spanish, " doesn't create a blank row that then
+  // matches nothing while looking like an entry on /profile.
+  //
+  // Every row lands at `conversational` because the form asked one
+  // question, not five: the level is a claim about someone's ability, and
+  // a community that wants to distinguish fluent from native needs a
+  // form that actually asks. Deduped case-insensitively against what the
+  // member already has, because conversion can run against a Member who
+  // logged in and set their own languages before the decision was filed.
+  if (languageField) {
+    const rawValue = values[languageField.key];
+    if (typeof rawValue === "string") {
+      const spoken = rawValue
+        .split(/[,\n]/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (spoken.length > 0) {
+        const existingLanguages = await db
+          .select({ language: memberLanguage.language })
+          .from(memberLanguage)
+          .where(eq(memberLanguage.memberId, memberId));
+        const seen = new Set(existingLanguages.map((l) => l.language.trim().toLowerCase()));
+        for (const language of spoken) {
+          const key = language.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          await db.insert(memberLanguage).values({ memberId, language, level: "conversational" });
         }
       }
     }

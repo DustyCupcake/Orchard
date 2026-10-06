@@ -28,6 +28,19 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-06",
+    title: "Your first login asks what you'd like to be called",
+    summary: "The roster was a list of email prefixes. Now each person is asked, once.",
+    points: [
+      "The first time you log in you land on a short welcome screen instead of the dashboard. It asks what to call you — pre-filled with what we guessed, so fixing \"t.doe\" into \"Toby\" is one edit.",
+      "It also shows each of your contact methods, including the email you signed in with, and who can see each one, so you decide that rather than finding it out later. You can add another way to reach you, and the languages you speak.",
+      "Nothing on it is required except a name, and \"Skip for now\" is always there. It never comes back on its own, and all of it stays editable on your profile.",
+      "Signing in with a login link now also confirms that address as yours, so the profile no longer offers to \"send me a confirmation\" for an address you just proved.",
+      "Redeeming an invite with an address you already use for signing in now takes you to your existing account instead of making a second one.",
+    ],
+    source: "Unreleased: a first-login screen, and the name a member is actually called",
+  },
+  {
+    date: "2026-10-06",
     title: "Overruling a concern now takes the people who hold the role",
     summary: "The exception to \"a concern stands\" was one person's click. It's now the whole threshold.",
     points: [

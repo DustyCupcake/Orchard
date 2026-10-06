@@ -118,7 +118,24 @@ export interface OidcLoginResult {
    * whether the address they provision is a proven one.
    */
   emailVerified: boolean | null;
-  name: string | null;
+  /**
+   * `nickname` and `given_name`, or null when the IdP sends neither.
+   *
+   * Two claims rather than one pre-resolved `name`, and specifically not
+   * the standard `name` claim: a roster entry is a name somebody chose to
+   * be called, and a full name ("Toby Whitfield") is the least useful
+   * thing an IdP can offer for that. The IdP's `nickname` is the claim
+   * that actually means it, and `given_name` is the honest fallback for
+   * the very common profile where someone set a first name and no
+   * nickname. `name` is never read.
+   *
+   * Resolved to a single value by the caller (src/lib/member.ts), since
+   * "what do we call this person, in order" is a question about a Member,
+   * not about what an IdP said — and the same chain is worth applying to
+   * the invite and application paths, which have none of these claims.
+   */
+  nickname: string | null;
+  givenName: string | null;
   hasRequiredRole: boolean;
 }
 
@@ -126,6 +143,22 @@ export interface OidcCallbackChecks {
   expectedState: string;
   expectedNonce: string;
   pkceCodeVerifier: string;
+}
+
+/**
+ * A profile claim that is present, a string, and not blank.
+ *
+ * The blank check is the whole reason this exists rather than an inline
+ * `typeof x === "string" ? x : null`. Zitadel returns `nickname: ""` for
+ * every profile where the person never set one, rather than omitting the
+ * claim — so a plain string check hands the member's own name-resolution
+ * chain an empty string, `nickname?.trim() || ...` falls through it by
+ * luck, and any future reader who doesn't remember that gets a member
+ * whose name is the empty string. "The IdP said something empty" and "the
+ * IdP said nothing" are the same fact here, and both are null.
+ */
+function optionalClaim(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 export async function handleOidcCallback(
@@ -152,7 +185,8 @@ export async function handleOidcCallback(
     // unverified, and only the first of those is safe to provision a
     // primary from.
     emailVerified: typeof claims.email_verified === "boolean" ? claims.email_verified : null,
-    name: typeof claims.name === "string" ? claims.name : null,
+    nickname: optionalClaim(claims.nickname),
+    givenName: optionalClaim(claims.given_name),
     hasRequiredRole: hasRequiredRole(claims as Record<string, unknown>, community.oidcRequiredRole),
   };
 }

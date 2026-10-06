@@ -21,7 +21,19 @@ export interface MockOidcProvider {
   // the id_token once the user has actually authenticated on its own
   // authorize screen (which this mock never actually renders — nothing
   // in this phase's flow needs a browser to click through it).
-  prepareLogin(claims: { sub: string; email: string; nonce: string; roles?: Record<string, unknown> }): string;
+  prepareLogin(claims: {
+    sub: string;
+    email: string;
+    nonce: string;
+    roles?: Record<string, unknown>;
+    // The two claims src/lib/oidc.ts reads a member's name from, plus
+    // `name` so a test can prove the full-name claim is *not* used. A
+    // mock that only ever sent the claims the code reads couldn't catch a
+    // regression where the chain went back to preferring `name`.
+    nickname?: string;
+    givenName?: string;
+    name?: string;
+  }): string;
   close(): Promise<void>;
 }
 
@@ -44,8 +56,16 @@ export async function startMockOidcProvider(): Promise<MockOidcProvider> {
   // One pending login at a time is all any single test needs — a
   // fresh code per prepareLogin() call, redeemable exactly once,
   // mirroring a real authorization code's single-use guarantee.
-  let pending: { code: string; sub: string; email: string; nonce: string; roles?: Record<string, unknown> } | null =
-    null;
+  let pending: {
+    code: string;
+    sub: string;
+    email: string;
+    nonce: string;
+    roles?: Record<string, unknown>;
+    nickname?: string;
+    givenName?: string;
+    name?: string;
+  } | null = null;
 
   const server: Server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -86,13 +106,20 @@ export async function startMockOidcProvider(): Promise<MockOidcProvider> {
         return;
       }
       // Single-use — the same real guarantee a magic-link token has.
-      const { sub, email, nonce, roles } = pending;
+      const { sub, email, nonce, roles, nickname, givenName, name } = pending;
       pending = null;
 
       const idToken = await new SignJWT({
         email,
-        name: "Mock Zitadel User",
         nonce,
+        // Zitadel sends `nickname: ""` rather than omitting the claim when
+        // nobody has set one, which is the single detail most likely to
+        // break a name chain that doesn't normalise it — so the default
+        // here is the empty string, and a test that wants a real nickname
+        // has to ask for one.
+        nickname: nickname ?? "",
+        ...(givenName !== undefined ? { given_name: givenName } : {}),
+        ...(name !== undefined ? { name } : {}),
         ...(roles ? { "urn:zitadel:iam:org:project:roles": roles } : {}),
       })
         .setProtectedHeader({ alg: "RS256", kid })

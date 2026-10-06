@@ -108,6 +108,19 @@ export default function FieldShapeEditor({
               />{" "}
               email field
             </label>
+            {/* Comma-separated, so "Spanish, English" is one answer and
+                three rows. Worth saying here rather than only in the
+                field's own label: a form author who tags this without
+                knowing the separator writes one row instead of several
+                and the applicant has to say it again at first login. */}
+            <label className="flex items-center gap-1.5 text-[length:var(--text-micro)] text-[var(--text)]">
+              <input
+                type="checkbox"
+                checked={value.isLanguageField ?? false}
+                onChange={(e) => onChange({ ...value, isLanguageField: e.target.checked })}
+              />{" "}
+              languages field
+            </label>
           </>
         )}
         {(onMoveUp || onMoveDown || onRemove) && (

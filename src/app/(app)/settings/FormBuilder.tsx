@@ -61,8 +61,8 @@ export default function FormBuilder({
   const [description, setDescription] = useState(initialDescription);
   const [fields, setFields] = useState<BuilderField[]>(initialFields.length > 0 ? initialFields : [emptyField()]);
 
-  // Enforces "at most one field can be tagged as the name/email field"
-  // and "at most one field can map to the same profile question"
+  // Enforces "at most one field can be tagged as the name/email/language
+  // field" and "at most one field can map to the same profile question"
   // client-side too — src/lib/forms.ts's requireValidFields/
   // requireValidMappedProfileQuestions are the real, load-bearing
   // checks; this just keeps the builder itself from ever producing
@@ -76,6 +76,7 @@ export default function FormBuilder({
           ...f,
           isNameField: next.isNameField ? false : f.isNameField,
           isEmailField: next.isEmailField ? false : f.isEmailField,
+          isLanguageField: next.isLanguageField ? false : f.isLanguageField,
           mapsToProfileQuestionId:
             next.mapsToProfileQuestionId && next.mapsToProfileQuestionId === f.mapsToProfileQuestionId
               ? undefined

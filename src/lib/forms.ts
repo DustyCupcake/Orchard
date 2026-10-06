@@ -72,6 +72,7 @@ const formFieldInput = z.object({
   required: z.boolean().optional(),
   isNameField: z.boolean().optional(),
   isEmailField: z.boolean().optional(),
+  isLanguageField: z.boolean().optional(),
   mapsToProfileQuestionId: z.string().uuid().optional(),
 });
 export type FormField = z.infer<typeof formFieldInput>;
@@ -126,7 +127,25 @@ export function formValuesFromFormData(
   return values;
 }
 
-function tooManyTaggedFields(fields: FormField[], tag: "isNameField" | "isEmailField") {
+// isLanguageField: the same "a Form field can name what it means to the
+// rest of the platform" exception as isNameField/isEmailField, for the
+// third thing an applicant→Member conversion can genuinely produce.
+//
+// Name and email already seed a Member row directly. Languages couldn't,
+// because `member_language` is a *repeatable* table and a Form's one
+// opaque field value isn't a typed list — so the only way an applicant's
+// answer could reach it was through a ProfileQuestion, and the starter
+// set's "Languages you speak" is a free-text blob that stays a blob. The
+// tagged field is what makes the structured rows reachable at all: the
+// value is split on commas/newlines, and each part becomes a
+// MemberLanguage at `conversational` (the schema default, and the one
+// level that claims nothing — a level the applicant didn't state is not
+// one this should invent).
+//
+// At most one per Form, like the other two, and enforced by the same
+// helper so a community can't end up with two fields racing to write the
+// same table.
+function tooManyTaggedFields(fields: FormField[], tag: "isNameField" | "isEmailField" | "isLanguageField") {
   return fields.filter((f) => f[tag]).length > 1;
 }
 
@@ -193,6 +212,13 @@ function addFieldShapeIssues(fields: FormField[], ctx: z.RefinementCtx) {
   if (tooManyTaggedFields(fields, "isEmailField")) {
     ctx.addIssue({ code: "custom", message: "at most one field can be tagged as the email field", path: ["fields"] });
   }
+  if (tooManyTaggedFields(fields, "isLanguageField")) {
+    ctx.addIssue({
+      code: "custom",
+      message: "at most one field can be tagged as the language field",
+      path: ["fields"],
+    });
+  }
   if (duplicateMappedProfileQuestion(fields)) {
     ctx.addIssue({
       code: "custom",
@@ -231,6 +257,9 @@ function requireValidFields(fields: FormField[]) {
   }
   if (tooManyTaggedFields(fields, "isEmailField")) {
     throw new AppError("at most one field can be tagged as the email field");
+  }
+  if (tooManyTaggedFields(fields, "isLanguageField")) {
+    throw new AppError("at most one field can be tagged as the language field");
   }
   if (duplicateMappedProfileQuestion(fields)) {
     throw new AppError("at most one field can map to the same profile question");

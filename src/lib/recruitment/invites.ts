@@ -8,6 +8,7 @@ import { requireModuleEnabled } from "../modules";
 import { generateToken } from "../token";
 import { seedCycleParticipation } from "../participation";
 import { seedPrimaryContactMethod } from "../contact-methods";
+import { findExistingMemberByLoginEmail, preferredMemberName } from "../member";
 import { getCycleJoiningState } from "./joining";
 import { getCommunityRow, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
 import {
@@ -457,11 +458,16 @@ export async function redeemCommunityInvite(
   }
 
   const email = input.email.trim().toLowerCase();
-  const [existingIdentity] = await db
-    .select({ id: memberIdentity.id })
-    .from(memberIdentity)
-    .where(and(eq(memberIdentity.provider, "magic_link"), eq(memberIdentity.loginEmail, email)));
-  if (existingIdentity) {
+  // Every way an address can already belong to somebody, not just the
+  // magic_link identity this used to check. The narrower version of this
+  // check was the reason an existing SSO member redeeming an invite with
+  // their own address got a second Member row: they have no magic_link
+  // identity, so they looked new, and the invite's own transaction then
+  // wrote a fresh account and a login link for it. findOrCreateMemberByEmail
+  // has checked all three of these for a while; this now asks it the same
+  // question rather than a cheaper one.
+  const existing = await findExistingMemberByLoginEmail(email);
+  if (existing) {
     throw new ConflictError("This email already belongs to a member — log in instead");
   }
 
@@ -475,7 +481,7 @@ export async function redeemCommunityInvite(
       .insert(member)
       .values({
         communityId: invite.communityId,
-        name: email.split("@")[0],
+        name: preferredMemberName(null, null, null, email),
         referredByMemberId: invite.createdBy,
         joinedViaInviteId: invite.id,
       })

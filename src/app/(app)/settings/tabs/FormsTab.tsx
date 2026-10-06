@@ -22,6 +22,7 @@ function toBuilderFields(fields: FormField[]) {
       step: field.step,
       isNameField: field.isNameField,
       isEmailField: field.isEmailField,
+      isLanguageField: field.isLanguageField,
       mapsToProfileQuestionId: field.mapsToProfileQuestionId,
     }),
   }));

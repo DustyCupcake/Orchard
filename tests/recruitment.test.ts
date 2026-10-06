@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, communityInvite, member, memberIdentity, task } from "@/db/schema";
+import { community, communityInvite, contactMethod, member, memberIdentity, task } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
 import { claimAsShadow, claimTask } from "@/lib/tasks";
-import { findOrCreateMemberByEmail } from "@/lib/member";
+import { findOrCreateMemberByEmail, preferredMemberName } from "@/lib/member";
 import {
   claimInquiry,
   communityInviteStatus,
@@ -264,6 +264,58 @@ describe("redeemCommunityInvite", () => {
     );
   });
 
+  // The three cases below are the bug this check used to miss. It only
+  // looked for a magic_link identity, so an existing member whose account
+  // came from any of the *other* two ways looked brand new — and got a
+  // second Member row, with a login link now going to the wrong account.
+  // findOrCreateMemberByEmail has checked all three for a while; this
+  // now asks it the same question rather than a cheaper one.
+  it("rejects when the email belongs to an existing OIDC member, who has no magic_link identity", async () => {
+    const { alice } = await createFixtures();
+    await enableRecruitment(alice.communityId);
+    const invite = await createCommunityInvite(alice, { inviterKnowsPersonally: true });
+    await db.insert(memberIdentity).values({
+      memberId: alice.id,
+      provider: "oidc",
+      providerSubject: "zitadel-alice",
+      loginEmail: "alice@example.com",
+    });
+
+    // Counted before and after rather than asserted as 1: createFixtures
+    // already made alice and bob, so the real claim is "redemption added
+    // nobody", which is exactly what a second Member row would look like.
+    const before = await db.select().from(member).where(eq(member.communityId, alice.communityId));
+    await expect(redeemCommunityInvite(invite.token, { email: "alice@example.com" })).rejects.toThrow(
+      ConflictError,
+    );
+    const after = await db.select().from(member).where(eq(member.communityId, alice.communityId));
+    expect(after.length).toBe(before.length);
+  });
+
+  it("rejects when the email is an existing member's primary contact method", async () => {
+    const { alice } = await createFixtures();
+    await enableRecruitment(alice.communityId);
+    const invite = await createCommunityInvite(alice, { inviterKnowsPersonally: true });
+    // A member whose primary address is one they chose and which is not
+    // any identity's loginEmail — the case a login-identity lookup can
+    // never see, and the reason findOrCreateMemberByEmail has a third
+    // branch at all.
+    const before = await db.select().from(member).where(eq(member.communityId, alice.communityId));
+    await db.insert(contactMethod).values({
+      memberId: alice.id,
+      type: "email",
+      value: "alice@example.com",
+      visibility: "emergency_only",
+      isPrimary: true,
+    });
+
+    await expect(redeemCommunityInvite(invite.token, { email: "alice@example.com" })).rejects.toThrow(
+      ConflictError,
+    );
+    const after = await db.select().from(member).where(eq(member.communityId, alice.communityId));
+    expect(after.length).toBe(before.length);
+  });
+
   it("rejects if the recruitment module gets turned off after the invite was created", async () => {
     const { alice } = await createFixtures();
     await enableRecruitment(alice.communityId);
@@ -271,6 +323,39 @@ describe("redeemCommunityInvite", () => {
     await updateCommunity(alice, { modulesEnabled: [] });
 
     await expect(redeemCommunityInvite(invite.token, { email: "dana@example.com" })).rejects.toThrow(AppError);
+  });
+});
+
+describe("preferredMemberName", () => {
+  // One test per rung rather than a single "resolves a name" case, because
+  // the whole point is the *order* and any of three orders passes a naive
+  // assertion. The application rung is first because a name somebody
+  // typed about themselves beats anything derived; the SSO nickname beats
+  // the given name because it is the one they chose to be called.
+  it("prefers a name given on an application over anything derived", () => {
+    expect(preferredMemberName("Robin Vance", "sid", "Siddy", "r.vance@example.com")).toBe("Robin Vance");
+  });
+
+  it("prefers the SSO nickname over the given name", () => {
+    expect(preferredMemberName(null, "Toby", "Winfield", "toby@example.com")).toBe("Toby");
+  });
+
+  it("uses the SSO given name when there is no nickname", () => {
+    expect(preferredMemberName(null, null, "Winfield", "toby@example.com")).toBe("Winfield");
+  });
+
+  it("falls back to the email's local part when nothing else is known", () => {
+    expect(preferredMemberName(null, null, null, "toby.w@example.com")).toBe("toby.w");
+  });
+
+  // Whitespace-only is the case a `||` chain alone gets wrong: a truthy
+  // empty string survives, and the member's name becomes "".
+  it("treats a blank name as no name at every rung", () => {
+    expect(preferredMemberName("   ", "  ", "\n", "toby.w@example.com")).toBe("toby.w");
+  });
+
+  it("trims what it returns rather than storing the padding", () => {
+    expect(preferredMemberName("  Robin Vance  ", null, null, "r@example.com")).toBe("Robin Vance");
   });
 });
 

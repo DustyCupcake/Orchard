@@ -1,0 +1,25 @@
+-- The first-login screen's own record: has this member been asked for the
+-- profile values the rest of the app assumes are real?
+--
+-- NULL, not false, and NULL for every existing row on purpose.
+--
+-- It is a "when did this happen" column, not a "should this happen"
+-- switch — nothing reads it to decide whether to *block* anybody. The
+-- login entry points read it to decide where to send someone once, and
+-- /welcome sets it whether the member filled the form in or skipped it.
+-- A boolean would be a lie in both directions: it would be false for
+-- members who have genuinely finished setup, and it would need a
+-- separate migration months later to tell "hasn't been asked" apart from
+-- "asked and skipped".
+--
+-- Backfilling to `now()` was the other option, and it is the wrong one.
+-- Every member currently in the table has a name derived from an email
+-- local part, and `t.doe` being the name the whole community knows them
+-- by is precisely the thing this column exists to let them fix. A
+-- migration is the one moment that can offer the whole roster the chance,
+-- rather than leaving it to whoever happens to log in next.
+--
+-- No NOT NULL DEFAULT false, so a member created by any of the five
+-- provisioning paths is asked automatically without any of them having to
+-- remember to write the column — the default it already has.
+ALTER TABLE "member" ADD COLUMN "profile_completed_at" timestamp with time zone;

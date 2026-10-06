@@ -6,6 +6,7 @@ import {
   communityInvite,
   member,
   memberIdentity,
+  memberLanguage,
   participation,
   recruitmentDecision,
   recruitmentSubscription,
@@ -131,6 +132,31 @@ describe("Form fields: isNameField/isEmailField tagging", () => {
     ).rejects.toThrow(/at most one field can be tagged as the email field/);
   });
 
+  // Same helper, same rule, third tag — a community with two fields racing
+  // to write the same table would be a data bug, not a display one.
+  it("rejects more than one field tagged as the language field", async () => {
+    const fixtures = await createFixtures();
+    await expect(
+      createForm(fixtures.alice, {
+        title: "Bad form",
+        fields: [
+          { key: "a", label: "A", responseType: "text", isLanguageField: true },
+          { key: "b", label: "B", responseType: "text", isLanguageField: true },
+        ],
+      }),
+    ).rejects.toThrow(/at most one field can be tagged as the language field/);
+  });
+
+  it("accepts a form with one name field, one email field, and one language field", async () => {
+    const fixtures = await createFixtures();
+    const allThree: CreateFormInput["fields"] = [
+      ...taggedFields,
+      { key: "languages", label: "Languages", responseType: "text", isLanguageField: true },
+    ];
+    const form = await createForm(fixtures.alice, { title: "Good form", fields: allThree });
+    expect(form.fields).toEqual(allThree);
+  });
+
   it("accepts a form with one name field and one email field", async () => {
     const fixtures = await createFixtures();
     const form = await createForm(fixtures.alice, { title: "Good form", fields: taggedFields });
@@ -172,6 +198,127 @@ describe("Recruitment: applicant→Member conversion", () => {
     const [communityRow] = await db.select().from(community).where(eq(community.id, setupResult.communityId));
     const loggedIn = await findOrCreateMemberByEmail(communityRow, "dana@example.com");
     expect(loggedIn?.id).toBe(newMember.id);
+  });
+
+  // isLanguageField exists because `member_language` is repeatable and a
+  // Form's one opaque value isn't a typed list, so mapsToProfileQuestionId
+  // can't reach it — the starter set's "Languages you speak" stays a
+  // free-text blob that a Requirement's language check never matches. These
+  // are the tests for the applicant who already said this, so the first-login
+  // screen doesn't ask them to type it a second time.
+  it("seeds real member_language rows from a field tagged isLanguageField", async () => {
+    const fixtures = await createFixtures();
+    const fieldsWithLanguages: CreateFormInput["fields"] = [
+      ...taggedFields,
+      { key: "languages", label: "Languages", responseType: "text", isLanguageField: true },
+    ];
+    const setupResult = await setUp(fixtures, fieldsWithLanguages);
+
+    const application = await submitRecruitmentApplication(setupResult.communityId, {
+      values: { name: "Ines Applicant", email: "ines@example.com", languages: "Spanish, Portuguese" },
+    });
+    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+
+    const rows = await db
+      .select()
+      .from(memberLanguage)
+      .where(eq(memberLanguage.memberId, decision!.convertedMemberId!));
+    expect(rows.map((r) => r.language).sort()).toEqual(["Portuguese", "Spanish"]);
+    // All at the one level the form didn't claim. A form asking one
+    // question shouldn't produce a claim about fluency it never asked for.
+    expect(rows.every((r) => r.level === "conversational")).toBe(true);
+  });
+
+  it("splits on newlines as well as commas, and skips empty parts", async () => {
+    const fixtures = await createFixtures();
+    const fieldsWithLanguages: CreateFormInput["fields"] = [
+      ...taggedFields,
+      { key: "languages", label: "Languages", responseType: "text", isLanguageField: true },
+    ];
+    const setupResult = await setUp(fixtures, fieldsWithLanguages);
+
+    const application = await submitRecruitmentApplication(setupResult.communityId, {
+      values: { name: "Jan Applicant", email: "jan@example.com", languages: "Dutch,\n\n  Polish  ,\n" },
+    });
+    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+
+    const rows = await db
+      .select()
+      .from(memberLanguage)
+      .where(eq(memberLanguage.memberId, decision!.convertedMemberId!));
+    // A blank part would become a row that matches no requirement while
+    // looking like an entry on /profile.
+    expect(rows.map((r) => r.language).sort()).toEqual(["Dutch", "Polish"]);
+  });
+
+  it("does not duplicate or downgrade a language the member already listed", async () => {
+    const fixtures = await createFixtures();
+    const fieldsWithLanguages: CreateFormInput["fields"] = [
+      ...taggedFields,
+      { key: "languages", label: "Languages", responseType: "text", isLanguageField: true },
+    ];
+    const setupResult = await setUp(fixtures, fieldsWithLanguages);
+
+    // The member has to exist *before* the decision, since that is the
+    // only window where the dedupe is reachable: a Member who applied
+    // earlier, already logged in, and set their own languages. Reusing the
+    // existing-member-by-email path is what puts conversion on an account
+    // that already has a row.
+    const [existingMember] = await db
+      .insert(member)
+      .values({ communityId: setupResult.communityId, name: "Kim" })
+      .returning();
+    await db.insert(memberIdentity).values({
+      memberId: existingMember.id,
+      provider: "magic_link",
+      loginEmail: "kim@example.com",
+    });
+    await db.insert(memberLanguage).values({
+      memberId: existingMember.id,
+      language: "English",
+      level: "native",
+    });
+
+    const application = await submitRecruitmentApplication(setupResult.communityId, {
+      values: { name: "Kim", email: "kim@example.com", languages: "English, Welsh" },
+    });
+    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    expect(decision!.convertedMemberId).toBe(existingMember.id);
+
+    const rows = await db
+      .select()
+      .from(memberLanguage)
+      .where(eq(memberLanguage.memberId, existingMember.id));
+    // The form's own value for English is a duplicate of what they already
+    // said, and the new one is Welsh.
+    expect(rows.map((r) => r.language).sort()).toEqual(["English", "Welsh"]);
+    // The member's own stated level survives — a form that didn't ask
+    // about proficiency must not overwrite one that said "native".
+    expect(rows.find((r) => r.language === "English")?.level).toBe("native");
+    expect(rows.find((r) => r.language === "Welsh")?.level).toBe("conversational");
+  });
+
+  it("converts normally when the form asks nothing about languages", async () => {
+    const setupResult = await setUp(await createFixtures(), taggedFields);
+    const application = await submitRecruitmentApplication(setupResult.communityId, {
+      values: { name: "Lee Applicant", email: "lee@example.com" },
+    });
+    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+
+    expect(decision!.convertedMemberId).not.toBeNull();
+    const rows = await db
+      .select()
+      .from(memberLanguage)
+      .where(eq(memberLanguage.memberId, decision!.convertedMemberId!));
+    expect(rows.length).toBe(0);
   });
 
   it("seeds a real ProfileAnswer from a field tagged mapsToProfileQuestionId, so onboarding doesn't re-ask it", async () => {

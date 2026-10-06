@@ -89,9 +89,10 @@ describe("findOrCreateMemberByOidcSubject", () => {
       sub: "zitadel-sub-1",
       emailVerified: true,
       email: "carol@example.com",
-      name: "Carol Zitadel",
+      nickname: "Carol",
+      givenName: "Carol",
     });
-    expect(created.name).toBe("Carol Zitadel");
+    expect(created.name).toBe("Carol");
 
     const [identity] = await db
       .select()
@@ -102,13 +103,41 @@ describe("findOrCreateMemberByOidcSubject", () => {
     expect(identity.loginEmail).toBe("carol@example.com");
   });
 
-  it("falls back to the email's local part when no name claim is given", async () => {
+  // The nickname chain is the whole point of the change, so each step gets
+  // its own test rather than one "resolves a name" test that would pass
+  // under any of three orders.
+  it("prefers the IdP's nickname over the given name", async () => {
+    const { community: testCommunity } = await createFixtures();
+    const created = await findOrCreateMemberByOidcSubject(testCommunity, {
+      sub: "zitadel-sub-nick",
+      emailVerified: true,
+      email: "sam@example.com",
+      nickname: "Sam",
+      givenName: "Samuel",
+    });
+    expect(created.name).toBe("Sam");
+  });
+
+  it("falls back to the given name when there is no nickname", async () => {
+    const { community: testCommunity } = await createFixtures();
+    const created = await findOrCreateMemberByOidcSubject(testCommunity, {
+      sub: "zitadel-sub-given",
+      emailVerified: true,
+      email: "dave@example.com",
+      nickname: null,
+      givenName: "Dave",
+    });
+    expect(created.name).toBe("Dave");
+  });
+
+  it("falls back to the email's local part when neither name claim is given", async () => {
     const { community: testCommunity } = await createFixtures();
     const created = await findOrCreateMemberByOidcSubject(testCommunity, {
       sub: "zitadel-sub-2",
       emailVerified: true,
       email: "dave@example.com",
-      name: null,
+      nickname: null,
+      givenName: null,
     });
     expect(created.name).toBe("dave");
   });
@@ -119,13 +148,15 @@ describe("findOrCreateMemberByOidcSubject", () => {
       sub: "zitadel-sub-3",
       emailVerified: true,
       email: "erin@example.com",
-      name: "Erin",
+      nickname: "Erin",
+      givenName: null,
     });
     const second = await findOrCreateMemberByOidcSubject(testCommunity, {
       sub: "zitadel-sub-3",
       emailVerified: true,
       email: "erin@example.com",
-      name: "Erin",
+      nickname: "Erin",
+      givenName: null,
     });
     expect(second.id).toBe(first.id);
 
@@ -142,13 +173,15 @@ describe("findOrCreateMemberByOidcSubject", () => {
       sub: "zitadel-sub-4",
       emailVerified: true,
       email: "old-address@example.com",
-      name: "Frank",
+      nickname: "Frank",
+      givenName: null,
     });
     const second = await findOrCreateMemberByOidcSubject(testCommunity, {
       sub: "zitadel-sub-4",
       emailVerified: true,
       email: "new-address@example.com",
-      name: "Frank",
+      nickname: "Frank",
+      givenName: null,
     });
     expect(second.id).toBe(first.id);
 
@@ -175,7 +208,8 @@ describe("findOrCreateMemberByOidcSubject", () => {
       sub: "zitadel-sub-5",
       emailVerified: true,
       email: "grace@example.com",
-      name: "Grace",
+      nickname: "Grace",
+      givenName: null,
     });
 
     expect(oidcMember.id).not.toBe(magicLinkMember.id);
@@ -239,6 +273,92 @@ describe("OIDC authorization-code flow against a real mock provider", () => {
     expect(result.sub).toBe("zitadel-sub-100");
     expect(result.email).toBe("holder@example.com");
     expect(result.hasRequiredRole).toBe(true);
+  });
+
+  // These three run against the real signed-token path rather than by
+  // passing claims straight to the lib, because the claim *shape* is the
+  // thing most likely to break: Zitadel sends an empty nickname rather
+  // than omitting it, and the previous code read a `name` claim this
+  // doesn't request any more.
+  it("reads nickname and given_name off a real ID token", async () => {
+    const testCommunity = await configuredCommunity();
+    const redirectUri = "http://localhost:3000/api/auth/oidc/callback";
+    const { state, nonce, codeVerifier } = await buildOidcAuthorizationUrl(testCommunity, redirectUri);
+
+    const code = mockIdp.prepareLogin({
+      sub: "zitadel-sub-nick-e2e",
+      email: "nick@example.com",
+      nonce,
+      nickname: "Nicky",
+      givenName: "Nicholas",
+    });
+    const callbackUrl = new URL(`${redirectUri}?code=${code}&state=${state}`);
+
+    const result = await handleOidcCallback(testCommunity, callbackUrl, {
+      expectedState: state,
+      expectedNonce: nonce,
+      pkceCodeVerifier: codeVerifier,
+    });
+
+    expect(result.nickname).toBe("Nicky");
+    expect(result.givenName).toBe("Nicholas");
+  });
+
+  it("treats Zitadel's empty nickname claim as absent, not as a name", async () => {
+    const testCommunity = await configuredCommunity();
+    const redirectUri = "http://localhost:3000/api/auth/oidc/callback";
+    const { state, nonce, codeVerifier } = await buildOidcAuthorizationUrl(testCommunity, redirectUri);
+
+    // No `nickname` passed, so the mock sends the empty string a real
+    // Zitadel sends for a profile where nobody set one. `given_name` is
+    // there precisely so a null nickname can't be mistaken for "no
+    // profile claims at all".
+    const code = mockIdp.prepareLogin({
+      sub: "zitadel-sub-empty-nick",
+      email: "givenonly@example.com",
+      nonce,
+      givenName: "Gina",
+    });
+    const callbackUrl = new URL(`${redirectUri}?code=${code}&state=${state}`);
+
+    const result = await handleOidcCallback(testCommunity, callbackUrl, {
+      expectedState: state,
+      expectedNonce: nonce,
+      pkceCodeVerifier: codeVerifier,
+    });
+
+    expect(result.nickname).toBeNull();
+    expect(result.givenName).toBe("Gina");
+  });
+
+  it("ignores the full-name claim entirely, so a nickname is never shadowed by one", async () => {
+    const testCommunity = await configuredCommunity();
+    const redirectUri = "http://localhost:3000/api/auth/oidc/callback";
+    const { state, nonce, codeVerifier } = await buildOidcAuthorizationUrl(testCommunity, redirectUri);
+
+    const code = mockIdp.prepareLogin({
+      sub: "zitadel-sub-name-shadow",
+      email: "shadow@example.com",
+      nonce,
+      name: "Toby Whitfield",
+      nickname: "Toby",
+    });
+    const callbackUrl = new URL(`${redirectUri}?code=${code}&state=${state}`);
+
+    const result = await handleOidcCallback(testCommunity, callbackUrl, {
+      expectedState: state,
+      expectedNonce: nonce,
+      pkceCodeVerifier: codeVerifier,
+    });
+
+    const created = await findOrCreateMemberByOidcSubject(testCommunity, {
+      sub: result.sub,
+      email: result.email,
+      emailVerified: result.emailVerified,
+      nickname: result.nickname,
+      givenName: result.givenName,
+    });
+    expect(created.name).toBe("Toby");
   });
 
   it("resolves the identity but reports no required role when the token lacks it", async () => {

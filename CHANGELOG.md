@@ -4,6 +4,54 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 **This file is not what members read.** It names migrations, functions and test counts, which is right for whoever maintains this and wrong for someone opening the app on a phone. The member-facing account of what changed lives separately, in `src/lib/docs/content/releases.ts`, and renders in the app under **Library → Orchard documentation → What's new**. A notable user-facing change should add a line there as well as an entry here; `tests/orchard-docs.test.ts` checks that every curated note still cites a `##` heading below that exists, so a renamed or deleted entry fails the suite rather than leaving a silent dead reference. The two are written for different readers and drift apart on purpose — the test that keeps the citation honest is the part that isn't optional.
 
+## Unreleased: a first-login screen, and the name a member is actually called
+
+### Nobody was ever asked their name
+
+There are five ways into this app — a magic-link first login, an SSO first login, an invite redemption, an accepted application, and an admin roster import — and **all five derived `Member.name` from something that is not a name**. Three used `email.split("@")[0]`. One used the name an application applicant typed, which is real. One used the standard OIDC `name` claim, which is a legal-ish full name rather than a name somebody goes by.
+
+None of them asked. The only place to change it was `/profile`, which most people never visit. So the community's roster was a list of `t.doe`, `toby.w` and `sam.smith` — every member's name to every other member — and the only way it ever got fixed was individual members independently thinking to go and fix it themselves. That is the actual problem, and it is not visible from inside a single member's account.
+
+`/welcome` is the fix, and it is asked **once, on the way in**, by a redirect from the login entry points rather than a gate. It asks for a name, for who may read each contact method, and for languages. The name field is pre-filled with the derived one and required, so the common case is editing `t.doe` into `Toby` rather than retyping it from memory — a blank field would be worse, because it makes the member remember a name we already had and turns the validation error into a punishment for doing exactly what we want.
+
+**It is deliberately not a gate, and nothing enforces it.** There is no layout-level guard reading the new `member.profile_completed_at`, so a member who closes the tab on `/welcome` is in the app on their next click like anyone else, and the "skip" button sets the same column the submit does — which is what makes it genuinely once-only rather than something that follows somebody around. This is the same posture `hasCompletedOnboarding` has always taken, and it is a **separate flag on purpose**: that one means "has seen the Dashboard orientation panel", which is where spec's "a new member's first session should end with at least one task claimed" actually lives. Folding the two together would mean finishing here silently deletes the task suggestions.
+
+### The IdP's nickname, not its legal name
+
+SSO first login now reads `nickname`, falling back to `given_name` and then to the email's local part. The full-name `name` claim is not read at all, because a roster entry is a name somebody chose to be called and "Toby Whitfield" is the least useful thing an identity provider can offer for that. `nickname` was already inside the `profile` scope this code requests, so no scope change was needed.
+
+The one detail that would have bitten: **Zitadel sends `nickname: ""` rather than omitting the claim** when nobody has set one. A plain `typeof x === "string"` check hands the name chain an empty string, and the fallback happens to survive it by accident — so the bug would have looked like a working chain and then changed under the next refactor. Claim parsing now treats blank as absent, and the mock IdP in `tests/mock-oidc.ts` sends the empty string by default precisely so a regression can't reintroduce it.
+
+### An invite could create a second account for somebody who already had one
+
+`redeemCommunityInvite` checked whether the address belonged to an existing member by looking for a `magic_link` identity — and only that. `findOrCreateMemberByEmail`, written earlier, checked three things: a magic-link identity, an OIDC identity, and the address as somebody's own primary contact method.
+
+So an **existing SSO member who was sent an invite link and redeemed it with their own address got a second Member row**: two accounts, one person, and a login link now going to the wrong one. The same held for anyone whose primary contact method was an address they chose rather than their login address.
+
+Both call sites now ask `findExistingMemberByLoginEmail`, one shared definition of "who already owns this email", so the two can't drift apart again. This is the third time that pair has diverged, which is the actual argument for the shared function rather than the tidiness of it.
+
+### A login link is a proof, and three paths were discarding it
+
+Invite redemption, application conversion, and admin roster import all seed a member's primary contact method with `verifiedAt: null`. The reasoning in each was correct: nobody has yet received anything at an address somebody *else* typed, and `verifiedAt` is a fact about the inbox rather than about a belief.
+
+But the first magic-link login **is** that receipt. A magic link is only ever sent to an address its recipient controls, and reaching the verify route means somebody clicked the one that arrived there. That proof was being read and thrown away, so an invitee, an applicant, and an entire imported roster were left on `/profile`'s one-click "send me a confirmation" for a confirmation they had, in effect, already given. The verify route now records it.
+
+Scoped to the member it just logged in as, **not** to the address. The address is a string an unauthenticated caller chooses — it's the thing the app mails a login link to — so a value-only match would let one member's verified login stamp a verdict on another member's contact method, and two members may legitimately hold the same address as a non-primary row.
+
+### A form can now supply languages, so the screen doesn't ask twice
+
+Asked "what should the screen collect?", the answer included languages "if that information is not already available from application". That condition was **never true** — nothing in the codebase could write a language from an application. A `FormField` could tag `isNameField`, `isEmailField` or `mapsToProfileQuestionId`, and the only route to languages was a ProfileQuestion answer, where the starter set's "Languages you speak" is a free-text blob that stays a blob. A `member_language` row — which is what a task's `language` Requirement actually queries — was unreachable from any form.
+
+`isLanguageField` follows the existing two exactly, and conversion seeds real rows from a comma/newline-separated value at `conversational`. That level is the schema default and the one that claims nothing: the form asked one question, not five, and a community that wants to distinguish fluent from native needs a form that actually asks. Values are deduped case-insensitively against what the member already has, so a Member who logged in and set their own languages before a decision was filed doesn't get a second row or a downgrade.
+
+### A pre-existing bug: seeding questions could fail a login
+
+Five OIDC tests failed on a clean checkout of this branch, before any of the above. The cause was a comment that described the intent and code that did the opposite.
+
+`findOrCreateMemberByEmail` and `findOrCreateMemberByOidcSubject` both call `maybeSeedDefaultProfileQuestions` *outside* the member-creating transaction, with a comment explaining exactly why: "a community with no questions and a settings button beats a failed login." But the call was `await`ed unguarded, so any throw inside the seeder propagated straight out and took the login with it — a deadlock or constraint blip during a first login returned a 500. Being outside the transaction was never sufficient on its own. Now wrapped and logged, because a community that silently has no starter questions is only discoverable from the settings page and this one line.
+
+---
+
 ## Unreleased: an audit's three real faults — event admission rules, the overrule threshold, a migration that only worked on empty databases — and the suite runs in CI
 
 An independent review of the work done since 2026-09-26 (by reading, not by trusting the commit messages) turned up three faults that the suite could not see, because each lives in a place the tests did not look. All three are fixed here with tests that fail on the old behaviour; the full suite was green before and after.

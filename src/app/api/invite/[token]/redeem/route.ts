@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api";
 import { redeemCommunityInvite, redeemCommunityInviteInput } from "@/lib/recruitment";
 import { createSession } from "@/lib/session";
+import { firstLoginDestinationFor } from "@/lib/first-login";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +24,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const outcome = await redeemCommunityInvite(token, body);
     if (outcome.kind === "member") {
       await createSession(outcome.memberId);
+      // The JSON body's own `memberId` is all a client gets, so the
+      // first-login hop has to be told rather than read off the outcome —
+      // same rule the Server Action at src/app/invite/[token]/actions.ts
+      // follows, and the reason the page is where a browser lands rather
+      // than a redirect this route could have issued.
+      return NextResponse.json(
+        { ...outcome, redirectTo: await firstLoginDestinationFor(outcome.memberId) },
+        { status: 201 },
+      );
     }
-    return NextResponse.json(outcome, { status: outcome.kind === "member" ? 201 : 202 });
+    return NextResponse.json(outcome, { status: 202 });
   } catch (err) {
     return errorResponse(err);
   }
