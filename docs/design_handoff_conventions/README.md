@@ -10,19 +10,26 @@ Global visual conventions for Orchard (the Next.js app in the attached `Orchard/
 High-fidelity for tokens (exact hex/formulas below) and component patterns (buttons, tags, forms, cards, table, banners, tabs, empty state). The rest of the app's pages (dashboard, board, settings, etc.) are currently unstyled server-rendered forms with inline styles — apply these conventions to them as a separate pass; they weren't individually redesigned here.
 
 ## Design system note
-This design project has Anthropic's **Nocturne** design system bound to it (dark, soft-8px-radius, Inter, mono-accent, outline-only buttons). The conventions below **deliberately override** several of its defaults per the product owner's explicit choices: sharp 2–4px radii (not soft 8px), filled/bold primary buttons (not outline-only), two independent accent hues per community (not a mono scheme), and both light and dark themes (not dark-only). Keep those overrides — don't "correct" them back toward Nocturne's defaults.
+The original handoff bound Anthropic's **Nocturne** design system (dark, soft-8px-radius, Inter, mono-accent, outline-only buttons) and overrode some of its defaults: sharp radii, filled primary buttons, two independent accent hues, both themes.
+
+**Those overrides were kept; Nocturne's *typography* and *palette* were not, and neither is its framing.** `globals.css` shipped all eight of Nocturne's hexes verbatim and the Tailwind `neutral` scale, on Inter at 13px — which is to say the app carried a specific, recognisable house style rather than a neutral starting point. That has been replaced wholesale: IBM Plex Sans and Fraunces for a warm grey ramp, a real type scale, and three distinct surfaces per theme.
+
+**Treat this file as the authority on what the app looks like now, not as a record of what it looked like.** Where the two disagree, `src/app/globals.css` is right and this file is stale — fix this file in the same commit. The specific trap worth knowing: Tailwind's arbitrary `text-[var(--x)]` is ambiguous (it emitted `color` for a size token and silently reset 1,436 sites to the 16px browser default). Size tokens are always written `text-[length:var(--text-body)]`.
 
 ## Design tokens
 
 All values below are CSS custom properties in the reference file. Recommended integration: compute them server-side from the `community` row and the signed-in member's theme preference, and either (a) render them as inline CSS custom properties on `<body>`/a root wrapper so Tailwind's arbitrary-value syntax (`bg-[var(--accent-1)]`) and plain `style` props can consume them, or (b) generate a `<style>` block with the resolved values. Static/neutral values can stay as plain Tailwind classes (`bg-neutral-50`, etc.) — only the two accents and the light/dark switch need to be dynamic.
 
-### Neutral ramp (light)
-`bg #fff` · `surface #fff` · `surface-sunken #fafafa` · `border #e5e5e5` · `text #171717` · `text-muted #737373`
-Steps 50–800: `#fafafa #f5f5f5 #e5e5e5 #d4d4d4 #a3a3a3 #737373 #525252 #404040 #262626` — matches the Tailwind `neutral` scale already used in `AppShell.tsx`.
+### Surfaces and neutrals
+Three distinct surfaces per theme, not one. The old ramp had `--bg` and `--surface` both `#ffffff`, so every card was separated from the page by a hairline alone and the layout read as a wireframe. The new ramp is a warm grey (a few points of yellow), not Tailwind's `neutral` — `#fafafa`/`#e5e5e5`/`#737373` is the single most recognisable "unstyled AI app" surface there is.
 
-### Neutral ramp (dark)
-`bg #14151f` · `surface #1c1e2a` · `surface-sunken #20222f` · `border #333648` · `text #e9e9ed` · `text-muted #9a9db0`
-Steps 50–800: `#1c1e2a #20222f #2a2d3d #3a3d52 #565a72 #767a94 #9a9db0 #c1c3d1 #e2e3ea`
+Light: `bg #f7f5f0` · `surface #ffffff` · `surface-sunken #f1eee7` · `border #ddd8cd` · `border-strong #c4bdae` · `text #1c1a15` · `text-muted #6b6659`
+Steps 50–800: `#faf8f4 #f2efe8 #e4e0d6 #d2ccbe #a39c8c #7b7466 #5c564b #443f37 #2a2721`
+
+Dark: `bg #14130f` · `surface #1e1d18` · `surface-sunken #26241e` · `border #38352c` · `border-strong #4d4940` · `text #ece9e1` · `text-muted #98948a`
+Steps 50–800: `#1e1d18 #26241e #302d26 #403c33 #5c574b #7d7768 #98948a #c0bcb1 #e0dcd3`
+
+All text/background pairs clear WCAG AA: `--text` on `--surface` is 17.4:1 light / 14.1:1 dark, `--text-muted` 5.4:1 / 5.6:1, and each status colour on its own soft background is 5.6:1 or better.
 
 ### Accent 1 & Accent 2 (community-set, any hex)
 Each accent derives a small ramp at runtime via CSS `color-mix()` — no need to store a full ramp per community, just the two base hex values:
