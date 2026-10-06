@@ -1,5 +1,11 @@
 # Admission Plan — who joins, how, and what the community decides
 
+> **Partly superseded (2026-10-06).** The lane model, the objection discipline, the overrule
+> threshold and the mediation grant (J1–J12 below) still stand. How the pieces connect — one ordered
+> funnel, nobody a Member until admitted, the support *shortcut* in place of the nomination wait, one
+> community check, the interview before the decision — is now in
+> [`admission-flow.md`](admission-flow.md), which wins wherever the two disagree.
+
 **Scope of this plan:** the whole joining surface — invites, applications, and the consensus machinery around them — redesigned around one idea: **the inviter's (or applicant's) declaration selects a lane, and the community's rule for that lane defines the newcomer's path.** It supersedes the two-flavor invite mode locked as D12 in `docs/cycle-scope-remediation-plan.md` (§4.3/8d: `joiningInviteMode` `direct | referral`), extends D13's door set with a third independent door (interviews), and keeps D14 (joining seeds participation). Nothing here touches the task-permission model; `task.cycleId` scoping stays exactly as it is.
 
 The working principle, agreed with the user over several rounds:
