@@ -16,7 +16,7 @@
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "@tailwindcss/postcss": "^4.3.3",
-    "drizzle-orm": "^0.36.4",
+    "drizzle-orm": "^0.45.2",
     "next": "^15.1.0",
     "node-cron": "^4.6.0",
     "nodemailer": "^10.0.15",
