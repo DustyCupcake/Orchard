@@ -17,8 +17,8 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 # minification, or page-data collection, so either one fails in
 # seconds/minutes instead of the ~15min it'd take to hit the same error
 # inside `next build`. scripts/rebuild.sh runs this stage on its own
-# ahead of the real image build, as a fast pre-check. next.config.ts sets
-# eslint.ignoreDuringBuilds and typescript.ignoreBuildErrors so the real
+# ahead of the real image build, as a fast pre-check. Next 16 no longer lints
+# during a build, and next.config.ts sets typescript.ignoreBuildErrors so the real
 # build never redoes this work — both checks still gate the deploy, they
 # just run once, here, instead of a second time inside the heavier step.
 FROM base AS checks
