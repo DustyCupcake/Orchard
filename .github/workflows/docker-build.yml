@@ -124,6 +124,16 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
+          # `latest=false` is not optional. By default (`latest=auto`) the action
+          # adds :latest itself whenever the ref is a semver tag, whatever the
+          # rules below say — which is how pushing v0.1.0 moved :latest, against
+          # what the comment on `on:` promises. It was harmless that time (the
+          # tag and main were the same commit); tagging an older commit, a
+          # hotfix on a previous release, would have rolled :latest back to it.
+          # The explicit rule below is then the only thing that sets it, and
+          # only for a build of the default branch.
+          flavor: |
+            latest=false
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=long,prefix=
