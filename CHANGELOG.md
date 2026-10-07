@@ -8,6 +8,14 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 Nothing yet. A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## 0.1.0 — 2026-10-07
+
+The first tagged release, cut so there is a known point to deploy, pin and upgrade from. Everything below, to the end of this file, is how the application got here: it was written as the work landed and was never grouped by release, so it isn't split into versions after the fact. From the next entry on, work is grouped under the version it ships in.
+
+## the dependencies are current, and the security alerts that applied are closed
+
+The first Dependabot run produced a queue that was merged one pull request at a time, each re-tested against the `main` it would land on (a lockfile merged by text is not guaranteed to match `package.json`, which is exactly how one PR's lockfile failed `npm ci`). What changed: `drizzle-orm` 0.36 → 0.45 (closing the high SQL-injection advisory; `drizzle-kit` stays on 0.30, checked as a pair — no migration drift, migrations apply), `vitest` 3 → 5 (the "critical" `tinypool` advisories were in the test runner), `react`/`react-dom` 19.3, `next` 15.5.27, `zod` 4.6, `openid-client` 6.8.8, `sharp`, `shell-quote`, `brace-expansion`, and the five GitHub Actions the workflow uses (`setup-node`, `setup-buildx`, `metadata`, `build-push` and `login`, the last of which can only be exercised by a push to `main` and passed on the first one). `nodemailer` 10 is its own entry below; Next 16 is not in this release (see *a green pull request now means the app builds*). Open advisories at the tag: one medium in dev tooling (`esbuild` via `drizzle-kit`), with the reasoning recorded below.
+
 ## the repository says which Node it needs, and what `npm audit` still lists is dev tooling with no fix
 
 `npm ci` on a machine running Node 23 printed engine warnings for Vitest 5 and ESLint's helpers, and nothing in the repository said why or what to use instead: no `.nvmrc`, no `engines`. Node 23 is an odd-numbered, non-LTS release that neither package lists as supported; the Dockerfile, CI and `scripts/test.sh` are all on Node 22. `.nvmrc` now pins 22, `package.json` declares `engines.node` as `^22.13.0 || ^24.0.0` (the intersection of what the dependencies require), and CONTRIBUTING's local setup starts with `nvm use`. Checked: `npm ci` on Node 22 prints no warnings, and on Node 23 prints one naming the project's own requirement. It is still only a warning; the suite ran on 23 in places while this was being worked out, but that is not the runtime that ships.
@@ -19,10 +27,6 @@ The same `npm ci` ended with "9 vulnerabilities". All nine are dev tooling and n
 The first push turned Dependabot loose: fourteen pull requests, all green except one whose lockfile `npm ci` rejected. Reading them showed that green meant very little. A PR only ran the test suite, which exercises the library layer against a database and never compiles the app, so Dependabot's Next 15 → 16 PR passed every test and failed both `tsc` (`next.config.ts`'s `eslint` key is gone) and `next build` (Next 16 builds with Turbopack by default and rejects this app's custom webpack config). The `build` job now also runs on pull requests, minus anything that publishes: no Docker Hub login, `push: false`, cache read but not written. It runs the Dockerfile's lint and type-check stage and then the full image build.
 
 Where those PRs came from matters. The majors (Next 16.4, Vitest 5.0.3) are Dependabot *security* updates, which ignore the `ignore:` rules by design, because the only patched versions of those packages sit in a new major. The four open postcss advisories (a stringify XSS and `sourceMappingURL` file reads) are against the postcss 8.4.31 that Next 15 pins exactly; a scoped npm override (`next` → `postcss ^8.5.23`) gives Next the patched version without taking Next 16, and `npm ci` was checked on Linux/Node 22 from the resulting lockfile. The vulnerable code only runs when postcss processes attacker-controlled CSS at build time, which this app doesn't do, so this is hygiene more than exposure. `dependabot.yml` records both lessons and now keeps `drizzle-orm` and `drizzle-kit` minors out of the automatic group, since for a 0.x package a minor is the breaking kind and drizzle-kit generates every future migration. Checked by hand against the group PR's 0.36 → 0.45 bump: `drizzle-kit generate` reports no schema drift, `tsc`, lint and `next build` pass.
-
-## 0.1.0 — 2026-10-06
-
-The first tagged release, cut so there is a known point to deploy, pin and upgrade from. Everything below, to the end of this file, is how the application got here: it was written as the work landed and was never grouped by release, so it isn't split into versions after the fact. From the next entry on, work is grouped under the version it ships in.
 
 ## migrations are tested on data that already exists, and the repository is set up to be picked up by someone else
 
