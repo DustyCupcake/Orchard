@@ -41,6 +41,20 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# One run at a time per branch or tag, in order. Several merges in quick
+# succession (a batch of Dependabot PRs, say) used to start several runs at
+# once, and they publish `:latest` as their last step, so whichever happened to
+# finish *last* won — which was not always the newest commit. It happened: four
+# merges in a minute left `:latest` on the second-newest build. With this, a run
+# for a ref waits for the previous one, and a run still queued when a newer one
+# arrives is dropped, so only the newest queued commit follows the one in
+# flight. `cancel-in-progress` stays false for pushes because cancelling a run
+# half-way through publishing would leave tags half-written; a pull request has
+# nothing to publish, so a new push to it simply cancels the stale run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   IMAGE: docker.io/dustycupcake/orchard
 
