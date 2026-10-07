@@ -23,11 +23,16 @@ name: Build and publish image
 #                        commit).
 # Either way the test suite has to pass first.
 #
-# A pull request runs the test suite and nothing else: no login, no image, no
-# push. That is what gives a Dependabot update or an outside contribution a
-# real answer to "does this break anything" before it is merged, and it is the
-# reason a PR can safely come from a fork — the jobs that need a secret never
-# run for one.
+# A pull request runs everything except publishing: the test suite, lint and
+# type-check, and a full build of the image. It never logs in to Docker Hub and
+# never pushes, so it needs no secret and a PR can safely come from a fork.
+#
+# The build matters as much as the tests. The suite exercises the library
+# layer against a database and never compiles the app, so it said nothing
+# about whether the app still builds: a Dependabot PR moving Next to 16 passed
+# every test while failing type-check and `next build` outright (Next 16
+# builds with Turbopack by default and rejects this app's webpack config). A
+# green PR has to mean the thing still builds.
 on:
   push:
     branches: [main]
@@ -68,8 +73,6 @@ jobs:
 
   build:
     needs: test
-    # Never for a pull request: this job logs in to Docker Hub and publishes.
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -89,11 +92,12 @@ jobs:
           push: false
           outputs: type=cacheonly
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
 
       # Username isn't sensitive (it's already public in the image tag
       # above) — only the access token needs to be a secret.
       - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
         with:
           username: dustycupcake
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -112,12 +116,15 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
+      # On a pull request this is the build check and nothing more: `push` is
+      # false, so nothing leaves the runner. The cache is read but not written
+      # (a PR, especially from a fork, shouldn't be able to seed it).
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
