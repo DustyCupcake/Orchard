@@ -136,8 +136,8 @@ did_something=false
 if [ "$image_changed" = true ]; then
   if [ "$BUILD_LOCAL" = "1" ]; then
     # The `checks` stage first, because the runner target doesn't depend on
-    # it — `next build` is set to skip lint and tsc (next.config.ts sets
-    # eslint.ignoreDuringBuilds and typescript.ignoreBuildErrors), so without
+    # it — `next build` does not lint (Next 16 removed it) and is set to skip tsc
+    # (next.config.ts sets typescript.ignoreBuildErrors), so without
     # this a type error would only surface at the very end of a long build
     # rather than in a minute. This is what the Dockerfile's own comment on
     # the stage describes, and what the pre-03ce132 version of this script

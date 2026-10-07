@@ -6,7 +6,19 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 ## Unreleased
 
-Nothing yet. A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
+A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
+
+## Next 16: building on Turbopack, and the workaround that no longer has a job
+
+Dependabot's Next 15 → 16 PR passed every test and could not build, which is why a pull request now builds the app. This is the upgrade done properly. Three things stood between 16 and a working app, and all three were small:
+
+- **`next.config.ts`.** The `eslint` key no longer exists (Next stopped linting during builds; the Dockerfile's `checks` stage already runs lint and `tsc`, so nothing is lost). And Next 16 builds with Turbopack by default and refuses a `webpack` function with no `turbopack` key. That `webpack` function — which externalised Node builtins for the *edge* compile of `src/instrumentation.ts`, because `next dev` compiled it under the edge config and every page 500'd — has nothing left to do: under Turbopack `next dev` serves pages and the scheduler's jobs register. `experimental.webpackMemoryOptimizations` was webpack-only. Both are removed, with an empty `turbopack: {}` recording the choice. The explanation of the old problem stays in the config's comment and in git history (`4314321`).
+- **`eslint.config.mjs`.** `eslint-config-next` 16 ships native flat configs, so the `FlatCompat` bridge is replaced by two imports, and `@eslint/eslintrc` is removed. The bundled `eslint-plugin-react-hooks` 7 adds React Compiler-style rules that fourteen existing sites trip (eight `Date.now()` calls in server pages, five state updates in effects, one mutation). None is a bug today and none came from the upgrade; they are set to warnings, with the reasoning in the file, to be promoted back to errors once cleared.
+- **`tsconfig.json`**, which Next rewrites (`jsx: react-jsx`, the `.next/dev/types` include).
+
+Measured on this app: `next build` takes about 9s at ~1.7GB peak memory on Turbopack, against about 37s at ~2.5GB on webpack with the memory flag — better on both counts, which matters on the small VPS. Next 16.4 pins `postcss` 8.5.23, already patched, so the npm override added for the postcss advisories is removed and the lockfile entry it left behind with it.
+
+Checked: `tsc` clean; lint 0 errors; `next build` on Turbopack; a production server against a throwaway database with 34 authenticated pages returning 200 and no errors in its log (the 307s are disabled-module redirects); the first-login form submitted for real, exercising a Server Action and a redirect; `next dev` on Turbopack; and `npm ci` on Linux/Node 22 from the lockfile. `npm audit --omit=dev` reports no vulnerabilities. Also: Next generated an `AGENTS.md` (telling coding agents to read the version's bundled docs); it is regenerated whenever `next dev` runs, so it is committed rather than fought.
 
 ## 0.1.0 — 2026-10-07
 

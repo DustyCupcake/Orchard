@@ -1,72 +1,31 @@
-import { builtinModules } from "node:module";
 import type { NextConfig } from "next";
-
-// Next.js compiles `src/instrumentation.ts` twice: once for the nodejs
-// runtime, once for edge. It only needs the edge copy when the app
-// actually has edge routes — `next build` gates on that
-// (`edgeRuntimeAppCount || edgeRuntimePagesCount`, in
-// next/dist/build/index.js), and this app has none, so production never
-// builds it and `next build` is clean.
-//
-// `next dev` does not apply that gate. It compiles the instrumentation
-// hook under the edge config, which externalizes no Node builtins, and
-// `register()`'s `process.env.NEXT_RUNTIME !== "nodejs"` guard does not
-// help: webpack resolves every `import()` target at parse time, whether
-// or not the branch is reachable. So the hook's dynamic imports — which
-// reach node-cron, Postgres, and nodemailer — fail to resolve, and
-// because instrumentation is compiled at server start and Next then
-// serves that failure as the response, *every* page returns 500 with an
-// error about Node builtins. `/login` included.
-//
-// So the edge compile is given the Node builtins as externals. The code
-// it pulls in is node-only and never executes on edge — the runtime
-// guard is what guarantees that, and it's the same guard production
-// relies on — so this only needs the compile to succeed, not to be
-// correct. `builtinModules` is read from Node rather than hardcoded, so
-// it can't drift out of sync with the runtime.
-//
-// Reached by: instrumentation.ts → @/lib/tasks → tasks/nominations.ts →
-// mailer.ts → nodemailer, whose base64/mime helpers do
-// `require('stream')` at module scope. `serverExternalPackages` does
-// NOT fix this — verified by adding an invalid key beside it and
-// confirming Next validates and reads this file, so the option really is
-// applied; Next's optOutBundlingPackages just isn't wired into the
-// instrumentation compilation. Nor is it a 15.5.x regression: 15.5.26
-// fails identically.
-//
-// Both spellings are needed: `builtinModules` yields bare names
-// ("crypto"), but the request webpack actually has to match is the
-// prefixed form ("node:crypto"), and externals match on the request
-// string exactly. Subpath builtins ("fs/promises") are already in the
-// list Node returns.
-const NODE_BUILTIN_EXTERNALS = [
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-];
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  webpack: (config, { isServer, nextRuntime }) => {
-    if (isServer && nextRuntime === "edge") {
-      const externals = Array.isArray(config.externals) ? config.externals : [];
-      config.externals = [...externals, ...NODE_BUILTIN_EXTERNALS];
-    }
-    return config;
-  },
-  // Lowers next build's peak memory during webpack compilation (at some
-  // cost to compile time) — worth it on the small-VPS deploy target this
-  // app builds on, where the default already needs a raised Node heap cap
-  // (see BUILD_MAX_OLD_SPACE_MB) to just avoid OOMing.
-  experimental: {
-    webpackMemoryOptimizations: true,
-  },
-  // The Dockerfile's own `typecheck` stage already runs both of these
-  // (as a fast pre-check ahead of the real build, via scripts/rebuild.sh)
-  // — redoing them here inside `next build` itself is pure duplicated
-  // memory/time on a box already tight on both.
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  // Next 16 builds and serves with Turbopack by default, and refuses to
+  // build when a `webpack` function is present with no `turbopack` key — so
+  // this empty object is a decision, not a placeholder: it states that this
+  // app builds on Turbopack.
+  //
+  // This file used to carry two webpack-only things, both gone:
+  //  - a `webpack` function that externalised Node builtins for the *edge*
+  //    compile of src/instrumentation.ts. `next dev` compiled that hook under
+  //    the edge config regardless of whether the app had edge routes, and
+  //    webpack resolved every dynamic import() at parse time, so every page
+  //    500'd ("Node builtins"). Turbopack doesn't hit it: checked, `next dev`
+  //    serves pages and the scheduler's jobs register.
+  //  - `experimental.webpackMemoryOptimizations`, for the small-VPS build.
+  //    Measured on this app, Turbopack builds in ~9s at ~1.7GB peak against
+  //    ~37s at ~2.5GB for webpack with that flag, so the saving it was after
+  //    comes free.
+  // If webpack is ever needed again, `next build --webpack` still works, and
+  // the removed workaround is in git history (4314321).
+  turbopack: {},
+  // The Dockerfile's own `checks` stage already runs lint and tsc (as a fast
+  // pre-check ahead of the real build, via scripts/rebuild.sh), so doing it
+  // again inside `next build` is duplicated memory and time on a box already
+  // tight on both. (Next no longer lints during a build at all as of 16, so
+  // there is no `eslint` option to set any more.)
   typescript: {
     ignoreBuildErrors: true,
   },
