@@ -8,6 +8,18 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## the React hooks lint rules are errors again, with the fourteen sites they flagged fixed
+
+The Next 16 entry below left three new `eslint-plugin-react-hooks` 7 rules as warnings because fourteen existing sites tripped them. They are cleared and the rules are errors again (the override block is gone from `eslint.config.mjs`), so a new violation fails the build's lint stage instead of adding to a pile nobody reads.
+
+- **Eight `Date.now()` calls in server pages** (`react-hooks/purity`) now go through `requestTime()` in `src/lib/request-time.ts`. A server component renders once per request, so reading the clock there was never a bug; the rule just can't tell a server component from a client one. The helper makes the call site say what it means and puts the one clock read in one documented place.
+- **`DurationFields`** (`immutability`) built its three windows by reassigning a running `cursor` inside a `map`; it is now a `reduce`, same arithmetic.
+- **`AgendaItemForm`, `BulkClaimSelect` and `AppShell`'s mobile drawer** (`set-state-in-effect`) reset their state while rendering, keyed on the thing that should trigger the reset, instead of in an effect that painted one stale frame first. One behaviour difference, a fix: `AgendaItemForm` used to clear its draft only when `state.ok` *changed*, so two successful adds in a row cleared the form the first time and not the second; it now clears on every new successful result.
+- **`ThemeToggle`** reads the `data-theme` attribute the init script already sets, through `useSyncExternalStore`, rather than copying `localStorage` into state after mount. That also makes it correct when `localStorage` is unavailable.
+- **`AppShell`'s mount-time `localStorage` restore** keeps its effect, with the rule disabled around that block and the reason beside it: the server render has no `localStorage`, so reading it in a state initializer would hydrate differently from the HTML it was sent.
+
+Checked: `tsc` clean, lint 0 errors, `next build`, the suite, and the changed components in a browser against a scratch database (theme choice survives a reload and shows as selected; the mobile drawer closes on navigation; the saved sidebar collapse is restored; the duration preview adds up; two agenda items added in a row each clear the form; a board selection is dropped when a filter changes the task set and doesn't come back on Back). The lint warnings left are eight unused variables in tests.
+
 ## Next 16: building on Turbopack, and the workaround that no longer has a job
 
 Dependabot's Next 15 → 16 PR passed every test and could not build, which is why a pull request now builds the app. This is the upgrade done properly. Three things stood between 16 and a working app, and all three were small:

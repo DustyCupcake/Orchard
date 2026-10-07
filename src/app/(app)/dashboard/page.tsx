@@ -27,6 +27,7 @@ import {
   submitOnboardingAxisAction,
   submitOnboardingPrefilledAnswersAction,
 } from "./actions";
+import { requestTime } from "@/lib/request-time";
 
 export const dynamic = "force-dynamic";
 
@@ -444,7 +445,7 @@ export default async function DashboardPage({
     feed.kitchenNeedsAction.personal.length > 0 ||
     feed.expiredNominations.length > 0 ||
     hasSharedModuleNeedsAction;
-  const now = Date.now();
+  const now = requestTime();
 
   return (
     <main className="mx-auto max-w-[820px] px-6 py-10 md:px-12 md:py-14">

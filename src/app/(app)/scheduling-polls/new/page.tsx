@@ -6,6 +6,7 @@ import { getViewingContext } from "@/lib/view-as";
 import { Banner, BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
 import { proposePollAction } from "./actions";
 import SelectField from "@/components/ui/SelectField";
+import { requestTime } from "@/lib/request-time";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export default async function NewSchedulingPollPage({
   ]);
 
   const today = new Date().toISOString().slice(0, 10);
-  const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const nextWeek = new Date(requestTime() + 7 * 86400000).toISOString().slice(0, 10);
 
   return (
     <main className="mx-auto max-w-[560px] px-6 py-10 md:px-12 md:py-14">
