@@ -25,7 +25,10 @@ A few deliberate non-choices, so they don't get silently revisited: not a separa
 
 ## Local setup
 
+**Use Node 22** — it is what the Dockerfile builds on, what CI runs, and what `npm test` runs the suite on. `.nvmrc` pins it, so `nvm use` picks it up, and `package.json`'s `engines` says which versions the dependencies support (22.13 or newer, or 24; the odd-numbered releases such as 23 are not supported by Vitest 5 and `npm ci` will warn). The warning is only a warning, and a test run on an unsupported Node will usually still work, but it is not the runtime that ships, which is the reason `scripts/test.sh` runs the suite in a Node 22 container in the first place.
+
 ```bash
+nvm use                # picks up .nvmrc
 cp .env.example .env   # fill in a real SESSION_SECRET at minimum for local dev
 npm install
 docker run --rm -d -p 5432:5432 -e POSTGRES_USER=orchard -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=orchard postgres:16-alpine
