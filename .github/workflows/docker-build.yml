@@ -85,7 +85,7 @@ jobs:
       # before paying for the full build — cacheonly since nothing ever
       # runs this stage's image, only its exit code.
       - name: Lint + typecheck
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: checks
@@ -120,7 +120,7 @@ jobs:
       # false, so nothing leaves the runner. The cache is read but not written
       # (a PR, especially from a fork, shouldn't be able to seed it).
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
