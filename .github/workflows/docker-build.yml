@@ -79,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       # Same fast-fail lint+tsc pass scripts/rebuild.sh runs locally,
       # before paying for the full build — cacheonly since nothing ever
