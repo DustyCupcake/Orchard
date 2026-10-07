@@ -4,6 +4,15 @@
 # adds is a steady trickle of minor and patch updates, grouped so they arrive
 # as one reviewable PR rather than thirty.
 #
+# Two things this file cannot do, learned the hard way. First, `ignore` does
+# not apply to *security* updates: when an advisory is only fixed in a new
+# major, Dependabot opens that PR anyway (Next 15 -> 16 and Vitest 3 -> 5 both
+# arrived that way). Those need a real build before merging — a pull request
+# now runs one — and sometimes a different fix: the postcss advisories were
+# cleared with an npm override instead of the Next major. Second, for a 0.x
+# package a "minor" bump is the breaking kind (see the drizzle entry below),
+# so semver-major alone does not describe the risk.
+#
 # Major versions are ignored on purpose. A major bump of Next, Drizzle,
 # TypeScript or the React packages changes how the app builds or how its
 # database layer behaves, and is a piece of work to be planned and tested, not
@@ -24,6 +33,15 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # Pre-1.0, so a minor is where Drizzle breaks things, and drizzle-kit is
+      # what generates migrations: a change there alters how every future
+      # migration is produced, and applied migrations are immutable. Patches
+      # still arrive; a minor is a decision (0.36 -> 0.45 was checked by hand:
+      # no schema drift, build and tests green).
+      - dependency-name: "drizzle-orm"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "drizzle-kit"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
