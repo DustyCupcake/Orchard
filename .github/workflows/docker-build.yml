@@ -96,7 +96,7 @@ jobs:
 
       # Username isn't sensitive (it's already public in the image tag
       # above) — only the access token needs to be a secret.
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         if: github.event_name != 'pull_request'
         with:
           username: dustycupcake
