@@ -13,6 +13,7 @@ import {
   FOUNDING_SETTINGS_TITLE,
 } from "@/lib/assemblies";
 import { proposeAssemblyAction } from "./actions";
+import { requestTime } from "@/lib/request-time";
 
 export const dynamic = "force-dynamic";
 
@@ -107,7 +108,7 @@ export default async function NewAssemblyPage({
             <legend className="text-[length:var(--text-body)] font-medium text-[var(--text)]">How long should each window run?</legend>
             {/* Anchored to render time so the preview reads "from now"
                 rather than drifting between server and client renders. */}
-            <DurationFields now={Date.now()} />
+            <DurationFields now={requestTime()} />
           </fieldset>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -135,7 +136,7 @@ export default async function NewAssemblyPage({
             <legend className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
               How long should each window run?
             </legend>
-            <DurationFields now={Date.now()} />
+            <DurationFields now={requestTime()} />
           </fieldset>
 
           <div className="flex flex-wrap items-center gap-2">

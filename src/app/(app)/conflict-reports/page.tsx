@@ -20,6 +20,7 @@ import {
   recuseSelfAction,
   resolveConflictReportAction,
 } from "./actions";
+import { requestTime } from "@/lib/request-time";
 
 export const dynamic = "force-dynamic";
 
@@ -131,7 +132,7 @@ export default async function ConflictReportsPage({
                 const isPointOfContact = r.acknowledgedBy === viewing.id;
                 const overdue =
                   !r.acknowledgedAt &&
-                  Date.now() - new Date(r.createdAt).getTime() > communityRow.conflictAckWindowHours * 3600_000;
+                  requestTime() - new Date(r.createdAt).getTime() > communityRow.conflictAckWindowHours * 3600_000;
 
                 return (
                   <div key={r.id} className={CARD}>

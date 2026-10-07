@@ -103,13 +103,13 @@ export default function DurationFields({ now }: { now: number }) {
   // The three boundaries, each measured from the one before it — the
   // same arithmetic createAssembly does, mirrored here so the preview
   // can't disagree with what actually gets stored.
-  let cursor = now;
-  const boundaries = WINDOWS.map((w) => {
+  const boundaries = WINDOWS.reduce<
+    Array<(typeof WINDOWS)[number] & { minutes: number; startsAt: number; endsAt: number }>
+  >((done, w) => {
     const minutes = toMinutes(amounts[w.key], w.min);
-    const startsAt = cursor;
-    cursor += minutes * 60_000;
-    return { ...w, minutes, startsAt, endsAt: cursor };
-  });
+    const startsAt = done.length ? done[done.length - 1].endsAt : now;
+    return [...done, { ...w, minutes, startsAt, endsAt: startsAt + minutes * 60_000 }];
+  }, []);
 
   return (
     <div className="flex flex-col gap-3">

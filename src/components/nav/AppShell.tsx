@@ -481,6 +481,11 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
   // possible at all.
   const [groupOpenOverrides, setGroupOpenOverrides] = useState<Record<string, boolean>>({});
 
+  // Restoring the saved sidebar state has to wait for the client: the server
+  // render has no localStorage, so reading it in a state initializer would
+  // hydrate differently from the HTML it was sent. This is the one place the
+  // setState-in-effect rule is right in general and wrong here.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     try {
       if (window.localStorage.getItem(COLLAPSE_KEY) === "1") setCollapsed(true);
@@ -502,6 +507,7 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
       // each group's own default.
     }
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     try {
@@ -519,9 +525,14 @@ export default function AppShell({ ctx, children }: { ctx: NavContext; children:
     }
   }, [groupOpenOverrides]);
 
-  useEffect(() => {
+  // Navigating closes the mobile drawer. Compared during render rather than
+  // in an effect, so the drawer is already closed on the first paint of the
+  // new page instead of one frame later.
+  const [drawerPathname, setDrawerPathname] = useState(pathname);
+  if (pathname !== drawerPathname) {
+    setDrawerPathname(pathname);
     setMobileOpen(false);
-  }, [pathname]);
+  }
 
   // Phase 54 (View-as) — "disabled at the UI layer," applied once here
   // rather than wrapping every write form on every page individually:

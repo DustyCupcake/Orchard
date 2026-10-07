@@ -113,6 +113,7 @@ import {
 } from "./actions";
 import ClaimGate from "@/components/tasks/ClaimGate";
 import SelectField from "@/components/ui/SelectField";
+import { requestTime } from "@/lib/request-time";
 
 const SIGNAL_LABELS: Record<string, string> = {
   stalled: "looks stalled",
@@ -345,7 +346,7 @@ export default async function TaskDetailPage({
   const myRequest = joinRequests.find((r) => r.memberId === viewing.id);
 
   const browseWindowOpen = Boolean(
-    taskRow.browsePeriodEnd && taskRow.browsePeriodEnd.getTime() > Date.now(),
+    taskRow.browsePeriodEnd && taskRow.browsePeriodEnd.getTime() > requestTime(),
   );
   const myCandidacy = candidacies.find((c) => c.memberId === viewing.id);
   const openCandidacies = candidacies.filter((c) => c.status === "open");

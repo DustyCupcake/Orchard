@@ -5,6 +5,7 @@ import { getNextCutoffAt, listCurrentRoundQuestions } from "@/lib/input-rounds";
 import { Banner, BUTTON_PRIMARY, Tag } from "@/components/ui/kit";
 import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
 import { submitQuestionResponseAction } from "./actions";
+import { requestTime } from "@/lib/request-time";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function InputRoundsPage({
     getNextCutoffAt(viewing),
   ]);
 
-  const reminderDue = nextCutoffAt ? nextCutoffAt.getTime() - Date.now() < MS_PER_DAY : false;
+  const reminderDue = nextCutoffAt ? nextCutoffAt.getTime() - requestTime() < MS_PER_DAY : false;
 
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">

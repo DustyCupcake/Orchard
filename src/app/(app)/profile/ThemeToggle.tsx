@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 const THEME_KEY = "orchard.theme";
 type ThemePref = "system" | "light" | "dark";
@@ -10,31 +10,35 @@ type ThemePref = "system" | "light" | "dark";
 // localStorage, no DB/round-trip needed unless cross-device sync
 // matters." src/app/layout.tsx's inline THEME_INIT_SCRIPT reads the
 // same key before first paint so there's no flash on later loads.
-export default function ThemeToggle() {
-  const [pref, setPref] = useState<ThemePref>("system");
+// The choice lives on <html data-theme>: THEME_INIT_SCRIPT sets it from
+// localStorage before first paint and `choose` keeps it current, so reading
+// it back is reading what the page is actually showing — and works when
+// localStorage is unavailable, where the toggle still changes this tab. Read
+// through useSyncExternalStore because the server has no document: it renders
+// "system" and the client re-reads once hydrated.
+function subscribeToTheme(onChange: () => void) {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  return () => observer.disconnect();
+}
 
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(THEME_KEY);
-      if (stored === "light" || stored === "dark") setPref(stored);
-    } catch {
-      // localStorage unavailable — stay on "system"
-    }
-  }, []);
+function currentTheme(): ThemePref {
+  const attr = document.documentElement.getAttribute("data-theme");
+  return attr === "light" || attr === "dark" ? attr : "system";
+}
+
+export default function ThemeToggle() {
+  const pref = useSyncExternalStore<ThemePref>(subscribeToTheme, currentTheme, () => "system");
 
   function choose(next: ThemePref) {
-    setPref(next);
+    if (next === "system") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", next);
     try {
-      if (next === "system") {
-        window.localStorage.removeItem(THEME_KEY);
-        document.documentElement.removeAttribute("data-theme");
-      } else {
-        window.localStorage.setItem(THEME_KEY, next);
-        document.documentElement.setAttribute("data-theme", next);
-      }
+      if (next === "system") window.localStorage.removeItem(THEME_KEY);
+      else window.localStorage.setItem(THEME_KEY, next);
     } catch {
-      // localStorage unavailable — the in-memory toggle above still
-      // updates this tab's own view, just won't persist.
+      // localStorage unavailable — the attribute above still updates this
+      // tab's own view, just won't persist.
     }
   }
 

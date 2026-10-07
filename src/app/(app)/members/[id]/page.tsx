@@ -8,6 +8,7 @@ import { getVisibleContactMethods, listEmergencyOnlyContactMethods } from "@/lib
 import { getMostRecentActivation, listEmergencyAnswers } from "@/lib/emergency-access";
 import { Banner, BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
 import { activateEmergencyAccessAction, addEmergencyAccessExplanationAction } from "./actions";
+import { requestTime } from "@/lib/request-time";
 
 type EmergencyAccessLogRow = typeof emergencyAccessLog.$inferSelect;
 
@@ -74,7 +75,7 @@ export default async function MemberPage({
   let recentLog: EmergencyAccessLogRow | null = null;
   if (activated === "1") {
     const mostRecent = await getMostRecentActivation(viewing, target.id);
-    if (mostRecent && Date.now() - mostRecent.activatedAt.getTime() < ACTIVATION_WINDOW_MS) {
+    if (mostRecent && requestTime() - mostRecent.activatedAt.getTime() < ACTIVATION_WINDOW_MS) {
       recentLog = mostRecent;
       revealedMethods = await listEmergencyOnlyContactMethods(target.id);
       revealedAnswers = emergencyAnswers;

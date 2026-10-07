@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { Banner, BUTTON_PRIMARY, INPUT, LABEL } from "../ui/kit";
 import { SubmitButton } from "../ui/SubmitButton";
 import { RESPONSE_TYPE_HINTS, responseTypeNoun } from "@/lib/field-shape";
@@ -84,9 +84,14 @@ export default function AgendaItemForm({
   const [min, setMin] = useState("");
   const [max, setMax] = useState("");
 
-  // A successful add clears the draft, so the next item starts fresh —
-  // but only on the transition, never on a plain re-render.
-  useEffect(() => {
+  // A successful add clears the draft, so the next item starts fresh — but
+  // only when a *new* result arrives (compared by identity, so two adds in a
+  // row each clear it), never on a plain re-render. Done during render rather
+  // than in an effect: React discards this pass and re-renders at once, so the
+  // form never paints the old draft next to a success message.
+  const [handledState, setHandledState] = useState(state);
+  if (state !== handledState) {
+    setHandledState(state);
     if (state.ok) {
       setText("");
       setResponseType("text");
@@ -96,7 +101,7 @@ export default function AgendaItemForm({
       setMin("");
       setMax("");
     }
-  }, [state.ok]);
+  }
 
   const choice = isChoice(responseType);
   const isText = responseType === "text";

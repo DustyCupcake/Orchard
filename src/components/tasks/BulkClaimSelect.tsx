@@ -149,16 +149,22 @@ export function TaskSelectionProvider({
   // Next's client navigation can preserve this client island while the
   // server supplies a different view/filter set. Prune the source state
   // as well as the derived value so a task cannot reappear selected when
-  // the user navigates back to the earlier view.
-  useEffect(() => {
-    setSelected((previous) => {
-      const next = new Set([...previous].filter((id) => availableIds.has(id)));
-      const unchanged = next.size === previous.size && [...previous].every((id) => next.has(id));
-      return unchanged ? previous : next;
-    });
+  // the user navigates back to the earlier view. Done during render, keyed
+  // on the inputs it depends on, rather than in an effect: React re-renders
+  // straight away, so a stale selection or an open panel never paints.
+  const [seenInputs, setSeenInputs] = useState({ availableIds, canExport, exportCycleId });
+  if (
+    seenInputs.availableIds !== availableIds ||
+    seenInputs.canExport !== canExport ||
+    seenInputs.exportCycleId !== exportCycleId
+  ) {
+    setSeenInputs({ availableIds, canExport, exportCycleId });
+    const next = new Set([...selected].filter((id) => availableIds.has(id)));
+    const unchanged = next.size === selected.size && [...selected].every((id) => next.has(id));
+    if (!unchanged) setSelected(next);
     setExportOpen(false);
     setMoveOpen(false);
-  }, [availableIds, canExport, exportCycleId]);
+  }
 
   const selectedClaimableTaskIds = useMemo(
     () => claimableTaskIds.filter((id) => selectedIds.has(id)),
