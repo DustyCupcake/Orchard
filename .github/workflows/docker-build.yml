@@ -107,7 +107,7 @@ jobs:
       # sha this workflow has always published.
       - name: Work out the image tags
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
           tags: |
