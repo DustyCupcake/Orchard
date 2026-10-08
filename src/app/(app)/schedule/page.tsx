@@ -43,6 +43,8 @@ export default async function SchedulePage({
     declined?: string;
     pinged?: string;
     published?: string;
+    // One-based page of the owner overlay, a week at a time.
+    week?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
@@ -50,7 +52,7 @@ export default async function SchedulePage({
     redirect("/login");
   }
 
-  const { error, submitted, updated, confirmed, declined, pinged, published } = await searchParams;
+  const { error, submitted, updated, confirmed, declined, pinged, published, week } = await searchParams;
 
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "event_scheduling");
@@ -133,13 +135,6 @@ export default async function SchedulePage({
         )
       : new Map<string, string>();
 
-  // The scheduling owner's cross-proposal view: every proposal's painted
-  // availability on one grid, with what's already confirmed marked.
-  // This is the question painted availability exists to answer — "given
-  // everything people have said they could do, what can I actually
-  // schedule?" — and it can only be asked once availability is a range
-  // rather than a fixed start. The per-proposal arithmetic it depends on
-  // lives in availability.ts, so this is only the overlay.
   // The scheduling owner's cross-proposal overlay: every proposal's painted
   // availability on one grid, plus whether any stretch of time can hold the
   // whole unplaced programme. This is the question painted availability makes
@@ -296,7 +291,7 @@ export default async function SchedulePage({
                               availability against.
                             </p>
                           )}
-                          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                          <button type="submit" disabled={!gridRange} className={`${BUTTON_PRIMARY} w-fit disabled:cursor-not-allowed disabled:opacity-60`}>
                             Save changes
                           </button>
                         </form>
@@ -340,7 +335,7 @@ export default async function SchedulePage({
                   against.
                 </p>
               )}
-              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+              <button type="submit" disabled={!gridRange} className={`${BUTTON_PRIMARY} w-fit disabled:cursor-not-allowed disabled:opacity-60`}>
                 Submit proposal
               </button>
             </form>
@@ -357,6 +352,7 @@ export default async function SchedulePage({
                   rangeEnd={gridRange.end}
                   timeZone={timeZone}
                   timeLabel={timeLabel}
+                  week={Math.max(0, (Number.parseInt(week ?? "1", 10) || 1) - 1)}
                 />
               </div>
             </section>

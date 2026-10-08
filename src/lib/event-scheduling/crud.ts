@@ -5,6 +5,7 @@ import { community, cycle, eventProposal } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
+import { effectiveTimeZone } from "../dates/timezone";
 
 type Member = typeof memberTable.$inferSelect;
 type EventProposalRow = typeof eventProposal.$inferSelect;
@@ -160,4 +161,29 @@ export async function listMyEventProposals(actor: Member, cycleId?: string | nul
     .from(eventProposal)
     .where(and(...conditions))
     .orderBy(desc(eventProposal.createdAt));
+}
+
+
+/**
+ * The wall-clock a proposal's times are read in: its event's zone, else
+ * the Community's, else UTC. Resolved server-side rather than taken from
+ * the form, so a confirm action can't be pointed at a zone the event
+ * doesn't run in.
+ */
+export async function getProposalTimeZone(actor: Member, proposalId: string): Promise<string> {
+  const [row] = await db
+    .select({ cycleId: eventProposal.cycleId })
+    .from(eventProposal)
+    .where(and(eq(eventProposal.id, proposalId), eq(eventProposal.communityId, actor.communityId)));
+  if (!row) {
+    throw new NotFoundError("Proposal not found");
+  }
+  const [communityRow] = await db
+    .select({ timeZone: community.timeZone })
+    .from(community)
+    .where(eq(community.id, actor.communityId));
+  const [cycleRow] = row.cycleId
+    ? await db.select({ timeZone: cycle.timeZone }).from(cycle).where(eq(cycle.id, row.cycleId))
+    : [];
+  return effectiveTimeZone(cycleRow, communityRow ?? {});
 }

@@ -4,6 +4,8 @@ import {
   collapseCellsToWindows,
   commonPlacementWindow,
   expandWindowsToCells,
+  gridDays,
+  gridWeeks,
   windowMinutes,
   windowsForceClash,
 } from "@/lib/event-scheduling";
@@ -278,23 +280,68 @@ describe("windowsForceClash", () => {
 
   // One hour each inside a shared 90 minutes leaves 30 minutes of slack —
   // not enough for either session, so this really is a clash.
-  it("is a clash when the slack is shorter than both sessions", () => {
-    expect(windowsForceClash(w("15:00", "16:30"), w("15:30", "17:00"), 60, 60)).toBe(true);
+  // Two proposals that painted the same afternoon can run back to back;
+  // plain overlap called these a clash.
+  it("is not a clash when identical windows can hold both sessions in sequence", () => {
+    expect(windowsForceClash(w("15:00", "17:00"), w("15:00", "17:00"), 60, 60)).toBe(false);
+    expect(windowsForceClash(w("15:00", "18:00"), w("15:00", "18:00"), 90, 90)).toBe(false);
+  });
+
+  it("is not a clash when staggered windows leave room for both", () => {
+    // A at 15:00-16:00, B at 16:00-17:00.
+    expect(windowsForceClash(w("15:00", "16:30"), w("15:30", "17:00"), 60, 60)).toBe(false);
+  });
+
+  it("is a clash when the shared window can't hold both sessions", () => {
+    // Ninety minutes can't hold two one-hour sessions.
+    expect(windowsForceClash(w("15:00", "16:30"), w("15:00", "16:30"), 60, 60)).toBe(true);
   });
 
   it("respects each side's own duration", () => {
     const a = w("15:00", "16:30");
-    const b = w("15:30", "17:00");
-    // Both sessions need 60 and only 30 is clear -> clash.
+    const b = w("15:00", "16:30");
     expect(windowsForceClash(a, b, 60, 60)).toBe(true);
-    // Sessions needing only 30 fit either side of the overlap.
+    // Sessions needing only 30 fit side by side.
     expect(windowsForceClash(a, b, 30, 30)).toBe(false);
-    // Only one side short is enough to clear it.
+    // A 30 and a 60 fit in 90 together.
     expect(windowsForceClash(a, b, 30, 60)).toBe(false);
+    // A 90 and a 30 don't.
+    expect(windowsForceClash(a, b, 90, 30)).toBe(true);
+  });
+
+  it("treats a window shorter than its session as pinned to that window", () => {
+    // B's stored slot is 30 minutes though it states 60, as a proposal that
+    // predates painted availability might. It stays "only this time".
+    expect(windowsForceClash(w("15:00", "16:00"), w("15:30", "16:00"), 60, 60)).toBe(true);
+    expect(windowsForceClash(w("15:00", "17:00"), w("15:30", "16:00"), 60, 60)).toBe(false);
   });
 
   it("is a clash when one window is wholly inside the other", () => {
     // A needs three hours and only has the hour outside B's 30 minutes.
     expect(windowsForceClash(w("15:00", "18:00"), w("16:00", "16:30"), 180, 30)).toBe(true);
+  });
+});
+describe("gridDays / gridWeeks", () => {
+  it("lists every day of the range, both ends included", () => {
+    expect(gridDays("2026-09-10", "2026-09-12")).toEqual(["2026-09-10", "2026-09-11", "2026-09-12"]);
+    expect(gridDays("2026-09-10", "2026-09-10")).toEqual(["2026-09-10"]);
+  });
+
+  it("is empty for a range that runs backwards", () => {
+    expect(gridDays("2026-09-12", "2026-09-10")).toEqual([]);
+  });
+
+  it("caps an absurd range instead of looping on it", () => {
+    expect(gridDays("2026-01-01", "2126-01-01").length).toBe(366);
+  });
+
+  it("pages in weeks from the event's first day", () => {
+    const weeks = gridWeeks(gridDays("2026-09-10", "2026-09-26"));
+    expect(weeks.map((w) => w.length)).toEqual([7, 7, 3]);
+    expect(weeks[1][0]).toBe("2026-09-17");
+  });
+
+  it("gives no pages for no days", () => {
+    expect(gridWeeks([])).toEqual([]);
   });
 });

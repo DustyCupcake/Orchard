@@ -123,7 +123,6 @@ export default function EventReviewSection({
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   <form action={confirmEventProposalAction} className="flex flex-wrap items-center gap-1.5">
                     <input type="hidden" name="proposalId" value={p.id} />
-                    <input type="hidden" name="timeZone" value={timeZone} />
                     <input
                       type="datetime-local"
                       name="startsAt"

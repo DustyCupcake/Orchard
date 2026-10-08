@@ -6,7 +6,7 @@ import { ForbiddenError } from "../errors";
 import { isModuleOpenToEveryone, listGrantingTaskIds } from "../permissions";
 import { cycleScopeCondition } from "./crud";
 import type { EventSlot } from "./crud";
-import { windowsForceClash } from "./availability";
+import { windowMinutes, windowsForceClash } from "./availability";
 
 type Member = typeof memberTable.$inferSelect;
 type EventProposalRow = typeof eventProposal.$inferSelect;
@@ -79,15 +79,22 @@ function operativeSlots(p: EventProposalRow): EventSlot[] {
 // What "overlapping" means changed when preferred_slots became painted
 // availability rather than fixed placements — see availability.ts's
 // windowsForceClash for why plain overlap would now flag clashes that
-// don't exist. A confirmed proposal is still a concrete placement, and
-// durationMinutes is still the proposal's own stated length, which is
-// what makes "can this one still dodge" answerable for both sides.
+// don't exist. A confirmed proposal is a concrete placement, so it
+// counts for the whole of its confirmed slot rather than for
+// durationMinutes — otherwise a slot the owner stretched past the stated
+// length would read as room to move. An unconfirmed one counts for
+// durationMinutes, which is what makes "can this one still dodge"
+// answerable.
+function occupiedMinutes(p: EventProposalRow) {
+  return p.confirmedSlot ? windowMinutes(p.confirmedSlot as EventSlot) : p.durationMinutes;
+}
+
 function proposalsConflict(a: EventProposalRow, b: EventProposalRow) {
   if (!a.spaceNeeds || !b.spaceNeeds || a.spaceNeeds !== b.spaceNeeds) return false;
   const slotsA = operativeSlots(a);
   const slotsB = operativeSlots(b);
   return slotsA.some((sa) =>
-    slotsB.some((sb) => windowsForceClash(sa, sb, a.durationMinutes, b.durationMinutes)),
+    slotsB.some((sb) => windowsForceClash(sa, sb, occupiedMinutes(a), occupiedMinutes(b))),
   );
 }
 

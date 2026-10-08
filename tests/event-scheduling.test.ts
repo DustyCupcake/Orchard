@@ -236,10 +236,35 @@ describe("Conflict detection", () => {
     expect(byId.get(b.id)?.status).toBe("proposed");
   });
 
+  it("doesn't flag identical windows that can hold both sessions in sequence", async () => {
+    const { alice, bob } = await setUpModule();
+    // Both painted the same two hours for an hour each — one at 15:00 and
+    // one at 16:00. Plain overlap used to call this a clash.
+    const a = await createEventProposal(bob, {
+      host: "Bob",
+      title: "A",
+      durationMinutes: 60,
+      spaceNeeds: "Main stage",
+      preferredSlots: [at("15:00", "17:00")],
+    });
+    const b = await createEventProposal(bob, {
+      host: "Bob",
+      title: "B",
+      durationMinutes: 60,
+      spaceNeeds: "Main stage",
+      preferredSlots: [at("15:00", "17:00")],
+    });
+
+    const reviewed = await listEventProposalsForReview(alice);
+    const byId = new Map(reviewed.map((p) => [p.id, p]));
+    expect(byId.get(a.id)?.status).toBe("proposed");
+    expect(byId.get(b.id)?.status).toBe("proposed");
+  });
+
   it("flags overlapping windows when neither can dodge", async () => {
     const { alice, bob } = await setUpModule();
-    // Both need an hour out of the same single 90-minute stretch, so each
-    // has only 30 minutes clear — not enough, and a real clash.
+    // Both need an hour out of the same single 90-minute stretch, which
+    // can't hold two hours — a real clash.
     const a = await createEventProposal(bob, {
       host: "Bob",
       title: "A",
@@ -252,7 +277,7 @@ describe("Conflict detection", () => {
       title: "B",
       durationMinutes: 60,
       spaceNeeds: "Main stage",
-      preferredSlots: [at("15:30", "17:00")],
+      preferredSlots: [at("15:00", "16:30")],
     });
 
     const reviewed = await listEventProposalsForReview(alice);

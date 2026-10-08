@@ -12,6 +12,7 @@ import {
   createEventProposal,
   createEventProposalInput,
   declineEventProposal,
+  getProposalTimeZone,
   paintedCellsInput,
   pingConflictHost,
   publishEventSchedule,
@@ -19,7 +20,7 @@ import {
   updateEventProposalInput,
 } from "@/lib/event-scheduling";
 import { AppError } from "@/lib/errors";
-import { DEFAULT_TIME_ZONE, instantFromZoned } from "@/lib/dates";
+import { instantFromZoned } from "@/lib/dates";
 
 /**
  * The AvailabilityGrid's painted cells -> the availability windows
@@ -122,12 +123,12 @@ export async function confirmEventProposalAction(formData: FormData) {
 
   try {
     // The two datetime-local controls are filled in and read in the
-    // event's own wall-clock (EventReviewSection passes the same timeZone
-    // it renders the slot list with). `new Date(...)` on a bare
-    // "YYYY-MM-DDTHH:mm" would instead read it in the *server's* zone,
-    // so a confirmed slot could land hours off what the owner just
-    // clicked — instantFromZoned converts against the event's zone.
-    const timeZone = String(formData.get("timeZone") ?? DEFAULT_TIME_ZONE);
+    // event's own wall-clock. `new Date(...)` on a bare "YYYY-MM-DDTHH:mm"
+    // would instead read it in the *server's* zone, so a confirmed slot
+    // could land hours off what the owner just clicked — instantFromZoned
+    // converts against the event's zone, which is looked up here rather
+    // than trusted from the form.
+    const timeZone = await getProposalTimeZone(actor, proposalId);
     const startsAtRaw = String(formData.get("startsAt") ?? "");
     const endsAtRaw = String(formData.get("endsAt") ?? "");
     const input = confirmEventProposalSlotInput.parse({

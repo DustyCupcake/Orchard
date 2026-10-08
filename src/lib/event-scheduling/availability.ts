@@ -171,65 +171,47 @@ export function candidatePlacements(
 }
 
 /**
- * The largest single stretch of `outer` that doesn't intersect `blocker`,
- * in MINUTES — the unit the durations this is compared against are in.
- * When they don't overlap at all, that's simply `outer`'s own length.
- *
- * The minute conversion is the whole subtlety here. These are timestamp
- * differences, so without the division this returns ~1,800,000 for an
- * hour of slack, and every comparison against a duration in minutes then
- * passes trivially — which reads as "nothing ever conflicts", silently,
- * because the code still typechecks and still runs.
+ * The first and last start a `durationMinutes` session can take inside a
+ * window, on the same half-hour lattice candidatePlacements walks. A
+ * window too short to hold the session is read as the session itself —
+ * one fixed placement filling it — which is how a proposal that predates
+ * painted availability (a single slot) keeps meaning "only this time".
  */
-function freeMinutes(outer: EventSlot, blocker: EventSlot): number {
-  const outerStart = toMs(outer.startsAt);
-  const outerEnd = toMs(outer.endsAt);
-  const blockStart = toMs(blocker.startsAt);
-  const blockEnd = toMs(blocker.endsAt);
-
-  if (blockEnd <= outerStart || blockStart >= outerEnd) {
-    return windowMinutes(outer);
-  }
-  const beforeMs = Math.min(outerEnd, blockStart) - outerStart;
-  const afterMs = outerEnd - Math.max(outerStart, blockEnd);
-  return Math.max(0, Math.max(beforeMs, afterMs)) / 60_000;
+function startBounds(w: EventSlot, durationMinutes: number): { first: number; last: number; durationMs: number } {
+  const start = toMs(w.startsAt);
+  const end = toMs(w.endsAt);
+  const durationMs = Math.min(durationMinutes * 60_000, end - start);
+  const last = start + Math.floor((end - durationMs - start) / CELL_MS) * CELL_MS;
+  return { first: start, last, durationMs };
 }
 
 /**
  * Whether this pair of windows genuinely forces a clash, given how long
  * each session needs to be.
  *
- * The old check was `slotsOverlap(a, b)` — plain overlap. That was
- * correct when a slot *was* the placement, because overlap then meant
- * the same moment twice. It is wrong now that a window is a range of
- * options: two proposals painted 15:00-16:00 and 15:30-16:30 are both
- * one hour and can perfectly well run back to back, so flagging them as
- * conflicting would tell the owner to go and negotiate a clash that
- * doesn't exist.
+ * A clash is real only when there is NO way to place both sessions inside
+ * their own availability without them overlapping. Overlapping windows
+ * alone prove nothing: two proposals that both painted 15:00-17:00 for an
+ * hour each overlap completely and can still run back to back.
  *
- * So overlap is necessary but not sufficient. A clash is real when the
- * windows overlap AND neither session can dodge the other inside its own
- * availability — i.e. neither has a long enough clear stretch left.
+ * One session either finishes before the other starts or starts after it
+ * ends, so it is enough to try the two orderings at their extremes: A
+ * as early as it can go with B as late as it can, and the reverse. If
+ * neither ordering leaves a gap, no pair of placements does.
  *
  * Worked examples, all one-hour sessions:
- * - 15:00-16:00 vs 16:00-17:00 — no overlap, never a clash.
- * - 15:00-16:00 vs 15:30-16:30 — overlap, but A has a clear 15:00-15:30
- *   (30 min, too short) ... A's free stretch is [15:00,15:30] = 30 min,
- *   short. B's is [16:00,16:30] = 30 min, short. So this IS a clash —
- *   correctly, because one hour each cannot both fit in a shared hour and
- *   a half.
- * - 15:00-16:30 vs 15:30-17:00 — A's clear stretch is 15:00-15:30 (30m),
- *   short; B's is 16:30-17:00 (30m), short. Clash. Also correct: one
- *   hour each inside a shared 90 minutes leaves only 30 minutes of slack.
- * - 15:00-17:00 vs 15:30-16:00 — A can dodge (clear 15:00-15:30 plus
- *   16:00-17:00; the largest single stretch is 16:00-17:00 = 60m, enough).
- *   Not a clash, correctly: A goes at 16:00.
+ * - 15:00-16:00 vs 16:00-17:00: no overlap, never a clash.
+ * - 15:00-17:00 vs 15:00-17:00: A at 15:00, B at 16:00. Not a clash.
+ * - 15:00-16:30 vs 15:30-17:00: A at 15:00, B at 16:00. Not a clash.
+ * - 15:00-16:00 vs 15:30-16:30: both are pinned, and they overlap by half
+ *   an hour. A clash.
+ * - 15:00-16:30 vs 15:00-16:30: ninety minutes can't hold two hours.
+ *   A clash.
  *
- * Note this is pairwise, and pairwise is the right granularity here —
- * the owner places proposals one at a time against what's already
- * confirmed, and a full interval-graph colouring would be a much larger
- * machine for a case the spec explicitly leaves to people ("the
- * scheduler facilitating but not arbitrating by default").
+ * This is pairwise, and that's deliberate: the owner places proposals one
+ * at a time, and a full interval-graph colouring would be a much larger
+ * machine for a case the spec leaves to people ("the scheduler
+ * facilitating but not arbitrating by default").
  */
 export function windowsForceClash(
   a: EventSlot,
@@ -240,7 +222,11 @@ export function windowsForceClash(
   if (toMs(a.endsAt) <= toMs(b.startsAt) || toMs(b.endsAt) <= toMs(a.startsAt)) {
     return false;
   }
-  return freeMinutes(a, b) < durationAMinutes && freeMinutes(b, a) < durationBMinutes;
+  const boundsA = startBounds(a, durationAMinutes);
+  const boundsB = startBounds(b, durationBMinutes);
+  const aThenB = boundsB.last >= boundsA.first + boundsA.durationMs;
+  const bThenA = boundsA.last >= boundsB.first + boundsB.durationMs;
+  return !aThenB && !bThenA;
 }
 
 /**
@@ -300,4 +286,39 @@ export function commonPlacementWindow(
     }
   }
   return null;
+}
+
+/** Days shown per page of an availability grid. */
+export const GRID_WEEK_DAYS = 7;
+// An event's own dates entered the wrong way round, or a typo'd year,
+// shouldn't be able to ask for an unbounded number of pages.
+const MAX_GRID_DAYS = 366;
+
+/**
+ * The days an availability grid covers, as YYYY-MM-DD, inclusive of both
+ * ends. Empty when the range runs backwards.
+ */
+export function gridDays(start: string, end: string): string[] {
+  const days: string[] = [];
+  const cursor = new Date(`${start}T00:00:00Z`);
+  const last = new Date(`${end}T00:00:00Z`);
+  while (cursor <= last && days.length < MAX_GRID_DAYS) {
+    days.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return days;
+}
+
+/**
+ * The days split into pages of a week, counted from the first day of the
+ * event rather than from a calendar Monday — the grid's job is to show the
+ * event, and an event that starts on a Thursday shouldn't open on three
+ * empty days.
+ */
+export function gridWeeks(days: string[]): string[][] {
+  const weeks: string[][] = [];
+  for (let i = 0; i < days.length; i += GRID_WEEK_DAYS) {
+    weeks.push(days.slice(i, i + GRID_WEEK_DAYS));
+  }
+  return weeks;
 }

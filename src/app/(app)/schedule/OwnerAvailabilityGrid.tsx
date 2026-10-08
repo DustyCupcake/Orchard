@@ -3,17 +3,19 @@ import {
   candidatePlacements,
   CELL_MINUTES,
   commonPlacementWindow,
+  gridDays,
+  gridWeeks,
   type EventSlot,
 } from "@/lib/event-scheduling";
 import { formatTimeInZone, instantFromZoned } from "@/lib/dates";
-import { CARD, Tag } from "@/components/ui/kit";
+import Link from "next/link";
+import { BUTTON_SECONDARY, CARD, Tag } from "@/components/ui/kit";
 
 type EventProposalRow = typeof eventProposalTable.$inferSelect;
 
 const CELL_MS = CELL_MINUTES * 60_000;
 const ROWS_PER_HOUR = 60 / CELL_MINUTES;
 const ROW_COUNT = 24 * ROWS_PER_HOUR;
-const MAX_DAYS = 60;
 
 /**
  * The scheduling owner's cross-proposal availability overlay.
@@ -42,6 +44,7 @@ export default function OwnerAvailabilityGrid({
   rangeEnd,
   timeZone,
   timeLabel,
+  week: requestedWeek,
 }: {
   proposals: EventProposalRow[];
   memberNameById: Map<string, string>;
@@ -49,9 +52,13 @@ export default function OwnerAvailabilityGrid({
   rangeEnd: string;
   timeZone: string;
   timeLabel: (s: EventSlot) => { visible: string; exact: string };
+  /** Zero-based page of the grid, from the URL — a week at a time. */
+  week: number;
 }) {
-  const days = buildDays(rangeStart, rangeEnd);
-  if (days.length === 0) return null;
+  const weeks = gridWeeks(gridDays(rangeStart, rangeEnd));
+  if (weeks.length === 0) return null;
+  const week = Math.min(Math.max(0, requestedWeek), weeks.length - 1);
+  const days = weeks[week];
 
   const unplaced = proposals.filter(
     (p) => !p.publishedAt && p.status !== "declined" && !p.confirmedSlot,
@@ -77,6 +84,29 @@ export default function OwnerAvailabilityGrid({
         What everyone said they could do
       </p>
 
+      {weeks.length > 1 && (
+        <nav className="mt-2 flex items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+          {week > 0 ? (
+            <Link href={`?week=${week}`} scroll={false} className={BUTTON_SECONDARY}>
+              Previous week
+            </Link>
+          ) : (
+            <span className={`${BUTTON_SECONDARY} opacity-50`}>Previous week</span>
+          )}
+          <span>
+            {weekdayLabel(days[0], timeZone)} – {weekdayLabel(days[days.length - 1], timeZone)} · week{" "}
+            {week + 1} of {weeks.length}
+          </span>
+          {week < weeks.length - 1 ? (
+            <Link href={`?week=${week + 2}`} scroll={false} className={BUTTON_SECONDARY}>
+              Next week
+            </Link>
+          ) : (
+            <span className={`${BUTTON_SECONDARY} opacity-50`}>Next week</span>
+          )}
+        </nav>
+      )}
+
       <div className="mt-2 overflow-auto rounded-[var(--radius-md)] border border-[var(--border)]">
         <div className="flex select-none">
           <div className="sticky left-0 z-10 flex shrink-0 flex-col bg-[var(--surface)]">
@@ -91,7 +121,7 @@ export default function OwnerAvailabilityGrid({
             ))}
           </div>
           {days.map((day) => (
-            <div key={day} className="flex w-24 shrink-0 flex-col">
+            <div key={day} className="flex min-w-24 flex-1 flex-col">
               <div className="h-8 text-center text-[length:var(--text-micro)] text-[var(--text-muted)]">
                 {weekdayLabel(day, timeZone)}
               </div>
@@ -189,26 +219,15 @@ function coversCell(windows: EventSlot[], cellStart: number, cellEnd: number): b
   );
 }
 
-function buildDays(start: string, end: string): string[] {
-  const days: string[] = [];
-  const cursor = new Date(`${start}T00:00:00Z`);
-  const last = new Date(`${end}T00:00:00Z`);
-  while (cursor <= last && days.length < MAX_DAYS) {
-    days.push(cursor.toISOString().slice(0, 10));
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return days;
-}
-
 /**
  * The UTC instant of one grid cell, or null when that wall clock doesn't
  * exist on this day (a DST spring-forward gap).
  *
- * Imported from the lib's own grid vocabulary rather than the client
- * component, because a server component can't share the client's module
- * and the cell-size constant must not drift between the two grids — a
- * mismatch would silently offset the owner's overlay by 30 minutes against
- * what hosts painted.
+ * Duplicated from the host-side grid rather than shared, because that is
+ * a client component and this is a server one, so they can't share a
+ * module. Both read CELL_MINUTES from the lib, so the cell size can't
+ * drift between them — a mismatch would silently offset this overlay by
+ * 30 minutes against what hosts painted.
  */
 function cellStartMs(day: string, rowIdx: number, timeZone: string): number | null {
   const hour = Math.floor(rowIdx / ROWS_PER_HOUR);

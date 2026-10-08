@@ -9,7 +9,7 @@ import { formatTimeInZone, instantFromZoned } from "@/lib/dates";
 // so a client component reaching for the barrel fails the build with a
 // module-not-found on 'fs'. The earlier PreferredSlotsEditor could use the
 // barrel only because its EventSlot import was type-only and erased.
-import { CELL_MINUTES, expandWindowsToCells } from "@/lib/event-scheduling/availability";
+import { CELL_MINUTES, expandWindowsToCells, gridDays, gridWeeks } from "@/lib/event-scheduling/availability";
 import type { EventSlot } from "@/lib/event-scheduling/crud";
 
 const ROWS_PER_HOUR = 60 / CELL_MINUTES;
@@ -17,9 +17,6 @@ const ROWS_PER_HOUR = 60 / CELL_MINUTES;
 // grid rebuilt for a wider range first.
 const ROW_COUNT = 24 * ROWS_PER_HOUR;
 const CELL_MS = CELL_MINUTES * 60_000;
-// A cycle's own dates, mis-entered the wrong way round, shouldn't be able
-// to hang the page on an unbounded column count.
-const MAX_DAYS = 60;
 
 /**
  * A host painting the times they could do a proposal, rather than typing
@@ -66,7 +63,13 @@ export default function AvailabilityGrid({
   initialWindows: EventSlot[];
   initialDurationMinutes: number;
 }) {
-  const days = useMemo(() => buildDays(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
+  // A week at a time: an event can run for months, and a column per day
+  // for all of them is a wide, slow grid nobody can scan. What's painted
+  // is held outside the page state, so moving between weeks keeps it.
+  const weeks = useMemo(() => gridWeeks(gridDays(rangeStart, rangeEnd)), [rangeStart, rangeEnd]);
+  const [weekIndex, setWeekIndex] = useState(0);
+  const week = Math.min(weekIndex, Math.max(0, weeks.length - 1));
+  const days = weeks[week] ?? [];
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(expandWindowsToCells(initialWindows)),
   );
@@ -116,6 +119,31 @@ export default function AvailabilityGrid({
       </label>
 
       <span className={LABEL}>When could you do it?</span>
+
+      {weeks.length > 1 && (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={week === 0}
+            onClick={() => setWeekIndex(week - 1)}
+            className={BUTTON_SECONDARY}
+          >
+            Previous week
+          </button>
+          <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+            {weekdayLabel(days[0], timeZone)} – {weekdayLabel(days[days.length - 1], timeZone)} · week{" "}
+            {week + 1} of {weeks.length}
+          </span>
+          <button
+            type="button"
+            disabled={week === weeks.length - 1}
+            onClick={() => setWeekIndex(week + 1)}
+            className={BUTTON_SECONDARY}
+          >
+            Next week
+          </button>
+        </div>
+      )}
 
       <input type="hidden" name="availabilityCells" value={JSON.stringify(cells)} />
 
@@ -186,17 +214,6 @@ export default function AvailabilityGrid({
       </span>
     </div>
   );
-}
-
-function buildDays(start: string, end: string): string[] {
-  const days: string[] = [];
-  const cursor = new Date(`${start}T00:00:00Z`);
-  const last = new Date(`${end}T00:00:00Z`);
-  while (cursor <= last && days.length < MAX_DAYS) {
-    days.push(cursor.toISOString().slice(0, 10));
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return days;
 }
 
 function cellIso(day: string, rowIdx: number, timeZone: string): string | null {
