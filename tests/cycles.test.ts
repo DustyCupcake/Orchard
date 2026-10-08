@@ -9,6 +9,7 @@ import {
   listCycles,
   previewClonePreviousCycle,
   updateCycleSettings,
+  updateCycleSettingsInput,
   updatePhaseHighlight,
 } from "@/lib/cycles";
 import { claimAsShadow, claimTask, createRequirement } from "@/lib/tasks";
@@ -475,6 +476,51 @@ describe("updatePhaseHighlight", () => {
     const cleared = await updatePhaseHighlight(alice, buildPhase.id, null);
     expect(cleared.highlightModuleKey).toBeNull();
   });
+});
+
+// The event's own wall-clock, overriding Community.timeZone — see
+// src/lib/dates/timezone.ts.
+describe("updateCycleSettings time zone", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("sets an event's zone and clears it back to inheriting the Community's", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Reunion" });
+
+    expect((await getCycle(alice, cyc.id)).timeZone).toBeNull();
+
+    const updated = await updateCycleSettings(alice, cyc.id, { timeZone: "Asia/Tokyo" });
+    expect(updated.timeZone).toBe("Asia/Tokyo");
+
+    // Null means "inherit", not "UTC" — a community that later changes
+    // its default shouldn't have every past event pinned to the old one.
+    expect((await updateCycleSettings(alice, cyc.id, { timeZone: null })).timeZone).toBeNull();
+  });
+
+  // updateCycleSettings takes an already-parsed input; the Participation
+  // action parses before calling it. Refused here rather than stored and
+  // quietly read back as UTC, which would leave every time on this
+  // event's programme an hour out from what was typed.
+  it("refuses a zone that isn't one", () => {
+    expect(() => updateCycleSettingsInput.parse({ timeZone: "Not/AZone" })).toThrow();
+    expect(() => updateCycleSettingsInput.parse({ timeZone: "" })).toThrow();
+    // Null clears it back to inheriting, and is not a bad value.
+    expect(updateCycleSettingsInput.parse({ timeZone: null }).timeZone).toBeNull();
+  });
+
+  it("leaves the zone untouched when a save doesn't mention it", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Reunion" });
+    await updateCycleSettings(alice, cyc.id, { timeZone: "Asia/Tokyo" });
+
+    // Capacity and dates are the other fields on this same form.
+    const afterDates = await updateCycleSettings(alice, cyc.id, { startDate: "2027-06-01", endDate: "2027-06-05" });
+    expect(afterDates.timeZone).toBe("Asia/Tokyo");
+  });
 
   // docs/development-plan.md's Phase 65 — "closing locks everything
   // about that cycle, no exception," scoped to this phase's own owned
@@ -492,5 +538,17 @@ describe("updatePhaseHighlight", () => {
     await closeCycle(alice, cyc.id);
 
     await expect(updatePhaseHighlight(alice, buildPhase.id, "recruitment")).rejects.toThrow(ConflictError);
+  });
+
+  // Closing locks the event's settings too, not just its phases — an
+  // event that has ended doesn't get its programme retimed after the
+  // fact.
+  it("rejects a settings change once the cycle is closed", async () => {
+    const { community: testCommunity, alice } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    const cyc = await createCycle(alice, { source: "blank", name: "2027 Reunion" });
+    await closeCycle(alice, cyc.id);
+
+    await expect(updateCycleSettings(alice, cyc.id, { timeZone: "Asia/Tokyo" })).rejects.toThrow(ConflictError);
   });
 });

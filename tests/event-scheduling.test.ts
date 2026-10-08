@@ -198,6 +198,69 @@ describe("Conflict detection", () => {
     expect(byId.get(b.id)?.status).toBe("conflict");
   });
 
+  // The change painted availability forced on the conflict check. Two
+  // windows that overlap are no longer automatically a clash: if a session
+  // can still be placed inside its own availability, the owner can schedule
+  // both and there's nothing to negotiate.
+  //
+  // Fixed instants rather than the slot() helper above, because these cases
+  // turn on exact durations — slot() builds each end from its own
+  // Date.now(), so a "2 hour" window isn't two hours and the assertion
+  // silently tests something else.
+  const at = (start: string, end: string) => ({
+    startsAt: `2026-09-10T${start}:00.000Z`,
+    endsAt: `2026-09-10T${end}:00.000Z`,
+  });
+  it("doesn't flag overlapping windows when one can still dodge", async () => {
+    const { alice, bob } = await setUpModule();
+    // A is free 15:00-17:00 and needs one hour; B wants 15:30-16:00. A can
+    // simply run at 16:00, after B.
+    const a = await createEventProposal(bob, {
+      host: "Bob",
+      title: "A",
+      durationMinutes: 60,
+      spaceNeeds: "Main stage",
+      preferredSlots: [at("15:00", "17:00")],
+    });
+    const b = await createEventProposal(bob, {
+      host: "Bob",
+      title: "B",
+      durationMinutes: 30,
+      spaceNeeds: "Main stage",
+      preferredSlots: [at("15:30", "16:00")],
+    });
+
+    const reviewed = await listEventProposalsForReview(alice);
+    const byId = new Map(reviewed.map((p) => [p.id, p]));
+    expect(byId.get(a.id)?.status).toBe("proposed");
+    expect(byId.get(b.id)?.status).toBe("proposed");
+  });
+
+  it("flags overlapping windows when neither can dodge", async () => {
+    const { alice, bob } = await setUpModule();
+    // Both need an hour out of the same single 90-minute stretch, so each
+    // has only 30 minutes clear — not enough, and a real clash.
+    const a = await createEventProposal(bob, {
+      host: "Bob",
+      title: "A",
+      durationMinutes: 60,
+      spaceNeeds: "Main stage",
+      preferredSlots: [at("15:00", "16:30")],
+    });
+    const b = await createEventProposal(bob, {
+      host: "Bob",
+      title: "B",
+      durationMinutes: 60,
+      spaceNeeds: "Main stage",
+      preferredSlots: [at("15:30", "17:00")],
+    });
+
+    const reviewed = await listEventProposalsForReview(alice);
+    const byId = new Map(reviewed.map((p) => [p.id, p]));
+    expect(byId.get(a.id)?.status).toBe("conflict");
+    expect(byId.get(b.id)?.status).toBe("conflict");
+  });
+
   it("doesn't flag overlapping slots in different spaces", async () => {
     const { alice, bob } = await setUpModule();
     const a = await createEventProposal(bob, {

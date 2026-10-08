@@ -5,6 +5,7 @@ import { community, dateDisplayModeEnum, form, objectionOverruleModeEnum, tier }
 import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
 import { recruitmentDecisionRulesSchema, requireValidDecisionRules } from "../recruitment/evaluations";
+import { isValidTimeZone } from "../dates/timezone";
 import { requireNotOnsiteLocked } from "../onsite-mode";
 import { recordSettingChanges } from "./history";
 
@@ -13,6 +14,14 @@ type Member = typeof memberTable.$inferSelect;
 const hexColor = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}$/, "Must be a hex color like #3a6cd9");
+
+// Validated as a real zone rather than any string, because an unusable
+// one doesn't fail loudly later — effectiveTimeZone would quietly fall
+// back to UTC and every time on the programme would read an hour out
+// from what the Community typed.
+const timeZoneInput = z
+  .string()
+  .refine(isValidTimeZone, "Not a time zone — try something like Europe/London");
 
 export async function getCommunity(actor: Member) {
   const [row] = await db.select().from(community).where(eq(community.id, actor.communityId));
@@ -34,6 +43,7 @@ export const updateCommunityInput = z.object({
   cyclesEnabled: z.boolean().optional(),
   phasesEnabled: z.boolean().optional(),
   defaultDateDisplayMode: z.enum(dateDisplayModeEnum.enumValues).optional(),
+  timeZone: timeZoneInput.nullable().optional(),
   cycleInitiationTierId: z.string().uuid().nullable().optional(),
   defaultCallHasAgenda: z.boolean().optional(),
   defaultCallNeedsSummary: z.boolean().optional(),
@@ -184,6 +194,7 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         ...(input.cyclesEnabled !== undefined && { cyclesEnabled: input.cyclesEnabled }),
         ...(input.phasesEnabled !== undefined && { phasesEnabled: input.phasesEnabled }),
         ...(input.defaultDateDisplayMode !== undefined && { defaultDateDisplayMode: input.defaultDateDisplayMode }),
+        ...(input.timeZone !== undefined && { timeZone: input.timeZone }),
         ...(input.cycleInitiationTierId !== undefined && {
           cycleInitiationTierId: input.cycleInitiationTierId,
         }),

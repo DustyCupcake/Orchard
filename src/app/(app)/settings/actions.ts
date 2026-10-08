@@ -164,6 +164,7 @@ export async function updateGeneralBasicsAction(formData: FormData) {
         cyclesEnabled: checkboxOf(formData, "cyclesEnabled"),
         phasesEnabled: checkboxOf(formData, "phasesEnabled"),
         defaultDateDisplayMode: text(formData, "defaultDateDisplayMode") as "exact" | "period" | "",
+        timeZone: text(formData, "timeZone").trim() || null,
         cycleInitiationTierId: optionalText(formData, "cycleInitiationTierId"),
         onsiteModeEnabled: checkboxOf(formData, "onsiteModeEnabled"),
       }),

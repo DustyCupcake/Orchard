@@ -761,6 +761,26 @@ async function ParticipationForCycle({
               <input type="date" name="endDate" defaultValue={withPhases?.endDate ?? ""} className={`${INPUT} w-fit`} />
             </label>
             <label className="flex flex-col gap-1">
+              <span className={LABEL}>Time zone (optional)</span>
+              <input
+                type="text"
+                name="timeZone"
+                defaultValue={withPhases?.timeZone ?? ""}
+                placeholder={communityRow.timeZone ?? "UTC"}
+                list="time-zone-suggestions"
+                className={`${INPUT} w-fit`}
+              />
+              <datalist id="time-zone-suggestions">
+                {["UTC", "Europe/London", "Europe/Madrid", "Europe/Paris", "America/New_York", "America/Chicago", "America/Los_Angeles", "America/Sao_Paulo", "Africa/Lagos", "Africa/Nairobi", "Asia/Kolkata", "Asia/Singapore", "Asia/Shanghai", "Asia/Tokyo", "Australia/Sydney", "Pacific/Auckland"].map((zone) => (
+                  <option key={zone} value={zone} />
+                ))}
+              </datalist>
+              <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                What clock this event&apos;s times are read in. Leave blank to use the community&apos;s
+                {communityRow.timeZone ? ` (${communityRow.timeZone})` : " default, UTC"}.
+              </span>
+            </label>
+            <label className="flex flex-col gap-1">
               <span className={LABEL}>Returning-priority window closes at (optional)</span>
               <input
                 type="datetime-local"

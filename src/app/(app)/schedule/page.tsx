@@ -6,6 +6,7 @@ import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import {
+  formatEventTime,
   isEventSchedulingOwner,
   listEventProposalsForReview,
   listMyEventProposalPings,
@@ -13,22 +14,17 @@ import {
   listPublishedSchedule,
 } from "@/lib/event-scheduling";
 import type { EventSlot } from "@/lib/event-scheduling";
+import { effectiveDateDisplayMode, effectiveTimeZone, type PeriodDateContext } from "@/lib/dates";
 import { resolveDefaultScopeSegment, resolveSingleCycleScope } from "@/lib/cycles";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import { submitEventProposalAction, updateEventProposalAction } from "./actions";
 import EventReviewSection from "./EventReviewSection";
+import AvailabilityGrid from "./AvailabilityGrid";
+import OwnerAvailabilityGrid from "./OwnerAvailabilityGrid";
 import { STATUS_LABEL, STATUS_TONE } from "./status";
 
 export const dynamic = "force-dynamic";
-
-function formatSlot(s: EventSlot) {
-  return `${new Date(s.startsAt).toLocaleString()} – ${new Date(s.endsAt).toLocaleTimeString()}`;
-}
-
-function formatSlotsRaw(slots: EventSlot[]) {
-  return slots.map((s) => `${s.startsAt}|${s.endsAt}`).join("\n");
-}
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
@@ -91,6 +87,28 @@ export default async function SchedulePage({
 
   const isOwner = moduleOn ? await isEventSchedulingOwner(viewing, cycleId) : false;
 
+  // Every slot on this page reads in the scoped event's own wall-clock,
+  // falling back to the Community's — see src/lib/dates/timezone.ts.
+  // What a date *looks* like is still per-member: dateDisplayMode is the
+  // viewer's own setting, resolved through the Community default, so one
+  // person reading "the event, on a Thursday" is a choice they made, not
+  // one imposed on them.
+  const scopedCycle = resolution.kind === "resolved" ? resolution.cycle : null;
+  const timeZone = effectiveTimeZone(scopedCycle, communityRow);
+  const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
+  const period: PeriodDateContext | null =
+    scopedCycle?.startDate && scopedCycle.endDate
+      ? { name: scopedCycle.name, startDate: scopedCycle.startDate, endDate: scopedCycle.endDate }
+      : null;
+  const timeLabel = (s: EventSlot) => formatEventTime(s, dateDisplayMode, timeZone, period);
+
+  // The grid's columns are days, so it needs a date range. An event's own
+  // dates are the honest source; without them there is nothing to show,
+  // and rather than invent a window we say what to set.
+  const gridRange = scopedCycle?.startDate && scopedCycle.endDate
+    ? { start: scopedCycle.startDate, end: scopedCycle.endDate }
+    : null;
+
   const [myProposals, publishedSchedule, reviewProposals] = await Promise.all([
     moduleOn ? listMyEventProposals(viewing, cycleId) : Promise.resolve([]),
     moduleOn ? listPublishedSchedule(viewing, cycleId) : Promise.resolve([]),
@@ -114,6 +132,19 @@ export default async function SchedulePage({
           ),
         )
       : new Map<string, string>();
+
+  // The scheduling owner's cross-proposal view: every proposal's painted
+  // availability on one grid, with what's already confirmed marked.
+  // This is the question painted availability exists to answer — "given
+  // everything people have said they could do, what can I actually
+  // schedule?" — and it can only be asked once availability is a range
+  // rather than a fixed start. The per-proposal arithmetic it depends on
+  // lives in availability.ts, so this is only the overlay.
+  // The scheduling owner's cross-proposal overlay: every proposal's painted
+  // availability on one grid, plus whether any stretch of time can hold the
+  // whole unplaced programme. This is the question painted availability makes
+  // answerable, and it's what the pairwise conflict flag can't tell you.
+  const showOwnerOverlay = isOwner && gridRange !== null;
 
   return (
     <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
@@ -180,7 +211,9 @@ export default async function SchedulePage({
                         {p.title} <span className="font-normal text-[var(--text-muted)]">— hosted by {p.host}</span>
                       </p>
                       <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                        {confirmedSlot && formatSlot(confirmedSlot)}
+                        {confirmedSlot && (
+                          <span title={timeLabel(confirmedSlot).exact}>{timeLabel(confirmedSlot).visible}</span>
+                        )}
                         {p.spaceNeeds && <> · {p.spaceNeeds}</>}
                       </p>
                       {p.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{p.description}</p>}
@@ -208,13 +241,18 @@ export default async function SchedulePage({
                     <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                       {p.durationMinutes} min{p.spaceNeeds && <> · {p.spaceNeeds}</>}
                     </p>
-                    <ul className="mt-1.5 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                    <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                      Could do it:
+                    </p>
+                    <ul className="flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
                       {(p.preferredSlots as EventSlot[]).map((s, i) => (
-                        <li key={i}>{formatSlot(s)}</li>
+                        <li key={i} title={timeLabel(s).exact}>{timeLabel(s).visible}</li>
                       ))}
                     </ul>
                     {confirmedSlot && (
-                      <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--text)]">Confirmed: {formatSlot(confirmedSlot)}</p>
+                      <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--text)]">
+                        Confirmed: <span title={timeLabel(confirmedSlot).exact}>{timeLabel(confirmedSlot).visible}</span>
+                      </p>
                     )}
                     {pings.length > 0 && (
                       <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--warning)]">
@@ -241,29 +279,23 @@ export default async function SchedulePage({
                             <textarea name="description" defaultValue={p.description ?? ""} rows={2} className={INPUT} />
                           </label>
                           <label className="flex flex-col gap-1">
-                            <span className={LABEL}>Duration (minutes)</span>
-                            <input
-                              type="number"
-                              name="durationMinutes"
-                              defaultValue={p.durationMinutes}
-                              min={1}
-                              required
-                              className={INPUT}
-                            />
-                          </label>
-                          <label className="flex flex-col gap-1">
                             <span className={LABEL}>Space needed (optional)</span>
                             <input type="text" name="spaceNeeds" defaultValue={p.spaceNeeds ?? ""} className={INPUT} />
                           </label>
-                          <label className="flex flex-col gap-1">
-                            <span className={LABEL}>Preferred slots — one per line, startsAt|endsAt</span>
-                            <textarea
-                              name="preferredSlotsRaw"
-                              defaultValue={formatSlotsRaw(p.preferredSlots as EventSlot[])}
-                              rows={3}
-                              className={`${INPUT} font-mono`}
+                          {gridRange ? (
+                            <AvailabilityGrid
+                              rangeStart={gridRange.start}
+                              rangeEnd={gridRange.end}
+                              timeZone={timeZone}
+                              initialWindows={p.preferredSlots as EventSlot[]}
+                              initialDurationMinutes={p.durationMinutes}
                             />
-                          </label>
+                          ) : (
+                            <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                              This event has no dates yet, so there&rsquo;s nothing to paint
+                              availability against.
+                            </p>
+                          )}
                           <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                             Save changes
                           </button>
@@ -291,31 +323,54 @@ export default async function SchedulePage({
                 <textarea name="description" rows={2} className={INPUT} />
               </label>
               <label className="flex flex-col gap-1">
-                <span className={LABEL}>Duration (minutes)</span>
-                <input type="number" name="durationMinutes" min={1} required className={`${INPUT} w-fit`} />
-              </label>
-              <label className="flex flex-col gap-1">
                 <span className={LABEL}>Space needed (optional)</span>
                 <input type="text" name="spaceNeeds" className={INPUT} />
               </label>
-              <label className="flex flex-col gap-1">
-                <span className={LABEL}>Preferred slots — one per line, startsAt|endsAt</span>
-                <textarea
-                  name="preferredSlotsRaw"
-                  rows={4}
-                  required
-                  placeholder={"2026-09-10T14:00|2026-09-10T15:30\n2026-09-11T09:00|2026-09-11T10:30"}
-                  className={`${INPUT} font-mono`}
+              {gridRange ? (
+                <AvailabilityGrid
+                  rangeStart={gridRange.start}
+                  rangeEnd={gridRange.end}
+                  timeZone={timeZone}
+                  initialWindows={[]}
+                  initialDurationMinutes={0}
                 />
-              </label>
+              ) : (
+                <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                  This event has no dates yet, so there&rsquo;s nothing to paint availability
+                  against.
+                </p>
+              )}
               <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
                 Submit proposal
               </button>
             </form>
           </section>
 
+          {showOwnerOverlay && gridRange && (
+            <section className="mt-8">
+              <SectionHeading>Availability across the programme</SectionHeading>
+              <div className="mt-3">
+                <OwnerAvailabilityGrid
+                  proposals={reviewProposals}
+                  memberNameById={memberNameById}
+                  rangeStart={gridRange.start}
+                  rangeEnd={gridRange.end}
+                  timeZone={timeZone}
+                  timeLabel={timeLabel}
+                />
+              </div>
+            </section>
+          )}
+
           {isOwner && (
-            <EventReviewSection proposals={reviewProposals} memberNameById={memberNameById} cycleId={cycleId} />
+            <EventReviewSection
+              proposals={reviewProposals}
+              memberNameById={memberNameById}
+              cycleId={cycleId}
+              dateDisplayMode={dateDisplayMode}
+              timeZone={timeZone}
+              period={period}
+            />
           )}
         </>
       )}

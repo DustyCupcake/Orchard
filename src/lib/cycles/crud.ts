@@ -28,6 +28,7 @@ import { recomputeCalendarEventDatesForCycle } from "../calendar-events";
 import { normalizeTaskMilestonesForCycle, normalizeTaskMilestonesForPhase } from "../tasks/milestones";
 import { copyPermissionGrants, type PermissionModuleKey } from "../permissions";
 import { requireCycleOpen } from "./lifecycle";
+import { isValidTimeZone } from "../dates/timezone";
 import {
   boundaryForEditing,
   dateBoundaryInput,
@@ -1033,6 +1034,16 @@ export const updateCycleSettingsInput = z.object({
   // Cycle.
   startDate: z.string().min(1).nullable().optional(),
   endDate: z.string().min(1).nullable().optional(),
+  // The event's own wall-clock, overriding Community.timeZone — see
+  // src/lib/dates/timezone.ts. Validated as a real zone rather than any
+  // string, because an unusable one doesn't fail here — it would quietly
+  // fall back to UTC and leave every time on this event's programme
+  // reading an hour out from what was typed. Null inherits.
+  timeZone: z
+    .string()
+    .refine(isValidTimeZone, "Not a time zone — try something like Europe/London")
+    .nullable()
+    .optional(),
   // §4.3/8c joining configuration — see src/db/schema/cycle.ts's own
   // comment block for what each of these does. Null clears the
   // per-cycle form pointer (back to the community's) or the joining-
@@ -1095,6 +1106,7 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
       }),
       ...(input.startDate !== undefined && { startDate: input.startDate }),
       ...(input.endDate !== undefined && { endDate: input.endDate }),
+      ...(input.timeZone !== undefined && { timeZone: input.timeZone }),
     })
     .where(eq(cycle.id, cycleId))
     .returning();

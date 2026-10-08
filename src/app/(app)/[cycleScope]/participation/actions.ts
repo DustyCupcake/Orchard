@@ -140,6 +140,7 @@ export async function updateCycleSettingsAction(formData: FormData) {
   const windowRaw = String(formData.get("returningWindowClosesAt") ?? "").trim();
   const startDateRaw = String(formData.get("startDate") ?? "").trim();
   const endDateRaw = String(formData.get("endDate") ?? "").trim();
+  const timeZoneRaw = String(formData.get("timeZone") ?? "").trim();
   const applicationFormId = String(formData.get("recruitmentApplicationFormId") ?? "").trim() || null;
   const joiningWindowRaw = String(formData.get("joiningWindowClosesAt") ?? "").trim();
 
@@ -149,6 +150,9 @@ export async function updateCycleSettingsAction(formData: FormData) {
       returningWindowClosesAt: windowRaw ? new Date(windowRaw).toISOString() : null,
       startDate: startDateRaw || null,
       endDate: endDateRaw || null,
+      // Blank inherits the Community's zone rather than pinning UTC —
+      // see src/lib/dates/timezone.ts.
+      timeZone: timeZoneRaw || null,
       recruitmentApplicationFormId: applicationFormId,
       applicationsOpen: formData.get("applicationsOpen") === "on",
       invitesOpen: formData.get("invitesOpen") === "on",

@@ -18,6 +18,7 @@ import {
   updateCommunity,
   updateTier,
 } from "@/lib/settings";
+import { updateCommunityInput } from "@/lib/settings/community";
 import { listCycles } from "@/lib/cycles";
 import { listProfileQuestions } from "@/lib/profile-questions";
 import { listTraitAxes } from "@/lib/trait-axes";
@@ -58,6 +59,31 @@ describe("community settings", () => {
 
     const [bobRow] = await db.select().from(member).where(eq(member.id, bob.id));
     expect(bobRow.dateDisplayMode).toBeNull();
+  });
+
+  // The zone an event's programme reads in — see src/lib/dates/timezone.ts.
+  it("persists a valid Community time zone and clears it back to inherit", async () => {
+    const { alice } = await createFixtures();
+    expect((await getCommunity(alice)).timeZone).toBeNull();
+
+    const updated = await updateCommunity(alice, { timeZone: "Europe/Madrid" });
+    expect(updated.timeZone).toBe("Europe/Madrid");
+
+    // Null is meaningful here, not absent: it's "let each event decide",
+    // which resolves to UTC until an event sets its own.
+    expect((await updateCommunity(alice, { timeZone: null })).timeZone).toBeNull();
+  });
+
+  // Rejected on write rather than stored and quietly read as UTC, which
+  // would leave every time on the programme an hour out from what the
+  // Community typed. The schema is the gate here — updateCommunity takes
+  // an already-parsed input and the Settings action parses before calling
+  // it, the same split every other field on this form has.
+  it("refuses a time zone that isn't one", () => {
+    expect(() => updateCommunityInput.parse({ timeZone: "Not/AZone" })).toThrow();
+    expect(() => updateCommunityInput.parse({ timeZone: "" })).toThrow();
+    // Null clears it back to inheriting, and is not a bad value.
+    expect(updateCommunityInput.parse({ timeZone: null }).timeZone).toBeNull();
   });
 
   it("accepts a same-community tier as the cycle-initiation gate", async () => {

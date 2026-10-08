@@ -42,6 +42,11 @@ export const community = pgTable("community", {
   // Community-wide default for read-only date labels. A Member can
   // override this, or leave its own nullable override null to inherit it.
   defaultDateDisplayMode: dateDisplayModeEnum("default_date_display_mode").notNull().default("exact"),
+  // The wall-clock a Community's events run in — see
+  // src/lib/dates/timezone.ts. A Cycle inherits this unless it overrides
+  // it, so a community that runs one event abroad sets the exception on
+  // the event rather than moving everyone's default. Null reads as UTC.
+  timeZone: text("time_zone"),
   onsiteModeEnabled: boolean("onsite_mode_enabled").notNull().default(false),
   // How long the conflict team has to acknowledge a new report before
   // it's shown as overdue — see docs/spec.md's Conflict management

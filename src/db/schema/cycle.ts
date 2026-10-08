@@ -73,6 +73,14 @@ export const cycle = pgTable("cycle", {
   // Phase 39.
   startDate: date("start_date"),
   endDate: date("end_date"),
+  // The wall-clock this event runs in, overriding the Community's own
+  // default — see src/lib/dates/timezone.ts. Kept beside start_date/
+  // end_date rather than in the Event scheduling module's own schema
+  // because it describes the event, not its programme: anything that
+  // says what time it is here — shift occurrences, input-round
+  // cutoffs, published slots — resolves through the same pair. Null
+  // inherits Community.timeZone.
+  timeZone: text("time_zone"),
   // Plain uuid, no `.references()` — task_pack.ts already has to
   // import task.ts (for TaskPackItem's effort/openness enums), and
   // task.ts already imports cycle.ts for its own cycleId, so cycle.ts

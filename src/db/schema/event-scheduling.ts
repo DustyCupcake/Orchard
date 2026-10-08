@@ -40,17 +40,29 @@ export const eventProposal = pgTable("event_proposal", {
   // Nullable — a session with no particular space requirement never
   // participates in a space-based conflict (see conflicts.ts).
   spaceNeeds: text("space_needs"),
-  // Array of {startsAt, endsAt} — the proposer's own preferred
-  // windows, not yet a confirmed slot. Conflict detection checks every
-  // slot here (or confirmedSlot, once set) against every other
-  // proposal's, per docs/development-plan.md's resolved interpretation
-  // ("overlapping time range + an exact spaceNeeds string match").
+  // Array of {startsAt, endsAt} — the times the proposer painted as
+  // possible, NOT a fixed placement. A host paints half-hour cells and a
+  // run of touching cells becomes one window here; a window may be longer
+  // than durationMinutes, because "I'm free Thursday afternoon" is more
+  // useful to the person scheduling than one pinned start. The owner
+  // picks a concrete start inside a window at confirmation time — see
+  // src/lib/event-scheduling/availability.ts.
+  //
+  // Conflict detection compares every window here (or confirmedSlot, once
+  // set) against every other proposal's, per docs/development-plan.md's
+  // resolved interpretation ("overlapping time range + an exact
+  // spaceNeeds string match"). A proposal predating painted availability
+  // holds a single window equal to its own duration, which reads back as
+  // "only this exact time works" — correct, and why the column didn't need
+  // migrating.
   preferredSlots: jsonb("preferred_slots").notNull().default([]),
   status: eventProposalStatusEnum("status").notNull().default("proposed"),
-  // {startsAt, endsAt}, nullable until the owner confirms — deliberately
-  // not constrained to one of preferredSlots, since resolving a
-  // conflict can produce a compromise slot neither host originally
-  // listed ("compromise, swap, or combine" — spec).
+  // {startsAt, endsAt}, nullable until the owner confirms — a concrete
+  // placement, unlike the availability above. Deliberately not constrained
+  // to one of preferredSlots: a compromise can fall outside what either
+  // host painted ("compromise, swap, or combine" — spec), and since the
+  // windows are ranges now, a placement inside one is a matter of picking
+  // a start rather than matching a row.
   confirmedSlot: jsonb("confirmed_slot"),
   // Set once, in bulk, when the owner publishes — doubles as both the
   // edit-lock and the /schedule visibility gate, so "the schedule" is

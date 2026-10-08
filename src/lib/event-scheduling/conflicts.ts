@@ -6,6 +6,7 @@ import { ForbiddenError } from "../errors";
 import { isModuleOpenToEveryone, listGrantingTaskIds } from "../permissions";
 import { cycleScopeCondition } from "./crud";
 import type { EventSlot } from "./crud";
+import { windowsForceClash } from "./availability";
 
 type Member = typeof memberTable.$inferSelect;
 type EventProposalRow = typeof eventProposal.$inferSelect;
@@ -62,10 +63,6 @@ export async function requireEventSchedulingOwner(actor: Member, cycleId?: strin
   }
 }
 
-function slotsOverlap(a: EventSlot, b: EventSlot) {
-  return new Date(a.startsAt) < new Date(b.endsAt) && new Date(b.startsAt) < new Date(a.endsAt);
-}
-
 // "Preferred, or confirmed once set" — a proposal's operative window(s)
 // for conflict-checking purposes are its locked-in confirmedSlot if it
 // has one, otherwise every slot it's still proposing.
@@ -78,11 +75,20 @@ function operativeSlots(p: EventProposalRow): EventSlot[] {
 // room-graph or capacity modeling" — docs/development-plan.md's
 // resolved interpretation. A blank spaceNeeds on either side never
 // conflicts with anything on the space dimension.
+//
+// What "overlapping" means changed when preferred_slots became painted
+// availability rather than fixed placements — see availability.ts's
+// windowsForceClash for why plain overlap would now flag clashes that
+// don't exist. A confirmed proposal is still a concrete placement, and
+// durationMinutes is still the proposal's own stated length, which is
+// what makes "can this one still dodge" answerable for both sides.
 function proposalsConflict(a: EventProposalRow, b: EventProposalRow) {
   if (!a.spaceNeeds || !b.spaceNeeds || a.spaceNeeds !== b.spaceNeeds) return false;
   const slotsA = operativeSlots(a);
   const slotsB = operativeSlots(b);
-  return slotsA.some((sa) => slotsB.some((sb) => slotsOverlap(sa, sb)));
+  return slotsA.some((sa) =>
+    slotsB.some((sb) => windowsForceClash(sa, sb, a.durationMinutes, b.durationMinutes)),
+  );
 }
 
 // Scans every non-declined proposal in scope and persists a fresh
