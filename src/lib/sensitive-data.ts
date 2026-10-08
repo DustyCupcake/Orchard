@@ -54,7 +54,7 @@ type Member = typeof memberTable.$inferSelect;
 // unlockedByTierId/unlockedByGrantModuleKey per rule — a question can
 // carry more than one, and anyone satisfying any one of them can read it,
 // subject to the consent intersection below. unlockedByGrantModuleKey is
-// the third route (docs/food-drinks-module-plan.md's D3): whoever
+// the third route (docs/plans/archive/food-drinks-module-plan.md's D3): whoever
 // currently holds ANY task granting that module, community-wide and
 // deliberately not narrowed by the granting task's placement.
 export const createSensitiveFieldAccessRuleInput = z.object({

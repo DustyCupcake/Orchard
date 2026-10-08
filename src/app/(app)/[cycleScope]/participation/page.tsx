@@ -90,7 +90,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 
 // "Who's actually planning to be there, and how much room is left" —
 // see docs/spec.md's "Participation & capacity" under Cycle and
-// docs/development-plan.md's Phase 31. Core, not gated behind
+// docs/plans/development-plan.md's Phase 31. Core, not gated behind
 // Recruitment — a Community with cycles on always has this page,
 // whether or not Recruitment ever gets turned on. Moved under
 // /[cycleScope]/ in Phase 65 — see ../layout.tsx for how the segment
@@ -358,7 +358,7 @@ const PARTICIPATION_LABEL = {
 } as const;
 
 // "The Pack import review screen gains the date preview" —
-// docs/development-plan.md's Phase 44. This is that screen's minimal
+// docs/plans/development-plan.md's Phase 44. This is that screen's minimal
 // real form: preview a hypothetical clone (calendar or list, toggled
 // by the reviewer) before committing to anything, then create for real
 // below. `openCycleName` (Phase 65) drives the already-open-cycle
@@ -400,7 +400,7 @@ async function StartNewCycleSection({
   const canAutoStartBudget =
     isModuleEnabled(communityRow, "budget") && previousBudgetCycle?.status === "confirmed";
   // "Correctly pre-selects that pack when starting a new Cycle of that
-  // type" — see docs/development-plan.md's Phase 55 Done-when. No
+  // type" — see docs/plans/development-plan.md's Phase 55 Done-when. No
   // client JS to pre-fill one <select> from another's chosen value, so
   // this is a plain, static link straight into the real import review
   // screen instead — already carrying the right pack and cycle type.
@@ -1054,7 +1054,7 @@ async function ParticipationForCycle({
 type CycleWithPhases = Awaited<ReturnType<typeof getCycle>>;
 type PhaseRow = CycleWithPhases["phases"][number];
 
-// See docs/development-plan.md's Phase 39 — a phase spine an existing
+// See docs/plans/development-plan.md's Phase 39 — a phase spine an existing
 // Cycle's own dates resolve against. No rename/reorder here (phases,
 // once added, keep whatever name/order they were given) — this is for
 // editing an existing phase's dates plus (below) adding a new one.

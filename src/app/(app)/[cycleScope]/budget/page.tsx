@@ -105,7 +105,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
-// See docs/spec.md's Budget and docs/development-plan.md's Phases
+// See docs/spec.md's Budget and docs/plans/development-plan.md's Phases
 // 26-27: fixed costs & proposals while `proposals_open`, ranked-choice
 // voting and owner confirmation once the owner closes proposals.
 // Moved under /[cycleScope]/ in Phase 65 — Budget is the one

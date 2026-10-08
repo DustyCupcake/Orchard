@@ -25,7 +25,7 @@ function toDatetimeLocal(iso: string) {
 
 // The scheduling-owner's review view — see docs/spec.md's "Event
 // scheduling" ("the task owner reviews proposals and flags slot
-// conflicts") and docs/development-plan.md's Phase 28. Rendered by
+// conflicts") and docs/plans/development-plan.md's Phase 28. Rendered by
 // page.tsx only for the current owner-task holder; proposals here have
 // already had recomputeEventConflicts run fresh against them (see
 // listEventProposalsForReview).

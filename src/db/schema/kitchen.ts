@@ -7,7 +7,7 @@ import { shiftSeries } from "./shift";
 
 // The Kitchen module — the spec's "Food & drinks (Fruit)" restored as an
 // optional module of the generic engine. See docs/spec.md's "Kitchen" and
-// docs/food-drinks-module-plan.md's D1-D9 for the resolved design: a
+// docs/plans/archive/food-drinks-module-plan.md's D1-D9 for the resolved design: a
 // per-scope menu plan (draft → published, event-scheduling's publish-gate
 // posture), meals on a plain absolute date (D6), dishes as recipes with
 // serving counts that scale to a meal's headcount into a purchasing list
@@ -38,7 +38,7 @@ export const menuPlan = pgTable("menu_plan", {
     .notNull()
     .references(() => community.id),
   // null = the standing/evergreen menu (cycles off, or the cycle-less
-  // role) — see docs/cycle-scope-remediation-plan.md's §2.1 placement
+  // role) — see docs/plans/archive/cycle-scope-remediation-plan.md's §2.1 placement
   // convention, mirrored from task.cycleId/shift_series.cycleId.
   cycleId: uuid("cycle_id").references(() => cycle.id),
   title: text("title").notNull(),

@@ -1,9 +1,30 @@
 # Spec Audit Remediation Plan
 
-Generated from `docs/task-board-views-spec-audit.md` — a systematic audit of `docs/spec.md` against the live codebase.
+Generated from `docs/plans/archive/task-board-views-spec-audit.md` — a systematic audit of `docs/spec.md` against the live codebase.
 
 **Audit coverage:** 211 behaviors checked across 38 spec sections  
 **Results:** 154 built, 28 partial, 26 missing, 3 backend-only (no UI)
+
+---
+
+**Status: mostly unbuilt — 9 of the 38 findings below are fixed.** This was never worked through as
+a plan. As of 2026-10-08, checked against the current code:
+
+- **Fixed** — #1 (view-as write bypass in Spatial Planning; `assertNotViewingAs()` is now in every
+  `/api/spatial-planning/**` route), #2 (`/escalation` is a real page again), #3 (cycle clone now
+  copies grants via `copyPermissionGrants`), #4 and #33 (both annotated inline below as they
+  shipped), #15 (notes are no longer behind a tab), #16 (waiting-task nudge offers all four
+  options), #18 (calendar invites go only to confirmed attendees), and #13 half (FormResponse has
+  `cycleId`, but no `purpose` enum on Form).
+- **Still present** — the other 28, including #5, #9 and #26, which
+  [`../roadmap.md`](../roadmap.md) independently lists as known-unbuilt.
+- **Partially addressed** — #27, which the settings-readability and founders-assembly work got
+  most of the way.
+
+Several findings are deliberate deferrals rather than oversights (#26, #37), and some are flagged
+in `docs/spec.md` itself as needing a spec correction rather than a code change (#37). Treat the
+numbered text as an audit record and this status note as the current truth — re-verify before
+picking anything up, since the two have drifted.
 
 ---
 
@@ -47,7 +68,7 @@ Generated from `docs/task-board-views-spec-audit.md` — a systematic audit of `
 **Fix:** Add `view=coverage` to `VIEWS`, build `getBranchCoverage()` in `board-views.ts`, add filter controls to the board page.
 **Files:** `src/lib/tasks/board-views.ts`, `src/app/(app)/board/page.tsx`
 **Effort:** Medium–Large (2–3 sessions)
-**Note:** Already drafted in `docs/development-plan.md:25-41` as "Branch coverage view + advanced filters"
+**Note:** Already drafted in `docs/plans/development-plan.md:25-41` as "Branch coverage view + advanced filters"
 
 ### 5. Ordinary Browse mode (auto-claim + contested resolution)
 **Gap:** Only `community_endorsed` candidacy exists. For `open`/`request` tasks: no browse window, no auto-claim on window close, no contested resolution (retract / open 2nd slot / shadow-instead / split / facilitate).
@@ -294,4 +315,4 @@ Per the project's workflow pattern, re-read the relevant `docs/spec.md` sections
 - Sprint 6: Assembly, Event scheduling, Forms, Conflict management
 - Sprint 7: Notifications & communications, Input rounds
 
-Also check `docs/roadmap.md` and `docs/development-plan.md` to confirm nothing is already scoped or deliberately deferred.
+Also check `docs/roadmap.md` and `docs/plans/development-plan.md` to confirm nothing is already scoped or deliberately deferred.

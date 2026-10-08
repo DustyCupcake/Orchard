@@ -33,7 +33,7 @@ export async function isSpatialPlanningHolder(
 ) {
   // Open short-circuits before the cycleId tri-state, for the same reason as
   // isEventSchedulingOwner: an open module is the community/evergreen
-  // scope, already a superset (docs/open-permissions-plan.md D3/D15).
+  // scope, already a superset (docs/plans/archive/open-permissions-plan.md D3/D15).
   //
   // Note this is the capability half only. `isPlacementEditor` is a
   // *different* authority — a member-linked placement's own editor, or the

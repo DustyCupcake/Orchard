@@ -5,7 +5,7 @@ import { formResponse } from "./form";
 import { member } from "./member";
 
 // Nomination, the one verification mode that needs storage of its own
-// (docs/joining-admission-plan.md §2.2/§2.4/§4.2). A nomination is a
+// (docs/plans/archive/joining-admission-plan.md §2.2/§2.4/§4.2). A nomination is a
 // *subject* waiting for social proof: either an invite whose lane
 // resolved to `nomination`, or a public application whose lane did.
 // One table for both rather than two parallel sets of columns on

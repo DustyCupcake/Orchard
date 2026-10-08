@@ -12,13 +12,13 @@ type Member = typeof memberTable.$inferSelect;
 // "The conflict team" isn't a dedicated relationship — it's whoever
 // currently holds (really holds — a shadow doesn't count, same as
 // everywhere else) the task with a real `conflict_team`-module
-// PermissionGrant row (docs/development-plan.md's Phase 63 — previously
+// PermissionGrant row (docs/plans/development-plan.md's Phase 63 — previously
 // Community.conflictTeamTaskId, a single scalar pointer). See
 // docs/spec.md's "The conflict team is just a task, reusing what
 // already exists."
 //
 // An open `conflict_team` module puts every member on the team
-// (docs/open-permissions-plan.md D7). That is deliberately *not* narrowed:
+// (docs/plans/archive/open-permissions-plan.md D7). That is deliberately *not* narrowed:
 // open membership already confers the larger power, since
 // acknowledgeConflictReport admits anyone on the team and
 // resolveConflictReport has no team check at all beyond having been the one
@@ -156,7 +156,7 @@ export async function fileConflictReport(actor: Member, input: FileConflictRepor
 // while it's unacknowledged (so anyone eligible can pick it up),
 // while they're the one who acknowledged it (point of contact), or
 // once it's escalated (widens back to the whole non-excluded team) —
-// see docs/development-plan.md's Phase 21 for why acknowledging
+// see docs/plans/development-plan.md's Phase 21 for why acknowledging
 // narrows visibility down from the team to just the point of contact
 // rather than leaving it team-wide throughout.
 export async function listConflictReports(actor: Member, opts: { reportId?: string } = {}) {
@@ -205,7 +205,7 @@ export interface ConflictNeedsAction {
   createdAt: Date;
 }
 
-// Dashboard's own needs-action surface — see docs/development-plan.md's
+// Dashboard's own needs-action surface — see docs/plans/development-plan.md's
 // Phase 49. Reuses listConflictReports exactly as it already exists —
 // never a second, unfiltered path — so an excluded team member simply
 // never sees an item here for a report they can't see at all, the same
@@ -224,7 +224,7 @@ export async function listConflictNeedsAction(actor: Member): Promise<NeedsActio
     .filter((r) => !r.acknowledgedAt && r.createdAt < cutoff)
     .map((r) => ({ reportId: r.id, createdAt: r.createdAt }));
 
-  // Split per D12 (docs/open-permissions-plan.md §3.2). The *content* is
+  // Split per D12 (docs/plans/archive/open-permissions-plan.md §3.2). The *content* is
   // unchanged either way — an open team already made these visible to every
   // member, and listConflictReports is still the only path they come
   // through, so an excluded member still sees nothing. D7 widened the team,

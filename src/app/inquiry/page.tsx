@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 // Public, no login required — "a simple 'message us' box, no
 // application structure, just a question or an expression of
 // interest" (docs/spec.md's Recruitment). Not the evaluated
-// application form itself — that's docs/development-plan.md's
+// application form itself — that's docs/plans/development-plan.md's
 // Phase 33.
 export default async function InquiryPage({
   searchParams,

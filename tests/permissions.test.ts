@@ -32,7 +32,7 @@ async function enableCycles(communityId: string) {
 
 // Both functions here are what the settings panel's Access & permissions
 // tab, the task detail view, and the proposal-activation screen read to
-// render (Budget remains settings-only) — see docs/development-plan.md's
+// render (Budget remains settings-only) — see docs/plans/development-plan.md's
 // Phase 64.
 describe("listGrantsWithTaskInfo", () => {
   beforeEach(async () => {
@@ -85,7 +85,7 @@ describe("listModuleKeysGrantedByTask", () => {
   });
 });
 
-// docs/cycle-scope-remediation-plan.md — a grant's scope comes from
+// docs/plans/archive/cycle-scope-remediation-plan.md — a grant's scope comes from
 // the granting task's own placement (`task.cycleId`), not a cycle
 // column on the grant row (retired in migration D8). task.cycleId =
 // NULL is the community/evergreen role; = C covers cycle C only, and a
@@ -110,7 +110,7 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
     expect(await listGrantingTaskIds(testCommunity.id, "budget")).toEqual([]);
   });
 
-  // docs/open-permissions-plan.md §2.4: an open flag is a Community's
+  // docs/plans/archive/open-permissions-plan.md §2.4: an open flag is a Community's
   // local decision about *its own* members, so a cloned cycle or an imported
   // pack arrives closed. This is the one place that decision is enforced in
   // code, and it is enforced by *omission* — copyPermissionGrants is the
@@ -293,7 +293,7 @@ describe("placement-derived scopes (cycle-scope remediation)", () => {
   });
 });
 
-// docs/cycle-scope-remediation-plan.md §5.1 — the derived-scope label
+// docs/plans/archive/cycle-scope-remediation-plan.md §5.1 — the derived-scope label
 // and community-shaped misplacement flag the settings panel and
 // task-detail form render, driven by the §2.2 tier table.
 describe("describeGrantScope / isMisplacedCommunityGrant", () => {

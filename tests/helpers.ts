@@ -15,7 +15,7 @@ import type { CreateSensitiveFieldAccessRuleInput } from "@/lib/sensitive-data";
 type FixtureMember = typeof memberTable.$inferSelect;
 
 // Every access gate this codebase enforces reads from PermissionGrant
-// now (docs/development-plan.md's Phase 63) — this is the direct-DB
+// now (docs/plans/development-plan.md's Phase 63) — this is the direct-DB
 // equivalent of what used to be `db.update(community).set({
 // conflictTeamTaskId: t.id })` or `.set({ adminsTag: "x" })` plus
 // tagging a task with that string. Route through the domain function for

@@ -77,7 +77,7 @@ import {
 import { AppError } from "@/lib/errors";
 
 // Fields arrive as a JSON blob from the real field-builder client
-// component (docs/development-plan.md's Phase 58 —
+// component (docs/plans/development-plan.md's Phase 58 —
 // src/app/(app)/settings/FormBuilder.tsx) rather than a hand-typed
 // pipe-delimited textarea — the no-code builder that phase names is
 // this JSON payload's only producer, never something an admin types
@@ -493,7 +493,7 @@ const permissionGrantFields = z.object({
   taskId: z.string().uuid(),
 });
 
-// "Everyone has this permission" (docs/open-permissions-plan.md). A checkbox
+// "Everyone has this permission" (docs/plans/archive/open-permissions-plan.md). A checkbox
 // plus Save, not a toggle-on-change: this whole tab is deliberately zero-JS
 // (the grant picker is a datalist, Remove is a plain form), and a control that
 // flipped on click would be the one thing here that silently changed a
@@ -550,7 +550,7 @@ async function requireTaskInActorCommunity(taskId: string, communityId: string) 
 
 // Single-cardinality modules — makes the typed task *the* task granting
 // this module, replacing a sibling grant in the same scope (the granted
-// task's own placement, task.cycleId — docs/cycle-scope-remediation-plan.md
+// task's own placement, task.cycleId — docs/plans/archive/cycle-scope-remediation-plan.md
 // §2.1), or adding a coexisting grant when the scope is new. Budget is one
 // of these and is deliberately configurable only from this Settings action;
 // generic task/proposal surfaces omit it. Clearing a grant is the per-row
@@ -579,7 +579,7 @@ export async function setPermissionGrantAction(formData: FormData) {
 // adds one more granting task without touching any others already
 // granting the same module. Replaces the old free-text "type a tag"
 // fields (adminsTag/coordinationTag) and supportTag's previously-
-// nonexistent settings UI alike — see docs/development-plan.md's Phase
+// nonexistent settings UI alike — see docs/plans/development-plan.md's Phase
 // 63 on why a tag string could never safely stay the mechanism.
 export async function addPermissionGrantAction(formData: FormData) {
   const actor = await requireMember();

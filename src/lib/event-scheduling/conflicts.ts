@@ -27,7 +27,7 @@ type EventProposalRow = typeof eventProposal.$inferSelect;
 export async function isEventSchedulingOwner(actor: Member, cycleId?: string | null) {
   // An open module short-circuits *before* the cycleId tri-state is
   // consulted: open means the community/evergreen scope, which is already a
-  // superset for a `cycle`-tier module (docs/open-permissions-plan.md D3),
+  // superset for a `cycle`-tier module (docs/plans/archive/open-permissions-plan.md D3),
   // so it answers true for every scope — `undefined`, `null`, and any real
   // cycle id alike. That is why isEventSchedulingOwner does not grow an
   // `open` path per scope and why listGrantingTaskIdsForScope stays
@@ -75,7 +75,7 @@ function operativeSlots(p: EventProposalRow): EventSlot[] {
 }
 
 // "Overlapping time range + an exact spaceNeeds string match — no
-// room-graph or capacity modeling" — docs/development-plan.md's
+// room-graph or capacity modeling" — docs/plans/development-plan.md's
 // resolved interpretation. A blank spaceNeeds on either side never
 // conflicts with anything on the space dimension.
 function proposalsConflict(a: EventProposalRow, b: EventProposalRow) {

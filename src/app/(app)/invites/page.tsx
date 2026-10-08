@@ -44,7 +44,7 @@ const STATUS_TONE: Record<string, Tone> = {
 };
 
 // See docs/spec.md's Recruitment "Invite links" and "A public inquiry
-// inbox, not a CRM," and docs/development-plan.md's Phase 32 — the two
+// inbox, not a CRM," and docs/plans/development-plan.md's Phase 32 — the two
 // low-structure public entry points, plus the authenticated surfaces that
 // manage them.
 //

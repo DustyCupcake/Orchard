@@ -468,7 +468,7 @@ describe("Publication", () => {
   });
 });
 
-// docs/development-plan.md's Phase 68 — event_scheduling_owner
+// docs/plans/development-plan.md's Phase 68 — event_scheduling_owner
 // ownership becomes genuinely per-cycle: two concurrently-open cycles
 // each get their own independent owner grant, and one cycle's owner
 // has no authority over the other's proposals/schedule.

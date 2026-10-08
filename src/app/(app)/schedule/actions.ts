@@ -157,7 +157,7 @@ export async function pingConflictHostAction(formData: FormData) {
 }
 
 // Owner-only, enforced inside publishEventSchedule against the given
-// cycleId (docs/development-plan.md's Phase 68) — a hidden field on
+// cycleId (docs/plans/development-plan.md's Phase 68) — a hidden field on
 // EventReviewSection.tsx's form carries the review batch's resolved
 // cycle, since publishing has no single proposal row to derive it from.
 export async function publishEventScheduleAction(formData: FormData) {

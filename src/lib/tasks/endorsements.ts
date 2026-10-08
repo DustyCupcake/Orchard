@@ -61,7 +61,7 @@ export async function expressCandidacy(actor: Member, taskId: string) {
       .returning();
 
     // A candidacy whose threshold is already met the instant it's
-    // created (docs/development-plan.md's Phase 62 — most concretely,
+    // created (docs/plans/development-plan.md's Phase 62 — most concretely,
     // an endorsementThreshold of 0) confirms right away rather than
     // sitting open until either a real endorsement or the browse
     // window's own close-out (which would otherwise incorrectly mark
@@ -94,7 +94,7 @@ async function requireOpenCandidacyForUpdate(tx: Tx, taskId: string, browseInter
 
 // The threshold-clearing check, shared by expressCandidacy (checked
 // once immediately, so an already-met threshold — endorsementThreshold
-// = 0 being the concrete case, docs/development-plan.md's Phase 62 —
+// = 0 being the concrete case, docs/plans/development-plan.md's Phase 62 —
 // confirms right away instead of waiting on an endorsement that may
 // never come) and endorseCandidacy (checked after each new
 // endorsement, exactly as before this phase). Previously this lived

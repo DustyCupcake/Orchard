@@ -1,12 +1,19 @@
 # Admission Plan — who joins, how, and what the community decides
 
+> **Implemented and shipped; partly superseded (2026-10-06), archived 2026-10-08.** Every
+> work-plan step landed: the lane table and `direct | referral` retirement, the third door, the
+> mediation grant, support and nomination, consensus and consent, pairing, and every settings and
+> participation surface that shows them. See [`../../../CHANGELOG.md`](../../../CHANGELOG.md) for
+> what each step built and the real bugs found. The eight "Known limits" at the foot of this
+> document are still accurate and still unfixed.
+>
 > **Partly superseded (2026-10-06).** The lane model, the objection discipline, the overrule
 > threshold and the mediation grant (J1–J12 below) still stand. How the pieces connect — one ordered
 > funnel, nobody a Member until admitted, the support *shortcut* in place of the nomination wait, one
 > community check, the interview before the decision — is now in
-> [`admission-flow.md`](admission-flow.md), which wins wherever the two disagree.
+> [`../admission-flow.md`](../admission-flow.md), which wins wherever the two disagree.
 
-**Scope of this plan:** the whole joining surface — invites, applications, and the consensus machinery around them — redesigned around one idea: **the inviter's (or applicant's) declaration selects a lane, and the community's rule for that lane defines the newcomer's path.** It supersedes the two-flavor invite mode locked as D12 in `docs/cycle-scope-remediation-plan.md` (§4.3/8d: `joiningInviteMode` `direct | referral`), extends D13's door set with a third independent door (interviews), and keeps D14 (joining seeds participation). Nothing here touches the task-permission model; `task.cycleId` scoping stays exactly as it is.
+**Scope of this plan:** the whole joining surface — invites, applications, and the consensus machinery around them — redesigned around one idea: **the inviter's (or applicant's) declaration selects a lane, and the community's rule for that lane defines the newcomer's path.** It supersedes the two-flavor invite mode locked as D12 in `docs/plans/archive/cycle-scope-remediation-plan.md` (§4.3/8d: `joiningInviteMode` `direct | referral`), extends D13's door set with a third independent door (interviews), and keeps D14 (joining seeds participation). Nothing here touches the task-permission model; `task.cycleId` scoping stays exactly as it is.
 
 The working principle, agreed with the user over several rounds:
 
@@ -245,7 +252,7 @@ Objections render only to mediation-holders (shielded `raisedBy`), with recusal/
 7. **Interface** — §5.1 → §5.2 (the config) → §5.3 (inviter/applicant surfaces + support page + consent flows) → §5.4 (mediation surfaces).
 8. **Tests + docs close-out** — lane-resolution, door, fallback, consent, overrule-threshold, and pair tests; this plan's status annotated with hashes.
 
-Cross-referenced from: `docs/cycle-scope-remediation-plan.md` (§4.3, D12–D14), `docs/spec.md` (Recruitment: "Invite links", "Wider discussion window", "Conversation scheduling"), `docs/development-plan.md` (Conflict management — recusal).
+Cross-referenced from: `docs/plans/archive/cycle-scope-remediation-plan.md` (§4.3, D12–D14), `docs/spec.md` (Recruitment: "Invite links", "Wider discussion window", "Conversation scheduling"), `docs/plans/development-plan.md` (Conflict management — recusal).
 
 ---
 

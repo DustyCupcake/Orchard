@@ -28,7 +28,7 @@ type BudgetCycleRow = typeof budgetCycle.$inferSelect;
 // task-is-the-authority checks throughout the app.
 export async function isBudgetOwner(actor: Member, cycleRow: Pick<BudgetCycleRow, "cycleId">) {
   // An open `budget` module answers true for every budget period
-  // (docs/open-permissions-plan.md D3) — open is the community/evergreen
+  // (docs/plans/archive/open-permissions-plan.md D3) — open is the community/evergreen
   // scope, which is already the superset for a `cycle`-tier module, so the
   // cycleRow.cycleId comparison below is skipped rather than extended.
   //
@@ -204,7 +204,7 @@ export async function submitBudgetVote(actor: Member, budgetCycleId: string, inp
 }
 
 // Positional (Borda-style) rank score, not instant-runoff elimination
-// — docs/development-plan.md's Phase 27 resolved interpretation, since
+// — docs/plans/development-plan.md's Phase 27 resolved interpretation, since
 // spec names no algorithm. Top rank in an N-proposal ballot scores
 // N-1, last scores 0; summed across every vote cast so far, then
 // sorted descending for "the" aggregate ranked order.
@@ -392,7 +392,7 @@ export interface BudgetNeedsAction {
   kind: "close_to_voting" | "confirm_funded_set" | "cast_vote";
 }
 
-// Dashboard's own needs-action surface — see docs/development-plan.md's
+// Dashboard's own needs-action surface — see docs/plans/development-plan.md's
 // Phase 49 ("Budget/Event-scheduling/Shifts/Conflict-management never
 // got wired into Dashboard the way Recruitment/Spatial-planning did").
 // Only the current cycle (v1's own "one active cycle at a time"

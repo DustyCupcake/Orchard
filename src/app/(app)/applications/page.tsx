@@ -55,7 +55,7 @@ const OBJECTION_STATE_LABEL: Record<string, string> = {
 
 // See docs/spec.md's Recruitment ("Evaluation + decision logic",
 // "Recruitment-mode subscription", "Wider discussion window",
-// "Accompaniment", "Rejection templates") and docs/development-plan.md's
+// "Accompaniment", "Rejection templates") and docs/plans/development-plan.md's
 // Phases 33-34.
 export default async function ApplicationsPage({
   searchParams,

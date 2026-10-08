@@ -61,7 +61,7 @@ export type UpdateTaskInput = z.infer<typeof updateTaskInput>;
 // switching an existing task's openness to community_endorsed without
 // also setting these in the same call fails loudly instead of creating
 // a candidacy mechanism with nothing to gate. Zero is a real, distinct
-// choice from "unset" (docs/development-plan.md's Phase 62) — meaning
+// choice from "unset" (docs/plans/development-plan.md's Phase 62) — meaning
 // "no endorsement needed, confirms as soon as Requirements are met" —
 // so only a missing or negative value is rejected here.
 function requireEndorsementFields(openness: string, browsePeriodEnd: Date | null, endorsementThreshold: number | null) {
@@ -223,7 +223,7 @@ export async function createTask(
   return created;
 }
 
-// The board's own cycle-scope filter (docs/development-plan.md's
+// The board's own cycle-scope filter (docs/plans/development-plan.md's
 // Phase 67) — a richer alternative to the plain `cycleId` exact-match
 // filter above, since the board needs to match *several* cycles at
 // once (the switcher's aggregate state) and always union in cycle-less
@@ -278,7 +278,7 @@ export async function listDistinctTags(actor: Member) {
 
 // Board-shaped: each task comes back with who currently holds it, for
 // rendering "Claimed by ..." and deciding which action buttons to show.
-// sortByFit (docs/development-plan.md's Phase 50) is opt-in — computing
+// sortByFit (docs/plans/development-plan.md's Phase 50) is opt-in — computing
 // a fit score touches every requirement's countEligibleMembers, real
 // extra cost not worth paying on every ordinary board load, so it's
 // only actually run when a member has chosen to sort by it. groupCoverage

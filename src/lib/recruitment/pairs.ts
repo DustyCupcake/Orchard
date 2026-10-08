@@ -20,7 +20,7 @@ import { isMediationMember } from "./mediation";
 type Member = typeof memberTable.$inferSelect;
 type PairRow = typeof recruitmentPairTable.$inferSelect;
 
-// "Who are you sticking with" (docs/joining-admission-plan.md §2.8,
+// "Who are you sticking with" (docs/plans/archive/joining-admission-plan.md §2.8,
 // work-plan step 6). J9 is the constraint everything here obeys: a pair
 // is a *fact*, recorded and shown to humans, and the platform decides
 // nothing whatsoever from it. No lane reads a pairing, no capacity count

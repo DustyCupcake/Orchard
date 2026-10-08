@@ -36,7 +36,7 @@ export const TASK_GRANTABLE_PERMISSION_MODULE_KEYS = PERMISSION_MODULE_KEYS.filt
 
 // Human-readable label/description per module — the single source of
 // truth for the settings panel's Access & permissions tab and the task
-// and proposal grant controls where applicable (docs/development-plan.md's
+// and proposal grant controls where applicable (docs/plans/development-plan.md's
 // Phase 64), so those surfaces never describe a gate two different ways.
 export const PERMISSION_MODULE_LABELS: Record<PermissionModuleKey, string> = {
   admin: "Admin",
@@ -258,7 +258,7 @@ export function allowsMultipleGrants(moduleKey: PermissionModuleKey): boolean {
 // one thing every enforcement check below reads instead of a Community
 // column or a Task.tags match now. Scope is *not* an argument: it
 // travels on the granting task's own placement (`task.cycleId` — see
-// docs/cycle-scope-remediation-plan.md §2.1), so callers wanting a
+// docs/plans/archive/cycle-scope-remediation-plan.md §2.1), so callers wanting a
 // specific scope filter that themselves, either by scoping their join
 // on task.cycleId (the per-cycle resolvers, e.g.
 // src/lib/spatial-planning/access.ts) or through the
@@ -284,7 +284,7 @@ export async function listPermissionGrants(communityId: string, moduleKey: Permi
 
 // ---------------------------------------------------------------------------
 // "Everyone has this permission" — the open-flag reads
-// (docs/open-permissions-plan.md §2.2)
+// (docs/plans/archive/open-permissions-plan.md §2.2)
 //
 // The whole open-permissions mechanism rests on this file NOT changing how
 // authority is resolved today. listGrantingTaskIds above is still the only
@@ -548,7 +548,7 @@ export async function listHoldersByTaskId(
 // edit/proposal-activation screen scans them to warn when checking a
 // single-cardinality module would move it off another task in the same
 // scope. cycleId is the granting task's `task.cycleId` (the one scope
-// read, docs/cycle-scope-remediation-plan.md §2.1) — `permission_grant`
+// read, docs/plans/archive/cycle-scope-remediation-plan.md §2.1) — `permission_grant`
 // carries no cycle column anymore (migration D8). Branch *name* is
 // deliberately left to the caller (every one of these three screens
 // already has its own branch list in hand) rather than joining branch
@@ -676,7 +676,7 @@ async function requireTaskInCommunity(tx: Tx, communityId: string, taskId: strin
 
 // Single-cardinality modules only — makes taskId *the* task granting
 // this module, replacing whatever task currently grants it in the same
-// scope (docs/cycle-scope-remediation-plan.md §2.1/§2.3). The scope is
+// scope (docs/plans/archive/cycle-scope-remediation-plan.md §2.1/§2.3). The scope is
 // not an argument: it comes from where the granted task itself sits
 // (`task.cycleId`) — a task placed in cycle C grants cycle C only, a
 // cycle-less task is the community/evergreen role — so the replacement
@@ -922,7 +922,7 @@ export async function removePermissionGrant(
 }
 
 // The shared core of cycle clone and task-pack import
-// (docs/cycle-scope-remediation-plan.md §4.4): a copied task keeps the
+// (docs/plans/archive/cycle-scope-remediation-plan.md §4.4): a copied task keeps the
 // ordinary module grants its source had, as new bare { communityId,
 // moduleKey, taskId } rows keyed by the copy's task id. No scope is copied
 // — the copy's own placement re-scopes everything (§2.1). Budget is the

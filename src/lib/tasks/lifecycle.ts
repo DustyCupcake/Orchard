@@ -177,7 +177,7 @@ export async function releaseTask(actor: Member, taskId: string) {
   return db.transaction(async (tx) => {
     // "Release" is one of the Waiting-nudge's own four named response
     // options (docs/spec.md's Owner-set nudges) — see
-    // docs/development-plan.md's Phase 52. Checked before the release
+    // docs/plans/development-plan.md's Phase 52. Checked before the release
     // itself changes the status out from under this read.
     const before = await loadTaskForUpdate(tx, taskId, actor.communityId);
     const wasWaiting = before.status === "waiting";

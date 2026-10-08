@@ -10,14 +10,14 @@ import { task } from "./task";
 // additions to the same table. Both shapes are replaced by this one
 // table: a row is a real, explicit "this task grants this module"
 // fact, never a string match against a field also used for ordinary
-// board categorization (docs/development-plan.md's Phase 63 — the tag
+// board categorization (docs/plans/development-plan.md's Phase 63 — the tag
 // shape's real bug, not just an inconsistency, was that a task tagged
 // "support" for unrelated logistics reasons could silently grant real
 // View-as access).
 //
 // A grant row is deliberately bare — task + module only. The granted
 // task's *scope* comes from where the task sits (`task.cycleId`, see
-// docs/cycle-scope-remediation-plan.md §2.1): a cycle-placed task's
+// docs/plans/archive/cycle-scope-remediation-plan.md §2.1): a cycle-placed task's
 // authority covers that cycle's data only; a cycle-less task is the
 // community/evergreen role. `permission_grant.cycleId` was retired in
 // a single migration (D8) once task placement became the one scope
@@ -71,7 +71,7 @@ export const permissionGrant = pgTable("permission_grant", {
   // Reserved, always null (meaning "grants the whole module") until a
   // future phase defines real finer-grained permission keys and teaches
   // specific enforcement checks to read them — see the "Beyond" note on
-  // a subset-based permission model in docs/development-plan.md.
+  // a subset-based permission model in docs/plans/development-plan.md.
   permissionKey: text("permission_key"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

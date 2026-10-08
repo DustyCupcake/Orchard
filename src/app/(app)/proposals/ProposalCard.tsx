@@ -94,7 +94,7 @@ export default function ProposalCard({
   elsewhereHolderByModule: Partial<Record<PermissionModuleKey, string>>;
   cyclesEnabled: boolean;
   // The new task's own placement select — its grants' scopes derive
-  // from wherever it lands (docs/cycle-scope-remediation-plan.md §2.1),
+  // from wherever it lands (docs/plans/archive/cycle-scope-remediation-plan.md §2.1),
   // so this one cycle list is the only one the proposal form needs.
   cycles: { id: string; name: string }[];
   defaultCycleId: string | null;
@@ -329,7 +329,7 @@ export default function ProposalCard({
                   Permissions granted by this task (optional)
                 </summary>
                 <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  One rule, same as everywhere grants are edited (docs/cycle-scope-remediation-plan.md
+                  One rule, same as everywhere grants are edited (docs/plans/archive/cycle-scope-remediation-plan.md
                   §5.4): a task grants what it sits in — wherever this proposal lands on the board,
                   each checked module is granted for that task&rsquo;s own scope only. Budget authority
                   is configured only in Settings → Access &amp; permissions.

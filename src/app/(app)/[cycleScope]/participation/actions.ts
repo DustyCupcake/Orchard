@@ -29,7 +29,7 @@ import { AppError, ConfirmationRequiredError } from "@/lib/errors";
 
 // Every form on this page carries a hidden `cycleScope` field so a
 // redirect after submitting lands back on the exact scoped URL it came
-// from (docs/development-plan.md's Phase 65) — never the bare
+// from (docs/plans/development-plan.md's Phase 65) — never the bare
 // /participation, which could bounce through the redirect shim to a
 // *different* default scope than the one the member was just looking
 // at.
@@ -212,7 +212,7 @@ export async function updateCycleLaneRulesAction(formData: FormData) {
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside
-// exportCycleAsTaskPack — see docs/development-plan.md's Phase 55.
+// exportCycleAsTaskPack — see docs/plans/development-plan.md's Phase 55.
 // taskIds is left unset here (exports the whole cycle); the board's
 // own bulk-selection checkboxes post to a sibling action for the
 // partial-export case.
@@ -248,7 +248,7 @@ function boundaryFromForm(formData: FormData, prefix: "start" | "end"): DateBoun
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside updatePhaseBoundary
-// — same authority as Cycle settings above. See docs/development-plan.md's
+// — same authority as Cycle settings above. See docs/plans/development-plan.md's
 // Phase 39.
 export async function updatePhaseBoundaryAction(formData: FormData) {
   const actor = await requireMember();
@@ -312,7 +312,7 @@ export async function updatePhaseHighlightAction(formData: FormData) {
 }
 
 // Admin-gated inside closeCycle itself (src/lib/cycles/lifecycle.ts —
-// docs/development-plan.md's Phase 65). The page pre-computes whether
+// docs/plans/development-plan.md's Phase 65). The page pre-computes whether
 // the Budget-owner warning applies and requires a real checkbox before
 // this ever submits with overrideBudgetWarning=on, matching the
 // self-assign confirmation UX pattern elsewhere in this codebase — the

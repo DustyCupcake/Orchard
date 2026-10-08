@@ -111,7 +111,7 @@ describe("cycle creation", () => {
   });
 });
 
-// docs/development-plan.md's Phase 65 — "starting a second Cycle while
+// docs/plans/development-plan.md's Phase 65 — "starting a second Cycle while
 // one's already open now shows an explicit confirmation step naming
 // the cycle that's already open, rather than silently succeeding."
 describe("createCycle's already-open-cycle confirmation", () => {
@@ -358,7 +358,7 @@ describe("cloning the previous cycle", () => {
   });
 });
 
-// docs/development-plan.md's Phase 44 — the Pack import date preview,
+// docs/plans/development-plan.md's Phase 44 — the Pack import date preview,
 // a pure non-mutating computation the Calendar view's "start a new
 // cycle" flow calls before anything actually clones.
 describe("previewClonePreviousCycle", () => {
@@ -476,7 +476,7 @@ describe("updatePhaseHighlight", () => {
     expect(cleared.highlightModuleKey).toBeNull();
   });
 
-  // docs/development-plan.md's Phase 65 — "closing locks everything
+  // docs/plans/development-plan.md's Phase 65 — "closing locks everything
   // about that cycle, no exception," scoped to this phase's own owned
   // functions.
   it("rejects once the cycle is closed", async () => {

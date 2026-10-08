@@ -40,7 +40,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
-// See docs/spec.md's "Shifts / rota" and docs/development-plan.md's
+// See docs/spec.md's "Shifts / rota" and docs/plans/development-plan.md's
 // Phase 29: recurring, never-"done" work distinct from a Task's
 // one-shot claim/finish lifecycle. §2.6/§4.8 (docs/cycle-scope-
 // remediation-plan.md): series group by scope — a cycle's roster vs the

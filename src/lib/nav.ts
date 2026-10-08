@@ -150,7 +150,7 @@ export type NavContext = {
   // member would see it — this field is only here for the banner text
   // and the "End View-as" button.
   viewAs: { targetId: string; targetName: string } | null;
-  // The global cycle-switcher's own data (docs/development-plan.md's
+  // The global cycle-switcher's own data (docs/plans/development-plan.md's
   // Phase 65) — CycleSwitcher.tsx renders from this directly rather
   // than fetching anything itself.
   cycleSwitcher: {
@@ -193,7 +193,7 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     kitchen: isModuleEnabled(community, "kitchen"),
   };
 
-  // The Community's open modules, fetched once (docs/open-permissions-plan.md
+  // The Community's open modules, fetched once (docs/plans/archive/open-permissions-plan.md
   // D5). Two jobs, and both are about *not* doing work:
   //
   //  1. A pin means "you have outstanding work here". An open module has no
@@ -338,7 +338,7 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
   // expired-nomination notices. Rides the Dashboard nav item.
   //
   // The six module needs-action lists contribute their **personal** items
-  // only (docs/open-permissions-plan.md D12). A `shared` item — outstanding
+  // only (docs/plans/archive/open-permissions-plan.md D12). A `shared` item — outstanding
   // for the Community because its module is open, which nobody in particular
   // opted into — is not one of *your* held-task obligations, and summing both
   // would multiply the badge for every member of an open Community while

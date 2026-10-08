@@ -122,7 +122,7 @@ export async function claimOrRequestToJoin(
 // coordination_approved: approvable by a holder whose TaskAssignment.
 // is_coordination_slot is set, if one exists — falling back to any
 // current holder when the task has no coordination slot filled, per
-// docs/development-plan.md's Phase 12 scope note. `request` tasks:
+// docs/plans/development-plan.md's Phase 12 scope note. `request` tasks:
 // any current holder can accept or decline.
 async function requireApprover(
   tx: Tx,

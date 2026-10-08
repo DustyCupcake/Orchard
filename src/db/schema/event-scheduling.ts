@@ -11,7 +11,7 @@ export const eventProposalStatusEnum = pgEnum("event_proposal_status", [
 ]);
 
 // A community's own internal programme — see docs/spec.md's "Event
-// scheduling" and docs/development-plan.md's Phase 28. `status` is a
+// scheduling" and docs/plans/development-plan.md's Phase 28. `status` is a
 // real, persisted column recomputed by
 // src/lib/event-scheduling/conflicts.ts's recomputeEventConflicts
 // whenever the scheduling-owner reviews proposals — not purely
@@ -43,7 +43,7 @@ export const eventProposal = pgTable("event_proposal", {
   // Array of {startsAt, endsAt} — the proposer's own preferred
   // windows, not yet a confirmed slot. Conflict detection checks every
   // slot here (or confirmedSlot, once set) against every other
-  // proposal's, per docs/development-plan.md's resolved interpretation
+  // proposal's, per docs/plans/development-plan.md's resolved interpretation
   // ("overlapping time range + an exact spaceNeeds string match").
   preferredSlots: jsonb("preferred_slots").notNull().default([]),
   status: eventProposalStatusEnum("status").notNull().default("proposed"),

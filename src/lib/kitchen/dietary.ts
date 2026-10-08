@@ -13,7 +13,7 @@ import { getMeal } from "./meals";
 
 type Member = typeof memberTable.$inferSelect;
 
-// The schema's bounded flag vocabulary (docs/food-drinks-module-plan.md
+// The schema's bounded flag vocabulary (docs/plans/archive/food-drinks-module-plan.md
 // D4) — a text[] column with application-layer validation, deliberately
 // NOT a DB enum so future flags are a one-line change here rather than
 // a migration.

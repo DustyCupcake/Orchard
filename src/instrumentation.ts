@@ -39,14 +39,14 @@ export async function register() {
   registerJob("recruitment-subscription-lapse", "*/5 * * * *", updateRecruitmentSubscriptionLapses);
   // Closes a nomination's support window once its deadline passes, so a
   // lapsed nomination *falls through* to the lane's process rather than
-  // failing (docs/joining-admission-plan.md §2.5/J6) — the one place in
+  // failing (docs/plans/archive/joining-admission-plan.md §2.5/J6) — the one place in
   // the whole joining surface where a timer ends a wait, and it never
   // ends it in "no". See src/lib/recruitment/support.ts.
   registerJob("nomination-window-lapse", "*/5 * * * *", lapseExpiredNominations);
   // Admits a consensus-lane arrival whose community-check window closed
   // with nobody objecting, and nothing else — an objection is never
   // dropped by a clock, it becomes a duty item for the mediation body
-  // (docs/joining-admission-plan.md §2.6). See
+  // (docs/plans/archive/joining-admission-plan.md §2.6). See
   // src/lib/recruitment/consensus.ts.
   registerJob("consensus-window-resolution", "*/5 * * * *", resolveConsensusWindows);
   // Auto-releases a nominated-but-unconfirmed task assignment once its

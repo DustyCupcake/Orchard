@@ -29,7 +29,7 @@ const responseTypes = RESPONSE_TYPES;
 // unaware primitive (docs/spec.md's Forms — "the mechanism doesn't
 // care which [module uses it]"), but any consumer that eventually
 // needs to turn a submission into a real person — Recruitment's own
-// applicant→Member conversion (docs/development-plan.md's Phase 48)
+// applicant→Member conversion (docs/plans/development-plan.md's Phase 48)
 // is the first, not the only plausible one — needs the form itself to
 // say which of its own opaque fields hold that person's name and
 // email, since a Form's fields are otherwise opaque to the platform
@@ -318,7 +318,7 @@ export async function createForm(actor: Member, input: CreateFormInput) {
   });
 }
 
-// fields is now editable too (docs/development-plan.md's Phase 58 —
+// fields is now editable too (docs/plans/development-plan.md's Phase 58 —
 // "editable the same as a freshly-created one"), a real loosening of
 // this table's previous "fields stay fixed after creation" posture. A
 // FormResponse.values already keyed on a since-removed or renamed
@@ -584,7 +584,7 @@ export async function listFormResponses(actor: Member, formId: string) {
 
 // --- Post-cycle feedback: Forms' first real, non-Recruitment consumer ---
 // See docs/spec.md's "Forms" ("a post-cycle feedback survey is a
-// Form") and docs/development-plan.md's Phase 25.
+// Form") and docs/plans/development-plan.md's Phase 25.
 
 async function getCommunityRow(communityId: string) {
   const [row] = await db.select().from(community).where(eq(community.id, communityId));
@@ -602,7 +602,7 @@ async function getCommunityRow(communityId: string) {
 // cycle-less task is the community-wide owner.
 //
 // An open module answers `{null}` — the community/evergreen scope, which is
-// already the superset (docs/open-permissions-plan.md D3), so the
+// already the superset (docs/plans/archive/open-permissions-plan.md D3), so the
 // `heldScopes.size === 0` throw below and the `has(null)` /
 // `inArray(cycleId, heldScopes)` narrowing further down both behave as
 // though the reviewer held a cycle-less task, with no event knowledge here.
@@ -646,7 +646,7 @@ export async function submitPostCycleFeedback(actor: Member, input: SubmitFormRe
 // Only the feedback-review task's current holder sees responses —
 // same "the task is the authority" gate Conflict management's own
 // pointer field established — and then only as far as the scope they
-// hold reaches (docs/cycle-scope-remediation-plan.md §4.3): a reviewer
+// hold reaches (docs/plans/archive/cycle-scope-remediation-plan.md §4.3): a reviewer
 // holding the cycle-less task sees every response; one holding a task
 // placed in cycle C sees only responses tagged with that cycle — not
 // untagged "general" ones, which belong to the community/evergreen

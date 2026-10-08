@@ -159,7 +159,7 @@ export const createProfileQuestionInput = z
   });
 export type CreateProfileQuestionInput = z.infer<typeof createProfileQuestionInput>;
 
-// responseType/options are now editable too (docs/development-plan.md's
+// responseType/options are now editable too (docs/plans/development-plan.md's
 // Phase 58 — "editable the same as a freshly-created one"), a real
 // loosening of this table's previous "structural shape doesn't change
 // underneath existing answers" posture. scope/phaseNameHint stay fixed

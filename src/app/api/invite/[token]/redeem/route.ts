@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // Public — no actor. Sets a real session cookie on success, same as
 // the ordinary magic-link verify route.
 //
-// The four outcomes of docs/joining-admission-plan.md §2 are all
+// The four outcomes of docs/plans/archive/joining-admission-plan.md §2 are all
 // returned distinctly rather than collapsed into a boolean, because
 // three of them mean "not yet a member" in three different ways a
 // client has to tell apart: a nomination still collecting support, a

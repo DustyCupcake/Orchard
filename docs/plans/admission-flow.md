@@ -3,7 +3,7 @@
 **Status:** proposed, not built. Written after an audit found that the front half of recruitment
 (doors, lanes, nomination, consensus) and the back half (evaluation, interview, decision) are two
 machines joined only where an invite is sent to `/apply`. This document replaces the *flow* parts of
-[`joining-admission-plan.md`](joining-admission-plan.md). That plan's decisions about lanes, the
+[`archive/joining-admission-plan.md`](archive/joining-admission-plan.md). That plan's decisions about lanes, the
 overrule threshold, shielding the objector and the mediation grant (J1–J12) still stand; what changes
 is how the pieces connect.
 

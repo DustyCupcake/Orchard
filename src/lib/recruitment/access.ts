@@ -26,7 +26,7 @@ export async function getCommunityRow(communityId: string) {
 // computeRecruitmentOutcome refuses to evaluate below the threshold — so a
 // Community with one holder can never satisfy any rule above the mandatory
 // fallback and every application parks at decision_pending forever
-// (docs/recruitment-access-plan.md §1). Opening Recruitment is the fix;
+// (docs/plans/recruitment-access-plan.md §1). Opening Recruitment is the fix;
 // listHeldRecruitmentScopes below then supplies the scope, and the two
 // together are what a non-holder needs to evaluate.
 export async function isRecruitmentTaskHolder(actor: Member) {
@@ -188,7 +188,7 @@ export async function describeRecruitmentAuthority(communityId: string): Promise
 // they hold. A `null` member of the set means they hold a cycle-less
 // (community/evergreen) recruitment task, which covers every application
 // — cycle-tagged or not — mirroring feedback_review's resolver and the
-// two Phase 68 modules (docs/cycle-scope-remediation-plan.md §4.3).
+// two Phase 68 modules (docs/plans/archive/cycle-scope-remediation-plan.md §4.3).
 //
 // An open module answers `{null}` — the community/evergreen scope, which is
 // already the superset under §4.3's strictness rule, so every downstream
@@ -197,7 +197,7 @@ export async function describeRecruitmentAuthority(communityId: string): Promise
 // Community reach a decision at all: `recruitmentEvaluatorCount` defaults to
 // 2 while `recruitment` is single-cardinality per scope, so with one holder
 // no decision rule above the fallback can ever match
-// (docs/recruitment-access-plan.md §1).
+// (docs/plans/recruitment-access-plan.md §1).
 export async function listHeldRecruitmentScopes(actor: Member): Promise<Set<string | null>> {
   if (await isModuleOpenToEveryone(actor.communityId, "recruitment")) {
     return new Set([null]);

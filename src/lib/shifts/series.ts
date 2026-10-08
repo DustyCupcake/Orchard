@@ -114,7 +114,7 @@ export async function createShiftSeries(actor: Member, input: CreateShiftSeriesI
 // with sourceTaskId set and branch/description pre-filled from the task.
 // Deliberately takes no input of its own beyond which task — everything
 // else is derived, the same no-intermediate-form posture Subtasks
-// already established. Under D10 (docs/cycle-scope-remediation-plan.md
+// already established. Under D10 (docs/plans/archive/cycle-scope-remediation-plan.md
 // §2.6) the resulting standing series is manager-added, so this is the
 // standing scope's shift_management holder's act — the old "any current
 // holder" route is gone (createShiftSeries enforces the manager gate).

@@ -90,7 +90,7 @@ export const member = pgTable("member", {
   // null = inherit Community.defaultDateDisplayMode; explicit values
   // override it for this member without changing anyone else's view.
   dateDisplayMode: dateDisplayModeEnum("date_display_mode"),
-  // Member onboarding & first session (docs/development-plan.md's
+  // Member onboarding & first session (docs/plans/development-plan.md's
   // Phase 56) — a nudge, never a gate: cleared either by finishing the
   // tutorial/suggestions sequence or by explicitly skipping it, same
   // "never blocks access behind a required flow" posture this codebase

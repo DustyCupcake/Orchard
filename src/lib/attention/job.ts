@@ -77,7 +77,7 @@ export async function recomputeAttentionLevels(): Promise<{ checked: number; upd
       await db.update(task).set({ attentionLevel: level }).where(eq(task.id, t.id));
       updated++;
 
-      // D7 (docs/cycle-scope-remediation-plan.md §4.7) — the only
+      // D7 (docs/plans/archive/cycle-scope-remediation-plan.md §4.7) — the only
       // backstop notification: a critical task's hard-flag transition
       // tells the scope's backstop it happened. The scope is the task's
       // own placement (§2.1); a cycle-less critical resolves to the
@@ -95,7 +95,7 @@ export async function recomputeAttentionLevels(): Promise<{ checked: number; upd
 
       // "Ignoring the nudge past a grace period re-flags the task" —
       // see docs/spec.md's Owner-set nudges and
-      // docs/development-plan.md's Phase 52. Only the exact transition
+      // docs/plans/development-plan.md's Phase 52. Only the exact transition
       // into hard for a still-Waiting task counts as "the nudge got
       // ignored" — a soft→hard flip from ordinary staleness or a
       // passed phase end date is a different trigger entirely, not

@@ -263,7 +263,7 @@ export default async function TaskDetailPage({
   // admin-only cycle list is.
   const allCycles = communityRow.cyclesEnabled ? await listCycles(viewing) : [];
 
-  // "Permissions granted by this task" (docs/development-plan.md's
+  // "Permissions granted by this task" (docs/plans/development-plan.md's
   // Phase 64) reads/writes the exact same PermissionGrant rows the
   // settings panel's Access & permissions tab does — visibility and
   // the underlying write path are both Admin-only here too, a
@@ -280,7 +280,7 @@ export default async function TaskDetailPage({
     : [[], new Set<PermissionModuleKey>()];
   // The "currently held elsewhere" warning below is keyed against this
   // task's *own* placement (taskRow.cycleId — the one scope read,
-  // docs/cycle-scope-remediation-plan.md §2.1): a grant in a different
+  // docs/plans/archive/cycle-scope-remediation-plan.md §2.1): a grant in a different
   // cycle isn't in this task's scope at all, so checking the same
   // module here creates a second, coexisting grant instead of moving
   // it.
@@ -322,7 +322,7 @@ export default async function TaskDetailPage({
   const holdsTask = realAssignments.some((a) => a.memberId === viewing.id);
   // "The accompanier gets explicit... visibility into the new member's
   // engagement record" — see docs/spec.md's Recruitment and
-  // docs/development-plan.md's Phase 52. Only ever resolves to
+  // docs/plans/development-plan.md's Phase 52. Only ever resolves to
   // something when this task actually is an Accompaniment task (see
   // getAccompaniedMemberId's own comment) and the viewer currently
   // holds it — access follows the task, same as every other

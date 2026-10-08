@@ -81,7 +81,7 @@ export const recruitmentApplicationInvite = pgTable("recruitment_application_inv
     .references(() => communityInvite.id),
 });
 
-// The lifecycle of an objection under docs/joining-admission-plan.md
+// The lifecycle of an objection under docs/plans/archive/joining-admission-plan.md
 // §2.6. `standing` is where every objection starts and where an
 // objection *lives*: it is never thrown out by the window's timer, and
 // inaction never admits or excludes. The three terminal states are the
@@ -108,7 +108,7 @@ export const objectionResolutionEnum = pgEnum("objection_resolution", [
 // the Anonymous task signal already takes ("a signal that can be
 // traced back defeats its own purpose").
 //
-// docs/joining-admission-plan.md §2.6/§4.3 tightens that from
+// docs/plans/archive/joining-admission-plan.md §2.6/§4.3 tightens that from
 // "anonymous to the community, visible to the evaluators" into a
 // *shield at rest*: raisedBy is now readable only by the mediation
 // body (holders of a task granted `recruitment_mediation`), never by
@@ -145,7 +145,7 @@ export const objection = pgTable("objection", {
   resolutionNote: text("resolution_note"),
 });
 
-// "Who are you sticking with" (docs/joining-admission-plan.md
+// "Who are you sticking with" (docs/plans/archive/joining-admission-plan.md
 // §2.8/J9). Pairing is *fact only*: the platform records that A named B
 // and never decides anything from it. The three shapes the plan names
 // all land on this one row:
@@ -286,7 +286,7 @@ export const recruitmentDecision = pgTable("recruitment_decision", {
   // already established, for the identical reason.
   introCallToken: text("intro_call_token").unique(),
   accompanimentTaskId: uuid("accompaniment_task_id").references(() => task.id),
-  // docs/development-plan.md's Phase 48: the real conversion step
+  // docs/plans/development-plan.md's Phase 48: the real conversion step
   // Phases 32-34 deliberately left un-mechanized (see this file's own
   // recruitmentDecision comment above, and decisions.ts's
   // maybeCreateAccompanimentTask, which used to have no Member row to

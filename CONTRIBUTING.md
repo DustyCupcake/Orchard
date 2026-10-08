@@ -82,7 +82,7 @@ Override when needed, no editing required: `ORCHARD_TEST_BUDGET_MB`, `ORCHARD_TE
 - **One commit per coherent, phase-sized change** — not one commit per file, not a giant commit bundling several unrelated changes. Look at `git log` for the established granularity before deciding how to split your own work.
 - **Write a detailed commit message.** What was built, real bugs found and fixed along the way, what automated tests cover, and what manual verification actually exercised. These messages are themselves documentation — `CHANGELOG.md`'s own entries are written at exactly this level of detail, and future readers (including future sessions of whoever's building this) reconstruct context from git log and CHANGELOG, not from re-reading every diff.
 - **Update `CHANGELOG.md` (and `README.md`'s feature list, if the change is user-facing) in the same commit as the code** — not a separate follow-up commit.
-- **`docs/development-plan.md` and `docs/development-plan.full-archive.md` are working notes, not specification.** They are committed, because they carry the reasoning behind how the original build was sequenced, but they are neither normative nor kept current: the current state of the system is `docs/spec.md`, `docs/roadmap.md` and `CHANGELOG.md`, and anything durable belongs there. The archive is the historical plan for Phases 0–69 and is not edited; `development-plan.md` is scratch space for whatever is being scoped next.
+- **Everything under `docs/plans/` is working notes, not specification.** It's committed because it carries the reasoning behind decisions — how the original build was sequenced, why a particular mechanism was chosen over the obvious alternative — which is the part that can't be reconstructed from a diff later. But none of it is normative or kept current: the current state of the system is `docs/spec.md`, `docs/roadmap.md` and `CHANGELOG.md`, and anything durable belongs there. Within `plans/`, `archive/` holds plans whose work has shipped (kept, never cited as current state) and `development-plan.md` is scratch space for whatever is being scoped next.
 
 ## Releases and upgrading
 
@@ -112,7 +112,11 @@ then pull or rebuild and let the migrations run. For a change that rewrites data
 - [`docs/overview.md`](docs/overview.md) — the plain-language, non-technical pitch. Useful for understanding *why* a mechanic is shaped the way it is, not *how* it's implemented.
 - [`CHANGELOG.md`](CHANGELOG.md) — what's been built, phase by phase, and how it was verified.
 - [`docs/roadmap.md`](docs/roadmap.md) — what's deliberately not built yet, and why.
-- `docs/development-plan.md` — scratch space for scoping whatever gets built next. Committed, but don't expect it to reflect anything durable; `docs/development-plan.full-archive.md` is the historical Phases 0–69 plan.
+- [`docs/plans/`](docs/plans/) — working documents for work still to be done: audits of the spec against the code, per-feature build plans, design proposals awaiting a decision. Start at its [README](docs/plans/README.md) for what belongs there and what doesn't. **Not specification** — when a plan and `spec.md` disagree, `spec.md` is right.
+- [`docs/plans/archive/`](docs/plans/archive/) — plans whose work has shipped, kept for the reasoning behind each decision. Never cited as current state. A plan is archived in the same commit as the last piece of its work, once its outcome is in `CHANGELOG.md`.
+- `docs/plans/development-plan.md` — scratch space for scoping whatever gets built next. Committed, but don't expect it to reflect anything durable; `docs/plans/archive/development-plan.full-archive.md` is the historical Phases 0–69 plan.
+
+**Draft new plans in `docs/plans/`, not `docs/`.** `docs/` proper is meant to stay small and approachable — it's what someone reads to understand what Orchard *is*, and it holds only that: spec, overview, roadmap, and the reference material those lean on. A plan is a record of intent at a point in time, so it belongs a level down, where nobody reads it by accident expecting it to describe the current code.
 
 ## Questions or design feedback
 

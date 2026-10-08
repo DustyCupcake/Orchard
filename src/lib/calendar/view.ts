@@ -56,7 +56,7 @@ function nextYearlyOccurrence(storedDate: string, from: Date): string {
   return thisYear >= fromStr ? thisYear : `${from.getUTCFullYear() + 1}-${month}-${day}`;
 }
 
-// The Calendar view's own read layer — docs/development-plan.md's
+// The Calendar view's own read layer — docs/plans/development-plan.md's
 // Phase 44: "one Community-wide calendar reading every dated thing
 // that already exists across the app as its own layer." Every source
 // below is read as-is, no schema or scope changes to any of them (see
@@ -162,7 +162,7 @@ export async function getCalendarView(actor: Member) {
   }
 
   // Shifts and Budget both predate this view (Phases 29-30, 26-27) but
-  // never got picked up as a layer here — see docs/development-plan.md's
+  // never got picked up as a layer here — see docs/plans/development-plan.md's
   // Phase 49. A member's own upcoming signed-up occurrences (not every
   // occurrence community-wide, matching every other layer here staying
   // "the actor's own" wherever that reading applies).
