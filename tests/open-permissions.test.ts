@@ -737,14 +737,14 @@ describe("open capability resolvers (Step 4)", () => {
     // Closed: bob and alice both hold nothing, so nobody can evaluate and
     // the count of 2 is unreachable by construction.
     const application = await submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" } });
-    await expect(submitEvaluation(alice, application.id, { recommendation: "proceed" })).rejects.toThrow();
+    await expect(submitEvaluation(alice, application.formResponse.id, { recommendation: "proceed" })).rejects.toThrow();
 
     // Open: both can, and that is enough to reach a decision.
     await openModule(testCommunity.id, "recruitment", alice.id);
-    await submitEvaluation(alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(bob, application.id, { recommendation: "proceed" });
+    await submitEvaluation(alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(bob, application.formResponse.id, { recommendation: "proceed" });
 
-    const decision = await recordDecisionIfReached(alice, application.id);
+    const decision = await recordDecisionIfReached(alice, application.formResponse.id);
     expect(decision).not.toBeNull();
     // The first rule matched, rather than falling through to the mandatory
     // wider_discussion — which is what a single-cardinality module made
@@ -1044,9 +1044,9 @@ describe("open modules are not misconfigured (Step 5)", () => {
     const application = await submitRecruitmentApplication(testCommunity.id, {
       values: { name: "Dana", email: "dana@example.com" },
     });
-    await submitEvaluation(alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(bob, application.id, { recommendation: "unsure" });
-    const decided = await recordDecisionIfReached(alice, application.id);
+    await submitEvaluation(alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(bob, application.formResponse.id, { recommendation: "unsure" });
+    const decided = await recordDecisionIfReached(alice, application.formResponse.id);
     expect(decided?.ruleOutcome).toBe("wider_discussion");
 
     // The job runs. Before the fallback chain it found no actor (no granting

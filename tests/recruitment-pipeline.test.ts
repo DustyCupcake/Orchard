@@ -13,6 +13,7 @@ import {
   getRecruitmentPipeline,
   listRecruitmentActionItems,
   recordDecisionIfReached,
+  seedAdmissionLanesForCommunity,
   submitEvaluation,
   submitRecruitmentApplication,
 } from "@/lib/recruitment";
@@ -36,6 +37,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
+  await seedAdmissionLanesForCommunity(communityId);
 }
 
 async function insertTask(
@@ -92,10 +94,10 @@ async function submitAndDecide(
   setupResult: Awaited<ReturnType<typeof setUp>>,
   recommendations: ["proceed" | "decline" | "unsure", "proceed" | "decline" | "unsure"],
 ) {
-  const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
-  await submitEvaluation(setupResult.alice, application.id, { recommendation: recommendations[0] });
-  await submitEvaluation(setupResult.bob, application.id, { recommendation: recommendations[1] });
-  const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+  const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
+  await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: recommendations[0] });
+  await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: recommendations[1] });
+  const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
   return { application, decision };
 }
 
@@ -110,7 +112,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
     const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
 
     const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.id)!;
+    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
     expect(candidate.stage).toBe("applied");
     expect(candidate.evaluationsFiled).toBe(0);
   });
@@ -119,10 +121,10 @@ describe("getRecruitmentPipeline — computed stage", () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
     const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
 
     const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.id)!;
+    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
     expect(candidate.stage).toBe("evaluation_in_progress");
     expect(candidate.evaluationsFiled).toBe(1);
   });
@@ -133,7 +135,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
     const { application, decision } = await submitAndDecide(fixtures, setupResult, ["decline", "decline"]);
 
     const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.id)!;
+    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
     expect(candidate.stage).toBe("declined");
     expect(candidate.stageSince).toEqual(decision!.decidedAt);
   });
@@ -145,7 +147,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
     expect(decision!.accompanimentTaskId).not.toBeNull();
 
     const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.id)!;
+    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
     expect(candidate.stage).toBe("accepted");
   });
 
@@ -158,7 +160,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
     await claimTask(refetchedAlice, decision!.accompanimentTaskId!);
 
     const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.id)!;
+    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
     expect(candidate.stage).toBe("accompaniment_assigned");
     expect(candidate.stageSince).not.toEqual(decision!.decidedAt);
   });
@@ -171,7 +173,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
     expect(decision!.introCallPollId).not.toBeNull();
 
     const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.id)!;
+    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
     expect(candidate.stage).toBe("call_pending");
   });
 
@@ -192,7 +194,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
       .where(eq(schedulingPoll.id, decision!.introCallPollId!));
 
     const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.id)!;
+    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
     expect(candidate.stage).toBe("call_scheduled");
   });
 
@@ -213,7 +215,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
       .where(eq(schedulingPoll.id, decision!.introCallPollId!));
 
     const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.id)!;
+    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
     expect(candidate.stage).toBe("decision_pending");
     expect(candidate.stageSince).toEqual(past);
   });
@@ -281,9 +283,9 @@ describe("listRecruitmentActionItems", () => {
 
     const actionItems = (await listRecruitmentActionItems(setupResult.alice)).personal;
     const ids = actionItems.map((c) => c.id);
-    expect(ids).toContain(stuck.id);
-    expect(ids).not.toContain(appliedOnly.id);
-    expect(ids).not.toContain(declined.id);
+    expect(ids).toContain(stuck.formResponse.id);
+    expect(ids).not.toContain(appliedOnly.formResponse.id);
+    expect(ids).not.toContain(declined.formResponse.id);
     expect(actionItems.every((c) => c.stage === "call_pending" || c.stage === "decision_pending")).toBe(true);
   });
 

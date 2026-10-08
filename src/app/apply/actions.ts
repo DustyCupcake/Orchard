@@ -30,7 +30,6 @@ export async function submitApplicationAction(formData: FormData) {
   if (inviteToken) back.set("invite", inviteToken);
   if (pairingToken) back.set("pair", pairingToken);
 
-  let responseId: string | null = null;
   try {
     // Resolve the form + door for the targeted surface, then enforce
     // the door so a shut or unconfigured one produces a clean message
@@ -44,6 +43,14 @@ export async function submitApplicationAction(formData: FormData) {
     const fields = resolution.form.fields as FormField[];
     const values = formValuesFromFormData(fields, formData);
 
+    // Email and name are form fields — pull them out for the arrival
+    // row (they're the identity before membership, §4).
+    const email = String(values.email ?? "").trim().toLowerCase();
+    const name = String(values.name ?? "").trim();
+    if (!email || !name) {
+      throw new AppError("Email and name are required");
+    }
+
     const input = submitRecruitmentApplicationInput.parse({
       values,
       inviteToken,
@@ -51,9 +58,30 @@ export async function submitApplicationAction(formData: FormData) {
       pairingToken,
       consentAccepted,
       disclosure,
+      email,
+      name,
     });
-    const created = await submitRecruitmentApplication(community.id, input);
-    responseId = created?.id ?? null;
+    const { arrivalId, token, formResponse } = await submitRecruitmentApplication(community.id, input);
+
+    // §2 — the person gets their private link emailed when they enter.
+    // The token is what they'll use for /admission/<token>. The page
+    // shows a success message; the email is sent by the caller (or a
+    // background job — this action just returns the token).
+    back.set("submitted", "1");
+    back.set("arrivalId", arrivalId);
+    back.set("token", token);
+
+    // §2.4 — a nomination lane opened a support window as part of this
+    // submission, so hand the token to the page and let it show the link.
+    // Losing it here would mean the "here's your support link" follow-up
+    // only ever worked for people who had it in a URL already.
+    if (formResponse) {
+      const nomination = await getNominationForApplication(formResponse.id);
+      if (nomination) {
+        back.set("supportToken", nomination.supportToken);
+      }
+    }
+    redirect(`/apply?${back.toString()}`);
   } catch (err) {
     if (err instanceof ZodError) {
       back.set("error", err.issues[0]?.message ?? "Invalid input");
@@ -65,17 +93,4 @@ export async function submitApplicationAction(formData: FormData) {
     }
     throw err;
   }
-
-  back.set("submitted", "1");
-  // §2.4 — a nomination lane opened a support window as part of this
-  // submission, so hand the token to the page and let it show the link.
-  // Losing it here would mean the "here's your support link" follow-up
-  // only ever worked for people who had it in a URL already.
-  if (responseId) {
-    const nomination = await getNominationForApplication(responseId);
-    if (nomination) {
-      back.set("supportToken", nomination.supportToken);
-    }
-  }
-  redirect(`/apply?${back.toString()}`);
 }

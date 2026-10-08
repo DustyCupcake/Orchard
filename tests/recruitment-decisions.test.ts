@@ -25,6 +25,7 @@ import {
   recordDecisionIfReached,
   resolveWiderDiscussionManually,
   resolveWiderDiscussionWindows,
+  seedAdmissionLanesForCommunity,
   setRecruitmentSubscriptionActive,
   submitEvaluation,
   submitIntroCallAvailability,
@@ -51,6 +52,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
+  await seedAdmissionLanesForCommunity(communityId);
 }
 
 async function insertTask(
@@ -115,12 +117,13 @@ async function submitAndDecide(
   inviteToken?: string,
 ) {
   const application = await submitRecruitmentApplication(fixtures.community.id, {
-    values: { name: "Dana" },
+    values: { name: "Dana", email: "dana@example.com" },
     inviteToken: inviteToken ?? null,
   });
-  await submitEvaluation(setupResult.alice, application.id, { recommendation: recommendations[0] });
-  await submitEvaluation(setupResult.bob, application.id, { recommendation: recommendations[1] });
-  const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+  const formResponseId = application.formResponse.id;
+  await submitEvaluation(setupResult.alice, formResponseId, { recommendation: recommendations[0] });
+  await submitEvaluation(setupResult.bob, formResponseId, { recommendation: recommendations[1] });
+  const decision = await recordDecisionIfReached(setupResult.alice, formResponseId);
   return { application, decision };
 }
 
@@ -132,12 +135,12 @@ describe("recordDecisionIfReached", () => {
   it("is null (no decision row) before enough evaluations are filed", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
+    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
 
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
     expect(decision).toBeNull();
-    expect(await getRecruitmentDecision(application.id)).toBeNull();
+    expect(await getRecruitmentDecision(application.formResponse.id)).toBeNull();
   });
 
   it("resolves immediately to accepted for a proceed outcome, and schedules a real intro call", async () => {
@@ -153,7 +156,7 @@ describe("recordDecisionIfReached", () => {
     const [poll] = await db.select().from(schedulingPoll).where(eq(schedulingPoll.id, decision!.introCallPollId!));
     expect(poll.resolutionMode).toBe("must_overlap");
     expect(poll.requiredParticipantIds).toEqual(
-      expect.arrayContaining([setupResult.alice.id, setupResult.bob.id, application.id]),
+      expect.arrayContaining([setupResult.alice.id, setupResult.bob.id, application.formResponse.id]),
     );
     expect(poll.requiredParticipantIds).toHaveLength(3);
   });
@@ -208,10 +211,10 @@ describe("recordDecisionIfReached", () => {
     const setupResult = await setUp(fixtures);
     const { application, decision: first } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
 
-    const second = await recordDecisionIfReached(setupResult.alice, application.id);
+    const second = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
     expect(second!.id).toBe(first!.id);
 
-    const allDecisions = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, application.id));
+    const allDecisions = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, application.formResponse.id));
     expect(allDecisions).toHaveLength(1);
     const allPolls = await db.select().from(schedulingPoll).where(eq(schedulingPoll.communityId, fixtures.community.id));
     expect(allPolls).toHaveLength(1);
@@ -408,11 +411,11 @@ describe("Objection: raise / list", () => {
   it("rejects when no decision has been reached for this application at all", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
+    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
     await setRecruitmentSubscriptionActive(fixtures.bob, true);
 
-    await expect(raiseObjection(fixtures.bob, application.id, { note: "concern" })).rejects.toThrow(NotFoundError);
+    await expect(raiseObjection(fixtures.bob, application.formResponse.id, { note: "concern" })).rejects.toThrow(NotFoundError);
   });
 
   it("rejects once the window has already closed", async () => {
@@ -476,7 +479,7 @@ describe("getPollAggregate: mixed member + applicant participants", () => {
     expect(beforeApplicant?.count).toBe(2);
     expect(beforeApplicant?.qualifies).toBe(false); // applicant hasn't submitted yet
 
-    await submitAvailabilityAsApplicant(pollId, application.id, { slots: [slot] });
+    await submitAvailabilityAsApplicant(pollId, application.formResponse.id, { slots: [slot] });
 
     aggregate = await getPollAggregate(setupResult.alice, pollId);
     const afterApplicant = aggregate.slots.find((s) => s.slot === slot);
@@ -503,7 +506,7 @@ describe("Intro call: token-based public access", () => {
     // able to read it back off the decision row to relay it.
     expect(decision!.introCallToken).toBeTruthy();
     const found = await getIntroCallByToken(decision!.introCallToken!);
-    expect(found?.decision.formResponseId).toBe(application.id);
+    expect(found?.decision.formResponseId).toBe(application.formResponse.id);
     expect(found?.poll.id).toBe(decision!.introCallPollId);
   });
 
@@ -519,7 +522,7 @@ describe("Intro call: token-based public access", () => {
     const [entry] = await db
       .select()
       .from(schedulingEntry)
-      .where(eq(schedulingEntry.formResponseId, application.id));
+      .where(eq(schedulingEntry.formResponseId, application.formResponse.id));
     expect(entry.memberId).toBeNull();
     expect(entry.availableSlots).toEqual(slots);
     expect(await getIntroCallAvailability(token)).toEqual(slots);

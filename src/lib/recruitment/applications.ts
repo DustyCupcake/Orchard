@@ -2,6 +2,8 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
+  admission,
+  admissionLane,
   communityInvite,
   form,
   formResponse,
@@ -23,6 +25,8 @@ import { consensusDisclosure, consensusWindowFor, recordApplicationConsent } fro
 import { openNominationForApplication } from "./support";
 import { attachApplicantToPairing, createPairings, resolvePairingForApplication } from "./pairs";
 import type { JoinLaneKind } from "@/db/schema";
+import { createAdmissionArrival, readLaneSnapshot } from "./admission";
+import { resolveInviteLane, resolvePublicLane, declarationFromInvite, laneSnapshot } from "./admission-lanes";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -58,6 +62,15 @@ export const submitRecruitmentApplicationInput = z.object({
   // general, cycle-less door. When set, the cycle's own joining config
   // gates the submission and the response is tagged with the cycle.
   cycleId: z.string().uuid().nullable().optional(),
+  // §2a — which public lane this is for (`/apply` or `/apply/<slug>`).
+  // Null = the default public lane at `/apply`.
+  publicSlug: z.string().min(1).nullable().optional(),
+  // The applicant's identity — required so we can create the arrival
+  // row and send their private link. These are the values they typed
+  // on the form, not the member's eventual profile values. Optional
+  // in the schema because they may come from form values instead.
+  email: z.string().email().optional(),
+  name: z.string().min(1).max(200).optional(),
   // §2.8 — "who are you sticking with", for an applicant naming another
   // applicant. The link that carries this is the pairing link, and the
   // pair is recorded at the funnel: the platform never decides anything
@@ -68,7 +81,7 @@ export const submitRecruitmentApplicationInput = z.object({
   // gets a pairing link; a member who opens it sees the support view.
   pairingMemberIds: z.array(z.string().uuid()).max(20).default([]),
   // J10's binding consent, for a public lane the community set to
-  // consensus. Read and ticked on /apply itself (there is no
+  // community_check. Read and ticked on /apply itself (there is no
   // redemption step for somebody who applied on their own), and stored
   // with the exact disclosure that was shown.
   consentAccepted: z.boolean().optional(),
@@ -163,16 +176,32 @@ export async function submitRecruitmentApplication(
   }
 
   // Which lane is this application on? An invite answers for itself; a
-  // public applicant's is the public lane by definition, and its rule is
-  // the one that decides whether they are asked for support, for a
-  // community-check consent, or for nothing at all.
-  const lane: JoinLaneKind = invite ? joiningLaneForInvite(invite) : "public_application";
-  const rule = await getJoinLaneRule(communityId, targetCycleId, lane);
+  // public applicant's is the public lane by definition. The lane's rule
+  // decides whether they are asked for support, for a community-check
+  // consent, or for nothing at all.
+  let lane: typeof admissionLane.$inferSelect;
+  if (invite) {
+    const declaration = declarationFromInvite(invite);
+    const resolved = await resolveInviteLane(communityId, declaration);
+    if (!resolved) throw new AppError("No lane is configured for this type of invite");
+    lane = resolved;
+  } else {
+    // Public application: the slug comes from the URL if this is a
+    // context-specific lane, otherwise the first public lane.
+    const slug = input.publicSlug ?? null;
+    const resolved = await resolvePublicLane(communityId, slug);
+    if (!resolved) throw new AppError("No public application lane is open right now");
+    lane = resolved;
+  }
 
-  // J10 — a consensus lane's consent is the applicant's own, read here
-  // and stored with the text they read. Refusing it is not a refusal to
-  // apply (nothing is created); it just isn't this community's door.
-  if (rule.verificationMode === "consensus") {
+  // Snapshot the lane's path onto the arrival (§1 principle 2: the path
+  // is fixed at entry).
+  const snapshot = laneSnapshot(lane);
+
+  // A community-check lane requires the applicant's consent *before* the
+  // arrival is created (§5: "the arrival is announced... at entry, once
+  // consent is given"). We read it here and pass it as a fact.
+  if (snapshot.requiredVerification === "community_check") {
     if (!input.consentAccepted) {
       throw new AppError(
         "Applying through this door means your arrival is announced to the community — read the disclosure and tick the box to go on",
@@ -185,39 +214,69 @@ export async function submitRecruitmentApplication(
     throw new AppError("No application form is configured for this Community yet");
   }
 
-  const created = await submitPublicFormResponse(formId, { values: input.values });
+  // Create the FormResponse first (the application answers), then the
+  // arrival with the FormResponse linked. The arrival is the thing that
+  // moves through the funnel; the FormResponse is the artifact it carries.
+  const formResponseCreated = await submitPublicFormResponse(formId, { values: input.values });
 
-  if (rule.verificationMode === "consensus") {
+  // Record consent if this is a community-check lane (§5: consent is
+  // recorded with the exact disclosure the person read).
+  if (snapshot.requiredVerification === "community_check") {
     const { communityName, windowHours } = await consensusWindowFor(communityId);
     await recordApplicationConsent(
-      created.id,
+      formResponseCreated.id,
       input.disclosure?.trim() || consensusDisclosure(communityName, windowHours),
     );
   }
 
-  // Linked whether or not the response is cycle-tagged — the invite's
-  // checkboxes feed outcome matching either way (the referral half of
-  // §4.3/8d routes the token through this same path).
+  // Email and name come from the form values in the real flow (extracted
+  // by the action page). For direct API calls, they may be in the input.
+  // Fall back to the form values if present.
+  const email = (input.email ?? input.values.email ?? "").toString().trim().toLowerCase();
+  const name = (input.name ?? input.values.name ?? "").toString().trim();
+  if (!email || !name) {
+    throw new AppError("Email and name are required");
+  }
+
+  // Create the arrival with the lane snapshot.
+  const { arrivalId, token } = await createAdmissionArrival({
+    communityId,
+    cycleId: targetCycleId,
+    email,
+    name,
+    laneId: lane.id,
+    route: invite ? "invite" : "application",
+    origin: "funnel",
+    inviteId: invite?.id,
+    formResponseId: formResponseCreated.id,
+    requiredVerification: snapshot.requiredVerification,
+    requiredApplication: snapshot.requiredApplication,
+    requiredInterview: snapshot.requiredInterview,
+    requiredEvaluation: snapshot.requiredEvaluation,
+    reportsNeeded: snapshot.reportsNeeded,
+    supportShortcutCount: snapshot.supportShortcutCount,
+  });
+
+  // Link the invite to the form response (unchanged — the invite's
+  // checkboxes feed outcome matching either way).
   if (invite) {
     await db
       .insert(recruitmentApplicationInvite)
-      .values({ formResponseId: created.id, communityInviteId: invite.id });
+      .values({ formResponseId: formResponseCreated.id, communityInviteId: invite.id });
   }
 
-  // §2.2/J6 — a nomination lane opens its support window here, for the
-  // same reason an invite opens one at send: the applicant is about to
-  // be handed a link, and the whole point is that they have it early
-  // enough to actually ask somebody.
-  if (rule.verificationMode === "nomination") {
-    await openNominationForApplication(created.id, communityId);
-  }
+  // §2: nomination as a waiting model is gone. A lane that had
+  // verification="nomination" is now verification="none" with its
+  // support count kept as the support shortcut. The shortcut runs
+  // alongside the path, so nothing opens a window here. The person
+  // gets their support link on their private page (§4).
 
-  let tagged = created;
+  let tagged = formResponseCreated;
   if (joining) {
     const [updated] = await db
       .update(formResponse)
       .set({ cycleId: joining.cycle.id })
-      .where(eq(formResponse.id, created.id))
+      .where(eq(formResponse.id, formResponseCreated.id))
       .returning();
     tagged = updated;
   }
@@ -226,7 +285,7 @@ export async function submitRecruitmentApplication(
   // to make a decision; it exists so two humans can be shown each other's
   // name and offered one interview between them.
   if (pairing) {
-    await attachApplicantToPairing(pairing.token, created.id, targetCycleId);
+    await attachApplicantToPairing(pairing.token, formResponseCreated.id, targetCycleId);
   }
   const pairingMemberIds = input.pairingMemberIds ?? [];
   if (invite && pairingMemberIds.length > 0) {
@@ -240,12 +299,20 @@ export async function submitRecruitmentApplication(
     // than the platform inventing a "who is this from?" record.
     await createPairings(
       { communityId, memberId: invite.createdBy },
-      { nomineeMemberIds: pairingMemberIds, pokeMemberIds: [], cycleId: targetCycleId, firstResponseId: created.id },
+      { nomineeMemberIds: pairingMemberIds, pokeMemberIds: [], cycleId: targetCycleId, firstResponseId: formResponseCreated.id },
       { requireMember: false },
     );
   }
 
-  return tagged;
+  // Also link the arrival to the pairing if applicable.
+  if (pairing) {
+    await db
+      .update(admission)
+      .set({ formResponseId: tagged.id })
+      .where(eq(admission.id, arrivalId));
+  }
+
+  return { arrivalId, token, formResponse: tagged, invite };
 }
 
 // The form a public join lands on — the cycle's own pointer falling

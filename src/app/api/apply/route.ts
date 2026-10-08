@@ -24,8 +24,8 @@ export async function POST(request: NextRequest) {
   try {
     const community = await getOrCreateCommunity();
     const body = submitRecruitmentApplicationInput.parse(await request.json());
-    const response = await submitRecruitmentApplication(community.id, body);
-    return NextResponse.json({ response }, { status: 201 });
+    const { arrivalId, token, formResponse } = await submitRecruitmentApplication(community.id, body);
+    return NextResponse.json({ arrivalId, token, formResponse: formResponse?.id }, { status: 201 });
   } catch (err) {
     return errorResponse(err);
   }

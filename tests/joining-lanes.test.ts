@@ -27,6 +27,7 @@ import {
   laneRedemptionKind,
   listOutstandingReferralInvites,
   redeemCommunityInvite,
+  seedAdmissionLanesForCommunity,
   setCommunityJoiningLaneRules,
   setCycleJoiningLaneRules,
   deleteCycleJoiningLaneRules,
@@ -83,6 +84,7 @@ import { listPairings } from "@/lib/recruitment/pairs";
 
 async function enableRecruitment(communityId: string) {
   await db.update(community).set({ modulesEnabled: ["recruitment"] }).where(eq(community.id, communityId));
+  await seedAdmissionLanesForCommunity(communityId);
 }
 
 async function setLane(
@@ -798,7 +800,7 @@ describe("a public application on a nomination lane gets the same treatment", ()
       .where(eq(community.id, c.id));
 
     const created = await submitRecruitmentApplication(c.id, { values: { why: "because" } });
-    const nominationRow = await getNominationForApplication(created.id);
+    const nominationRow = await getNominationForApplication(created.formResponse.id);
     expect(nominationRow?.state).toBe("awaiting");
     expect(nominationRow?.supportToken).toBeTruthy();
   });

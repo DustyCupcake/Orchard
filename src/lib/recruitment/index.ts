@@ -17,6 +17,9 @@ export * from "./joining-lanes";
 // barrel for the same reason: a client component wanting
 // `computeAdmissionStage` must be able to reach it without dragging the
 // module graph in. It lives at `@/lib/recruitment/admission-stage`.
+export * from "./admission";
+// The admission lane seed is pure DB writes, safe to export through the barrel.
+export * from "./admission-seed";
 export * from "./subscriptions";
 export * from "./decisions";
 export * from "./objections";

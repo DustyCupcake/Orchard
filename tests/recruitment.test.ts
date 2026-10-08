@@ -15,6 +15,7 @@ import {
   redeemCommunityInvite,
   resolveInquiry,
   revokeCommunityInvite,
+  seedAdmissionLanesForCommunity,
   submitInquiry,
 } from "@/lib/recruitment";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
@@ -26,6 +27,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
+  await seedAdmissionLanesForCommunity(communityId);
 }
 
 async function insertTask(
