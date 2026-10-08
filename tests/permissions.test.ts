@@ -25,6 +25,9 @@ import {
   setPermissionGrant,
 } from "@/lib/permissions";
 import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
+import { requireAdmins } from "@/lib/settings/admins";
+import { ForbiddenError } from "@/lib/errors";
+import { claimTask } from "@/lib/tasks";
 
 async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
@@ -329,7 +332,6 @@ describe("describeGrantScope / isMisplacedCommunityGrant", () => {
   });
 
   it("flags only community-shaped modules whose granting task sits in a cycle", () => {
-    expect(isMisplacedCommunityGrant("admin", "cycle-1")).toBe(true);
     expect(isMisplacedCommunityGrant("conflict_team", "cycle-1")).toBe(true);
     expect(isMisplacedCommunityGrant("support", "cycle-1")).toBe(true);
 
@@ -343,7 +345,73 @@ describe("describeGrantScope / isMisplacedCommunityGrant", () => {
     expect(isMisplacedCommunityGrant("budget", "cycle-1")).toBe(false);
 
     // A cycle-less community-shaped grant is exactly right.
+    expect(isMisplacedCommunityGrant("conflict_team", null)).toBe(false);
+  });
+
+  // The Admin case inverts. `requireAdmins` filters on
+  // `openness = 'community_endorsed'` and never on placement, so an Admins
+  // task in an event confers Admin exactly as a cycle-less one does — and
+  // that placement is how a community renews its admins each cycle. Filing
+  // admin under the `community` tier made the panel call the renewal
+  // configuration a contradiction, which warned against the only shape that
+  // supplies both a renewal point and a departure point.
+  it("does not flag a cycle-placed Admins task — the placement is the renewal marker", () => {
+    expect(isMisplacedCommunityGrant("admin", "cycle-1")).toBe(false);
     expect(isMisplacedCommunityGrant("admin", null)).toBe(false);
+  });
+
+  it("still derives admin into exactly one settings section", () => {
+    // The section split is derived from the tier rather than hand-listed, so
+    // "a new module can never end up in no section or in two". Moving admin
+    // must not break that.
+    const sections = PERMISSION_MODULE_SECTIONS.map((s) => s.moduleKeys);
+    const containing = sections.filter((keys) => keys.includes("admin"));
+    expect(containing).toHaveLength(1);
+    expect(sections.flat()).toHaveLength(PERMISSION_MODULE_KEYS.length);
+  });
+
+  // The behaviour behind the tier change, pinned because it is the whole
+  // reason the warning went away. `requireAdmins` filters on
+  // `openness = 'community_endorsed'` and never on placement, so a cycle-scoped
+  // Admins task confers exactly what a cycle-less one does — which is what
+  // makes per-cycle renewal possible without a window where nobody is an
+  // admin. Grants coexist rather than superseding, so a community is never
+  // locked out by starting a new cycle.
+  it("confers Admin from a cycle-scoped Admins task, alongside a cycle-less one", async () => {
+    const { community: testCommunity, branch, alice, bob } = await createFixtures();
+    await enableCycles(testCommunity.id);
+    await db
+      .update(community)
+      .set({ adminsEverClaimed: true })
+      .where(eq(community.id, testCommunity.id));
+    const cycleRow = await createCycle(alice, { source: "blank", name: "2027 Season" });
+
+    const endorsed = {
+      openness: "community_endorsed" as const,
+      endorsementThreshold: 2,
+      browsePeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    };
+    const perCycle = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Admins 2027",
+      cycleId: cycleRow.id,
+      ...endorsed,
+    });
+    await grantPermission(testCommunity.id, "admin", perCycle.id);
+    await claimTask(bob, perCycle.id);
+
+    await expect(requireAdmins(bob)).resolves.toBeUndefined();
+    await expect(requireAdmins(alice)).rejects.toThrow(ForbiddenError);
+
+    // A standing Admins task alongside it: both confer, neither supersedes.
+    const standing = await insertTask(testCommunity.id, branch.id, alice.id, {
+      title: "Admins standing",
+      ...endorsed,
+    });
+    await grantPermission(testCommunity.id, "admin", standing.id);
+    await claimTask(alice, standing.id);
+
+    await expect(requireAdmins(alice)).resolves.toBeUndefined();
+    await expect(requireAdmins(bob)).resolves.toBeUndefined();
   });
 });
 
@@ -364,7 +432,7 @@ describe("PERMISSION_MODULE_SECTIONS", () => {
     const community = byKey.get("community")!;
     const cycle = byKey.get("cycle")!;
 
-    for (const moduleKey of ["admin", "conflict_team", "support"] as const) {
+    for (const moduleKey of ["conflict_team", "support"] as const) {
       expect(community.has(moduleKey)).toBe(true);
       expect(cycle.has(moduleKey)).toBe(false);
     }
@@ -372,7 +440,7 @@ describe("PERMISSION_MODULE_SECTIONS", () => {
       "branch_coordination",
       "spatial_planning",
       "budget",
-      // Both cycle_variant modules go with the per-event section, whose
+      // Every cycle_variant module goes with the per-event section, whose
       // rule ("placement is the scope, no event means the community as a
       // whole") is the one that actually governs them. For
       // community_coordination the community-wide form also ignores the
@@ -380,6 +448,11 @@ describe("PERMISSION_MODULE_SECTIONS", () => {
       // it out.
       "announcements",
       "community_coordination",
+      // …and admin, since a cycle-placed Admins grant is the renewal
+      // mechanism rather than a contradiction. Its per-event placement is a
+      // marker, not a scope narrowing, which is why the section rule now
+      // says so in one clause rather than pretending otherwise.
+      "admin",
     ] as const) {
       expect(cycle.has(moduleKey)).toBe(true);
       expect(community.has(moduleKey)).toBe(false);

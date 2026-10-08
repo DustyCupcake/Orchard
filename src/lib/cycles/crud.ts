@@ -26,7 +26,7 @@ import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
 import { cloneSpatialPlanIntoNewCycle } from "../spatial-planning";
 import { recomputeCalendarEventDatesForCycle } from "../calendar-events";
 import { normalizeTaskMilestonesForCycle, normalizeTaskMilestonesForPhase } from "../tasks/milestones";
-import { copyPermissionGrants, type PermissionModuleKey } from "../permissions";
+import { copyPermissionGrants, logPermissionClaim, type PermissionModuleKey } from "../permissions";
 import { requireCycleOpen } from "./lifecycle";
 import {
   boundaryForEditing,
@@ -809,6 +809,13 @@ async function createBackstopTask(tx: Tx, actor: Member, cycleId: string) {
     taskId: backstopTask.id,
   });
   await tx.insert(taskAssignment).values({ taskId: backstopTask.id, memberId: actor.id });
+
+  // The grant is written first precisely so this sees it: logPermissionClaim
+  // reads the task's grants to snapshot what the claim was worth, and inside
+  // this transaction it can only see rows this same transaction wrote. With
+  // ensureCloneHasBackstop below, this is one of two places that mint
+  // authority outside performClaimInTx — see the note there.
+  await logPermissionClaim(tx, actor, backstopTask);
 }
 
 // D6 — a cloned cycle must be born with its backstop filled regardless
@@ -821,7 +828,7 @@ async function createBackstopTask(tx: Tx, actor: Member, cycleId: string) {
 // just started this cycle.
 async function ensureCloneHasBackstop(tx: Tx, actor: Member, newCycleId: string) {
   const [clonedBackstop] = await tx
-    .select({ id: task.id })
+    .select({ id: task.id, title: task.title })
     .from(permissionGrant)
     .innerJoin(task, eq(task.id, permissionGrant.taskId))
     .where(
@@ -834,6 +841,15 @@ async function ensureCloneHasBackstop(tx: Tx, actor: Member, newCycleId: string)
     .limit(1);
   if (clonedBackstop) {
     await tx.insert(taskAssignment).values({ taskId: clonedBackstop.id, memberId: actor.id });
+    // A real claim on a task that carries a grant, so the holding log needs
+    // it. This insertion predates performClaimInTx being the single claim
+    // chokepoint and still bypasses it — nothing here would be refused (the
+    // task is unclaimed, request-open, under capacity, requirement-free), so
+    // the gap is historical rather than a constraint. Calling logPermissionClaim
+    // directly keeps the log free of holes; it is not a claim that routing
+    // through performClaimInTx would have disallowed. `title` is selected
+    // above only to tombstone it into the log row.
+    await logPermissionClaim(tx, actor, clonedBackstop);
   } else {
     await createBackstopTask(tx, actor, newCycleId);
   }

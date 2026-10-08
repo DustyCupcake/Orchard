@@ -52,6 +52,23 @@ That's it. `scripts/test.sh` (what `npm test` now runs) creates the test databas
 
 Run a subset by naming files: `./scripts/test.sh tests/coordination.test.ts`. The raw runner is still available as `npm run test:raw` if you want vitest's own output with nothing in the way, but it has the memory behaviour below.
 
+## Checks — lint, typecheck, and tests in one command
+
+**One command, and it needs no setup either:**
+
+```bash
+./scripts/check.sh                    # what CI runs, in CI's order
+./scripts/check.sh tests/cycles.test.ts   # …plus a test subset
+```
+
+CI gates a pull request on two independent things — the `checks` Docker stage (`npm run lint`, then `npx tsc --noEmit`) and the test suite — and until `scripts/check.sh` existed there was no single local command reproducing both. This section used to document only the tests, which meant the only way to find out a change didn't lint was to push and let CI say so.
+
+**Don't run `npm run lint` directly.** It resolves ESLint from *your host's* `node_modules`, so a host whose tree predates a dependency bump runs whatever that tree has. When Next 15 → 16 landed, that meant `eslint-config-next` 15.5.27 against a config written for 16, and the failure was `Cannot find module '.../eslint-config-next/core-web-vitals'` — which reads as a broken `eslint.config.mjs` and invites editing a correct file. It isn't one.
+
+Both halves of `check.sh` run against `package-lock.json` rather than the host tree, which is the entire point: the checks stage does its own `npm ci` in the image, and `scripts/test.sh` keeps its own Linux `node_modules` in a volume keyed by the lockfile hash and reinstalls when that changes. A stale host tree can make `check.sh` pass, and can never make it lie. (`npx tsc --noEmit` *does* work on the host, but only because `typescript` and every `@types/*` package happen to be current — it isn't a guarantee.)
+
+It fails on **errors**, not warnings — `no-unused-vars` is warn-severity here, so a run that reports warnings still exits 0, exactly as CI's does.
+
 **Why the script batches and restarts the database, which is not an optimisation.** The suite truncates between files (`tests/helpers.ts`), and a long-lived Postgres grows steadily for the length of a run — measured at **~11MB per test file** (35MB → 261MB over 20 files). Crucially the growth **does not fall back** between files or between separate `vitest` invocations; it accumulates in the server, which is doing 36,000+ transactions against a ~20MB database. Left alone, a full 88-file suite reached **~3.2GB**. That is fine on a large VM and fatal on a small one, and Docker Desktop's allocation is a fraction of your host RAM that you don't control — so the script runs in batches and `docker restart`s the container when it crosses a budget read from the VM's actual size. A restart returns ~3.2GB to ~24MB in about a second, and the migrated schema survives in the volume, so nothing needs re-migrating.
 
 This is **not** a production concern, and worth being explicit about why. Production runs the same Postgres against the same schema but never truncates, and its memory is already capped by the deployed `shared_buffers` / `max_connections` in `docker-compose.yml`. Measured: production Postgres sat at ~80MB after two hours.

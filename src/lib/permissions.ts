@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { db, type DbOrTx, type Tx } from "@/db";
-import { conflictReport, member, openPermissionGrant, permissionGrant, task, taskAssignment } from "@/db/schema";
+import { conflictReport, member, openPermissionGrant, permissionGrant, permissionHolding, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConfirmationRequiredError, NotFoundError } from "./errors";
 import { recordSettingChanges } from "./settings/history";
@@ -111,8 +111,7 @@ export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
 // than hard-coding per-module exceptions at each surface:
 //   "community"     — community-shaped: cycle-less only. A cycle-placed
 //                     instance is a contradiction the interface warns
-//                     about (admin, conflict_team, support,
-//                     community_coordination).
+//                     about (conflict_team, support).
 //   "cycle"         — cycle-shaped: placement *is* the scope. In cycle C
 //                     → cycle C; cycle-less → the community/evergreen
 //                     scope (branch_coordination, event_scheduling_owner,
@@ -120,11 +119,33 @@ export const PERMISSION_MODULE_HINTS: Record<PermissionModuleKey, string> = {
 //                     feedback_review, recruitment, budget).
 //   "cycle_variant" — community-shaped base with an optional per-cycle
 //                     variant: cycle-less → community-wide; cycle-placed
-//                     → that cycle (announcements).
+//                     → that cycle (announcements, community_coordination,
+//                     admin).
 export type PermissionModuleScopeTier = "community" | "cycle" | "cycle_variant";
 
 export const PERMISSION_MODULE_SCOPE_TIER: Record<PermissionModuleKey, PermissionModuleScopeTier> = {
-  admin: "community",
+  // cycle_variant, not `community`, and the distinction is load-bearing.
+  //
+  // `community` means "cycle-less only" — a cycle-placed instance is a
+  // contradiction, which is what `isMisplacedCommunityGrant` warns about.
+  // Admin was filed there, so the panel told an admin that putting the Admins
+  // task in an event was a mistake, while `requireAdmins` went right on
+  // honouring it: that check filters on `openness = 'community_endorsed'`
+  // and never on placement at all.
+  //
+  // Which is the useful shape. An Admins task placed in an event is how a
+  // community renews its admins each cycle: the new cycle endorses its own
+  // admins, and the previous cycle's grant keeps working until someone
+  // deliberately removes it. That gives a renewal point and a departure
+  // point without a window in which nobody can reach settings. Calling that
+  // a contradiction warned against the one configuration that supplies both.
+  //
+  // The per-cycle placement is a *renewal marker*, not a scope narrowing —
+  // a cycle-placed Admin grant still confers community-wide Admin, exactly
+  // as resolveCoordinationCoverage treats a cycle-placed
+  // community_coordination grant as community-wide. Same tier, same rule,
+  // one fewer misleading banner.
+  admin: "cycle_variant",
   branch_coordination: "cycle",
   // The same rule as Branch coordination — placement is the scope, and a
   // task in an event is that event's coordinator — with exactly one
@@ -197,7 +218,7 @@ export const PERMISSION_MODULE_SECTIONS: readonly PermissionModuleSection[] = [
     key: "cycle",
     title: "Per-event",
     rule:
-      "Placement is the scope: a task in an event owns that event. The same task left outside every event covers the community as a whole — each row below shows which of the two it is.",
+      "Placement is the scope: a task in an event owns that event. The same task left outside every event covers the community as a whole — each row below shows which of the two it is. A few community-wide roles also sit in an event, where the placement records which cycle last renewed them rather than narrowing what they can do.",
     moduleKeys: [...moduleKeysInSection("cycle"), ...moduleKeysInSection("cycle_variant")],
   },
 ];
@@ -943,4 +964,65 @@ export async function copyPermissionGrants(
   }
   if (rows.length === 0) return;
   await tx.insert(permissionGrant).values(rows);
+}
+
+// ---------------------------------------------------------------------------
+// The holding log's write side — the "who acquired this authority, and until
+// when" half of what permission_grant deliberately does not record (see that
+// table's own comment for why, and for why this is audit-only and must never
+// be read to answer a capability question).
+// ---------------------------------------------------------------------------
+
+// Claim side. A no-op for the overwhelming majority of claims, because a task
+// carrying no grant row mints no authority at all — and logging every claim
+// in the app would be a firehose for no security value. What it costs instead
+// is one lookup against permission_grant per claim, which is a table of tens
+// of rows and carries no non-unique index anywhere in this schema by choice.
+//
+// Reads the grants through `tx` rather than calling listGrantingTaskIds, which
+// reaches for the global `db`: outside this transaction it would neither see a
+// grant written moments ago in the same transaction nor roll back with the
+// claim it is recording.
+export async function logPermissionClaim(
+  tx: Tx,
+  member: Member,
+  task: { id: string; title: string },
+): Promise<void> {
+  const grants = await tx
+    .select({ moduleKey: permissionGrant.moduleKey })
+    .from(permissionGrant)
+    .where(
+      and(eq(permissionGrant.taskId, task.id), eq(permissionGrant.communityId, member.communityId)),
+    );
+  if (grants.length === 0) return;
+
+  // No explicit claimedAt: both this and the task_assignment row it describes
+  // default to now(), which is transaction_timestamp(), so they agree because
+  // they are written in one transaction rather than by coincidence.
+  await tx.insert(permissionHolding).values({
+    communityId: member.communityId,
+    memberId: member.id,
+    taskId: task.id,
+    taskTitle: task.title,
+    moduleKeys: grants.map((g) => g.moduleKey),
+  });
+}
+
+// Release side. Unconditional rather than gated on the task still carrying a
+// grant: a grant stripped mid-hold leaves a holding that was real and still
+// has to be closed, and the UPDATE matching nothing when there was never a row
+// is already the no-op. Scoped to the open row (releasedAt null) so a
+// re-claim after a release opens a new episode rather than reopening this one —
+// which is the distinction claim-then-release abuse detection depends on.
+export async function logPermissionRelease(tx: Tx, taskId: string, memberId: string): Promise<void> {
+  await tx
+    .update(permissionHolding)
+    .set({ releasedAt: new Date() })
+    .where(
+      and(
+        eq(permissionHolding.taskId, taskId),
+        eq(permissionHolding.memberId, memberId),
+        isNull(permissionHolding.releasedAt),
+      ),
+    );
 }
