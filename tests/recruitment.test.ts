@@ -188,8 +188,8 @@ describe("redeemCommunityInvite", () => {
     // `direct` path, so redemption hands over a Member immediately and
     // says so in the outcome rather than by returning the row.
     const outcome = await redeemCommunityInvite(invite.token, { email: "dana@example.com" });
-    expect(outcome.kind).toBe("member");
-    if (outcome.kind !== "member") throw new Error("expected the direct path");
+    expect(outcome.kind).toBe("admitted");
+    if (outcome.kind !== "admitted") throw new Error("expected the direct path");
 
     const [newMember] = await db.select().from(member).where(eq(member.id, outcome.memberId));
     expect(newMember.communityId).toBe(alice.communityId);

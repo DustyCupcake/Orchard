@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, cycle, formResponse, member, participation, recruitmentApplicationInvite, recruitmentDecision, task } from "@/db/schema";
+import { community, cycle, formResponse, member, participation, recruitmentApplicationInvite, recruitmentDecision, task, admission } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
 import { createCycle, updateCycleSettings } from "@/lib/cycles";
 import { claimTask } from "@/lib/tasks";
@@ -957,8 +957,8 @@ describe("cycle invites + capacity holds + joining seed (docs/cycle-scope-remedi
     const created = await createCommunityInvite(alice, { cycleId: cycle.id, label: "Dana", inviterKnowsPersonally: true });
 
     const outcome = await redeemCommunityInvite(created.token, { email: "dana@example.com" });
-    expect(outcome.kind).toBe("member");
-    if (outcome.kind !== "member") throw new Error("expected the direct path");
+    expect(outcome.kind).toBe("admitted");
+    if (outcome.kind !== "admitted") throw new Error("expected the direct path");
 
     const [newMember] = await db.select().from(member).where(eq(member.id, outcome.memberId));
     expect(newMember.communityId).toBe(fixtures.community.id);
@@ -970,13 +970,24 @@ describe("cycle invites + capacity holds + joining seed (docs/cycle-scope-remedi
     expect(row?.status).toBe("coming");
   });
 
-  it("an unmarked process-lane invite never redeems directly", async () => {
+  it("an unmarked process-lane invite redeems and enters the application process", async () => {
     const fixtures = await createFixtures();
     const { alice } = fixtures;
     const { cycle } = await setUpInvitesFixtures(fixtures);
     const created = await createCommunityInvite(alice, { cycleId: cycle.id });
 
-    await expect(redeemCommunityInvite(created.token, { email: "dana@example.com" })).rejects.toThrow(ConflictError);
+    // An unmarked invite is the invited_neither process lane: it has
+    // applicationRequired and interviewRequired. Redeeming it creates an
+    // arrival and tells the person to submit an application.
+    const outcome = await redeemCommunityInvite(created.token, { email: "dana@example.com" });
+    expect(outcome.kind).toBe("process");
+    if (outcome.kind === "process") {
+      expect(outcome.nextStep).toBe("application");
+    }
+
+    // The arrival exists and can be queried
+    const arrival = await db.select().from(admission).where(eq(admission.token, outcome.token));
+    expect(arrival).toHaveLength(1);
   });
 
   it("an application referencing a process-lane invite is tagged with the invite's cycle", async () => {

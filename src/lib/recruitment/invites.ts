@@ -1,8 +1,8 @@
 import { and, desc, eq, gt, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { communityInvite, cycle, member, memberIdentity } from "@/db/schema";
-import type { member as memberTable, JoinLaneKind } from "@/db/schema";
+import { admission, admissionLane, communityInvite, cycle, member, memberIdentity } from "@/db/schema";
+import type { member as memberTable, AdmissionVerification, JoinLaneKind } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
 import { generateToken } from "../token";
@@ -24,6 +24,8 @@ import {
 } from "./joining-lanes";
 import { openNominationForInvite } from "./support";
 import { completeConsensusArrival, consensusDisclosure, consensusWindowFor } from "./consensus";
+import { createAdmissionArrival, readLaneSnapshot } from "./admission";
+import { resolveInviteLane, declarationFromInvite, laneSnapshot } from "./admission-lanes";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityInviteRow = typeof communityInvite.$inferSelect;
@@ -369,15 +371,20 @@ export const redeemCommunityInviteInput = z.object({
 export type RedeemCommunityInviteInput = z.infer<typeof redeemCommunityInviteInput>;
 
 export type RedemptionOutcome =
-  | { kind: "member"; memberId: string }
-  // A nomination whose window is still open: the person is told what
-  // they're waiting for and given the link that ends the wait.
-  | { kind: "awaiting_support"; supportToken: string; deadline: Date | null }
-  // A consensus arrival that has been announced: the person is a member,
-  // their place in the event is not yet settled, and the window runs.
-  | { kind: "announced"; memberId: string; deadline: Date | null }
-  // A lane that funnels into the evaluated application.
-  | { kind: "process" };
+  // The person is admitted immediately (direct lane: no verification, no application, no interview).
+  | { kind: "admitted"; arrivalId: string; token: string; memberId: string; redirectTo: string }
+  // A community-check lane: the person has consented, the arrival is announced,
+  // and the community check window runs. They are not a member yet.
+  | { kind: "check"; arrivalId: string; token: string; deadline: Date }
+  // A lane with a process (application and/or interview): the person is in the funnel.
+  // nextStep is "application" or "interview" depending on the lane.
+  | { kind: "process"; arrivalId: string; token: string; nextStep: "application" | "interview" }
+  // A lane with a support shortcut: the person can ask for supports alongside their path.
+  // The supportToken lets them render the support view.
+  | { kind: "support_shortcut"; arrivalId: string; token: string; supportToken: string; supportShortcutCount: number }
+  // The person is told they need to apply (process lane but not yet submitted).
+  // This is the old "process" outcome.
+  | { kind: "apply"; arrivalId: string; token: string };
 
 // Public — no actor. "Redeeming a valid, unexpired, unredeemed,
 // unrevoked token *is* the proof of legitimacy" (docs/spec.md), so for
@@ -389,10 +396,10 @@ export type RedemptionOutcome =
 // caller starts the session with the returned Member's id, same as the
 // ordinary magic-link verify route already does.
 export async function redeemCommunityInvite(
-  token: string,
+  inviteToken: string,
   input: RedeemCommunityInviteInput,
 ): Promise<RedemptionOutcome> {
-  const invite = await getCommunityInviteByToken(token);
+  const invite = await getCommunityInviteByToken(inviteToken);
   if (!invite) {
     throw new NotFoundError("Invite link not found");
   }
@@ -409,142 +416,207 @@ export async function redeemCommunityInvite(
   const communityRow = await getCommunityRow(invite.communityId);
   requireModuleEnabled(communityRow, "recruitment");
 
-  // A nomination is the one path that isn't a decision about the person
-  // at all: the support window is opened at send (§2.4, so the inviter
-  // could poke people while it was fresh) and the invitee's arrival
-  // through it is a *report* of state, not a new one. So this is
-  // checked before anything is created, and the outcome tells the page
-  // to render the support view with a way past it (§2.5's "skip the
-  // nomination, I'll do the application instead").
-  //
-  // And once the window *is* settled, where the person goes depends on
-  // the lane's process rather than on the path name: §2.2 says a second's
-  // support "converts it to the light path", and J6 says a lapse or a
-  // skip falls through to "the lane's process path". Both destinations
-  // are therefore `laneRedemptionKind(rule)` — a process-less lane lets
-  // them straight in, and a lane with a form routes them to it. Treating
-  // a settled nomination as "not direct, so admit anyway" is the bug this
-  // branch exists to prevent: it would hand over a member on a lane the
-  // community said needed a form.
-  let path = await getCommunityInviteRedemptionPath(invite);
-  if (path === "nomination") {
-    const { getNominationForInvite } = await import("./support");
-    const nomination = await getNominationForInvite(invite.id);
-    if (nomination && nomination.state === "awaiting") {
-      return { kind: "awaiting_support", supportToken: nomination.supportToken, deadline: nomination.deadline };
-    }
-    // Settled either way, and the destination is settledPathForRule: what
-    // happens next is a fact about the lane's *process*, not its mode. A
-    // nomination lane with no form and no interview admits straight
-    // away — that is what "a second's support converts it to the light
-    // path" means, and what a lapse falls through to. A nomination lane
-    // that does ask for a form routes to it. Leaving `path` as
-    // "nomination" would hand over a member on either, including the
-    // lanes the community said needed an application.
-    const settledRule = await getJoinLaneRule(invite.communityId, invite.cycleId, joiningLaneForInvite(invite));
-    path = settledPathForRule(settledRule);
+  // Resolve the lane from the new admission_lane table (with fallback to old joining_lane)
+  const declaration = declarationFromInvite(invite);
+  const lane = await resolveInviteLane(invite.communityId, declaration);
+  if (!lane) {
+    throw new AppError("No lane is configured for this type of invite");
   }
 
-  if (path === "process") {
-    throw new ConflictError("This invite routes through the application process — open its apply link instead");
-  }
+  // Check if the lane is a direct lane (no verification, no application, no interview)
+  const isDirect = lane.verification === "none" && !lane.applicationRequired && !lane.interviewRequired;
 
-  if (path === "check") {
-    if (!input.consentAccepted) {
-      throw new AppError(
-        "Joining through this invite means your arrival is announced to the community — read the disclosure and tick the box to go on",
-      );
-    }
+  // Check if it's a community check lane
+  const isCommunityCheck = lane.verification === "community_check";
+
+  // Check if the lane has a process (application or interview)
+  const hasProcess = lane.applicationRequired || lane.interviewRequired;
+
+  // Check if the lane has a support shortcut
+  const hasSupportShortcut = (lane.supportShortcutCount ?? 0) > 0;
+
+  // For a community check lane, require consent
+  if (isCommunityCheck && !input.consentAccepted) {
+    throw new AppError(
+      "Joining through this invite means your arrival is announced to the community — read the disclosure and tick the box to go on",
+    );
   }
 
   const email = input.email.trim().toLowerCase();
   // Every way an address can already belong to somebody, not just the
-  // magic_link identity this used to check. The narrower version of this
-  // check was the reason an existing SSO member redeeming an invite with
-  // their own address got a second Member row: they have no magic_link
-  // identity, so they looked new, and the invite's own transaction then
-  // wrote a fresh account and a login link for it. findOrCreateMemberByEmail
-  // has checked all three of these for a while; this now asks it the same
-  // question rather than a cheaper one.
+  // magic_link identity this used to check.
   const existing = await findExistingMemberByLoginEmail(email);
   if (existing) {
     throw new ConflictError("This email already belongs to a member — log in instead");
   }
 
-  const isConsensus = path === "check";
+  // Get the lane snapshot for the arrival
+  const snapshot = laneSnapshot(lane);
+
+  // Get the person's name (from the inviter's label or a default)
+  const name = invite.label ?? preferredMemberName(null, null, null, email);
+
+  // Get community info for consensus window
   const { communityName, windowHours } = await consensusWindowFor(invite.communityId);
   const disclosure =
     input.disclosure?.trim() || consensusDisclosure(communityName, windowHours);
 
-  const newMember = await db.transaction(async (tx) => {
-    const [created] = await tx
-      .insert(member)
-      .values({
-        communityId: invite.communityId,
-        name: preferredMemberName(null, null, null, email),
-        referredByMemberId: invite.createdBy,
-        joinedViaInviteId: invite.id,
-      })
-      .returning();
-
-    await tx.insert(memberIdentity).values({
-      memberId: created.id,
-      provider: "magic_link",
-      loginEmail: email,
-    });
-
-    // Unverified on purpose, unlike the magic-link first-login path. Here
-    // the address is one the *inviter* typed; nobody has yet received
-    // anything at it. It still becomes the primary, so the invitee finds
-    // their login link where they expect it — but until they click it, the
-    // address hasn't been proven by anyone, and `verifiedAt` is the one
-    // column here that must not be a guess.
-    await seedPrimaryContactMethod(tx, created.id, email, { verified: false });
-
-    // Re-checked against the current row, not the one read above —
-    // narrows (harmlessly) the window for two simultaneous redemptions
-    // of the same link to still only let one through.
-    const [claimed] = await tx
-      .update(communityInvite)
-      .set({
-        redeemedAt: new Date(),
-        redeemedByMemberId: created.id,
-        // J10's binding consent, recorded on the invite row as the plan
-        // specifies, with the exact disclosure that was read.
-        ...(isConsensus
-          ? { consentAt: new Date(), consentDisclosure: disclosure, consensusState: "announced" as const }
-          : {}),
-      })
-      .where(and(eq(communityInvite.id, invite.id), isNull(communityInvite.redeemedAt)))
-      .returning();
-    if (!claimed) {
-      throw new ConflictError("This invite link has already been used");
-    }
-
-    // §4.3/8d (D14) / J12: a direct invite into a cycle seeds the new
-    // member's participation there — "coming", idempotently — so they
-    // count against the cycle's capacity from day one. A *consensus*
-    // arrival deliberately does not: the participation row is the
-    // arrival, and the whole point of the window is that it has not been
-    // announced to the community yet (src/lib/recruitment/consensus.ts
-    // seeds it when the window closes clean).
-    if (invite.cycleId && !isConsensus) {
-      await seedCycleParticipation(tx, invite.cycleId, created.id);
-    }
-
-    return created;
+  // Create the arrival row with the lane snapshot
+  const { arrivalId, token } = await createAdmissionArrival({
+    communityId: invite.communityId,
+    cycleId: invite.cycleId,
+    email,
+    name,
+    laneId: lane.id,
+    route: "invite",
+    origin: "funnel",
+    inviteId: invite.id,
+    formResponseId: undefined,
+    requiredVerification: snapshot.requiredVerification,
+    requiredApplication: snapshot.requiredApplication,
+    requiredInterview: snapshot.requiredInterview,
+    requiredEvaluation: snapshot.requiredEvaluation,
+    reportsNeeded: snapshot.reportsNeeded,
+    supportShortcutCount: snapshot.supportShortcutCount,
   });
 
-  if (isConsensus) {
+  // Update the invite with redemption info
+  const isConsensus = isCommunityCheck;
+  const deadline = isConsensus ? new Date(Date.now() + windowHours * 3_600_000) : null;
+
+  await db
+    .update(communityInvite)
+    .set({
+      redeemedAt: new Date(),
+      redeemedByMemberId: null, // No member yet — they become a member at admission
+      ...(isConsensus
+        ? { consentAt: new Date(), consentDisclosure: disclosure, consensusState: "announced" as const, consensusDeadline: deadline }
+        : {}),
+    })
+    .where(and(eq(communityInvite.id, invite.id), isNull(communityInvite.redeemedAt)));
+
+  // If it's a direct lane (no verification, no application, no interview),
+  // admit immediately through the admission function
+  if (isDirect) {
+    // TODO: Call the admission function to create the Member
+    // For now, return the admitted outcome with the arrival token
+    // The admission function will be called by the caller or a background job
+    // We need to create the member here since there's no process
+    const newMember = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(member)
+        .values({
+          communityId: invite.communityId,
+          name: preferredMemberName(null, null, null, email),
+          referredByMemberId: invite.createdBy,
+          joinedViaInviteId: invite.id,
+        })
+        .returning();
+
+      await tx.insert(memberIdentity).values({
+        memberId: created.id,
+        provider: "magic_link",
+        loginEmail: email,
+      });
+
+      await seedPrimaryContactMethod(tx, created.id, email, { verified: false });
+
+      // Update the arrival with the member ID
+      await tx
+        .update(admission)
+        .set({ admittedAt: new Date(), admittedMemberId: created.id })
+        .where(eq(admission.id, arrivalId));
+
+      // Update the invite with the member ID
+      await tx
+        .update(communityInvite)
+        .set({ redeemedByMemberId: created.id })
+        .where(eq(communityInvite.id, invite.id));
+
+      // Seed participation for cycle invites (D14)
+      if (invite.cycleId) {
+        await seedCycleParticipation(tx, invite.cycleId, created.id);
+      }
+
+      return created;
+    });
+
+    // Mark the arrival as admitted
+    await db
+      .update(admission)
+      .set({ admittedAt: new Date(), admittedMemberId: newMember.id })
+      .where(eq(admission.id, arrivalId));
+
+    const { firstLoginDestinationFor } = await import("@/lib/first-login");
+    return {
+      kind: "admitted",
+      arrivalId,
+      token,
+      memberId: newMember.id,
+      redirectTo: await firstLoginDestinationFor(newMember.id),
+    };
+  }
+
+  // For community check: consent given, window opens
+  if (isCommunityCheck) {
     const deadline = new Date(Date.now() + windowHours * 3_600_000);
     await db
       .update(communityInvite)
       .set({ consensusDeadline: deadline })
       .where(eq(communityInvite.id, invite.id));
-    return { kind: "announced", memberId: newMember.id, deadline };
+
+    // Record consent
+    await db
+      .update(communityInvite)
+      .set({ consentAt: new Date(), consentDisclosure: disclosure, consensusState: "announced" as const, consensusDeadline: deadline })
+      .where(eq(communityInvite.id, invite.id));
+
+    // Record consent for the arrival
+    await db
+      .update(admission)
+      .set({ consentGivenAt: new Date() })
+      .where(eq(admission.id, arrivalId));
+
+    return {
+      kind: "check",
+      arrivalId,
+      token,
+      deadline,
+    };
   }
 
-  return { kind: "member", memberId: newMember.id };
+  // For process lanes (application and/or interview)
+  if (hasProcess) {
+    // If it has an application, the next step is the application
+    // If it only has an interview (no application), the next step is the interview
+    const nextStep = lane.applicationRequired ? "application" : "interview";
+
+    // If there's a support shortcut, include the support token
+    if (hasSupportShortcut) {
+      // The support token is the arrival's token - supporters use this
+      return {
+        kind: "support_shortcut",
+        arrivalId,
+        token,
+        supportToken: token,
+        supportShortcutCount: lane.supportShortcutCount!,
+      };
+    }
+
+    return {
+      kind: "process",
+      arrivalId,
+      token,
+      nextStep,
+    };
+  }
+
+  // If no process and not direct, fall through to apply
+  return {
+    kind: "apply",
+    arrivalId,
+    token,
+  };
 }
 
 // The window's own admission write, exposed so the /invite page can ask

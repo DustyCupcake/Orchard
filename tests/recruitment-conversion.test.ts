@@ -455,7 +455,7 @@ describe("Recruitment: applicant→Member conversion", () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures, untaggedFields);
 
-    const application = await submitRecruitmentApplication(setupResult.communityId, { values: { name: "Frank" } });
+    const application = await submitRecruitmentApplication(setupResult.communityId, { values: { name: "Frank", email: "frank@example.com" } });
     await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
     await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
     const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
@@ -581,7 +581,7 @@ describe("Recruitment: subscription auto-lapse", () => {
     setupResult: Awaited<ReturnType<typeof setUp>>,
     applicantValues: Record<string, string>,
   ) {
-    const application = await submitRecruitmentApplication(setupResult.communityId, { values: applicantValues });
+    const application = await submitRecruitmentApplication(setupResult.communityId, { values: { email: `${applicantValues.name.toLowerCase()}@example.com`, ...applicantValues } });
     await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
     await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
     const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);

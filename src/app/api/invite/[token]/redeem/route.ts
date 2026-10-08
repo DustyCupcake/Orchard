@@ -9,20 +9,19 @@ export const dynamic = "force-dynamic";
 // Public — no actor. Sets a real session cookie on success, same as
 // the ordinary magic-link verify route.
 //
-// The four outcomes of docs/joining-admission-plan.md §2 are all
-// returned distinctly rather than collapsed into a boolean, because
-// three of them mean "not yet a member" in three different ways a
-// client has to tell apart: a nomination still collecting support, a
-// consensus arrival whose community check hasn't closed, and a lane
-// that funnels into the application. Only `member` gets a session, and
-// the two window outcomes carry the token/handle the client needs to
-// render the right follow-up.
+// The four outcomes are returned distinctly rather than collapsed into
+// a boolean, because three of them mean "not yet a member" in different
+// ways a client has to tell apart: a community check whose window is
+// open, a lane with a process (application/interview), a lane with a
+// support shortcut, and a direct lane that admits immediately. Only
+// `admitted` gets a session, and the other outcomes carry the token
+// the client needs to render the right follow-up.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   try {
     const { token } = await params;
     const body = redeemCommunityInviteInput.parse(await request.json());
     const outcome = await redeemCommunityInvite(token, body);
-    if (outcome.kind === "member") {
+    if (outcome.kind === "admitted") {
       await createSession(outcome.memberId);
       // The JSON body's own `memberId` is all a client gets, so the
       // first-login hop has to be told rather than read off the outcome —
@@ -30,10 +29,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // follows, and the reason the page is where a browser lands rather
       // than a redirect this route could have issued.
       return NextResponse.json(
-        { ...outcome, redirectTo: await firstLoginDestinationFor(outcome.memberId) },
+        { ...outcome, redirectTo: outcome.redirectTo },
         { status: 201 },
       );
     }
+    // For check, process, support_shortcut, apply: return 202 with the outcome
+    // No session is created — they are not members yet
     return NextResponse.json(outcome, { status: 202 });
   } catch (err) {
     return errorResponse(err);

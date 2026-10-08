@@ -39,27 +39,27 @@ export async function redeemInviteAction(formData: FormData) {
     redirectWithError(token, err);
   }
 
-  if (outcome.kind === "member") {
+  if (outcome.kind === "admitted") {
     await createSession(outcome.memberId);
-    redirect(await firstLoginDestinationFor(outcome.memberId));
+    redirect(outcome.redirectTo);
   }
-  if (outcome.kind === "announced") {
-    // A consensus arrival: they are a member (and get a session, because
-    // they need to be able to see the community while the window runs)
-    // but their place in the event is not settled, so they land on the
-    // page that says so rather than the dashboard's unqualified
-    // welcome. That page's own button then hands them on to /welcome if
-    // they haven't been through it — same single hop, one page later.
-    await createSession(outcome.memberId);
-    redirect(`/invite/${token}?announced=1`);
+  if (outcome.kind === "check") {
+    // A community-check arrival: they are not a member yet, the window runs.
+    // Redirect to the admission page with their token.
+    redirect(`/admission/${outcome.token}?check=1`);
   }
-  if (outcome.kind === "awaiting_support") {
-    // §2.4 — the one link, auth-branched. No session is created: there
-    // is no Member yet, and the support view is exactly the right thing
-    // to show somebody who is not one.
+  if (outcome.kind === "process") {
+    // A process lane (application and/or interview): redirect to the admission page
+    redirect(`/admission/${outcome.token}`);
+  }
+  if (outcome.kind === "support_shortcut") {
+    // A lane with a support shortcut: show the support view
     redirect(`/support/${outcome.supportToken}`);
   }
-  // `process` is unreachable here — redeemCommunityInvite throws for it —
-  // but routing it to /apply is the honest fallback if that ever changes.
-  redirect(`/apply?invite=${encodeURIComponent(token)}`);
+  if (outcome.kind === "apply") {
+    // They need to apply: redirect to /apply with the invite token
+    redirect(`/apply?invite=${encodeURIComponent(token)}`);
+  }
+  // Should not reach here
+  redirect(`/admission/${outcome.token}`);
 }

@@ -93,8 +93,9 @@ async function submitAndDecide(
   fixtures: Awaited<ReturnType<typeof createFixtures>>,
   setupResult: Awaited<ReturnType<typeof setUp>>,
   recommendations: ["proceed" | "decline" | "unsure", "proceed" | "decline" | "unsure"],
+  email: string = "dana@example.com",
 ) {
-  const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
+  const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email } });
   await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: recommendations[0] });
   await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: recommendations[1] });
   const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
@@ -109,7 +110,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
   it("is 'applied' right after submission, before any evaluation", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
+    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
 
     const { candidates } = await getRecruitmentPipeline(setupResult.alice);
     const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
@@ -120,7 +121,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
   it("is 'evaluation_in_progress' once some but not all evaluations are filed", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
+    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
     await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
 
     const { candidates } = await getRecruitmentPipeline(setupResult.alice);
@@ -143,7 +144,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
   it("is 'accepted' immediately for a proceed outcome, before the Accompaniment task is claimed", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
+    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"], "accepted@example.com");
     expect(decision!.accompanimentTaskId).not.toBeNull();
 
     const { candidates } = await getRecruitmentPipeline(setupResult.alice);
@@ -154,7 +155,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
   it("becomes 'accompaniment_assigned' once the Accompaniment task is claimed", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
+    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"], "accompaniment@example.com");
 
     const [refetchedAlice] = await db.select().from(member).where(eq(member.id, setupResult.alice.id));
     await claimTask(refetchedAlice, decision!.accompanimentTaskId!);
@@ -168,7 +169,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
   it("is 'call_pending' for a wider_discussion outcome before the intro call confirms a slot", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
+    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"], "call_pending@example.com");
     expect(decision!.ruleOutcome).toBe("wider_discussion");
     expect(decision!.introCallPollId).not.toBeNull();
 
@@ -180,7 +181,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
   it("is 'call_scheduled' once the intro call confirms a slot still in the future", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
+    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"], "call_scheduled@example.com");
 
     const future = new Date(Date.now() + 7 * 86_400_000);
     await db
@@ -201,7 +202,7 @@ describe("getRecruitmentPipeline — computed stage", () => {
   it("is 'decision_pending' once the confirmed call's slot is in the past", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
+    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"], "decision_pending@example.com");
 
     const past = new Date(Date.now() - 7 * 86_400_000);
     await db
@@ -277,9 +278,9 @@ describe("listRecruitmentActionItems", () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
 
-    const appliedOnly = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Applied" } });
-    const { application: stuck } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
-    const { application: declined } = await submitAndDecide(fixtures, setupResult, ["decline", "decline"]);
+    const appliedOnly = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Applied", email: "applied@example.com" } });
+    const { application: stuck } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"], "stuck@example.com");
+    const { application: declined } = await submitAndDecide(fixtures, setupResult, ["decline", "decline"], "declined@example.com");
 
     const actionItems = (await listRecruitmentActionItems(setupResult.alice)).personal;
     const ids = actionItems.map((c) => c.id);
