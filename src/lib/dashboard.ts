@@ -1,10 +1,11 @@
 import { cache } from "react";
-import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, or, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { branch, member, participation, schedulingEntry, task, taskAssignment, taskJoinRequest } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { listOpenCycles } from "./cycles";
-import { isCoordinationHolder } from "./coordination";
+import { isCoordinationHolder, listCoordinationScopeIds } from "./coordination";
+import { canResolveJoinRequest } from "./tasks/join-requests";
 import { getCompositionBreakdown } from "./composition";
 import { listMyCalendarEventInvites } from "./calendar-events";
 import { isModuleEnabled } from "./modules";
@@ -113,14 +114,44 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
     .sort((a, b) => a.nextCheckinAt.getTime() - b.nextCheckinAt.getTime());
 
   const heldTaskIds = heldTaskRows.map((t) => t.taskId);
-  const pendingJoinRequests =
-    heldTaskIds.length === 0
+
+  // Join requests the actor can act on. Two sources, because there are
+  // two kinds of approver: a holder of the task (a `request` task's
+  // owner, and the fallback on a `coordination_approved` one), and the
+  // task's coordination — who need not hold it, and so would never have
+  // seen it here when this only looked at held tasks. A request on a
+  // coordination_approved task is then run through the same rule the
+  // accept/decline endpoints enforce, so the dashboard never offers a
+  // request the server would refuse (a holder who is not the
+  // coordination slot, or a requester looking at their own).
+  const coverage = await listCoordinationScopeIds(actor);
+  const coordinationCovers: (SQL | undefined)[] = [];
+  if (coverage.communityWide) {
+    coordinationCovers.push(eq(task.openness, "coordination_approved"));
+  } else {
+    if (coverage.branchIds.size > 0) {
+      coordinationCovers.push(and(isNull(task.cycleId), inArray(task.branchId, [...coverage.branchIds])));
+    }
+    if (coverage.cycleIds.size > 0) coordinationCovers.push(inArray(task.cycleId, [...coverage.cycleIds]));
+  }
+  const requestSources: (SQL | undefined)[] = [];
+  if (heldTaskIds.length > 0) requestSources.push(inArray(taskJoinRequest.taskId, heldTaskIds));
+  if (coordinationCovers.length > 0) {
+    requestSources.push(and(eq(task.openness, "coordination_approved"), or(...coordinationCovers)));
+  }
+
+  const candidateRequests =
+    requestSources.length === 0
       ? []
       : await db
           .select({
             id: taskJoinRequest.id,
             taskId: taskJoinRequest.taskId,
             taskTitle: task.title,
+            openness: task.openness,
+            branchId: task.branchId,
+            cycleId: task.cycleId,
+            requestedById: taskJoinRequest.memberId,
             requestedByName: member.name,
             requestedAt: taskJoinRequest.requestedAt,
           })
@@ -128,9 +159,33 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
           .innerJoin(task, eq(taskJoinRequest.taskId, task.id))
           .innerJoin(member, eq(taskJoinRequest.memberId, member.id))
           .where(
-            and(inArray(taskJoinRequest.taskId, heldTaskIds), eq(taskJoinRequest.status, "pending")),
+            and(
+              eq(task.communityId, actor.communityId),
+              eq(taskJoinRequest.status, "pending"),
+              ne(taskJoinRequest.memberId, actor.id),
+              or(...requestSources),
+            ),
           )
           .orderBy(desc(taskJoinRequest.requestedAt));
+
+  const pendingJoinRequests = (
+    await Promise.all(
+      candidateRequests.map(async (r) => {
+        const resolvable =
+          r.openness === "coordination_approved"
+            ? await canResolveJoinRequest(
+                db,
+                { id: r.taskId, openness: r.openness, branchId: r.branchId, cycleId: r.cycleId },
+                actor,
+                r.requestedById,
+              )
+            : true;
+        return resolvable
+          ? { id: r.id, taskId: r.taskId, taskTitle: r.taskTitle, requestedByName: r.requestedByName, requestedAt: r.requestedAt }
+          : null;
+      }),
+    )
+  ).filter((r): r is NonNullable<typeof r> => r !== null);
 
   // "The needs-action signal... surfaced on the dashboard for anyone
   // holding a recruitment task" — closes Phase 24's own explicitly-

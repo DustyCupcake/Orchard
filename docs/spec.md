@@ -223,7 +223,9 @@ High-stakes or skill-specific tasks can get a browse period on creation — a wi
 
 ### <a id="task-openness"></a>Task openness
 
-Set on creation, adjustable by the owner: **Open** (anyone eligible joins freely), **Request** (default — join requests go to the owner to accept or decline), **Coordination-approved** (new joiners need branch-coordination sign-off, for tasks with sensitive-access implications), or **Community-endorsed** (claiming requires gathering a threshold number of endorsements from other members before the claim confirms — see Endorsement-gated tasks, below).
+Set on creation, adjustable by the owner: **Open** (anyone eligible joins freely), **Request** (default — join requests go to the owner to accept or decline), **Coordination-approved** (new joiners need branch-coordination sign-off, for tasks with sensitive-access implications), including the first claim on a task nobody holds yet, or **Community-endorsed** (claiming requires gathering a threshold number of endorsements from other members before the claim confirms — see Endorsement-gated tasks, below).
+
+**Who approves a Coordination-approved join.** Whoever holds coordination over where the task sits (its branch, its event, or the whole community — see Coordination mechanics) or the task's own coordination slot, the same authority that can waive a Requirement. They need not hold the task: a request whose holders have all left is still resolvable. Never the requester, and never a shadow. If nobody else has that authority — no coordination covers the scope and no slot is filled — an ordinary holder approves, and an unheld task is claimed directly, so a community with no coordinators still works; anyone coordinating the scope switches that fallback off. A coordinator claiming for themselves claims directly (after the self-assign check), since they are the authority a request would be routed to.
 
 ### <a id="endorsement-gated-tasks"></a>Endorsement-gated tasks
 
