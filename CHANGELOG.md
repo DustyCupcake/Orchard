@@ -8,6 +8,24 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## the first step of the admission funnel: lanes as rows, and a stage that is computed
+
+Migration **0089** (`0089_admission_lane.sql`). [`docs/admission-flow.md`](docs/admission-flow.md) §8 step 1, foundations.
+
+**A lane is a row, not a value in a four-value enum** (`admission_lane`). A community defines only the lanes it needs, and a lane is still defined by facts the system already has: an *invite* lane says which of the three mutually exclusive inviter declarations it handles (three booleans, because that is literally what §2a asks a lane to declare), and a *public* lane carries the slug its application is served at. Plus the process it asks for, its verification (the plan's own `none` / `community_check`), reports needed, and the support-shortcut count. `archivedAt` rather than a delete, so people in the funnel keep the path they entered on.
+
+Every existing community gets its four lanes carried over from its `joining_lane` rows, so today's behaviour is reproduced rather than reset — including per-lane, so a community that had edited one lane keeps that edit and gets the documented default for the three it had not. Two carries needed a decision rather than a copy: `consensus` becomes `community_check` (a rename; §5 keeps it), and **`nomination` becomes `none` with its support count kept as the support shortcut** — the waiting model is what the plan deletes, but a community that chose nomination wanted other members' word on that lane, and support still exists, it just runs alongside the path instead of in front of it. Dropping the shortcut instead would have silently discarded a decision somebody made.
+
+**`admission` — one row per person in the funnel** (§4), replacing state spread over the invite, the nomination and the decision. The shape is two ideas held apart: `requiredSteps` is a snapshot of what the lane said at the moment they arrived (§1 principle 2 — editing a lane changes the next arrival, never somebody in flight, which is the class of bug the audit found), and the facts beside it are written one by one, never derived from each other. Nothing here is a Member; `admittedMemberId` is null until the single admission function exists. One arrival per person per community, which is what stops two lanes claiming the same person and the stage disagreeing with itself.
+
+**The stage is a pure function** (`src/lib/recruitment/admission-stage.ts`, 28 tests, no database and no clock of its own). Every screen, the pipeline, the needs-action list and capacity counting read this and nothing else, so it cannot disagree with itself. It imports nothing that reaches drizzle, deliberately: the old computed stage took a `communityRow` and went back to the database for the evaluations, the decision and the poll, which is why it could only cover the evaluated path and why its own comment records the two places spec's arrow chain and the built code disagree. Tests cover every row of §2's table of paths a lane can produce, and assert the stage never moves backwards as facts accumulate.
+
+Two things the stage function settles that the old one conflated: `needsAction` asks "is the community the one who must move" (so consent and a community check are excluded — they have their own screens — and an arrival waiting on the person is excluded, with the caller saying so), and the plain sentence a person reads is generated from the same function rather than assembled per screen.
+
+Tested on a populated database (`tests/migrations.test.ts`), because this migrates live rows — the 0083 lesson. The cases are the ways it can go wrong on real data: a community with no `joining_lane` rows at all (the *normal* state, since the defaults are read live from code and never snapshotted), one that had edited its rows, and one that had opted into nomination. Manual verification: `npx drizzle-kit generate`, `node scripts/check-migrations.mjs`, `npm run lint`, `npx tsc --noEmit`, and the suite in `scripts/test.sh`.
+
+Not yet wired: nothing reads either table yet. The 72 existing lane call sites still resolve through `joining_lane`, and no flow writes an arrival — that is the next commit, so that each one is green on its own.
+
 ## the React hooks lint rules are errors again, with the fourteen sites they flagged fixed
 
 The Next 16 entry below left three new `eslint-plugin-react-hooks` 7 rules as warnings because fourteen existing sites tripped them. They are cleared and the rules are errors again (the override block is gone from `eslint.config.mjs`), so a new violation fails the build's lint stage instead of adding to a pile nobody reads.

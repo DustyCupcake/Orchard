@@ -25,6 +25,103 @@ describe("migrating a database that already has data", () => {
   // afterwards; Postgres checks the constraint against existing rows when the
   // column is added, so with one objection in the table the ADD COLUMN itself
   // failed, the whole batch rolled back, and the container never started.
+  // 0089 carries every community's four lanes over as rows. The ways this
+  // can go wrong on real data: a community with no joining_lane rows at all
+  // (the defaults are read live from code, never snapshotted, so "no rows"
+  // is the *normal* state, not an edge case), one that had edited its rows,
+  // and one that had opted into nomination — the one carry that needs a
+  // decision rather than a copy.
+  it("0089 carries four lanes over per community, keeping each community's own configuration", async () => {
+    db = await createScratchDatabase();
+    await db.migrateBefore("0089_admission_lane");
+    const sql = db.sql;
+
+    const [plain, edited, nominating] = Array.from({ length: 3 }, uuid);
+    await sql`insert into community (id, name, recruitment_evaluator_count) values
+      (${plain}, 'Never configured', 3),
+      (${edited}, 'Edited', 2),
+      (${nominating}, 'Nominating', 2)`;
+
+    // One community edited its community-wide rows: knows-personally now
+    // wants an interview, and the public lane wants the community check.
+    await sql`insert into joining_lane (community_id, cycle_id, lane, verification_mode, support_count, application_required, interview_required) values
+      (${edited}, null, 'invited_knows_personally', 'basic', 1, false, true),
+      (${edited}, null, 'public_application', 'consensus', 1, true, true)`;
+
+    // And one opted into nomination on the public lane, with a support
+    // count of 2 — the carry that has to translate, not copy.
+    await sql`insert into joining_lane (community_id, cycle_id, lane, verification_mode, support_count, application_required, interview_required) values
+      (${nominating}, null, 'public_application', 'nomination', 2, true, true)`;
+
+    await db.migrateRemaining();
+
+    const rows = await sql`
+      select l.community_id, l.name, l.kind, l.handles_knows_personally, l.handles_good_fit_only,
+             l.handles_neither, l.public_slug, l.application_required, l.interview_required,
+             l.verification, l.reports_needed, l.support_shortcut_count
+      from admission_lane l order by l.community_id, l.name`;
+
+    // Four lanes for every community, never three or five.
+    expect(rows.filter((r) => r.community_id === plain)).toHaveLength(4);
+    expect(rows.filter((r) => r.community_id === edited)).toHaveLength(4);
+    expect(rows.filter((r) => r.community_id === nominating)).toHaveLength(4);
+
+    // A community with no joining_lane rows gets the documented defaults.
+    const plainLane = (name: string) => rows.find((r) => r.community_id === plain && r.name === name)!;
+    expect(plainLane("Invited — knows personally")).toMatchObject({
+      kind: "invite", handles_knows_personally: true, handles_good_fit_only: false,
+      handles_neither: false, application_required: false, interview_required: false,
+      verification: "none", reports_needed: null, support_shortcut_count: null,
+    });
+    expect(plainLane("Invited — vouches (good fit)")).toMatchObject({
+      kind: "invite", handles_good_fit_only: true, handles_knows_personally: false,
+      application_required: true, interview_required: true, verification: "none",
+      reports_needed: 3,
+    });
+    expect(plainLane("Open application")).toMatchObject({
+      kind: "public", application_required: true, interview_required: true,
+      verification: "none", reports_needed: 3,
+    });
+
+    // The edited community keeps its own configuration, per lane: the one it
+    // edited came across, the two it never touched are the defaults.
+    const editedLane = (name: string) => rows.find((r) => r.community_id === edited && r.name === name)!;
+    expect(editedLane("Invited — knows personally")).toMatchObject({
+      application_required: false, interview_required: true, verification: "none",
+      // An interview means there is something to evaluate, so reports
+      // needed becomes the community's count where the default left it null.
+      reports_needed: 2,
+    });
+    expect(editedLane("Open application")).toMatchObject({ verification: "community_check" });
+
+    // Nomination carries across as the support shortcut, keeping the
+    // community's own count of 2. Verification becomes none because
+    // nomination as a *wait* is what the plan deletes — but the intent
+    // behind it (other members' word) survives as a shortcut.
+    expect(rows.find((r) => r.community_id === nominating && r.name === "Open application"))
+      .toMatchObject({ verification: "none", support_shortcut_count: 2, reports_needed: 2 });
+
+    // The three inviter declarations are each handled by exactly one lane,
+    // which is what keeps an invite from having nowhere to go (§2a).
+    for (const communityId of [plain, edited, nominating]) {
+      const own = rows.filter((r) => r.community_id === communityId);
+      for (const col of ["handles_knows_personally", "handles_good_fit_only", "handles_neither"]) {
+        expect(own.filter((r: Record<string, unknown>) => r[col])).toHaveLength(1);
+      }
+      // Exactly one public lane, and it has no inviter declarations.
+      const publics = own.filter((r) => r.kind === "public");
+      expect(publics).toHaveLength(1);
+      expect(publics[0]).toMatchObject({
+        handles_knows_personally: false, handles_good_fit_only: false, handles_neither: false,
+      });
+    }
+  });
+
+  // The regression that motivated all of this. 0083 added
+  // objection.community_id as NOT NULL with no default and filled it in
+  // afterwards; Postgres checks the constraint against existing rows when the
+  // column is added, so with one objection in the table the ADD COLUMN itself
+  // failed, the whole batch rolled back, and the container never started.
   it("0083 backfills objection.community_id from the form it was raised against", async () => {
     db = await createScratchDatabase();
     await db.migrateBefore("0083_joining_admission_back_end");
