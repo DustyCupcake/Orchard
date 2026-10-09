@@ -50,6 +50,7 @@ export * from "./joining-support";
 export * from "./inquiry";
 export * from "./recruitment";
 export * from "./recruitment-mediation";
+export * from "./recruitment-standing-availability";
 export * from "./spatial-planning";
 export * from "./member-privacy";
 export * from "./view-as";

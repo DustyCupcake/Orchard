@@ -2,6 +2,8 @@ import { and, eq, inArray, isNull, lt } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
+  admission,
+  admissionLane,
   communityInvite,
   form,
   formResponse,
@@ -18,12 +20,14 @@ import {
 } from "@/db/schema";
 import type { community as communityTable, member as memberTable } from "@/db/schema";
 import type { FormField } from "../forms";
-import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { getAllHoldersStandingAvailability, findHoldersMatchingApplicant } from "./standing-availability";
+import { describeRecruitmentAuthority } from "./access";
 import { createTask } from "../tasks";
 import { createPoll } from "../scheduling-polls";
 import { generateToken } from "../token";
 import { seedPrimaryContactMethod } from "../contact-methods";
 import { getCommunityRow, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
+import { ConflictError, ForbiddenError, NotFoundError, AppError } from "../errors";
 import { computeRecruitmentOutcome } from "./evaluations";
 import { canScheduleInterview } from "./joining";
 import { listGrantingTaskIds } from "../permissions";
@@ -158,18 +162,30 @@ async function createIntroCallPoll(
   communityRow: CommunityRow,
   formResponseId: string,
   evaluatorIds: string[],
+  reportsNeeded: number,
 ) {
   const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "recruitment");
   if (grantingTaskIds.length === 0) return null;
   const [recruitmentTaskRow] = await db.select().from(task).where(inArray(task.id, grantingTaskIds));
   if (!recruitmentTaskRow) return null;
 
+  // Get all recruitment holders for this community (docs/admission-flow.md §4:
+  // "the person, plus at least the community's evaluator count of holders").
+  // We include all recruitment holders; the new "person_plus_n_holders" mode
+  // will check at confirmation time that the person overlaps AND at least N
+  // holders (where N = lane's reportsNeeded) offered that slot.
+  const authority = await describeRecruitmentAuthority(communityRow.id);
+  const holderIds = authority.holders.map((h: { memberId: string }) => h.memberId);
+
   const now = new Date();
   const poll = await createPoll(actor, {
     branchId: recruitmentTaskRow.branchId,
     title: "Recruitment intro call",
-    resolutionMode: "must_overlap",
-    requiredParticipantIds: [...evaluatorIds, formResponseId],
+    resolutionMode: "person_plus_n_holders",
+    // minAttendance = lane's reportsNeeded (N)
+    minAttendance: reportsNeeded,
+    // Include all holders + the applicant (formResponseId)
+    requiredParticipantIds: [...holderIds, formResponseId],
     rangeStart: isoDate(now),
     rangeEnd: isoDate(new Date(now.getTime() + INTRO_CALL_WINDOW_DAYS * 86_400_000)),
   });
@@ -487,8 +503,16 @@ export async function recordDecisionIfReached(actor: Member, formResponseId: str
       .from(formResponse)
       .where(eq(formResponse.id, formResponseId));
     if (await canScheduleInterview(actor.communityId, responseRow?.cycleId ?? null)) {
+      // Get the lane's reportsNeeded from the arrival (admission table)
+      const [arrivalRow] = await db
+        .select({ reportsNeeded: admission.reportsNeeded })
+        .from(admission)
+        .innerJoin(formResponse, eq(admission.formResponseId, formResponse.id))
+        .where(eq(formResponse.id, formResponseId));
+      const reportsNeeded = arrivalRow?.reportsNeeded ?? 2;
+
       const evaluatorIds = result.evaluations.map((e) => e.evaluatorId);
-      const introCall = await createIntroCallPoll(actor, communityRow, formResponseId, evaluatorIds);
+      const introCall = await createIntroCallPoll(actor, communityRow, formResponseId, evaluatorIds, reportsNeeded);
       if (introCall) {
         const [updated] = await db
           .update(recruitmentDecision)

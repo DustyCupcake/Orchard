@@ -631,6 +631,20 @@
       "when": 1791477148368,
       "tag": "0089_admission_lane",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1791529076865,
+      "tag": "0090_standing_availability",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1791529201241,
+      "tag": "0091_person_plus_n_holders_mode",
+      "breakpoints": true
     }
   ]
 }

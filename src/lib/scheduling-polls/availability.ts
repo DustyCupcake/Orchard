@@ -145,7 +145,23 @@ export async function getPollAggregate(
       const qualifies =
         poll.resolutionMode === "must_overlap"
           ? poll.requiredParticipantIds.every((id) => participantIds.has(id))
-          : participantIds.size >= (poll.minAttendance ?? 1);
+          : poll.resolutionMode === "person_plus_n_holders"
+            ? (() => {
+                // In person_plus_n_holders mode:
+                // - The applicant is always the last ID in requiredParticipantIds (the formResponseId)
+                // - All other IDs are holders
+                // - The applicant MUST be present
+                // - At least minAttendance holders must be present
+                const applicantId = poll.requiredParticipantIds[poll.requiredParticipantIds.length - 1];
+                if (!participantIds.has(applicantId)) {
+                  return false;
+                }
+                // At least minAttendance holders must be present
+                const holderIds = poll.requiredParticipantIds.slice(0, -1);
+                const overlappingHolders = holderIds.filter((id) => participantIds.has(id));
+                return overlappingHolders.length >= (poll.minAttendance ?? 1);
+              })()
+            : participantIds.size >= (poll.minAttendance ?? 1);
       return { slot, count: participantIds.size, qualifies };
     })
     .sort((a, b) => a.slot.localeCompare(b.slot));

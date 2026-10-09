@@ -7,6 +7,13 @@ import { member } from "./member";
 export const pollResolutionModeEnum = pgEnum("poll_resolution_mode", [
   "must_overlap",
   "max_attendance",
+  // "person_plus_n_holders": the applicant must overlap AND at least N holders
+  // (where N is stored in minAttendance). This is the admission-flow §4 model:
+  // the person must be available, AND at least minAttendance holders must also
+  // be available for the same slot. This replaces the either/or of the two
+  // existing modes with a conjunction that matches the plan's "person overlaps
+  // AND at least N holders" rule.
+  "person_plus_n_holders",
 ]);
 
 // "When can enough of the right people actually meet" — see

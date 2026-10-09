@@ -154,10 +154,13 @@ describe("recordDecisionIfReached", () => {
     expect(decision!.accompanimentTaskId).not.toBeNull();
 
     const [poll] = await db.select().from(schedulingPoll).where(eq(schedulingPoll.id, decision!.introCallPollId!));
-    expect(poll.resolutionMode).toBe("must_overlap");
+    expect(poll.resolutionMode).toBe("person_plus_n_holders");
     expect(poll.requiredParticipantIds).toEqual(
       expect.arrayContaining([setupResult.alice.id, setupResult.bob.id, application.formResponse.id]),
     );
+    // minAttendance should be 2 (the lane's reportsNeeded)
+    expect(poll.minAttendance).toBe(2);
+    // Should include both holders (alice, bob) + the applicant
     expect(poll.requiredParticipantIds).toHaveLength(3);
   });
 
@@ -464,7 +467,7 @@ describe("getPollAggregate: mixed member + applicant participants", () => {
     await resetDatabase();
   });
 
-  it("a must_overlap intro call requires the applicant's own submission alongside both evaluators'", async () => {
+  it("a person_plus_n_holders intro call requires the applicant's own submission AND enough holders", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
     const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
@@ -484,6 +487,7 @@ describe("getPollAggregate: mixed member + applicant participants", () => {
     aggregate = await getPollAggregate(setupResult.alice, pollId);
     const afterApplicant = aggregate.slots.find((s) => s.slot === slot);
     expect(afterApplicant?.count).toBe(3);
+    // With person_plus_n_holders mode, qualifies if person overlaps AND minAttendance (2) holders overlap
     expect(afterApplicant?.qualifies).toBe(true);
   });
 });

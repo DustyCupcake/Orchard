@@ -20,6 +20,8 @@ export * from "./joining-lanes";
 export * from "./admission";
 // The admission lane seed is pure DB writes, safe to export through the barrel.
 export * from "./admission-seed";
+// Standing availability (docs/admission-flow.md §4) — pure DB writes, safe to export.
+export * from "./standing-availability";
 export * from "./subscriptions";
 export * from "./decisions";
 export * from "./objections";
