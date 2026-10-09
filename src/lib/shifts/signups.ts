@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, lt } from "drizzle-orm";
+import { getEventClocks } from "../cycles/time-zone";
 import { db } from "@/db";
 import { cycle, shiftOccurrence, shiftSeries, shiftSignup } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
@@ -180,6 +181,8 @@ export interface ShiftCoordinatorNeedsAction {
   occurrenceId: string;
   seriesTitle: string;
   startsAt: Date;
+  /** The venue clock the shift ran on, so its date reads the same for everyone. */
+  timeZone: string;
   unresolvedCount: number;
 }
 
@@ -202,7 +205,7 @@ export async function listShiftCoordinatorNeedsAction(actor: Member): Promise<Ne
   if (coordinated.length === 0) return { personal: [], shared: [] };
 
   const rows = await db
-    .select({ occurrence: shiftOccurrence, seriesTitle: shiftSeries.title })
+    .select({ occurrence: shiftOccurrence, seriesTitle: shiftSeries.title, cycleId: shiftSeries.cycleId })
     .from(shiftOccurrence)
     .innerJoin(shiftSeries, eq(shiftOccurrence.seriesId, shiftSeries.id))
     .innerJoin(shiftSignup, eq(shiftSignup.occurrenceId, shiftOccurrence.id))
@@ -214,6 +217,7 @@ export async function listShiftCoordinatorNeedsAction(actor: Member): Promise<Ne
       ),
     );
 
+  const clockFor = await getEventClocks(actor.communityId);
   const byOccurrence = new Map<string, ShiftCoordinatorNeedsAction>();
   for (const r of rows) {
     const existing = byOccurrence.get(r.occurrence.id);
@@ -224,6 +228,7 @@ export async function listShiftCoordinatorNeedsAction(actor: Member): Promise<Ne
         occurrenceId: r.occurrence.id,
         seriesTitle: r.seriesTitle,
         startsAt: r.occurrence.startsAt,
+        timeZone: clockFor(r.cycleId),
         unresolvedCount: 1,
       });
     }

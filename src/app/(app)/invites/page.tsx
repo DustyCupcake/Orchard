@@ -239,7 +239,8 @@ export default async function InvitesPage({
                 <input type="datetime-local" name="expiresAt" className={INPUT} />
                 <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   A direct invite into a capacity-capped event holds a place until it&rsquo;s used,
-                  revoked or expired, so one of those needs a real date.
+                  revoked or expired, so one of those needs a real date. Read on the event&rsquo;s
+                  clock, or the community&rsquo;s when it isn&rsquo;t for one particular event.
                 </span>
               </label>
               <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>

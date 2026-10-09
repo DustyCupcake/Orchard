@@ -148,7 +148,7 @@ function zoneOffsetMs(instant: Date, timeZone: string): number {
  * instant rather than landing an hour out.
  */
 export function instantFromZoned(local: string, timeZone: string): Date {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(local);
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/.exec(local);
   if (!match) {
     throw new AppError(`Not a date and time: ${local}`);
   }

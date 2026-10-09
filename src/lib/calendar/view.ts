@@ -1,7 +1,7 @@
 import type { member as memberTable } from "@/db/schema";
 import { effectiveTimeZone, localDateInZone, type PeriodDateContext } from "../dates";
 import { getCurrentCycle, listOnceEverAnswers } from "../profile-questions";
-import { getCycle } from "../cycles";
+import { getCycle, getEventClocks } from "../cycles";
 import { listMyTaskMilestones } from "../tasks";
 import { listMyCalendarEvents } from "../calendar-events";
 import { getNextCutoffAt } from "../input-rounds";
@@ -73,7 +73,8 @@ function nextYearlyOccurrence(storedDate: string, today: string): string {
 //
 // Dates that are instants are placed on the day they fall on in the
 // viewer's own zone — Member.timeZone, else the Community's, else UTC —
-// while dates that are already plain days are left exactly as stored.
+// except the programme and shifts, which sit on their venue's day; dates
+// that are already plain days are left exactly as stored.
 export async function getCalendarView(actor: Member) {
   const entries: CalendarEntry[] = [];
 
@@ -81,6 +82,13 @@ export async function getCalendarView(actor: Member) {
   const timeZone = effectiveTimeZone(actor, communityRow);
   const now = new Date();
   const today = dayInZone(now, timeZone);
+
+  // The programme and shifts happen at the venue, so they sit on the day
+  // they fall on *there* — a Saturday-morning shift is on Saturday for
+  // everyone, including a member whose own clock puts it on Friday night.
+  // Everything else that is an instant (deadlines and the like) is placed
+  // on the viewer's own day.
+  const venueZone = await getEventClocks(actor.communityId);
 
   const currentCycle = await getCurrentCycle(actor.communityId);
   const currentCyclePeriod: PeriodDateContext | null =
@@ -171,7 +179,7 @@ export async function getCalendarView(actor: Member) {
   for (const p of publishedSchedule) {
     const slot = p.confirmedSlot as { startsAt: string; endsAt: string } | null;
     if (p.status === "confirmed" && slot?.startsAt) {
-      entries.push({ date: dayInZone(slot.startsAt, timeZone), kind: "event_confirmed", label: p.title, href: "/schedule" });
+      entries.push({ date: dayInZone(slot.startsAt, venueZone(p.cycleId)), kind: "event_confirmed", label: p.title, href: "/schedule" });
     }
   }
 
@@ -185,7 +193,7 @@ export async function getCalendarView(actor: Member) {
     for (const s of mySignups) {
       if (s.signup.status === "signed_up" && new Date(s.occurrence.startsAt) >= now) {
         entries.push({
-          date: dayInZone(s.occurrence.startsAt, timeZone),
+          date: dayInZone(s.occurrence.startsAt, venueZone(s.series.cycleId)),
           kind: "shift_occurrence",
           label: `${s.series.title} shift`,
           href: "/shifts",

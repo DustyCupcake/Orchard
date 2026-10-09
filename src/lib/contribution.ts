@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
+import { getEventClocks } from "./cycles/time-zone";
 import {
   branch,
   member,
@@ -50,6 +51,8 @@ type ContributionShiftCompletionEntry = {
   id: string;
   seriesTitle: string;
   occurrenceStartsAt: Date;
+  /** The venue clock the shift ran on, so its date reads the same for everyone. */
+  timeZone: string;
 };
 type ContributionShiftBucket = { count: number; completions: ContributionShiftCompletionEntry[] };
 export type ContributionCategory = {
@@ -182,6 +185,7 @@ export async function getContributionBreakdown(memberId: string, communityId: st
       signupId: shiftSignup.id,
       seriesTitle: shiftSeries.title,
       occurrenceStartsAt: shiftOccurrence.startsAt,
+      cycleId: shiftSeries.cycleId,
     })
     .from(shiftSignup)
     .innerJoin(shiftOccurrence, eq(shiftSignup.occurrenceId, shiftOccurrence.id))
@@ -205,12 +209,14 @@ export async function getContributionBreakdown(memberId: string, communityId: st
       });
     }
     const overall = categories.get("Overall")!;
+    const clockFor = await getEventClocks(communityId);
     for (const r of shiftRows) {
       overall.shiftCompletions.count += 1;
       overall.shiftCompletions.completions.push({
         id: r.signupId,
         seriesTitle: r.seriesTitle,
         occurrenceStartsAt: r.occurrenceStartsAt,
+        timeZone: clockFor(r.cycleId),
       });
     }
   }

@@ -28,7 +28,8 @@ import {
 import { getCommunity, isAdmin, listCycleTypes } from "@/lib/settings";
 import { listOutstandingQuestions } from "@/lib/profile-questions";
 import { isModuleEnabled } from "@/lib/modules";
-import { describeBoundaryWindow, formatDateRange } from "@/lib/dates";
+import { describeBoundaryWindow, formatDateRange, formatInstant, localInputFromInstant } from "@/lib/dates";
+import { getEventTimeZone } from "@/lib/cycles";
 import { listTaskPacks } from "@/lib/task-packs";
 import { HIGHLIGHTABLE_MODULES } from "@/lib/nav";
 import { ClonePreviewGrid, ClonePreviewList } from "@/components/ClonePreview";
@@ -77,12 +78,11 @@ const STATUS_LABEL: Record<string, string> = {
   not_coming: "Not coming",
 };
 
-// datetime-local wants "YYYY-MM-DDTHH:mm" in local time, not a full
-// ISO string with a timezone offset — same helper src/app/schedule's
-// EventReviewSection.tsx already uses.
-function toDatetimeLocal(date: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+// datetime-local wants "YYYY-MM-DDTHH:mm" with no offset. These windows
+// are typed on the event's clock, so the field is filled in on that clock
+// too — not the server's.
+function toDatetimeLocal(date: Date, timeZone: string) {
+  return localInputFromInstant(date.toISOString(), timeZone);
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
@@ -559,6 +559,8 @@ async function ParticipationForCycle({
   // Only needed for the cycle-settings/phase-dates sections below —
   // skip the extra query entirely for anyone who can't see them.
   const withPhases = canConfigure ? await getCycle(viewing, cycleId) : null;
+  // The clock these windows are typed on — see lib/dates/timezone.ts.
+  const eventClock = await getEventTimeZone(viewing.communityId, cycleId);
   // Forms pickable as the cycle's own application form (blank = fall
   // back to the community's standing form) — only for the same
   // audience, same reason.
@@ -677,7 +679,7 @@ async function ParticipationForCycle({
                     <ul className="mt-2 flex flex-col gap-0.5">
                       {occurrences.map(({ occurrence, capacity, signupCount }) => (
                         <li key={occurrence.id} className="text-[length:var(--text-body)] text-[var(--text)]">
-                          {new Date(occurrence.startsAt).toLocaleString()} — {signupCount}/{capacity} signed up
+                          {formatInstant(occurrence.startsAt, eventClock)} — {signupCount}/{capacity} signed up
                         </li>
                       ))}
                     </ul>
@@ -770,12 +772,12 @@ async function ParticipationForCycle({
               </span>
             </label>
             <label className="flex flex-col gap-1">
-              <span className={LABEL}>Returning-priority window closes at (optional)</span>
+              <span className={LABEL}>Returning-priority window closes at, {eventClock} (optional)</span>
               <input
                 type="datetime-local"
                 name="returningWindowClosesAt"
                 defaultValue={
-                  summary.returningWindowClosesAt ? toDatetimeLocal(new Date(summary.returningWindowClosesAt)) : ""
+                  summary.returningWindowClosesAt ? toDatetimeLocal(new Date(summary.returningWindowClosesAt), eventClock) : ""
                 }
                 className={`${INPUT} w-fit`}
               />
@@ -820,13 +822,13 @@ async function ParticipationForCycle({
               defaultChecked={withPhases?.interviewsOpen ?? true}
             />
             <label className="flex flex-col gap-1">
-              <span className={LABEL}>Joining window closes at (optional — blank = until the event closes)</span>
+              <span className={LABEL}>Joining window closes at, {eventClock} (optional — blank = until the event closes)</span>
               <input
                 type="datetime-local"
                 name="joiningWindowClosesAt"
                 defaultValue={
                   withPhases?.joiningWindowClosesAt
-                    ? toDatetimeLocal(new Date(withPhases.joiningWindowClosesAt))
+                    ? toDatetimeLocal(new Date(withPhases.joiningWindowClosesAt), eventClock)
                     : ""
                 }
                 className={`${INPUT} w-fit`}

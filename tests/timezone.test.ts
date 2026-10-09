@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TIME_ZONE,
   effectiveTimeZone,
+  formatInstant,
+  formatInstantRange,
   formatTimeInZone,
   instantFromZoned,
   isValidTimeZone,
@@ -140,5 +142,42 @@ describe("instantFromZoned", () => {
     // An instant, not a wall clock — passing one of these in is the bug
     // this whole conversion exists to prevent.
     expect(() => instantFromZoned("2026-09-10T14:00:00.000Z", "UTC")).toThrow();
+  });
+});
+describe("formatInstant", () => {
+  const at = "2026-10-09T23:30:00.000Z";
+
+  it("reads the same instant on whichever clock it is given", () => {
+    expect(formatInstant(at, "UTC")).toBe("Oct 9, 2026, 23:30");
+    expect(formatInstant(at, "Asia/Tokyo")).toBe("Oct 10, 2026, 08:30");
+    expect(formatInstant(at, "America/Los_Angeles")).toBe("Oct 9, 2026, 16:30");
+  });
+
+  it("writes just the date or just the time", () => {
+    expect(formatInstant(at, "Asia/Tokyo", "date")).toBe("Oct 10, 2026");
+    expect(formatInstant(at, "Asia/Tokyo", "time")).toBe("08:30");
+  });
+
+  it("can carry the zone, for a deadline read on someone else's clock", () => {
+    expect(formatInstant(at, "America/Los_Angeles", "datetime", { zoneName: true })).toMatch(/16:30 (PDT|GMT-7)$/);
+  });
+
+  it("reads midnight as 00:00, not 24:00", () => {
+    expect(formatInstant("2026-10-09T00:00:00.000Z", "UTC", "time")).toBe("00:00");
+  });
+
+  it("falls back to UTC for an unusable zone rather than throwing", () => {
+    expect(formatInstant(at, "Not/AZone")).toBe("Oct 9, 2026, 23:30");
+  });
+
+  it("writes a range once, and spells out both ends across midnight", () => {
+    expect(formatInstantRange("2026-10-09T14:00:00Z", "2026-10-09T15:30:00Z", "UTC")).toBe("Oct 9, 2026, 14:00–15:30");
+    expect(formatInstantRange("2026-10-09T23:00:00Z", "2026-10-10T01:00:00Z", "UTC")).toBe(
+      "Oct 9, 2026, 23:00–Oct 10, 2026, 01:00",
+    );
+    // The same pair on a clock where it no longer crosses midnight.
+    expect(formatInstantRange("2026-10-09T23:00:00Z", "2026-10-10T01:00:00Z", "Asia/Tokyo")).toBe(
+      "Oct 10, 2026, 08:00–10:00",
+    );
   });
 });

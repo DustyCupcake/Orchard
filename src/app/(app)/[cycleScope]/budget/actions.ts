@@ -1,6 +1,7 @@
 "use server";
 
 import { ZodError } from "zod";
+import { eventInstantFromLocal } from "@/lib/cycles";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
@@ -20,6 +21,7 @@ import {
   updateBudgetCycleInput,
   updateBudgetProposal,
   updateBudgetProposalInput,
+  getBudgetCycle,
 } from "@/lib/budget";
 import { requireAdmins } from "@/lib/settings";
 import { AppError } from "@/lib/errors";
@@ -91,7 +93,7 @@ export async function createBudgetCycleAction(formData: FormData) {
       title: String(formData.get("title") ?? ""),
       cycleId,
       fixedCosts: parseLineItemsJson(String(formData.get("fixedCostsJson") ?? "")),
-      proposalDeadline: deadlineRaw ? new Date(deadlineRaw).toISOString() : "",
+      proposalDeadline: deadlineRaw ? await eventInstantFromLocal(actor.communityId, cycleId, deadlineRaw) : "",
     });
     await createBudgetCycle(actor, input);
   } catch (err) {
@@ -125,7 +127,9 @@ export async function updateBudgetCycleAction(formData: FormData) {
     const input = updateBudgetCycleInput.parse({
       title: titleRaw || undefined,
       fixedCosts: parseLineItemsJson(String(formData.get("fixedCostsJson") ?? "")),
-      proposalDeadline: deadlineRaw ? new Date(deadlineRaw).toISOString() : undefined,
+      proposalDeadline: deadlineRaw
+        ? await eventInstantFromLocal(actor.communityId, (await getBudgetCycle(actor, budgetCycleId)).cycleId, deadlineRaw)
+        : undefined,
     });
     await updateBudgetCycle(actor, budgetCycleId, input);
   } catch (err) {

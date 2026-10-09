@@ -1,6 +1,8 @@
 "use server";
 
 import { ZodError } from "zod";
+import { getEventTimeZone } from "@/lib/cycles";
+import { instantFromZoned, isValidTimeZone } from "@/lib/dates";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
@@ -145,9 +147,16 @@ export async function updateCycleSettingsAction(formData: FormData) {
   const joiningWindowRaw = String(formData.get("joiningWindowClosesAt") ?? "").trim();
 
   try {
+    // The windows are typed on the event's clock — the one this same form
+    // is saving, or the community's when it's being cleared. An unusable
+    // zone is left for the schema to reject with its own message rather
+    // than throwing from here first.
+    const clock = isValidTimeZone(timeZoneRaw)
+      ? timeZoneRaw
+      : await getEventTimeZone(actor.communityId, null);
     const input = updateCycleSettingsInput.parse({
       capacity: capacityRaw ? Number(capacityRaw) : null,
-      returningWindowClosesAt: windowRaw ? new Date(windowRaw).toISOString() : null,
+      returningWindowClosesAt: windowRaw ? instantFromZoned(windowRaw, clock).toISOString() : null,
       startDate: startDateRaw || null,
       endDate: endDateRaw || null,
       // Blank inherits the Community's zone rather than pinning UTC —
@@ -162,7 +171,7 @@ export async function updateCycleSettingsAction(formData: FormData) {
       // settings screen's per-card forms need doesn't apply to a form that
       // owns all three).
       interviewsOpen: formData.get("interviewsOpen") === "on",
-      joiningWindowClosesAt: joiningWindowRaw ? new Date(joiningWindowRaw).toISOString() : null,
+      joiningWindowClosesAt: joiningWindowRaw ? instantFromZoned(joiningWindowRaw, clock).toISOString() : null,
     });
     await updateCycleSettings(actor, cycleId, input);
   } catch (err) {

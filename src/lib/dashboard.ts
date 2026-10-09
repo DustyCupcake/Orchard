@@ -25,6 +25,7 @@ import {
 import { listEmergencyAccessActivity } from "./emergency-access";
 import { listBudgetNeedsAction } from "./budget";
 import { listEventSchedulingNeedsAction } from "./event-scheduling";
+import { getEventClocks } from "./cycles/time-zone";
 import { listMySignupsWithOccurrence, listShiftCoordinatorNeedsAction } from "./shifts";
 import { listConflictNeedsAction } from "./conflict";
 import { listKitchenNeedsAction } from "./kitchen";
@@ -203,9 +204,16 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
         { personal: [], shared: [] },
         [],
       ];
+  const shiftClockFor = await getEventClocks(actor.communityId);
   const myShiftsNeedingCompletion = myPastShiftsWithOccurrence
     .filter((s) => s.signup.status === "signed_up" && new Date(s.occurrence.endsAt) < new Date())
-    .map((s) => ({ signupId: s.signup.id, seriesTitle: s.series.title, endsAt: s.occurrence.endsAt }));
+    .map((s) => ({
+      signupId: s.signup.id,
+      seriesTitle: s.series.title,
+      endsAt: s.occurrence.endsAt,
+      // The venue's clock, so the date a shift "ended" reads the same for everyone.
+      timeZone: shiftClockFor(s.series.cycleId),
+    }));
   const conflictNeedsAction = await listConflictNeedsAction(actor);
   // Manual-tier requests this member may confirm: every one for an Admin,
   // otherwise only the tiers they are in. See src/lib/tier-requests.ts.

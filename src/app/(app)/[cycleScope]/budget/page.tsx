@@ -18,6 +18,7 @@ import {
 } from "@/lib/budget";
 import type { BudgetLineItem } from "@/lib/budget";
 import { resolveSingleCycleScope } from "@/lib/cycles";
+import { effectiveTimeZone, localInputFromInstant } from "@/lib/dates";
 import { ForbiddenError } from "@/lib/errors";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag, type Tone } from "@/components/ui/kit";
 import {
@@ -81,12 +82,11 @@ function budgetByBranch(
   return totals;
 }
 
-// datetime-local wants "YYYY-MM-DDTHH:mm" in local time, not a full ISO
-// string with a timezone offset — same helper .../participation/page.tsx
-// already uses for its own datetime-local field.
-function toDatetimeLocal(date: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+// datetime-local wants "YYYY-MM-DDTHH:mm" with no offset. The deadline is
+// typed on the event's clock, so the field is filled in on that clock too —
+// not the server's.
+function toDatetimeLocal(date: Date, timeZone: string) {
+  return localInputFromInstant(date.toISOString(), timeZone);
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -174,6 +174,8 @@ export default async function BudgetPage({
     );
   }
   const resolvedCycleId = resolution.kind === "resolved" ? resolution.cycle.id : null;
+  // The clock the deadline is typed on — the event's, else the community's.
+  const eventClock = effectiveTimeZone(resolution.kind === "resolved" ? resolution.cycle : null, communityRow);
 
   // The page's object is scope-derived. Keep the community-current row
   // separate: createBudgetCycle still has a deliberate one-active-Budget
@@ -318,11 +320,11 @@ export default async function BudgetPage({
                       <LineItemsEditor name="fixedCostsJson" initialItems={fixedCosts} branches={branches} />
                     </div>
                     <label className="flex flex-col gap-1">
-                      <span className={LABEL}>Proposal deadline</span>
+                      <span className={LABEL}>Proposal deadline, {eventClock}</span>
                       <input
                         type="datetime-local"
                         name="proposalDeadline"
-                        defaultValue={toDatetimeLocal(new Date(currentCycle.proposalDeadline))}
+                        defaultValue={toDatetimeLocal(new Date(currentCycle.proposalDeadline), eventClock)}
                         className={`${INPUT} w-fit`}
                       />
                     </label>
@@ -517,7 +519,7 @@ export default async function BudgetPage({
                   <LineItemsEditor name="fixedCostsJson" initialItems={[]} branches={branches} />
                 </div>
                 <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Proposal deadline</span>
+                  <span className={LABEL}>Proposal deadline, {eventClock}</span>
                   <input type="datetime-local" name="proposalDeadline" required className={`${INPUT} w-fit`} />
                 </label>
                 <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">

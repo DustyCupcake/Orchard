@@ -5,7 +5,7 @@ import { community, cycle, eventProposal } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
-import { effectiveTimeZone } from "../dates/timezone";
+import { getEventTimeZone } from "../cycles/time-zone";
 
 type Member = typeof memberTable.$inferSelect;
 type EventProposalRow = typeof eventProposal.$inferSelect;
@@ -178,12 +178,5 @@ export async function getProposalTimeZone(actor: Member, proposalId: string): Pr
   if (!row) {
     throw new NotFoundError("Proposal not found");
   }
-  const [communityRow] = await db
-    .select({ timeZone: community.timeZone })
-    .from(community)
-    .where(eq(community.id, actor.communityId));
-  const [cycleRow] = row.cycleId
-    ? await db.select({ timeZone: cycle.timeZone }).from(cycle).where(eq(cycle.id, row.cycleId))
-    : [];
-  return effectiveTimeZone(cycleRow, communityRow ?? {});
+  return getEventTimeZone(actor.communityId, row.cycleId);
 }

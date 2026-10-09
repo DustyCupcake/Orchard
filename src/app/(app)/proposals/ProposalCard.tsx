@@ -259,7 +259,7 @@ export default function ProposalCard({
                   className={`${INPUT} w-44`}
                 />
                 <input type="datetime-local" name="browsePeriodEnd" className={INPUT} />
-                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">(if community-endorsed)</span>
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">(if community-endorsed — read on the event&rsquo;s clock, or the community&rsquo;s)</span>
               </div>
             </details>
 

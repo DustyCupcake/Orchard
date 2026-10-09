@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatInstant } from "@/lib/dates";
 import { redirect } from "next/navigation";
 import { CheckCircle, Tree, Users, ChartLineUp, Warning } from "@phosphor-icons/react/dist/ssr";
 import { getViewingContext } from "@/lib/view-as";
@@ -210,7 +211,7 @@ function ModuleNeedsActionSections({
               key={o.occurrenceId}
               href="/shifts"
               title={o.seriesTitle}
-              meta={`${new Date(o.startsAt).toLocaleDateString()}, ${o.unresolvedCount} signup${o.unresolvedCount === 1 ? "" : "s"} still unresolved`}
+              meta={`${formatInstant(o.startsAt, o.timeZone, "date")}, ${o.unresolvedCount} signup${o.unresolvedCount === 1 ? "" : "s"} still unresolved`}
             />
           ))}
         </FeedSection>
@@ -834,7 +835,7 @@ export default async function DashboardPage({
                 key={s.signupId}
                 href="/shifts"
                 title={s.seriesTitle}
-                meta={`ended ${new Date(s.endsAt).toLocaleDateString()}, mark it complete`}
+                meta={`ended ${formatInstant(s.endsAt, s.timeZone, "date")}, mark it complete`}
               />
             ))}
           </FeedSection>

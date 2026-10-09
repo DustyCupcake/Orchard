@@ -581,7 +581,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
 
     const coordinatorFeed = await getPersonalFeed(alice);
     expect(coordinatorFeed.shiftCoordinatorNeedsAction.personal).toEqual([
-      { occurrenceId: occurrence.id, seriesTitle: "Dish duty", startsAt: expect.any(Date), unresolvedCount: 1 },
+      { occurrenceId: occurrence.id, seriesTitle: "Dish duty", startsAt: expect.any(Date), timeZone: "UTC", unresolvedCount: 1 },
     ]);
   });
 
@@ -603,7 +603,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     const bobFeed = await getPersonalFeed(bob);
     expect(bobFeed.shiftCoordinatorNeedsAction.personal).toEqual([]);
     expect(bobFeed.myShiftsNeedingCompletion).toEqual([
-      { signupId: expect.any(String), seriesTitle: "Dish duty", endsAt: expect.any(Date) },
+      { signupId: expect.any(String), seriesTitle: "Dish duty", endsAt: expect.any(Date), timeZone: "UTC" },
     ]);
   });
 

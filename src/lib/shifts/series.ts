@@ -5,6 +5,7 @@ import { branch, community, cycle, shiftSeries, task } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
+import { getEventTimeZone } from "../cycles/time-zone";
 import {
   isShiftManagerForScope,
   listShiftManagerScopesForMember,
@@ -311,4 +312,14 @@ export async function setShiftSeriesScope(actor: Member, seriesId: string, cycle
     .where(eq(shiftSeries.id, seriesId))
     .returning();
   return updated;
+}
+
+/**
+ * The clock a series' times are read in: its event's zone, else the
+ * Community's. Shifts happen at the venue, so this is the zone both the
+ * coordinator's typed times and the roster's displayed ones belong to.
+ */
+export async function getShiftSeriesTimeZone(actor: Member, seriesId: string): Promise<string> {
+  const series = await getShiftSeries(actor, seriesId);
+  return getEventTimeZone(actor.communityId, series.cycleId);
 }

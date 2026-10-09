@@ -1,5 +1,6 @@
 import type { shiftOccurrence as shiftOccurrenceTable, shiftSeries as shiftSeriesTable, shiftSignup as shiftSignupTable } from "@/db/schema";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
+import { formatInstantRange } from "@/lib/dates";
 import {
   archiveShiftSeriesAction,
   generateOccurrencesAction,
@@ -14,10 +15,6 @@ type ShiftSignupRow = typeof shiftSignupTable.$inferSelect;
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function formatRange(startsAt: Date | string, endsAt: Date | string) {
-  return `${new Date(startsAt).toLocaleString()} – ${new Date(endsAt).toLocaleTimeString()}`;
-}
-
 // The shift manager's own management view — see docs/spec.md's "Shifts /
 // rota" and docs/development-plan.md's Phase 29 ("a coordinator view
 // ... listing each occurrence's current signups"). Rendered by page.tsx
@@ -31,11 +28,14 @@ export default function MySeriesSection({
   memberNameById,
   cycleNameById,
   placementOptions,
+  shiftZone,
 }: {
   series: { series: ShiftSeriesRow; occurrences: ShiftOccurrenceRow[]; signups: ShiftSignupRow[] }[];
   memberNameById: Map<string, string>;
   cycleNameById: Map<string, { name: string }>;
   placementOptions: { cycleId: string | null; label: string }[];
+  /** The venue clock for a series' event — what its times are typed and shown in. */
+  shiftZone: (cycleId: string | null) => string;
 }) {
   return (
     <section className="mt-8 border-t border-[var(--border)] pt-6">
@@ -98,7 +98,7 @@ export default function MySeriesSection({
                   const ended = new Date(o.endsAt) <= new Date();
                   return (
                     <div key={o.id} className="text-[length:var(--text-body)] text-[var(--text)]">
-                      <span className="font-medium">{formatRange(o.startsAt, o.endsAt)}</span>{" "}
+                      <span className="font-medium">{formatInstantRange(o.startsAt, o.endsAt, shiftZone(s.cycleId))}</span>{" "}
                       <span className="text-[var(--text-muted)]">
                         — capacity {o.capacity ?? s.defaultCapacity} — {roster.length} signed up
                       </span>
@@ -149,7 +149,7 @@ export default function MySeriesSection({
                         ))}
                       </div>
                       <label className="flex flex-col gap-1">
-                        <span className={LABEL}>Start time</span>
+                        <span className={LABEL}>Start time ({shiftZone(s.cycleId)})</span>
                         <input type="time" name="startTime" required className={`${INPUT} w-fit`} />
                       </label>
                       <label className="flex flex-col gap-1">
@@ -168,7 +168,7 @@ export default function MySeriesSection({
                       <input type="hidden" name="seriesId" value={s.id} />
                       <input type="hidden" name="mode" value="explicit" />
                       <label className="flex flex-col gap-1">
-                        <span className={LABEL}>One per line, startsAt|endsAt</span>
+                        <span className={LABEL}>One per line, startsAt|endsAt — read in {shiftZone(s.cycleId)}</span>
                         <textarea
                           name="slotsRaw"
                           rows={3}

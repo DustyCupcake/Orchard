@@ -271,19 +271,62 @@ describe("getCalendarView", () => {
       expect(await sessionDay(alice)).toBe("2030-06-10");
     });
 
-    it("places an instant on the member's own day, and leaves a plain date alone", async () => {
-      const alice = await setUpLateEvening();
-      const tokyo = { ...alice, timeZone: "Asia/Tokyo" };
-      expect(await sessionDay(tokyo)).toBe("2030-06-11");
-      expect(await allDayDate(tokyo)).toBe("2030-06-10");
-    });
-
-    it("falls back to the community's zone, and the member's beats it", async () => {
+    // The programme is the venue's: it sits on the day it falls on there,
+    // whatever zone the viewer is in.
+    it("puts a programme session on the venue's day, not the viewer's", async () => {
       const alice = await setUpLateEvening();
       await updateCommunity(alice, { timeZone: "Asia/Tokyo" });
+      // 23:30 UTC on the 10th is already the 11th in Tokyo.
       expect(await sessionDay(alice)).toBe("2030-06-11");
-      // Honolulu is UTC-10: 13:30 on the 10th.
-      expect(await sessionDay({ ...alice, timeZone: "Pacific/Honolulu" })).toBe("2030-06-10");
+      expect(await sessionDay({ ...alice, timeZone: "Pacific/Honolulu" })).toBe("2030-06-11");
+    });
+
+    it("leaves a plain date alone whatever the viewer's zone", async () => {
+      const alice = await setUpLateEvening();
+      expect(await allDayDate({ ...alice, timeZone: "Asia/Tokyo" })).toBe("2030-06-10");
+    });
+
+    it("places a deadline on the viewer's own day", async () => {
+      const { alice, branch: testBranch } = await createFixtures();
+      await updateCommunity(alice, { modulesEnabled: ["budget"] });
+      const [ownerTask] = await db
+        .insert(task)
+        .values({
+          communityId: alice.communityId,
+          branchId: testBranch.id,
+          title: "Budget owner",
+          effort: "owns_a_thing",
+          effortMagnitude: { hours_per_week: 2 },
+          createdBy: alice.id,
+        })
+        .returning();
+      await setPermissionGrant(alice, "budget", ownerTask.id);
+      await claimTask(alice, ownerTask.id);
+      await createBudgetCycle(alice, { title: "Season budget", proposalDeadline: "2030-06-10T23:30:00.000Z" });
+
+      const deadlineDay = async (actor: Parameters<typeof getCalendarView>[0]) =>
+        (await getCalendarView(actor)).entries.find((e) => e.kind === "budget_deadline")?.date;
+      expect(await deadlineDay(alice)).toBe("2030-06-10");
+      expect(await deadlineDay({ ...alice, timeZone: "Asia/Tokyo" })).toBe("2030-06-11");
+      expect(await deadlineDay({ ...alice, timeZone: "Pacific/Honolulu" })).toBe("2030-06-10");
+    });
+
+    it("puts a shift on the venue's day, not the viewer's", async () => {
+      const { alice, branch: testBranch } = await createFixtures();
+      await updateCommunity(alice, { modulesEnabled: ["shifts"], timeZone: "Asia/Tokyo" });
+      await grantShiftManagementTo(alice, testBranch.id);
+      const series = await createShiftSeries(alice, { title: "Dish duty", defaultCapacity: 2 });
+      // 23:30 UTC on the 10th is 08:30 on the 11th in Tokyo.
+      const [occurrence] = await generateShiftOccurrences(alice, series.id, {
+        mode: "explicit",
+        slots: [{ startsAt: "2030-06-10T23:30:00.000Z", endsAt: "2030-06-11T00:30:00.000Z" }],
+      });
+      await signUpForShift(alice, occurrence.id);
+
+      const shiftDay = async (actor: Parameters<typeof getCalendarView>[0]) =>
+        (await getCalendarView(actor)).entries.find((e) => e.kind === "shift_occurrence")?.date;
+      expect(await shiftDay(alice)).toBe("2030-06-11");
+      expect(await shiftDay({ ...alice, timeZone: "Pacific/Honolulu" })).toBe("2030-06-11");
     });
 
     it("reports the zone it read in and the day that makes today", async () => {
