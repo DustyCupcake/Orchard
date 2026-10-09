@@ -29,6 +29,18 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-10-08",
+    title: "Tasks that need approval are approved by coordination",
+    summary: "On a task marked \"requires approval\", the first person to claim it now needs approval too, and coordination decides.",
+    points: [
+      "Before, the first person to claim an unclaimed \"requires approval\" task simply got it, and could then approve everyone after them. Now a request goes to that task's coordination first.",
+      "Coordination can approve a request without holding the task, so a request no longer gets stuck when everyone holding the task has left.",
+      "If nobody coordinates that part of the community yet, nothing changes: the task is claimed directly and a current holder approves.",
+      "Someone shadowing a task can no longer approve or decline requests to join it, and nobody can approve their own request.",
+    ],
+    source: "a `coordination_approved` task is approved by its coordination, including for the first claim",
+  },
+  {
     date: "2026-10-06",
     title: "A tier is something you ask for",
     summary: "You can no longer tick a tier onto your own profile. Someone who can vouch for it confirms.",

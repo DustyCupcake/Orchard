@@ -1,10 +1,10 @@
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { db, type Tx } from "@/db";
+import { db, type DbOrTx, type Tx } from "@/db";
 import { member, task, taskAssignment, taskJoinRequest } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConfirmationRequiredError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import { isCoordinationHolder } from "../coordination";
+import { isAuthorizedToWaive, isCoordinationHolder, listCoordinatorIdsForScope } from "../coordination";
 import { getUnmetRequirements, describeRequirement } from "./requirements";
 import { assignmentCount, loadTaskForUpdate, performClaimInTx } from "./lifecycle";
 import { requireTaskInCommunity } from "./shared";
@@ -34,6 +34,13 @@ type Member = typeof memberTable.$inferSelect;
 // `community_endorsed` never claims through here at all, regardless of
 // holder count — see src/lib/tasks/endorsements.ts's expressCandidacy(),
 // the dedicated entry point Phase 13 built for it.
+//
+// The one exception to "nobody holding it yet claims instantly" is a
+// `coordination_approved` task in a scope someone coordinates: there *is*
+// somebody to route the first claim to, and that openness exists
+// precisely for tasks where who holds them matters (sensitive access), so
+// letting the first claimer skip approval and then approve everyone
+// after them defeats it. See firstClaimNeedsApproval.
 export async function claimOrRequestToJoin(
   actor: Member,
   taskId: string,
@@ -75,8 +82,9 @@ export async function claimOrRequestToJoin(
 
     const holderCount = await assignmentCount(tx, taskId);
     const needsRequest =
-      holderCount > 0 &&
-      (current.openness === "request" || current.openness === "coordination_approved");
+      (holderCount > 0 &&
+        (current.openness === "request" || current.openness === "coordination_approved")) ||
+      (holderCount === 0 && (await firstClaimNeedsApproval(current, actor)));
 
     if (!needsRequest) {
       const updated = await performClaimInTx(tx, actor, taskId);
@@ -119,34 +127,104 @@ export async function claimOrRequestToJoin(
   });
 }
 
-// coordination_approved: approvable by a holder whose TaskAssignment.
-// is_coordination_slot is set, if one exists — falling back to any
-// current holder when the task has no coordination slot filled, per
-// docs/development-plan.md's Phase 12 scope note. `request` tasks:
-// any current holder can accept or decline.
-async function requireApprover(
-  tx: Tx,
-  taskRow: { id: string; openness: string },
+// Whether the first claim on a task nobody holds yet has to be approved.
+// Only `coordination_approved` ever does, and only when somebody other
+// than the claimer is in a position to approve it. Two cases claim
+// directly, both deliberately:
+//
+// - the claimer *is* the task's coordination (they are the authority a
+//   request would be routed to; the self-assign confirmation in
+//   claimOrRequestToJoin has already asked whether somebody else is a
+//   better fit), and
+// - nobody coordinates the scope at all, so a request would wait for
+//   nobody. A small community with no coordinator is the ordinary case
+//   here, and stranding every such task would be worse than the status
+//   quo. This is the same degrade-gracefully shape as the approval
+//   fallback below, and it is the one place the bypass remains.
+async function firstClaimNeedsApproval(
+  taskRow: { id: string; openness: string; branchId: string; cycleId: string | null },
   actor: Member,
 ) {
-  const holders = await tx
+  if (taskRow.openness !== "coordination_approved") return false;
+  const scope = { branchId: taskRow.branchId, cycleId: taskRow.cycleId };
+  if (await isCoordinationHolder(actor, scope)) return false;
+  const coordinators = await listCoordinatorIdsForScope(actor.communityId, scope);
+  return coordinators.everyone || [...coordinators.memberIds].some((id) => id !== actor.id);
+}
+
+// Who may accept or decline a join request on this task.
+//
+// `request`: any current holder — "request routes to the owner".
+//
+// `coordination_approved`: the task's coordination, i.e. whoever holds
+// branch (or community, or event) coordination over where the task sits,
+// or the task's own coordination slot — the same authority that can waive
+// a requirement (isAuthorizedToWaive), because both are "coordination
+// deciding who may hold something sensitive". Coordination does *not*
+// need to hold the task itself, which is what the old rule got wrong: it
+// demanded a holder first, so a task whose holders had all left, with a
+// request pending, could be resolved by nobody at all.
+//
+// If nobody *else* has that authority (no coordination covers the scope
+// and no slot is filled, leaving the requester out of the count), it
+// falls back to an ordinary holder, as it always did. That keeps a
+// community without coordinators working; it is not a bypass, because
+// anyone coordinating the scope switches it off.
+//
+// Never the requester, and never a shadow: a shadow is learning the task,
+// not placing people on it, and `assignmentCount` already excludes
+// shadows from "who holds this".
+export async function canResolveJoinRequest(
+  dbOrTx: DbOrTx,
+  taskRow: { id: string; openness: string; branchId: string; cycleId: string | null },
+  actor: Member,
+  requesterId: string | null,
+): Promise<boolean> {
+  if (requesterId !== null && actor.id === requesterId) return false;
+
+  const holders = await dbOrTx
     .select()
     .from(taskAssignment)
-    .where(eq(taskAssignment.taskId, taskRow.id));
-
+    .where(and(eq(taskAssignment.taskId, taskRow.id), eq(taskAssignment.isShadow, false)));
   const actorHolds = holders.some((h) => h.memberId === actor.id);
-  if (!actorHolds) {
-    throw new ForbiddenError("Only a current holder can accept or decline a join request");
-  }
 
-  if (taskRow.openness === "coordination_approved") {
-    const coordinationHolders = holders.filter((h) => h.isCoordinationSlot);
-    if (coordinationHolders.length > 0 && !coordinationHolders.some((h) => h.memberId === actor.id)) {
-      throw new ForbiddenError(
-        "Only the task's coordination-slot holder can approve this join request",
-      );
-    }
-  }
+  if (taskRow.openness !== "coordination_approved") return actorHolds;
+
+  const scope = { branchId: taskRow.branchId, cycleId: taskRow.cycleId };
+  if (await isAuthorizedToWaive(actor, scope, taskRow.id)) return true;
+
+  if (holders.some((h) => h.isCoordinationSlot && h.memberId !== requesterId)) return false;
+  const coordinators = await listCoordinatorIdsForScope(actor.communityId, scope);
+  if (coordinators.everyone || [...coordinators.memberIds].some((id) => id !== requesterId)) return false;
+  return actorHolds;
+}
+
+// Which of a task's pending requests `actor` may resolve, for the task
+// page. Per request rather than per task because the requester is always
+// excluded: a coordinator who asked to join is not their own approver.
+export async function listResolvableJoinRequestIds(
+  actor: Member,
+  taskRow: { id: string; openness: string; branchId: string; cycleId: string | null },
+  pending: { id: string; memberId: string }[],
+): Promise<Set<string>> {
+  const verdicts = await Promise.all(
+    pending.map(async (r) => ((await canResolveJoinRequest(db, taskRow, actor, r.memberId)) ? r.id : null)),
+  );
+  return new Set(verdicts.filter((id): id is string => id !== null));
+}
+
+async function requireApprover(
+  tx: Tx,
+  taskRow: { id: string; openness: string; branchId: string; cycleId: string | null },
+  actor: Member,
+  requesterId: string,
+) {
+  if (await canResolveJoinRequest(tx, taskRow, actor, requesterId)) return;
+  throw new ForbiddenError(
+    taskRow.openness === "coordination_approved"
+      ? "Only this task's coordination can approve this join request"
+      : "Only a current holder can accept or decline a join request",
+  );
 }
 
 async function loadPendingRequestForUpdate(tx: Tx, taskId: string, requestId: string) {
@@ -167,8 +245,8 @@ async function loadPendingRequestForUpdate(tx: Tx, taskId: string, requestId: st
 export async function acceptJoinRequest(actor: Member, taskId: string, requestId: string) {
   return db.transaction(async (tx) => {
     const current = await loadTaskForUpdate(tx, taskId, actor.communityId);
-    await requireApprover(tx, current, actor);
     const request = await loadPendingRequestForUpdate(tx, taskId, requestId);
+    await requireApprover(tx, current, actor, request.memberId);
 
     const [requester] = await tx.select().from(member).where(eq(member.id, request.memberId));
     if (!requester) {
@@ -197,8 +275,8 @@ export async function declineJoinRequest(
 ) {
   return db.transaction(async (tx) => {
     const current = await loadTaskForUpdate(tx, taskId, actor.communityId);
-    await requireApprover(tx, current, actor);
-    await loadPendingRequestForUpdate(tx, taskId, requestId);
+    const request = await loadPendingRequestForUpdate(tx, taskId, requestId);
+    await requireApprover(tx, current, actor, request.memberId);
 
     const [updated] = await tx
       .update(taskJoinRequest)

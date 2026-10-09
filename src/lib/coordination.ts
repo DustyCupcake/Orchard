@@ -276,6 +276,62 @@ export async function listCoordinationHoldersForScopes(
   return { byBranch, byCycle, community };
 }
 
+// Every real (non-shadow) holder whose coordination grant covers a task
+// placed at `scope`: a cycle-less community_coordination grant, a
+// cycle-less branch_coordination grant in the task's branch, and any
+// coordination grant placed in the task's cycle. The same three rules
+// resolveCoordinationCoverage and listCoordinationHoldersForScopes apply,
+// answered the other way round — "who covers this task" rather than
+// "what does this member cover" — and for *all* holders rather than the
+// first per scope.
+//
+// Exists for one question: is anyone other than a given member in a
+// position to approve? An approval rule that falls back to ordinary
+// holders when nobody coordinates a scope has to know whether anybody
+// does, and has to be able to leave the requester out of that count (a
+// sole coordinator asking to join a task is not their own approver).
+//
+// A module open to everyone is reported as `everyone`, not expanded into
+// member ids: it is the community saying coordination is nobody's in
+// particular, and listing the whole membership would be both wrong and
+// expensive.
+export async function listCoordinatorIdsForScope(
+  communityId: string,
+  scope: { branchId: string; cycleId: string | null },
+): Promise<{ everyone: boolean; memberIds: Set<string> }> {
+  if (
+    (await isModuleOpenToEveryone(communityId, "branch_coordination")) ||
+    (await isModuleOpenToEveryone(communityId, "community_coordination"))
+  ) {
+    return { everyone: true, memberIds: new Set() };
+  }
+
+  const covers: (SQL | undefined)[] = [
+    and(eq(permissionGrant.moduleKey, "community_coordination"), isNull(task.cycleId)),
+    and(
+      eq(permissionGrant.moduleKey, "branch_coordination"),
+      isNull(task.cycleId),
+      eq(task.branchId, scope.branchId),
+    ),
+  ];
+  if (scope.cycleId !== null) covers.push(eq(task.cycleId, scope.cycleId));
+
+  const rows = await db
+    .selectDistinct({ memberId: taskAssignment.memberId })
+    .from(permissionGrant)
+    .innerJoin(task, eq(task.id, permissionGrant.taskId))
+    .innerJoin(taskAssignment, and(eq(taskAssignment.taskId, task.id), eq(taskAssignment.isShadow, false)))
+    .where(
+      and(
+        eq(permissionGrant.communityId, communityId),
+        inArray(permissionGrant.moduleKey, [...COORDINATION_MODULE_KEYS]),
+        eq(task.communityId, communityId),
+        or(...covers)!,
+      ),
+    );
+  return { everyone: false, memberIds: new Set(rows.map((r) => r.memberId)) };
+}
+
 // The task's own coordination slot (Phase 12's is_coordination_slot,
 // within a multi-slot task) — a second, narrower way to be authorized
 // for some coordination actions, per spec's "Whoever holds branch

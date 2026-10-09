@@ -19,6 +19,7 @@ import {
   isAuthorizedToNominate,
   listCandidacies,
   listJoinRequests,
+  listResolvableJoinRequestIds,
   listMyEndorsements,
   listMyPings,
   listNominationsForTask,
@@ -307,7 +308,7 @@ export default async function TaskDetailPage({
   // holders — see docs/spec.md's "Anonymous task signal" and "Talk to
   // my coordinator" (Coordination mechanics) — checked up front instead
   // of relying on listSignals()/listPings() throwing, matching how
-  // canApproveRequests is checked elsewhere on this page.
+  // join-request approval is checked elsewhere on this page.
   const [signals, pings] = isCoordHolderForBranch
     ? await Promise.all([listSignals(viewing, id), listPings(viewing, id)])
     : [[], []];
@@ -335,13 +336,10 @@ export default async function TaskDetailPage({
   const canShadow =
     !holdsTask && !isShadowing && (taskRow.status === "claimed" || taskRow.status === "waiting");
   const requestGated = taskRow.openness === "request" || taskRow.openness === "coordination_approved";
-  const coordinationHolders = taskRow.assignments.filter((a) => a.isCoordinationSlot);
-  const canApproveRequests =
-    holdsTask &&
-    (taskRow.openness !== "coordination_approved" ||
-      coordinationHolders.length === 0 ||
-      coordinationHolders.some((a) => a.memberId === viewing.id));
   const pendingRequests = joinRequests.filter((r) => r.status === "pending");
+  // The same rule acceptJoinRequest enforces, asked per request — see
+  // canResolveJoinRequest for who that is on each openness.
+  const resolvableRequestIds = await listResolvableJoinRequestIds(viewing, taskRow, pendingRequests);
   const resolvedRequests = joinRequests.filter((r) => r.status !== "pending");
   const myRequest = joinRequests.find((r) => r.memberId === viewing.id);
 
@@ -1687,7 +1685,7 @@ export default async function TaskDetailPage({
                 <p className="text-[length:var(--text-body)] text-[var(--text)]">
                   {memberNameById.get(r.memberId) ?? "—"} asked to join — {new Date(r.requestedAt).toLocaleString()}
                 </p>
-                {canApproveRequests && (
+                {resolvableRequestIds.has(r.id) && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <form action={acceptJoinRequestAction}>
                       <input type="hidden" name="taskId" value={taskRow.id} />
