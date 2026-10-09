@@ -154,3 +154,68 @@ export async function countCapacityHolds(communityId: string, cycleId: string): 
     return lane ? laneHoldsCapacity(lane) : false;
   }).length;
 }
+
+// Where a person is trying to get in, which decides which doors matter.
+//   invite_created  — a member is making an invitation link
+//   invite_redeemed — somebody is opening one
+//   application     — somebody is sending an application (`withInvite`: with an invite behind it)
+export type EntryVia = "invite_created" | "invite_redeemed" | "application";
+
+// docs/admission-flow.md §6: every door is checked where it matters, and doors
+// govern *entering* — a closed one stops new entries and says so, and a person
+// already in the funnel carries on. This is the one place that is decided, for
+// the three ways in, so creating an invite, opening it and sending an
+// application can never disagree about whether the door is open (redemption
+// used to check none of them).
+//
+// Returns the sentence to show, or null when the way is clear. Three things
+// worth knowing about what it does *not* refuse:
+//   - the interviews door. A closed one holds an arrival at the interview step;
+//     it never turns someone away at the entrance, and never skips the step.
+//   - an invite whose lane admits at once when the event is full. That invite
+//     is already holding its place (it is counted in the room), so refusing it
+//     for the room it is itself using would make it impossible to ever redeem.
+//     Capacity is checked again at admission, which is the moment a place is
+//     actually taken.
+//   - an invite that has been issued and whose door has since closed is not
+//     revoked: it is refused here, with a message, and works again when the
+//     door reopens or it expires.
+export async function entryRefusal(input: {
+  communityId: string;
+  cycleId: string | null;
+  lane: { applicationRequired: boolean; interviewRequired: boolean; verification: "none" | "community_check" };
+  via: EntryVia;
+  withInvite?: boolean;
+}): Promise<string | null> {
+  const { via } = input;
+  const needsInviteDoor = via !== "application" || Boolean(input.withInvite);
+  const needsApplicationDoor = via === "application" || input.lane.applicationRequired;
+  const admitsAtOnce =
+    input.lane.verification === "none" && !input.lane.applicationRequired && !input.lane.interviewRequired;
+
+  if (input.cycleId) {
+    const joining = await getCycleJoiningState(input.communityId, input.cycleId);
+    if (!joining.periodOpen) {
+      return via === "application" ? "Applications for this event aren't open right now" : "This event's joining period isn't open";
+    }
+    const holdsItsOwnPlace = via === "invite_redeemed" && admitsAtOnce;
+    if (joining.atCapacity && !holdsItsOwnPlace) {
+      return via === "application"
+        ? "This event is full — no capacity left for new applications"
+        : "This event is full — no capacity left for new joins";
+    }
+    if (needsInviteDoor && !joining.cycle.invitesOpen) return "Invites for this event are closed";
+    if (needsApplicationDoor && !joining.cycle.applicationsOpen) return "Applications for this event are closed";
+    return null;
+  }
+
+  const [communityRow] = await db.select().from(community).where(eq(community.id, input.communityId));
+  if (!communityRow) throw new NotFoundError("Community not found");
+  if (needsInviteDoor && !communityRow.recruitmentInvitesOpen) {
+    return "This community isn't accepting invite-based joins right now";
+  }
+  if (needsApplicationDoor && !communityRow.recruitmentApplicationsOpen) {
+    return "This community isn't accepting applications right now";
+  }
+  return null;
+}

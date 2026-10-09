@@ -7,10 +7,10 @@ import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../error
 import { requireModuleEnabled } from "../modules";
 import { generateToken } from "../token";
 import { findExistingMemberByLoginEmail, preferredMemberName } from "../member";
-import { getCycleJoiningState } from "./joining";
+import { entryRefusal } from "./joining";
 import { getCommunityRow, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
 import { completeConsensusArrival, consensusDisclosure, consensusWindowFor } from "./consensus";
-import { admitArrival, createAdmissionArrival } from "./admission";
+import { admitArrival, createAdmissionArrival, releaseWaitlist } from "./admission";
 import {
   declarationFromInvite,
   listOpenLanes,
@@ -84,47 +84,24 @@ export async function createCommunityInvite(actor: Member, input: CreateCommunit
   }
   const route = laneRoute(laneRuleOf(lane));
 
-  if (cycleId) {
-    // Validates the cycle is in-community (throws NotFoundError
-    // otherwise) and gives us its live door state.
-    const joining = await getCycleJoiningState(actor.communityId, cycleId);
-    if (joining.atCapacity) {
-      throw new ConflictError("This event is full — no capacity left for new joins");
-    }
-    if (!joining.periodOpen) {
-      throw new ConflictError("This event's joining period isn't open");
-    }
-    // Every route needs *some* door: invites for the ones that admit or
-    // announce on the spot, applications where there is a form to fill in,
-    // and the third door — interviews — wherever the lane holds one.
-    // Without the last check a community could close interviews and still
-    // be signing people up for interviews.
-    if (route !== "process" && !joining.cycle.invitesOpen) {
-      throw new ConflictError("Invites for this event are closed");
-    }
-    if (lane.applicationRequired && !joining.cycle.applicationsOpen) {
-      throw new ConflictError("Applications for this event are closed");
-    }
-    if (lane.interviewRequired && !joining.cycle.interviewsOpen) {
-      throw new ConflictError("Interviews for this event are closed");
-    }
-    if (route === "direct" && joining.cycle.capacity !== null) {
+  // The doors, checked where they matter (docs/admission-flow.md §6) by the same
+  // function that checks them when the link is opened and when an application
+  // is sent. A closed interviews door is not among them: it holds an arrival at
+  // the interview step rather than stopping anyone at the entrance.
+  const refusal = await entryRefusal({ communityId: actor.communityId, cycleId, lane, via: "invite_created" });
+  if (refusal) throw new ConflictError(refusal);
+
+  // An invite that admits at once holds a place in a capped event until it is
+  // redeemed, revoked or expires, so one of those needs to be a real date.
+  if (cycleId && route === "direct") {
+    const [capped] = await db.select({ capacity: cycle.capacity }).from(cycle).where(eq(cycle.id, cycleId));
+    if (capped && capped.capacity !== null) {
       if (!input.expiresAt) {
         throw new AppError("Direct invites into a capacity-capped event need an expiry date");
       }
       if (new Date(input.expiresAt) <= new Date()) {
         throw new AppError("The expiry must be in the future — no immortal capacity holds");
       }
-    }
-  } else {
-    if (!communityRow.recruitmentInvitesOpen) {
-      throw new AppError("This community isn't accepting invite-based joins right now");
-    }
-    if (lane.applicationRequired && !communityRow.recruitmentApplicationsOpen) {
-      throw new AppError("This community isn't accepting applications right now");
-    }
-    if (lane.interviewRequired && !communityRow.recruitmentInterviewsOpen) {
-      throw new AppError("This community isn't running interviews right now");
     }
   }
 
@@ -210,6 +187,8 @@ export async function revokeCommunityInvite(actor: Member, inviteId: string) {
     .set({ revokedAt: new Date() })
     .where(eq(communityInvite.id, inviteId))
     .returning();
+  // A direct invite was holding a place in its event; that place is free now.
+  if (updated.cycleId) await releaseWaitlist(updated.cycleId);
   return updated;
 }
 
@@ -334,6 +313,9 @@ export type RedeemCommunityInviteInput = z.infer<typeof redeemCommunityInviteInp
 export type RedemptionOutcome =
   // A lane that admits straight away: they are a member and signed in.
   | { kind: "admitted"; arrivalId: string; token: string; memberId: string; redirectTo: string }
+  // A lane that admits straight away, into an event that has since filled up:
+  // they are approved and waiting for room, and not a member yet.
+  | { kind: "waitlisted"; arrivalId: string; token: string }
   // A community-check lane: they agreed to the disclosure, their arrival is
   // announced, and the window runs. They are not a member yet.
   | { kind: "check"; arrivalId: string; token: string; deadline: Date }
@@ -385,6 +367,11 @@ export async function redeemCommunityInvite(
     );
   }
   const { lane, route } = resolved;
+
+  // Doors govern entering: an issued invite is not revoked when one closes, it
+  // is refused here with a message and works again once the door reopens.
+  const refusal = await entryRefusal({ communityId: invite.communityId, cycleId: invite.cycleId, lane, via: "invite_redeemed" });
+  if (refusal) throw new ConflictError(`${refusal}. Your link is kept, so try again later.`);
 
   // A lane with an application is entered by sending the application: the
   // form is where a person's name and email come from, and the arrival is
@@ -456,7 +443,9 @@ export async function redeemCommunityInvite(
   const { arrival, token } = created;
 
   if (route === "direct") {
-    const { memberId } = await admitArrival(arrival.id, { notify: false });
+    const admitted = await admitArrival(arrival.id, { notify: false });
+    if (admitted.waitlisted) return { kind: "waitlisted", arrivalId: arrival.id, token };
+    const { memberId } = admitted;
     const { firstLoginDestinationFor } = await import("@/lib/first-login");
     return { kind: "admitted", arrivalId: arrival.id, token, memberId, redirectTo: await firstLoginDestinationFor(memberId) };
   }

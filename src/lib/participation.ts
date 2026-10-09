@@ -119,6 +119,12 @@ export async function declareParticipation(actor: Member, cycleId: string, input
   // Phase 40 and src/lib/settings/tiers.ts's syncComputedTiers.
   await syncComputedTiers(actor.id, actor.communityId);
 
+  // Someone no longer coming leaves a place free for whoever is waiting for one.
+  if (input.status !== "coming") {
+    const { releaseWaitlist } = await import("./recruitment/admission");
+    await releaseWaitlist(cycleId);
+  }
+
   return result;
 }
 

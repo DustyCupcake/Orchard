@@ -4,6 +4,7 @@ import {
   consensusWindowFor,
   getCommunityInviteByToken,
   getCommunityInviteLane,
+  entryRefusal,
 } from "@/lib/recruitment";
 import { redirect } from "next/navigation";
 import { Banner, BUTTON_PRIMARY, INPUT, LABEL } from "@/components/ui/kit";
@@ -49,7 +50,14 @@ export default async function InvitePage({
   const status = communityInviteStatus(invite);
   const resolved = invite && status === "valid" ? await getCommunityInviteLane(invite) : null;
 
-  if (invite && resolved?.lane.applicationRequired) {
+  // Doors govern entering, and an issued invite isn't revoked when one closes:
+  // the page says so and the link works again when the door reopens.
+  const doorRefusal =
+    invite && resolved
+      ? await entryRefusal({ communityId: invite.communityId, cycleId: invite.cycleId, lane: resolved.lane, via: "invite_redeemed" })
+      : null;
+
+  if (invite && resolved?.lane.applicationRequired && !doorRefusal) {
     redirect(`/apply?invite=${encodeURIComponent(token)}`);
   }
 
@@ -67,6 +75,10 @@ export default async function InvitePage({
       {status !== "valid" ? (
         <div className="mt-4">
           <Banner tone="danger">{STATUS_MESSAGE[status]}</Banner>
+        </div>
+      ) : doorRefusal ? (
+        <div className="mt-4">
+          <Banner tone="warning">{doorRefusal}. Your link is kept, so it&rsquo;s worth trying again later.</Banner>
         </div>
       ) : held ? (
         <div className="mt-4">

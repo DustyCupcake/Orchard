@@ -19,6 +19,7 @@ import {
 import type { DateBoundaryInput } from "@/lib/dates";
 import { exportCycleAsTaskPack } from "@/lib/task-packs";
 import { setEventLanes } from "@/lib/recruitment/admission-lanes";
+import { admitWaitlistedAnyway } from "@/lib/recruitment/admission";
 import { AppError, ConfirmationRequiredError } from "@/lib/errors";
 
 // Every form on this page carries a hidden `cycleScope` field so a
@@ -186,6 +187,24 @@ export async function updateEventLanesAction(formData: FormData) {
   revalidatePath(`/${cycleScope}/participation`);
   revalidatePath("/invites");
   redirect(`/${cycleScope}/participation?laneRulesUpdated=1`);
+}
+
+// docs/admission-flow.md §6 — somebody was approved but the event had no room,
+// and an administrator admits them anyway. Room appearing on its own admits
+// people without anyone doing this; this is the override for when it hasn't.
+export async function admitWaitlistedAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+  const arrivalId = String(formData.get("arrivalId") ?? "");
+
+  try {
+    await admitWaitlistedAnyway(actor, arrivalId);
+  } catch (err) {
+    redirectWithError(cycleScope, err);
+  }
+
+  revalidatePath(`/${cycleScope}/participation`);
+  redirect(`/${cycleScope}/participation?waitlistAdmitted=1`);
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside

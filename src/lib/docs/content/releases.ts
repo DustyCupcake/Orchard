@@ -29,6 +29,18 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-10-10",
+    title: "Joining: a full event waits instead of turning people away",
+    summary: "An invitation now respects the same doors as an application, and someone approved for an event that has filled up waits for room.",
+    points: [
+      "Opening an invitation link used to check no door. It now says so, in a sentence, when invites are closed, an event's joining period is over or the event is full — and the link is kept, so it works again when the door reopens.",
+      "A closed interviews door no longer turns anyone away at the entrance. People wait at the interview step until interviews reopen.",
+      "If someone is approved for an event that has since filled up, they're told they're in as soon as there's room, and they become a member then. Room appearing — a higher capacity, someone no longer coming, an invitation revoked — admits whoever waited longest.",
+      "On an event's page, whoever can run the event sees who is waiting and can admit someone anyway.",
+    ],
+    source: "doors checked everywhere somebody enters, and a place in an event taken at admission with a waitlist",
+  },
+  {
     date: "2026-10-09",
     title: "Joining: lanes you define, and a page for the person joining",
     summary: "A community now defines only the ways of arriving that it needs, and everyone who is on their way in has a private page showing where they are.",

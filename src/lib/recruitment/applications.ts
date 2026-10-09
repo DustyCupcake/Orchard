@@ -14,7 +14,7 @@ import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../error
 import { requireModuleEnabled } from "../modules";
 import { getForm, submitPublicFormResponse } from "../forms";
 import { computeRecruitmentOutcome } from "./evaluations";
-import { getCycleJoiningState, type CycleJoiningState } from "./joining";
+import { entryRefusal, getCycleJoiningState, type CycleJoiningState } from "./joining";
 import { getCommunityRow, isRecruitmentTaskHolder, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
 import { computeWiderDiscussionStatus, getRecruitmentDecision } from "./decisions";
 import { listObjections } from "./objections";
@@ -143,19 +143,6 @@ export async function submitRecruitmentApplication(
     targetCycleId = pairing.cycleId;
   }
   const joining = targetCycleId ? await getCycleJoiningState(communityId, targetCycleId) : null;
-  if (joining) {
-    if (joining.atCapacity) {
-      throw new AppError("This event is full — no capacity left for new applications");
-    }
-    if (!joining.periodOpen) {
-      throw new AppError("Applications for this event aren't open right now");
-    }
-    if (!joining.cycle.applicationsOpen) {
-      throw new AppError("Applications for this event are closed");
-    }
-  } else if (!communityRow.recruitmentApplicationsOpen) {
-    throw new AppError("This community isn't accepting applications right now");
-  }
 
   // Which lane is this application on? An invite's own, found from what the
   // inviter declared; otherwise the public lane the link points at
@@ -179,6 +166,11 @@ export async function submitRecruitmentApplication(
     }
     lane = resolved;
   }
+  // The doors, now that the lane is known: the same check creating an invite and
+  // opening one make, so the three can never disagree (docs/admission-flow.md §6).
+  const refusal = await entryRefusal({ communityId, cycleId: targetCycleId, lane, via: "application", withInvite: Boolean(invite) });
+  if (refusal) throw new AppError(refusal);
+
   if (!lane.applicationRequired) {
     // A lane without an application is entered another way: an invite's own
     // join page, which asks for just an email.

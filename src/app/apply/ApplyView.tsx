@@ -5,6 +5,7 @@ import {
   getCommunityInviteByToken,
   getCycleJoiningState,
   getPairingByToken,
+  entryRefusal,
   getRecruitmentApplicationFormPublicById,
   getRecruitmentApplicationFormPublic,
   resolveInviteLane,
@@ -112,15 +113,14 @@ export default async function ApplyView({
       ? `You’re applying with ${pairing.namerName}`
       : "Apply to join";
 
-  // §4.3/8c door state for an event landing: period + the event's own
-  // applicationsOpen flag + capacity room. Shut or unconfigured → "not
-  // accepting" copy instead of the form.
-  const cycleDoorShut =
-    cycleContext !== null &&
-    !(cycleContext.periodOpen && cycleContext.cycle.applicationsOpen && !cycleContext.atCapacity);
-  const communityDoorShut = !cycleContext && !community.recruitmentApplicationsOpen;
+  // The doors, asked of the same function that sends the application and
+  // opens an invite, so this page can never promise what the action refuses
+  // (docs/admission-flow.md §6). Shut or unconfigured → say so instead of the form.
+  const doorRefusal = lane
+    ? await entryRefusal({ communityId: community.id, cycleId: targetCycleId, lane, via: "application", withInvite: inviteUsable })
+    : null;
   const noApplicationNeeded = Boolean(lane) && !lane!.applicationRequired;
-  const notAccepting = !form || !lane || cycleDoorShut || communityDoorShut || noApplicationNeeded;
+  const notAccepting = !form || !lane || Boolean(doorRefusal) || noApplicationNeeded;
 
   const heldInvite = inviteUsable && !lane;
   const isCheck = lane?.verification === "community_check";
@@ -148,12 +148,10 @@ export default async function ApplyView({
         </p>
       ) : notAccepting ? (
         <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
-          {cycleContext
-            ? cycleContext.atCapacity
-              ? "This event is at capacity — applications for it are closed."
-              : cycleContext.periodOpen
-                ? "Applications for this event are closed."
-                : "Applications for this event aren’t open yet."
+          {doorRefusal
+            ? inviteUsable
+              ? `${doorRefusal}. Your link is kept, so try again later.`
+              : `${doorRefusal}.`
             : "Not accepting applications right now."}
         </p>
       ) : (

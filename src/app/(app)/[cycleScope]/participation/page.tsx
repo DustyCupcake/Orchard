@@ -20,6 +20,7 @@ import { getCycleShiftRoster } from "@/lib/shifts";
 import { listForms } from "@/lib/forms";
 import { laneRuleOf, listLanes, listOpenLanes } from "@/lib/recruitment/admission-lanes";
 import { describeLaneConsequence } from "@/lib/recruitment/lane-rules";
+import { listWaitlisted } from "@/lib/recruitment/admission";
 import {
   confirmShiftProposalAction,
   openCycleShiftSignupsAction,
@@ -47,6 +48,7 @@ import {
   updatePhaseBoundaryAction,
   updatePhaseHighlightAction,
   updateEventLanesAction,
+  admitWaitlistedAction,
 } from "./actions";
 import SelectField from "@/components/ui/SelectField";
 
@@ -557,6 +559,9 @@ async function ParticipationForCycle({
     .select({ own: cycleTable.ownAdmissionLanes })
     .from(cycleTable)
     .where(eq(cycleTable.id, cycleId));
+  // People approved for a place the event didn't have room for (§6), in the
+  // order they started waiting. Only those who can configure the event see them.
+  const waitlisted = canConfigure ? await listWaitlisted(cycleId) : [];
   // Admin-only, and only meaningful for a still-open cycle — see
   // closeCycle's own budget-owner warning (src/lib/cycles/lifecycle.ts).
   const budgetCycleRow =
@@ -875,6 +880,36 @@ async function ParticipationForCycle({
               </form>
             )}
           </div>
+        </section>
+      )}
+
+      {canConfigure && waitlisted.length > 0 && (
+        <section className="mt-6">
+          <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Waiting for a place</h3>
+          <p className="mt-1 max-w-[640px] text-[length:var(--text-body)] text-[var(--text-muted)]">
+            These people have been approved, but the event is full, so they aren&rsquo;t members yet. They&rsquo;re admitted,
+            oldest first, as soon as room appears — someone no longer coming, an invite revoked, the capacity raised. You can also
+            admit one now, over the capacity.
+          </p>
+          <ul className="mt-3 flex max-w-[640px] flex-col gap-2">
+            {waitlisted.map((w) => (
+              <li key={w.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+                <span className="text-[length:var(--text-body)] text-[var(--text)]">
+                  {w.name}
+                  <span className="ml-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                    waiting since {w.waitlistedAt ? new Date(w.waitlistedAt).toLocaleDateString() : "—"}
+                  </span>
+                </span>
+                <form action={admitWaitlistedAction}>
+                  <input type="hidden" name="arrivalId" value={w.id} />
+                  <input type="hidden" name="cycleScope" value={cycleScope} />
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Admit now
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

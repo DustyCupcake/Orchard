@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { db } from "@/db";
@@ -8,12 +8,14 @@ import {
   admissionLane,
   communityInvite,
   community,
+  cycle,
   evaluation,
   form,
   formResponse,
   member,
   memberIdentity,
   memberLanguage,
+  participation,
   profileQuestion,
   recruitmentApplicationInvite,
   recruitmentDecision,
@@ -27,6 +29,9 @@ import { seedPrimaryContactMethod } from "../contact-methods";
 import { answerProfileQuestion } from "../profile-questions";
 import { sendAdmissionAcceptedEmail, sendAdmissionReceivedEmail } from "../mailer";
 import { publicAppUrl } from "../public-url";
+import { countCapacityHolds } from "./joining";
+import { requireCycleInitiationEligibility } from "../cycles/crud";
+import type { member as memberTable } from "@/db/schema";
 import type { AdmissionLane, AdmissionLaneSnapshot } from "./admission-lanes";
 import { computeAdmissionStage, describeAdmissionStage } from "./admission-stage";
 import { declarationFromInvite, laneSnapshot, resolveInviteLane, resolvePublicLane } from "./admission-lanes";
@@ -40,6 +45,7 @@ import { declarationFromInvite, laneSnapshot, resolveInviteLane, resolvePublicLa
 // arrived, and cannot drift between four copies of it.
 
 type Arrival = typeof admission.$inferSelect;
+type Member = typeof memberTable.$inferSelect;
 
 export type ArrivalInput = {
   communityId: string;
@@ -198,7 +204,15 @@ export async function getArrivalForFormResponse(formResponseId: string): Promise
 export type AdmitOptions = {
   /** Send the "you're in" email. Off for a person who was signed in on the spot. */
   notify?: boolean;
+  /** Admit even though the event is full. An administrator's decision, never a default. */
+  overrideCapacity?: boolean;
 };
+
+export type AdmitResult =
+  | { waitlisted: false; memberId: string; created: boolean }
+  // Approved, but the event has no room: the arrival waits, and is admitted when
+  // room appears (releaseWaitlist) or an administrator overrides.
+  | { waitlisted: true; memberId: null; created: false };
 
 /**
  * Admit an arrival: the only place a person becomes a Member of the
@@ -215,11 +229,11 @@ export type AdmitOptions = {
  * What it does not do is decide. Whether someone *should* be admitted is the
  * funnel's question; by the time this runs the answer is yes.
  */
-export async function admitArrival(arrivalId: string, opts: AdmitOptions = {}): Promise<{ memberId: string; created: boolean }> {
+export async function admitArrival(arrivalId: string, opts: AdmitOptions = {}): Promise<AdmitResult> {
   const result = await db.transaction(async (tx) => {
     const [arrival] = await tx.select().from(admission).where(eq(admission.id, arrivalId)).for("update");
     if (!arrival) throw new NotFoundError("Arrival not found");
-    if (arrival.admittedMemberId) return { arrival, memberId: arrival.admittedMemberId, created: false, already: true };
+    if (arrival.admittedMemberId) return { arrival, memberId: arrival.admittedMemberId, created: false, already: true, waitlisted: false };
     if (arrival.declinedAt) throw new ConflictError("This request to join was declined");
     if (arrival.withdrawnAt) throw new ConflictError("This request to join was withdrawn");
 
@@ -239,6 +253,40 @@ export async function admitArrival(arrivalId: string, opts: AdmitOptions = {}): 
     const viaInviteId = invite?.id ?? linked?.id ?? null;
 
     const existing = await findExistingMemberByLoginEmailIn(tx, arrival.email);
+
+    // Capacity is checked here, at admission, because this is the moment someone
+    // actually takes a place (§6). The event row is locked so two admissions into
+    // the same event are decided one after the other, each seeing the other's
+    // place, rather than both seeing the one remaining seat. Someone who already
+    // has a place needs no new one, and an outstanding invite that admits at once
+    // is counted as a place held — this arrival's own invite was spent when it
+    // was redeemed, so it isn't counted against itself.
+    if (arrival.cycleId && !opts.overrideCapacity) {
+      const [event] = await tx.select({ capacity: cycle.capacity }).from(cycle).where(eq(cycle.id, arrival.cycleId)).for("update");
+      if (event && event.capacity !== null) {
+        const [hasPlace] = existing
+          ? await tx
+              .select({ id: participation.id })
+              .from(participation)
+              .where(and(eq(participation.cycleId, arrival.cycleId), eq(participation.memberId, existing.id), eq(participation.status, "coming")))
+          : [];
+        if (!hasPlace) {
+          const [{ coming }] = await tx
+            .select({ coming: sql<number>`count(*)::int` })
+            .from(participation)
+            .where(and(eq(participation.cycleId, arrival.cycleId), eq(participation.status, "coming")));
+          const holds = await countCapacityHolds(arrival.communityId, arrival.cycleId);
+          if (coming + holds >= event.capacity) {
+            await tx
+              .update(admission)
+              .set({ waitlistedAt: arrival.waitlistedAt ?? new Date() })
+              .where(eq(admission.id, arrival.id));
+            return { arrival, memberId: null, created: false, already: false, waitlisted: true as const };
+          }
+        }
+      }
+    }
+
     let memberId: string;
     let created = false;
     if (existing) {
@@ -284,10 +332,11 @@ export async function admitArrival(arrivalId: string, opts: AdmitOptions = {}): 
         .set({ convertedMemberId: memberId })
         .where(and(eq(recruitmentDecision.formResponseId, arrival.formResponseId), isNull(recruitmentDecision.convertedMemberId)));
     }
-    return { arrival, memberId, created, already: false };
+    return { arrival, memberId, created, already: false, waitlisted: false as const };
   });
 
-  if (result.already) return { memberId: result.memberId, created: false };
+  if (result.waitlisted) return { waitlisted: true, memberId: null, created: false };
+  if (result.already) return { waitlisted: false, memberId: result.memberId, created: false };
 
   // After commit, and best-effort: these only save the member retyping what
   // they already told us, and a failure in one must never undo an admission
@@ -313,7 +362,53 @@ export async function admitArrival(arrivalId: string, opts: AdmitOptions = {}): 
       console.error("[admission] could not send the accepted email", err);
     }
   }
-  return { memberId: result.memberId, created: result.created };
+  return { waitlisted: false, memberId: result.memberId, created: result.created };
+}
+
+/**
+ * Admit the people waiting for room in an event, oldest first, for as long as
+ * there is room (§6). Called wherever room can appear — capacity raised,
+ * somebody no longer coming, an invite revoked — and never by a timer (no new
+ * scheduled job is added by this plan); an invite that simply expires frees
+ * its place silently and is picked up by the next of those, or by an
+ * administrator's override.
+ */
+export async function releaseWaitlist(cycleId: string): Promise<number> {
+  const waiting = await db
+    .select({ id: admission.id })
+    .from(admission)
+    .where(and(eq(admission.cycleId, cycleId), isNotNull(admission.waitlistedAt), isNull(admission.admittedMemberId), isNull(admission.declinedAt), isNull(admission.withdrawnAt)))
+    .orderBy(asc(admission.waitlistedAt));
+  let admitted = 0;
+  for (const row of waiting) {
+    const result = await admitArrival(row.id);
+    if (result.waitlisted) break; // no room for this one, so none for those behind it
+    admitted++;
+  }
+  return admitted;
+}
+
+/**
+ * An administrator admits someone who is waiting although the event is full —
+ * the override §6 promises. The authority is the one that configures the rest of
+ * an event (whoever may start one), and the arrival has to be waiting in an
+ * event of the actor's own community.
+ */
+export async function admitWaitlistedAnyway(actor: Member, arrivalId: string): Promise<AdmitResult> {
+  await requireCycleInitiationEligibility(actor);
+  const [row] = await db.select().from(admission).where(and(eq(admission.id, arrivalId), eq(admission.communityId, actor.communityId)));
+  if (!row || !row.cycleId || !row.waitlistedAt || row.admittedMemberId) {
+    throw new NotFoundError("Nobody is waiting under that name");
+  }
+  return admitArrival(row.id, { overrideCapacity: true });
+}
+
+export async function listWaitlisted(cycleId: string) {
+  return db
+    .select({ id: admission.id, name: admission.name, email: admission.email, waitlistedAt: admission.waitlistedAt })
+    .from(admission)
+    .where(and(eq(admission.cycleId, cycleId), isNotNull(admission.waitlistedAt), isNull(admission.admittedMemberId), isNull(admission.declinedAt), isNull(admission.withdrawnAt)))
+    .orderBy(asc(admission.waitlistedAt));
 }
 
 // Same lookup as findExistingMemberByLoginEmail, inside the admission

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lt } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -237,7 +237,16 @@ async function maybeCreateAccompanimentTask(actor: Member, communityRow: Communi
     suggestedMemberId = linked?.createdBy ?? null;
   }
 
-  const description = decision.convertedMemberId
+  const [waiting] = decision.convertedMemberId
+    ? []
+    : await db
+        .select({ id: admission.id })
+        .from(admission)
+        .where(and(eq(admission.formResponseId, decision.formResponseId), isNotNull(admission.waitlistedAt)));
+
+  const description = waiting
+    ? `Accompany the new member accepted via the application submitted through /apply (id ${decision.formResponseId}) — see /applications for the full submission. They are accepted but waiting for a place in a full event, so they are not a member yet; they become one, and this task applies, when room appears or an administrator admits them.`
+    : decision.convertedMemberId
     ? `Accompany the new member accepted via the application submitted through /apply (id ${decision.formResponseId}) — see /applications for the full submission.`
     : `Accompany the new member accepted via the application submitted through /apply (id ${decision.formResponseId}) — see /applications for the full submission. The application Form isn't tagged with a name/email field, so no Member was created automatically; someone will need to invite or otherwise onboard this person by hand.`;
 

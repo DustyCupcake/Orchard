@@ -417,7 +417,7 @@ behaviour is identical.
 time*, *accepted* (with their login link). Declines are written and sent by a person, using the
 existing template; the app does not send them automatically.
 
-**Doors (proposed).**
+**Doors (built in step 2).**
 - Every door is checked where it matters: creating an invite, **redeeming** it, submitting an
   application, scheduling an interview. Today redemption checks none.
 - Doors govern *entering*. A closed door stops new entries and says so; a person already in the funnel
@@ -425,7 +425,7 @@ existing template; the app does not send them automatically.
   message, and it works once the door reopens (or expires).
 - A closed interviews door holds arrivals at the interview step; it never skips it.
 
-**Capacity (proposed).** Capacity is checked at **admission**, which is the moment someone takes a
+**Capacity (built in step 2).** Capacity is checked at **admission**, which is the moment someone takes a
 place. An outstanding direct invite still holds a place, as now. An arrival that is approved but
 finds the event full is **waitlisted** (a stage `docs/spec.md` already names and the pipeline never
 computed) and is admitted when room appears or an administrator overrides.

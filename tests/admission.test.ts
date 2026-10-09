@@ -117,6 +117,7 @@ describe("admitting an arrival (§6)", () => {
     const arrival = await arrivalFor(lane);
     const [first, second] = await Promise.all([admitArrival(arrival.id), admitArrival(arrival.id)]);
     expect(second.memberId).toBe(first.memberId);
+    expect(first.waitlisted).toBe(false);
     expect(await db.select().from(member).where(eq(member.name, "Dana"))).toHaveLength(1);
     void c;
     expect((await admitArrival(arrival.id)).created).toBe(false);
@@ -135,7 +136,9 @@ describe("admitting an arrival (§6)", () => {
       route: "application",
     });
     expect(await db.select().from(participation).where(eq(participation.cycleId, ev.id))).toHaveLength(0);
-    const { memberId } = await admitArrival(arrival.id);
+    const admitted = await admitArrival(arrival.id);
+    if (admitted.waitlisted) throw new Error("expected room");
+    const { memberId } = admitted;
     const [place] = await db.select().from(participation).where(and(eq(participation.cycleId, ev.id), eq(participation.memberId, memberId)));
     expect(place?.status).toBe("coming");
   });

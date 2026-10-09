@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   community,
+  admission,
   communityInvite,
   formResponse,
   member,
@@ -16,7 +17,8 @@ import {
   profileQuestion,
 } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
-import { createCycle } from "@/lib/cycles";
+import { createCycle, updateCycleSettings } from "@/lib/cycles";
+import { declareParticipation } from "@/lib/participation";
 import { claimTask } from "@/lib/tasks";
 import { createForm } from "@/lib/forms";
 import type { CreateFormInput } from "@/lib/forms";
@@ -583,6 +585,50 @@ describe("Recruitment: applicant→Member conversion", () => {
       .from(participation)
       .where(and(eq(participation.cycleId, cycleRow.id), eq(participation.memberId, newMember.id)));
     expect(row?.status).toBe("coming");
+  });
+
+  it("an accepted application into a full event is waitlisted, not made a member, and admitted when room appears (§6)", async () => {
+    const fixtures = await createFixtures();
+    const setupResult = await setUp(fixtures, taggedFields);
+    await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, setupResult.communityId));
+    const cycleRow = await createCycle(setupResult.alice, { source: "blank", name: "Season A" });
+    // Dana applies while there is room; by the time she is approved, the event
+    // has exactly one place and Alice is using it. (Applying to an event that is
+    // already full is refused at the door, not waitlisted — the waitlist is for
+    // the people it filled up *around*.)
+    const application = await submitRecruitmentApplication(setupResult.communityId, {
+      values: { name: "Dana Applicant", email: "dana@example.com" },
+      cycleId: cycleRow.id,
+    });
+    await declareParticipation(setupResult.alice, cycleRow.id, { status: "coming" });
+    await updateCycleSettings(setupResult.alice, cycleRow.id, { capacity: 1 });
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
+
+    // Accepted, and waiting: the decision is made, nobody is a member yet, and
+    // the accompaniment task says why rather than blaming the form.
+    expect(decision!.resolution).toBe("accepted");
+    expect(decision!.convertedMemberId).toBeNull();
+    const [waiting] = await db.select().from(admission).where(eq(admission.id, application.arrivalId));
+    expect(waiting.waitlistedAt).not.toBeNull();
+    expect(await db.select().from(member).where(eq(member.name, "Dana Applicant"))).toHaveLength(0);
+    const [accompaniment] = await db.select().from(task).where(eq(task.id, decision!.accompanimentTaskId!));
+    expect(accompaniment.description).toMatch(/waiting for a place/);
+    expect(accompaniment.description).not.toMatch(/isn't tagged/);
+
+    // Alice stops coming; that frees the place and admits the person waiting.
+    await declareParticipation(setupResult.alice, cycleRow.id, { status: "not_coming" });
+    const [admitted] = await db.select().from(admission).where(eq(admission.id, application.arrivalId));
+    expect(admitted.admittedMemberId).not.toBeNull();
+    expect(admitted.waitlistedAt).toBeNull();
+    const after = await getRecruitmentDecision(application.formResponse.id);
+    expect(after!.convertedMemberId).toBe(admitted.admittedMemberId);
+    const [place] = await db
+      .select()
+      .from(participation)
+      .where(and(eq(participation.cycleId, cycleRow.id), eq(participation.memberId, admitted.admittedMemberId!)));
+    expect(place?.status).toBe("coming");
   });
 });
 
