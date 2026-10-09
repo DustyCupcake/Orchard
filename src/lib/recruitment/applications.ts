@@ -2,8 +2,6 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
-  admission,
-  admissionLane,
   communityInvite,
   form,
   formResponse,
@@ -17,16 +15,14 @@ import { requireModuleEnabled } from "../modules";
 import { getForm, submitPublicFormResponse } from "../forms";
 import { computeRecruitmentOutcome } from "./evaluations";
 import { getCycleJoiningState, type CycleJoiningState } from "./joining";
-import { getInviteRedemptionPath, getJoinLaneRule, joiningLaneForInvite } from "./joining-lanes";
 import { getCommunityRow, isRecruitmentTaskHolder, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
 import { computeWiderDiscussionStatus, getRecruitmentDecision } from "./decisions";
 import { listObjections } from "./objections";
 import { consensusDisclosure, consensusWindowFor, recordApplicationConsent } from "./consensus";
-import { openNominationForApplication } from "./support";
 import { attachApplicantToPairing, createPairings, resolvePairingForApplication } from "./pairs";
-import type { JoinLaneKind } from "@/db/schema";
-import { createAdmissionArrival, readLaneSnapshot } from "./admission";
-import { resolveInviteLane, resolvePublicLane, declarationFromInvite, laneSnapshot } from "./admission-lanes";
+import { assertEmailFreeToArrive, createAdmissionArrival, personFromApplication } from "./admission";
+import { declarationFromInvite, resolveInviteLane, resolvePublicLane, type AdmissionLane } from "./admission-lanes";
+import type { FormField } from "../forms";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -65,12 +61,6 @@ export const submitRecruitmentApplicationInput = z.object({
   // §2a — which public lane this is for (`/apply` or `/apply/<slug>`).
   // Null = the default public lane at `/apply`.
   publicSlug: z.string().min(1).nullable().optional(),
-  // The applicant's identity — required so we can create the arrival
-  // row and send their private link. These are the values they typed
-  // on the form, not the member's eventual profile values. Optional
-  // in the schema because they may come from form values instead.
-  email: z.string().email().optional(),
-  name: z.string().min(1).max(200).optional(),
   // §2.8 — "who are you sticking with", for an applicant naming another
   // applicant. The link that carries this is the pairing link, and the
   // pair is recorded at the funnel: the platform never decides anything
@@ -121,6 +111,12 @@ export async function submitRecruitmentApplication(
     if (invite.revokedAt) {
       throw new ConflictError("This invite link has been revoked");
     }
+    if (invite.redeemedAt) {
+      throw new ConflictError("This invite link has already been used");
+    }
+    if (invite.expiresAt && invite.expiresAt < new Date()) {
+      throw new ConflictError("This invite link has expired");
+    }
   }
   const pairing = input.pairingToken
     ? await resolvePairingForApplication(input.pairingToken)
@@ -135,13 +131,7 @@ export async function submitRecruitmentApplication(
   // Which door does this submission knock on (§4.3/8c)? A cycle-targeted
   // application gates on the cycle's own joining state (period + door +
   // capacity room); the general application gates on the community-wide
-  // door toggles. An invite's *lane* — fixed at creation by the
-  // inviter's marks, docs/joining-admission-plan.md §2 — decides whether
-  // its token belongs here at all: a direct lane redeems on
-  // /invite/[token] and is rejected on /apply, while nomination and
-  // consensus are *this* page with the lane's own window around it, and
-  // a basic process lane is the plain evaluated funnel the token has
-  // always been (§4.3/8d).
+  // door toggles. An invite's own event, when it has one, decides the event.
   let targetCycleId = input.cycleId ?? null;
   if (invite?.cycleId) {
     if (input.cycleId && input.cycleId !== invite.cycleId) {
@@ -151,14 +141,6 @@ export async function submitRecruitmentApplication(
   }
   if (pairing?.cycleId && !targetCycleId) {
     targetCycleId = pairing.cycleId;
-  }
-  if (invite) {
-    const path = await getInviteRedemptionPath(communityId, invite);
-    if (path === "direct") {
-      // A direct-lane invite skips the funnel entirely — it redeems on
-      // /invite/[token], not through the evaluated application.
-      throw new AppError("This invite redeems directly — open its join link instead of applying");
-    }
   }
   const joining = targetCycleId ? await getCycleJoiningState(communityId, targetCycleId) : null;
   if (joining) {
@@ -175,38 +157,40 @@ export async function submitRecruitmentApplication(
     throw new AppError("This community isn't accepting applications right now");
   }
 
-  // Which lane is this application on? An invite answers for itself; a
-  // public applicant's is the public lane by definition. The lane's rule
-  // decides whether they are asked for support, for a community-check
-  // consent, or for nothing at all.
-  let lane: typeof admissionLane.$inferSelect;
+  // Which lane is this application on? An invite's own, found from what the
+  // inviter declared; otherwise the public lane the link points at
+  // (docs/admission-flow.md §2a). Resolved among the lanes open *here*, so an
+  // event that hasn't opened a lane doesn't take people through it.
+  let lane: AdmissionLane;
   if (invite) {
-    const declaration = declarationFromInvite(invite);
-    const resolved = await resolveInviteLane(communityId, declaration);
-    if (!resolved) throw new AppError("No lane is configured for this type of invite");
-    lane = resolved;
-  } else {
-    // Public application: the slug comes from the URL if this is a
-    // context-specific lane, otherwise the first public lane.
-    const slug = input.publicSlug ?? null;
-    const resolved = await resolvePublicLane(communityId, slug);
-    if (!resolved) throw new AppError("No public application lane is open right now");
-    lane = resolved;
-  }
-
-  // Snapshot the lane's path onto the arrival (§1 principle 2: the path
-  // is fixed at entry).
-  const snapshot = laneSnapshot(lane);
-
-  // A community-check lane requires the applicant's consent *before* the
-  // arrival is created (§5: "the arrival is announced... at entry, once
-  // consent is given"). We read it here and pass it as a fact.
-  if (snapshot.requiredVerification === "community_check") {
-    if (!input.consentAccepted) {
-      throw new AppError(
-        "Applying through this door means your arrival is announced to the community — read the disclosure and tick the box to go on",
+    const resolved = await resolveInviteLane(communityId, targetCycleId, declarationFromInvite(invite));
+    if (!resolved) {
+      throw new ConflictError(
+        "This invitation can't be used right now — the community isn't taking this kind of invitation at the moment. Your link is kept, so try again later.",
       );
     }
+    lane = resolved;
+  } else {
+    const resolved = await resolvePublicLane(communityId, targetCycleId, input.publicSlug ?? null);
+    if (!resolved) {
+      throw new AppError(
+        targetCycleId ? "This event isn't taking public applications" : "This community isn't taking public applications right now",
+      );
+    }
+    lane = resolved;
+  }
+  if (!lane.applicationRequired) {
+    // A lane without an application is entered another way: an invite's own
+    // join page, which asks for just an email.
+    throw new AppError("This lane doesn't ask for an application — use the invite's own join link instead");
+  }
+
+  // A community-check lane requires the applicant's own consent before
+  // anything is created (§5: the arrival is announced once consent is given).
+  if (lane.verification === "community_check" && !input.consentAccepted) {
+    throw new AppError(
+      "Applying through this door means your arrival is announced to the community — read the disclosure and tick the box to go on",
+    );
   }
 
   const formId = joining?.cycle.recruitmentApplicationFormId ?? communityRow.recruitmentApplicationFormId;
@@ -214,62 +198,36 @@ export async function submitRecruitmentApplication(
     throw new AppError("No application form is configured for this Community yet");
   }
 
-  // Create the FormResponse first (the application answers), then the
-  // arrival with the FormResponse linked. The arrival is the thing that
-  // moves through the funnel; the FormResponse is the artifact it carries.
+  // The arrival holds the applicant's name and email (§4) — the Member they
+  // become does not exist yet — and they come from the form, so a form that
+  // can't produce them could take an application and never admit anyone. It
+  // is refused here, before anything is stored, rather than after.
+  const [formRow] = await db.select().from(form).where(and(eq(form.id, formId), eq(form.communityId, communityId)));
+  const fields = (formRow?.fields ?? []) as FormField[];
+  if (!fields.some((f) => f.isNameField) || !fields.some((f) => f.isEmailField)) {
+    throw new AppError(
+      "This community's application form needs a question marked as the applicant's name and one marked as their email before it can take applications",
+    );
+  }
+  const person = personFromApplication(fields, input.values);
+  if (!person) {
+    throw new AppError("Please give your name and a valid email address");
+  }
+  await assertEmailFreeToArrive(communityId, person.email);
+
+  // The FormResponse is the artifact the arrival carries; the arrival is the
+  // thing that moves through the funnel.
   const formResponseCreated = await submitPublicFormResponse(formId, { values: input.values });
 
   // Record consent if this is a community-check lane (§5: consent is
   // recorded with the exact disclosure the person read).
-  if (snapshot.requiredVerification === "community_check") {
+  if (lane.verification === "community_check") {
     const { communityName, windowHours } = await consensusWindowFor(communityId);
     await recordApplicationConsent(
       formResponseCreated.id,
       input.disclosure?.trim() || consensusDisclosure(communityName, windowHours),
     );
   }
-
-  // Email and name come from the form values in the real flow (extracted
-  // by the action page). For direct API calls, they may be in the input.
-  // Fall back to the form values if present.
-  const email = (input.email ?? input.values.email ?? "").toString().trim().toLowerCase();
-  const name = (input.name ?? input.values.name ?? "").toString().trim();
-  if (!email || !name) {
-    throw new AppError("Email and name are required");
-  }
-
-  // Create the arrival with the lane snapshot.
-  const { arrivalId, token } = await createAdmissionArrival({
-    communityId,
-    cycleId: targetCycleId,
-    email,
-    name,
-    laneId: lane.id,
-    route: invite ? "invite" : "application",
-    origin: "funnel",
-    inviteId: invite?.id,
-    formResponseId: formResponseCreated.id,
-    requiredVerification: snapshot.requiredVerification,
-    requiredApplication: snapshot.requiredApplication,
-    requiredInterview: snapshot.requiredInterview,
-    requiredEvaluation: snapshot.requiredEvaluation,
-    reportsNeeded: snapshot.reportsNeeded,
-    supportShortcutCount: snapshot.supportShortcutCount,
-  });
-
-  // Link the invite to the form response (unchanged — the invite's
-  // checkboxes feed outcome matching either way).
-  if (invite) {
-    await db
-      .insert(recruitmentApplicationInvite)
-      .values({ formResponseId: formResponseCreated.id, communityInviteId: invite.id });
-  }
-
-  // §2: nomination as a waiting model is gone. A lane that had
-  // verification="nomination" is now verification="none" with its
-  // support count kept as the support shortcut. The shortcut runs
-  // alongside the path, so nothing opens a window here. The person
-  // gets their support link on their private page (§4).
 
   let tagged = formResponseCreated;
   if (joining) {
@@ -280,6 +238,29 @@ export async function submitRecruitmentApplication(
       .returning();
     tagged = updated;
   }
+
+  // The invite is the vouch behind this application. It is spent now — an
+  // application is what redeeming an invite on an application lane *is* —
+  // and linked, so the inviter's marks feed the outcome either way.
+  if (invite) {
+    await db
+      .insert(recruitmentApplicationInvite)
+      .values({ formResponseId: formResponseCreated.id, communityInviteId: invite.id });
+    await db.update(communityInvite).set({ redeemedAt: new Date() }).where(eq(communityInvite.id, invite.id));
+  }
+
+  const { arrival, token } = await createAdmissionArrival({
+    communityId,
+    cycleId: targetCycleId,
+    email: person.email,
+    name: person.name,
+    lane,
+    route: invite ? "invite" : "application",
+    inviteId: invite?.id ?? null,
+    formResponseId: formResponseCreated.id,
+    applicationSubmitted: true,
+    consentGiven: lane.verification === "community_check",
+  });
 
   // §2.8 — the pair is a fact recorded at the funnel. Nothing reads it
   // to make a decision; it exists so two humans can be shown each other's
@@ -304,15 +285,7 @@ export async function submitRecruitmentApplication(
     );
   }
 
-  // Also link the arrival to the pairing if applicable.
-  if (pairing) {
-    await db
-      .update(admission)
-      .set({ formResponseId: tagged.id })
-      .where(eq(admission.id, arrivalId));
-  }
-
-  return { arrivalId, token, formResponse: tagged, invite };
+  return { arrivalId: arrival.id, token, formResponse: tagged, invite };
 }
 
 // The form a public join lands on — the cycle's own pointer falling

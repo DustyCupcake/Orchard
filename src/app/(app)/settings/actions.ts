@@ -39,13 +39,8 @@ import {
   updateTier,
   updateTierInput,
 } from "@/lib/settings";
-import {
-  joiningLaneRuleInputSchema,
-  setCommunityJoiningLaneRules,
-  type JoiningLaneRuleInput,
-} from "@/lib/recruitment/joining-lanes";
-import { JOINING_LANE_ORDER } from "@/lib/recruitment/lanes";
-import type { JoinLaneKind } from "@/db/schema";
+import { saveCommunityLanes } from "@/lib/recruitment/admission-lanes";
+import type { AdmissionLaneRule } from "@/lib/recruitment/lane-rules";
 import { checkboxGroup, checkboxOf, defined, number, optionalText, text } from "./form-values";
 import {
   archiveProfileQuestion,
@@ -418,20 +413,6 @@ export async function updateRecruitmentDoorsAction(formData: FormData) {
 // /recruitment/mediation: nothing on the mediation page depends on how long
 // a nomination waits, and the check window's does because that page renders
 // the overrule threshold.
-export async function updateRecruitmentSupportWindowAction(formData: FormData) {
-  const actor = await requireMember();
-  try {
-    await requireAdmins(actor);
-    const input = updateCommunityInput.parse(
-      defined({ recruitmentNominationWindowHours: number(formData, "recruitmentNominationWindowHours") }),
-    );
-    await updateCommunity(actor, input);
-  } catch (err) {
-    redirectWithError(err, "recruitment");
-  }
-  revalidatePath("/settings");
-}
-
 export async function updateRecruitmentCheckWindowAction(formData: FormData) {
   const actor = await requireMember();
   try {
@@ -454,31 +435,40 @@ export async function updateRecruitmentCheckWindowAction(formData: FormData) {
   revalidatePath("/recruitment/mediation");
 }
 
-// Recruitment → the four admission lanes (§2.1/§2.2, §5.1). The one card
-// on this tab that is genuinely a form about a *design*, and the one that
-// most needed to stop sharing a Save button with everything else.
-export async function updateAdmissionRulesAction(formData: FormData) {
+// Recruitment → the admission lanes (docs/admission-flow.md §2a, §3). The one
+// card on this tab that is genuinely a form about a *design*, and the one that
+// most needed to stop sharing a Save button with everything else. The whole
+// lane list arrives as one JSON field, because it is validated as a whole
+// (every kind of invite must belong to exactly one lane) and a lane removed
+// from it is archived, not deleted.
+const laneInput = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().max(120),
+  kind: z.enum(["invite", "public"]),
+  handlesKnowsPersonally: z.boolean(),
+  handlesGoodFitOnly: z.boolean(),
+  handlesNeither: z.boolean(),
+  publicSlug: z.string().max(60).nullable(),
+  applicationRequired: z.boolean(),
+  interviewRequired: z.boolean(),
+  verification: z.enum(["none", "community_check"]),
+  reportsNeeded: z.number().int().min(1).max(50).nullable(),
+  supportShortcutCount: z.number().int().min(1).max(50).nullable(),
+  openInCommunity: z.boolean(),
+});
+
+export async function saveAdmissionLanesAction(formData: FormData) {
   const actor = await requireMember();
   try {
     await requireAdmins(actor);
-    const rules: Partial<Record<JoinLaneKind, JoiningLaneRuleInput>> = {};
-    for (const lane of JOINING_LANE_ORDER) {
-      // A lane the client didn't render a card for is left alone rather
-      // than written as a default — the preset select and the four cards
-      // both post through the same fields, and "absent" has to be able to
-      // mean "untouched" so a per-lane tweak survives a preset change
-      // that didn't include it.
-      if (formData.get(`lane.${lane}.verificationMode`) === null) continue;
-      const parsed = joiningLaneRuleInputSchema.parse({
-        verificationMode: formData.get(`lane.${lane}.verificationMode`),
-        supportCount: Number(formData.get(`lane.${lane}.supportCount`) ?? 1),
-        applicationRequired: checkboxOf(formData, `lane.${lane}.applicationRequired`) ?? false,
-        interviewRequired: checkboxOf(formData, `lane.${lane}.interviewRequired`) ?? false,
-        applyInsteadAvailable: checkboxOf(formData, `lane.${lane}.applyInsteadAvailable`) ?? true,
-      });
-      rules[lane] = parsed;
+    let raw: unknown;
+    try {
+      raw = JSON.parse(String(formData.get("lanes") ?? "[]"));
+    } catch {
+      throw new AppError("The lanes couldn't be read — reload the page and try again");
     }
-    await setCommunityJoiningLaneRules(actor.communityId, rules);
+    const lanes: AdmissionLaneRule[] = z.array(laneInput).max(40).parse(raw);
+    await saveCommunityLanes(actor, lanes);
   } catch (err) {
     redirectWithError(err, "recruitment");
   }

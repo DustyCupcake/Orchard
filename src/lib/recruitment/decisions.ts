@@ -3,36 +3,28 @@ import { z } from "zod";
 import { db } from "@/db";
 import {
   admission,
-  admissionLane,
   communityInvite,
   form,
   formResponse,
   member,
-  memberIdentity,
-  memberLanguage,
   evaluation,
   objection,
-  profileQuestion,
   recruitmentApplicationInvite,
   recruitmentDecision,
   task,
   taskAssignment,
 } from "@/db/schema";
 import type { community as communityTable, member as memberTable } from "@/db/schema";
-import type { FormField } from "../forms";
-import { getAllHoldersStandingAvailability, findHoldersMatchingApplicant } from "./standing-availability";
 import { describeRecruitmentAuthority } from "./access";
 import { createTask } from "../tasks";
 import { createPoll } from "../scheduling-polls";
 import { generateToken } from "../token";
-import { seedPrimaryContactMethod } from "../contact-methods";
 import { getCommunityRow, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
-import { ConflictError, ForbiddenError, NotFoundError, AppError } from "../errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { computeRecruitmentOutcome } from "./evaluations";
 import { canScheduleInterview } from "./joining";
 import { listGrantingTaskIds } from "../permissions";
-import { answerProfileQuestion } from "../profile-questions";
-import { seedCycleParticipation } from "../participation";
+import { admitArrival, ensureArrivalForApplication, recordArrivalDecision } from "./admission";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityRow = typeof communityTable.$inferSelect;
@@ -193,186 +185,22 @@ async function createIntroCallPoll(
   return { pollId: poll.id, token: generateToken() };
 }
 
-// Idempotent — convertedMemberId is the marker. docs/development-
-// plan.md's Phase 48: the real conversion step Phases 32-34
-// deliberately left un-mechanized (see maybeCreateAccompanimentTask's
-// own historical comment above, and src/db/schema/recruitment.ts's
-// recruitmentDecision comment). Since a Form's fields are opaque to
-// the platform (docs/spec.md's Forms), this only ever runs when the
-// application Form itself tags which field holds the applicant's name
-// and which holds their email (src/lib/forms.ts's
-// isNameField/isEmailField) — an untagged form is a real, visible
-// limitation (surfaced on the Accompaniment task's own description
-// below), not a silent failure. Mirrors src/lib/recruitment/
-// invites.ts's redeemCommunityInvite almost exactly (same Member +
-// MemberIdentity two-row shape, same "an email already on file links
-// to the existing member rather than erroring or duplicating" posture
-// — an applicant who separately redeemed an invite, or already had an
-// account before Recruitment was turned on, is a real, if rare, case
-// worth handling gracefully rather than crashing the decision).
-async function maybeConvertApplicantToMember(
-  communityRow: CommunityRow,
-  decision: RecruitmentDecisionRow,
-): Promise<RecruitmentDecisionRow> {
+// An accepted application becomes a member through the one admission function
+// (docs/admission-flow.md §6), the same as every other way in, so what a new
+// member starts with — an identity, a way to be reached, a place in the event,
+// the answers they already gave on the form — cannot differ by route. The
+// arrival is made here for an application that predates arrivals and is still
+// in flight; a form that can't identify a person at all (no question marked as
+// their name and email) is a real, visible limitation, surfaced on the
+// Accompaniment task's own description, not a silent failure — and
+// submitRecruitmentApplication no longer lets such a form take applications.
+async function maybeConvertApplicantToMember(decision: RecruitmentDecisionRow): Promise<RecruitmentDecisionRow> {
   if (decision.convertedMemberId) return decision;
-
-  const [responseRow] = await db.select().from(formResponse).where(eq(formResponse.id, decision.formResponseId));
-  if (!responseRow) return decision;
-  const [formRow] = await db.select().from(form).where(eq(form.id, responseRow.formId));
-  if (!formRow) return decision;
-
-  const fields = formRow.fields as FormField[];
-  const nameField = fields.find((f) => f.isNameField);
-  const emailField = fields.find((f) => f.isEmailField);
-  if (!nameField || !emailField) return decision;
-
-  // Read up here, alongside the name/email fields, so the "this form can
-  // produce a person" precondition and the "this form also knows their
-  // languages" question are answered from the same array. Optional by
-  // design: a form that never asks about languages still converts.
-  const languageField = fields.find((f) => f.isLanguageField);
-
-  const values = responseRow.values as Record<string, unknown>;
-  const name = typeof values[nameField.key] === "string" ? (values[nameField.key] as string).trim() : "";
-  const rawEmail = typeof values[emailField.key] === "string" ? (values[emailField.key] as string).trim().toLowerCase() : "";
-  if (!name || !z.string().email().safeParse(rawEmail).success) return decision;
-
-  // The same "who vouched for this person" fact
-  // maybeCreateAccompanimentTask already read on its own before this
-  // function existed — reused here so the new Member's own
-  // referredByMemberId carries it directly, per spec's exact framing
-  // ("pre-filling suggestedMemberId from the new member's
-  // referredByMemberId"), rather than maybeCreateAccompanimentTask
-  // re-deriving it a second, parallel way.
-  const [linkedInvite] = await db
-    .select({ createdBy: communityInvite.createdBy })
-    .from(recruitmentApplicationInvite)
-    .innerJoin(communityInvite, eq(recruitmentApplicationInvite.communityInviteId, communityInvite.id))
-    .where(eq(recruitmentApplicationInvite.formResponseId, decision.formResponseId));
-
-  const [existingIdentity] = await db
-    .select({ memberId: memberIdentity.memberId })
-    .from(memberIdentity)
-    .where(and(eq(memberIdentity.provider, "magic_link"), eq(memberIdentity.loginEmail, rawEmail)));
-
-  const memberId = existingIdentity
-    ? existingIdentity.memberId
-    : await db.transaction(async (tx) => {
-        const [newMember] = await tx
-          .insert(member)
-          .values({
-            communityId: communityRow.id,
-            name,
-            referredByMemberId: linkedInvite?.createdBy ?? null,
-          })
-          .returning();
-        await tx.insert(memberIdentity).values({
-          memberId: newMember.id,
-          provider: "magic_link",
-          loginEmail: rawEmail,
-        });
-        // Unverified: this address came out of an application form, and
-        // nobody has received anything at it yet. Same reasoning as the
-        // invite path — the row exists so the member has somewhere to log
-        // in from, not as an assertion that they own the inbox.
-        await seedPrimaryContactMethod(tx, newMember.id, rawEmail, { verified: false });
-        return newMember.id;
-      });
-
-  // Fields tagged mapsToProfileQuestionId (src/lib/forms.ts) seed a
-  // real ProfileAnswer directly from this same application answer, so
-  // the new member isn't asked to retype a fact they already gave —
-  // see docs/spec.md's Profile questions ("the same still-unanswered
-  // questions just surface the next time a relevant surface checks
-  // what's outstanding"), applied here to a surface (the application)
-  // that never became a real `surfaces` consumer. Best-effort: a blank
-  // answer, a shape mismatch (e.g. the applicant's text doesn't match
-  // one of a since-changed single_choice question's options), or a
-  // since-archived question just doesn't prefill rather than blocking
-  // conversion — the member can always answer it directly afterward.
-  const mappedFields = fields.filter((f) => f.mapsToProfileQuestionId);
-  if (mappedFields.length > 0) {
-    const [memberRow] = await db.select().from(member).where(eq(member.id, memberId));
-    if (memberRow) {
-      for (const field of mappedFields) {
-        const rawValue = values[field.key];
-        if (rawValue === undefined || rawValue === null || rawValue === "") continue;
-        // A form saved before sensitive questions were refused as mapping
-        // targets (src/lib/forms.ts) may still point at one. The answer is
-        // dropped rather than saved: answerProfileQuestion would share it
-        // with the question's whole audience, which the applicant was
-        // never shown. They are asked at onboarding like anyone else.
-        const [mappedQuestion] = await db
-          .select({ sensitive: profileQuestion.sensitive })
-          .from(profileQuestion)
-          .where(eq(profileQuestion.id, field.mapsToProfileQuestionId!));
-        if (mappedQuestion?.sensitive) continue;
-        try {
-          await answerProfileQuestion(memberRow, field.mapsToProfileQuestionId!, {
-            status: "answered",
-            value: rawValue,
-          });
-        } catch {
-          // best-effort — see comment above
-        }
-      }
-    }
-  }
-
-  // A form field tagged isLanguageField seeds real `member_language` rows,
-  // for the same reason the mapped questions above do: this applicant has
-  // already said this, and a first-login screen that asks again is a form
-  // asking twice.
-  //
-  // `member_language` is repeatable where a ProfileQuestion holds one
-  // value, which is why this needed its own tag rather than riding
-  // mapsToProfileQuestionId — the starter set's "Languages you speak" is
-  // a single free-text blob and a Requirement's language check queries
-  // structured rows, so a blob would never satisfy one. Split on commas
-  // and newlines because that is what someone writes in one box, and drop
-  // anything empty so "Spanish, " doesn't create a blank row that then
-  // matches nothing while looking like an entry on /profile.
-  //
-  // Every row lands at `conversational` because the form asked one
-  // question, not five: the level is a claim about someone's ability, and
-  // a community that wants to distinguish fluent from native needs a
-  // form that actually asks. Deduped case-insensitively against what the
-  // member already has, because conversion can run against a Member who
-  // logged in and set their own languages before the decision was filed.
-  if (languageField) {
-    const rawValue = values[languageField.key];
-    if (typeof rawValue === "string") {
-      const spoken = rawValue
-        .split(/[,\n]/)
-        .map((part) => part.trim())
-        .filter(Boolean);
-      if (spoken.length > 0) {
-        const existingLanguages = await db
-          .select({ language: memberLanguage.language })
-          .from(memberLanguage)
-          .where(eq(memberLanguage.memberId, memberId));
-        const seen = new Set(existingLanguages.map((l) => l.language.trim().toLowerCase()));
-        for (const language of spoken) {
-          const key = language.toLowerCase();
-          if (seen.has(key)) continue;
-          seen.add(key);
-          await db.insert(memberLanguage).values({ memberId, language, level: "conversational" });
-        }
-      }
-    }
-  }
-
-  // §4.3/8d (D14) / J12: accepting a cycle-keyed application seeds the
-  // new member's participation in that cycle — "coming", idempotently —
-  // so they count against the cycle's capacity from day one.
-  await seedCycleParticipation(db, responseRow.cycleId, memberId);
-
-  const [updated] = await db
-    .update(recruitmentDecision)
-    .set({ convertedMemberId: memberId })
-    .where(eq(recruitmentDecision.id, decision.id))
-    .returning();
-  return updated;
+  const arrival = await ensureArrivalForApplication(decision.formResponseId);
+  if (!arrival) return decision;
+  await admitArrival(arrival.id);
+  const [updated] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision.id));
+  return updated ?? decision;
 }
 
 // Idempotent — accompanimentTaskId is the marker. suggestedMemberId
@@ -450,7 +278,7 @@ export async function applyAcceptanceSideEffects(
   communityRow: CommunityRow,
   decision: RecruitmentDecisionRow,
 ) {
-  const converted = await maybeConvertApplicantToMember(communityRow, decision);
+  const converted = await maybeConvertApplicantToMember(decision);
   const withTask = await maybeCreateAccompanimentTask(actor, communityRow, converted);
   return withTask ?? converted;
 }
@@ -488,6 +316,7 @@ export async function recordDecisionIfReached(actor: Member, formResponseId: str
     .returning();
 
   let decisionRow = created;
+  await recordArrivalDecision(formResponseId, resolution);
 
   // "Proceed-adjacent" — proceed and wider_discussion both auto-
   // schedule the intro call; decline never does. Unless the third door
@@ -525,7 +354,7 @@ export async function recordDecisionIfReached(actor: Member, formResponseId: str
   }
 
   if (resolution === "accepted") {
-    const converted = await maybeConvertApplicantToMember(communityRow, decisionRow);
+    const converted = await maybeConvertApplicantToMember(decisionRow);
     const updated = await maybeCreateAccompanimentTask(actor, communityRow, converted);
     if (updated) decisionRow = updated;
   }
@@ -595,6 +424,7 @@ export async function resolveWiderDiscussionManually(
     .set({ resolution: input.resolution })
     .where(eq(recruitmentDecision.id, decision.id))
     .returning();
+  await recordArrivalDecision(decision.formResponseId, input.resolution);
 
   if (input.resolution === "accepted") {
     const communityRow = await getCommunityRow(actor.communityId);
@@ -647,6 +477,7 @@ export async function resolveWiderDiscussionWindows() {
       .where(eq(recruitmentDecision.id, decision.id))
       .returning();
     resolved++;
+    await recordArrivalDecision(decision.formResponseId, resolution);
 
     if (resolution === "accepted") {
       const [formRow] = await db
@@ -661,7 +492,7 @@ export async function resolveWiderDiscussionWindows() {
       // Accompaniment's own task creation genuinely does need a real
       // actor to create a Task as, so that part alone stays gated on
       // one existing.
-      const converted = await maybeConvertApplicantToMember(communityRow, updated);
+      const converted = await maybeConvertApplicantToMember(updated);
       // The job needs a real actor to create a Task as, so it resolves one:
       // the recruitment task's holder when there is a granting task, else the
       // fallback chain (the converted member's referrer, then the earliest

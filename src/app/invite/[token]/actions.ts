@@ -4,7 +4,6 @@ import { ZodError } from "zod";
 import { redirect } from "next/navigation";
 import { redeemCommunityInvite, redeemCommunityInviteInput } from "@/lib/recruitment";
 import { createSession } from "@/lib/session";
-import { firstLoginDestinationFor } from "@/lib/first-login";
 import { AppError } from "@/lib/errors";
 
 function redirectWithError(token: string, err: unknown): never {
@@ -43,23 +42,11 @@ export async function redeemInviteAction(formData: FormData) {
     await createSession(outcome.memberId);
     redirect(outcome.redirectTo);
   }
-  if (outcome.kind === "check") {
-    // A community-check arrival: they are not a member yet, the window runs.
-    // Redirect to the admission page with their token.
-    redirect(`/admission/${outcome.token}?check=1`);
-  }
-  if (outcome.kind === "process") {
-    // A process lane (application and/or interview): redirect to the admission page
-    redirect(`/admission/${outcome.token}`);
-  }
-  if (outcome.kind === "support_shortcut") {
-    // A lane with a support shortcut: show the support view
-    redirect(`/support/${outcome.supportToken}`);
-  }
   if (outcome.kind === "apply") {
-    // They need to apply: redirect to /apply with the invite token
+    // The lane asks for an application: the invite goes with them as the vouch.
     redirect(`/apply?invite=${encodeURIComponent(token)}`);
   }
-  // Should not reach here
+  // A community check, or a wait for an interview: they are in the funnel but
+  // not members yet, and their private page is where they follow it.
   redirect(`/admission/${outcome.token}`);
 }

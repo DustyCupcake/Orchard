@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
+  admission as admissionTable,
   community,
   communityInvite,
   formResponse,
@@ -16,7 +17,7 @@ import {
 } from "@/db/schema";
 import type { community as communityTable, member as memberTable, objection as objectionTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import { seedCycleParticipation } from "../participation";
+import { admitArrival, closeArrival, getArrivalForInvite, recordArrivalDecision } from "./admission";
 import { isModuleOpenToEveryone, listGrantingTaskIds } from "../permissions";
 import type { PermissionModuleKey } from "../permissions";
 import { isSharedByOpenness, type NeedsAction } from "../needs-action";
@@ -681,6 +682,7 @@ async function applyObjectionOutcomeToSubject(
           .set({ resolution: admits ? "accepted" : "declined" })
           .where(eq(recruitmentDecision.id, decision.id))
           .returning();
+        await recordArrivalDecision(row.formResponseId, admits ? "accepted" : "declined");
         if (admits && patched) {
           const { applyAcceptanceSideEffects } = await import("./decisions");
           const [communityRow] = await db
@@ -701,8 +703,16 @@ async function applyObjectionOutcomeToSubject(
         .update(communityInvite)
         .set({ consensusState: admits ? "admitted" : "withheld" })
         .where(eq(communityInvite.id, invite.id));
-      if (admits && invite.cycleId && invite.redeemedByMemberId) {
-        await seedCycleParticipation(db, invite.cycleId, invite.redeemedByMemberId);
+      // The arrival is what the body is deciding about: admitting completes
+      // it through the one admission function, withholding closes it.
+      const arrival = await getArrivalForInvite(invite.id);
+      if (arrival) {
+        if (admits) {
+          await db.update(admissionTable).set({ checkPassedAt: new Date() }).where(eq(admissionTable.id, arrival.id));
+          await admitArrival(arrival.id);
+        } else {
+          await closeArrival(arrival.id, "declined");
+        }
       }
     }
   }

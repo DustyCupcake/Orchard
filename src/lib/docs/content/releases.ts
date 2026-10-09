@@ -29,6 +29,19 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-10-09",
+    title: "Joining: lanes you define, and a page for the person joining",
+    summary: "A community now defines only the ways of arriving that it needs, and everyone who is on their way in has a private page showing where they are.",
+    points: [
+      "Settings → Recruitment has lanes instead of four fixed rules. An invite lane takes invitations from members who said they know the person, think they'd fit, or neither; a public lane has its own application address. Each says in a sentence what it does, and a set that would leave some invitation with nowhere to go can't be saved.",
+      "An event chooses which lanes it opens (on its own page) instead of changing a lane's rules, so a different process for one event is a different lane. An invitation the event has no lane for is refused when it's sent, and says why.",
+      "Nobody is a member until they're admitted. Someone who applies, or is invited into a community check or an interview, gets a private page and an email with its link, showing where they are in plain words and letting them stop at any time. Being accepted emails them again.",
+      "An application form needs a question marked as the applicant's name and one as their email, or it can't take applications. An address that is already a member, or already in the process, is told so before anything is stored.",
+      "Nominations (one more member's word) are gone from lanes for now; the support shortcut that replaces them is coming.",
+    ],
+    source: "the admission funnel's foundations, finished: one source of lanes, one admission function, a page for the person",
+  },
+  {
     date: "2026-10-08",
     title: "Tasks that need approval are approved by coordination",
     summary: "On a task marked \"requires approval\", the first person to claim it now needs approval too, and coordination decides.",

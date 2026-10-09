@@ -19,7 +19,7 @@ export function Select({
   options,
 }: {
   label: ReactNode;
-  name: string;
+  name?: string;
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
@@ -53,13 +53,13 @@ export function Toggle({
   onChange,
 }: {
   label: ReactNode;
-  name: string;
+  name?: string;
   checked: boolean;
   onChange: (value: boolean) => void;
 }) {
   return (
     <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-      <input type="hidden" name={name} value="off" />
+      {name && <input type="hidden" name={name} value="off" />}
       <input type="checkbox" name={name} value="on" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       {label}
     </label>

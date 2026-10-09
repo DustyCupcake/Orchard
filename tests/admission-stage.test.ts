@@ -76,12 +76,13 @@ describe("the derived admission stage", () => {
 
   // --- §2 row 1: no verification, no application, no interview ---------
   // "admitted immediately (invite lanes only)"
-  it("a lane with nothing to evaluate is ready to admit once consent is given", () => {
+  it("a lane with nothing to evaluate is ready to admit as soon as they arrive", () => {
     const p = path({ applicationRequired: false, interviewRequired: false, evaluationRequired: false, reportsNeeded: null });
     expect(computeAdmissionStage(p, facts()).stage).toBe("entered");
     expect(computeAdmissionStage(p, facts()).reason).toBe("admitted");
-    // Consent is the one thing that still gates it, and nothing else does.
-    expect(computeAdmissionStage(p, facts({ consentGiven: false })).stage).toBe("awaiting_consent");
+    // Nothing gates it: only a community check asks for consent (§5), and
+    // arriving by an invite or an application is itself the agreement.
+    expect(computeAdmissionStage(p, facts({ consentGiven: false })).reason).toBe("admitted");
   });
 
   // --- §2 row 2: no verification, application on, interview off --------
@@ -100,8 +101,9 @@ describe("the derived admission stage", () => {
   // --- §2 row 3: interview only, no application -----------------------
   it("an interview-only lane goes to the interview without an application", () => {
     const p = path({ applicationRequired: false });
-    // No application is required, so consent is the only gate before the call.
-    expect(computeAdmissionStage(p, facts({ consentGiven: false })).stage).toBe("awaiting_consent");
+    // No application is required, and no consent is asked for, so they are
+    // waiting for the interview from the moment they arrive.
+    expect(computeAdmissionStage(p, facts({ consentGiven: false })).stage).toBe("entered");
     expect(computeAdmissionStage(p, facts()).stage).toBe("entered");
     expect(computeAdmissionStage(p, facts({ interviewScheduled: true })).stage).toBe("interview_scheduled");
     expect(computeAdmissionStage(p, facts({ interviewScheduled: true, interviewHeld: true })).stage).toBe("interview_held");
@@ -218,7 +220,12 @@ describe("the derived admission stage", () => {
     });
 
     it("consent and a community check are not — they have their own screens", () => {
-      const noConsent = computeAdmissionStage(path(), facts({ consentGiven: false }));
+      // Consent is only ever asked for on a community-check lane.
+      const noConsent = computeAdmissionStage(
+        path({ verification: "community_check", applicationRequired: false, interviewRequired: false, evaluationRequired: false }),
+        facts({ consentGiven: false }),
+      );
+      expect(noConsent.stage).toBe("awaiting_consent");
       expect(admissionNeedsAction(noConsent)).toBe(false);
       const checking = computeAdmissionStage(
         path({ verification: "community_check", applicationRequired: false, interviewRequired: false, evaluationRequired: false }),

@@ -190,11 +190,10 @@ export function computeAdmissionStage(
     // person is done. Mediation can still uphold a concern later, which
     // arrives as `declined`.
     if (nothingToEvaluate) return done("entered", "admitted", facts.checkPassedAt ?? facts.enteredAt);
-  } else {
-    // No check on this lane, but consent is still the person's agreement to
-    // being in the funnel at all, and it is the first thing asked.
-    if (!facts.consentGiven) return done("awaiting_consent", "awaiting_consent", facts.enteredAt);
   }
+  // A lane without a community check asks for no consent: the person's own
+  // act of arriving (sending an application, using an invite) is their
+  // agreement to be in the process, and nothing about them is announced.
 
   // §2's arrow, walked in order. The stages below are "the last thing that
   // happened", which is why an application with nothing else on it is

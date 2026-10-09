@@ -283,4 +283,79 @@ describe("migrating a database that already has data", () => {
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.profile_completed_at === null)).toBe(true);
   });
+
+  // 0093 retires per-event override rows in favour of an event choosing which
+  // lanes are open (§2a). The ways it can go wrong on real data: an event that
+  // overrode only some lanes must still have a lane for *every* kind of
+  // arrival (or an invite has nowhere to go there), two events with the same
+  // name must not collide on the carried lane's name, an event that overrode
+  // nothing must be left following the community, and nothing may leak into
+  // the community's own door.
+  it("0093 turns each event's overrides into lanes open only there, and leaves other events following the community", async () => {
+    db = await createScratchDatabase();
+    await db.migrateBefore("0089_admission_lane");
+    const sql = db.sql;
+
+    const [communityId, plainEvent, overriddenEvent, twinA, twinB] = Array.from({ length: 5 }, uuid);
+    await sql`insert into community (id, name) values (${communityId}, 'C')`;
+    await sql`insert into cycle (id, community_id, name) values
+      (${plainEvent}, ${communityId}, 'Plain'),
+      (${overriddenEvent}, ${communityId}, 'Reunion'),
+      (${twinA}, ${communityId}, 'Twin'),
+      (${twinB}, ${communityId}, 'Twin')`;
+    // Reunion overrode two lanes: knows-personally now wants a community check,
+    // and the public application wants nothing at all but the support of two.
+    await sql`insert into joining_lane (community_id, cycle_id, lane, verification_mode, support_count, application_required, interview_required) values
+      (${communityId}, ${overriddenEvent}, 'invited_knows_personally', 'consensus', 1, false, false),
+      (${communityId}, ${overriddenEvent}, 'public_application', 'nomination', 2, true, false),
+      (${communityId}, ${twinA}, 'invited_neither', 'basic', 1, false, false),
+      (${communityId}, ${twinB}, 'invited_neither', 'basic', 1, true, false)`;
+
+    await db.migrateRemaining();
+
+    const lanes = await sql`select id, name, kind, verification, application_required, interview_required, support_shortcut_count, open_in_community
+                            from admission_lane where community_id = ${communityId}`;
+    const byName = new Map(lanes.map((l) => [l.name as string, l]));
+
+    // The community's own four, untouched and open at its door.
+    for (const name of ["Invited — knows personally", "Invited — vouches (good fit)", "Invited — neither mark", "Open application"]) {
+      expect(byName.get(name)).toMatchObject({ open_in_community: true });
+    }
+    // Four overrides became four new lanes, open nowhere but their event, and
+    // the two same-named events got distinct names rather than a unique-index
+    // failure that would have rolled the whole migration back.
+    const carried = lanes.filter((l) => !l.open_in_community);
+    expect(carried).toHaveLength(4);
+    expect(new Set(carried.map((l) => l.name)).size).toBe(4);
+    const reunionKnows = byName.get("Invited — knows personally — Reunion")!;
+    expect(reunionKnows).toMatchObject({ verification: "community_check", application_required: false });
+    expect(byName.get("Open application — Reunion")).toMatchObject({
+      verification: "none", support_shortcut_count: 2, interview_required: false,
+    });
+
+    // Every event with overrides has its own set, and every set covers every
+    // kind of arrival exactly once: the carried lane where it overrode, the
+    // community's own lane everywhere else.
+    const sets = await sql`select c.id as cycle_id, c.own_admission_lanes, l.name, l.kind, l.handles_knows_personally, l.handles_good_fit_only, l.handles_neither
+                           from cycle c left join cycle_admission_lane cl on cl.cycle_id = c.id left join admission_lane l on l.id = cl.lane_id
+                           where c.community_id = ${communityId}`;
+    const setOf = (cycleId: string) => sets.filter((r) => r.cycle_id === cycleId && r.name);
+    expect(sets.find((r) => r.cycle_id === plainEvent)!.own_admission_lanes).toBe(false);
+    expect(setOf(plainEvent)).toHaveLength(0);
+
+    const reunion = setOf(overriddenEvent);
+    expect(reunion.map((r) => r.name).sort()).toEqual([
+      "Invited — knows personally — Reunion",
+      "Invited — neither mark",
+      "Invited — vouches (good fit)",
+      "Open application — Reunion",
+    ]);
+    for (const col of ["handles_knows_personally", "handles_good_fit_only", "handles_neither"]) {
+      expect(reunion.filter((r) => r[col])).toHaveLength(1);
+    }
+    expect(reunion.filter((r) => r.kind === "public")).toHaveLength(1);
+
+    // The twins each got their own override, not each other's.
+    expect(setOf(twinA).find((r) => r.handles_neither)!.name).not.toBe(setOf(twinB).find((r) => r.handles_neither)!.name);
+  });
 });

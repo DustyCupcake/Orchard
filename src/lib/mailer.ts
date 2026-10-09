@@ -214,3 +214,46 @@ export async function sendNominationSupportRequestEmail(
   ].join("\n");
   await sendPlainTextEmail(email, subject, text, `nomination support request for ${email}:\n${input.supportUrl}`);
 }
+
+// The two emails a person in the admission funnel always gets
+// (docs/admission-flow.md §6): that we have them, with the private link to
+// follow where they are, and that they are in. Nothing else is sent to
+// someone who is not yet a member, so these are deliberately plain and each
+// carries only what that moment needs. The link is the arrival's own token
+// (§4) — the one place they can see where they are, and nobody else can.
+export async function sendAdmissionReceivedEmail(
+  email: string,
+  input: { name: string; communityName: string; statusUrl: string },
+) {
+  const subject = `We have your application to ${input.communityName}`;
+  const text = [
+    `Hello ${input.name},`,
+    ``,
+    `${input.communityName} has your request to join. You don't need to do anything now unless the page below says so.`,
+    ``,
+    `This link is yours — it shows where things are, and what happens next:`,
+    `${input.statusUrl}`,
+    ``,
+    `Please keep it to yourself; anyone who has it can see your progress.`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `admission received for ${email}:\n${input.statusUrl}`);
+}
+
+export async function sendAdmissionAcceptedEmail(
+  email: string,
+  input: { name: string; communityName: string; statusUrl: string; loginUrl: string },
+) {
+  const subject = `You're in — welcome to ${input.communityName}`;
+  const text = [
+    `Hello ${input.name},`,
+    ``,
+    `You've been accepted into ${input.communityName}.`,
+    ``,
+    `To sign in, request a login link here with this email address:`,
+    `${input.loginUrl}`,
+    ``,
+    `Your progress page, if you want to look back at it:`,
+    `${input.statusUrl}`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `admission accepted for ${email}:\n${input.statusUrl}`);
+}

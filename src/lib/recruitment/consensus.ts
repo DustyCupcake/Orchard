@@ -1,7 +1,7 @@
 import { and, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
-import { community, communityInvite, objection, recruitmentApplicationConsent } from "@/db/schema";
-import { seedCycleParticipation } from "../participation";
+import { admission, community, communityInvite, objection, recruitmentApplicationConsent } from "@/db/schema";
+import { admitArrival, getArrivalForInvite } from "./admission";
 
 // Consensus, the third verification mode (docs/joining-admission-plan.md
 // §2.2/§2.6/J10, work-plan step 5). The machinery already existed for
@@ -37,11 +37,14 @@ export function consensusDisclosure(communityName: string, windowHours: number):
   ].join(" ");
 }
 
-// The single place a consensus arrival is admitted, so the "no objection
-// by the deadline → auto-admitted" rule exists in one implementation
-// whether the trigger is the scheduled job, a cleared objection, or an
-// overruled one. Splitting it is exactly how the evaluated path ended up
-// with a timer that could both admit and refuse.
+// The single place a community check ends in admission, so the "no objection
+// by the deadline → admitted" rule exists in one implementation whether the
+// trigger is the scheduled job, a cleared objection, or an overruled one.
+// Splitting it is exactly how the evaluated path ended up with a timer that
+// could both admit and refuse. The person becomes a member here and nowhere
+// earlier (docs/admission-flow.md §6) — through the one admission function,
+// which also seeds their place in the event — so until now they have had a
+// private link to follow their progress and nothing else.
 export async function completeConsensusArrival(invite: typeof communityInvite.$inferSelect) {
   if (invite.consensusState !== "announced") {
     return null;
@@ -52,14 +55,10 @@ export async function completeConsensusArrival(invite: typeof communityInvite.$i
     .where(and(eq(communityInvite.id, invite.id), eq(communityInvite.consensusState, "announced")))
     .returning();
   if (!updated) return null;
-  // "Admission completes" is the arrival itself: the participation row
-  // the roster and the capacity count are built from. It is seeded here
-  // and nowhere earlier, which is what makes the consent gate real —
-  // before this point the Member row exists (they had to be able to be
-  // told what was happening to them) but their place in the event does
-  // not.
-  if (updated.cycleId && updated.redeemedByMemberId) {
-    await seedCycleParticipation(db, updated.cycleId, updated.redeemedByMemberId);
+  const arrival = await getArrivalForInvite(updated.id);
+  if (arrival) {
+    await db.update(admission).set({ checkPassedAt: new Date() }).where(eq(admission.id, arrival.id));
+    await admitArrival(arrival.id);
   }
   return updated;
 }

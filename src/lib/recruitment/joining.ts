@@ -1,9 +1,10 @@
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
-import { community, communityInvite, cycle, JOINING_LANE_KINDS, participation } from "@/db/schema";
+import { community, communityInvite, cycle, participation } from "@/db/schema";
 import type { community as communityTable, cycle as cycleTable } from "@/db/schema";
 import { NotFoundError } from "../errors";
-import { getJoinLaneRulesForContext, pathHoldsCapacity, redemptionPathForInvite } from "./joining-lanes";
+import { declarationFromInvite, laneRuleOf, listOpenLanes } from "./admission-lanes";
+import { laneHandles, laneHoldsCapacity } from "./lane-rules";
 
 type CycleRow = typeof cycleTable.$inferSelect;
 type CommunityRow = typeof communityTable.$inferSelect;
@@ -80,49 +81,7 @@ export async function getCycleJoiningState(communityId: string, cycleId: string)
   const comingCount = comingRows.length;
   const now = new Date();
 
-  // §4.3/8d + docs/joining-admission-plan.md §2/§4.1 — an *outstanding*
-  // invite holds a capacity slot only when its lane resolves to the
-  // direct path. The lane is fixed at creation by the inviter's marks;
-  // the rule is the cycle's own `joining_lane` row, else the
-  // community-wide one. A nomination is still waiting on people, a
-  // consensus window on the community and a process lane on evaluators
-  // — none of them has committed the room yet, so none of them holds
-  // anything (see pathHoldsCapacity). If no lane in this context
-  // resolves direct there is nothing to count at all — skip the invite
-  // query entirely.
-  let heldCount = 0;
-  const laneRules = await getJoinLaneRulesForContext(communityId, cycleId);
-  const someLaneHolds = JOINING_LANE_KINDS.some((lane) =>
-    pathHoldsCapacity(
-      redemptionPathForInvite(
-        {
-          inviterKnowsPersonally: lane === "invited_knows_personally",
-          inviterThinksGoodFit: lane === "invited_good_fit",
-        },
-        laneRules,
-      ),
-    ),
-  );
-  if (someLaneHolds) {
-    const outstanding = await db
-      .select({
-        id: communityInvite.id,
-        inviterThinksGoodFit: communityInvite.inviterThinksGoodFit,
-        inviterKnowsPersonally: communityInvite.inviterKnowsPersonally,
-      })
-      .from(communityInvite)
-      .where(
-        and(
-          eq(communityInvite.cycleId, cycleId),
-          isNull(communityInvite.redeemedAt),
-          isNull(communityInvite.revokedAt),
-          or(isNull(communityInvite.expiresAt), gt(communityInvite.expiresAt, now)),
-        ),
-      );
-    heldCount = outstanding.filter(
-      (row) => pathHoldsCapacity(redemptionPathForInvite(row, laneRules)),
-    ).length;
-  }
+  const heldCount = await countCapacityHolds(communityId, cycleId);
   const usedCapacity = comingCount + heldCount;
   const atCapacity = row.capacity !== null && usedCapacity >= row.capacity;
 
@@ -161,4 +120,37 @@ export async function canScheduleInterview(communityId: string, cycleId: string 
   }
   const joining = await getCycleJoiningState(communityId, cycleId);
   return joining.interviewsOpen;
+}
+
+
+// An *outstanding* invite holds a place in a capped event when the lane it
+// resolves to in that event admits straight away (docs/admission-flow.md §6):
+// the issued-but-unspent invite is a promise of a place, so it counts against
+// the room the same as someone already coming. An invite whose lane runs a
+// check or a process holds nothing — nobody has committed the room yet. An
+// invite whose lane is no longer open in the event is held rather than spent,
+// and holds nothing either.
+export async function countCapacityHolds(communityId: string, cycleId: string): Promise<number> {
+  const lanes = (await listOpenLanes(communityId, cycleId)).map(laneRuleOf);
+  if (!lanes.some(laneHoldsCapacity)) return 0;
+  const outstanding = await db
+    .select({
+      inviterThinksGoodFit: communityInvite.inviterThinksGoodFit,
+      inviterKnowsPersonally: communityInvite.inviterKnowsPersonally,
+    })
+    .from(communityInvite)
+    .where(
+      and(
+        eq(communityInvite.communityId, communityId),
+        eq(communityInvite.cycleId, cycleId),
+        isNull(communityInvite.redeemedAt),
+        isNull(communityInvite.revokedAt),
+        or(isNull(communityInvite.expiresAt), gt(communityInvite.expiresAt, new Date())),
+      ),
+    );
+  return outstanding.filter((invite) => {
+    const declaration = declarationFromInvite(invite);
+    const lane = lanes.find((l) => laneHandles(l, declaration));
+    return lane ? laneHoldsCapacity(lane) : false;
+  }).length;
 }

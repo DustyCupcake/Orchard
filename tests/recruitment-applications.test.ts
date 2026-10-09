@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, cycle, formResponse, member, participation, recruitmentApplicationInvite, recruitmentDecision, task, admission } from "@/db/schema";
+import { community, cycle, formResponse, member, participation, recruitmentApplicationInvite, recruitmentDecision, task, admission, communityInvite } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
 import { createCycle, updateCycleSettings } from "@/lib/cycles";
 import { claimTask } from "@/lib/tasks";
@@ -29,13 +29,13 @@ import {
   submitEvaluation,
   submitRecruitmentApplication,
 } from "@/lib/recruitment";
-import { seedAdmissionLanesForCommunity } from "@/lib/recruitment/admission-seed";
 import type { RecruitmentDecisionRule } from "@/lib/recruitment";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withLegacyLanes } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
-  { key: "name", label: "Name", responseType: "text", required: true },
+  { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
+  { key: "email", label: "Email", responseType: "text", required: true, isEmailField: true },
   { key: "why", label: "Why do you want to join?", responseType: "text", required: false },
 ];
 
@@ -45,7 +45,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
-  await seedAdmissionLanesForCommunity(communityId);
+  await withLegacyLanes(communityId);
 }
 
 async function insertTask(
@@ -78,7 +78,7 @@ async function setUpApplicationPipeline(
 ) {
   const { community: testCommunity, alice, branch } = fixtures;
   await enableRecruitment(testCommunity.id);
-  await seedAdmissionLanesForCommunity(testCommunity.id);
+  await withLegacyLanes(testCommunity.id);
   const form = await createForm(alice, { title: "Application", fields: applicationFields });
   const t = await insertTask(testCommunity.id, branch.id, alice.id);
   await updateCommunity(alice, {
@@ -99,7 +99,7 @@ async function setUpBasicApplication(
 ) {
   const { community: testCommunity, alice } = fixtures;
   await enableRecruitment(testCommunity.id);
-  await seedAdmissionLanesForCommunity(testCommunity.id);
+  await withLegacyLanes(testCommunity.id);
   const form = await createForm(alice, { title: "Application", fields: applicationFields });
   await updateCommunity(alice, { recruitmentApplicationFormId: form.id });
   return { form, alice };
@@ -114,7 +114,7 @@ describe("submitPublicFormResponse (forms.ts)", () => {
     const { alice } = await createFixtures();
     const form = await createForm(alice, { title: "Public form", fields: applicationFields, allowAnonymous: false });
 
-    const created = await submitPublicFormResponse(form.id, { values: { name: "Dana", why: "" } });
+    const created = await submitPublicFormResponse(form.id, { values: { name: "Dana", email: "dana@example.com", why: "" } });
     expect(created.submittedBy).toBeNull();
     expect((created.values as Record<string, unknown>).name).toBe("Dana");
   });
@@ -190,7 +190,7 @@ describe("submitRecruitmentApplication", () => {
     expect(created.formResponse.submittedBy).toBeNull();
   });
 
-  it("links a valid referenced invite without consuming it", async () => {
+  it("links a valid referenced invite, and spends it — sending the application is what redeeming it is", async () => {
     const fixtures = await createFixtures();
     const { alice } = await setUpApplicationPipeline(fixtures);
     const invite = await createCommunityInvite(alice, { inviterThinksGoodFit: true });
@@ -206,9 +206,16 @@ describe("submitRecruitmentApplication", () => {
       .where(eq(recruitmentApplicationInvite.formResponseId, created.formResponse.id));
     expect(link.communityInviteId).toBe(invite.id);
 
-    // Never consumed by this — still unredeemed.
+    // An invite on an application lane is spent by the application: the
+    // arrival it made carries it, and the same link can't vouch for two people.
     const refetchedInvite = await getCommunityInviteByToken(invite.token);
-    expect(communityInviteStatus(refetchedInvite)).toBe("valid");
+    expect(communityInviteStatus(refetchedInvite)).toBe("redeemed");
+    await expect(
+      submitRecruitmentApplication(fixtures.community.id, {
+        values: { name: "Eve", email: "eve@example.com" },
+        inviteToken: invite.token,
+      }),
+    ).rejects.toThrow(/already been used/);
   });
 
   it("rejects a nonexistent invite token", async () => {
@@ -228,7 +235,7 @@ describe("submitRecruitmentApplication", () => {
 
     await expect(
       submitRecruitmentApplication(fixtures.community.id, {
-        values: { name: "Dana" },
+        values: { name: "Dana", email: "dana@example.com" },
         inviteToken: invite.token,
       }),
     ).rejects.toThrow(ConflictError);
@@ -635,7 +642,7 @@ describe("cycle-targeted intake (docs/cycle-scope-remediation-plan.md §4.3/8c)"
   async function setUpIntakeFixtures(fixtures: Awaited<ReturnType<typeof createFixtures>>) {
     const { community: testCommunity, alice } = fixtures;
     await enableRecruitment(testCommunity.id);
-    await seedAdmissionLanesForCommunity(testCommunity.id);
+    await withLegacyLanes(testCommunity.id);
     await enableCycles(testCommunity.id);
     const form = await createForm(alice, { title: "Application", fields: applicationFields });
     await updateCommunity(alice, { recruitmentApplicationFormId: form.id });
@@ -814,7 +821,7 @@ describe("cycle invites + capacity holds + joining seed (docs/cycle-scope-remedi
   async function setUpInvitesFixtures(fixtures: Awaited<ReturnType<typeof createFixtures>>) {
     const { community: testCommunity, alice } = fixtures;
     await enableRecruitment(testCommunity.id);
-    await seedAdmissionLanesForCommunity(testCommunity.id);
+    await withLegacyLanes(testCommunity.id);
     await enableCycles(testCommunity.id);
     const form = await createForm(alice, { title: "Application", fields: applicationFields });
     await updateCommunity(alice, { recruitmentApplicationFormId: form.id });
@@ -970,24 +977,35 @@ describe("cycle invites + capacity holds + joining seed (docs/cycle-scope-remedi
     expect(row?.status).toBe("coming");
   });
 
-  it("an unmarked process-lane invite redeems and enters the application process", async () => {
+  it("an unmarked process-lane invite sends the person to apply, and creates nobody until they do", async () => {
     const fixtures = await createFixtures();
     const { alice } = fixtures;
     const { cycle } = await setUpInvitesFixtures(fixtures);
     const created = await createCommunityInvite(alice, { cycleId: cycle.id });
 
-    // An unmarked invite is the invited_neither process lane: it has
-    // applicationRequired and interviewRequired. Redeeming it creates an
-    // arrival and tells the person to submit an application.
+    // An unmarked invite is the invited_neither process lane: it asks for an
+    // application, and the application is where the person's name and email
+    // come from, so redeeming only points them there — nothing is made, and
+    // the invite stays unspent until the application is sent.
     const outcome = await redeemCommunityInvite(created.token, { email: "dana@example.com" });
-    expect(outcome.kind).toBe("process");
-    if (outcome.kind === "process") {
-      expect(outcome.nextStep).toBe("application");
-    }
+    expect(outcome.kind).toBe("apply");
+    expect(await db.select().from(admission)).toHaveLength(0);
+    const [unspent] = await db.select().from(communityInvite).where(eq(communityInvite.id, created.id));
+    expect(unspent.redeemedAt).toBeNull();
 
-    // The arrival exists and can be queried
-    const arrival = await db.select().from(admission).where(eq(admission.token, outcome.token));
-    expect(arrival).toHaveLength(1);
+    // Sending the application is what spends it, and makes the arrival, on
+    // the lane the invite takes, with the invite behind it.
+    const sent = await submitRecruitmentApplication(fixtures.community.id, {
+      values: { name: "Dana", email: "dana@example.com" },
+      inviteToken: created.token,
+    });
+    const [arrival] = await db.select().from(admission).where(eq(admission.token, sent.token));
+    expect(arrival.route).toBe("invite");
+    expect(arrival.inviteId).toBe(created.id);
+    expect(arrival.formResponseId).toBe(sent.formResponse.id);
+    expect(arrival.admittedMemberId).toBeNull();
+    const [spent] = await db.select().from(communityInvite).where(eq(communityInvite.id, created.id));
+    expect(spent.redeemedAt).not.toBeNull();
   });
 
   it("an application referencing a process-lane invite is tagged with the invite's cycle", async () => {
@@ -1025,7 +1043,7 @@ describe("cycle invites + capacity holds + joining seed (docs/cycle-scope-remedi
 
     await expect(
       submitRecruitmentApplication(fixtures.community.id, {
-        values: { name: "Dana" },
+        values: { name: "Dana", email: "dana@example.com" },
         inviteToken: created.token,
         cycleId: cycleA.id,
       }),

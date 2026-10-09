@@ -25,7 +25,6 @@ import {
   recordDecisionIfReached,
   resolveWiderDiscussionManually,
   resolveWiderDiscussionWindows,
-  seedAdmissionLanesForCommunity,
   setRecruitmentSubscriptionActive,
   submitEvaluation,
   submitIntroCallAvailability,
@@ -34,10 +33,11 @@ import {
 import type { RecruitmentDecisionRule } from "@/lib/recruitment";
 import { getPollAggregate, submitAvailabilityAsApplicant } from "@/lib/scheduling-polls";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withLegacyLanes } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
-  { key: "name", label: "Name", responseType: "text", required: true },
+  { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
+  { key: "email", label: "Email", responseType: "text", required: true, isEmailField: true },
 ];
 
 const DEFAULT_RULES: RecruitmentDecisionRule[] = [
@@ -52,7 +52,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
-  await seedAdmissionLanesForCommunity(communityId);
+  await withLegacyLanes(communityId);
 }
 
 async function insertTask(

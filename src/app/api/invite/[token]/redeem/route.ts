@@ -2,20 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api";
 import { redeemCommunityInvite, redeemCommunityInviteInput } from "@/lib/recruitment";
 import { createSession } from "@/lib/session";
-import { firstLoginDestinationFor } from "@/lib/first-login";
 
 export const dynamic = "force-dynamic";
 
 // Public — no actor. Sets a real session cookie on success, same as
 // the ordinary magic-link verify route.
 //
-// The four outcomes are returned distinctly rather than collapsed into
-// a boolean, because three of them mean "not yet a member" in different
-// ways a client has to tell apart: a community check whose window is
-// open, a lane with a process (application/interview), a lane with a
-// support shortcut, and a direct lane that admits immediately. Only
-// `admitted` gets a session, and the other outcomes carry the token
-// the client needs to render the right follow-up.
+// The outcomes are returned distinctly rather than collapsed into a boolean,
+// because they mean different things a client has to tell apart: a lane that
+// admits straight away (`admitted`, which alone gets a session), a community
+// check whose window is open (`check`), a lane that waits for an interview
+// (`waiting`), and a lane that asks for an application first (`apply`). The
+// ones that are in the funnel carry the private token their page lives at.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   try {
     const { token } = await params;
@@ -33,8 +31,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         { status: 201 },
       );
     }
-    // For check, process, support_shortcut, apply: return 202 with the outcome
-    // No session is created — they are not members yet
+    // check, waiting, apply: 202 with the outcome. No session is created —
+    // they are not members yet.
     return NextResponse.json(outcome, { status: 202 });
   } catch (err) {
     return errorResponse(err);

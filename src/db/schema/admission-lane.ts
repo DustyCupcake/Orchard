@@ -1,5 +1,6 @@
 import { boolean, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
+import { cycle } from "./cycle";
 
 // docs/admission-flow.md §2a — a lane is a row, not a value in a fixed
 // four-value enum. A community defines only the lanes it needs; what a
@@ -85,6 +86,13 @@ export const admissionLane = pgTable(
     // has something to skip, which §3 enforces in the panel.
     supportShortcutCount: integer("support_shortcut_count"),
 
+    // Whether the community's own general door has this lane open. An event
+    // chooses its own set (cycle_admission_lane) or follows this one, and a
+    // community whose recruiting is entirely event-by-event has none open
+    // here (§2a). Archived is a different thing: archived lanes are open
+    // nowhere and take nobody new.
+    openInCommunity: boolean("open_in_community").notNull().default(true),
+
     // §2a: lanes are archived, not deleted. People in the funnel keep the
     // path they entered on, and an invite already issued under an
     // archived lane is held rather than revoked.
@@ -124,3 +132,19 @@ export const admissionLane = pgTable(
 // src/lib/recruitment/admission-lanes.ts. That file — not this one — is
 // what type-checks the assignment in both directions, for the same
 // reason joining-lanes.ts did it for the table it replaced.
+
+// The lanes an event has chosen to open, when it has its own set
+// (`cycle.own_admission_lanes`). A row is "this lane is open in this
+// event"; absence is closed. Nothing else about a lane varies by event.
+export const cycleAdmissionLane = pgTable(
+  "cycle_admission_lane",
+  {
+    cycleId: uuid("cycle_id")
+      .notNull()
+      .references(() => cycle.id, { onDelete: "cascade" }),
+    laneId: uuid("lane_id")
+      .notNull()
+      .references(() => admissionLane.id),
+  },
+  (t) => [uniqueIndex("cycle_admission_lane_unique").on(t.cycleId, t.laneId)],
+);

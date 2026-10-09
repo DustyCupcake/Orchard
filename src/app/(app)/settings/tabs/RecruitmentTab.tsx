@@ -1,18 +1,16 @@
-import { getJoinLaneRulesForContext, listLaneOverridesByCycle } from "@/lib/recruitment/joining-lanes";
-import { JOINING_LANE_DEFAULTS, JOINING_LANE_ORDER, type JoiningLaneRule } from "@/lib/recruitment/lanes";
+import { laneRuleOf, listEventLaneSets, listLanes } from "@/lib/recruitment/admission-lanes";
+import { describeLaneConsequence } from "@/lib/recruitment/lane-rules";
 import type { community as communityTable, form as formTable } from "@/db/schema";
 import type { RecruitmentDecisionRule } from "@/lib/recruitment/evaluations";
-import Link from "next/link";
 import { SelectField, SettingsGroup, SettingsPanel, SettingsSection, TextAreaField, TextField, ToggleField } from "../ui";
 import {
-  updateAdmissionRulesAction,
+  saveAdmissionLanesAction,
   updateRecruitmentApplicationAction,
   updateRecruitmentDecisionRulesAction,
   updateRecruitmentDoorsAction,
   updateRecruitmentCheckWindowAction,
-  updateRecruitmentSupportWindowAction,
 } from "../actions";
-import LaneRulesEditor from "../LaneRulesEditor";
+import AdmissionLaneEditor from "../AdmissionLaneEditor";
 import DecisionRulesEditor, { describeRuleCondition } from "../DecisionRulesEditor";
 
 
@@ -48,139 +46,59 @@ import DecisionRulesEditor, { describeRuleCondition } from "../DecisionRulesEdit
 export default async function RecruitmentTab({
   community,
   forms,
-  cycles,
   authorized,
 }: {
   community: typeof communityTable.$inferSelect;
   forms: (typeof formTable.$inferSelect)[];
-  // Only to name the events that override these defaults below — the tab
-  // has no other use for the list.
-  cycles: { id: string; name: string }[];
   authorized: boolean;
 }) {
-  const rules = await getJoinLaneRulesForContext(community.id, null);
-  const lanes = Object.fromEntries(
-    JOINING_LANE_ORDER.map((lane) => [lane, rules.get(lane) ?? JOINING_LANE_DEFAULTS[lane]]),
-  ) as Record<(typeof JOINING_LANE_ORDER)[number], JoiningLaneRule>;
+  const laneRules = (await listLanes(community.id)).map(laneRuleOf);
+  const eventSets = (await listEventLaneSets(community.id)).map((e) => ({ id: e.id, label: e.name, laneIds: e.laneIds }));
 
   const activeForms = forms.filter((f) => !f.archivedAt);
   const noFormConfigured = !community.recruitmentApplicationFormId;
 
-  // Which events shadow these defaults, and which lanes. Read on the
-  // community screen because that is where a blind edit happens: these are
-  // *defaults*, and a default only reaches an event whose lane isn't
-  // overridden there. Without this line an Admin changes a community rule
-  // with no way to know it will land at next year's reunion but not at the
-  // event next month.
-  const overrides = await listLaneOverridesByCycle(community.id);
-  const cycleNameById = new Map(cycles.map((c) => [c.id, c.name]));
-
   return (
     <div className="flex flex-col gap-8">
       <SettingsSection
-        title="Admission rules"
-        description="What someone declares about themselves — or what the member inviting them declares — picks one of four lanes, and each lane sets what happens next. Defaults: someone you personally know joins straight away, everyone else fills in the form and has an interview."
+        title="Admission lanes"
+        description="A lane is a way someone arrives, and sets what happens next. You define only the lanes you need: invitations from members who know someone personally, every other invitation, an open application — or only some of those."
       >
         {authorized ? (
           <SettingsGroup
-            action={updateAdmissionRulesAction}
-            submitLabel="Save admission rules"
-            title="One rule per lane"
-          stateLabel="One rule per lane: verification and process for each of the four admission lanes"
-            aside={
-              overrides.length > 0 ? (
-                <Link
-                  href="#lane-overrides"
-                  className="text-[length:var(--text-meta)] font-medium text-[var(--accent-1)] hover:underline"
-                >
-                  {overrides.length} event{overrides.length === 1 ? "" : "s"} override
-                  {overrides.length === 1 ? "s" : ""} these
-                </Link>
-              ) : undefined
-            }
+            action={saveAdmissionLanesAction}
+            submitLabel="Save lanes"
+            title="Your lanes"
+            stateLabel="The lanes this community takes people in through"
             state={
-              <div className="flex flex-col gap-0.5">
-                {JOINING_LANE_ORDER.map((lane) => (
-                  <span key={lane}>
-                    <span className="text-[var(--text)]">{laneTitle(lane)}:</span>{" "}
-                    {laneSummary(lanes[lane])}
-                  </span>
-                ))}
-              </div>
+              laneRules.length === 0 ? (
+                "No lanes — nobody can arrive."
+              ) : (
+                <div className="flex flex-col gap-0.5">
+                  {laneRules.map((lane) => (
+                    <span key={lane.id}>
+                      <span className="text-[var(--text)]">{lane.name}:</span> {describeLaneConsequence(lane)}
+                    </span>
+                  ))}
+                </div>
+              )
             }
-            description="Set one verification and one process per lane."
+            description="Each lane says who arrives that way and what they go through. Anyone already in the process keeps the path they entered on when a lane changes."
           >
-            <LaneRulesEditor initial={lanes} />
+            <AdmissionLaneEditor initial={laneRules} eventSets={eventSets} />
           </SettingsGroup>
         ) : (
-          <SettingsPanel title="One rule per lane">
+          <SettingsPanel title="Your lanes">
             <div className="flex flex-col gap-3">
-              {JOINING_LANE_ORDER.map((lane) => (
-                <div key={lane} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-                  <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{laneTitle(lane)}</p>
-                  <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{laneSummary(lanes[lane])}</p>
+              {laneRules.map((lane) => (
+                <div key={lane.id} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+                  <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{lane.name}</p>
+                  <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{describeLaneConsequence(lane)}</p>
                 </div>
               ))}
             </div>
           </SettingsPanel>
         )}
-
-        {/* Named, and linked, because a default nobody can trace is a
-            default nobody can reason about. This is the visible half of
-            the never-snapshotted design: the row is not a frozen copy of
-            the community rule, it is an absence, so it keeps tracking the
-            community even after the community moves on. */}
-        {overrides.length > 0 && (
-          <div id="lane-overrides" className="mt-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-            <p className="text-[length:var(--text-meta)] font-medium text-[var(--text)]">
-              {overrides.length === 1 ? "One event runs" : `${overrides.length} events run`} different
-              admission rules
-            </p>
-            <ul className="mt-1.5 flex flex-col gap-1">
-              {overrides.map((o) => (
-                <li key={o.cycleId} className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  <Link
-                    href={`/${o.cycleId}/participation`}
-                    className="font-medium text-[var(--accent-1)] hover:underline"
-                  >
-                    {cycleNameById.get(o.cycleId) ?? "An event"}
-                  </Link>{" "}
-                  — {o.lanes.map((l) => laneTitle(l).toLowerCase()).join(", ")}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-              Changing a rule above reaches every event except these — and reaches these only for
-              the lanes they haven&rsquo;t overridden.
-            </p>
-          </div>
-        )}
-
-        {/* The support window sits directly after the lane rules, because it
-            only ever does anything for a lane set to "one more member's
-            word" — the mode chosen two cards above. Setting the requirement
-            and its clock in one place beats looking for the clock elsewhere. */}
-        <SettingsGroup
-          action={updateRecruitmentSupportWindowAction}
-          submitLabel="Save support window"
-          title="How long a nomination waits for backing"
-          stateLabel="A nomination is backed for the configured number of hours, then the person carries on either way"
-          state={
-            <>
-              A nomination is backed for {community.recruitmentNominationWindowHours} hours, then
-              the person carries on either way.
-            </>
-          }
-          description="Applies to a lane set to 'one more member's word'. A window can only let someone through, never turn them away: when it lapses they carry on regardless."
-        >
-          <TextField
-            label="Support window (hours)"
-            name="recruitmentNominationWindowHours"
-            type="number"
-            defaultValue={community.recruitmentNominationWindowHours}
-            hint="How long someone waits for other members to back up a nomination."
-          />
-        </SettingsGroup>
       </SettingsSection>
 
       <SettingsSection
@@ -369,28 +287,6 @@ export default async function RecruitmentTab({
       </SettingsSection>
     </div>
   );
-}
-
-function laneTitle(lane: (typeof JOINING_LANE_ORDER)[number]) {
-  return {
-    invited_knows_personally: "Invited — knows personally",
-    invited_good_fit: "Invited — vouches (good fit)",
-    invited_neither: "Invited — neither mark",
-    public_application: "Public application",
-  }[lane];
-}
-
-function laneSummary(rule: JoiningLaneRule) {
-  const proof = {
-    basic: "one member's word is enough",
-    nomination: `needs ${rule.supportCount} more member${rule.supportCount === 1 ? "" : "s"}`,
-    consensus: "announced to the community before admission",
-  }[rule.verificationMode];
-  const process = [
-    rule.applicationRequired ? "an application" : null,
-    rule.interviewRequired ? "an interview" : null,
-  ].filter(Boolean);
-  return `${proof}${process.length ? `, plus ${process.join(" and ")}` : ""}.`;
 }
 
 // The column's own type, rather than a hand-written structural copy of it.

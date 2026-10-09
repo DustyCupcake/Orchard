@@ -1,0 +1,111 @@
+import { notFound } from "next/navigation";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { community } from "@/db/schema";
+import { getArrivalByToken, loadArrivalReadout } from "@/lib/recruitment";
+import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY } from "@/components/ui/kit";
+import { sendSignInLinkAction, withdrawAction } from "./actions";
+
+export const dynamic = "force-dynamic";
+
+// The link is the person's only credential until they are a member, so
+// nothing about it should be indexed or leaked to another site through a
+// referrer.
+export const metadata = {
+  title: "Your request to join",
+  robots: { index: false, follow: false },
+  referrer: "no-referrer" as const,
+};
+
+// docs/admission-flow.md §4: "where they are, in plain words, and what
+// happens next" — the one place a person in the process can see that. It has
+// no login, because they have no account yet; the link they were given is the
+// proof. It says nothing the person didn't give us or isn't owed: their own
+// stage, and the steps their lane asks for. Never who has said what about
+// them, and never who raised a concern.
+export default async function AdmissionPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ sent?: string; withdrawn?: string }>;
+}) {
+  const { token } = await params;
+  const { sent, withdrawn } = await searchParams;
+
+  const arrival = await getArrivalByToken(token);
+  if (!arrival) notFound();
+
+  const [communityRow] = await db.select({ name: community.name }).from(community).where(eq(community.id, arrival.communityId));
+  const { readout, sentence, laneName } = await loadArrivalReadout(arrival);
+
+  const steps = [
+    arrival.requiredVerification === "community_check" && "Your arrival is announced to the community, and anyone can raise a concern",
+    arrival.requiredApplication && "An application",
+    arrival.requiredInterview && "An interview",
+    arrival.requiredEvaluation && "A decision, from the people who read your application or met you",
+  ].filter(Boolean) as string[];
+
+  const finished = readout.stage === "admitted" || readout.stage === "declined" || readout.stage === "withdrawn";
+
+  return (
+    <main className="mx-auto max-w-[560px] px-6 py-16">
+      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">
+        Your request to join {communityRow?.name ?? "the community"}
+      </h1>
+      <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+        For {arrival.name}. This page is private to you — please don&rsquo;t share the link.
+      </p>
+
+      {sent && (
+        <div className="mt-4">
+          <Banner tone="success">If that address is a member, a sign-in link is on its way.</Banner>
+        </div>
+      )}
+      {withdrawn && (
+        <div className="mt-4">
+          <Banner tone="success">You&rsquo;ve stopped this request. Nothing more will happen.</Banner>
+        </div>
+      )}
+
+      <p className="mt-6 text-[length:var(--text-body)] text-[var(--text)]">{sentence}</p>
+
+      {readout.stage === "admitted" && (
+        <form action={sendSignInLinkAction} className="mt-4">
+          <input type="hidden" name="token" value={token} />
+          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+            Email me a sign-in link
+          </button>
+          <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+            It goes to {arrival.email}, and works once for 15 minutes.
+          </p>
+        </form>
+      )}
+
+      {steps.length > 0 && !finished && (
+        <section className="mt-8">
+          <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">
+            What {laneName ? `“${laneName}”` : "this"} involves
+          </h2>
+          <ol className="mt-2 list-decimal pl-5 text-[length:var(--text-body)] text-[var(--text-muted)]">
+            {steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {!finished && (
+        <form action={withdrawAction} className="mt-10 border-t border-[var(--border)] pt-4">
+          <input type="hidden" name="token" value={token} />
+          <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+            You can stop at any time, without giving a reason.
+          </p>
+          <button type="submit" className={`${BUTTON_SECONDARY} mt-2 w-fit`}>
+            Stop this request
+          </button>
+        </form>
+      )}
+    </main>
+  );
+}

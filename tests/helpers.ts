@@ -1,6 +1,7 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { branch, community, member, task } from "@/db/schema";
+import { admissionLane, branch, community, cycleAdmissionLane, member, task } from "@/db/schema";
+import { createEmptyLane, normalizeLaneRule, startingLanes, type AdmissionLaneRule } from "@/lib/recruitment/lane-rules";
 import type { member as memberTable } from "@/db/schema";
 import {
   addPermissionGrant,
@@ -192,4 +193,79 @@ export async function createRestrictedQuestion(
     sensitive: true,
     ...options,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Admission lanes (docs/admission-flow.md §2a)
+// ---------------------------------------------------------------------------
+
+// Lanes are rows now, and a community that has none is given the starting two
+// the first time anything reads them. A test that needs a particular shape
+// says so here rather than relying on that default, so what it is testing is
+// stated at the top of the test.
+//
+// Written straight to the table: the authorised entry point (saveCommunityLanes)
+// is what the lane tests themselves exercise, and every other test just needs
+// the lanes to be a certain way before it starts. Only valid before any arrival
+// exists, because arrivals reference their lane and nothing here is cascaded.
+export async function setLanes(communityId: string, rules: Partial<AdmissionLaneRule>[]) {
+  const existing = await db.select({ id: admissionLane.id }).from(admissionLane).where(eq(admissionLane.communityId, communityId));
+  if (existing.length > 0) {
+    await db.delete(cycleAdmissionLane).where(inArray(cycleAdmissionLane.laneId, existing.map((l) => l.id)));
+    await db.delete(admissionLane).where(eq(admissionLane.communityId, communityId));
+  }
+  if (rules.length === 0) {
+    // A community with no lanes at all would just be given the starting two on
+    // the next read, so the one way to have none is to have only archived ones.
+    await db.insert(admissionLane).values(
+      startingLanes().map((rule) => ({ ...rule, id: undefined, communityId, archivedAt: new Date() })),
+    );
+    return [];
+  }
+  return db
+    .insert(admissionLane)
+    .values(
+      rules.map((partial) => {
+        const rule = normalizeLaneRule({ ...createEmptyLane(partial.kind ?? "invite"), ...partial });
+        return {
+          communityId,
+          name: rule.name,
+          kind: rule.kind,
+          handlesKnowsPersonally: rule.handlesKnowsPersonally,
+          handlesGoodFitOnly: rule.handlesGoodFitOnly,
+          handlesNeither: rule.handlesNeither,
+          publicSlug: rule.publicSlug,
+          applicationRequired: rule.applicationRequired,
+          interviewRequired: rule.interviewRequired,
+          verification: rule.verification,
+          reportsNeeded: rule.reportsNeeded,
+          supportShortcutCount: rule.supportShortcutCount,
+          openInCommunity: rule.openInCommunity,
+        };
+      }),
+    )
+    .returning();
+}
+
+// The four lanes a community that existed before lanes were rows was carried
+// over to, which is what most of the recruitment tests were written against:
+// someone a member knows personally comes in at once; every other invite and
+// a public application go through the evaluated process.
+export const LEGACY_LANES: Partial<AdmissionLaneRule>[] = [
+  { name: "Invited — knows personally", kind: "invite", handlesKnowsPersonally: true, applicationRequired: false, interviewRequired: false },
+  { name: "Invited — vouches (good fit)", kind: "invite", handlesGoodFitOnly: true },
+  { name: "Invited — neither mark", kind: "invite", handlesNeither: true },
+  { name: "Open application", kind: "public" },
+];
+
+export async function withLegacyLanes(communityId: string) {
+  return setLanes(communityId, LEGACY_LANES);
+}
+
+// The knows-personally lane runs a community check; everything else as legacy.
+export async function withCheckLane(communityId: string) {
+  return setLanes(communityId, [
+    { ...LEGACY_LANES[0], verification: "community_check" },
+    ...LEGACY_LANES.slice(1),
+  ]);
 }

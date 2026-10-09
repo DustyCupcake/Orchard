@@ -356,7 +356,6 @@ export default async function SettingsPage({
           <RecruitmentTab
             community={communityRow}
             forms={forms}
-            cycles={cycles}
             authorized={authorized}
           />
         )}

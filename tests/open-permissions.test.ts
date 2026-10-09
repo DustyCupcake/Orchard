@@ -718,7 +718,10 @@ describe("open capability resolvers (Step 4)", () => {
       .where(eq(community.id, testCommunity.id));
     const form = await createForm(alice, {
       title: "Application",
-      fields: [{ key: "name", label: "Name", responseType: "text", required: true }],
+      fields: [
+        { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
+        { key: "email", label: "Email", responseType: "text", required: true, isEmailField: true },
+      ],
     });
     await updateCommunity(alice, {
       recruitmentApplicationFormId: form.id,
@@ -736,7 +739,7 @@ describe("open capability resolvers (Step 4)", () => {
 
     // Closed: bob and alice both hold nothing, so nobody can evaluate and
     // the count of 2 is unreachable by construction.
-    const application = await submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" } });
+    const application = await submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana", email: "dana@example.com" } });
     await expect(submitEvaluation(alice, application.formResponse.id, { recommendation: "proceed" })).rejects.toThrow();
 
     // Open: both can, and that is enough to reach a decision.
@@ -1022,7 +1025,7 @@ describe("open modules are not misconfigured (Step 5)", () => {
     const form = await createForm(alice, {
       title: "Application",
       fields: [
-        { key: "name", label: "Name", responseType: "text", required: true },
+        { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
         { key: "email", label: "Email", responseType: "text", required: true, isEmailField: true },
       ],
     });

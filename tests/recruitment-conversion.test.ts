@@ -4,6 +4,7 @@ import { db } from "@/db";
 import {
   community,
   communityInvite,
+  formResponse,
   member,
   memberIdentity,
   memberLanguage,
@@ -26,7 +27,6 @@ import {
   recordDecisionIfReached,
   resolveWiderDiscussionManually,
   resolveWiderDiscussionWindows,
-  seedAdmissionLanesForCommunity,
   setRecruitmentSubscriptionActive,
   submitEvaluation,
   submitRecruitmentApplication,
@@ -35,7 +35,7 @@ import {
 import type { RecruitmentDecisionRule } from "@/lib/recruitment";
 import { findOrCreateMemberByEmail } from "@/lib/member";
 import { confirmSlot, submitAvailability, submitAvailabilityAsApplicant } from "@/lib/scheduling-polls";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withLegacyLanes } from "./helpers";
 
 // Phase 48's own resolved shape: a form whose fields are tagged as
 // the applicant's name/email, per src/lib/forms.ts's
@@ -61,7 +61,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
-  await seedAdmissionLanesForCommunity(communityId);
+  await withLegacyLanes(communityId);
 }
 
 async function insertTask(communityId: string, branchId: string, createdBy: string) {
@@ -267,11 +267,15 @@ describe("Recruitment: applicant→Member conversion", () => {
     ];
     const setupResult = await setUp(fixtures, fieldsWithLanguages);
 
-    // The member has to exist *before* the decision, since that is the
-    // only window where the dedupe is reachable: a Member who applied
-    // earlier, already logged in, and set their own languages. Reusing the
-    // existing-member-by-email path is what puts conversion on an account
-    // that already has a row.
+    const application = await submitRecruitmentApplication(setupResult.communityId, {
+      values: { name: "Kim", email: "kim@example.com", languages: "English, Welsh" },
+    });
+
+    // The member has to exist *before* the decision, since that is the only
+    // window where the dedupe is reachable: somebody who applied, then got an
+    // account some other way, logged in and set their own languages. Linking to
+    // the existing member by email is what puts conversion on an account that
+    // already has rows.
     const [existingMember] = await db
       .insert(member)
       .values({ communityId: setupResult.communityId, name: "Kim" })
@@ -287,9 +291,6 @@ describe("Recruitment: applicant→Member conversion", () => {
       level: "native",
     });
 
-    const application = await submitRecruitmentApplication(setupResult.communityId, {
-      values: { name: "Kim", email: "kim@example.com", languages: "English, Welsh" },
-    });
     await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
     await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
     const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
@@ -451,39 +452,52 @@ describe("Recruitment: applicant→Member conversion", () => {
     expect(accompanimentTask.suggestedMemberId).toBe(setupResult.alice.id);
   });
 
-  it("leaves convertedMemberId null, without erroring, when the application form isn't tagged", async () => {
+  it("refuses an application to a form that can't identify a person, before storing anything", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures, untaggedFields);
 
-    const application = await submitRecruitmentApplication(setupResult.communityId, { values: { name: "Frank", email: "frank@example.com" } });
-    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
-
-    expect(decision!.resolution).toBe("accepted");
-    expect(decision!.convertedMemberId).toBeNull();
-
-    const [accompanimentTask] = await db.select().from(task).where(eq(task.id, decision!.accompanimentTaskId!));
-    expect(accompanimentTask.description).toMatch(/isn't tagged/);
+    // A form with no question marked as the applicant's name and email could
+    // take applications and never admit anyone — the decision would be made and
+    // nobody would arrive. It's refused at the door instead, saying why.
+    await expect(
+      submitRecruitmentApplication(setupResult.communityId, { values: { name: "Frank", email: "frank@example.com" } }),
+    ).rejects.toThrow(/marked as the applicant's name/);
+    expect(await db.select().from(formResponse)).toHaveLength(0);
   });
 
-  it("links to an existing member by email instead of creating a duplicate", async () => {
+  it("refuses an application from an address that already belongs to a member", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures, taggedFields);
-
     const [existingMember] = await db
       .insert(member)
       .values({ communityId: setupResult.communityId, name: "Already Here" })
       .returning();
-    await db.insert(memberIdentity).values({
-      memberId: existingMember.id,
-      provider: "magic_link",
-      loginEmail: "already-here@example.com",
-    });
+    await db.insert(memberIdentity).values({ memberId: existingMember.id, provider: "magic_link", loginEmail: "already-here@example.com" });
 
+    await expect(
+      submitRecruitmentApplication(setupResult.communityId, {
+        values: { name: "Already Here (reapplying)", email: "already-here@example.com" },
+      }),
+    ).rejects.toThrow(/already belongs to a member/);
+    expect(await db.select().from(formResponse)).toHaveLength(0);
+  });
+
+  it("links to an existing member by email instead of creating a duplicate, when they became one while applying", async () => {
+    const fixtures = await createFixtures();
+    const setupResult = await setUp(fixtures, taggedFields);
+
+    // They applied as a stranger, and while it was being decided they got an
+    // account some other way (an invite, an import). Accepting the
+    // application must link to that account rather than crash or duplicate.
     const application = await submitRecruitmentApplication(setupResult.communityId, {
       values: { name: "Already Here (reapplying)", email: "already-here@example.com" },
     });
+    const [existingMember] = await db
+      .insert(member)
+      .values({ communityId: setupResult.communityId, name: "Already Here" })
+      .returning();
+    await db.insert(memberIdentity).values({ memberId: existingMember.id, provider: "magic_link", loginEmail: "already-here@example.com" });
+
     await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
     await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
     const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
@@ -597,7 +611,7 @@ describe("Recruitment: subscription auto-lapse", () => {
 
   it("increments an active subscriber's count when they give no availability, and lapses at the threshold", async () => {
     const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures, untaggedFields, { lapseThreshold: 2 });
+    const setupResult = await setUp(fixtures, taggedFields, { lapseThreshold: 2 });
 
     const [carol] = await db
       .insert(member)
@@ -629,7 +643,7 @@ describe("Recruitment: subscription auto-lapse", () => {
 
   it("resets an active subscriber's count to 0 once they submit availability for an intro call", async () => {
     const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures, untaggedFields, { lapseThreshold: 5 });
+    const setupResult = await setUp(fixtures, taggedFields, { lapseThreshold: 5 });
 
     const [carol] = await db
       .insert(member)
@@ -661,7 +675,7 @@ describe("Recruitment: subscription auto-lapse", () => {
 
   it("never touches a decision whose intro call hasn't confirmed a slot yet, and is a no-op for a non-subscriber", async () => {
     const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures, untaggedFields);
+    const setupResult = await setUp(fixtures, taggedFields);
 
     const [carol] = await db
       .insert(member)

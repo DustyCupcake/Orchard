@@ -1,11 +1,9 @@
-import { and, desc, eq, gt, isNull, ne, or } from "drizzle-orm";
+import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import type { DbOrTx } from "@/db";
 import {
-  communityInvite,
   cycle,
-  JOINING_LANE_KINDS,
   member as memberTable,
   participation,
 } from "@/db/schema";
@@ -13,7 +11,7 @@ import { NotFoundError } from "./errors";
 import { syncComputedTiers } from "./settings/tiers";
 import { requireCycleOpen } from "./cycles/lifecycle";
 import { listOpenCycles } from "./cycles/crud";
-import { getJoinLaneRulesForContext, laneRedemptionKind, redemptionPathForInvite } from "./recruitment/joining-lanes";
+import { countCapacityHolds } from "./recruitment/joining";
 
 // The `member` table is imported as a value here (listComingMembers below
 // joins against it) and used as the type through this alias, rather than
@@ -167,28 +165,7 @@ export async function getCycleParticipationSummary(actor: Member, cycleId: strin
     .where(and(eq(participation.cycleId, cycleId), eq(participation.status, "coming")));
   const comingCount = comingRows.length;
 
-  let holds = 0;
-  const laneRules = await getJoinLaneRulesForContext(cycleRow.communityId, cycleId);
-  if (JOINING_LANE_KINDS.some((lane) => laneRedemptionKind(laneRules.get(lane)!) === "direct")) {
-    const now = new Date();
-    const heldRows = await db
-      .select({
-        id: communityInvite.id,
-        inviterThinksGoodFit: communityInvite.inviterThinksGoodFit,
-        inviterKnowsPersonally: communityInvite.inviterKnowsPersonally,
-      })
-      .from(communityInvite)
-      .where(
-        and(
-          eq(communityInvite.cycleId, cycleId),
-          eq(communityInvite.communityId, cycleRow.communityId),
-          isNull(communityInvite.redeemedAt),
-          isNull(communityInvite.revokedAt),
-          or(isNull(communityInvite.expiresAt), gt(communityInvite.expiresAt, now)),
-        ),
-      );
-    holds = heldRows.filter((row) => redemptionPathForInvite(row, laneRules) === "direct").length;
-  }
+  const holds = await countCapacityHolds(cycleRow.communityId, cycleId);
   const usedCapacity = comingCount + holds;
 
   return {

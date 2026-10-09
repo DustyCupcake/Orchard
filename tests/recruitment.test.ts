@@ -15,11 +15,10 @@ import {
   redeemCommunityInvite,
   resolveInquiry,
   revokeCommunityInvite,
-  seedAdmissionLanesForCommunity,
   submitInquiry,
 } from "@/lib/recruitment";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withLegacyLanes } from "./helpers";
 
 async function enableRecruitment(communityId: string) {
   const [row] = await db.select().from(community).where(eq(community.id, communityId));
@@ -27,7 +26,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
-  await seedAdmissionLanesForCommunity(communityId);
+  await withLegacyLanes(communityId);
 }
 
 async function insertTask(

@@ -1,5 +1,6 @@
 import { boolean, integer, pgEnum, pgTable, text, timestamp, index, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { community, communityInvite, formResponse, member } from "./index.js";
+import { community } from "./community";
+import { member } from "./member";
 
 // docs/admission-flow.md §5 — One community check
 //
