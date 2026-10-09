@@ -2,20 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { BUTTON_GHOST, BUTTON_PRIMARY } from "@/components/ui/kit";
+import { sameTimeZone } from "@/lib/dates";
 import { setMyTimeZoneAction } from "../profile/actions";
 
 const DISMISS_KEY = "orchard.timeZoneNudge.dismissed";
-
-// Two names for the same zone ("Europe/Kiev" and "Europe/Kyiv") shouldn't
-// read as a mismatch, so both sides are canonicalised by the runtime
-// before they're compared.
-function canonical(timeZone: string): string {
-  try {
-    return new Intl.DateTimeFormat("en-US", { timeZone }).resolvedOptions().timeZone;
-  } catch {
-    return timeZone;
-  }
-}
 
 /**
  * Notices when the browser is in a different zone from the one the
@@ -39,7 +29,7 @@ export default function TimeZoneNudge({ currentZone }: { currentZone: string }) 
     // Reading the browser's zone and localStorage is only possible after
     // mount, which is why this sets state from an effect.
     const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (!browserZone || canonical(browserZone) === canonical(currentZone)) return;
+    if (!browserZone || sameTimeZone(browserZone, currentZone)) return;
     let dismissed: string | null = null;
     try {
       dismissed = window.localStorage.getItem(DISMISS_KEY);

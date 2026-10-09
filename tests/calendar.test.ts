@@ -281,6 +281,20 @@ describe("getCalendarView", () => {
       expect(await sessionDay({ ...alice, timeZone: "Pacific/Honolulu" })).toBe("2030-06-11");
     });
 
+    // The note only appears when the venue is on a different clock from the
+    // viewer, and says what time it is there.
+    it("notes the venue's time only when it is a different zone from the viewer's", async () => {
+      const alice = await setUpLateEvening();
+      await updateCommunity(alice, { timeZone: "Asia/Tokyo" });
+      const entry = async (actor: Parameters<typeof getCalendarView>[0]) =>
+        (await getCalendarView(actor)).entries.find((e) => e.kind === "event_confirmed");
+
+      // Alice inherits the venue's zone: nothing to explain.
+      expect((await entry(alice))?.note).toBeUndefined();
+      // Someone in Honolulu is told what time it is at the venue.
+      expect((await entry({ ...alice, timeZone: "Pacific/Honolulu" }))?.note).toBe("08:30 Asia/Tokyo, venue time");
+    });
+
     it("leaves a plain date alone whatever the viewer's zone", async () => {
       const alice = await setUpLateEvening();
       expect(await allDayDate({ ...alice, timeZone: "Asia/Tokyo" })).toBe("2030-06-10");
@@ -327,6 +341,11 @@ describe("getCalendarView", () => {
         (await getCalendarView(actor)).entries.find((e) => e.kind === "shift_occurrence")?.date;
       expect(await shiftDay(alice)).toBe("2030-06-11");
       expect(await shiftDay({ ...alice, timeZone: "Pacific/Honolulu" })).toBe("2030-06-11");
+
+      const note = async (actor: Parameters<typeof getCalendarView>[0]) =>
+        (await getCalendarView(actor)).entries.find((e) => e.kind === "shift_occurrence")?.note;
+      expect(await note(alice)).toBeUndefined();
+      expect(await note({ ...alice, timeZone: "Pacific/Honolulu" })).toBe("08:30 Asia/Tokyo, venue time");
     });
 
     it("reports the zone it read in and the day that makes today", async () => {

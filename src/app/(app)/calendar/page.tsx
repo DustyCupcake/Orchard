@@ -267,7 +267,7 @@ export default async function CalendarPage({
                             key={i}
                             href={e.href}
                             className={`truncate rounded-[var(--radius-sm)] px-1 py-0.5 text-[length:var(--text-nano)] leading-tight ${TONE_CLASSES[KIND_TONE[e.kind]]}`}
-                            title={e.label}
+                            title={e.note ? `${e.label} — ${e.note}` : e.label}
                           >
                             {e.label}
                           </a>
@@ -303,6 +303,7 @@ export default async function CalendarPage({
               <a href={e.href} className="min-w-0 truncate text-[var(--text)] hover:text-[var(--accent-1)]">
                 {e.label}
               </a>
+              {e.note && <span className="shrink-0 text-[length:var(--text-meta)] text-[var(--text-muted)]">{e.note}</span>}
             </li>
           ))}
         </ul>

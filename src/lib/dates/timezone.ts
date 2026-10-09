@@ -25,6 +25,22 @@ export const DEFAULT_TIME_ZONE = "UTC";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
+/**
+ * Whether two names mean the same zone. Compared as the runtime canonicalises
+ * them, so an alias ("Europe/Kiev" and "Europe/Kyiv") doesn't read as a
+ * difference; an unusable name only equals itself.
+ */
+export function sameTimeZone(a: string, b: string): boolean {
+  const canonical = (zone: string) => {
+    try {
+      return new Intl.DateTimeFormat("en-US", { timeZone: zone }).resolvedOptions().timeZone;
+    } catch {
+      return zone;
+    }
+  };
+  return canonical(a) === canonical(b);
+}
+
 export function isValidTimeZone(timeZone: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone });

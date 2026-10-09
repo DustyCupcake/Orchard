@@ -9,6 +9,7 @@ import {
   isValidTimeZone,
   localDateInZone,
   localInputFromInstant,
+  sameTimeZone,
 } from "@/lib/dates";
 
 // No database. These are the wall-clock <-> instant conversions every
@@ -179,5 +180,22 @@ describe("formatInstant", () => {
     expect(formatInstantRange("2026-10-09T23:00:00Z", "2026-10-10T01:00:00Z", "Asia/Tokyo")).toBe(
       "Oct 10, 2026, 08:00–10:00",
     );
+  });
+});
+
+describe("sameTimeZone", () => {
+  it("is true for the same zone and for an alias of it", () => {
+    expect(sameTimeZone("Europe/Madrid", "Europe/Madrid")).toBe(true);
+    expect(sameTimeZone("Europe/Kiev", "Europe/Kyiv")).toBe(true);
+  });
+
+  it("is false for different zones, even ones that share an offset right now", () => {
+    expect(sameTimeZone("Europe/Madrid", "Asia/Tokyo")).toBe(false);
+    expect(sameTimeZone("Europe/Madrid", "Europe/London")).toBe(false);
+  });
+
+  it("only equals itself when the name isn't a zone", () => {
+    expect(sameTimeZone("Not/AZone", "Not/AZone")).toBe(true);
+    expect(sameTimeZone("Not/AZone", "UTC")).toBe(false);
   });
 });

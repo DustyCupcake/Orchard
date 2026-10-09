@@ -1,5 +1,5 @@
 import type { member as memberTable } from "@/db/schema";
-import { effectiveTimeZone, localDateInZone, type PeriodDateContext } from "../dates";
+import { effectiveTimeZone, formatTimeInZone, localDateInZone, sameTimeZone, type PeriodDateContext } from "../dates";
 import { getCurrentCycle, listOnceEverAnswers } from "../profile-questions";
 import { getCycle, getEventClocks } from "../cycles";
 import { listMyTaskMilestones } from "../tasks";
@@ -37,6 +37,8 @@ export interface CalendarEntry {
   href: string;
   /** Optional display-only context; never used for sorting or identity. */
   period?: PeriodDateContext | null;
+  /** Set when the entry sits on the venue's day and the venue is on another clock than the viewer — "09:00 Asia/Tokyo, venue time". */
+  note?: string;
 }
 
 // The calendar day a moment falls on *for the viewer*. Only for real
@@ -89,6 +91,12 @@ export async function getCalendarView(actor: Member) {
   // Everything else that is an instant (deadlines and the like) is placed
   // on the viewer's own day.
   const venueZone = await getEventClocks(actor.communityId);
+  // The entry already sits on the venue's day; when the venue's clock is not
+  // the viewer's, say what time that is there, so the day isn't a surprise.
+  const venueNote = (startsAt: Date | string, zone: string): { note?: string } =>
+    sameTimeZone(zone, timeZone)
+      ? {}
+      : { note: `${formatTimeInZone(typeof startsAt === "string" ? startsAt : startsAt.toISOString(), zone)} ${zone}, venue time` };
 
   const currentCycle = await getCurrentCycle(actor.communityId);
   const currentCyclePeriod: PeriodDateContext | null =
@@ -179,7 +187,13 @@ export async function getCalendarView(actor: Member) {
   for (const p of publishedSchedule) {
     const slot = p.confirmedSlot as { startsAt: string; endsAt: string } | null;
     if (p.status === "confirmed" && slot?.startsAt) {
-      entries.push({ date: dayInZone(slot.startsAt, venueZone(p.cycleId)), kind: "event_confirmed", label: p.title, href: "/schedule" });
+      entries.push({
+        date: dayInZone(slot.startsAt, venueZone(p.cycleId)),
+        kind: "event_confirmed",
+        label: p.title,
+        href: "/schedule",
+        ...venueNote(slot.startsAt, venueZone(p.cycleId)),
+      });
     }
   }
 
@@ -197,6 +211,7 @@ export async function getCalendarView(actor: Member) {
           kind: "shift_occurrence",
           label: `${s.series.title} shift`,
           href: "/shifts",
+          ...venueNote(s.occurrence.startsAt, venueZone(s.series.cycleId)),
         });
       }
     }
