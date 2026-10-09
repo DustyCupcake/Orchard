@@ -243,7 +243,7 @@ describe("claim eligibility", () => {
   });
 });
 
-// docs/development-plan.md's Phase 50: group_coverage's live "covered /
+// docs/plans/development-plan.md's Phase 50: group_coverage's live "covered /
 // not yet covered" status line, computed off current real (non-shadow)
 // holders only.
 describe("getGroupCoverageStatus", () => {
@@ -285,7 +285,7 @@ describe("getGroupCoverageStatus", () => {
   });
 });
 
-// docs/development-plan.md's Phase 50: the "requirements that fit you"
+// docs/plans/development-plan.md's Phase 50: the "requirements that fit you"
 // sort dimension.
 describe("computeRequirementFitScore", () => {
   beforeEach(async () => {

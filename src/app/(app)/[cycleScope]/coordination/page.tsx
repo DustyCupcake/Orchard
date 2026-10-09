@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { resolveViewScopeFromSegment } from "@/lib/cycles";
@@ -51,7 +52,7 @@ const STATUS_TONE: Record<string, Tone> = {
   done: "success",
 };
 
-// The real Coordination page (docs/cycle-scope-remediation-plan.md
+// The real Coordination page (docs/plans/archive/cycle-scope-remediation-plan.md
 // §5.3): it lives under /[cycleScope] and gates on the view-scope cycle
 // when the community runs cycles, staying community-wide for cycle-less
 // ones — the same movement /participation and /budget made (Phase 65).
@@ -68,6 +69,7 @@ export default async function CycleScopeCoordinationPage({
   params: Promise<{ cycleScope: string }>;
 }) {
   const { real, viewing } = await getViewingContext();
+  const clock = await getViewerClock();
   if (!real || !viewing) {
     redirect("/login");
   }
@@ -230,7 +232,7 @@ export default async function CycleScopeCoordinationPage({
                   {c.title}
                 </Link>
                 <span className="shrink-0 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  {c.holderName} · due {c.nextCheckinAt?.toLocaleDateString()}
+                  {c.holderName} · due {c.nextCheckinAt ? clock.date(c.nextCheckinAt) : "—"}
                   {c.waitingNote && ` · ${c.waitingNote}`}
                 </span>
               </li>

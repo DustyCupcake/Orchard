@@ -1,4 +1,6 @@
 import { getIntroCallAvailability, getIntroCallByToken } from "@/lib/recruitment";
+import { getEventTimeZone } from "@/lib/cycles/time-zone";
+import { formatInstant } from "@/lib/dates";
 import AvailabilityGrid from "@/app/(app)/scheduling-polls/AvailabilityGrid";
 import { Banner } from "@/components/ui/kit";
 
@@ -30,6 +32,8 @@ export default async function IntroCallPage({ params }: { params: Promise<{ toke
   }
 
   const { poll } = found;
+  // No account, so no member zone — the community's clock, with its name.
+  const zone = await getEventTimeZone(poll.communityId, null);
   const myAvailability = await getIntroCallAvailability(token);
 
   return (
@@ -43,8 +47,8 @@ export default async function IntroCallPage({ params }: { params: Promise<{ toke
       {poll.confirmedSlotStart && poll.confirmedSlotEnd ? (
         <div className="mt-4">
           <Banner tone="success">
-            Confirmed: {new Date(poll.confirmedSlotStart).toLocaleString()} –{" "}
-            {new Date(poll.confirmedSlotEnd).toLocaleTimeString()}
+            Confirmed: {formatInstant(poll.confirmedSlotStart, zone, "datetime", { zoneName: true })} –{" "}
+            {formatInstant(poll.confirmedSlotEnd, zone, "time")}
           </Banner>
         </div>
       ) : (

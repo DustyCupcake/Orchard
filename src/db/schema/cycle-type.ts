@@ -5,7 +5,7 @@ import { community } from "./community";
 // Reunion, Workday — mainly so a Tier's cycle_type_count criterion can
 // count occurrences of one *kind* of cycle without a lighter gathering
 // padding the number. See docs/spec.md's "Cycle type" and
-// docs/development-plan.md's Phase 40. Optional throughout — a
+// docs/plans/development-plan.md's Phase 40. Optional throughout — a
 // Community that never bothers with it just leaves every Cycle
 // untyped.
 export const cycleType = pgTable("cycle_type", {

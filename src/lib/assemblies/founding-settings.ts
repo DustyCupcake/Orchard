@@ -64,7 +64,7 @@ export const FOUNDING_SETTINGS_DESCRIPTION =
   "change by hand. Delete anything you've already settled; add anything " +
   "this missed.";
 
-// Lane names are the plan's own (§2.1 of docs/joining-admission-plan.md
+// Lane names are the plan's own (§2.1 of docs/plans/archive/joining-admission-plan.md
 // and the §2.9 table), not invented here — these four are what the rest
 // of the app and the joining docs already call them.
 const JOINING_LANE_LABELS: Record<JoinLaneKind, string> = {

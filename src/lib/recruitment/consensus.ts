@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { community, communityInvite, objection, recruitmentApplicationConsent } from "@/db/schema";
 import { seedCycleParticipation } from "../participation";
 
-// Consensus, the third verification mode (docs/joining-admission-plan.md
+// Consensus, the third verification mode (docs/plans/archive/joining-admission-plan.md
 // §2.2/§2.6/J10, work-plan step 5). The machinery already existed for
 // the evaluated path's wider-discussion window; this module is the
 // invite-shaped twin of it, kept deliberately thin so the two windows

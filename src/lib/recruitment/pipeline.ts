@@ -150,7 +150,7 @@ export async function getRecruitmentPipeline(actor: Member) {
 
 // The dashboard's own "needs action" subset — evaluated-but-uncalled
 // (call_pending) or called-but-undecided (decision_pending), per
-// docs/development-plan.md's Phase 35. A thin filter over the same
+// docs/plans/development-plan.md's Phase 35. A thin filter over the same
 // listCandidates the full pipeline view uses, skipping the
 // capacity/composition context the dashboard doesn't need.
 export async function listRecruitmentActionItems(actor: Member): Promise<NeedsAction<RecruitmentCandidate>> {
@@ -163,7 +163,7 @@ export async function listRecruitmentActionItems(actor: Member): Promise<NeedsAc
 
   // An open module reaches this gate for every member, so the same
   // outstanding candidates land in every member's feed. Split them
-  // (docs/open-permissions-plan.md D12): a real holder is on the hook, a
+  // (docs/plans/archive/open-permissions-plan.md D12): a real holder is on the hook, a
   // member who is only in the module because it is open is not.
   const grantingTaskIds = await listGrantingTaskIds(actor.communityId, "recruitment");
   const shared = await isSharedByOpenness(actor.communityId, "recruitment", actor.id, grantingTaskIds);

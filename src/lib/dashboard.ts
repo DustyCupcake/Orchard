@@ -26,6 +26,7 @@ import {
 import { listEmergencyAccessActivity } from "./emergency-access";
 import { listBudgetNeedsAction } from "./budget";
 import { listEventSchedulingNeedsAction } from "./event-scheduling";
+import { getEventClocks } from "./cycles/time-zone";
 import { listMySignupsWithOccurrence, listShiftCoordinatorNeedsAction } from "./shifts";
 import { listConflictNeedsAction } from "./conflict";
 import { listKitchenNeedsAction } from "./kitchen";
@@ -226,10 +227,10 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
         ])
       : [[], [], [], []];
 
-  // Core, not module-gated — see docs/development-plan.md's Phase 42.
+  // Core, not module-gated — see docs/plans/development-plan.md's Phase 42.
   const calendarEventInvites = await listMyCalendarEventInvites(actor);
 
-  // Core, not module-gated — see docs/development-plan.md's Phase 46.
+  // Core, not module-gated — see docs/plans/development-plan.md's Phase 46.
   // "Both parties notified" — recent activations where the actor was
   // either side, most recent first.
   const emergencyAccessActivity = await listEmergencyAccessActivity(actor, 5);
@@ -237,7 +238,7 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
   // Budget/Event scheduling/Shifts/Conflict management never got the
   // same treatment Recruitment/Spatial planning/Calendar events/
   // Emergency access already got above as each landed — see
-  // docs/development-plan.md's Phase 49. Each of the four functions
+  // docs/plans/development-plan.md's Phase 49. Each of the four functions
   // below already degrades gracefully to [] for a member with nothing
   // relevant to see, the same "check the gate here, not inside a
   // try/catch" posture recruitmentNeedsAction/placementPendingReviews
@@ -258,14 +259,21 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
         { personal: [], shared: [] },
         [],
       ];
+  const shiftClockFor = await getEventClocks(actor.communityId);
   const myShiftsNeedingCompletion = myPastShiftsWithOccurrence
     .filter((s) => s.signup.status === "signed_up" && new Date(s.occurrence.endsAt) < new Date())
-    .map((s) => ({ signupId: s.signup.id, seriesTitle: s.series.title, endsAt: s.occurrence.endsAt }));
+    .map((s) => ({
+      signupId: s.signup.id,
+      seriesTitle: s.series.title,
+      endsAt: s.occurrence.endsAt,
+      // The venue's clock, so the date a shift "ended" reads the same for everyone.
+      timeZone: shiftClockFor(s.series.cycleId),
+    }));
   const conflictNeedsAction = await listConflictNeedsAction(actor);
   // Manual-tier requests this member may confirm: every one for an Admin,
   // otherwise only the tiers they are in. See src/lib/tier-requests.ts.
   const tierRequestsToConfirm = await listTierRequestsToConfirm(actor);
-  // Kitchen's own needs-action surface (docs/food-drinks-module-plan.md's
+  // Kitchen's own needs-action surface (docs/plans/archive/food-drinks-module-plan.md's
   // Step 4) — module-gated, and listKitchenNeedsAction itself degrades
   // to [] for a non-holder, so a member who's neither enabled-for nor
   // holding just gets no section.
@@ -275,7 +283,7 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
 
   // Core, not module-gated — task nomination is part of ordinary task
   // coordination, same footing as claim/release itself. See
-  // docs/development-plan.md's Phase 51 and src/lib/tasks/nominations.ts.
+  // docs/plans/development-plan.md's Phase 51 and src/lib/tasks/nominations.ts.
   const [pendingNominations, expiredNominations] = await Promise.all([
     listMyPendingNominations(actor),
     listMyExpiredNominations(actor),
@@ -386,7 +394,7 @@ export function deriveBranchHealthStatus(counts: { soft: number; hard: number; e
   return "on_track";
 }
 
-// The nav switcher's own resolved state (docs/development-plan.md's
+// The nav switcher's own resolved state (docs/plans/development-plan.md's
 // Phase 65/67), as the page already computes it for Board — passed in
 // rather than re-resolved here, same "page resolves nav scope, lib
 // computes data against the given ids" split Board's own
@@ -408,7 +416,7 @@ const NO_VIEW_SCOPE: DashboardViewScope = { cycleIds: [], singleCycleId: null };
 export async function getCommunitySnapshot(actor: Member, viewScope: DashboardViewScope = NO_VIEW_SCOPE) {
   const communityRow = await getCommunityRow(actor.communityId);
 
-  // Branch health (docs/development-plan.md's Phase 69) reads the same
+  // Branch health (docs/plans/development-plan.md's Phase 69) reads the same
   // cycle-scoped-plus-cycle-less shape Board's own cycleScope filter
   // established in Phase 67 — every task in the active view scope's own
   // cycle(s), plus cycle-less tasks (which aren't scoped to any

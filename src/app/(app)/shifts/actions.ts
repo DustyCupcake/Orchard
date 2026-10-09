@@ -12,6 +12,7 @@ import {
   createShiftSeriesInput,
   generateShiftOccurrences,
   generateShiftOccurrencesInput,
+  getShiftSeriesTimeZone,
   markShiftSignupCompleted,
   markShiftSignupNoShow,
   openCycleShiftSignups,
@@ -21,6 +22,7 @@ import {
   withdrawFromShift,
 } from "@/lib/shifts";
 import { AppError } from "@/lib/errors";
+import { instantFromZoned } from "@/lib/dates";
 
 function redirectWithError(err: unknown): never {
   if (err instanceof ZodError) {
@@ -115,15 +117,18 @@ export async function generateOccurrencesAction(formData: FormData) {
       });
       await generateShiftOccurrences(actor, seriesId, input);
     } else {
+      const timeZone = await getShiftSeriesTimeZone(actor, seriesId);
       const slots = String(formData.get("slotsRaw") ?? "")
         .split("\n")
         .map((line) => line.trim())
         .filter(Boolean)
         .map((line) => {
           const [startsAt, endsAt] = line.split("|").map((p) => p?.trim() ?? "");
+          // Typed at the venue, so read on the series' own clock rather
+          // than the server's.
           return {
-            startsAt: startsAt ? new Date(startsAt).toISOString() : "",
-            endsAt: endsAt ? new Date(endsAt).toISOString() : "",
+            startsAt: startsAt ? instantFromZoned(startsAt, timeZone).toISOString() : "",
+            endsAt: endsAt ? instantFromZoned(endsAt, timeZone).toISOString() : "",
           };
         });
       const input = generateShiftOccurrencesInput.parse({ mode: "explicit", slots });

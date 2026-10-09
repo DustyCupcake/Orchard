@@ -1,4 +1,5 @@
 import { and, desc, eq, ilike, isNotNull } from "drizzle-orm";
+import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { cycle } from "@/db/schema";
@@ -26,6 +27,8 @@ export default async function CyclesSearchPage({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { q } = await searchParams;
   const query = q?.trim() ?? "";
@@ -66,7 +69,7 @@ export default async function CyclesSearchPage({
             <li key={c.id} className="text-[var(--text)]">
               <a href={`/${c.id}/participation`} className="text-[var(--accent-1)] hover:underline">{c.name}</a>
               {c.closedAt && (
-                <span className="text-[var(--text-muted)]"> — closed {new Date(c.closedAt).toLocaleDateString()}</span>
+                <span className="text-[var(--text-muted)]"> — closed {clock.date(c.closedAt)}</span>
               )}
             </li>
           ))}

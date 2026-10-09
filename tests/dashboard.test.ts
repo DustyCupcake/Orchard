@@ -86,7 +86,7 @@ describe("getPersonalFeed", () => {
       // Manual-tier requests this member may confirm; none for someone who is
       // neither an Admin nor in any tier.
       tierRequestsToConfirm: [],
-      // Kitchen's own needs-action surface (docs/food-drinks-module-plan.md's
+      // Kitchen's own needs-action surface (docs/plans/archive/food-drinks-module-plan.md's
       // D2/D5) — empty here because this member holds no kitchen grant.
       kitchenNeedsAction: { personal: [], shared: [] },
       pendingNominations: [],
@@ -323,7 +323,7 @@ describe("getCommunitySnapshot", () => {
     expect(health.counts).toEqual({ soft: 0, hard: 1, escalated: 0 });
   });
 
-  // docs/development-plan.md's Phase 69: the flat single-cycle count
+  // docs/plans/development-plan.md's Phase 69: the flat single-cycle count
   // this section used to show became a general/this-cycle split, since
   // there's no honest single answer once more than one cycle can be
   // open at once.
@@ -418,7 +418,7 @@ describe("getCommunitySnapshot", () => {
   });
 });
 
-// docs/development-plan.md's Phase 49: Budget/Event scheduling/Shifts/
+// docs/plans/development-plan.md's Phase 49: Budget/Event scheduling/Shifts/
 // Conflict management never got wired into getPersonalFeed the way
 // Recruitment/Spatial planning/Calendar events/Emergency access did as
 // each landed. Each test below calls getPersonalFeed exactly once —
@@ -581,7 +581,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
 
     const coordinatorFeed = await getPersonalFeed(alice);
     expect(coordinatorFeed.shiftCoordinatorNeedsAction.personal).toEqual([
-      { occurrenceId: occurrence.id, seriesTitle: "Dish duty", startsAt: expect.any(Date), unresolvedCount: 1 },
+      { occurrenceId: occurrence.id, seriesTitle: "Dish duty", startsAt: expect.any(Date), timeZone: "UTC", unresolvedCount: 1 },
     ]);
   });
 
@@ -603,7 +603,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     const bobFeed = await getPersonalFeed(bob);
     expect(bobFeed.shiftCoordinatorNeedsAction.personal).toEqual([]);
     expect(bobFeed.myShiftsNeedingCompletion).toEqual([
-      { signupId: expect.any(String), seriesTitle: "Dish duty", endsAt: expect.any(Date) },
+      { signupId: expect.any(String), seriesTitle: "Dish duty", endsAt: expect.any(Date), timeZone: "UTC" },
     ]);
   });
 

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getViewerClock } from "@/lib/view-clock";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { cycle, member } from "@/db/schema";
@@ -44,7 +45,7 @@ const STATUS_TONE: Record<string, Tone> = {
 };
 
 // See docs/spec.md's Recruitment "Invite links" and "A public inquiry
-// inbox, not a CRM," and docs/development-plan.md's Phase 32 — the two
+// inbox, not a CRM," and docs/plans/development-plan.md's Phase 32 — the two
 // low-structure public entry points, plus the authenticated surfaces that
 // manage them.
 //
@@ -73,6 +74,8 @@ export default async function InvitesPage({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { error, created, revoked, claimed, inquiryResolved, invite: focusedInviteId, poked } =
     await searchParams;
@@ -158,9 +161,7 @@ export default async function InvitesPage({
               {focusedNomination.deadline && (
                 <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   Open until{" "}
-                  {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
-                    focusedNomination.deadline,
-                  )}
+                  {clock.deadline(focusedNomination.deadline)}
                   . After that nobody has to do anything — they carry on either way.
                 </p>
               )}
@@ -239,7 +240,8 @@ export default async function InvitesPage({
                 <input type="datetime-local" name="expiresAt" className={INPUT} />
                 <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   A direct invite into a capacity-capped event holds a place until it&rsquo;s used,
-                  revoked or expired, so one of those needs a real date.
+                  revoked or expired, so one of those needs a real date. Read on the event&rsquo;s
+                  clock, or the community&rsquo;s when it isn&rsquo;t for one particular event.
                 </span>
               </label>
               <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
@@ -272,8 +274,8 @@ export default async function InvitesPage({
                       {invite.cycleId && cycleNames.has(invite.cycleId) && (
                         <span className="font-medium text-[var(--text)]">{cycleNames.get(invite.cycleId)} · </span>
                       )}
-                      {JOINING_LANE_COPY[lane].title} · created {new Date(invite.createdAt).toLocaleDateString()}
-                      {invite.expiresAt && ` · expires ${new Date(invite.expiresAt).toLocaleDateString()}`}
+                      {JOINING_LANE_COPY[lane].title} · created {clock.date(invite.createdAt)}
+                      {invite.expiresAt && ` · expires ${clock.date(invite.expiresAt)}`}
                     </p>
                     {status === "valid" && (
                       <form action={revokeCommunityInviteAction} className="mt-2">
@@ -304,14 +306,14 @@ export default async function InvitesPage({
                   <div key={inq.id} className={CARD}>
                     <p className="text-[length:var(--text-body)] text-[var(--text)]">{inq.message}</p>
                     <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                      Contact: {inq.contactInfo} · submitted {new Date(inq.submittedAt).toLocaleString()}
+                      Contact: {inq.contactInfo} · submitted {clock.dateTime(inq.submittedAt)}
                     </p>
                     <p className="mt-1">
                       <Tag tone={inq.resolvedAt ? "success" : inq.claimedBy ? "accent" : "warning"}>
                         {inq.resolvedAt
                           ? "Resolved"
                           : inq.claimedBy
-                            ? `Claimed ${new Date(inq.claimedAt!).toLocaleString()}`
+                            ? `Claimed ${clock.dateTime(inq.claimedAt!)}`
                             : "Unclaimed"}
                       </Tag>
                     </p>

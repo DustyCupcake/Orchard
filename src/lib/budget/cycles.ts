@@ -120,7 +120,7 @@ async function getCommunityRow(communityId: string) {
   return row;
 }
 
-// "One active cycle at a time for v1" — see docs/development-plan.md's
+// "One active cycle at a time for v1" — see docs/plans/development-plan.md's
 // Phase 26 out-of-scope note. A prior cycle sitting at `confirmed`
 // (Phase 27) doesn't block starting a fresh one; anything still
 // `proposals_open`/`voting` does.
@@ -210,7 +210,7 @@ export async function getBudgetCycleForScope(actor: Member, scopeCycleId: string
 // Unlike getCurrentBudgetCycle above (community-wide, cycle-agnostic —
 // still used as-is by callers like src/lib/nav.ts's isAnyBudgetOwner),
 // this scopes to one specific real Cycle — what a cycle-scoped /budget
-// page (docs/development-plan.md's Phase 65) and closeCycle's own
+// page (docs/plans/development-plan.md's Phase 65) and closeCycle's own
 // owner-warning check both need. Keep the non-null wrapper for callers
 // that already have a real Cycle id; the nullable-safe implementation
 // above is the single scope-matching path.

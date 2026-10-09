@@ -375,7 +375,7 @@ describe("updateCycleSettings", () => {
     );
   });
 
-  // docs/development-plan.md's Phase 65 — "closing locks everything
+  // docs/plans/development-plan.md's Phase 65 — "closing locks everything
   // about that cycle, no exception," scoped to this phase's own owned
   // functions.
   it("rejects once the cycle is closed", async () => {

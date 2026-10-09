@@ -773,7 +773,7 @@ export async function removeDependencyAction(formData: FormData) {
 }
 
 // The task-side entry point onto the PermissionGrant rows the settings
-// panel's Access & permissions tab edits (docs/development-plan.md's
+// panel's Access & permissions tab edits (docs/plans/development-plan.md's
 // Phase 64). One underlying code path, with Budget deliberately absent:
 // its only configuration surface is Settings → Access & permissions.
 // Admin-gated here too (requireAdmins), a genuinely stricter check than

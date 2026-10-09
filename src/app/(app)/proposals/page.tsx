@@ -72,7 +72,7 @@ export default async function ProposalsPage({
   // "granted elsewhere" here just means "granted at all" — every
   // single-cardinality module with an existing grantee gets the same
   // "checking this moves it here" warning the settings panel and the
-  // task detail view both show (docs/development-plan.md's Phase 64).
+  // task detail view both show (docs/plans/development-plan.md's Phase 64).
   // For the two cycle-scoped modules, only a grant matching the form's
   // own default cycle counts as a conflict — a grant on a different
   // cycle isn't one.

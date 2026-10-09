@@ -16,7 +16,7 @@ type Member = typeof memberTable.$inferSelect;
 // with no owner past its deadline (or a hard-flag past its own
 // deadline, with phases off).
 //
-// docs/cycle-scope-remediation-plan.md §4.7/§5.3 adds view-scope
+// docs/plans/archive/cycle-scope-remediation-plan.md §4.7/§5.3 adds view-scope
 // gating: a cycle-less coordination task (column authority) keeps the
 // whole community-wide queue — cross-branch placement stays a
 // community-level act; a cycle-placed coordinator or a cycle's

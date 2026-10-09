@@ -11,7 +11,7 @@ type Member = typeof memberTable.$inferSelect;
 // Same "claimable like any other task, current holders are the pool"
 // pattern as isCoordinationHolder/isAdmin (Phases 15/13) — see
 // docs/spec.md's "View-as (support)". A real `support`-module
-// PermissionGrant row now (docs/development-plan.md's Phase 63 —
+// PermissionGrant row now (docs/plans/development-plan.md's Phase 63 —
 // previously a Task.tags match against Community.supportTag, which was
 // also this codebase's one confirmed real bug: an ordinary
 // categorization tag could silently grant real View-as access if it
@@ -19,7 +19,7 @@ type Member = typeof memberTable.$inferSelect;
 // everywhere else this pattern is used.
 //
 // An open `support` module means every member may View-as any other
-// (docs/open-permissions-plan.md D13 — the settings UI warns and confirms
+// (docs/plans/archive/open-permissions-plan.md D13 — the settings UI warns and confirms
 // before allowing it, because it is the highest-blast-radius module there
 // is). The re-verification in getActiveViewAs is what makes that safe
 // enough to offer: it runs on every call, so losing the task ends an
@@ -131,7 +131,7 @@ export async function getViewingContext() {
 // someone else — "disabled at the UI layer" (AppShell.tsx dims/blocks
 // every rendered write form once View-as is active) "and re-checked/
 // rejected server-side regardless" (this), per
-// docs/development-plan.md's Phase 54 Done-when.
+// docs/plans/development-plan.md's Phase 54 Done-when.
 //
 // REST routes get the same guarantee through src/lib/api.ts's
 // requireWriteMember(), which every mutating handler (POST/PUT/PATCH/

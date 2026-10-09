@@ -28,19 +28,16 @@ import {
   withdrawFromShiftAction,
 } from "./actions";
 import MySeriesSection from "./MySeriesSection";
+import { effectiveTimeZone, formatInstantRange } from "@/lib/dates";
 import SelectField from "@/components/ui/SelectField";
 
 export const dynamic = "force-dynamic";
-
-function formatRange(startsAt: Date | string, endsAt: Date | string) {
-  return `${new Date(startsAt).toLocaleString()} – ${new Date(endsAt).toLocaleTimeString()}`;
-}
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
-// See docs/spec.md's "Shifts / rota" and docs/development-plan.md's
+// See docs/spec.md's "Shifts / rota" and docs/plans/development-plan.md's
 // Phase 29: recurring, never-"done" work distinct from a Task's
 // one-shot claim/finish lifecycle. §2.6/§4.8 (docs/cycle-scope-
 // remediation-plan.md): series group by scope — a cycle's roster vs the
@@ -98,6 +95,12 @@ export default async function ShiftsPage({
       moduleOn ? listShiftManagerScopesForMember(viewing) : Promise.resolve([]),
       moduleOn ? listPendingShiftProposals(viewing) : Promise.resolve([]),
     ]);
+
+  // A shift happens at the venue, so each one reads on its own event's
+  // clock — its cycle's zone, else the community's — wherever the viewer is.
+  const cycleZoneById = new Map(allCycles.map((c) => [c.id, effectiveTimeZone(c, communityRow)] as const));
+  const shiftZone = (cycleId: string | null) =>
+    (cycleId && cycleZoneById.get(cycleId)) || effectiveTimeZone(null, communityRow);
 
   const mySignedUpOccurrenceIds = new Set(mySignups.map((s) => s.signup.occurrenceId));
   const now = new Date();
@@ -296,6 +299,7 @@ export default async function ShiftsPage({
                         key={occurrence.id}
                         occurrence={occurrence}
                         series={series}
+                        timeZone={shiftZone(series.cycleId)}
                         branchNameById={branchNameById}
                         capacity={effectiveCapacity(occurrence, series)}
                         count={countByOccurrenceId.get(occurrence.id) ?? 0}
@@ -323,6 +327,7 @@ export default async function ShiftsPage({
                       key={occurrence.id}
                       occurrence={occurrence}
                       series={series}
+                      timeZone={shiftZone(series.cycleId)}
                       branchNameById={branchNameById}
                       capacity={effectiveCapacity(occurrence, series)}
                       count={countByOccurrenceId.get(occurrence.id) ?? 0}
@@ -345,7 +350,7 @@ export default async function ShiftsPage({
                 {myPastPendingSignups.map(({ signup, occurrence, series }) => (
                   <div key={signup.id} className={CARD}>
                     <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{series.title}</p>
-                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{formatRange(occurrence.startsAt, occurrence.endsAt)}</p>
+                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{formatInstantRange(occurrence.startsAt, occurrence.endsAt, shiftZone(series.cycleId))}</p>
                     <form action={markShiftSignupCompletedAction} className="mt-2">
                       <input type="hidden" name="signupId" value={signup.id} />
                       <button type="submit" className={BUTTON_SECONDARY}>
@@ -450,6 +455,7 @@ export default async function ShiftsPage({
               memberNameById={memberNameById}
               cycleNameById={cycleById}
               placementOptions={placementOptions}
+              shiftZone={shiftZone}
             />
           )}
         </>
@@ -466,6 +472,7 @@ export default async function ShiftsPage({
 function OccurrenceCard({
   occurrence,
   series,
+  timeZone,
   branchNameById,
   capacity,
   count,
@@ -474,6 +481,7 @@ function OccurrenceCard({
 }: {
   occurrence: { id: string; startsAt: Date; endsAt: Date };
   series: { title: string; branchId: string | null; description: string | null };
+  timeZone: string;
   branchNameById: Map<string, string>;
   capacity: number;
   count: number;
@@ -489,7 +497,7 @@ function OccurrenceCard({
           <span className="font-normal text-[var(--text-muted)]"> · {branchNameById.get(series.branchId) ?? "—"}</span>
         )}
       </p>
-      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{formatRange(occurrence.startsAt, occurrence.endsAt)}</p>
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{formatInstantRange(occurrence.startsAt, occurrence.endsAt, timeZone)}</p>
       {series.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{series.description}</p>}
       <p className="mt-1.5 flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
         {count}/{capacity} signed up

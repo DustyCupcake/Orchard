@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { branch, member } from "@/db/schema";
@@ -42,6 +43,7 @@ export default async function SchedulingPollDetailPage({
     redirect("/login");
   }
 
+  const clock = await getViewerClock();
   const { id } = await params;
   const { error } = await searchParams;
   const poll = await getPoll(viewing, id);
@@ -87,8 +89,7 @@ export default async function SchedulingPollDetailPage({
         <section className="mt-6">
           <SectionHeading>Confirmed</SectionHeading>
           <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
-            {new Date(poll.confirmedSlotStart!).toLocaleString()} –{" "}
-            {new Date(poll.confirmedSlotEnd!).toLocaleTimeString()}
+            {clock.dateTime(poll.confirmedSlotStart!)} – {clock.time(poll.confirmedSlotEnd!)} ({clock.timeZone})
           </p>
           <p className="mt-1 text-[length:var(--text-body)]">
             <a href={`/api/scheduling-polls/${poll.id}/invite`} className="text-[var(--accent-1)] hover:underline">
@@ -142,6 +143,7 @@ export default async function SchedulingPollDetailPage({
                 rangeEnd={poll.rangeEnd}
                 initialSelected={myAvailability}
                 readOnly={Boolean(viewAs)}
+                timeZone={clock.timeZone}
               />
             </div>
           </section>
@@ -157,7 +159,7 @@ export default async function SchedulingPollDetailPage({
               {qualifyingSlots.map((s) => (
                 <div key={s.slot} className="flex items-center gap-3 text-[length:var(--text-body)] text-[var(--text)]">
                   <span>
-                    {new Date(s.slot).toLocaleString()} — {s.count} available
+                    {clock.dateTime(s.slot)} — {s.count} available
                   </span>
                   {isOrganizer && (
                     <form action={confirmSlotAction}>
@@ -203,7 +205,7 @@ export default async function SchedulingPollDetailPage({
             <>
               <p className="mt-2 whitespace-pre-wrap text-[length:var(--text-body)] text-[var(--text)]">{summary.body}</p>
               <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                Published {new Date(summary.publishedAt).toLocaleString()}
+                Published {clock.dateTime(summary.publishedAt)}
                 {poll.requireRead && ` · read by ${summaryReads.length} member(s)`}
               </p>
               {poll.requireRead && !iReadSummary && (

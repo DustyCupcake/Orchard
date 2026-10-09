@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock, type ViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import {
@@ -31,6 +32,7 @@ const PHASE_TONE: Record<string, Tone> = {
 // open Assemblies closes today" was unanswerable without opening each
 // one — which is the only reason to be on this page in the first place.
 function nextBoundary(
+  clock: ViewerClock,
   a: { agendaEndsAt: Date; noticeEndsAt: Date; votingEndsAt: Date; phase: string },
   now: Date,
 ): string {
@@ -42,17 +44,18 @@ function nextBoundary(
     case "voting":
       return `Voting closes ${relativeTime(a.votingEndsAt, now)}`;
     default:
-      return `Closed ${a.votingEndsAt.toLocaleDateString()}`;
+      return `Closed ${clock.date(a.votingEndsAt)}`;
   }
 }
 
-function AssemblyRow({
+async function AssemblyRow({
   a,
   now,
 }: {
   a: Awaited<ReturnType<typeof listAssemblies>>[number];
   now: Date;
 }) {
+  const clock = await getViewerClock();
   const templateTitle = assemblyTemplateTitle(a.templateKey);
   const open = a.phase !== "closed";
   return (
@@ -69,7 +72,7 @@ function AssemblyRow({
       </div>
 
       <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-        {nextBoundary(a, now)}
+        {nextBoundary(clock, a, now)}
         {a.questionCount > 0 && ` · ${a.questionCount} agenda ${a.questionCount === 1 ? "item" : "items"}`}
         {a.responseCount > 0 && ` · ${a.responseCount} ${a.responseCount === 1 ? "response" : "responses"}`}
       </p>

@@ -230,6 +230,7 @@ const FIELD_LABEL: Record<string, string> = {
   phasesEnabled: "whether events have phases",
   cycleInitiationTierId: "the tier needed to start an event",
   defaultDateDisplayMode: "how dates read by default",
+  timeZone: "time zone",
   onsiteModeEnabled: "on-site mode",
   conflictAckWindowHours: "conflict acknowledgement window",
   taskNominationResponseDays: "task nomination response window",

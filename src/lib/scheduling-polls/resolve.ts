@@ -1,4 +1,6 @@
 import { eq } from "drizzle-orm";
+import { effectiveTimeZone, formatInstant } from "../dates";
+import { getEventTimeZone } from "../cycles/time-zone";
 import { z } from "zod";
 import { db } from "@/db";
 import { member, schedulingEntry, schedulingPoll, task } from "@/db/schema";
@@ -45,11 +47,15 @@ export async function confirmSlot(actor: Member, pollId: string, input: ConfirmS
     .returning();
 
   // "Facilitate [date]'s call" — the date's only known now.
-  const whenLabel = start.toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC",
-  });
+  // Written into a task title everyone reads, so it names its zone: the
+  // confirming member's own clock, falling back to the community's. It is
+  // text from here on and doesn't follow each reader's zone.
+  const whenLabel = formatInstant(
+    start,
+    effectiveTimeZone(actor, { timeZone: await getEventTimeZone(actor.communityId, null) }),
+    "datetime",
+    { zoneName: true },
+  );
   const sourceTasks = await db.select().from(task).where(eq(task.sourcePollId, pollId));
   for (const t of sourceTasks) {
     const title =

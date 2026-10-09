@@ -137,7 +137,7 @@ export function placementsToGeoJSONFeatureCollection(
   };
 }
 
-// "Whole Plot" export scope (docs/development-plan.md's Phase 37:
+// "Whole Plot" export scope (docs/plans/development-plan.md's Phase 37:
 // "extends Phase 36's export to include Placement as an export
 // scope") — every Zone and every Placement in one FeatureCollection.
 export function plotToGeoJSONFeatureCollection(

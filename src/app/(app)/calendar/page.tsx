@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { getViewerClock } from "@/lib/view-clock";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react/dist/ssr";
@@ -8,6 +9,7 @@ import { getViewingContext } from "@/lib/view-as";
 import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag, TONE_CLASSES, type Tone } from "@/components/ui/kit";
 import DateModeField, { type DateFieldBase } from "@/components/DateModeField";
 import PageHeader from "@/components/ui/PageHeader";
+import TimeZoneNudge from "./TimeZoneNudge";
 import Tabs from "@/components/ui/Tabs";
 import {
   getCalendarEvent,
@@ -99,7 +101,7 @@ const CAL_TAB_KEYS = CAL_TABS.map((t) => t.key) as readonly string[];
 // dated thing that already exists across the app, plus (folded in from
 // Phase 42, per that phase's own "expected to move into /calendar" note)
 // Freestanding events' own create/manage/invite/accept/decline UI. See
-// docs/development-plan.md's Phase 44 — a read layer only; every source
+// docs/plans/development-plan.md's Phase 44 — a read layer only; every source
 // below is queried as-is via src/lib/calendar/view.ts, no mutation logic
 // added here beyond CalendarEvent's own pre-existing actions.
 export default async function CalendarPage({
@@ -122,6 +124,8 @@ export default async function CalendarPage({
     redirect("/login");
   }
 
+  const clock = await getViewerClock();
+
   const { error, created, updated, deleted, invited, responded, month, tab: tabRaw, compose } = await searchParams;
   const activeTab: CalTabKey = CAL_TAB_KEYS.includes(tabRaw ?? "") ? (tabRaw as CalTabKey) : "month";
   const composeOpen = compose === "1";
@@ -139,8 +143,13 @@ export default async function CalendarPage({
     getCommunity(viewing),
   ]);
 
-  const { year, month: monthNum } = parseMonthParam(month);
-  const weeks = buildMonthGrid(year, monthNum);
+  // The grid and month default take a Date and read its UTC fields, so
+  // "today" in the viewer's zone is passed in as that day's UTC midnight
+  // rather than the real instant, which would read as a different day
+  // for anyone whose zone is not UTC.
+  const todayInZone = new Date(`${view.today}T00:00:00Z`);
+  const { year, month: monthNum } = parseMonthParam(month, todayInZone);
+  const weeks = buildMonthGrid(year, monthNum, todayInZone);
   const prev = shiftMonth(year, monthNum, -1);
   const next = shiftMonth(year, monthNum, 1);
 
@@ -151,8 +160,7 @@ export default async function CalendarPage({
     entriesByDate.set(e.date, list);
   }
 
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const upcoming = view.entries.filter((e) => e.date >= todayStr).slice(0, 20);
+  const upcoming = view.entries.filter((e) => e.date >= view.today).slice(0, 20);
 
   const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
   const cycleById = new Map(cycles.map((c) => [c.id, c]));
@@ -179,6 +187,7 @@ export default async function CalendarPage({
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10 md:px-12 md:py-14">
+      {real.id === viewing.id ? <TimeZoneNudge currentZone={view.timeZone} /> : null}
       <PageHeader
         title="Calendar"
         description={
@@ -258,7 +267,7 @@ export default async function CalendarPage({
                             key={i}
                             href={e.href}
                             className={`truncate rounded-[var(--radius-sm)] px-1 py-0.5 text-[length:var(--text-nano)] leading-tight ${TONE_CLASSES[KIND_TONE[e.kind]]}`}
-                            title={e.label}
+                            title={e.note ? `${e.label} — ${e.note}` : e.label}
                           >
                             {e.label}
                           </a>
@@ -294,6 +303,7 @@ export default async function CalendarPage({
               <a href={e.href} className="min-w-0 truncate text-[var(--text)] hover:text-[var(--accent-1)]">
                 {e.label}
               </a>
+              {e.note && <span className="shrink-0 text-[length:var(--text-meta)] text-[var(--text-muted)]">{e.note}</span>}
             </li>
           ))}
         </ul>
@@ -364,7 +374,7 @@ export default async function CalendarPage({
             <div key={i.eventId} className={`mt-3 ${CARD}`}>
               <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{i.eventTitle}</p>
               <p className="mt-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                Invited by {i.invitedByName}, {new Date(i.invitedAt).toLocaleDateString()}
+                Invited by {i.invitedByName}, {clock.date(i.invitedAt)}
               </p>
               <div className="mt-3 flex gap-2">
                 <form action={acceptInviteAction}>

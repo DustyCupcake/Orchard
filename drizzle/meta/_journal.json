@@ -624,6 +624,27 @@
       "when": 1791300077631,
       "tag": "0088_tier_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1791449129999,
+      "tag": "0089_permission_holding",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1791557289222,
+      "tag": "0090_event_time_zones",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1791557290152,
+      "tag": "0091_event_proposal_interest",
+      "breakpoints": true
     }
   ]
 }

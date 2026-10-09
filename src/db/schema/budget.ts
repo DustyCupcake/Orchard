@@ -12,7 +12,7 @@ export const budgetCycleStatusEnum = pgEnum("budget_cycle_status", [
 ]);
 
 // Collecting what's on the table before deciding what gets funded — see
-// docs/spec.md's "Budget" and docs/development-plan.md's Phase 26/27.
+// docs/spec.md's "Budget" and docs/plans/development-plan.md's Phase 26/27.
 // Only one active (non-`confirmed`) cycle per Community at a time for
 // v1 — see src/lib/budget/cycles.ts's getCurrentBudgetCycle/
 // createBudgetCycle.

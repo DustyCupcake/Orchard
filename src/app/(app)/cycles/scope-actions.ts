@@ -9,7 +9,7 @@ import { resolveViewScopeFromSegment } from "@/lib/cycles";
 import { assertNotViewingAs } from "@/lib/view-as";
 
 // The confirm-switch button on an object-detail page's cross-cycle-
-// boundary banner (docs/development-plan.md's Phase 66) — a plain
+// boundary banner (docs/plans/development-plan.md's Phase 66) — a plain
 // <form>-friendly counterpart to nav-actions.ts's setViewScopeAction
 // (built for a client component's direct call, which a server-
 // rendered task/wiki page isn't). Same invariant either way: a shared

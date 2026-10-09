@@ -26,7 +26,7 @@ export const shiftSeries = pgTable("shift_series", {
     .notNull()
     .references(() => community.id),
   branchId: uuid("branch_id").references(() => branch.id),
-  // Placement is the declaration (docs/cycle-scope-remediation-plan.md
+  // Placement is the declaration (docs/plans/archive/cycle-scope-remediation-plan.md
   // §2.6/D9): a series placed in a cycle is that cycle's roster; a
   // cycle-less series is a standing, community-wide series. Scope is
   // only ever read through this column (mirroring task.cycleId, §2.1),

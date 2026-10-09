@@ -1,4 +1,5 @@
 import EffortFields from "@/components/EffortFields";
+import { getViewerClock } from "@/lib/view-clock";
 import AxisScaleField from "@/components/AxisScaleField";
 import Link from "next/link";
 import { Tag, BUTTON_PRIMARY, BUTTON_SECONDARY, CheckField, INPUT, LABEL } from "@/components/ui/kit";
@@ -68,7 +69,7 @@ function suggestionSummary(
   return parts;
 }
 
-export default function ProposalCard({
+export default async function ProposalCard({
   proposal,
   branches,
   tiers,
@@ -94,7 +95,7 @@ export default function ProposalCard({
   elsewhereHolderByModule: Partial<Record<PermissionModuleKey, string>>;
   cyclesEnabled: boolean;
   // The new task's own placement select — its grants' scopes derive
-  // from wherever it lands (docs/cycle-scope-remediation-plan.md §2.1),
+  // from wherever it lands (docs/plans/archive/cycle-scope-remediation-plan.md §2.1),
   // so this one cycle list is the only one the proposal form needs.
   cycles: { id: string; name: string }[];
   defaultCycleId: string | null;
@@ -105,6 +106,7 @@ export default function ProposalCard({
   // name has to come from the task, not from `proposal.title`.
   activatedTaskTitle: string | null;
 }) {
+  const clock = await getViewerClock();
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
   const cycleNameById = new Map(cycles.map((c) => [c.id, c.name]));
   const suggested = suggestionSummary(proposal, branchNameById, cycleNameById);
@@ -118,7 +120,7 @@ export default function ProposalCard({
         {proposal.status !== "pending" && <Tag tone={proposal.status === "declined" ? "danger" : "success"}>{proposal.status}</Tag>}
       </div>
       <div className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-        Proposed by {submitterName} · {new Date(proposal.createdAt).toLocaleDateString()}
+        Proposed by {submitterName} · {clock.date(proposal.createdAt)}
       </div>
       {proposal.activatedTaskId && (
         <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--text)]">
@@ -259,7 +261,7 @@ export default function ProposalCard({
                   className={`${INPUT} w-44`}
                 />
                 <input type="datetime-local" name="browsePeriodEnd" className={INPUT} />
-                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">(if community-endorsed)</span>
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">(if community-endorsed — read on the event&rsquo;s clock, or the community&rsquo;s)</span>
               </div>
             </details>
 
@@ -329,7 +331,7 @@ export default function ProposalCard({
                   Permissions granted by this task (optional)
                 </summary>
                 <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  One rule, same as everywhere grants are edited (docs/cycle-scope-remediation-plan.md
+                  One rule, same as everywhere grants are edited (docs/plans/archive/cycle-scope-remediation-plan.md
                   §5.4): a task grants what it sits in — wherever this proposal lands on the board,
                   each checked module is granted for that task&rsquo;s own scope only. Budget authority
                   is configured only in Settings → Access &amp; permissions.

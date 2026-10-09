@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT, LABEL, SELECT } from "@/components/ui/kit";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import TimeZoneInput from "@/components/TimeZoneInput";
 // Aliased, because the settings screen has its own `SelectField` below and
 // the two are genuinely different things. This one is a bare `<select>`
 // that re-establishes its selection when the server's answer changes;
@@ -263,6 +264,7 @@ export function TextField({
   type = "text",
   required,
   wide,
+  list,
 }: {
   label: ReactNode;
   name: string;
@@ -272,6 +274,8 @@ export function TextField({
   type?: string;
   required?: boolean;
   wide?: boolean;
+  /** Id of a `<datalist>` to offer suggestions for — see TimeZoneField. */
+  list?: string;
 }) {
   return (
     <SettingsField label={label} hint={hint} wide={wide}>
@@ -281,8 +285,21 @@ export function TextField({
         defaultValue={defaultValue}
         placeholder={placeholder}
         required={required}
+        list={list}
         className={`${INPUT} disabled:cursor-not-allowed disabled:opacity-60`}
       />
+    </SettingsField>
+  );
+}
+
+// The Community's wall-clock — see src/lib/dates/timezone.ts.
+export function TimeZoneField({ defaultValue }: { defaultValue?: string | null }) {
+  return (
+    <SettingsField
+      label="Time zone"
+      hint="The clock every event's times are read in — what a member types as 14:00 and what the programme shows back. Each event can override this for itself."
+    >
+      <TimeZoneInput defaultValue={defaultValue} />
     </SettingsField>
   );
 }

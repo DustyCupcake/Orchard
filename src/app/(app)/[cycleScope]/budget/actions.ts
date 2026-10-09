@@ -1,6 +1,7 @@
 "use server";
 
 import { ZodError } from "zod";
+import { eventInstantFromLocal } from "@/lib/cycles";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
@@ -20,6 +21,7 @@ import {
   updateBudgetCycleInput,
   updateBudgetProposal,
   updateBudgetProposalInput,
+  getBudgetCycle,
 } from "@/lib/budget";
 import { requireAdmins } from "@/lib/settings";
 import { AppError } from "@/lib/errors";
@@ -45,7 +47,7 @@ function parseLineItemsJson(raw: string): unknown {
 
 // Every form on this page carries a hidden `cycleScope` field so a
 // redirect after submitting lands back on the exact scoped URL it came
-// from (docs/development-plan.md's Phase 65) — never the bare /budget,
+// from (docs/plans/development-plan.md's Phase 65) — never the bare /budget,
 // which could bounce through the redirect shim to a *different*
 // default scope.
 function redirectWithError(cycleScope: string, err: unknown): never {
@@ -91,7 +93,7 @@ export async function createBudgetCycleAction(formData: FormData) {
       title: String(formData.get("title") ?? ""),
       cycleId,
       fixedCosts: parseLineItemsJson(String(formData.get("fixedCostsJson") ?? "")),
-      proposalDeadline: deadlineRaw ? new Date(deadlineRaw).toISOString() : "",
+      proposalDeadline: deadlineRaw ? await eventInstantFromLocal(actor.communityId, cycleId, deadlineRaw) : "",
     });
     await createBudgetCycle(actor, input);
   } catch (err) {
@@ -125,7 +127,9 @@ export async function updateBudgetCycleAction(formData: FormData) {
     const input = updateBudgetCycleInput.parse({
       title: titleRaw || undefined,
       fixedCosts: parseLineItemsJson(String(formData.get("fixedCostsJson") ?? "")),
-      proposalDeadline: deadlineRaw ? new Date(deadlineRaw).toISOString() : undefined,
+      proposalDeadline: deadlineRaw
+        ? await eventInstantFromLocal(actor.communityId, (await getBudgetCycle(actor, budgetCycleId)).cycleId, deadlineRaw)
+        : undefined,
     });
     await updateBudgetCycle(actor, budgetCycleId, input);
   } catch (err) {
@@ -254,7 +258,7 @@ export async function confirmBudgetCycleAction(formData: FormData) {
   redirect(`/${cycleScope}/budget?confirmed=1`);
 }
 
-// The owner's own small confirmation (docs/development-plan.md's Phase
+// The owner's own small confirmation (docs/plans/development-plan.md's Phase
 // 65) — lets an Admin close this BudgetCycle's real Cycle without the
 // closeCycle warning. Owner-gated, enforced inside markBudgetCycleDone.
 export async function markBudgetCycleDoneAction(formData: FormData) {

@@ -53,7 +53,7 @@ export async function raiseObjection(actor: Member, formResponseId: string, inpu
   return created;
 }
 
-// The consensus-lane twin (docs/joining-admission-plan.md §2.6): a
+// The consensus-lane twin (docs/plans/archive/joining-admission-plan.md §2.6): a
 // subscribed member objects to an announced arrival. Same eligibility as
 // the evaluated path — an active subscription, i.e. somebody who opted
 // into being told about arrivals — and, unlike the evaluated path, no
@@ -106,7 +106,7 @@ export async function raiseInviteObjection(actor: Member, inviteId: string, note
   return created;
 }
 
-// Evaluator-visible, identity-shielded (docs/joining-admission-plan.md
+// Evaluator-visible, identity-shielded (docs/plans/archive/joining-admission-plan.md
 // §2.6/§4.3). The list itself is unchanged in *shape* from what
 // evaluators saw before — a note and a timestamp, no name — but the
 // reason is now stronger than "anonymous to the community": the

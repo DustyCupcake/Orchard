@@ -1,7 +1,7 @@
 import { addDays } from "../dates";
 
 // Pure month-grid math, no DB — shared by /calendar itself and the
-// Pack-import date preview (docs/development-plan.md's Phase 44 names
+// Pack-import date preview (docs/plans/development-plan.md's Phase 44 names
 // "calendar or list view, toggled by the reviewer" for the latter).
 // Weeks always run Sunday-first and always span whole weeks (leading/
 // trailing days from the adjacent month included, marked !inMonth), so

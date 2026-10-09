@@ -552,7 +552,7 @@ describe("Budget owner authority", () => {
   });
 });
 
-// docs/development-plan.md's Phase 65 — the owner's own small
+// docs/plans/development-plan.md's Phase 65 — the owner's own small
 // confirmation that lets closeCycle skip its warning.
 describe("markBudgetCycleDone", () => {
   beforeEach(async () => {

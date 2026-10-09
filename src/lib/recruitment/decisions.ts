@@ -46,7 +46,7 @@ export async function getRecruitmentDecision(formResponseId: string) {
 // Accompaniment task, and if so, whose engagement record does its
 // holder get to see" — see docs/spec.md's Recruitment ("the
 // accompanier gets explicit... visibility into the new member's
-// engagement record") and docs/development-plan.md's Phase 52. Null
+// engagement record") and docs/plans/development-plan.md's Phase 52. Null
 // whenever this isn't an Accompaniment task at all, or the decision
 // that created it never converted a real Member (an untagged
 // application Form — see Phase 48's own maybeConvertApplicantToMember).
@@ -82,7 +82,7 @@ export function computeWiderDiscussionStatus(decision: RecruitmentDecisionRow): 
 // creator. The holder of the granting task was the obvious stand-in, which
 // was fine while the module was necessarily granted — but an open module may
 // have no granting task at all, and the job still has to run. Hence the
-// fallback chain (docs/open-permissions-plan.md §4.2): the converted member's
+// fallback chain (docs/plans/archive/open-permissions-plan.md §4.2): the converted member's
 // referrer (a real person with a real stake in this applicant), then the
 // earliest-claimed evaluator, and only then give up. Never a random member —
 // the Accompaniment task is visible, and its creator is part of the record.
@@ -364,7 +364,7 @@ async function maybeConvertApplicantToMember(
 // maybeConvertApplicantToMember above has run (spec's exact framing —
 // "the same 'carry a shadow forward as a suggested next claimant'
 // reasoning Phase 14 already established for succession, applied here
-// to a referrer instead of a shadow," docs/development-plan.md's Phase
+// to a referrer instead of a shadow," docs/plans/development-plan.md's Phase
 // 34); falls back to the linked invite's own creator directly when
 // conversion didn't happen (an untagged application Form — see
 // maybeConvertApplicantToMember's own comment) so this still degrades

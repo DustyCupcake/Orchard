@@ -2,9 +2,9 @@ import { boolean, integer, pgEnum, pgTable, timestamp, uniqueIndex, uuid } from 
 import { community } from "./community";
 import { cycle } from "./cycle";
 
-// docs/joining-admission-plan.md §2/§4.1 — one join rule per lane per
+// docs/plans/archive/joining-admission-plan.md §2/§4.1 — one join rule per lane per
 // *context*: the four lanes that fix a newcomer's path
-// (docs/joining-admission-plan.md §2.1) are configured per-lane, with a
+// (docs/plans/archive/joining-admission-plan.md §2.1) are configured per-lane, with a
 // cycle that differs from the community-wide default getting its own
 // row. `cycleId` null = the community-wide row; a row with a cycleId
 // scopes a specific cycle and overrides it. Resolution follows the
@@ -54,7 +54,7 @@ export const joiningLane = pgTable(
       .notNull()
       .references(() => community.id),
     // Null = the community-wide rule every cycle falls back to; present
-    // = this specific cycle's override (docs/joining-admission-plan.md
+    // = this specific cycle's override (docs/plans/archive/joining-admission-plan.md
     // §4.1/2d).
     cycleId: uuid("cycle_id").references(() => cycle.id),
     lane: joiningLaneKind("lane").notNull(),
@@ -79,7 +79,7 @@ export const joiningLane = pgTable(
 // open to a community to bargain: it must be *possible* to reproduce
 // today's three doors from one place, and the "real" default
 // (nomination/consensus) is what the migration seeds. The exact
-// "rows to seed" derivation is in docs/joining-admission-plan.md §2.9.
+// "rows to seed" derivation is in docs/plans/archive/joining-admission-plan.md §2.9.
 //
 // The row shape itself is spelled out as the table above rather than as
 // a named type, and the application-side type lives in

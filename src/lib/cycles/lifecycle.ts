@@ -11,7 +11,7 @@ import { getBudgetCycleForCycle } from "../budget/cycles";
 type Member = typeof memberTable.$inferSelect;
 type CycleRow = typeof cycle.$inferSelect;
 
-// Shared closed-cycle guard — docs/development-plan.md's Phase 65:
+// Shared closed-cycle guard — docs/plans/development-plan.md's Phase 65:
 // "closing locks everything about that cycle." Wired into
 // updateCycleSettings/updatePhaseBoundary/updatePhaseHighlight
 // (./crud.ts) and declareParticipation (../participation.ts), the four

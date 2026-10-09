@@ -53,7 +53,7 @@ describe("getCalendarView", () => {
   it("is empty for a fresh community with no dated state", async () => {
     const { alice } = await createFixtures();
     const view = await getCalendarView(alice);
-    expect(view).toEqual({ currentCycle: null, entries: [] });
+    expect(view).toMatchObject({ currentCycle: null, entries: [], timeZone: "UTC" });
   });
 
   it("includes the current cycle's resolved phase boundaries", async () => {
@@ -97,7 +97,7 @@ describe("getCalendarView", () => {
         expect.objectContaining({ date: m.resolvedDate, kind: "milestone", label: `Order arrives — ${t.title}` }),
       ]),
     );
-    expect(await getCalendarView(bob)).toEqual({ currentCycle: view.currentCycle, entries: [] });
+    expect(await getCalendarView(bob)).toMatchObject({ currentCycle: view.currentCycle, entries: [] });
   });
 
   it("includes an event once accepted, distinct from a merely-invited one", async () => {
@@ -221,6 +221,139 @@ describe("getCalendarView", () => {
     const view = await getCalendarView(alice);
     const eventEntries = view.entries.filter((e) => e.kind === "event_confirmed");
     expect(eventEntries.map((e) => e.label)).toEqual(["Fire circle"]);
+  });
+
+  // Instants land on the viewer's day, plain dates don't move.
+  describe("time zone", () => {
+    async function setUpLateEvening() {
+      const { alice, bob, branch: testBranch } = await createFixtures();
+      await updateCommunity(alice, { modulesEnabled: ["event_scheduling"] });
+      const [ownerTask] = await db
+        .insert(task)
+        .values({
+          communityId: alice.communityId,
+          branchId: testBranch.id,
+          title: "Scheduling owner",
+          effort: "owns_a_thing",
+          effortMagnitude: { hours_per_week: 2 },
+          createdBy: alice.id,
+        })
+        .returning();
+      await claimTask(alice, ownerTask.id);
+      await grantPermission(alice.communityId, "event_scheduling_owner", ownerTask.id);
+
+      // 23:30 UTC on the 10th: still the 10th in London-or-west, already
+      // the 11th in Tokyo.
+      const late = { startsAt: "2030-06-10T23:30:00.000Z", endsAt: "2030-06-11T00:30:00.000Z" };
+      const proposal = await createEventProposal(bob, {
+        host: "Bob",
+        title: "Late session",
+        durationMinutes: 60,
+        preferredSlots: [late],
+      });
+      await confirmEventProposalSlot(alice, proposal.id, late);
+      await publishEventSchedule(alice);
+      await createCalendarEvent(alice, {
+        title: "All-day thing",
+        date: { type: "absolute", date: "2030-06-10" },
+        shareTarget: "personal",
+      });
+      return alice;
+    }
+
+    const sessionDay = async (actor: Parameters<typeof getCalendarView>[0]) =>
+      (await getCalendarView(actor)).entries.find((e) => e.kind === "event_confirmed")?.date;
+    const allDayDate = async (actor: Parameters<typeof getCalendarView>[0]) =>
+      (await getCalendarView(actor)).entries.find((e) => e.label === "All-day thing")?.date;
+
+    it("reads in UTC when neither the member nor the community has a zone", async () => {
+      const alice = await setUpLateEvening();
+      expect(await sessionDay(alice)).toBe("2030-06-10");
+    });
+
+    // The programme is the venue's: it sits on the day it falls on there,
+    // whatever zone the viewer is in.
+    it("puts a programme session on the venue's day, not the viewer's", async () => {
+      const alice = await setUpLateEvening();
+      await updateCommunity(alice, { timeZone: "Asia/Tokyo" });
+      // 23:30 UTC on the 10th is already the 11th in Tokyo.
+      expect(await sessionDay(alice)).toBe("2030-06-11");
+      expect(await sessionDay({ ...alice, timeZone: "Pacific/Honolulu" })).toBe("2030-06-11");
+    });
+
+    // The note only appears when the venue is on a different clock from the
+    // viewer, and says what time it is there.
+    it("notes the venue's time only when it is a different zone from the viewer's", async () => {
+      const alice = await setUpLateEvening();
+      await updateCommunity(alice, { timeZone: "Asia/Tokyo" });
+      const entry = async (actor: Parameters<typeof getCalendarView>[0]) =>
+        (await getCalendarView(actor)).entries.find((e) => e.kind === "event_confirmed");
+
+      // Alice inherits the venue's zone: nothing to explain.
+      expect((await entry(alice))?.note).toBeUndefined();
+      // Someone in Honolulu is told what time it is at the venue.
+      expect((await entry({ ...alice, timeZone: "Pacific/Honolulu" }))?.note).toBe("08:30 Asia/Tokyo, venue time");
+    });
+
+    it("leaves a plain date alone whatever the viewer's zone", async () => {
+      const alice = await setUpLateEvening();
+      expect(await allDayDate({ ...alice, timeZone: "Asia/Tokyo" })).toBe("2030-06-10");
+    });
+
+    it("places a deadline on the viewer's own day", async () => {
+      const { alice, branch: testBranch } = await createFixtures();
+      await updateCommunity(alice, { modulesEnabled: ["budget"] });
+      const [ownerTask] = await db
+        .insert(task)
+        .values({
+          communityId: alice.communityId,
+          branchId: testBranch.id,
+          title: "Budget owner",
+          effort: "owns_a_thing",
+          effortMagnitude: { hours_per_week: 2 },
+          createdBy: alice.id,
+        })
+        .returning();
+      await setPermissionGrant(alice, "budget", ownerTask.id);
+      await claimTask(alice, ownerTask.id);
+      await createBudgetCycle(alice, { title: "Season budget", proposalDeadline: "2030-06-10T23:30:00.000Z" });
+
+      const deadlineDay = async (actor: Parameters<typeof getCalendarView>[0]) =>
+        (await getCalendarView(actor)).entries.find((e) => e.kind === "budget_deadline")?.date;
+      expect(await deadlineDay(alice)).toBe("2030-06-10");
+      expect(await deadlineDay({ ...alice, timeZone: "Asia/Tokyo" })).toBe("2030-06-11");
+      expect(await deadlineDay({ ...alice, timeZone: "Pacific/Honolulu" })).toBe("2030-06-10");
+    });
+
+    it("puts a shift on the venue's day, not the viewer's", async () => {
+      const { alice, branch: testBranch } = await createFixtures();
+      await updateCommunity(alice, { modulesEnabled: ["shifts"], timeZone: "Asia/Tokyo" });
+      await grantShiftManagementTo(alice, testBranch.id);
+      const series = await createShiftSeries(alice, { title: "Dish duty", defaultCapacity: 2 });
+      // 23:30 UTC on the 10th is 08:30 on the 11th in Tokyo.
+      const [occurrence] = await generateShiftOccurrences(alice, series.id, {
+        mode: "explicit",
+        slots: [{ startsAt: "2030-06-10T23:30:00.000Z", endsAt: "2030-06-11T00:30:00.000Z" }],
+      });
+      await signUpForShift(alice, occurrence.id);
+
+      const shiftDay = async (actor: Parameters<typeof getCalendarView>[0]) =>
+        (await getCalendarView(actor)).entries.find((e) => e.kind === "shift_occurrence")?.date;
+      expect(await shiftDay(alice)).toBe("2030-06-11");
+      expect(await shiftDay({ ...alice, timeZone: "Pacific/Honolulu" })).toBe("2030-06-11");
+
+      const note = async (actor: Parameters<typeof getCalendarView>[0]) =>
+        (await getCalendarView(actor)).entries.find((e) => e.kind === "shift_occurrence")?.note;
+      expect(await note(alice)).toBeUndefined();
+      expect(await note({ ...alice, timeZone: "Pacific/Honolulu" })).toBe("08:30 Asia/Tokyo, venue time");
+    });
+
+    it("reports the zone it read in and the day that makes today", async () => {
+      const alice = await setUpLateEvening();
+      const view = await getCalendarView({ ...alice, timeZone: "Pacific/Kiritimati" });
+      expect(view.timeZone).toBe("Pacific/Kiritimati");
+      expect(view.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
   });
 
   it("surfaces the actor's own opted-in birthday as its next yearly occurrence", async () => {

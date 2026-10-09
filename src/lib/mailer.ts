@@ -97,7 +97,7 @@ export async function sendMagicLinkEmail(email: string, url: string) {
 // Task assignment notification. The first real click-to-act email this
 // app sends — every prior notification stayed a visible in-app flag,
 // deliberately, since nothing needed one-click action before this (see
-// docs/development-plan.md's Phase 51). Each of the three URLs already
+// docs/plans/development-plan.md's Phase 51). Each of the three URLs already
 // carries its own single-use, single-action token — see
 // src/lib/notifications/action-tokens.ts — so clicking one needs no
 // login and can't be repurposed into a different response.
@@ -155,7 +155,7 @@ export async function sendEmailVerificationEmail(email: string, url: string) {
 
 // A plain outbound message (targeted or community-wide announcement) —
 // see docs/spec.md's Outbound communications and
-// docs/development-plan.md's Phase 53. One-way, no action tokens: "a
+// docs/plans/development-plan.md's Phase 53. One-way, no action tokens: "a
 // plain message has nothing to click," unlike the task-nomination
 // email above.
 export async function sendOutboundMessageEmail(
@@ -166,7 +166,7 @@ export async function sendOutboundMessageEmail(
   await sendPlainTextEmail(email, input.subject, text, `outbound message for ${email}: "${input.subject}"`);
 }
 
-// D7 (docs/cycle-scope-remediation-plan.md §4.7) — the one backstop
+// D7 (docs/plans/archive/cycle-scope-remediation-plan.md §4.7) — the one backstop
 // notification: a critical task in the backstop's scope has hard-flagged.
 // Informational, no action token: the backstop's own job is to get it
 // moving, which the ordinary claim path already lets them do; this email
@@ -185,7 +185,7 @@ export async function sendBackstopHardFlagEmail(
   await sendPlainTextEmail(email, subject, text, `backstop hard flag ("${input.taskTitle}"):\n${input.taskUrl}`);
 }
 
-// docs/joining-admission-plan.md §2.4's "poke": the inviter of a
+// docs/plans/archive/joining-admission-plan.md §2.4's "poke": the inviter of a
 // nomination names the members they think also know the invitee, and
 // those members each get one email carrying the support link. No action
 // token and no per-person state here, unlike the task-nomination email

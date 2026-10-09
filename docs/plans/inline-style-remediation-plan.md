@@ -1,6 +1,22 @@
 # Inline Style Remediation Plan
 
-**182 `style={{}}` occurrences across 13 files.** The design-token migration (documented in `docs/design_handoff_conventions/README.md`) covered most pages but left several behind — these are the ones that still look rough.
+**Status: partially done — two of five Tier 1 pages still untouched.** Batches A and B shipped:
+`invites/page.tsx`, `task-packs/page.tsx` and `cycles/page.tsx` are now fully on the design tokens.
+Batches C (`task-packs/import/[packId]/page.tsx`, 34 occurrences) and D
+(`applications/page.tsx`, 62) are not started, and Tier 2's `settings/FormBuilder.tsx` (12) and
+`spatial-planning/PlotEditor.tsx` (9) are unchanged. `settings/page.tsx` no longer appears in the
+list because it was split into `settings/tabs/`, whose 4 remaining occurrences are all deliberate
+opacity or dynamic color.
+
+**The counts below are the original audit's, not current.** They were taken before batches A and B;
+the table now reads 146 occurrences across 21 files, and a few of the newer ones are deliberate
+(dynamic `statusColor`, percentage-width bars, token variables). Re-count with
+`grep -ro 'style={{' src --include='*.tsx' | cut -d: -f1 | sort | uniq -c | sort -rn` before
+working through a batch — the line counts in the tables have drifted too.
+
+**Original audit: 182 `style={{}}` occurrences across 13 files.** The design-token migration
+(documented in `docs/design_handoff_conventions/README.md`) covered most pages but left several
+behind — these are the ones that still look rough.
 
 ## Severity Tiers
 

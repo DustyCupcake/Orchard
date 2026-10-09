@@ -39,7 +39,7 @@ export type CoordinationAttentionLevel = (typeof taskAttentionLevelEnum)["enumVa
  *
  * `reachesAnything: false` is the load-bearing half: an authority whose
  * only cycle isn't among the view's must get an empty segment rather than
- * another cycle's rows (docs/cycle-scope-remediation-plan.md §2.1's
+ * another cycle's rows (docs/plans/archive/cycle-scope-remediation-plan.md §2.1's
  * strict rule), and `condition: undefined` is overloaded to mean "match
  * everything" for a community-wide coordinator, so callers must check
  * `reachesAnything` before trusting an empty result.

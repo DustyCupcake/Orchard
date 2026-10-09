@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { formatInstant } from "@/lib/dates";
 // /dist/ssr — these render inside Server Components (see StatusIcon).
 import {
   GitBranchIcon,
@@ -49,7 +50,7 @@ export function CycleChip({ name }: { name: string }) {
 }
 
 export function DateChip({ date, label }: { date: Date | string; label?: string }) {
-  const d = typeof date === "string" ? date : date.toLocaleDateString();
+  const d = typeof date === "string" ? date : formatInstant(date, "UTC", "date");
   return (
     <MetaChip icon={<CalendarBlankIcon size={13} />} title={label}>
       {label ? `${label} ${d}` : d}

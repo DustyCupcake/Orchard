@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { getViewerClock } from "@/lib/view-clock";
 import { getViewingContext } from "@/lib/view-as";
 import { resolveViewScopeFromSegment } from "@/lib/cycles";
 
@@ -6,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 // Resolves the [cycleScope] segment once for whichever child page
 // (/participation, /budget — the only two moved under it, see
-// docs/development-plan.md's Phase 65) is actually being rendered.
+// docs/plans/development-plan.md's Phase 65) is actually being rendered.
 // resolveViewScopeFromSegment is wrapped in React's cache(), so the
 // child page's own call for the identical (actor, segment) pair below
 // this is a cache hit, not a second DB round trip. An unresolvable
@@ -24,6 +25,8 @@ export default async function CycleScopeLayout({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { cycleScope } = await params;
   const scope = await resolveViewScopeFromSegment(viewing, cycleScope);
@@ -44,7 +47,7 @@ export default async function CycleScopeLayout({
             color: "#664d03",
           }}
         >
-          This event is closed — read-only. Closed {new Date(scope.cycle.closedAt).toLocaleDateString()}.
+          This event is closed — read-only. Closed {clock.date(scope.cycle.closedAt)}.
         </div>
       )}
       {children}

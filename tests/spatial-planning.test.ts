@@ -338,7 +338,7 @@ describe("Zone", () => {
   });
 });
 
-// docs/development-plan.md's Phase 68 kept its per-cycle isolation
+// docs/plans/development-plan.md's Phase 68 kept its per-cycle isolation
 // assertions, but under the scope-remediation model (docs/cycle-scope-
 // remediation-plan.md §2.1) each owner grant is scoped by where that
 // owner's *task* sits: task in cycle A owns cycle A, task in cycle B

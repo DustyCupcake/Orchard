@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -55,7 +56,7 @@ const OBJECTION_STATE_LABEL: Record<string, string> = {
 
 // See docs/spec.md's Recruitment ("Evaluation + decision logic",
 // "Recruitment-mode subscription", "Wider discussion window",
-// "Accompaniment", "Rejection templates") and docs/development-plan.md's
+// "Accompaniment", "Rejection templates") and docs/plans/development-plan.md's
 // Phases 33-34.
 export default async function ApplicationsPage({
   searchParams,
@@ -73,6 +74,8 @@ export default async function ApplicationsPage({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { error, subscribed, unsubscribed, evaluated, objectionRaised, decisionResolved } = await searchParams;
 
@@ -201,7 +204,7 @@ export default async function ApplicationsPage({
                   style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
                 >
                   <p style={{ margin: 0, fontSize: "0.85rem" }}>
-                    Submitted {new Date(a.submittedAt).toLocaleString()} — {a.evaluationsFiled}/
+                    Submitted {clock.dateTime(a.submittedAt)} — {a.evaluationsFiled}/
                     {a.evaluatorsNeeded} evaluations filed
                     {a.outcome && (
                       <>
@@ -253,7 +256,7 @@ export default async function ApplicationsPage({
                     >
                       <p style={{ margin: 0, fontSize: "0.85rem" }}>
                         <strong>{r.label || "(unlabeled)"}</strong> — for {r.cycleName}, created{" "}
-                        {new Date(r.createdAt).toLocaleDateString()}
+                        {clock.date(r.createdAt)}
                       </p>
                     </div>
                   ))}
@@ -270,7 +273,7 @@ export default async function ApplicationsPage({
                     style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.75rem", marginBottom: "0.75rem" }}
                   >
                     <p style={{ margin: "0 0 0.4rem", fontSize: "0.8rem", color: "#666" }}>
-                      Submitted {new Date(response.submittedAt).toLocaleString()}
+                      Submitted {clock.dateTime(response.submittedAt)}
                       {response.cycleId
                         ? ` — for ${cycleNameById.get(response.cycleId) ?? "that event"}`
                         : " — not tied to an event"}
@@ -374,7 +377,7 @@ export default async function ApplicationsPage({
                             <p style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
                               Wider-discussion window: <strong>{widerDiscussionStatus}</strong>
                               {decision.widerDiscussionDeadline &&
-                                ` (closes ${new Date(decision.widerDiscussionDeadline).toLocaleString()})`}
+                                ` (closes ${clock.deadline(decision.widerDiscussionDeadline)})`}
                             </p>
                             {objections.length > 0 && (
                               <>
@@ -383,7 +386,7 @@ export default async function ApplicationsPage({
                                     <li key={o.id}>
                                       {o.note}{" "}
                                       <span style={{ color: "#666" }}>
-                                        ({new Date(o.raisedAt).toLocaleDateString()} ·{" "}
+                                        ({clock.date(o.raisedAt)} ·{" "}
                                         {OBJECTION_STATE_LABEL[o.resolution] ?? o.resolution}
                                         {o.resolutionNote ? ` — ${o.resolutionNote}` : ""})
                                       </span>

@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 // A member's own picture — completed/active/future, broken down by
 // category, computed live off Task/TaskAssignment. See
 // docs/spec.md's "Contribution tracking" and
-// docs/development-plan.md's Phase 23.
+// docs/plans/development-plan.md's Phase 23.
 export default async function ContributionPage() {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {

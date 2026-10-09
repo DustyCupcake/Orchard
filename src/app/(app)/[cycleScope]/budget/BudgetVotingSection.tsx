@@ -25,7 +25,7 @@ const TD = "border-b border-[var(--border)] px-2 py-2 text-[var(--text)]";
 
 // The voting/confirmed half of /budget — see docs/spec.md's Budget
 // ("Ranked-choice voting", "Confirmation", "Contributions") and
-// docs/development-plan.md's Phase 27. Rendered by page.tsx once a
+// docs/plans/development-plan.md's Phase 27. Rendered by page.tsx once a
 // cycle leaves `proposals_open`. `cycleScope` (Phase 65) threads
 // through both forms below so their own redirects land back on the
 // exact scoped URL the page rendered from.

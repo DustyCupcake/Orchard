@@ -1,7 +1,7 @@
 import type { member as memberTable } from "@/db/schema";
-import type { PeriodDateContext } from "../dates";
+import { effectiveTimeZone, formatTimeInZone, localDateInZone, sameTimeZone, type PeriodDateContext } from "../dates";
 import { getCurrentCycle, listOnceEverAnswers } from "../profile-questions";
-import { getCycle } from "../cycles";
+import { getCycle, getEventClocks } from "../cycles";
 import { listMyTaskMilestones } from "../tasks";
 import { listMyCalendarEvents } from "../calendar-events";
 import { getNextCutoffAt } from "../input-rounds";
@@ -37,10 +37,17 @@ export interface CalendarEntry {
   href: string;
   /** Optional display-only context; never used for sorting or identity. */
   period?: PeriodDateContext | null;
+  /** Set when the entry sits on the venue's day and the venue is on another clock than the viewer — "09:00 Asia/Tokyo, venue time". */
+  note?: string;
 }
 
-function toDay(d: Date | string): string {
-  return typeof d === "string" ? d.slice(0, 10) : d.toISOString().slice(0, 10);
+// The calendar day a moment falls on *for the viewer*. Only for real
+// instants — a deadline, a confirmed slot, a shift. A stored calendar
+// date (a phase boundary, a milestone, a birthday) is already a day and
+// must not be passed through here: 2026-09-14 is the 14th everywhere,
+// and shifting it by a zone would move it.
+function dayInZone(d: Date | string, timeZone: string): string {
+  return localDateInZone(typeof d === "string" ? d : d.toISOString(), timeZone);
 }
 
 // A birthday's stored answer is one fixed YYYY-MM-DD with no year that
@@ -49,14 +56,14 @@ function toDay(d: Date | string): string {
 // every read rather than stored, the same live-on-read posture this
 // codebase defaults to everywhere it isn't a documented caching
 // exception (see src/lib/dates/resolve.ts's own header comment).
-function nextYearlyOccurrence(storedDate: string, from: Date): string {
+function nextYearlyOccurrence(storedDate: string, today: string): string {
   const [, month, day] = storedDate.split("-");
-  const fromStr = toDay(from);
-  const thisYear = `${from.getUTCFullYear()}-${month}-${day}`;
-  return thisYear >= fromStr ? thisYear : `${from.getUTCFullYear() + 1}-${month}-${day}`;
+  const year = Number(today.slice(0, 4));
+  const thisYear = `${year}-${month}-${day}`;
+  return thisYear >= today ? thisYear : `${year + 1}-${month}-${day}`;
 }
 
-// The Calendar view's own read layer — docs/development-plan.md's
+// The Calendar view's own read layer — docs/plans/development-plan.md's
 // Phase 44: "one Community-wide calendar reading every dated thing
 // that already exists across the app as its own layer." Every source
 // below is read as-is, no schema or scope changes to any of them (see
@@ -65,8 +72,31 @@ function nextYearlyOccurrence(storedDate: string, from: Date): string {
 // Assemblies, Scheduling polls, and Event scheduling are core (not
 // module-gated) so every member sees the same community-wide layer
 // there.
+//
+// Dates that are instants are placed on the day they fall on in the
+// viewer's own zone — Member.timeZone, else the Community's, else UTC —
+// except the programme and shifts, which sit on their venue's day; dates
+// that are already plain days are left exactly as stored.
 export async function getCalendarView(actor: Member) {
   const entries: CalendarEntry[] = [];
+
+  const communityRow = await getCommunity(actor);
+  const timeZone = effectiveTimeZone(actor, communityRow);
+  const now = new Date();
+  const today = dayInZone(now, timeZone);
+
+  // The programme and shifts happen at the venue, so they sit on the day
+  // they fall on *there* — a Saturday-morning shift is on Saturday for
+  // everyone, including a member whose own clock puts it on Friday night.
+  // Everything else that is an instant (deadlines and the like) is placed
+  // on the viewer's own day.
+  const venueZone = await getEventClocks(actor.communityId);
+  // The entry already sits on the venue's day; when the venue's clock is not
+  // the viewer's, say what time that is there, so the day isn't a surprise.
+  const venueNote = (startsAt: Date | string, zone: string): { note?: string } =>
+    sameTimeZone(zone, timeZone)
+      ? {}
+      : { note: `${formatTimeInZone(typeof startsAt === "string" ? startsAt : startsAt.toISOString(), zone)} ${zone}, venue time` };
 
   const currentCycle = await getCurrentCycle(actor.communityId);
   const currentCyclePeriod: PeriodDateContext | null =
@@ -133,15 +163,15 @@ export async function getCalendarView(actor: Member) {
 
   const nextCutoff = await getNextCutoffAt(actor);
   if (nextCutoff) {
-    entries.push({ date: toDay(nextCutoff), kind: "input_round_cutoff", label: "Input round cutoff", href: "/input-rounds" });
+    entries.push({ date: dayInZone(nextCutoff, timeZone), kind: "input_round_cutoff", label: "Input round cutoff", href: "/input-rounds" });
   }
 
   const assemblies = await listAssemblies(actor);
   for (const a of assemblies) {
     if (a.phase === "closed") continue; // a settled Assembly stops being calendar-relevant
-    entries.push({ date: toDay(a.agendaEndsAt), kind: "assembly_agenda_ends", label: `${a.title} — agenda closes`, href: "/assemblies" });
-    entries.push({ date: toDay(a.noticeEndsAt), kind: "assembly_notice_ends", label: `${a.title} — notice ends`, href: "/assemblies" });
-    entries.push({ date: toDay(a.votingEndsAt), kind: "assembly_voting_ends", label: `${a.title} — voting closes`, href: "/assemblies" });
+    entries.push({ date: dayInZone(a.agendaEndsAt, timeZone), kind: "assembly_agenda_ends", label: `${a.title} — agenda closes`, href: "/assemblies" });
+    entries.push({ date: dayInZone(a.noticeEndsAt, timeZone), kind: "assembly_notice_ends", label: `${a.title} — notice ends`, href: "/assemblies" });
+    entries.push({ date: dayInZone(a.votingEndsAt, timeZone), kind: "assembly_voting_ends", label: `${a.title} — voting closes`, href: "/assemblies" });
   }
 
   const polls = await listPolls(actor);
@@ -149,7 +179,7 @@ export async function getCalendarView(actor: Member) {
     // Only a resolved poll produces a single dated moment worth
     // plotting — an open-ended availability range isn't "a date" yet.
     if (poll.confirmedSlotStart) {
-      entries.push({ date: toDay(poll.confirmedSlotStart), kind: "poll_confirmed", label: poll.title, href: "/scheduling-polls" });
+      entries.push({ date: dayInZone(poll.confirmedSlotStart, timeZone), kind: "poll_confirmed", label: poll.title, href: "/scheduling-polls" });
     }
   }
 
@@ -157,26 +187,31 @@ export async function getCalendarView(actor: Member) {
   for (const p of publishedSchedule) {
     const slot = p.confirmedSlot as { startsAt: string; endsAt: string } | null;
     if (p.status === "confirmed" && slot?.startsAt) {
-      entries.push({ date: toDay(slot.startsAt), kind: "event_confirmed", label: p.title, href: "/schedule" });
+      entries.push({
+        date: dayInZone(slot.startsAt, venueZone(p.cycleId)),
+        kind: "event_confirmed",
+        label: p.title,
+        href: "/schedule",
+        ...venueNote(slot.startsAt, venueZone(p.cycleId)),
+      });
     }
   }
 
   // Shifts and Budget both predate this view (Phases 29-30, 26-27) but
-  // never got picked up as a layer here — see docs/development-plan.md's
+  // never got picked up as a layer here — see docs/plans/development-plan.md's
   // Phase 49. A member's own upcoming signed-up occurrences (not every
   // occurrence community-wide, matching every other layer here staying
   // "the actor's own" wherever that reading applies).
-  const communityRow = await getCommunity(actor);
   if (isModuleEnabled(communityRow, "shifts")) {
     const mySignups = await listMySignupsWithOccurrence(actor);
-    const now = new Date();
     for (const s of mySignups) {
       if (s.signup.status === "signed_up" && new Date(s.occurrence.startsAt) >= now) {
         entries.push({
-          date: toDay(s.occurrence.startsAt),
+          date: dayInZone(s.occurrence.startsAt, venueZone(s.series.cycleId)),
           kind: "shift_occurrence",
           label: `${s.series.title} shift`,
           href: "/shifts",
+          ...venueNote(s.occurrence.startsAt, venueZone(s.series.cycleId)),
         });
       }
     }
@@ -189,7 +224,7 @@ export async function getCalendarView(actor: Member) {
     const budgetCycle = await getCurrentBudgetCycle(actor);
     if (budgetCycle && budgetCycle.status === "proposals_open") {
       entries.push({
-        date: toDay(budgetCycle.proposalDeadline),
+        date: dayInZone(budgetCycle.proposalDeadline, timeZone),
         kind: "budget_deadline",
         label: `${budgetCycle.title} — proposal deadline`,
         href: "/budget",
@@ -198,11 +233,10 @@ export async function getCalendarView(actor: Member) {
   }
 
   const onceEverAnswers = await listOnceEverAnswers(actor);
-  const now = new Date();
   for (const { question, answer } of onceEverAnswers) {
     if (question.responseType === "date" && typeof answer.value === "string") {
       entries.push({
-        date: nextYearlyOccurrence(answer.value, now),
+        date: nextYearlyOccurrence(answer.value, today),
         kind: "birthday",
         label: `${question.label} (yours)`,
         href: "/profile",
@@ -211,5 +245,13 @@ export async function getCalendarView(actor: Member) {
   }
 
   entries.sort((a, b) => a.date.localeCompare(b.date));
-  return { currentCycle: currentCycle ? { id: currentCycle.id, name: currentCycle.name } : null, entries };
+  return {
+    currentCycle: currentCycle ? { id: currentCycle.id, name: currentCycle.name } : null,
+    entries,
+    // What the entries above were placed in, and which day that makes
+    // "today" — the page needs both, and deriving them again there is how
+    // the grid and the list would end up disagreeing.
+    timeZone,
+    today,
+  };
 }

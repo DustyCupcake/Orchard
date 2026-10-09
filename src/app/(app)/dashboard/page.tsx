@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
+import { formatInstant } from "@/lib/dates";
 import { redirect } from "next/navigation";
 import { CheckCircle, Tree, Users, ChartLineUp, Warning } from "@phosphor-icons/react/dist/ssr";
 import { getViewingContext } from "@/lib/view-as";
@@ -79,7 +81,7 @@ function StatRow({ label, value }: { label: React.ReactNode; value: React.ReactN
 
 // `shared` marks a section whose items are outstanding for the Community
 // rather than for this member — which is the case exactly when the module is
-// open to everyone and they hold nothing (docs/open-permissions-plan.md D12).
+// open to everyone and they hold nothing (docs/plans/archive/open-permissions-plan.md D12).
 // The two are rendered in separate passes, personal first, so "yours" never
 // has to compete with "theirs" for attention; the tag is there so the
 // distinction survives the reordering rather than being merely implied by
@@ -125,7 +127,7 @@ const EVENT_STATUS_LABEL: Record<string, string> = {
 
 // The six module needs-action sections, defined once and rendered twice: the
 // `personal` pass first, then the `shared` pass
-// (docs/open-permissions-plan.md D12). They were previously six inline
+// (docs/plans/archive/open-permissions-plan.md D12). They were previously six inline
 // blocks interleaved with the task-side sections; hoisting them here is what
 // makes "personal above shared" expressible at all, and it means the row
 // rendering for each module is written once rather than duplicated per pass.
@@ -137,13 +139,14 @@ const EVENT_STATUS_LABEL: Record<string, string> = {
 // their second-person phrasing because with an open module the person who
 // ends up doing it *is* whoever reads this ("open to everyone" says the
 // standing invitation, and the tag distinguishes it from an obligation).
-function ModuleNeedsActionSections({
+async function ModuleNeedsActionSections({
   feed,
   shared,
 }: {
   feed: Awaited<ReturnType<typeof getPersonalFeed>>;
   shared: boolean;
 }) {
+  const clock = await getViewerClock();
   const pick = <T,>(list: { personal: T[]; shared: T[] }) => (shared ? list.shared : list.personal);
   return (
     <>
@@ -153,7 +156,7 @@ function ModuleNeedsActionSections({
             <FeedRow
               key={c.id}
               href="/recruitment"
-              title={`Application from ${new Date(c.submittedAt).toLocaleDateString()}`}
+              title={`Application from ${clock.date(c.submittedAt)}`}
               tag={<Tag tone="warning">{NEEDS_ACTION_LABEL[c.stage] ?? c.stage}</Tag>}
             />
           ))}
@@ -166,7 +169,7 @@ function ModuleNeedsActionSections({
             <FeedRow
               key={m.id}
               href="/recruitment/mediation"
-              title={`Concern about ${m.subjectLabel}, raised ${new Date(m.raisedAt).toLocaleDateString()}`}
+              title={`Concern about ${m.subjectLabel}, raised ${clock.date(m.raisedAt)}`}
               tag={<Tag tone="warning">needs mediating</Tag>}
             />
           ))}
@@ -210,7 +213,7 @@ function ModuleNeedsActionSections({
               key={o.occurrenceId}
               href="/shifts"
               title={o.seriesTitle}
-              meta={`${new Date(o.startsAt).toLocaleDateString()}, ${o.unresolvedCount} signup${o.unresolvedCount === 1 ? "" : "s"} still unresolved`}
+              meta={`${formatInstant(o.startsAt, o.timeZone, "date")}, ${o.unresolvedCount} signup${o.unresolvedCount === 1 ? "" : "s"} still unresolved`}
             />
           ))}
         </FeedSection>
@@ -222,7 +225,7 @@ function ModuleNeedsActionSections({
             <FeedRow
               key={r.reportId}
               href="/conflict-reports"
-              title={`Report from ${new Date(r.createdAt).toLocaleDateString()}`}
+              title={`Report from ${clock.date(r.createdAt)}`}
               tag={<Tag tone="danger">past the acknowledgment window</Tag>}
             />
           ))}
@@ -331,13 +334,15 @@ export default async function DashboardPage({
     redirect("/login");
   }
 
+  const clock = await getViewerClock();
+
   const { memberCount, error } = await searchParams;
 
   // The same off-URL nav-switcher resolution the Board (Phase 67) and
   // Spatial planning/Schedule (Phase 68) already read, since Dashboard
   // isn't itself under /[cycleScope]/. Drives Branch health's cycle
   // scoping and the "this cycle" option of the community-overview
-  // toggle below — see docs/development-plan.md's Phase 69.
+  // toggle below — see docs/plans/development-plan.md's Phase 69.
   const activeScopeSegment = await resolveDefaultScopeSegment(viewing);
   const activeScope = await resolveViewScopeFromSegment(viewing, activeScopeSegment);
   const scopeCycleIds = activeScope
@@ -373,7 +378,7 @@ export default async function DashboardPage({
     ? snapshot.activeMemberCount.thisCycle
     : snapshot.activeMemberCount.general;
 
-  // Member onboarding & first session (docs/development-plan.md's
+  // Member onboarding & first session (docs/plans/development-plan.md's
   // Phase 56) — a nudge, never a gate, so this panel only ever renders
   // until hasCompletedOnboarding is set (finished or skipped) and never
   // blocks anything else on this page.
@@ -677,7 +682,7 @@ export default async function DashboardPage({
                 key={r.id}
                 href={`/tasks/${r.taskId}`}
                 title={r.taskTitle}
-                meta={`${r.requestedByName} asked to join, ${new Date(r.requestedAt).toLocaleDateString()}`}
+                meta={`${r.requestedByName} asked to join, ${clock.date(r.requestedAt)}`}
               />
             ))}
           </FeedSection>
@@ -694,7 +699,7 @@ export default async function DashboardPage({
                   {r.memberName} asked to join <strong>{r.tierName}</strong>
                   <span className="text-[var(--text-muted)]">
                     {" "}
-                    — {new Date(r.requestedAt).toLocaleDateString()}
+                    — {clock.date(r.requestedAt)}
                   </span>
                 </span>
                 <form action={decideTierRequestAction} className="flex gap-2">
@@ -721,7 +726,7 @@ export default async function DashboardPage({
                 meta={
                   <>
                     {a.role === "activator" ? "you activated on them" : "activated on you"},{" "}
-                    {new Date(a.activatedAt).toLocaleString()}
+                    {clock.dateTime(a.activatedAt)}
                     {a.explanation ? `: "${a.explanation}"` : ""}
                   </>
                 }
@@ -742,7 +747,7 @@ export default async function DashboardPage({
                   meta={
                     <span className={`inline-flex items-center gap-1 ${overdue ? "font-medium text-[var(--danger)]" : ""}`}>
                       {overdue && <Warning size={12} />}
-                      {overdue ? "was due" : "due"} {new Date(t.nextCheckinAt).toLocaleDateString()}
+                      {overdue ? "was due" : "due"} {clock.date(t.nextCheckinAt)}
                       {overdue ? " (overdue)" : ""}
                     </span>
                   }
@@ -781,7 +786,7 @@ export default async function DashboardPage({
                 key={i.placementId}
                 href="/spatial-planning"
                 title={i.placementLabel}
-                meta={`invited by ${i.invitedByName}, ${new Date(i.invitedAt).toLocaleDateString()}`}
+                meta={`invited by ${i.invitedByName}, ${clock.date(i.invitedAt)}`}
               />
             ))}
           </FeedSection>
@@ -834,7 +839,7 @@ export default async function DashboardPage({
                 key={s.signupId}
                 href="/shifts"
                 title={s.seriesTitle}
-                meta={`ended ${new Date(s.endsAt).toLocaleDateString()}, mark it complete`}
+                meta={`ended ${formatInstant(s.endsAt, s.timeZone, "date")}, mark it complete`}
               />
             ))}
           </FeedSection>
