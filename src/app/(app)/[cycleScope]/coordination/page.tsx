@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { resolveViewScopeFromSegment } from "@/lib/cycles";
@@ -68,6 +69,7 @@ export default async function CycleScopeCoordinationPage({
   params: Promise<{ cycleScope: string }>;
 }) {
   const { real, viewing } = await getViewingContext();
+  const clock = await getViewerClock();
   if (!real || !viewing) {
     redirect("/login");
   }
@@ -230,7 +232,7 @@ export default async function CycleScopeCoordinationPage({
                   {c.title}
                 </Link>
                 <span className="shrink-0 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  {c.holderName} · due {c.nextCheckinAt?.toLocaleDateString()}
+                  {c.holderName} · due {c.nextCheckinAt ? clock.date(c.nextCheckinAt) : "—"}
                   {c.waitingNote && ` · ${c.waitingNote}`}
                 </span>
               </li>

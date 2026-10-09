@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { formatInstant } from "@/lib/dates";
+import { getViewerClock } from "@/lib/view-clock";
 import Link from "next/link";
 import { inArray } from "drizzle-orm";
 import { db } from "@/db";
@@ -148,10 +150,11 @@ function MealBlock({
         <div>
           <span className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">{meal.label}</span>
           <span className="ml-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-            {new Date(meal.date).toLocaleDateString(undefined, {
+            {new Date(`${meal.date}T12:00:00Z`).toLocaleDateString("en-US", {
               weekday: "short",
               month: "short",
               day: "numeric",
+              timeZone: "UTC",
             })}
           </span>
         </div>
@@ -337,6 +340,7 @@ export default async function KitchenPage({
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
+  const clock = await getViewerClock();
   if (!real || !viewing) {
     redirect("/login");
   }
@@ -474,7 +478,7 @@ export default async function KitchenPage({
 
           {visiblePlan && visiblePlan.publishedAt && !isOwner && (
             <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-              {visiblePlan.title} — published {new Date(visiblePlan.publishedAt).toLocaleDateString()}.
+              {visiblePlan.title} — published {clock.date(visiblePlan.publishedAt)}.
             </p>
           )}
           {visiblePlan && isOwner && visiblePlan.publishedAt && (
@@ -599,7 +603,7 @@ export default async function KitchenPage({
                         <select name="mealId" className={SELECT}>
                           {overview!.meals.map((m) => (
                             <option key={m.id} value={m.id}>
-                              {m.label} — {new Date(m.date).toLocaleDateString()}
+                              {m.label} — {formatInstant(`${m.date}T12:00:00Z`, "UTC", "date")}
                             </option>
                           ))}
                         </select>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { listOutstandingQuestions } from "@/lib/profile-questions";
@@ -140,7 +141,7 @@ export default async function QuestionsPage({
   );
 }
 
-function QuestionGroup({
+async function QuestionGroup({
   title,
   blurb,
   items,
@@ -158,6 +159,7 @@ function QuestionGroup({
   // on. Null for the once-ever group, which never carries an event.
   cycleId: string | null;
 }) {
+  const clock = await getViewerClock();
   if (items.length === 0) return null;
   return (
     <section className="mb-6">
@@ -171,7 +173,7 @@ function QuestionGroup({
               {question.required ? " *" : ""}
               {question.requiredBy && (
                 <span className="ml-2 text-[length:var(--text-meta)] font-normal text-[var(--text-muted)]">
-                  needed by {new Date(question.requiredBy).toLocaleDateString()}
+                  needed by {clock.date(question.requiredBy)}
                 </span>
               )}
             </p>

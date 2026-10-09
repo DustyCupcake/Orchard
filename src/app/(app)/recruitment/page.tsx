@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
@@ -96,6 +97,8 @@ export default async function RecruitmentHubPage() {
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");
@@ -465,7 +468,7 @@ export default async function RecruitmentHubPage() {
               {alerts.map((a) => (
                 <li key={a.id} className={CARD}>
                   <p className="text-[length:var(--text-body)] text-[var(--text)]">
-                    Submitted {new Date(a.submittedAt).toLocaleDateString()} ·{" "}
+                    Submitted {clock.date(a.submittedAt)} ·{" "}
                     {a.evaluationsFiled}/{a.evaluatorsNeeded} evaluations filed
                     {a.outcome && (
                       <>
@@ -552,7 +555,7 @@ export default async function RecruitmentHubPage() {
                   <tbody>
                     {pipeline.candidates.map((c) => (
                       <tr key={c.id} className="hover:bg-[var(--surface-sunken)]">
-                        <td className={TD}>{new Date(c.submittedAt).toLocaleDateString()}</td>
+                        <td className={TD}>{clock.date(c.submittedAt)}</td>
                         <td className={TD}>
                           <span className="flex items-center gap-2">
                             {STAGE_LABEL[c.stage] ?? c.stage}

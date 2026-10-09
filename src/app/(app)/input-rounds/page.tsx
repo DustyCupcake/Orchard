@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { getNextCutoffAt, listCurrentRoundQuestions } from "@/lib/input-rounds";
@@ -24,6 +25,8 @@ export default async function InputRoundsPage({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { error } = await searchParams;
 
@@ -59,7 +62,7 @@ export default async function InputRoundsPage({
 
       {reminderDue && nextCutoffAt && (
         <div className="mt-4">
-          <Banner tone="warning">Get your questions in — the next round cuts on {nextCutoffAt.toLocaleString()}.</Banner>
+          <Banner tone="warning">Get your questions in — the next round cuts on {clock.deadline(nextCutoffAt)}.</Banner>
         </div>
       )}
 
@@ -77,7 +80,7 @@ export default async function InputRoundsPage({
                 {taskTitle}
               </Link>
               {question.priority && <Tag tone="warning">can&rsquo;t move forward without this</Tag>}
-              {question.deadline && <Tag>needed by {new Date(question.deadline).toLocaleDateString()}</Tag>}
+              {question.deadline && <Tag>needed by {clock.date(question.deadline)}</Tag>}
             </div>
             <p className="mt-1 text-[length:var(--text-body)] font-medium text-[var(--text)]">{question.text}</p>
 

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -21,6 +22,8 @@ export default async function WikiPageDetail({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { id } = await params;
   const { error } = await searchParams;
@@ -65,7 +68,7 @@ export default async function WikiPageDetail({
             <p className="whitespace-pre-wrap text-[length:var(--text-body)] text-[var(--text)]">{currentContent}</p>
             <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               Last edited by {memberNameById.get(revisions[0].editedBy) ?? "—"} on{" "}
-              {new Date(revisions[0].editedAt).toLocaleString()}
+              {clock.dateTime(revisions[0].editedAt)}
             </p>
           </div>
         ) : (
@@ -99,7 +102,7 @@ export default async function WikiPageDetail({
               {revisions.slice(1).map((rev) => (
                 <li key={rev.id}>
                   {memberNameById.get(rev.editedBy) ?? "—"} —{" "}
-                  {new Date(rev.editedAt).toLocaleString()}: {rev.content}
+                  {clock.dateTime(rev.editedAt)}: {rev.content}
                 </li>
               ))}
             </ul>

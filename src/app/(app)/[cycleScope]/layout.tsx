@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { getViewerClock } from "@/lib/view-clock";
 import { getViewingContext } from "@/lib/view-as";
 import { resolveViewScopeFromSegment } from "@/lib/cycles";
 
@@ -25,6 +26,8 @@ export default async function CycleScopeLayout({
     redirect("/login");
   }
 
+  const clock = await getViewerClock();
+
   const { cycleScope } = await params;
   const scope = await resolveViewScopeFromSegment(viewing, cycleScope);
   if (!scope) {
@@ -44,7 +47,7 @@ export default async function CycleScopeLayout({
             color: "#664d03",
           }}
         >
-          This event is closed — read-only. Closed {new Date(scope.cycle.closedAt).toLocaleDateString()}.
+          This event is closed — read-only. Closed {clock.date(scope.cycle.closedAt)}.
         </div>
       )}
       {children}

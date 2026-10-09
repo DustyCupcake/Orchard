@@ -1,4 +1,5 @@
 import EffortFields from "@/components/EffortFields";
+import { getViewerClock } from "@/lib/view-clock";
 import AxisScaleField from "@/components/AxisScaleField";
 import Link from "next/link";
 import { Tag, BUTTON_PRIMARY, BUTTON_SECONDARY, CheckField, INPUT, LABEL } from "@/components/ui/kit";
@@ -68,7 +69,7 @@ function suggestionSummary(
   return parts;
 }
 
-export default function ProposalCard({
+export default async function ProposalCard({
   proposal,
   branches,
   tiers,
@@ -105,6 +106,7 @@ export default function ProposalCard({
   // name has to come from the task, not from `proposal.title`.
   activatedTaskTitle: string | null;
 }) {
+  const clock = await getViewerClock();
   const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
   const cycleNameById = new Map(cycles.map((c) => [c.id, c.name]));
   const suggested = suggestionSummary(proposal, branchNameById, cycleNameById);
@@ -118,7 +120,7 @@ export default function ProposalCard({
         {proposal.status !== "pending" && <Tag tone={proposal.status === "declined" ? "danger" : "success"}>{proposal.status}</Tag>}
       </div>
       <div className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-        Proposed by {submitterName} · {new Date(proposal.createdAt).toLocaleDateString()}
+        Proposed by {submitterName} · {clock.date(proposal.createdAt)}
       </div>
       {proposal.activatedTaskId && (
         <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--text)]">

@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member } from "@/db/schema";
@@ -37,6 +38,8 @@ export default async function ConflictReportsPage({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { error } = await searchParams;
 
@@ -139,7 +142,7 @@ export default async function ConflictReportsPage({
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                         Reported by {memberNameById.get(r.reportedBy) ?? "—"} —{" "}
-                        {new Date(r.createdAt).toLocaleString()}
+                        {clock.dateTime(r.createdAt)}
                       </p>
                       {r.escalated && <Tag tone="warning">escalated</Tag>}
                       {overdue && <Tag tone="danger">overdue for acknowledgment</Tag>}

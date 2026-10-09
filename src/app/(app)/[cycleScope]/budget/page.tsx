@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { getViewerClock } from "@/lib/view-clock";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -134,6 +135,8 @@ export default async function BudgetPage({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { cycleScope } = await params;
   const { error, submitted, updated, cycleUpdated, votingOpened, voted, confirmed, markedDone } = await searchParams;
@@ -298,7 +301,7 @@ export default async function BudgetPage({
                 <Tag tone={STATUS_TONE[currentCycle.status]}>{STATUS_LABEL[currentCycle.status] ?? currentCycle.status}</Tag>
               </div>
               <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                Proposal deadline {new Date(currentCycle.proposalDeadline).toLocaleString()}
+                Proposal deadline {clock.deadline(currentCycle.proposalDeadline)}
                 <br />
                 Budget authority is configured separately under Settings → Access &amp; permissions.
               </p>

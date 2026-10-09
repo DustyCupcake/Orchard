@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import { FlameIcon } from "@phosphor-icons/react/dist/ssr";
 import type { requirement as requirementTable } from "@/db/schema";
 import { describeRequirement, isSelfAssignWorthAskingAbout } from "@/lib/tasks";
@@ -50,7 +51,7 @@ type Task = {
 // - One primary action per state, everything else in the ⋯ menu.
 // - Requirements summarize: unmet individual gates listed, the rest
 //   collapse to "N of M met"; soft_priority is detail-page-only.
-export default function TaskCard({
+export default async function TaskCard({
   task,
   assignments,
   requirements,
@@ -81,6 +82,7 @@ export default function TaskCard({
   coordinationName: string | null;
   backstopName: string | null;
 }) {
+  const clock = await getViewerClock();
   // A shadow isn't a real holder — doesn't count toward capacity, isn't
   // who "Held by" means — see docs/spec.md's "Shadow slots & succession"
   // and lifecycle.ts's assignmentCount(), which excludes them the same way.
@@ -283,7 +285,7 @@ export default function TaskCard({
       )}
       {task.status === "waiting" && (
         <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[length:var(--text-meta)] text-[var(--text)]">
-          <DateChip date={task.nextCheckinAt ?? "—"} label="Check-in" />
+          <DateChip date={task.nextCheckinAt ? clock.date(task.nextCheckinAt) : "—"} label="Check-in" />
           {task.waitingNote && <span className="text-[var(--text-muted)]">— {task.waitingNote}</span>}
         </p>
       )}

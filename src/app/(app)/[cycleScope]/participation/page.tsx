@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import TimeZoneInput from "@/components/TimeZoneInput";
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
@@ -542,6 +543,7 @@ async function ParticipationForCycle({
   closed: boolean;
   isAdminNow: boolean;
 }) {
+  const clock = await getViewerClock();
   const [summary, mine, canConfigure, communityRow] = await Promise.all([
     getCycleParticipationSummary(viewing, cycleId),
     getMyParticipation(viewing, cycleId),
@@ -624,7 +626,7 @@ async function ParticipationForCycle({
         {summary.returningWindowClosesAt && (
           <p className={`mt-1 text-[length:var(--text-body)] ${summary.returningWindowOpen ? "text-[var(--success)]" : "text-[var(--text-muted)]"}`}>
             Returning-priority window {summary.returningWindowOpen ? "open" : "closed"} — closes{" "}
-            {new Date(summary.returningWindowClosesAt).toLocaleString()}.
+            {clock.deadline(summary.returningWindowClosesAt)}.
           </p>
         )}
       </section>

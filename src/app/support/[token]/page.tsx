@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { getEventTimeZone } from "@/lib/cycles/time-zone";
+import { effectiveTimeZone, formatInstant } from "@/lib/dates";
 import { getCurrentMember } from "@/lib/session";
 import { getSupportView, nominationIsWaiting } from "@/lib/recruitment/support";
 import { describeLaneConsequence, JOINING_LANE_COPY } from "@/lib/recruitment/lanes";
@@ -43,8 +45,13 @@ export default async function SupportPage({
 
   const waiting = nominationIsWaiting(view.state);
   const laneCopy = JOINING_LANE_COPY[view.lane];
+  // A signed-in visitor reads it on their own clock; anyone else on UTC,
+  // which the time says. Never the server's.
+  const deadlineZone = viewer
+    ? effectiveTimeZone(viewer, { timeZone: await getEventTimeZone(viewer.communityId, null) })
+    : "UTC";
   const deadline = view.deadline
-    ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(view.deadline)
+    ? formatInstant(view.deadline, deadlineZone, "datetime", { zoneName: true })
     : null;
 
   // A logged-out visitor is routed to the application, pre-tagged with the

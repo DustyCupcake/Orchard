@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { isModuleEnabled } from "@/lib/modules";
@@ -57,6 +58,7 @@ export default async function RecruitmentMediationPage({
   }>;
 }) {
   const params = await searchParams;
+  const clock = await getViewerClock();
   const ctx = await getViewingContext();
   if (!ctx.real || !ctx.viewing) redirect("/login");
   const actor = ctx.viewing;
@@ -250,9 +252,9 @@ export default async function RecruitmentMediationPage({
                     {RESOLUTION_LABEL[item.resolution] ?? item.resolution}
                   </Tag>
                   <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                    raised {new Date(item.raisedAt).toLocaleDateString()}
+                    raised {clock.date(item.raisedAt)}
                     {item.resolvedAt
-                      ? ` · settled ${new Date(item.resolvedAt).toLocaleDateString()}`
+                      ? ` · settled ${clock.date(item.resolvedAt)}`
                       : ""}
                   </span>
                 </div>
@@ -279,7 +281,7 @@ export default async function RecruitmentMediationPage({
   );
 }
 
-function StandingObjection({
+async function StandingObjection({
   item,
   body,
   parties,
@@ -296,6 +298,7 @@ function StandingObjection({
   bodySize: number;
   viewerId: string;
 }) {
+  const clock = await getViewerClock();
   const isObjector = item.objectorName !== null;
   // An overrule that needs more than one person is a pledge, not an act:
   // the button records this holder's agreement and the objection stays
@@ -314,11 +317,11 @@ function StandingObjection({
         </span>
         <Tag tone="warning">standing</Tag>
         <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-          raised {new Date(item.raisedAt).toLocaleDateString()}
+          raised {clock.date(item.raisedAt)}
         </span>
         {item.subject.kind === "invite" && item.subject.consentAt && (
           <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-            · the invitee consented on {new Date(item.subject.consentAt).toLocaleDateString()}
+            · the invitee consented on {clock.date(item.subject.consentAt)}
           </span>
         )}
       </div>

@@ -1,45 +1,50 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BUTTON_PRIMARY } from "@/components/ui/kit";
+import { formatTimeInZone, instantFromZoned } from "@/lib/dates";
+// Deep import: the barrel reaches the database driver, which a client
+// bundle can't resolve — see the programme grid for the longer note.
+import { gridDays } from "@/lib/event-scheduling/availability";
 
 // A day-by-time paint grid — see docs/spec.md's "Availability input is
-// a drag-select grid, not a typed-in range." Each cell represents one
-// half-hour slot rendered in the VIEWER'S OWN local timezone (built
-// from the browser's local Date constructor, not parsed as UTC), then
-// submitted as an absolute ISO instant. Two viewers in different
-// zones each paint their own local daytime hours, and the aggregate
-// still counts overlapping *absolute* moments correctly — this is
-// what "timezones render per viewer" means here, applied to the grid
-// itself, not just the eventual confirmed time.
+// a drag-select grid, not a typed-in range." Each cell is one half-hour
+// slot on the VIEWER'S OWN clock — the member's own time zone, falling
+// back to the browser's for someone with no account (the intro-call
+// invitee) — and is submitted as an absolute ISO instant. Two viewers in
+// different zones each paint their own daytime hours, and the aggregate
+// still counts overlapping *absolute* moments correctly — this is what
+// "timezones render per viewer" means here, applied to the grid itself,
+// not just the eventual confirmed time.
+//
+// That is the opposite choice from the programme's availability grid
+// (src/app/(app)/schedule/AvailabilityGrid.tsx), which is painted on the
+// event's clock: a poll asks "when are *you* free", a programme asks when
+// something can happen at the venue.
 const START_HOUR = 8;
 const END_HOUR = 22;
 const SLOT_MINUTES = 30;
 const ROWS_PER_HOUR = 60 / SLOT_MINUTES;
 const ROW_COUNT = (END_HOUR - START_HOUR) * ROWS_PER_HOUR;
 
-function parseDateLocal(dateStr: string): Date {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
-
-function buildDays(rangeStart: string, rangeEnd: string): Date[] {
-  const start = parseDateLocal(rangeStart);
-  const end = parseDateLocal(rangeEnd);
-  const days: Date[] = [];
-  const cursor = new Date(start);
-  while (cursor <= end) {
-    days.push(new Date(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return days;
-}
-
-function cellDate(day: Date, rowIdx: number): Date {
+function wallClock(rowIdx: number): string {
   const totalMinutes = START_HOUR * 60 + rowIdx * SLOT_MINUTES;
-  const d = new Date(day);
-  d.setHours(0, totalMinutes, 0, 0);
-  return d;
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
+}
+
+// The instant a row names on a given day in the zone, or null when that
+// wall clock doesn't exist there (a clock change skipping it) — rendered
+// as an inert cell rather than silently painting the neighbouring instant.
+function cellIso(day: string, rowIdx: number, timeZone: string): string | null {
+  const wanted = wallClock(rowIdx);
+  const instant = instantFromZoned(`${day}T${wanted}`, timeZone);
+  return formatTimeInZone(instant.toISOString(), timeZone) === wanted ? instant.toISOString() : null;
+}
+
+function dayLabel(day: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" }).format(
+    new Date(`${day}T12:00:00Z`),
+  );
 }
 
 export default function AvailabilityGrid({
@@ -49,6 +54,7 @@ export default function AvailabilityGrid({
   initialSelected,
   readOnly,
   submitUrl,
+  timeZone,
 }: {
   pollId: string;
   rangeStart: string;
@@ -60,8 +66,20 @@ export default function AvailabilityGrid({
   // intro call, see /intro-call/[token]) to post to instead. The grid
   // interaction itself doesn't care who's submitting.
   submitUrl?: string;
+  /** The viewer's own clock. Absent for someone with no account: their browser's is used. */
+  timeZone?: string;
 }) {
-  const days = useMemo(() => buildDays(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
+  const days = useMemo(() => gridDays(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
+  const [zone, setZone] = useState(timeZone ?? "UTC");
+  useEffect(() => {
+    // Only the browser knows where an account-less visitor is, and only
+    // after mount; the first paint stays on the server's guess so it
+    // hydrates cleanly.
+    if (timeZone) return;
+    const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (browserZone) setZone(browserZone);
+  }, [timeZone]);
   const [selected, setSelected] = useState<Set<string>>(new Set(initialSelected));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -117,20 +135,20 @@ export default function AvailabilityGrid({
               key={rowIdx}
               className={`h-[18px] pr-1 text-right text-[length:var(--text-micro)] text-[var(--text-muted)] ${rowIdx % ROWS_PER_HOUR === 0 ? "visible" : "invisible"}`}
             >
-              {cellDate(days[0] ?? new Date(), rowIdx).toLocaleTimeString(undefined, {
-                hour: "numeric",
-                minute: "2-digit",
-              })}
+              {wallClock(rowIdx)}
             </div>
           ))}
         </div>
         {days.map((day) => (
-          <div key={day.toISOString()} className="flex w-16 shrink-0 flex-col">
+          <div key={day} className="flex w-16 shrink-0 flex-col">
             <div className="h-8 text-center text-[length:var(--text-meta)] text-[var(--text-muted)]">
-              {day.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+              {dayLabel(day, zone)}
             </div>
             {Array.from({ length: ROW_COUNT }).map((_, rowIdx) => {
-              const iso = cellDate(day, rowIdx).toISOString();
+              const iso = cellIso(day, rowIdx, zone);
+              if (!iso) {
+                return <div key={`${day}-${rowIdx}`} className="h-[18px] w-full bg-[var(--surface-sunken)]" />;
+              }
               const isSelected = selected.has(iso);
               return (
                 <div
@@ -152,7 +170,7 @@ export default function AvailabilityGrid({
           </button>
           {saved && <span className="text-[length:var(--text-body)] text-[var(--success)]">Saved.</span>}
           <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-            Click, or click-and-drag, to paint the windows you&rsquo;re free. Shown in your own local time.
+            Click, or click-and-drag, to paint the windows you&rsquo;re free. Shown in {zone}.
           </span>
         </div>
       )}

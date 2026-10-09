@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { getViewerClock } from "@/lib/view-clock";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react/dist/ssr";
@@ -122,6 +123,8 @@ export default async function CalendarPage({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { error, created, updated, deleted, invited, responded, month, tab: tabRaw, compose } = await searchParams;
   const activeTab: CalTabKey = CAL_TAB_KEYS.includes(tabRaw ?? "") ? (tabRaw as CalTabKey) : "month";
@@ -370,7 +373,7 @@ export default async function CalendarPage({
             <div key={i.eventId} className={`mt-3 ${CARD}`}>
               <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{i.eventTitle}</p>
               <p className="mt-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                Invited by {i.invitedByName}, {new Date(i.invitedAt).toLocaleDateString()}
+                Invited by {i.invitedByName}, {clock.date(i.invitedAt)}
               </p>
               <div className="mt-3 flex gap-2">
                 <form action={acceptInviteAction}>

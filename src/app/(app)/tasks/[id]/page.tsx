@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { getViewerClock } from "@/lib/view-clock";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -177,6 +178,8 @@ export default async function TaskDetailPage({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { id } = await params;
   // `tab` is accepted but ignored — the tab bar is gone (see the note
@@ -948,7 +951,7 @@ export default async function TaskDetailPage({
                 {openSignals.map((s) => (
                   <div key={s.id} className="mb-1.5 flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                     <span>
-                      {SIGNAL_LABELS[s.kind] ?? s.kind} — {new Date(s.createdAt).toLocaleDateString()}
+                      {SIGNAL_LABELS[s.kind] ?? s.kind} — {clock.date(s.createdAt)}
                     </span>
                     <form action={resolveSignalAction}>
                       <input type="hidden" name="taskId" value={taskRow.id} />
@@ -1036,7 +1039,7 @@ export default async function TaskDetailPage({
                         )}
                         {q.status === "closed" && `closed, ${q.responses.length} response(s)`}
                         {q.priority ? " · can't move forward without this" : ""}
-                        {q.deadline ? ` · needed by ${new Date(q.deadline).toLocaleDateString()}` : ""}
+                        {q.deadline ? ` · needed by ${clock.date(q.deadline)}` : ""}
                       </span>
                     </p>
                     {tally && q.responses.length > 0 && (
@@ -1146,7 +1149,7 @@ export default async function TaskDetailPage({
       {holdsTask && taskRow.status === "waiting" && (
         <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-3">
           <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
-            Check-in was {taskRow.nextCheckinAt && taskRow.nextCheckinAt < new Date() ? "due " + taskRow.nextCheckinAt.toLocaleDateString() : "set for " + taskRow.nextCheckinAt?.toLocaleDateString()}
+            Check-in was {taskRow.nextCheckinAt && taskRow.nextCheckinAt < new Date() ? "due " + clock.date(taskRow.nextCheckinAt) : "set for " + (taskRow.nextCheckinAt ? clock.date(taskRow.nextCheckinAt) : "—")}
             {taskRow.waitingNote && <> — <em>{taskRow.waitingNote}</em></>}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1338,7 +1341,7 @@ export default async function TaskDetailPage({
             <p className="whitespace-pre-wrap text-[length:var(--text-body)] text-[var(--text)]">{notes.wikiRevisions[0].content}</p>
             <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               Last edited by {memberNameById.get(notes.wikiRevisions[0].editedBy) ?? "—"} on{" "}
-              {new Date(notes.wikiRevisions[0].editedAt).toLocaleString()}
+              {clock.dateTime(notes.wikiRevisions[0].editedAt)}
             </p>
           </div>
         ) : (
@@ -1369,7 +1372,7 @@ export default async function TaskDetailPage({
               {notes.wikiRevisions.slice(1).map((rev) => (
                 <li key={rev.id}>
                   <span className="text-[var(--text-muted)]">
-                    {memberNameById.get(rev.editedBy) ?? "—"} — {new Date(rev.editedAt).toLocaleString()}:
+                    {memberNameById.get(rev.editedBy) ?? "—"} — {clock.dateTime(rev.editedAt)}:
                   </span>{" "}
                   {rev.content}
                 </li>
@@ -1386,7 +1389,7 @@ export default async function TaskDetailPage({
           {notes.comments.map((c) => (
             <div key={c.id} className="mb-2">
               <div className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                {memberNameById.get(c.memberId) ?? "—"} — {new Date(c.createdAt).toLocaleString()}
+                {memberNameById.get(c.memberId) ?? "—"} — {clock.dateTime(c.createdAt)}
               </div>
               <p className="text-[length:var(--text-body)] text-[var(--text)]">{c.body}</p>
             </div>
@@ -1601,8 +1604,8 @@ export default async function TaskDetailPage({
             {taskRow.endorsementThreshold === 1 ? "" : "s"} to confirm · browse window{" "}
             {taskRow.browsePeriodEnd
               ? browseWindowOpen
-                ? `closes ${taskRow.browsePeriodEnd.toLocaleString()}`
-                : `closed ${taskRow.browsePeriodEnd.toLocaleString()}`
+                ? `closes ${clock.deadline(taskRow.browsePeriodEnd)}`
+                : `closed ${clock.deadline(taskRow.browsePeriodEnd)}`
               : "not set"}
           </p>
 
@@ -1685,7 +1688,7 @@ export default async function TaskDetailPage({
             {pendingRequests.map((r) => (
               <div key={r.id} className="mb-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
                 <p className="text-[length:var(--text-body)] text-[var(--text)]">
-                  {memberNameById.get(r.memberId) ?? "—"} asked to join — {new Date(r.requestedAt).toLocaleString()}
+                  {memberNameById.get(r.memberId) ?? "—"} asked to join — {clock.dateTime(r.requestedAt)}
                 </p>
                 {canApproveRequests && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1762,7 +1765,7 @@ export default async function TaskDetailPage({
                 </Tag>
                 {nomination.status === "pending" && (
                   <span className="text-[var(--text-muted)]">
-                    respond by {nomination.respondByDeadline.toLocaleString()}
+                    respond by {clock.deadline(nomination.respondByDeadline)}
                   </span>
                 )}
                 {nomination.message && <span className="text-[var(--text-muted)]">&ldquo;{nomination.message}&rdquo;</span>}
@@ -1781,7 +1784,7 @@ export default async function TaskDetailPage({
               <div key={p.id} className="mb-1.5 flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                 <span>
                   {memberNameById.get(p.requestedBy) ?? "—"} would like to talk about this task —{" "}
-                  {new Date(p.createdAt).toLocaleString()}
+                  {clock.dateTime(p.createdAt)}
                 </span>
                 <form action={resolvePingAction}>
                   <input type="hidden" name="taskId" value={taskRow.id} />
@@ -1895,7 +1898,7 @@ export default async function TaskDetailPage({
             ))}
           {taskRow.status === "waiting" && (
             <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
-              Next check-in: {taskRow.nextCheckinAt ? new Date(taskRow.nextCheckinAt).toLocaleDateString() : "—"}
+              Next check-in: {taskRow.nextCheckinAt ? clock.date(taskRow.nextCheckinAt) : "—"}
               {taskRow.waitingNote && <span className="text-[var(--text-muted)]"> — {taskRow.waitingNote}</span>}
             </p>
           )}

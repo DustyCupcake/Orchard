@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import { formatInstant } from "@/lib/dates";
 import { redirect } from "next/navigation";
 import { CheckCircle, Tree, Users, ChartLineUp, Warning } from "@phosphor-icons/react/dist/ssr";
@@ -138,13 +139,14 @@ const EVENT_STATUS_LABEL: Record<string, string> = {
 // their second-person phrasing because with an open module the person who
 // ends up doing it *is* whoever reads this ("open to everyone" says the
 // standing invitation, and the tag distinguishes it from an obligation).
-function ModuleNeedsActionSections({
+async function ModuleNeedsActionSections({
   feed,
   shared,
 }: {
   feed: Awaited<ReturnType<typeof getPersonalFeed>>;
   shared: boolean;
 }) {
+  const clock = await getViewerClock();
   const pick = <T,>(list: { personal: T[]; shared: T[] }) => (shared ? list.shared : list.personal);
   return (
     <>
@@ -154,7 +156,7 @@ function ModuleNeedsActionSections({
             <FeedRow
               key={c.id}
               href="/recruitment"
-              title={`Application from ${new Date(c.submittedAt).toLocaleDateString()}`}
+              title={`Application from ${clock.date(c.submittedAt)}`}
               tag={<Tag tone="warning">{NEEDS_ACTION_LABEL[c.stage] ?? c.stage}</Tag>}
             />
           ))}
@@ -167,7 +169,7 @@ function ModuleNeedsActionSections({
             <FeedRow
               key={m.id}
               href="/recruitment/mediation"
-              title={`Concern about ${m.subjectLabel}, raised ${new Date(m.raisedAt).toLocaleDateString()}`}
+              title={`Concern about ${m.subjectLabel}, raised ${clock.date(m.raisedAt)}`}
               tag={<Tag tone="warning">needs mediating</Tag>}
             />
           ))}
@@ -223,7 +225,7 @@ function ModuleNeedsActionSections({
             <FeedRow
               key={r.reportId}
               href="/conflict-reports"
-              title={`Report from ${new Date(r.createdAt).toLocaleDateString()}`}
+              title={`Report from ${clock.date(r.createdAt)}`}
               tag={<Tag tone="danger">past the acknowledgment window</Tag>}
             />
           ))}
@@ -331,6 +333,8 @@ export default async function DashboardPage({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { memberCount, error } = await searchParams;
 
@@ -678,7 +682,7 @@ export default async function DashboardPage({
                 key={r.id}
                 href={`/tasks/${r.taskId}`}
                 title={r.taskTitle}
-                meta={`${r.requestedByName} asked to join, ${new Date(r.requestedAt).toLocaleDateString()}`}
+                meta={`${r.requestedByName} asked to join, ${clock.date(r.requestedAt)}`}
               />
             ))}
           </FeedSection>
@@ -695,7 +699,7 @@ export default async function DashboardPage({
                   {r.memberName} asked to join <strong>{r.tierName}</strong>
                   <span className="text-[var(--text-muted)]">
                     {" "}
-                    — {new Date(r.requestedAt).toLocaleDateString()}
+                    — {clock.date(r.requestedAt)}
                   </span>
                 </span>
                 <form action={decideTierRequestAction} className="flex gap-2">
@@ -722,7 +726,7 @@ export default async function DashboardPage({
                 meta={
                   <>
                     {a.role === "activator" ? "you activated on them" : "activated on you"},{" "}
-                    {new Date(a.activatedAt).toLocaleString()}
+                    {clock.dateTime(a.activatedAt)}
                     {a.explanation ? `: "${a.explanation}"` : ""}
                   </>
                 }
@@ -743,7 +747,7 @@ export default async function DashboardPage({
                   meta={
                     <span className={`inline-flex items-center gap-1 ${overdue ? "font-medium text-[var(--danger)]" : ""}`}>
                       {overdue && <Warning size={12} />}
-                      {overdue ? "was due" : "due"} {new Date(t.nextCheckinAt).toLocaleDateString()}
+                      {overdue ? "was due" : "due"} {clock.date(t.nextCheckinAt)}
                       {overdue ? " (overdue)" : ""}
                     </span>
                   }
@@ -782,7 +786,7 @@ export default async function DashboardPage({
                 key={i.placementId}
                 href="/spatial-planning"
                 title={i.placementLabel}
-                meta={`invited by ${i.invitedByName}, ${new Date(i.invitedAt).toLocaleDateString()}`}
+                meta={`invited by ${i.invitedByName}, ${clock.date(i.invitedAt)}`}
               />
             ))}
           </FeedSection>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import { eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -75,6 +76,8 @@ export default async function ProfilePage({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { error, verify, sent, verified } = await searchParams;
   const communityRow = await getCommunity(viewing);
@@ -631,7 +634,7 @@ export default async function ProfilePage({
                 {active ? (
                   <div className="mt-2 flex items-center gap-2">
                     <span className="text-[length:var(--text-body)] text-[var(--success)]">
-                      Active{grantedAt ? ` since ${new Date(grantedAt).toLocaleDateString()}` : ""}
+                      Active{grantedAt ? ` since ${clock.date(grantedAt)}` : ""}
                     </span>
                     <form action={withdrawConsentAction}>
                       <input type="hidden" name="purposeId" value={purpose.id} />
