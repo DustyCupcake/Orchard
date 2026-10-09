@@ -29,6 +29,18 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-10-09",
+    title: "Say which proposed activities you'd come to",
+    summary: "The programme page now lists activities members have proposed that aren't scheduled yet, so you can tell the planner what you'd turn up for.",
+    points: [
+      "Under \"Proposed by others\", press \"I'd come\" or \"Maybe\" on anything that appeals. Press it again to take it back.",
+      "It isn't a vote. Nothing is approved or turned down by it — it tells whoever is planning the programme where the interest is.",
+      "Everyone sees how many people are interested. Only the person who proposed an activity, and whoever is planning the programme, can see who.",
+      "You can't respond to your own proposal, and an activity stops taking responses once it has been confirmed and published or declined.",
+    ],
+    source: "members say which proposed activities they'd come to",
+  },
+  {
     date: "2026-10-06",
     title: "A tier is something you ask for",
     summary: "You can no longer tick a tier onto your own profile. Someone who can vouch for it confirms.",

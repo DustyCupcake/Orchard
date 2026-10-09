@@ -4,10 +4,12 @@ import {
   formatEventTime,
   windowMinutes,
   type EventSlot,
+  type ProposalInterest,
 } from "@/lib/event-scheduling";
 import { localInputFromInstant, type DateDisplayMode, type PeriodDateContext } from "@/lib/dates";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, Tag } from "@/components/ui/kit";
 import { STATUS_LABEL, STATUS_TONE } from "./status";
+import { InterestSummary } from "./InterestControls";
 import {
   confirmEventProposalAction,
   declineEventProposalAction,
@@ -44,6 +46,7 @@ export default function EventReviewSection({
   dateDisplayMode,
   timeZone,
   period,
+  interestById,
 }: {
   proposals: EventProposalRow[];
   memberNameById: Map<string, string>;
@@ -59,6 +62,8 @@ export default function EventReviewSection({
   dateDisplayMode: DateDisplayMode;
   timeZone: string;
   period: PeriodDateContext | null;
+  /** Interest per proposal; the owner gets names as well as counts. */
+  interestById: Map<string, ProposalInterest>;
 }) {
   const timeLabel = (s: EventSlot) => formatEventTime(s, dateDisplayMode, timeZone, period);
   const unresolved = proposals.filter(
@@ -105,6 +110,9 @@ export default function EventReviewSection({
                   <li key={i} title={timeLabel(s).exact}>{timeLabel(s).visible}</li>
                 ))}
               </ul>
+              {!p.publishedAt && p.status !== "declined" && interestById.get(p.id) && (
+                <InterestSummary interest={interestById.get(p.id)!} />
+              )}
               {!confirmedSlot && placementOptions.length > 0 && (
                 <p className="mt-1.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   {placementOptions.length} way{placementOptions.length === 1 ? "" : "s"} to start a{" "}

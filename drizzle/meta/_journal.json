@@ -638,6 +638,13 @@
       "when": 1791529270654,
       "tag": "0090_member_time_zone",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1791548452629,
+      "tag": "0091_event_proposal_interest",
+      "breakpoints": true
     }
   ]
 }

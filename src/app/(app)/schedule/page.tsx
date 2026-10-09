@@ -7,6 +7,8 @@ import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import {
   formatEventTime,
+  getProposalInterest,
+  listOpenEventProposalsForInterest,
   isEventSchedulingOwner,
   listEventProposalsForReview,
   listMyEventProposalPings,
@@ -22,6 +24,7 @@ import { submitEventProposalAction, updateEventProposalAction } from "./actions"
 import EventReviewSection from "./EventReviewSection";
 import AvailabilityGrid from "./AvailabilityGrid";
 import OwnerAvailabilityGrid from "./OwnerAvailabilityGrid";
+import { InterestControls, InterestSummary } from "./InterestControls";
 import { STATUS_LABEL, STATUS_TONE } from "./status";
 
 export const dynamic = "force-dynamic";
@@ -111,10 +114,18 @@ export default async function SchedulePage({
     ? { start: scopedCycle.startDate, end: scopedCycle.endDate }
     : null;
 
-  const [myProposals, publishedSchedule, reviewProposals] = await Promise.all([
+  const [myProposals, publishedSchedule, reviewProposals, othersProposals] = await Promise.all([
     moduleOn ? listMyEventProposals(viewing, cycleId) : Promise.resolve([]),
     moduleOn ? listPublishedSchedule(viewing, cycleId) : Promise.resolve([]),
     moduleOn && isOwner ? listEventProposalsForReview(viewing, cycleId) : Promise.resolve([]),
+    moduleOn ? listOpenEventProposalsForInterest(viewing, cycleId) : Promise.resolve([]),
+  ]);
+
+  // Interest for everything shown on this page in one read. Whether a
+  // proposal's names come back is decided inside the lib — the submitter
+  // and the scheduling owner get them, everyone else only counts.
+  const interestById = await getProposalInterest(viewing, [
+    ...new Map([...myProposals, ...reviewProposals, ...othersProposals].map((p) => [p.id, p])).values(),
   ]);
 
   const myPingsByProposalId = new Map(
@@ -219,6 +230,36 @@ export default async function SchedulePage({
           </section>
 
           <section className="mt-8">
+            <SectionHeading>Proposed by others</SectionHeading>
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+              Activities members have put forward that aren&rsquo;t scheduled yet. Say which ones
+              you&rsquo;d come to — it tells whoever is planning the programme where the interest is, and
+              doesn&rsquo;t decide anything.
+            </p>
+            {othersProposals.length === 0 && (
+              <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Nothing open right now.</p>
+            )}
+            <div className="mt-3 flex flex-col gap-2">
+              {othersProposals.map((p) => {
+                const interest = interestById.get(p.id);
+                return (
+                  <div key={p.id} className={CARD}>
+                    <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
+                      {p.title} <span className="font-normal text-[var(--text-muted)]">— hosted by {p.host}</span>
+                    </p>
+                    {p.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{p.description}</p>}
+                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                      {p.durationMinutes} min{p.spaceNeeds && <> · {p.spaceNeeds}</>}
+                    </p>
+                    {interest && <InterestSummary interest={interest} />}
+                    {interest && <InterestControls proposalId={p.id} interest={interest} />}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="mt-8">
             <SectionHeading>My proposals</SectionHeading>
             {myProposals.length === 0 && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
             <div className="mt-3 flex flex-col gap-3">
@@ -248,6 +289,9 @@ export default async function SchedulePage({
                       <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--text)]">
                         Confirmed: <span title={timeLabel(confirmedSlot).exact}>{timeLabel(confirmedSlot).visible}</span>
                       </p>
+                    )}
+                    {!p.publishedAt && p.status !== "declined" && interestById.get(p.id) && (
+                      <InterestSummary interest={interestById.get(p.id)!} />
                     )}
                     {pings.length > 0 && (
                       <p className="mt-1.5 text-[length:var(--text-body)] text-[var(--warning)]">
@@ -366,6 +410,7 @@ export default async function SchedulePage({
               dateDisplayMode={dateDisplayMode}
               timeZone={timeZone}
               period={period}
+              interestById={interestById}
             />
           )}
         </>

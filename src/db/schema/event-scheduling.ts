@@ -1,4 +1,4 @@
-import { integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
 import { cycle } from "./cycle";
 import { member } from "./member";
@@ -9,6 +9,8 @@ export const eventProposalStatusEnum = pgEnum("event_proposal_status", [
   "confirmed",
   "declined",
 ]);
+
+export const eventProposalInterestLevelEnum = pgEnum("event_proposal_interest_level", ["yes", "maybe"]);
 
 // A community's own internal programme — see docs/spec.md's "Event
 // scheduling" and docs/development-plan.md's Phase 28. `status` is a
@@ -89,3 +91,28 @@ export const eventProposalConflictPing = pgTable("event_proposal_conflict_ping",
     .references(() => member.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// "I'd come to this" — a member's non-binding interest in a proposal that
+// is still open, so the person planning the programme can see how much
+// appetite there is before deciding anything. Deliberately not a vote: it
+// decides nothing, and absence of a row means no response rather than no.
+// One row per member per proposal (the unique constraint), changed or
+// withdrawn by upserting or deleting it. Counts are visible to every
+// member; who is behind them only to the proposal's submitter and the
+// scheduling owner — see src/lib/event-scheduling/interest.ts.
+export const eventProposalInterest = pgTable(
+  "event_proposal_interest",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    proposalId: uuid("proposal_id")
+      .notNull()
+      .references(() => eventProposal.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => member.id),
+    level: eventProposalInterestLevelEnum("level").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("event_proposal_interest_member_unique").on(t.proposalId, t.memberId)],
+);

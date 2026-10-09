@@ -14,7 +14,9 @@ import {
   declineEventProposal,
   getProposalTimeZone,
   paintedCellsInput,
+  interestLevelInput,
   pingConflictHost,
+  setEventProposalInterest,
   publishEventSchedule,
   updateEventProposal,
   updateEventProposalInput,
@@ -114,6 +116,23 @@ export async function updateEventProposalAction(formData: FormData) {
 
   revalidatePath("/schedule");
   redirect("/schedule?updated=1");
+}
+
+// Open to any member for any open proposal that isn't their own — enforced
+// inside setEventProposalInterest. "none" withdraws.
+export async function setEventProposalInterestAction(formData: FormData) {
+  const actor = await requireMember();
+  const proposalId = String(formData.get("proposalId"));
+  const raw = String(formData.get("level") ?? "");
+
+  try {
+    await setEventProposalInterest(actor, proposalId, raw === "none" ? null : interestLevelInput.parse(raw));
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/schedule");
+  redirect("/schedule");
 }
 
 // Owner-only, enforced inside confirmEventProposalSlot.

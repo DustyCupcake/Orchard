@@ -8,6 +8,17 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## members say which proposed activities they'd come to
+
+Any member can now see the programme proposals that are still open and say "I'd come" or "Maybe", so whoever is planning the programme can see where the interest is before anything is scheduled. It is a signal, not a vote: nothing here approves, ranks or blocks a proposal, and the owner still decides.
+
+- **One response per member per proposal**, kept in `event_proposal_interest` (migration `0091`, unique on proposal + member). Changing an answer replaces it; pressing the active button again withdraws it; no row means no response, so there is no recorded "no". A host can't respond to their own proposal, and a proposal stops taking responses once it is declined or published.
+- **Counts for everyone, names for two people.** The proposal's submitter and the scheduling owner for its event see who is behind the numbers; every other member sees only the counts. That rule lives in `getProposalInterest` (`src/lib/event-scheduling/interest.ts`), which returns `people: null` for anyone else, so a page can't show names by forgetting a check.
+- **The programme page** gains a "Proposed by others" list with the buttons; a host's own proposals and the owner's review list show the count (and names).
+- Nothing about a proposal's visibility changed beyond this: the list shows other members' open proposals in the viewed event, not declined or published ones. Published sessions don't take interest; turning it into "I'm going" for a published session is deliberately not built.
+
+Checked: `tsc` clean, lint 0 errors, `tests/event-scheduling-interest.test.ts` (response lifecycle, who sees names, host/declined/published/module-off/cross-community refusals, and what the list includes). The pages were not opened in a browser.
+
 ## the React hooks lint rules are errors again, with the fourteen sites they flagged fixed
 
 The Next 16 entry below left three new `eslint-plugin-react-hooks` 7 rules as warnings because fourteen existing sites tripped them. They are cleared and the rules are errors again (the override block is gone from `eslint.config.mjs`), so a new violation fails the build's lint stage instead of adding to a pile nobody reads.

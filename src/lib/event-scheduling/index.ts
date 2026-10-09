@@ -4,3 +4,4 @@ export * from "./review";
 export * from "./schedule";
 export * from "./slots";
 export * from "./availability";
+export * from "./interest";
