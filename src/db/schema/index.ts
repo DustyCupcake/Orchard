@@ -45,6 +45,7 @@ export * from "./participation";
 export * from "./community-invite";
 export * from "./admission-lane";
 export * from "./admission";
+export * from "./community-check";
 export * from "./joining-lane";
 export * from "./joining-support";
 export * from "./inquiry";

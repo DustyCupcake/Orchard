@@ -645,6 +645,13 @@
       "when": 1791529201241,
       "tag": "0091_person_plus_n_holders_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1791531926305,
+      "tag": "0092_community_check",
+      "breakpoints": true
     }
   ]
 }
