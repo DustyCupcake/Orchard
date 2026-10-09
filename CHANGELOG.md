@@ -19,6 +19,41 @@ Any member can now see the programme proposals that are still open and say "I'd 
 
 Checked: `tsc` clean, lint 0 errors, `tests/event-scheduling-interest.test.ts` (response lifecycle, who sees names, host/declined/published/module-off/cross-community refusals, and what the list includes). The pages were not opened in a browser.
 
+## deadlines and timestamps show on the viewer's clock, not the server's
+
+Server components wrote times with `new Date(x).toLocaleString()`, which is the zone and locale of the *server process*: the same for every reader, never the reader's own, and right only while the server happens to run in UTC. Times now read on the viewer's own clock — `Member.timeZone`, else `Community.timeZone`, else UTC.
+
+- **`getViewerClock()`** (`src/lib/view-clock.ts`, memoised per request) and `clockFor(zone)` give a page `dateTime`, `date`, `time` and `deadline`, where `deadline` names its zone ("Oct 9, 2026, 15:04 GMT+2"). They sit on `formatInstant` / `formatInstantRange` (`src/lib/dates/instants.ts`), which take the zone as an argument so a call site decides which clock it wants. About 25 pages and components moved off bare `toLocale*`; the only ones left are number formatting, the settings history's own date format, and `EventParticipation`'s date-only labels. The visible difference is the format: "Oct 9, 2026, 15:04", 24-hour, for everyone, rather than whatever the server's locale gave.
+- **Deadlines say which clock they're on:** the assembly boundaries, the input-round cutoff, a nomination's response deadline, a browse period, the joining and returning windows and the budget deadline use `deadline`.
+- **Scheduling polls.** The availability grid is painted on the member's own zone — the browser's for someone with no account (the intro-call invitee) — instead of the browser's only. Each cell is built per day with `instantFromZoned`, so a clock change can't shift one, and a wall-clock the zone skips is an inert cell. The results, the confirmed slot and the published summary read on the same clock, so the grid and the answers can no longer disagree. The confirmed-slot text written into the task titles ("Facilitate …'s call") names its zone now, and is the confirming member's, where it used to be silently UTC; it is text from then on and doesn't follow each reader.
+- **Pages with no member** (the intro-call and support links) use the community's clock with its name, or UTC.
+- **Date-only values** (a meal's date, a stored date) are formatted in UTC so they can't slip a day with the server's zone.
+
+Checked: `tsc` clean, lint 0 errors, the full suite, `next build`. The pages were not opened in a browser. Known limit: the poll grid's cells sit on :00 and :30 of the painter's zone, so a zone with a 45-minute offset won't line up with cells painted from another zone.
+
+## shifts and the programme read on the venue's clock, and deadlines are typed on the event's
+
+A shift or a programme session happens at the venue, so it is read on the event's clock — the event's own zone, else the community's, else UTC — wherever the viewer is. Whoever organises it types times on that same clock, and each member then sees deadlines on their own (see the entry above).
+
+- **A bug fixed in shifts.** A weekly pattern's start time was built with `Date.UTC`, so "09:00" meant 09:00 UTC, and a weekly shift drifted an hour across a clock change. `computeWeeklySlots` now resolves each date against the series' event zone with `instantFromZoned`; the weekday is read off the plain date. The explicit `startsAt|endsAt` list is read on the same clock instead of the server's. The roster, the coordinator view, the participation page, the dashboard rows and the contribution history show shift times on the venue clock.
+- **Deadlines typed on the event clock.** The returning and joining windows, the budget proposal deadline, an invite's expiry and a proposal's browse period were parsed with `new Date(raw)` — the server's zone — and pre-filled with the server's `getHours`. They go through `eventInstantFromLocal` now, are pre-filled with `localInputFromInstant`, and the form labels name the zone. Values already stored are instants and don't move; a community that has set no zone is on UTC, which is what a UTC server was already doing.
+- **The calendar** puts programme sessions and shifts on the day they fall on at the venue; see the entry below.
+- **New helpers.** `getEventTimeZone`, `getEventClocks` and `eventInstantFromLocal` (`src/lib/cycles/time-zone.ts`), the first two checking the event belongs to the community. `instantFromZoned` also accepts a seconds part.
+
+Checked: the shift tests for a weekly shift either side of a clock change and for an event zone overriding the community's, the calendar tests, the full suite.
+
+## the calendar reads in each member's own time zone, and asks before adopting the browser's
+
+The calendar assigned every instant to its UTC day, so a deadline or a late session fell on the wrong day for anyone not on UTC, and "today", the month it opens on and the upcoming list were UTC too.
+
+- **`Member.timeZone`** (migration `0090`), set on the profile page, null inheriting the community's and then UTC through the existing `effectiveTimeZone`.
+- **`getCalendarView`** places real instants — the input-round cutoff, the assembly deadlines, a confirmed poll slot, the budget deadline — on the member's own day, and leaves plain stored dates (phase boundaries, milestones, calendar entries, birthdays) exactly as stored, since a date is the same day everywhere. It returns the zone it read in and the member's "today", which the grid highlight, the month default and the upcoming list use.
+- **Programme sessions and shifts sit on the venue's day**, not the viewer's, and when the venue is on a different clock the entry says what time it is there ("08:30 Asia/Tokyo, venue time"). Nothing is added when the zones are the same. `sameTimeZone` compares canonicalised names, so Europe/Kiev and Europe/Kyiv don't read as different.
+- **The browser-zone prompt.** `TimeZoneNudge` notices when the browser reports a different zone from the one the calendar is using and offers "Use X" or "Keep Y". The calendar never follows the device silently. Declining remembers the dismissed zone in `localStorage`, so a later, different zone asks again; if storage is unavailable it simply asks again. The action validates the zone and writes only the actor's own row, and the prompt isn't shown while viewing as someone else.
+- The zone field and its suggestions are one component, `TimeZoneInput`, used by settings, the event form and the profile.
+
+Checked: `tsc`, lint, the calendar tests (a late-evening session and deadline in several zones, the venue note present only when the zones differ, a plain date unmoved). Not done: the clone preview's "today" highlight is still UTC.
+
 ## the React hooks lint rules are errors again, with the fourteen sites they flagged fixed
 
 The Next 16 entry below left three new `eslint-plugin-react-hooks` 7 rules as warnings because fourteen existing sites tripped them. They are cleared and the rules are errors again (the override block is gone from `eslint.config.mjs`), so a new violation fails the build's lint stage instead of adding to a pile nobody reads.

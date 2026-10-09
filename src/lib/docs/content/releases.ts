@@ -41,6 +41,41 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     source: "members say which proposed activities they'd come to",
   },
   {
+    date: "2026-10-09",
+    title: "Times show on your clock",
+    summary: "Deadlines and timestamps are written in your own time zone, and say which one when it matters.",
+    points: [
+      "Until now the app wrote times in the server's zone, which was the same for everyone. They now follow your time zone, or the community's if you haven't set one.",
+      "Deadlines name their zone, for example \"Oct 9, 2026, 15:04 GMT+2\", so there's no doubt which clock they're on.",
+      "In a scheduling poll, the grid you paint, the results and the confirmed time are all on the same clock.",
+      "Dates with no time of day, such as a phase's start or a meal's date, are the same day for everyone and haven't moved.",
+    ],
+    source: "deadlines and timestamps show on the viewer's clock, not the server's",
+  },
+  {
+    date: "2026-10-09",
+    title: "Shifts and the programme run on the venue's clock",
+    summary: "A shift or session is at the same hour wherever you're looking from, and organisers type times on the event's clock.",
+    points: [
+      "Shifts and programme sessions are shown on the event's time zone, which falls back to the community's. A 09:00 shift is 09:00 at the venue for everyone.",
+      "A weekly shift now stays at the same hour across a clock change. Before, it could drift an hour.",
+      "When someone sets a deadline or window, such as the budget deadline, an invite's expiry or when joining closes, they type it on the event's clock and the form says which. Everyone else sees it on their own.",
+    ],
+    source: "shifts and the programme read on the venue's clock, and deadlines are typed on the event's",
+  },
+  {
+    date: "2026-10-09",
+    title: "The calendar follows your time zone",
+    summary: "Set your time zone on your profile and the calendar puts deadlines on the right day for you.",
+    points: [
+      "Your profile has a Time zone field. Leave it blank and the calendar uses the community's.",
+      "If your browser is in a different zone from the one the calendar is using, it asks once whether to switch. Saying no remembers your answer until your browser's zone changes again.",
+      "Shifts and programme sessions stay on the day they fall on at the venue. If the venue is on a different clock from yours, the entry shows its time there.",
+      "Dates with no time of day, such as phase boundaries and your own calendar entries, haven't moved.",
+    ],
+    source: "the calendar reads in each member's own time zone, and asks before adopting the browser's",
+  },
+  {
     date: "2026-10-06",
     title: "A tier is something you ask for",
     summary: "You can no longer tick a tier onto your own profile. Someone who can vouch for it confirms.",
