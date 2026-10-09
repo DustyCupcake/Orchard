@@ -4,7 +4,8 @@ import { db } from "@/db";
 import { community, dateDisplayModeEnum, form, objectionOverruleModeEnum, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
-import { recruitmentDecisionRulesSchema, requireValidDecisionRules } from "../recruitment/evaluations";
+import { ANY_NO_MEANS, DISCUSSION_ENDS, IN_WHEN, validateDecisionPolicy } from "../recruitment/decision-policy";
+import { policyOf } from "../recruitment/evaluations";
 import { requireNotOnsiteLocked } from "../onsite-mode";
 import { recordSettingChanges } from "./history";
 
@@ -80,8 +81,14 @@ export const updateCommunityInput = z.object({
   // exception is unavailable, which only works if the number stays
   // somewhere a body could plausibly reach.
   recruitmentObjectionQuorum: z.number().int().min(1).max(50).optional(),
-  recruitmentEvaluatorCount: z.number().int().positive().optional(),
-  recruitmentDecisionRules: recruitmentDecisionRulesSchema.optional(),
+  // How reports decide (docs/admission-flow.md §2): one small policy for the
+  // whole community. How many reports a lane needs is the lane's own.
+  recruitmentInWhen: z.enum(IN_WHEN).optional(),
+  recruitmentCustomMinYes: z.number().int().min(0).max(50).optional(),
+  recruitmentCustomMaxNo: z.number().int().min(0).max(50).optional(),
+  recruitmentAnyNoMeans: z.enum(ANY_NO_MEANS).optional(),
+  recruitmentDiscussionEnds: z.enum(DISCUSSION_ENDS).optional(),
+  recruitmentDeclineOutrightAt: z.number().int().min(1).max(50).nullable().optional(),
   recruitmentSubscriptionLapseThreshold: z.number().int().positive().optional(),
   recruitmentWiderDiscussionHours: z.number().int().positive().optional(),
   // Null clears it — "surfaced to whoever's about to send an actual
@@ -169,8 +176,32 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
     }
   }
 
-  if (input.recruitmentDecisionRules !== undefined) {
-    requireValidDecisionRules(input.recruitmentDecisionRules);
+  // A policy a lane can never meet is refused when saved, with the lane named,
+  // rather than leaving applications waiting for ever on a number nobody can reach.
+  const touchesPolicy = [
+    input.recruitmentInWhen,
+    input.recruitmentCustomMinYes,
+    input.recruitmentCustomMaxNo,
+    input.recruitmentAnyNoMeans,
+    input.recruitmentDiscussionEnds,
+    input.recruitmentDeclineOutrightAt,
+  ].some((v) => v !== undefined);
+  if (touchesPolicy) {
+    const { listLanes } = await import("../recruitment/admission-lanes");
+    const evaluated = (await listLanes(actor.communityId))
+      .filter((l) => l.reportsNeeded !== null)
+      .map((l) => ({ name: l.name, reportsNeeded: l.reportsNeeded! }));
+    const merged = policyOf({
+      recruitmentInWhen: input.recruitmentInWhen ?? currentRow.recruitmentInWhen,
+      recruitmentCustomMinYes: input.recruitmentCustomMinYes ?? currentRow.recruitmentCustomMinYes,
+      recruitmentCustomMaxNo: input.recruitmentCustomMaxNo ?? currentRow.recruitmentCustomMaxNo,
+      recruitmentAnyNoMeans: input.recruitmentAnyNoMeans ?? currentRow.recruitmentAnyNoMeans,
+      recruitmentDiscussionEnds: input.recruitmentDiscussionEnds ?? currentRow.recruitmentDiscussionEnds,
+      recruitmentDeclineOutrightAt:
+        input.recruitmentDeclineOutrightAt !== undefined ? input.recruitmentDeclineOutrightAt : currentRow.recruitmentDeclineOutrightAt,
+    });
+    const problems = validateDecisionPolicy(merged, evaluated);
+    if (problems.length > 0) throw new AppError(problems[0]);
   }
 
   // The write and its log share one transaction, so a change can never land
@@ -222,12 +253,12 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         ...(input.recruitmentObjectionQuorum !== undefined && {
           recruitmentObjectionQuorum: input.recruitmentObjectionQuorum,
         }),
-        ...(input.recruitmentEvaluatorCount !== undefined && {
-          recruitmentEvaluatorCount: input.recruitmentEvaluatorCount,
-        }),
-        ...(input.recruitmentDecisionRules !== undefined && {
-          recruitmentDecisionRules: input.recruitmentDecisionRules,
-        }),
+        ...(input.recruitmentInWhen !== undefined && { recruitmentInWhen: input.recruitmentInWhen }),
+        ...(input.recruitmentCustomMinYes !== undefined && { recruitmentCustomMinYes: input.recruitmentCustomMinYes }),
+        ...(input.recruitmentCustomMaxNo !== undefined && { recruitmentCustomMaxNo: input.recruitmentCustomMaxNo }),
+        ...(input.recruitmentAnyNoMeans !== undefined && { recruitmentAnyNoMeans: input.recruitmentAnyNoMeans }),
+        ...(input.recruitmentDiscussionEnds !== undefined && { recruitmentDiscussionEnds: input.recruitmentDiscussionEnds }),
+        ...(input.recruitmentDeclineOutrightAt !== undefined && { recruitmentDeclineOutrightAt: input.recruitmentDeclineOutrightAt }),
         ...(input.recruitmentSubscriptionLapseThreshold !== undefined && {
           recruitmentSubscriptionLapseThreshold: input.recruitmentSubscriptionLapseThreshold,
         }),

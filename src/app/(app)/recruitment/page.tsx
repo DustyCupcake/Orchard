@@ -20,6 +20,7 @@ import {
   listStandingObjectionSummaries,
 } from "@/lib/recruitment";
 import { listPairings, listSharedInterviewOffers } from "@/lib/recruitment/pairs";
+import { listLanes } from "@/lib/recruitment/admission-lanes";
 import { answerSharedInterviewAction } from "./actions";
 import { ForbiddenError } from "@/lib/errors";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
@@ -174,20 +175,20 @@ export default async function RecruitmentHubPage() {
   const canAct = isHolder || admin;
   const { open, grants, holders, evaluatorCount, needsTaskToFileUnder } = authority;
   const hasForm = Boolean(form);
-  // The contradiction this hub exists partly to surface: a decision needs
-  // `recruitmentEvaluatorCount` *distinct* filed evaluations, but only a
-  // current holder of a recruitment-granted task can file one, and
-  // `recruitment` is single-cardinality per scope
-  // (src/lib/permissions.ts's MULTI_CARDINALITY_MODULES). So on the
-  // default count of 2 with one holder, no rule above the unconditional
-  // fallback can ever match, and every application parks at
-  // decision_pending forever. Held back rather than auto-widened: opening
-  // evaluation to everyone is a real policy decision for the community, so
-  // the interface reports the gap instead of resolving it. An open module
-  // makes evaluatorCount infinite and so never trips this — which is correct,
-  // because open *is* the resolution.
-  const evaluationUnreachable =
-    !open && evaluatorCount > 0 && evaluatorCount < communityRow.recruitmentEvaluatorCount;
+  // The contradiction this hub exists partly to surface: a lane needs N reports
+  // per person, but only a current holder of a recruitment-granted task can file
+  // one, and `recruitment` is single-cardinality per scope
+  // (src/lib/permissions.ts's MULTI_CARDINALITY_MODULES). So a lane needing 2 with
+  // one holder can never get its reports and every arrival on it waits for ever.
+  // Held back rather than auto-widened: opening evaluation to everyone is a real
+  // policy decision for the community, so the interface reports the gap, naming
+  // the lane, instead of resolving it. An open module makes evaluatorCount
+  // infinite and so never trips this — which is correct, because open *is* the
+  // resolution.
+  const unreachableLanes = !open && evaluatorCount > 0
+    ? (await listLanes(communityRow.id)).filter((l) => l.reportsNeeded !== null && l.reportsNeeded > evaluatorCount)
+    : [];
+  const evaluationUnreachable = unreachableLanes.length > 0;
 
   return (
     <main className="mx-auto max-w-[860px] px-6 py-10 md:px-12 md:py-14">
@@ -367,11 +368,10 @@ export default async function RecruitmentHubPage() {
       {evaluationUnreachable && canAct && (
         <section className="mt-6">
           <Banner tone="warning">
-            A decision needs {communityRow.recruitmentEvaluatorCount} separate evaluations filed, but
-            only {evaluatorCount} {evaluatorCount === 1 ? "person is" : "people are"} currently able to
-            file one — so no decision rule can ever be reached and applications sit at &ldquo;decision
-            pending&rdquo; indefinitely. Either lower &ldquo;Evaluators needed per application&rdquo;, or
-            widen who may evaluate — see{" "}
+            {unreachableLanes.map((l) => `“${l.name}” needs ${l.reportsNeeded} reports`).join(", ")} per person, but only{" "}
+            {evaluatorCount} {evaluatorCount === 1 ? "person is" : "people are"} currently able to file one — so
+            nobody on {unreachableLanes.length === 1 ? "that lane" : "those lanes"} can ever be decided and they wait
+            indefinitely. Either lower the reports the lane needs, or widen who may report — see{" "}
             <Link href="/settings?tab=recruitment" className="underline">
               Recruitment settings
             </Link>

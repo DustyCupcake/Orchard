@@ -1,17 +1,18 @@
 import { laneRuleOf, listEventLaneSets, listLanes } from "@/lib/recruitment/admission-lanes";
 import { describeLaneConsequence } from "@/lib/recruitment/lane-rules";
 import type { community as communityTable, form as formTable } from "@/db/schema";
-import type { RecruitmentDecisionRule } from "@/lib/recruitment/evaluations";
+import { policyOf } from "@/lib/recruitment/evaluations";
+import { describeDecisionPolicy } from "@/lib/recruitment/decision-policy";
 import { SelectField, SettingsGroup, SettingsPanel, SettingsSection, TextAreaField, TextField, ToggleField } from "../ui";
 import {
   saveAdmissionLanesAction,
   updateRecruitmentApplicationAction,
-  updateRecruitmentDecisionRulesAction,
+  updateRecruitmentDecisionPolicyAction,
   updateRecruitmentDoorsAction,
   updateRecruitmentCheckWindowAction,
 } from "../actions";
 import AdmissionLaneEditor from "../AdmissionLaneEditor";
-import DecisionRulesEditor, { describeRuleCondition } from "../DecisionRulesEditor";
+import DecisionPolicyEditor from "../DecisionPolicyEditor";
 
 
 // The tab is ordered as the pipeline runs, and each window sits next to the
@@ -118,14 +119,13 @@ export default async function RecruitmentTab({
           action={updateRecruitmentApplicationAction}
           submitLabel="Save application settings"
           title="Form, readers and words"
-          stateLabel="Which form applicants fill in, how many recommendations a decision needs, when a subscription lapses, and whether a decline draft is written"
+          stateLabel="Which form applicants fill in, when a subscription lapses, and whether a decline draft is written"
           state={
             <>
               {activeForms.find((f) => f.id === community.recruitmentApplicationFormId)
                 ? `Applicants fill in "${activeForms.find((f) => f.id === community.recruitmentApplicationFormId)!.title}".`
                 : "No application form chosen."}{" "}
-              Decided at {community.recruitmentEvaluatorCount} recommendation
-              {community.recruitmentEvaluatorCount === 1 ? "" : "s"} · a subscription lapses after{" "}
+              A subscription lapses after{" "}
               {community.recruitmentSubscriptionLapseThreshold} no-show
               {community.recruitmentSubscriptionLapseThreshold === 1 ? "" : "s"} ·{" "}
               {community.recruitmentRejectionTemplate?.trim()
@@ -148,13 +148,6 @@ export default async function RecruitmentTab({
             hint="This is what renders at the public /apply page, and what any lane asking for a form asks with. An event can point at a different form of its own."
           />
           <TextField
-            label="Evaluators needed before a decision is reached"
-            name="recruitmentEvaluatorCount"
-            type="number"
-            defaultValue={community.recruitmentEvaluatorCount}
-            hint="How many different people holding the recruitment task must file a recommendation. Set who holds it under Access & permissions."
-          />
-          <TextField
             label="Lapse a subscription after this many no-shows"
             name="recruitmentSubscriptionLapseThreshold"
             type="number"
@@ -172,25 +165,17 @@ export default async function RecruitmentTab({
 
 
         <SettingsGroup
-          action={updateRecruitmentDecisionRulesAction}
-          submitLabel="Save decision rules"
-          title="How recommendations become an outcome"
-          stateLabel="The ordered decision rules, described in words"
-          state={
-            (community.recruitmentDecisionRules as DecisionRule[]).length === 0
-              ? "No rules configured — no application can be decided at all"
-              : describeDecisionRules(community.recruitmentDecisionRules as DecisionRule[])
-          }
-          description="An ordered list, first match wins. The last rule must have no conditions — it's the fallback, and without it no application can be decided."
+          action={updateRecruitmentDecisionPolicyAction}
+          submitLabel="Save how reports decide"
+          title="How reports decide"
+          stateLabel="What a full set of reports means"
+          state={describeDecisionPolicy(policyOf(community))}
+          description="How many reports an application or interview needs is set on each lane. This is what a full set of them means — one policy for every lane."
         >
           {authorized ? (
-            <DecisionRulesEditor initial={community.recruitmentDecisionRules as DecisionRule[]} />
+            <DecisionPolicyEditor initial={policyOf(community)} />
           ) : (
-            <p className="text-[length:var(--text-body)] leading-relaxed text-[var(--text)]">
-              {(community.recruitmentDecisionRules as DecisionRule[]).length === 0
-                ? "No rules configured — no application can be decided at all."
-                : describeDecisionRules(community.recruitmentDecisionRules as DecisionRule[])}
-            </p>
+            <p className="text-[length:var(--text-body)] leading-relaxed text-[var(--text)]">{describeDecisionPolicy(policyOf(community))}</p>
           )}
         </SettingsGroup>
         {/* The check window and the overrule live here, next to the rules
@@ -287,25 +272,4 @@ export default async function RecruitmentTab({
       </SettingsSection>
     </div>
   );
-}
-
-// The column's own type, rather than a hand-written structural copy of it.
-// The local copy drifted once already: it marked `conditions` optional,
-// which made `rule.conditions.minCounts` a type error in the editor and had
-// to be written as optional-chaining at every use. `conditions` is NOT
-// optional in the schema — a rule without it is a parse error — and taking
-// the type from the schema means the UI cannot describe a shape the server
-// refuses.
-type DecisionRule = RecruitmentDecisionRule;
-
-function describeDecisionRules(rules: DecisionRule[]): string {
-  const parts = rules.map((r) => {
-    const when = describeRuleCondition(r.conditions);
-    if (r.outcome === "wider_discussion") {
-      return `if ${when}, announce it to the community (resolving to ${r.defaultResolution ?? "?"} if nobody objects)`;
-    }
-    if (r.outcome === "proceed") return `if ${when}, they're in`;
-    return `if ${when}, decline`;
-  });
-  return `${rules.length} rule${rules.length === 1 ? "" : "s"}, first match wins \u2014 ${parts.join("; ")}.`;
 }

@@ -30,20 +30,13 @@ import {
   submitIntroCallAvailability,
   submitRecruitmentApplication,
 } from "@/lib/recruitment";
-import type { RecruitmentDecisionRule } from "@/lib/recruitment";
 import { getPollAggregate, submitAvailabilityAsApplicant } from "@/lib/scheduling-polls";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase, withLegacyLanes } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withLegacyLanes, POLICY_TWO_OF_TWO } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
   { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
   { key: "email", label: "Email", responseType: "text", required: true, isEmailField: true },
-];
-
-const DEFAULT_RULES: RecruitmentDecisionRule[] = [
-  { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-  { conditions: { minCounts: { decline: 2 } }, outcome: "decline" },
-  { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
 ];
 
 async function enableRecruitment(communityId: string) {
@@ -84,7 +77,7 @@ async function insertTask(
 async function setUp(
   fixtures: Awaited<ReturnType<typeof createFixtures>>,
   overrides: Partial<{
-    decisionRules: RecruitmentDecisionRule[];
+    policy: Record<string, unknown>;
     widerDiscussionHours: number;
   }> = {},
 ) {
@@ -94,8 +87,7 @@ async function setUp(
   const recruitmentTask = await insertTask(testCommunity.id, branch.id, alice.id);
   await updateCommunity(alice, {
     recruitmentApplicationFormId: form.id,
-    recruitmentEvaluatorCount: 2,
-    recruitmentDecisionRules: overrides.decisionRules ?? DEFAULT_RULES,
+    ...((overrides.policy ?? POLICY_TWO_OF_TWO) as object),
     ...(overrides.widerDiscussionHours !== undefined && {
       recruitmentWiderDiscussionHours: overrides.widerDiscussionHours,
     }),
@@ -343,15 +335,12 @@ describe("resolveWiderDiscussionWindows (scheduled job)", () => {
     expect(result.resolved).toBe(1);
 
     const [resolved] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision!.id));
-    expect(resolved.resolution).toBe("declined"); // DEFAULT_RULES' fallback rule declines by default
+    expect(resolved.resolution).toBe("declined"); // the policy's discussion ends in a decline
   });
 
   it("creates the Accompaniment task using the current recruitment-task holder when resolving to accepted", async () => {
     const fixtures = await createFixtures();
-    const rules: RecruitmentDecisionRule[] = [
-      { conditions: {}, outcome: "wider_discussion", defaultResolution: "proceed" },
-    ];
-    const setupResult = await setUp(fixtures, { decisionRules: rules });
+    const setupResult = await setUp(fixtures, { policy: { recruitmentDiscussionEnds: "admit" } });
     const { decision } = await submitAndDecide(fixtures, setupResult, ["unsure", "unsure"]);
     await db
       .update(recruitmentDecision)

@@ -21,7 +21,6 @@ import {
   listHeldRecruitmentScopes,
   listObjections,
   listOutstandingReferralInvites,
-  requireValidDecisionRules,
   redeemCommunityInvite,
   resolveWiderDiscussionManually,
   revokeCommunityInvite,
@@ -29,9 +28,8 @@ import {
   submitEvaluation,
   submitRecruitmentApplication,
 } from "@/lib/recruitment";
-import type { RecruitmentDecisionRule } from "@/lib/recruitment";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase, withLegacyLanes } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withLegacyLanes, POLICY_TWO_OF_TWO, setReportsNeeded } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
   { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
@@ -74,7 +72,7 @@ async function insertTask(
 // fixture most of this file's tests build on.
 async function setUpApplicationPipeline(
   fixtures: Awaited<ReturnType<typeof createFixtures>>,
-  overrides: Partial<{ evaluatorCount: number; decisionRules: RecruitmentDecisionRule[] }> = {},
+  overrides: Partial<{ evaluatorCount: number; policy: Record<string, unknown> }> = {},
 ) {
   const { community: testCommunity, alice, branch } = fixtures;
   await enableRecruitment(testCommunity.id);
@@ -83,9 +81,9 @@ async function setUpApplicationPipeline(
   const t = await insertTask(testCommunity.id, branch.id, alice.id);
   await updateCommunity(alice, {
     recruitmentApplicationFormId: form.id,
-    ...(overrides.evaluatorCount !== undefined && { recruitmentEvaluatorCount: overrides.evaluatorCount }),
-    ...(overrides.decisionRules !== undefined && { recruitmentDecisionRules: overrides.decisionRules }),
+    ...((overrides.policy ?? POLICY_TWO_OF_TWO) as object),
   });
+  if (overrides.evaluatorCount !== undefined) await setReportsNeeded(testCommunity.id, overrides.evaluatorCount);
   await grantPermission(testCommunity.id, "recruitment", t.id);
   const [refetchedAlice] = await db.select().from(member).where(eq(member.id, alice.id));
   await claimTask(refetchedAlice, t.id);
@@ -313,14 +311,9 @@ describe("computeRecruitmentOutcome", () => {
     expect(result.evaluatorsNeeded).toBe(2);
   });
 
-  it("resolves to the first matching rule once enough evaluations are filed", async () => {
+  it("resolves once the lane's reports are in, by the community's policy", async () => {
     const fixtures = await createFixtures();
-    const rules: RecruitmentDecisionRule[] = [
-      { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-      { conditions: { minCounts: { decline: 2 } }, outcome: "decline" },
-      { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-    ];
-    const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 2, decisionRules: rules });
+    const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 2 });
     const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
 
     // A second evaluator: claim a second slot on the recruitment task.
@@ -336,63 +329,15 @@ describe("computeRecruitmentOutcome", () => {
     expect(result.outcome).toBe("proceed");
   });
 
-  it("falls through to the fallback rule when nothing more specific matches", async () => {
+  it("an unsure report is neither yes nor no, so nobody is in and it goes to a wider discussion", async () => {
     const fixtures = await createFixtures();
-    const rules: RecruitmentDecisionRule[] = [
-      { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-      { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-    ];
-    const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 1, decisionRules: rules });
+    const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 1, policy: {} });
     const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
     await submitEvaluation(alice, application.formResponse.id, { recommendation: "unsure" });
 
     const [communityRow] = await db.select().from(community).where(eq(community.id, fixtures.community.id));
     const result = await computeRecruitmentOutcome(communityRow, application.formResponse.id);
     expect(result.outcome).toBe("wider_discussion");
-  });
-
-  it("a linked invite's checkboxes feed matching; no linked invite means invite-conditioned rules never match", async () => {
-    const fixtures = await createFixtures();
-    const rules: RecruitmentDecisionRule[] = [
-      { conditions: { inviterThinksGoodFit: true }, outcome: "proceed" },
-      { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-    ];
-    const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 1, decisionRules: rules });
-
-    const invite = await createCommunityInvite(alice, { inviterThinksGoodFit: true });
-    const viaInvite = await submitRecruitmentApplication(fixtures.community.id, {
-      values: { name: "Dana", email: "dana@example.com" },
-      inviteToken: invite.token,
-    });
-    await submitEvaluation(alice, viaInvite.formResponse.id, { recommendation: "unsure" });
-
-    const withoutInvite = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Eli", email: "eli@example.com" } });
-    await submitEvaluation(alice, withoutInvite.formResponse.id, { recommendation: "unsure" });
-
-    const [communityRow] = await db.select().from(community).where(eq(community.id, fixtures.community.id));
-    expect((await computeRecruitmentOutcome(communityRow, viaInvite.formResponse.id)).outcome).toBe("proceed");
-    expect((await computeRecruitmentOutcome(communityRow, withoutInvite.formResponse.id)).outcome).toBe("wider_discussion");
-  });
-});
-
-describe("requireValidDecisionRules", () => {
-  it("allows an empty list", () => {
-    expect(() => requireValidDecisionRules([])).not.toThrow();
-  });
-
-  it("allows a list ending in an unconditional fallback", () => {
-    expect(() =>
-      requireValidDecisionRules([
-        { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-        { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-      ]),
-    ).not.toThrow();
-  });
-
-  it("rejects a list with no unconditional fallback rule", () => {
-    expect(() =>
-      requireValidDecisionRules([{ conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" }]),
-    ).toThrow(AppError);
   });
 });
 

@@ -34,10 +34,9 @@ import {
   submitRecruitmentApplication,
   updateRecruitmentSubscriptionLapses,
 } from "@/lib/recruitment";
-import type { RecruitmentDecisionRule } from "@/lib/recruitment";
 import { findOrCreateMemberByEmail } from "@/lib/member";
 import { confirmSlot, submitAvailability, submitAvailabilityAsApplicant } from "@/lib/scheduling-polls";
-import { createFixtures, grantPermission, resetDatabase, withLegacyLanes } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withLegacyLanes, POLICY_TWO_OF_TWO } from "./helpers";
 
 // Phase 48's own resolved shape: a form whose fields are tagged as
 // the applicant's name/email, per src/lib/forms.ts's
@@ -49,12 +48,6 @@ const taggedFields: CreateFormInput["fields"] = [
 
 const untaggedFields: CreateFormInput["fields"] = [
   { key: "name", label: "Name", responseType: "text", required: true },
-];
-
-const PROCEED_RULES: RecruitmentDecisionRule[] = [
-  { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-  { conditions: { minCounts: { decline: 2 } }, outcome: "decline" },
-  { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
 ];
 
 async function enableRecruitment(communityId: string) {
@@ -85,7 +78,7 @@ async function insertTask(communityId: string, branchId: string, createdBy: stri
 async function setUp(
   fixtures: Awaited<ReturnType<typeof createFixtures>>,
   fields: CreateFormInput["fields"],
-  overrides: Partial<{ decisionRules: RecruitmentDecisionRule[]; lapseThreshold: number }> = {},
+  overrides: Partial<{ policy: Record<string, unknown>; lapseThreshold: number }> = {},
 ) {
   const { community: testCommunity, alice, bob, branch } = fixtures;
   await enableRecruitment(testCommunity.id);
@@ -93,8 +86,7 @@ async function setUp(
   const recruitmentTask = await insertTask(testCommunity.id, branch.id, alice.id);
   await updateCommunity(alice, {
     recruitmentApplicationFormId: form.id,
-    recruitmentEvaluatorCount: 2,
-    recruitmentDecisionRules: overrides.decisionRules ?? PROCEED_RULES,
+    ...((overrides.policy ?? POLICY_TWO_OF_TWO) as object),
     ...(overrides.lapseThreshold !== undefined && { recruitmentSubscriptionLapseThreshold: overrides.lapseThreshold }),
   });
   await grantPermission(testCommunity.id, "recruitment", recruitmentTask.id);
@@ -514,10 +506,7 @@ describe("Recruitment: applicant→Member conversion", () => {
 
   it("converts on a manually-resolved wider_discussion outcome", async () => {
     const fixtures = await createFixtures();
-    const rules: RecruitmentDecisionRule[] = [
-      { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-    ];
-    const setupResult = await setUp(fixtures, taggedFields, { decisionRules: rules });
+    const setupResult = await setUp(fixtures, taggedFields, { policy: { recruitmentDiscussionEnds: "decline" } });
 
     const application = await submitRecruitmentApplication(setupResult.communityId, {
       values: { name: "Gale Applicant", email: "gale@example.com" },
@@ -536,10 +525,7 @@ describe("Recruitment: applicant→Member conversion", () => {
 
   it("converts on the scheduled wider_discussion auto-resolution job", async () => {
     const fixtures = await createFixtures();
-    const rules: RecruitmentDecisionRule[] = [
-      { conditions: {}, outcome: "wider_discussion", defaultResolution: "proceed" },
-    ];
-    const setupResult = await setUp(fixtures, taggedFields, { decisionRules: rules });
+    const setupResult = await setUp(fixtures, taggedFields, { policy: { recruitmentDiscussionEnds: "admit" } });
 
     const application = await submitRecruitmentApplication(setupResult.communityId, {
       values: { name: "Hana Applicant", email: "hana@example.com" },

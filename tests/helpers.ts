@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { admissionLane, branch, community, cycleAdmissionLane, member, task } from "@/db/schema";
 import { createEmptyLane, normalizeLaneRule, startingLanes, type AdmissionLaneRule } from "@/lib/recruitment/lane-rules";
@@ -268,4 +268,30 @@ export async function withCheckLane(communityId: string) {
     { ...LEGACY_LANES[0], verification: "community_check" },
     ...LEGACY_LANES.slice(1),
   ]);
+}
+
+// ---------------------------------------------------------------------------
+// How reports decide (docs/admission-flow.md §2)
+// ---------------------------------------------------------------------------
+
+// The policy most recruitment tests were written against, when it was an ordered
+// list of rules: two yes admit, two no decline, anything else goes to a wider
+// discussion that ends in a decline. Stated in the form's own terms.
+export const POLICY_TWO_OF_TWO = {
+  recruitmentInWhen: "custom",
+  recruitmentCustomMinYes: 2,
+  recruitmentCustomMaxNo: 2,
+  recruitmentAnyNoMeans: "wider_discussion",
+  recruitmentDiscussionEnds: "decline",
+  recruitmentDeclineOutrightAt: 2,
+} as const;
+
+// How many reports every lane that has something to evaluate asks for. Written
+// straight to the lanes, because an arrival copies it at entry — so this has to
+// be set before anyone arrives.
+export async function setReportsNeeded(communityId: string, reports: number) {
+  await db
+    .update(admissionLane)
+    .set({ reportsNeeded: reports })
+    .where(and(eq(admissionLane.communityId, communityId), isNotNull(admissionLane.reportsNeeded)));
 }

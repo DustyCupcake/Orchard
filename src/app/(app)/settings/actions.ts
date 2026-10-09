@@ -85,20 +85,6 @@ function parseFieldsJson(raw: string): unknown {
   }
 }
 
-// Raw JSON, not a dynamic rule-builder UI — same "plain text config,
-// no client-side JS" posture parseFormFields already takes, but the
-// nested {conditions, outcome}[] shape doesn't fit a flat pipe-
-// delimited line the way Form fields do.
-function parseDecisionRules(raw: string): unknown {
-  const trimmed = raw.trim();
-  if (!trimmed) return [];
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    throw new AppError("Decision rules must be valid JSON");
-  }
-}
-
 function triState(value: FormDataEntryValue | null): boolean | null | undefined {
   if (value === "on") return true;
   if (value === "off") return false;
@@ -327,16 +313,10 @@ export async function updatePostCycleFeedbackAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
-// Recruitment → the application funnel itself: which form, how many
-// evaluators, how their recommendations turn into an outcome, and the
-// words a decline starts from.
-//
-// The decision rules get their own card rather than sharing one with the
-// other four, and that is the whole reason this tab stopped being one
-// form: those rules are the single most error-prone field on the settings
-// screen (a hand-written JSON array with a required fallback rule), and
-// while they shared a Save with the doors and the windows, a rejected
-// rule set silently reverted every door and window on the tab.
+// Recruitment → the application funnel itself: which form, when a
+// subscription lapses, and the words a decline starts from. How many reports an
+// arrival needs is on its lane, and how reports decide is its own card below, so
+// a rejected policy can't silently revert the form and the words.
 export async function updateRecruitmentApplicationAction(formData: FormData) {
   const actor = await requireMember();
   try {
@@ -344,12 +324,8 @@ export async function updateRecruitmentApplicationAction(formData: FormData) {
     const input = updateCommunityInput.parse(
       defined({
         recruitmentApplicationFormId: optionalText(formData, "recruitmentApplicationFormId"),
-        recruitmentEvaluatorCount: number(formData, "recruitmentEvaluatorCount"),
         recruitmentSubscriptionLapseThreshold: number(formData, "recruitmentSubscriptionLapseThreshold"),
         recruitmentRejectionTemplate: optionalText(formData, "recruitmentRejectionTemplate"),
-        ...(formData.has("recruitmentDecisionRulesRaw")
-          ? { recruitmentDecisionRules: parseDecisionRules(String(formData.get("recruitmentDecisionRulesRaw") ?? "")) }
-          : {}),
       }),
     );
     await updateCommunity(actor, input);
@@ -359,19 +335,31 @@ export async function updateRecruitmentApplicationAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
-export async function updateRecruitmentDecisionRulesAction(formData: FormData) {
+// How reports decide (docs/admission-flow.md §2): four choices, one policy for
+// the whole community. A policy a lane could never meet is refused by
+// updateCommunity with the lane named.
+export async function updateRecruitmentDecisionPolicyAction(formData: FormData) {
   const actor = await requireMember();
   try {
     await requireAdmins(actor);
-    await updateCommunity(actor, {
-      recruitmentDecisionRules: parseDecisionRules(String(formData.get("recruitmentDecisionRulesRaw") ?? "")) as
-        | []
-        | { conditions: Record<string, unknown>; outcome: "proceed" | "decline" | "wider_discussion"; defaultResolution?: "proceed" | "decline" }[],
-    });
+    const input = updateCommunityInput.parse(
+      defined({
+        recruitmentInWhen: text(formData, "recruitmentInWhen") || undefined,
+        recruitmentCustomMinYes: number(formData, "recruitmentCustomMinYes"),
+        recruitmentCustomMaxNo: number(formData, "recruitmentCustomMaxNo"),
+        recruitmentAnyNoMeans: text(formData, "recruitmentAnyNoMeans") || undefined,
+        recruitmentDiscussionEnds: text(formData, "recruitmentDiscussionEnds") || undefined,
+        recruitmentDeclineOutrightAt: formData.has("recruitmentDeclineOutrightAt")
+          ? (number(formData, "recruitmentDeclineOutrightAt") ?? null)
+          : undefined,
+      }),
+    );
+    await updateCommunity(actor, input);
   } catch (err) {
     redirectWithError(err, "recruitment");
   }
   revalidatePath("/settings");
+  revalidatePath("/recruitment");
 }
 
 // Recruitment → the three doors (§2.3). One card, one save, because the

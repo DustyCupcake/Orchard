@@ -16,19 +16,12 @@ import {
   submitEvaluation,
   submitRecruitmentApplication,
 } from "@/lib/recruitment";
-import type { RecruitmentDecisionRule } from "@/lib/recruitment";
 import { ForbiddenError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase, withLegacyLanes } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withLegacyLanes, POLICY_TWO_OF_TWO } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
   { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
   { key: "email", label: "Email", responseType: "text", required: true, isEmailField: true },
-];
-
-const DEFAULT_RULES: RecruitmentDecisionRule[] = [
-  { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-  { conditions: { minCounts: { decline: 2 } }, outcome: "decline" },
-  { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
 ];
 
 async function enableRecruitment(communityId: string) {
@@ -68,7 +61,7 @@ async function insertTask(
 // established.
 async function setUp(
   fixtures: Awaited<ReturnType<typeof createFixtures>>,
-  overrides: Partial<{ decisionRules: RecruitmentDecisionRule[] }> = {},
+  overrides: Partial<{ policy: Record<string, unknown> }> = {},
 ) {
   const { community: testCommunity, alice, bob, branch } = fixtures;
   await enableRecruitment(testCommunity.id);
@@ -76,8 +69,7 @@ async function setUp(
   const recruitmentTask = await insertTask(testCommunity.id, branch.id, alice.id);
   await updateCommunity(alice, {
     recruitmentApplicationFormId: form.id,
-    recruitmentEvaluatorCount: 2,
-    recruitmentDecisionRules: overrides.decisionRules ?? DEFAULT_RULES,
+    ...((overrides.policy ?? POLICY_TWO_OF_TWO) as object),
   });
   await grantPermission(testCommunity.id, "recruitment", recruitmentTask.id);
 

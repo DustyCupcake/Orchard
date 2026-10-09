@@ -392,4 +392,59 @@ describe("migrating a database that already has data", () => {
     const [{ after }] = await sql`select to_regclass('joining_nomination') is null and to_regclass('joining_support') is null as after`;
     expect(after).toBe(true);
   });
+
+  // 0096 replaces the ordered decision rules with a small form. The rules could
+  // only say "at least N said X", so the recoverable shapes are few and the carry
+  // has to translate each rather than reset every community to the default. The
+  // ways it can go wrong on real data: a community with no rules (the normal
+  // state — keep the defaults), the common "two yes admit, two no decline,
+  // otherwise discuss" shape, a fallback that declines or that admits, and rules
+  // that read the inviter's marks, which have no equivalent and must not be
+  // half-translated into something that decides differently.
+  it("0096 carries each community's decision rules into the form, and drops what has no equivalent", async () => {
+    db = await createScratchDatabase();
+    await db.migrateBefore("0096_decision_policy");
+    const sql = db.sql;
+
+    const [none, standard, declines, admits, marks] = Array.from({ length: 5 }, uuid);
+    await sql`insert into community (id, name, recruitment_evaluator_count, recruitment_decision_rules) values
+      (${none}, 'No rules', 2, '[]'::jsonb),
+      (${standard}, 'Standard', 3, ${JSON.stringify([
+        { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
+        { conditions: { minCounts: { decline: 2 } }, outcome: "decline" },
+        { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
+      ])}::jsonb),
+      (${declines}, 'Declines', 2, ${JSON.stringify([{ conditions: {}, outcome: "decline" }])}::jsonb),
+      (${admits}, 'Admits on no concern', 2, ${JSON.stringify([{ conditions: {}, outcome: "wider_discussion", defaultResolution: "proceed" }])}::jsonb),
+      (${marks}, 'Marks', 2, ${JSON.stringify([
+        { conditions: { inviterThinksGoodFit: true }, outcome: "proceed" },
+        { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
+      ])}::jsonb)`;
+
+    await db.migrateRemaining();
+
+    const rows = await sql`select id, recruitment_in_when, recruitment_custom_min_yes, recruitment_custom_max_no,
+      recruitment_any_no_means, recruitment_discussion_ends, recruitment_decline_outright_at,
+      recruitment_decision_rules from community`;
+    const of = (id: string) => rows.find((r) => r.id === id)!;
+
+    // Untouched: the defaults, and the old column still there to compare against.
+    expect(of(none)).toMatchObject({
+      recruitment_in_when: "no_no_one_yes", recruitment_any_no_means: "wider_discussion",
+      recruitment_discussion_ends: "decline", recruitment_decline_outright_at: null,
+    });
+    // The common shape: "at least 2 yes" in, "at least 2 no" declines, otherwise a
+    // discussion that ends in a decline. Out of 3 reports, 2 yes already bounds the no's.
+    expect(of(standard)).toMatchObject({
+      recruitment_in_when: "custom", recruitment_custom_min_yes: 2, recruitment_custom_max_no: 3,
+      recruitment_decline_outright_at: 2, recruitment_any_no_means: "wider_discussion", recruitment_discussion_ends: "decline",
+    });
+    expect(of(declines)).toMatchObject({ recruitment_any_no_means: "decline", recruitment_in_when: "no_no_one_yes" });
+    expect(of(admits)).toMatchObject({ recruitment_any_no_means: "wider_discussion", recruitment_discussion_ends: "admit" });
+    // A rule that read the inviter's marks is dropped, not half-translated: only the
+    // fallback it came with survives.
+    expect(of(marks)).toMatchObject({ recruitment_in_when: "no_no_one_yes", recruitment_decline_outright_at: null, recruitment_discussion_ends: "decline" });
+    // The old rules are kept, unread, so the carry can be checked against its source.
+    expect(of(standard).recruitment_decision_rules).toHaveLength(3);
+  });
 });

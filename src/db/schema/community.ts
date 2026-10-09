@@ -23,6 +23,13 @@ export const branchMembershipModelEnum = pgEnum("branch_membership_model", ["eme
 // (membershipModelEnum, dateDisplayModeEnum) it is a *configuration*
 // choice, and a db/schema file importing another module's file for it
 // would be a dependency direction this schema has never taken.
+// docs/admission-flow.md §2, "How reports decide": the small fixed form that
+// replaced the ordered rules list. The values mirror decision-policy.ts, which a
+// client component can import and this file cannot.
+export const recruitmentInWhenEnum = pgEnum("recruitment_in_when", ["no_no_one_yes", "more_yes_than_no", "all_yes", "custom"]);
+export const recruitmentAnyNoMeansEnum = pgEnum("recruitment_any_no_means", ["wider_discussion", "decline"]);
+export const recruitmentDiscussionEndsEnum = pgEnum("recruitment_discussion_ends", ["admit", "decline"]);
+
 export const objectionOverruleModeEnum = pgEnum("objection_overrule_mode", ["majority", "quorum"]);
 
 // A single Community row per deployment. Everything else in the schema
@@ -159,6 +166,17 @@ export const community = pgTable("community", {
   // invariant. Empty array = not configured yet — no decision can be
   // computed until a Community sets at least a fallback rule.
   recruitmentDecisionRules: jsonb("recruitment_decision_rules").notNull().default([]),
+  // How reports decide — one small policy for the whole community
+  // (docs/admission-flow.md §2). How *many* reports a lane needs is the lane's
+  // own; this says what a full set of them means. `recruitmentDecisionRules`
+  // above and `recruitmentEvaluatorCount` are no longer read for an arrival and
+  // stay until the clean-up step drops them, so a bad carry can be looked at.
+  recruitmentInWhen: recruitmentInWhenEnum("recruitment_in_when").notNull().default("no_no_one_yes"),
+  recruitmentCustomMinYes: integer("recruitment_custom_min_yes").notNull().default(1),
+  recruitmentCustomMaxNo: integer("recruitment_custom_max_no").notNull().default(0),
+  recruitmentAnyNoMeans: recruitmentAnyNoMeansEnum("recruitment_any_no_means").notNull().default("wider_discussion"),
+  recruitmentDiscussionEnds: recruitmentDiscussionEndsEnum("recruitment_discussion_ends").notNull().default("decline"),
+  recruitmentDeclineOutrightAt: integer("recruitment_decline_outright_at"),
   // Phase 34's own counter to maintain (its scheduling flow is what
   // actually knows whether a subscriber gave availability) — this
   // phase only defines the threshold field and the subscription

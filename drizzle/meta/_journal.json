@@ -673,6 +673,13 @@
       "when": 1791566043746,
       "tag": "0095_drop_nomination",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1791568488288,
+      "tag": "0096_decision_policy",
+      "breakpoints": true
     }
   ]
 }

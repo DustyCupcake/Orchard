@@ -57,7 +57,7 @@ import { listReadableSensitiveQuestionIds } from "@/lib/sensitive-data";
 import { isAdmin, requireAdmins } from "@/lib/settings/admins";
 import { updateCommunity } from "@/lib/settings";
 import { getNavContext } from "@/lib/nav";
-import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, insertTask, resetDatabase, POLICY_TWO_OF_TWO } from "./helpers";
 
 // Step 1 of docs/open-permissions-plan.md: the storage. Nothing reads this
 // table yet — `isModuleOpenToEveryone` is Step 2 — so these tests assert the
@@ -725,16 +725,9 @@ describe("open capability resolvers (Step 4)", () => {
     });
     await updateCommunity(alice, {
       recruitmentApplicationFormId: form.id,
-      // Explicit, because a Community that never touched it gets 2 (the
-      // default) — and that default is the unsatisfiable part.
-      recruitmentEvaluatorCount: 2,
-      recruitmentDecisionRules: [
-        { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-        // A wider_discussion rule must declare what happens when its window
-        // closes unobjected (requireValidDecisionRules) — hence the
-        // defaultResolution.
-        { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-      ],
+      // Explicit, because a lane that takes 2 reports is the unsatisfiable
+      // part with nobody able to file them.
+      ...POLICY_TWO_OF_TWO,
     });
 
     // Closed: bob and alice both hold nothing, so nobody can evaluate and
@@ -1031,14 +1024,10 @@ describe("open modules are not misconfigured (Step 5)", () => {
     });
     await updateCommunity(alice, {
       recruitmentApplicationFormId: form.id,
-      recruitmentEvaluatorCount: 2,
       recruitmentWiderDiscussionHours: 0,
-      recruitmentDecisionRules: [
-        { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-        // Resolving to `decline` keeps the job off the conversion path, so
-        // what is under test is purely the *author* fallback.
-        { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-      ],
+      // Resolving to `decline` keeps the job off the conversion path, so what
+      // is under test is purely the *author* fallback.
+      ...POLICY_TWO_OF_TWO,
     });
     await db
       .insert(openPermissionGrant)

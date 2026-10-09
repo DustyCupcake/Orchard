@@ -4,15 +4,7 @@ import { db } from "@/db";
 import { member as memberTable, settingsChange } from "@/db/schema";
 import { recordSettingChanges } from "@/lib/settings/history";
 import { createTier, updateCommunity } from "@/lib/settings";
-import type { RecruitmentDecisionRule } from "@/lib/recruitment/evaluations";
 import { createFixtures, resetDatabase } from "./helpers";
-
-// A valid rule set: the last rule must be an unconditional fallback, or
-// requireValidDecisionRules refuses it before the log is ever reached.
-const RULES: RecruitmentDecisionRule[] = [
-  { conditions: { minCounts: { proceed: 2, decline: 0 } }, outcome: "proceed" },
-  { conditions: {}, outcome: "decline" },
-];
 
 async function allChanges() {
   return db.select().from(settingsChange).orderBy(asc(settingsChange.field));
@@ -100,15 +92,16 @@ describe("settings change log", () => {
 
   it("records an array and an object field as themselves", async () => {
     const { alice } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["shifts", "kitchen"], recruitmentDecisionRules: RULES });
+    await updateCommunity(alice, { modulesEnabled: ["shifts", "kitchen"], recruitmentAnyNoMeans: "decline" });
 
     const rows = await allChanges();
     const modules = rows.find((r) => r.field === "modulesEnabled")!;
     expect(modules.oldValue).toEqual([]);
     expect(modules.newValue).toEqual(["shifts", "kitchen"]);
 
-    const rules = rows.find((r) => r.field === "recruitmentDecisionRules")!;
-    expect(rules.newValue).toEqual(RULES);
+    const policy = rows.find((r) => r.field === "recruitmentAnyNoMeans")!;
+    expect(policy.oldValue).toBe("wider_discussion");
+    expect(policy.newValue).toBe("decline");
   });
 
   it("does not treat a reordered but equal rule set as a change", async () => {

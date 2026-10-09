@@ -1,9 +1,11 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { admissionLane, cycle, cycleAdmissionLane, type member as memberTable } from "@/db/schema";
+import { admissionLane, community, cycle, cycleAdmissionLane, type member as memberTable } from "@/db/schema";
 import type { AdmissionVerification } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
 import { requireAdmins } from "../settings/admins";
+import { validateDecisionPolicy } from "./decision-policy";
+import { policyOf } from "./evaluations";
 import { requireCycleInitiationEligibility } from "../cycles/crud";
 import { requireCycleOpen } from "../cycles/lifecycle";
 import {
@@ -263,6 +265,15 @@ export async function saveCommunityLanes(actor: Member, submitted: AdmissionLane
   ];
   const problems = validateLanes(rules, contexts);
   if (problems.length > 0) throw new AppError(problems[0]);
+
+  // And lanes the community's decision policy could never decide: a custom
+  // "at least 3 yes" on a lane that takes 2 reports waits for ever.
+  const [communityRow] = await db.select().from(community).where(eq(community.id, communityId));
+  const policyProblems = validateDecisionPolicy(
+    policyOf(communityRow),
+    rules.filter((r) => r.reportsNeeded !== null).map((r) => ({ name: r.name, reportsNeeded: r.reportsNeeded! })),
+  );
+  if (policyProblems.length > 0) throw new AppError(policyProblems[0]);
 
   const now = new Date();
   await db.transaction(async (tx) => {

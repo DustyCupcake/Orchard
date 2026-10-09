@@ -1,11 +1,13 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { communityInvite, evaluation, formResponse, recruitmentApplicationInvite } from "@/db/schema";
+import { evaluation, formResponse } from "@/db/schema";
 import type { community as communityTable, member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
 import { getCommunityRow, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
+import { decideFromReports, type DecisionPolicy } from "./decision-policy";
+import { ensureArrivalForApplication } from "./admission";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityRow = typeof communityTable.$inferSelect;
@@ -15,72 +17,6 @@ const recommendationValues = ["proceed", "decline", "unsure"] as const;
 export type RecruitmentRecommendation = (typeof recommendationValues)[number];
 export type RecruitmentOutcome = "proceed" | "wider_discussion" | "decline";
 
-// Resolved shape for Community.recruitmentDecisionRules — spec asks
-// for this to be community-configured without naming a concrete
-// structure ("Peach Please's specific matrix becomes one configuration
-// of this, not the only shape it can take"). An ordered list,
-// evaluated top-to-bottom, first match wins. `conditions` reads the
-// filed recommendation counts and, when the applicant referenced an
-// invite link on their application, its two checkboxes as additional
-// inputs — a condition naming a checkbox simply never matches an
-// application with no linked invite.
-export const recruitmentDecisionConditionSchema = z.object({
-  minCounts: z
-    .object({
-      proceed: z.number().int().nonnegative().optional(),
-      decline: z.number().int().nonnegative().optional(),
-      unsure: z.number().int().nonnegative().optional(),
-    })
-    .optional(),
-  inviterThinksGoodFit: z.boolean().optional(),
-  inviterKnowsPersonally: z.boolean().optional(),
-});
-export type RecruitmentDecisionCondition = z.infer<typeof recruitmentDecisionConditionSchema>;
-
-export const recruitmentDecisionRuleSchema = z.object({
-  conditions: recruitmentDecisionConditionSchema,
-  outcome: z.enum(["proceed", "wider_discussion", "decline"]),
-  // Required when outcome is "wider_discussion", meaningless otherwise
-  // — see docs/development-plan.md's Phase 34: "no objection by the
-  // deadline → the recommendation auto-follows into the outcome...
-  // already computed." A rule matching wider_discussion is genuinely
-  // ambiguous between proceed/decline (that's *why* it opens a window
-  // rather than resolving immediately), so the rule itself has to say
-  // which way "no objection" resolves — the platform can't derive that
-  // from the recommendation counts alone once they've already failed
-  // to cleanly pick proceed or decline.
-  defaultResolution: z.enum(["proceed", "decline"]).optional(),
-});
-export type RecruitmentDecisionRule = z.infer<typeof recruitmentDecisionRuleSchema>;
-
-export const recruitmentDecisionRulesSchema = z.array(recruitmentDecisionRuleSchema);
-
-function isUnconditional(c: RecruitmentDecisionCondition): boolean {
-  const hasMinCounts = c.minCounts && Object.keys(c.minCounts).length > 0;
-  return !hasMinCounts && c.inviterThinksGoodFit === undefined && c.inviterKnowsPersonally === undefined;
-}
-
-// Defense-in-depth, re-checked here rather than trusted from the zod
-// schema alone — same precedent Phase 25's requireValidFields and
-// Phase 26's requireLineItems already set. "A required fallback rule
-// so every combination resolves to something" (docs/development-
-// plan.md's Phase 33) — only enforced when rules is non-empty; an
-// empty array just means "not configured yet," not an error. Phase 34
-// adds the defaultResolution invariant alongside it.
-export function requireValidDecisionRules(rules: RecruitmentDecisionRule[]) {
-  if (rules.length === 0) return;
-  if (!isUnconditional(rules[rules.length - 1].conditions)) {
-    throw new AppError("The last decision rule must be an unconditional fallback (no conditions)");
-  }
-  for (const rule of rules) {
-    if (rule.outcome === "wider_discussion" && !rule.defaultResolution) {
-      throw new AppError(
-        "A wider_discussion rule must set defaultResolution (proceed or decline) for when its window closes unobjected",
-      );
-    }
-  }
-}
-
 type RecommendationCounts = Record<RecruitmentRecommendation, number>;
 
 function countRecommendations(evaluations: Pick<EvaluationRow, "recommendation">[]): RecommendationCounts {
@@ -89,51 +25,57 @@ function countRecommendations(evaluations: Pick<EvaluationRow, "recommendation">
   return counts;
 }
 
-function conditionMatches(
-  c: RecruitmentDecisionCondition,
-  ctx: { counts: RecommendationCounts; inviterThinksGoodFit?: boolean; inviterKnowsPersonally?: boolean },
-): boolean {
-  if (c.minCounts) {
-    for (const [key, min] of Object.entries(c.minCounts)) {
-      if (ctx.counts[key as RecruitmentRecommendation] < min) return false;
-    }
-  }
-  if (c.inviterThinksGoodFit !== undefined && ctx.inviterThinksGoodFit !== c.inviterThinksGoodFit) {
-    return false;
-  }
-  if (c.inviterKnowsPersonally !== undefined && ctx.inviterKnowsPersonally !== c.inviterKnowsPersonally) {
-    return false;
-  }
-  return true;
+/** The community's one policy for how reports decide (docs/admission-flow.md §2). */
+export function policyOf(communityRow: Pick<
+  CommunityRow,
+  | "recruitmentInWhen"
+  | "recruitmentCustomMinYes"
+  | "recruitmentCustomMaxNo"
+  | "recruitmentAnyNoMeans"
+  | "recruitmentDiscussionEnds"
+  | "recruitmentDeclineOutrightAt"
+>): DecisionPolicy {
+  return {
+    inWhen: communityRow.recruitmentInWhen,
+    customMinYes: communityRow.recruitmentCustomMinYes,
+    customMaxNo: communityRow.recruitmentCustomMaxNo,
+    anyNoMeans: communityRow.recruitmentAnyNoMeans,
+    discussionEnds: communityRow.recruitmentDiscussionEnds,
+    declineOutrightAt: communityRow.recruitmentDeclineOutrightAt,
+  };
 }
 
-async function getLinkedInviteCheckboxes(formResponseId: string) {
-  const [row] = await db
-    .select({
-      inviterThinksGoodFit: communityInvite.inviterThinksGoodFit,
-      inviterKnowsPersonally: communityInvite.inviterKnowsPersonally,
-    })
-    .from(recruitmentApplicationInvite)
-    .innerJoin(communityInvite, eq(recruitmentApplicationInvite.communityInviteId, communityInvite.id))
-    .where(eq(recruitmentApplicationInvite.formResponseId, formResponseId));
-  return row ?? null;
+// How many reports THIS arrival needs: the number its lane had when they arrived
+// (§2 — "fixed for each person when they arrive, like the rest of their path", and
+// per arrival, never per event). An application that predates arrivals is given
+// one first, on the lane that now covers it, so there is one answer to "how many"
+// and it is never the old community-wide count read behind the lane's back.
+async function reportsNeededFor(fallback: number, formResponseId: string): Promise<number> {
+  const arrival = await ensureArrivalForApplication(formResponseId);
+  return arrival?.reportsNeeded ?? fallback;
 }
 
-// Live-computed, never persisted — the same "computed from real state,
-// not a second number kept in sync by hand" posture this codebase
-// takes everywhere (attention levels, Assembly phase, Participation
-// summaries). Phase 34 is explicitly the one that *acts on* / records
-// a reached outcome (auto-scheduling, opening the wider-discussion
-// window); this phase only needs to resolve what the outcome
-// currently is. Returns evaluationsFiled/evaluatorsNeeded alongside so
-// callers (the pipeline-ish list views) don't need a second query —
-// outcome is null until enough distinct evaluators have filed.
+// Live-computed, never persisted — the same "computed from real state, not a
+// second number kept in sync by hand" posture this codebase takes everywhere.
+// Returns evaluationsFiled/evaluatorsNeeded alongside so callers (the
+// pipeline-ish list views) don't need a second query — outcome is null until the
+// arrival's reports are all in. Unsure counts toward them and is neither yes nor
+// no; what a full set means is the community's policy, not a list of rules.
 export async function computeRecruitmentOutcome(
-  communityRow: Pick<CommunityRow, "recruitmentEvaluatorCount" | "recruitmentDecisionRules">,
+  communityRow: Pick<
+    CommunityRow,
+    | "recruitmentEvaluatorCount"
+    | "recruitmentInWhen"
+    | "recruitmentCustomMinYes"
+    | "recruitmentCustomMaxNo"
+    | "recruitmentAnyNoMeans"
+    | "recruitmentDiscussionEnds"
+    | "recruitmentDeclineOutrightAt"
+  >,
   formResponseId: string,
 ) {
   const evaluations = await db.select().from(evaluation).where(eq(evaluation.formResponseId, formResponseId));
-  const evaluatorsNeeded = communityRow.recruitmentEvaluatorCount;
+  const evaluatorsNeeded = await reportsNeededFor(communityRow.recruitmentEvaluatorCount, formResponseId);
   const notYetDecided = {
     outcome: null as RecruitmentOutcome | null,
     defaultResolution: null as "proceed" | "decline" | null,
@@ -146,21 +88,11 @@ export async function computeRecruitmentOutcome(
     return notYetDecided;
   }
 
-  const linkedInvite = await getLinkedInviteCheckboxes(formResponseId);
-  const rules = (communityRow.recruitmentDecisionRules as RecruitmentDecisionRule[]) ?? [];
-  const ctx = {
-    counts: countRecommendations(evaluations),
-    inviterThinksGoodFit: linkedInvite?.inviterThinksGoodFit,
-    inviterKnowsPersonally: linkedInvite?.inviterKnowsPersonally,
-  };
-
-  const matchedRule = rules.find((rule) => conditionMatches(rule.conditions, ctx));
-  if (!matchedRule) {
-    return notYetDecided;
-  }
+  const counts = countRecommendations(evaluations);
+  const decided = decideFromReports(policyOf(communityRow), { yes: counts.proceed, no: counts.decline, unsure: counts.unsure });
   return {
-    outcome: matchedRule.outcome,
-    defaultResolution: matchedRule.defaultResolution ?? null,
+    outcome: decided.outcome,
+    defaultResolution: decided.defaultResolution,
     evaluationsFiled: evaluations.length,
     evaluatorsNeeded,
     evaluations,
