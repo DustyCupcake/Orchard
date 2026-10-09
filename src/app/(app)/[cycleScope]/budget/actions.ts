@@ -47,7 +47,7 @@ function parseLineItemsJson(raw: string): unknown {
 
 // Every form on this page carries a hidden `cycleScope` field so a
 // redirect after submitting lands back on the exact scoped URL it came
-// from (docs/development-plan.md's Phase 65) — never the bare /budget,
+// from (docs/plans/development-plan.md's Phase 65) — never the bare /budget,
 // which could bounce through the redirect shim to a *different*
 // default scope.
 function redirectWithError(cycleScope: string, err: unknown): never {
@@ -258,7 +258,7 @@ export async function confirmBudgetCycleAction(formData: FormData) {
   redirect(`/${cycleScope}/budget?confirmed=1`);
 }
 
-// The owner's own small confirmation (docs/development-plan.md's Phase
+// The owner's own small confirmation (docs/plans/development-plan.md's Phase
 // 65) — lets an Admin close this BudgetCycle's real Cycle without the
 // closeCycle warning. Owner-gated, enforced inside markBudgetCycleDone.
 export async function markBudgetCycleDoneAction(formData: FormData) {

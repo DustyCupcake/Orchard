@@ -154,7 +154,7 @@ describe("communityInviteStatus", () => {
       redeemedAt: null,
       redeemedByMemberId: null,
       // The consensus/consent columns are irrelevant to a status read
-      // (docs/joining-admission-plan.md §2.6) and are spelled out only
+      // (docs/plans/archive/joining-admission-plan.md §2.6) and are spelled out only
       // because communityInviteStatus takes the whole row.
       awarenessConfirmedAt: null,
       awarenessConfirmedBy: null,
@@ -182,7 +182,7 @@ describe("redeemCommunityInvite", () => {
     await enableRecruitment(alice.communityId);
     const invite = await createCommunityInvite(alice, { inviterKnowsPersonally: true });
 
-    // docs/joining-admission-plan.md §2: a knows-personally invite is the
+    // docs/plans/archive/joining-admission-plan.md §2: a knows-personally invite is the
     // `direct` path, so redemption hands over a Member immediately and
     // says so in the outcome rather than by returning the row.
     const outcome = await redeemCommunityInvite(invite.token, { email: "dana@example.com" });

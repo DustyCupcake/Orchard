@@ -62,7 +62,7 @@ import {
 import { raiseInviteObjection } from "@/lib/recruitment/objections";
 import { listPairings } from "@/lib/recruitment/pairs";
 
-// docs/joining-admission-plan.md, work-plan step 8. The four things the
+// docs/plans/archive/joining-admission-plan.md, work-plan step 8. The four things the
 // redesign actually promises, each tested at the boundary where it would
 // break if it were untrue:
 //
@@ -102,7 +102,7 @@ const fullProcess = { verificationMode: "basic", supportCount: 1, applicationReq
 const nomination = { verificationMode: "nomination", supportCount: 1, applicationRequired: true, interviewRequired: false, applyInsteadAvailable: true } as const;
 const consensus = { verificationMode: "consensus", supportCount: 1, applicationRequired: false, interviewRequired: false, applyInsteadAvailable: true } as const;
 
-describe("lane resolution (docs/joining-admission-plan.md §2, §4.1)", () => {
+describe("lane resolution (docs/plans/archive/joining-admission-plan.md §2, §4.1)", () => {
   beforeEach(resetDatabase);
 
   it("falls back to the §2.9 defaults when the community has no rows at all", async () => {
@@ -242,7 +242,7 @@ describe("lane resolution (docs/joining-admission-plan.md §2, §4.1)", () => {
   });
 });
 
-describe("the third door (docs/joining-admission-plan.md §2.3/J3)", () => {
+describe("the third door (docs/plans/archive/joining-admission-plan.md §2.3/J3)", () => {
   beforeEach(resetDatabase);
 
   it("composes interviewsOpen into the joining state alongside the other two", async () => {
@@ -276,7 +276,7 @@ describe("the third door (docs/joining-admission-plan.md §2.3/J3)", () => {
   });
 });
 
-describe("nomination never auto-fails (docs/joining-admission-plan.md §2.5/J6)", () => {
+describe("nomination never auto-fails (docs/plans/archive/joining-admission-plan.md §2.5/J6)", () => {
   beforeEach(resetDatabase);
 
   it("opens a support window at send, so the inviter can hand the link over", async () => {
@@ -804,7 +804,7 @@ describe("a public application on a nomination lane gets the same treatment", ()
   });
 });
 
-describe("pairing is fact-only (docs/joining-admission-plan.md §2.8/J9)", () => {
+describe("pairing is fact-only (docs/plans/archive/joining-admission-plan.md §2.8/J9)", () => {
   beforeEach(resetDatabase);
 
   it("records who named whom, and needs a real person behind it", async () => {

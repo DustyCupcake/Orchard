@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { community } from "@/db/schema";
 import { ConflictError } from "./errors";
 
-// docs/spec.md's "Physical/on-site mode" — see docs/development-plan.md's
+// docs/spec.md's "Physical/on-site mode" — see docs/plans/development-plan.md's
 // Phase 47. Community.onsiteModeEnabled has sat unused in the schema
 // since Phase 1; this is the first thing that ever reads it.
 //

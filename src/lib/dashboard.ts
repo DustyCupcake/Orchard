@@ -1,10 +1,11 @@
 import { cache } from "react";
-import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, or, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { branch, member, participation, schedulingEntry, task, taskAssignment, taskJoinRequest } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { listOpenCycles } from "./cycles";
-import { isCoordinationHolder } from "./coordination";
+import { isCoordinationHolder, listCoordinationScopeIds } from "./coordination";
+import { canResolveJoinRequest } from "./tasks/join-requests";
 import { getCompositionBreakdown } from "./composition";
 import { listMyCalendarEventInvites } from "./calendar-events";
 import { isModuleEnabled } from "./modules";
@@ -114,14 +115,44 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
     .sort((a, b) => a.nextCheckinAt.getTime() - b.nextCheckinAt.getTime());
 
   const heldTaskIds = heldTaskRows.map((t) => t.taskId);
-  const pendingJoinRequests =
-    heldTaskIds.length === 0
+
+  // Join requests the actor can act on. Two sources, because there are
+  // two kinds of approver: a holder of the task (a `request` task's
+  // owner, and the fallback on a `coordination_approved` one), and the
+  // task's coordination — who need not hold it, and so would never have
+  // seen it here when this only looked at held tasks. A request on a
+  // coordination_approved task is then run through the same rule the
+  // accept/decline endpoints enforce, so the dashboard never offers a
+  // request the server would refuse (a holder who is not the
+  // coordination slot, or a requester looking at their own).
+  const coverage = await listCoordinationScopeIds(actor);
+  const coordinationCovers: (SQL | undefined)[] = [];
+  if (coverage.communityWide) {
+    coordinationCovers.push(eq(task.openness, "coordination_approved"));
+  } else {
+    if (coverage.branchIds.size > 0) {
+      coordinationCovers.push(and(isNull(task.cycleId), inArray(task.branchId, [...coverage.branchIds])));
+    }
+    if (coverage.cycleIds.size > 0) coordinationCovers.push(inArray(task.cycleId, [...coverage.cycleIds]));
+  }
+  const requestSources: (SQL | undefined)[] = [];
+  if (heldTaskIds.length > 0) requestSources.push(inArray(taskJoinRequest.taskId, heldTaskIds));
+  if (coordinationCovers.length > 0) {
+    requestSources.push(and(eq(task.openness, "coordination_approved"), or(...coordinationCovers)));
+  }
+
+  const candidateRequests =
+    requestSources.length === 0
       ? []
       : await db
           .select({
             id: taskJoinRequest.id,
             taskId: taskJoinRequest.taskId,
             taskTitle: task.title,
+            openness: task.openness,
+            branchId: task.branchId,
+            cycleId: task.cycleId,
+            requestedById: taskJoinRequest.memberId,
             requestedByName: member.name,
             requestedAt: taskJoinRequest.requestedAt,
           })
@@ -129,9 +160,33 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
           .innerJoin(task, eq(taskJoinRequest.taskId, task.id))
           .innerJoin(member, eq(taskJoinRequest.memberId, member.id))
           .where(
-            and(inArray(taskJoinRequest.taskId, heldTaskIds), eq(taskJoinRequest.status, "pending")),
+            and(
+              eq(task.communityId, actor.communityId),
+              eq(taskJoinRequest.status, "pending"),
+              ne(taskJoinRequest.memberId, actor.id),
+              or(...requestSources),
+            ),
           )
           .orderBy(desc(taskJoinRequest.requestedAt));
+
+  const pendingJoinRequests = (
+    await Promise.all(
+      candidateRequests.map(async (r) => {
+        const resolvable =
+          r.openness === "coordination_approved"
+            ? await canResolveJoinRequest(
+                db,
+                { id: r.taskId, openness: r.openness, branchId: r.branchId, cycleId: r.cycleId },
+                actor,
+                r.requestedById,
+              )
+            : true;
+        return resolvable
+          ? { id: r.id, taskId: r.taskId, taskTitle: r.taskTitle, requestedByName: r.requestedByName, requestedAt: r.requestedAt }
+          : null;
+      }),
+    )
+  ).filter((r): r is NonNullable<typeof r> => r !== null);
 
   // "The needs-action signal... surfaced on the dashboard for anyone
   // holding a recruitment task" — closes Phase 24's own explicitly-
@@ -172,10 +227,10 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
         ])
       : [[], [], [], []];
 
-  // Core, not module-gated — see docs/development-plan.md's Phase 42.
+  // Core, not module-gated — see docs/plans/development-plan.md's Phase 42.
   const calendarEventInvites = await listMyCalendarEventInvites(actor);
 
-  // Core, not module-gated — see docs/development-plan.md's Phase 46.
+  // Core, not module-gated — see docs/plans/development-plan.md's Phase 46.
   // "Both parties notified" — recent activations where the actor was
   // either side, most recent first.
   const emergencyAccessActivity = await listEmergencyAccessActivity(actor, 5);
@@ -183,7 +238,7 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
   // Budget/Event scheduling/Shifts/Conflict management never got the
   // same treatment Recruitment/Spatial planning/Calendar events/
   // Emergency access already got above as each landed — see
-  // docs/development-plan.md's Phase 49. Each of the four functions
+  // docs/plans/development-plan.md's Phase 49. Each of the four functions
   // below already degrades gracefully to [] for a member with nothing
   // relevant to see, the same "check the gate here, not inside a
   // try/catch" posture recruitmentNeedsAction/placementPendingReviews
@@ -218,7 +273,7 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
   // Manual-tier requests this member may confirm: every one for an Admin,
   // otherwise only the tiers they are in. See src/lib/tier-requests.ts.
   const tierRequestsToConfirm = await listTierRequestsToConfirm(actor);
-  // Kitchen's own needs-action surface (docs/food-drinks-module-plan.md's
+  // Kitchen's own needs-action surface (docs/plans/archive/food-drinks-module-plan.md's
   // Step 4) — module-gated, and listKitchenNeedsAction itself degrades
   // to [] for a non-holder, so a member who's neither enabled-for nor
   // holding just gets no section.
@@ -228,7 +283,7 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
 
   // Core, not module-gated — task nomination is part of ordinary task
   // coordination, same footing as claim/release itself. See
-  // docs/development-plan.md's Phase 51 and src/lib/tasks/nominations.ts.
+  // docs/plans/development-plan.md's Phase 51 and src/lib/tasks/nominations.ts.
   const [pendingNominations, expiredNominations] = await Promise.all([
     listMyPendingNominations(actor),
     listMyExpiredNominations(actor),
@@ -339,7 +394,7 @@ export function deriveBranchHealthStatus(counts: { soft: number; hard: number; e
   return "on_track";
 }
 
-// The nav switcher's own resolved state (docs/development-plan.md's
+// The nav switcher's own resolved state (docs/plans/development-plan.md's
 // Phase 65/67), as the page already computes it for Board — passed in
 // rather than re-resolved here, same "page resolves nav scope, lib
 // computes data against the given ids" split Board's own
@@ -361,7 +416,7 @@ const NO_VIEW_SCOPE: DashboardViewScope = { cycleIds: [], singleCycleId: null };
 export async function getCommunitySnapshot(actor: Member, viewScope: DashboardViewScope = NO_VIEW_SCOPE) {
   const communityRow = await getCommunityRow(actor.communityId);
 
-  // Branch health (docs/development-plan.md's Phase 69) reads the same
+  // Branch health (docs/plans/development-plan.md's Phase 69) reads the same
   // cycle-scoped-plus-cycle-less shape Board's own cycleScope filter
   // established in Phase 67 — every task in the active view scope's own
   // cycle(s), plus cycle-less tasks (which aren't scoped to any

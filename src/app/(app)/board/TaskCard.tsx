@@ -74,7 +74,7 @@ export default async function TaskCard({
   branchName: string;
   currentMemberId: string;
   myPendingRequestId: string | null;
-  // §5.3 (docs/cycle-scope-remediation-plan.md) — the viewer's own
+  // §5.3 (docs/plans/archive/cycle-scope-remediation-plan.md) — the viewer's own
   // coordination coverage resolved from both dimensions: their branch
   // column or the task's cycle row. `coordinationName` is the
   // covering holder's name (whoever holds it, for every viewer).
@@ -251,11 +251,11 @@ export default async function TaskCard({
           {task.title}
         </Link>
         {attention && <Tag tone={ATTENTION_TONE[task.attentionLevel] ?? "neutral"}>{attention.label}</Tag>}
-        {/* docs/cycle-scope-remediation-plan.md §5.5 — an unclaimed
+        {/* docs/plans/archive/cycle-scope-remediation-plan.md §5.5 — an unclaimed
             critical in a scope that has a backstop names its accountable
             holder while staying open and claimable by anyone (D5). */}
         {backstopName && <Tag tone="danger">Backstop: {backstopName}</Tag>}
-        {/* docs/cycle-scope-remediation-plan.md §5.3 — the covering
+        {/* docs/plans/archive/cycle-scope-remediation-plan.md §5.3 — the covering
             coordination holder, resolved from both dimensions (§2.4):
             a cycle-less holder lights up its branch column, a
             cycle-placed holder its cycle row. */}

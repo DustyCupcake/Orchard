@@ -11,7 +11,7 @@ type Member = typeof memberTable.$inferSelect;
 // case (Fruit) tags its ordering/equipment tasks — the community
 // defines those tags freely, and this is the baseline vocabulary that
 // keeps the lens alive without hardcoding any one community's tags
-// (docs/food-drinks-module-plan.md's D7). Extending it is a one-line
+// (docs/plans/archive/food-drinks-module-plan.md's D7). Extending it is a one-line
 // change here.
 const SUPPLY_TAG_KEYWORDS = ["ordering", "equipment", "supply", "shopping"];
 

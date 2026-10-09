@@ -20,7 +20,7 @@ type Member = typeof memberTable.$inferSelect;
 const MS_PER_HOUR = 3600_000;
 
 // Nomination, the second of the three verification modes
-// (docs/joining-admission-plan.md §2.2/§2.4/§2.5, work-plan step 4).
+// (docs/plans/archive/joining-admission-plan.md §2.2/§2.4/§2.5, work-plan step 4).
 // The whole design rests on one asymmetry with the rest of this codebase:
 // a task candidacy's endorsements auto-fail an unsupported nominee, and
 // an *invite* must never do that. A person who has been invited and

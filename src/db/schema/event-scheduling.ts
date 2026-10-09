@@ -13,7 +13,7 @@ export const eventProposalStatusEnum = pgEnum("event_proposal_status", [
 export const eventProposalInterestLevelEnum = pgEnum("event_proposal_interest_level", ["yes", "maybe"]);
 
 // A community's own internal programme — see docs/spec.md's "Event
-// scheduling" and docs/development-plan.md's Phase 28. `status` is a
+// scheduling" and docs/plans/development-plan.md's Phase 28. `status` is a
 // real, persisted column recomputed by
 // src/lib/event-scheduling/conflicts.ts's recomputeEventConflicts
 // whenever the scheduling-owner reviews proposals — not purely
@@ -51,7 +51,7 @@ export const eventProposal = pgTable("event_proposal", {
   // src/lib/event-scheduling/availability.ts.
   //
   // Conflict detection compares every window here (or confirmedSlot, once
-  // set) against every other proposal's, per docs/development-plan.md's
+  // set) against every other proposal's, per docs/plans/development-plan.md's
   // resolved interpretation ("overlapping time range + an exact
   // spaceNeeds string match"). A proposal predating painted availability
   // holds a single window equal to its own duration, which reads back as

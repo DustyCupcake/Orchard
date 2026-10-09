@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
 
   // "No qualifying role → a real, visible 'not authorized for
   // Orchard' page, never a silent account creation" — see
-  // docs/development-plan.md's Phase 57. Checked before any
+  // docs/plans/development-plan.md's Phase 57. Checked before any
   // Member/MemberIdentity row is ever touched.
   if (!result.hasRequiredRole) {
     return NextResponse.redirect(new URL("/login?error=oidc_not_authorized", appUrl));

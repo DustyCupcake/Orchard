@@ -16,7 +16,7 @@ type ShiftSignupRow = typeof shiftSignupTable.$inferSelect;
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // The shift manager's own management view — see docs/spec.md's "Shifts /
-// rota" and docs/development-plan.md's Phase 29 ("a coordinator view
+// rota" and docs/plans/development-plan.md's Phase 29 ("a coordinator view
 // ... listing each occurrence's current signups"). Rendered by page.tsx
 // only for series in scopes the current member actually manages (the
 // shift_management grant, D10 — src/lib/shifts/management.ts). Each

@@ -1,1 +1,0 @@
-ALTER TABLE "member" ADD COLUMN "time_zone" text;

@@ -5,7 +5,7 @@ import { resolveDefaultScopeSegment } from "@/lib/cycles";
 export const dynamic = "force-dynamic";
 
 // The real page moved to /[cycleScope]/participation
-// (docs/development-plan.md's Phase 65) — every existing link to the
+// (docs/plans/development-plan.md's Phase 65) — every existing link to the
 // bare /participation (task-packs, dashboard, contribution, members,
 // Calendar, and this page's own nav-config.ts entry) stays pointed
 // here unchanged; this shim transparently resolves the visitor's

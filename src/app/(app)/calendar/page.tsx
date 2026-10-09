@@ -101,7 +101,7 @@ const CAL_TAB_KEYS = CAL_TABS.map((t) => t.key) as readonly string[];
 // dated thing that already exists across the app, plus (folded in from
 // Phase 42, per that phase's own "expected to move into /calendar" note)
 // Freestanding events' own create/manage/invite/accept/decline UI. See
-// docs/development-plan.md's Phase 44 — a read layer only; every source
+// docs/plans/development-plan.md's Phase 44 — a read layer only; every source
 // below is queried as-is via src/lib/calendar/view.ts, no mutation logic
 // added here beyond CalendarEvent's own pre-existing actions.
 export default async function CalendarPage({

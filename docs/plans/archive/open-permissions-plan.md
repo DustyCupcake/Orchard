@@ -1,10 +1,17 @@
 # Open Permissions Plan — "everyone has this" per module
 
-**Status:** design only. No migration, no resolver, no settings change has been made. The
-recruitment-specific proposal in `docs/recruitment-access-plan.md` §4 is **superseded** by
-this document — it proposed a recruitment-only, Tier-based evaluator rule; this is the
-general, per-module mechanism that replaces it. See that doc's §5 (the `/recruitment` hub) for
-what has actually landed.
+**Status: implemented and shipped.** Work-plan steps 1–9 are built, tested and committed — see
+[`../../../CHANGELOG.md`](../../../CHANGELOG.md)'s entries for the open-permissions features for
+what each step actually built and what real bugs turned up. The two deliberate non-implementations
+below (D9's sensitive-field coupling and §9.1's settings audit trail) stand as written; the audit
+trail's cheap half (`opened_by`) shipped with the table and the rest landed separately later.
+Archived 2026-10-08.
+
+This document **supersedes** the recruitment-specific proposal in
+[`../recruitment-access-plan.md`](../recruitment-access-plan.md) §4 — that proposed a
+recruitment-only, Tier-based evaluator rule; this is the general, per-module mechanism that
+replaced it. `recruitment-access-plan.md` is still live for the parts this doc didn't cover; its
+§5 (the `/recruitment` hub) records what landed there.
 
 **Scope:** all 14 `PermissionModuleKey` values in `src/lib/permissions.ts:6-21` — the
 "Access & permissions" tab in Community Settings.
@@ -25,7 +32,7 @@ open to everyone *and* still name someone responsible.
 Every one of the 14 modules resolves through the same shape — "does this actor, non-shadow,
 currently hold a task carrying a `permission_grant` row for this module" — scoped by the
 granting task's own `task.cycleId` or `task.branchId`
-(`docs/cycle-scope-remediation-plan.md` §2.1). There is **no** community-wide grant concept
+(`docs/plans/archive/cycle-scope-remediation-plan.md` §2.1). There is **no** community-wide grant concept
 anywhere: `permission_grant.taskId` is `NOT NULL` (`permission-grant.ts:64-66`) and every
 resolver joins it to `taskAssignment`, so authority always resolves to a specific person
 holding a specific task.

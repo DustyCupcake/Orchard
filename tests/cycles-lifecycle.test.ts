@@ -38,7 +38,7 @@ function inOneWeek() {
   return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 }
 
-// docs/development-plan.md's Phase 65 — "any current Admin can close
+// docs/plans/development-plan.md's Phase 65 — "any current Admin can close
 // an open cycle... never hard-blocks: the Admin can close anyway."
 describe("closeCycle", () => {
   beforeEach(async () => {

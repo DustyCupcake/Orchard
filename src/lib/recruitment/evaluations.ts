@@ -41,7 +41,7 @@ export const recruitmentDecisionRuleSchema = z.object({
   conditions: recruitmentDecisionConditionSchema,
   outcome: z.enum(["proceed", "wider_discussion", "decline"]),
   // Required when outcome is "wider_discussion", meaningless otherwise
-  // — see docs/development-plan.md's Phase 34: "no objection by the
+  // — see docs/plans/development-plan.md's Phase 34: "no objection by the
   // deadline → the recommendation auto-follows into the outcome...
   // already computed." A rule matching wider_discussion is genuinely
   // ambiguous between proceed/decline (that's *why* it opens a window

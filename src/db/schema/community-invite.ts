@@ -37,7 +37,7 @@ export const communityInvite = pgTable("community_invite", {
   token: text("token").notNull().unique(),
   // §4.3/8d — the cycle this invite is for (null = a general community
   // invite). An invite's *lane* is fixed at creation by the inviter's
-  // marks below (docs/joining-admission-plan.md §2.1); its redemption
+  // marks below (docs/plans/archive/joining-admission-plan.md §2.1); its redemption
   // resolves through `joining_lane` — the community's rule for that
   // lane, with per-cycle overrides falling back to community-wide.
   cycleId: uuid("cycle_id").references(() => cycle.id),
@@ -48,7 +48,7 @@ export const communityInvite = pgTable("community_invite", {
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   redeemedAt: timestamp("redeemed_at", { withTimezone: true }),
   redeemedByMemberId: uuid("redeemed_by_member_id").references(() => member.id),
-  // docs/joining-admission-plan.md §2.6/J10 — a consensus lane needs
+  // docs/plans/archive/joining-admission-plan.md §2.6/J10 — a consensus lane needs
   // two consent steps, and both live here rather than in a side table
   // because this row *is* the send. The awareness tick is the inviter's
   // own assertion that they have told the invitee what is coming

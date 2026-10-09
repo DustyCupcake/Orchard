@@ -52,6 +52,23 @@ That's it. `scripts/test.sh` (what `npm test` now runs) creates the test databas
 
 Run a subset by naming files: `./scripts/test.sh tests/coordination.test.ts`. The raw runner is still available as `npm run test:raw` if you want vitest's own output with nothing in the way, but it has the memory behaviour below.
 
+## Checks — lint, typecheck, and tests in one command
+
+**One command, and it needs no setup either:**
+
+```bash
+./scripts/check.sh                    # what CI runs, in CI's order
+./scripts/check.sh tests/cycles.test.ts   # …plus a test subset
+```
+
+CI gates a pull request on two independent things — the `checks` Docker stage (`npm run lint`, then `npx tsc --noEmit`) and the test suite — and until `scripts/check.sh` existed there was no single local command reproducing both. This section used to document only the tests, which meant the only way to find out a change didn't lint was to push and let CI say so.
+
+**Don't run `npm run lint` directly.** It resolves ESLint from *your host's* `node_modules`, so a host whose tree predates a dependency bump runs whatever that tree has. When Next 15 → 16 landed, that meant `eslint-config-next` 15.5.27 against a config written for 16, and the failure was `Cannot find module '.../eslint-config-next/core-web-vitals'` — which reads as a broken `eslint.config.mjs` and invites editing a correct file. It isn't one.
+
+Both halves of `check.sh` run against `package-lock.json` rather than the host tree, which is the entire point: the checks stage does its own `npm ci` in the image, and `scripts/test.sh` keeps its own Linux `node_modules` in a volume keyed by the lockfile hash and reinstalls when that changes. A stale host tree can make `check.sh` pass, and can never make it lie. (`npx tsc --noEmit` *does* work on the host, but only because `typescript` and every `@types/*` package happen to be current — it isn't a guarantee.)
+
+It fails on **errors**, not warnings — `no-unused-vars` is warn-severity here, so a run that reports warnings still exits 0, exactly as CI's does.
+
 **Why the script batches and restarts the database, which is not an optimisation.** The suite truncates between files (`tests/helpers.ts`), and a long-lived Postgres grows steadily for the length of a run — measured at **~11MB per test file** (35MB → 261MB over 20 files). Crucially the growth **does not fall back** between files or between separate `vitest` invocations; it accumulates in the server, which is doing 36,000+ transactions against a ~20MB database. Left alone, a full 88-file suite reached **~3.2GB**. That is fine on a large VM and fatal on a small one, and Docker Desktop's allocation is a fraction of your host RAM that you don't control — so the script runs in batches and `docker restart`s the container when it crosses a budget read from the VM's actual size. A restart returns ~3.2GB to ~24MB in about a second, and the migrated schema survives in the volume, so nothing needs re-migrating.
 
 This is **not** a production concern, and worth being explicit about why. Production runs the same Postgres against the same schema but never truncates, and its memory is already capped by the deployed `shared_buffers` / `max_connections` in `docker-compose.yml`. Measured: production Postgres sat at ~80MB after two hours.
@@ -82,7 +99,7 @@ Override when needed, no editing required: `ORCHARD_TEST_BUDGET_MB`, `ORCHARD_TE
 - **One commit per coherent, phase-sized change** — not one commit per file, not a giant commit bundling several unrelated changes. Look at `git log` for the established granularity before deciding how to split your own work.
 - **Write a detailed commit message.** What was built, real bugs found and fixed along the way, what automated tests cover, and what manual verification actually exercised. These messages are themselves documentation — `CHANGELOG.md`'s own entries are written at exactly this level of detail, and future readers (including future sessions of whoever's building this) reconstruct context from git log and CHANGELOG, not from re-reading every diff.
 - **Update `CHANGELOG.md` (and `README.md`'s feature list, if the change is user-facing) in the same commit as the code** — not a separate follow-up commit.
-- **`docs/development-plan.md` and `docs/development-plan.full-archive.md` are working notes, not specification.** They are committed, because they carry the reasoning behind how the original build was sequenced, but they are neither normative nor kept current: the current state of the system is `docs/spec.md`, `docs/roadmap.md` and `CHANGELOG.md`, and anything durable belongs there. The archive is the historical plan for Phases 0–69 and is not edited; `development-plan.md` is scratch space for whatever is being scoped next.
+- **Everything under `docs/plans/` is working notes, not specification.** It's committed because it carries the reasoning behind decisions — how the original build was sequenced, why a particular mechanism was chosen over the obvious alternative — which is the part that can't be reconstructed from a diff later. But none of it is normative or kept current: the current state of the system is `docs/spec.md`, `docs/roadmap.md` and `CHANGELOG.md`, and anything durable belongs there. Within `plans/`, `archive/` holds plans whose work has shipped (kept, never cited as current state) and `development-plan.md` is scratch space for whatever is being scoped next.
 
 ## Releases and upgrading
 
@@ -112,7 +129,11 @@ then pull or rebuild and let the migrations run. For a change that rewrites data
 - [`docs/overview.md`](docs/overview.md) — the plain-language, non-technical pitch. Useful for understanding *why* a mechanic is shaped the way it is, not *how* it's implemented.
 - [`CHANGELOG.md`](CHANGELOG.md) — what's been built, phase by phase, and how it was verified.
 - [`docs/roadmap.md`](docs/roadmap.md) — what's deliberately not built yet, and why.
-- `docs/development-plan.md` — scratch space for scoping whatever gets built next. Committed, but don't expect it to reflect anything durable; `docs/development-plan.full-archive.md` is the historical Phases 0–69 plan.
+- [`docs/plans/`](docs/plans/) — working documents for work still to be done: audits of the spec against the code, per-feature build plans, design proposals awaiting a decision. Start at its [README](docs/plans/README.md) for what belongs there and what doesn't. **Not specification** — when a plan and `spec.md` disagree, `spec.md` is right.
+- [`docs/plans/archive/`](docs/plans/archive/) — plans whose work has shipped, kept for the reasoning behind each decision. Never cited as current state. A plan is archived in the same commit as the last piece of its work, once its outcome is in `CHANGELOG.md`.
+- `docs/plans/development-plan.md` — scratch space for scoping whatever gets built next. Committed, but don't expect it to reflect anything durable; `docs/plans/archive/development-plan.full-archive.md` is the historical Phases 0–69 plan.
+
+**Draft new plans in `docs/plans/`, not `docs/`.** `docs/` proper is meant to stay small and approachable — it's what someone reads to understand what Orchard *is*, and it holds only that: spec, overview, roadmap, and the reference material those lean on. A plan is a record of intent at a point in time, so it belongs a level down, where nobody reads it by accident expecting it to describe the current code.
 
 ## Questions or design feedback
 

@@ -95,7 +95,7 @@ export const member = pgTable("member", {
   // Personal, like the date display mode above: it decides which day a
   // moment falls on for *them*, and never moves anything stored.
   timeZone: text("time_zone"),
-  // Member onboarding & first session (docs/development-plan.md's
+  // Member onboarding & first session (docs/plans/development-plan.md's
   // Phase 56) — a nudge, never a gate: cleared either by finishing the
   // tutorial/suggestions sequence or by explicitly skipping it, same
   // "never blocks access behind a required flow" posture this codebase

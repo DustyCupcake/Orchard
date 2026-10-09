@@ -59,7 +59,7 @@ import { updateCommunity } from "@/lib/settings";
 import { getNavContext } from "@/lib/nav";
 import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
 
-// Step 1 of docs/open-permissions-plan.md: the storage. Nothing reads this
+// Step 1 of docs/plans/archive/open-permissions-plan.md: the storage. Nothing reads this
 // table yet — `isModuleOpenToEveryone` is Step 2 — so these tests assert the
 // *shape of the fact* rather than any behaviour, because the shape is where
 // the design's guarantees actually live:
@@ -430,7 +430,7 @@ describe("holder counts (Step 2)", () => {
 // ---------------------------------------------------------------------------
 // Step 3: the Class 2 scope-sets. An open module answers `{null}` — the
 // community/evergreen scope, which is already the superset under
-// docs/cycle-scope-remediation-plan.md §4.3's strictness rule, so every
+// docs/plans/archive/cycle-scope-remediation-plan.md §4.3's strictness rule, so every
 // `has(cycleId)` / `has(null)` downstream check passes with no event
 // knowledge in the resolver.
 //
@@ -533,7 +533,7 @@ describe("open scope-sets (Step 3)", () => {
   });
 
   // Interim, same reasoning. This is the test that makes the
-  // unsatisfiable-decision fix (docs/recruitment-access-plan.md §1) a Step 4
+  // unsatisfiable-decision fix (docs/plans/recruitment-access-plan.md §1) a Step 4
   // change rather than a Step 3 one: submitEvaluation and
   // listRecruitmentActionItems both call requireRecruitmentTaskHolder before
   // they ever consult the scope set. It refuses outright rather than
@@ -703,7 +703,7 @@ describe("open capability resolvers (Step 4)", () => {
     await expect(requireRecruitmentTaskHolder(bob)).resolves.toBeUndefined();
   });
 
-  // The bug docs/recruitment-access-plan.md §1 documents, and the reason
+  // The bug docs/plans/recruitment-access-plan.md §1 documents, and the reason
   // this step exists. The whole test file so far proves resolvers *return*
   // true for an open module; this proves the end-to-end consequence: two
   // ordinary members can file the evaluations that let a decision actually
@@ -839,7 +839,7 @@ describe("open capability resolvers (Step 4)", () => {
   // plan, and because listUnlockedFields resolves unlockedByGrantModuleKey
   // purely by task-hold, opening Kitchen must NOT unlock a field gated to the
   // Kitchen role. If this test ever fails, something has coupled them and the
-  // deferred decision in docs/open-permissions-plan.md §5 is now live.
+  // deferred decision in docs/plans/archive/open-permissions-plan.md §5 is now live.
   it("D9: opening a module does not unlock a sensitive field gated to its grant", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     const kitchenTask = await insertTask(testCommunity.id, branch.id, alice.id);

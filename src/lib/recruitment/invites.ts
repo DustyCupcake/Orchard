@@ -33,7 +33,7 @@ export const createCommunityInviteInput = z.object({
   inviterThinksGoodFit: z.boolean().optional(),
   inviterKnowsPersonally: z.boolean().optional(),
   expiresAt: z.string().min(1).nullable().optional(),
-  // docs/joining-admission-plan.md §2.1 — the marks below fix the
+  // docs/plans/archive/joining-admission-plan.md §2.1 — the marks below fix the
   // invite's *lane* at send time (knows-personally, good-fit, neither);
   // the cycle this invite is for (null = a general community invite)
   // picks the context its lane rule resolves in.
@@ -53,7 +53,7 @@ export type CreateCommunityInviteInput = z.infer<typeof createCommunityInviteInp
 // spec's explicit CampTool callout.
 //
 // What the lane's rule does to the invite is the whole of
-// docs/joining-admission-plan.md §2, and it happens here at creation so
+// docs/plans/archive/joining-admission-plan.md §2, and it happens here at creation so
 // the inviter finds out *before* they hand the link over rather than the
 // recipient finding out after:
 //
@@ -286,7 +286,7 @@ export async function getCommunityInviteRedeemsDirectly(row: CommunityInviteRow)
   return (await getCommunityInviteRedemptionPath(row)) === "direct";
 }
 
-// §4.3/8d + docs/joining-admission-plan.md §2 pipeline visibility:
+// §4.3/8d + docs/plans/archive/joining-admission-plan.md §2 pipeline visibility:
 // outstanding *cycle* invites whose path is anything but `direct`
 // belong on the recruitment pipeline alongside the applications
 // themselves, because that is where they funnel — a nomination is

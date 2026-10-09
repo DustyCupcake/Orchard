@@ -187,7 +187,7 @@ export interface ShiftCoordinatorNeedsAction {
 }
 
 // Dashboard's own needs-action surface for a shift manager — see
-// docs/development-plan.md's Phase 49. "Coordinates" now means holding
+// docs/plans/development-plan.md's Phase 49. "Coordinates" now means holding
 // the shift_management-granted task in the series' scope (D10 —
 // src/lib/shifts/management.ts), checked per series since no existing
 // query already knows "every series I manage" the way

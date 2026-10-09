@@ -2,7 +2,7 @@ import { pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 import { member } from "./member";
 
 // The accountability trail for View-as (see docs/spec.md's "View-as
-// (support)" and docs/development-plan.md's Phase 54) — same
+// (support)" and docs/plans/development-plan.md's Phase 54) — same
 // activatedBy/targetMemberId/timestamp shape as Phase 46's
 // emergencyAccessLog, for a comparably sensitive capability. endedAt
 // null means the overlay was still active as of the last check; it's

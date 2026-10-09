@@ -26,7 +26,7 @@ import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
 import { cloneSpatialPlanIntoNewCycle } from "../spatial-planning";
 import { recomputeCalendarEventDatesForCycle } from "../calendar-events";
 import { normalizeTaskMilestonesForCycle, normalizeTaskMilestonesForPhase } from "../tasks/milestones";
-import { copyPermissionGrants, type PermissionModuleKey } from "../permissions";
+import { copyPermissionGrants, logPermissionClaim, type PermissionModuleKey } from "../permissions";
 import { requireCycleOpen } from "./lifecycle";
 import { isValidTimeZone } from "../dates/timezone";
 import {
@@ -48,7 +48,7 @@ type Phase = typeof phaseTable.$inferSelect;
 //
 // The shared absolute/relative date shape (src/lib/dates/resolve.ts),
 // mapped onto Phase's own start_*/end_* column pairs. See
-// docs/development-plan.md's Phase 39.
+// docs/plans/development-plan.md's Phase 39.
 
 // Exported — src/lib/task-packs/export.ts reuses these two exact
 // mappings (a real Phase row -> the shared boundary shape) rather than
@@ -122,12 +122,12 @@ export const createCycleInput = z.discriminatedUnion("source", [
     startDate: z.string().min(1).nullable().optional(),
     endDate: z.string().min(1).nullable().optional(),
     // Optional — see docs/spec.md's "Cycle type" and
-    // docs/development-plan.md's Phase 40. A Community that never
+    // docs/plans/development-plan.md's Phase 40. A Community that never
     // defines any Cycle type just leaves this unset forever.
     cycleTypeId: z.string().uuid().nullable().optional(),
     phases: z.array(phaseInput).optional(),
     // "Starting a second Cycle while one's already open now shows an
-    // explicit confirmation step" — docs/development-plan.md's Phase
+    // explicit confirmation step" — docs/plans/development-plan.md's Phase
     // 65. See createCycle below.
     confirmed: z.boolean().optional(),
   }),
@@ -213,7 +213,7 @@ export async function createCycle(actor: Member, input: CreateCycleInput) {
 
   // "Starting a second Cycle while one's already open ... now shows an
   // explicit confirmation step naming the cycle that's already open" —
-  // docs/development-plan.md's Phase 65. Reuses the exact same
+  // docs/plans/development-plan.md's Phase 65. Reuses the exact same
   // ConfirmationRequiredError flow tasks/join-requests.ts's self-assign
   // check already established, rather than a new error type — the
   // caller is expected to pre-compute this and show a real confirm
@@ -320,7 +320,7 @@ async function createBlankCycle(
 }
 
 // The narrow slice of Task Pack import this MVP actually needs (see
-// docs/development-plan.md's Phase 6 scope) — clone-previous is, per the
+// docs/plans/development-plan.md's Phase 6 scope) — clone-previous is, per the
 // spec, conceptually the same mechanism as importing a pack, but without
 // building the general TaskPack table or the branch/phase name-matching
 // review screen a real cross-community import would need. Everything
@@ -445,7 +445,7 @@ function previewMilestoneDate(
 // Non-mutating — computes exactly what cloneMostRecentCycle's own
 // clonePhases/cloneTaskMilestones would produce, against a hypothetical
 // destination start/end the reviewer hasn't committed to yet. See
-// docs/development-plan.md's Phase 44 ("the Pack import review screen
+// docs/plans/development-plan.md's Phase 44 ("the Pack import review screen
 // gains the date preview"). Reuses the exact same
 // deriveClonedBoundaryRecipe/recomputeBoundary primitives those
 // mutating functions call, so a preview's numbers are guaranteed to
@@ -764,7 +764,7 @@ async function cloneWikiAndResources(tx: Tx, taskIdMap: Map<string, string>) {
   }
 }
 
-// §4.7 (docs/cycle-scope-remediation-plan.md): every cycle is born with
+// §4.7 (docs/plans/archive/cycle-scope-remediation-plan.md): every cycle is born with
 // a backstop — a critical, single-slot, `backstop`-granted task whose
 // first holder is auto-claimed to the member who started the cycle (D6).
 // It's an ordinary task beyond that: transferable and unclaimable like
@@ -810,6 +810,13 @@ async function createBackstopTask(tx: Tx, actor: Member, cycleId: string) {
     taskId: backstopTask.id,
   });
   await tx.insert(taskAssignment).values({ taskId: backstopTask.id, memberId: actor.id });
+
+  // The grant is written first precisely so this sees it: logPermissionClaim
+  // reads the task's grants to snapshot what the claim was worth, and inside
+  // this transaction it can only see rows this same transaction wrote. With
+  // ensureCloneHasBackstop below, this is one of two places that mint
+  // authority outside performClaimInTx — see the note there.
+  await logPermissionClaim(tx, actor, backstopTask);
 }
 
 // D6 — a cloned cycle must be born with its backstop filled regardless
@@ -822,7 +829,7 @@ async function createBackstopTask(tx: Tx, actor: Member, cycleId: string) {
 // just started this cycle.
 async function ensureCloneHasBackstop(tx: Tx, actor: Member, newCycleId: string) {
   const [clonedBackstop] = await tx
-    .select({ id: task.id })
+    .select({ id: task.id, title: task.title })
     .from(permissionGrant)
     .innerJoin(task, eq(task.id, permissionGrant.taskId))
     .where(
@@ -835,6 +842,15 @@ async function ensureCloneHasBackstop(tx: Tx, actor: Member, newCycleId: string)
     .limit(1);
   if (clonedBackstop) {
     await tx.insert(taskAssignment).values({ taskId: clonedBackstop.id, memberId: actor.id });
+    // A real claim on a task that carries a grant, so the holding log needs
+    // it. This insertion predates performClaimInTx being the single claim
+    // chokepoint and still bypasses it — nothing here would be refused (the
+    // task is unclaimed, request-open, under capacity, requirement-free), so
+    // the gap is historical rather than a constraint. Calling logPermissionClaim
+    // directly keeps the log free of holes; it is not a claim that routing
+    // through performClaimInTx would have disallowed. `title` is selected
+    // above only to tombstone it into the log row.
+    await logPermissionClaim(tx, actor, clonedBackstop);
   } else {
     await createBackstopTask(tx, actor, newCycleId);
   }
@@ -982,7 +998,7 @@ export async function listCycles(actor: Member) {
 // Every open (not yet closed) cycle in the community, regardless of
 // any member's own participation — the nav switcher's narrow-to-one
 // dropdown candidates, and Participation's own per-cycle sections
-// (docs/development-plan.md's Phase 65).
+// (docs/plans/development-plan.md's Phase 65).
 export async function listOpenCycles(actor: Member) {
   return db
     .select()
@@ -1018,7 +1034,7 @@ export async function getCycle(actor: Member, cycleId: string) {
 }
 
 // Wires up the two fields that have sat unused on Cycle since Phase 6
-// — see docs/development-plan.md's Phase 31. Gated the same way
+// — see docs/plans/development-plan.md's Phase 31. Gated the same way
 // starting a cycle is: no separate "cycle admin" concept exists, and
 // whoever's trusted to open a cycle is trusted to size it. Editable any
 // time, not just at creation — capacity commonly firms up after a

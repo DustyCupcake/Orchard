@@ -64,7 +64,7 @@ export async function setRecruitmentSubscriptionActive(actor: Member, active: bo
 // "submit your availability" — the readable half of the mechanism
 // updateRecruitmentSubscriptionLapses below writes. Not required
 // participation (the intro call already resolves against just the two
-// evaluators + the applicant, per docs/development-plan.md's Phase
+// evaluators + the applicant, per docs/plans/development-plan.md's Phase
 // 34); a subscriber's own submission here is voluntary and never
 // blocks or changes the poll's own resolution — see this function's
 // own module-level comment on updateRecruitmentSubscriptionLapses for
@@ -94,7 +94,7 @@ export async function listOpenIntroCallsForSubscriber(actor: Member) {
 }
 
 // Scheduled job (see src/instrumentation.ts). **Resolved interpretation
-// of an under-specified spec mechanic**, per docs/development-plan.md's
+// of an under-specified spec mechanic**, per docs/plans/development-plan.md's
 // Phase 48: spec's one sentence ("auto-lapses after N consecutive
 // applications with no availability given") reads most naturally
 // against the intro-call SchedulingPoll each application produces

@@ -17,7 +17,7 @@ export type KitchenNeedsAction =
 // holder somewhere" (isKitchenOwner) and "can act on THIS plan".
 //
 // An open module answers `{null}` — the community/evergreen scope, already
-// the superset (docs/open-permissions-plan.md D3) — so every scope in the
+// the superset (docs/plans/archive/open-permissions-plan.md D3) — so every scope in the
 // list below matches and an open Kitchen Community still gets its
 // draft-publish and ideas-review rows on the Dashboard.
 async function ownedKitchenScopeIds(actor: Member): Promise<Set<string | null>> {

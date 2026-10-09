@@ -1,6 +1,6 @@
 {
-  "id": "30345cf4-2cca-40f1-8d24-cc396f4f506d",
-  "prevId": "f6814236-33fa-4c44-9267-05dc624af899",
+  "id": "e7c20381-104f-414f-8edf-73426078199e",
+  "prevId": "d5c6b363-322c-4617-8c47-5fe7f53da703",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9851,6 +9851,96 @@
           "tableTo": "task",
           "columnsFrom": [
             "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.permission_holding": {
+      "name": "permission_holding",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "community_id": {
+          "name": "community_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_title": {
+          "name": "task_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "module_keys": {
+          "name": "module_keys",
+          "type": "permission_grant_module[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "released_at": {
+          "name": "released_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "permission_holding_community_id_community_id_fk": {
+          "name": "permission_holding_community_id_community_id_fk",
+          "tableFrom": "permission_holding",
+          "tableTo": "community",
+          "columnsFrom": [
+            "community_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_holding_member_id_member_id_fk": {
+          "name": "permission_holding_member_id_member_id_fk",
+          "tableFrom": "permission_holding",
+          "tableTo": "member",
+          "columnsFrom": [
+            "member_id"
           ],
           "columnsTo": [
             "id"

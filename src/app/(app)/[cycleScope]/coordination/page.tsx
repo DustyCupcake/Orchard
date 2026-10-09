@@ -52,7 +52,7 @@ const STATUS_TONE: Record<string, Tone> = {
   done: "success",
 };
 
-// The real Coordination page (docs/cycle-scope-remediation-plan.md
+// The real Coordination page (docs/plans/archive/cycle-scope-remediation-plan.md
 // §5.3): it lives under /[cycleScope] and gates on the view-scope cycle
 // when the community runs cycles, staying community-wide for cycle-less
 // ones — the same movement /participation and /budget made (Phase 65).

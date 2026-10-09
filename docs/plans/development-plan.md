@@ -2,7 +2,7 @@
 
 *Expands `spec.md`'s "Build order" and "MVP scope" sections into phases sized for individual Claude Code sessions — each phase should be small enough to pick up cold, build, and leave in a working, demoable state.*
 
-**How to use this:** every phase from the original build-out is complete (see below) — this file is now empty and waiting for the next one. When a candidate phase gets picked off `docs/roadmap.md` (or a genuinely new need comes up that isn't on that list yet), draft it here in the same Goal/Scope/Depends-on/Done-when form the archived phases used, then hand it to a session to build. Once built, tested, and committed — real tests against a disposable Postgres, manual verification against the real Docker Compose stack, README/CHANGELOG updated in the same commit as the code — its outcome belongs in `CHANGELOG.md`, not left sitting here once it's done, so this file stays a small, current "what's being worked on right now," not a growing historical archive.
+**How to use this:** every phase from the original build-out is complete (see below) — this file is now empty and waiting for the next one. Note that feature-sized work picked off `docs/roadmap.md` since then has generally been specced in its own document under `docs/plans/` rather than here, following the convention in [`README.md`](README.md). When a candidate phase gets picked off `docs/roadmap.md` (or a genuinely new need comes up that isn't on that list yet), draft it here in the same Goal/Scope/Depends-on/Done-when form the archived phases used, then hand it to a session to build. Once built, tested, and committed — real tests against a disposable Postgres, manual verification against the real Docker Compose stack, README/CHANGELOG updated in the same commit as the code — its outcome belongs in `CHANGELOG.md`, not left sitting here once it's done, so this file stays a small, current "what's being worked on right now," not a growing historical archive.
 
 ---
 
@@ -10,9 +10,9 @@
 
 Every phase originally scoped here — the tech spec's full MVP (0-10), the rest of what spec treats as core-not-optional (11-19), every optional module (20-64), and the full concurrent-cycles batch (65-69) — is built, tested, and committed to `main`. `CHANGELOG.md` is the authoritative record of what each phase actually built, real bugs found along the way, and how it was verified; that record is far more detailed and more accurate than this file's own original forward-looking scope text, which described intent rather than outcome.
 
-This file used to carry that full phase-by-phase detail (goal/scope/depends-on/done-when for all 69 phases) directly. It's been trimmed now that the plan is fully executed and `CHANGELOG.md` supersedes it — a complete copy of the pre-trim file, exactly as it stood through Phase 69, is kept alongside this one at `docs/development-plan.full-archive.md` (also deliberately out of git, same as this file) for anyone who wants to see how a phase was originally scoped as opposed to how it actually turned out.
+This file used to carry that full phase-by-phase detail (goal/scope/depends-on/done-when for all 69 phases) directly. It's been trimmed now that the plan is fully executed and `CHANGELOG.md` supersedes it — a complete copy of the pre-trim file, exactly as it stood through Phase 69, is kept at [`archive/development-plan.full-archive.md`](archive/development-plan.full-archive.md) for anyone who wants to see how a phase was originally scoped as opposed to how it actually turned out.
 
-See `docs/roadmap.md` for what's deliberately not built yet — both the stretch goals `spec.md` itself named, and the newer, genuinely-unscoped ideas that concurrent cycles and other later phases surfaced. That file is committed, unlike this one, since it's meant to be visible to anyone looking at the repo, not just whoever's driving the next session.
+See [`../roadmap.md`](../roadmap.md) for what's deliberately not built yet — both the stretch goals `spec.md` itself named, and the newer, genuinely-unscoped ideas that concurrent cycles and other later phases surfaced.
 
 ---
 
@@ -24,7 +24,7 @@ The by-phase foundation is committed — see `CHANGELOG.md`'s entry for the full
 
 ## Branch coverage view + advanced filters
 
-**Status:** Built and verified in the board revamp. The historical audit/remediation documents still describe this as missing; use this section and `docs/BOARD-HANDOFF.md`'s current follow-up for the present state.
+**Status:** Built and verified in the board revamp. The historical audit/remediation documents still describe this as missing; use this section for the present state. (This section used to point at a separate board handoff document, deleted in `178432f` and replaced by [`../design_handoff_conventions/`](../design_handoff_conventions/).)
 
 **Implemented:**
 - `/board?view=coverage` groups active tasks by branch and shows a public health status for every branch.

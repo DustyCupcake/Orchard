@@ -62,6 +62,7 @@ Built incrementally, one phase at a time — see [`CHANGELOG.md`](CHANGELOG.md) 
 - **[`docs/spec.md`](docs/spec.md)** — the full technical specification: data model, mechanisms, module design, resolved design decisions. Start here if you're building it or evaluating it as an engineer.
 - **[`CHANGELOG.md`](CHANGELOG.md)** — build history, one entry per shipped phase or feature. Every numbered phase through Phase 69 (the full original build plan) is complete; nothing after that is numbered — further real, scoped-but-unbuilt work is picked up off `docs/roadmap.md` as its own standalone feature entry.
 - **[`docs/roadmap.md`](docs/roadmap.md)** — what's deliberately not built yet, and why.
+- **[`docs/plans/`](docs/plans/)** — plans for work still to be done, and an archive of the ones already shipped. Working notes rather than reference; [`docs/spec.md`](docs/spec.md) is what describes the current system.
 - **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — local setup, testing/verification workflow, and code conventions for anyone picking up work on this repo.
 
 ## Deploying

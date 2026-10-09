@@ -54,7 +54,7 @@ export async function respondToNominationAction(formData: FormData) {
   revalidatePath("/board");
 }
 
-// docs/development-plan.md's Phase 56 — "skipping is always available,
+// docs/plans/development-plan.md's Phase 56 — "skipping is always available,
 // a nudge, never a gate": finishing the tutorial/suggestions sequence
 // and explicitly skipping it both just clear the same flag, same
 // "one flag, no separate completed-vs-skipped state" the dev plan

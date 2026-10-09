@@ -266,7 +266,7 @@ export function isItemVisible(item: NavItem, ctx: NavContext): boolean {
  * at `href` itself.
  *
  * A cycle-scoped item's `href` is a bare redirect shim: `/coordination`
- * resolves to `/{cycleScope}/coordination` (docs/cycle-scope-remediation-plan.md
+ * resolves to `/{cycleScope}/coordination` (docs/plans/archive/cycle-scope-remediation-plan.md
  * §5.3), so AppShell's plain `pathname === href || startsWith(href + "/")`
  * matches the shim but never the page it lands on. The row would light up
  * for exactly the duration of the redirect and then go dark permanently.

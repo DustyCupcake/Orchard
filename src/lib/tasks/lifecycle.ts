@@ -4,6 +4,7 @@ import { task, taskAssignment, taskDependency } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { resolveEngagementForMember } from "../engagement";
+import { logPermissionClaim, logPermissionRelease } from "../permissions";
 import { getUnmetRequirements, describeRequirement } from "./requirements";
 
 type Member = typeof memberTable.$inferSelect;
@@ -123,6 +124,16 @@ export async function performClaimInTx(
     .set({ status: "claimed", statusChangedAt: new Date(), attentionLevel: "ok" })
     .where(eq(task.id, taskId))
     .returning();
+
+  // The holding log, and the reason this lives here rather than at each
+  // door: this is the single point every real claim passes through —
+  // claimTask, waiveAndClaim, acceptJoinRequest, a confirmed candidacy,
+  // and a nomination's accept — so one call covers all five. Written last
+  // and inside the same transaction as the assignment it describes, so a
+  // crash cannot leave a claim unrecorded; a log that can have gaps is
+  // worse than none, because it reads as complete.
+  await logPermissionClaim(tx, member, current);
+
   return updated;
 }
 
@@ -155,6 +166,13 @@ export async function releaseAssignmentInTx(tx: Tx, taskId: string, communityId:
     throw new ForbiddenError("Doesn't hold this task");
   }
 
+  // Above the remaining-holders branch rather than inside it: there are two
+  // returns below, and the holding ends when this member lets go — not when
+  // the task also happens to become unclaimed. Same single-chokepoint
+  // reasoning as the claim side, covering releaseTask, a nomination's
+  // decline/not_now/lapse, and a member leaving.
+  await logPermissionRelease(tx, taskId, memberId);
+
   const remaining = await assignmentCount(tx, taskId);
   if (remaining === 0) {
     const [updated] = await tx
@@ -177,7 +195,7 @@ export async function releaseTask(actor: Member, taskId: string) {
   return db.transaction(async (tx) => {
     // "Release" is one of the Waiting-nudge's own four named response
     // options (docs/spec.md's Owner-set nudges) — see
-    // docs/development-plan.md's Phase 52. Checked before the release
+    // docs/plans/development-plan.md's Phase 52. Checked before the release
     // itself changes the status out from under this read.
     const before = await loadTaskForUpdate(tx, taskId, actor.communityId);
     const wasWaiting = before.status === "waiting";

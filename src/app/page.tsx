@@ -25,7 +25,7 @@ async function getStatus() {
 
 // The actual front door — was a bare Phase 0 DB-connectivity smoke
 // test ("a working HTTPS site showing a health-check page reading real
-// data from Postgres," docs/development-plan.full-archive.md). Now a
+// data from Postgres," docs/plans/archive/development-plan.full-archive.md). Now a
 // real branded landing screen (the community's own name/logo, same
 // BrandMark data AppShell.tsx's sidebar reads), with that original
 // check kept but demoted to a collapsed diagnostic at the bottom

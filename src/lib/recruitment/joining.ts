@@ -8,7 +8,7 @@ import { getJoinLaneRulesForContext, pathHoldsCapacity, redemptionPathForInvite 
 type CycleRow = typeof cycleTable.$inferSelect;
 type CommunityRow = typeof communityTable.$inferSelect;
 
-// The per-cycle joining state docs/cycle-scope-remediation-plan.md §4.3
+// The per-cycle joining state docs/plans/archive/cycle-scope-remediation-plan.md §4.3
 // (work-plan step 8c) describes: does this cycle's door admit a
 // specific kind of newcomer right now? Three independent gates compose
 // it —
@@ -20,7 +20,7 @@ type CommunityRow = typeof communityTable.$inferSelect;
 //                the cycle closes). A closed cycle's period is never
 //                open.
 //   door       — the cycle's own applicationsOpen / invitesOpen /
-//                interviewsOpen flag (docs/joining-admission-plan.md
+//                interviewsOpen flag (docs/plans/archive/joining-admission-plan.md
 //                §2.3/J3 — the third one is what finally makes the
 //                interview stage a door rather than a side effect).
 //   capacity   — a set capacity that comingCount already fills
@@ -30,7 +30,7 @@ type CommunityRow = typeof communityTable.$inferSelect;
 //                the policy. Direct-lane issues count too: an
 //                *outstanding* invite whose lane resolves to the direct
 //                path holds a capacity slot until redeemed, revoked, or
-//                expired (docs/joining-admission-plan.md §2/§4.1), so
+//                expired (docs/plans/archive/joining-admission-plan.md §2/§4.1), so
 //                issued-but-unspent slots fill the room as well.
 export type CycleJoiningState = {
   cycle: CycleRow;
@@ -80,7 +80,7 @@ export async function getCycleJoiningState(communityId: string, cycleId: string)
   const comingCount = comingRows.length;
   const now = new Date();
 
-  // §4.3/8d + docs/joining-admission-plan.md §2/§4.1 — an *outstanding*
+  // §4.3/8d + docs/plans/archive/joining-admission-plan.md §2/§4.1 — an *outstanding*
   // invite holds a capacity slot only when its lane resolves to the
   // direct path. The lane is fixed at creation by the inviter's marks;
   // the rule is the cycle's own `joining_lane` row, else the

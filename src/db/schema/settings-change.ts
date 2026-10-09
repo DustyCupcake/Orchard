@@ -2,7 +2,7 @@ import { boolean, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-
 import { community } from "./community";
 import { member } from "./member";
 
-// The record this table exists to keep. docs/open-permissions-plan.md §9.1
+// The record this table exists to keep. docs/plans/archive/open-permissions-plan.md §9.1
 // deferred it explicitly: "there is no audit mechanism for settings changes
 // at all", and the reason given was that a faithful one has to cover every
 // requireAdmins action behind /settings rather than just the cheap half

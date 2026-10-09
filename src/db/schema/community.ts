@@ -17,7 +17,7 @@ export const branchMembershipModelEnum = pgEnum("branch_membership_model", ["eme
 
 // How much of the mediation body has to agree before an objection can be
 // overruled in favour of admitting someone anyway
-// (docs/joining-admission-plan.md §2.6/J7). Declared here, next to the
+// (docs/plans/archive/joining-admission-plan.md §2.6/J7). Declared here, next to the
 // columns that use it, rather than in the recruitment module's own
 // schema file: like every other settings-facing vocabulary in this file
 // (membershipModelEnum, dateDisplayModeEnum) it is a *configuration*
@@ -55,7 +55,7 @@ export const community = pgTable("community", {
   //
   // The Admins task isn't a dedicated Community → Task column, same as
   // branch coordination below — see `PermissionGrant`
-  // (src/db/schema/permission-grant.ts, docs/development-plan.md's
+  // (src/db/schema/permission-grant.ts, docs/plans/development-plan.md's
   // Phase 63), which replaced both this and every other single-task/
   // tag-based access gate with one real table. adminsEverClaimed
   // latches true the first time any admin-module PermissionGrant's task
@@ -136,7 +136,7 @@ export const community = pgTable("community", {
   cycleIndicatorsEnabled: boolean("cycle_indicators_enabled").notNull().default(false),
   recruitmentApplicationsOpen: boolean("recruitment_applications_open").notNull().default(true),
   recruitmentInvitesOpen: boolean("recruitment_invites_open").notNull().default(true),
-  // The third door (docs/joining-admission-plan.md §2.3/J3/D13): the
+  // The third door (docs/plans/archive/joining-admission-plan.md §2.3/J3/D13): the
   // interview stage, finally a door of its own instead of something
   // that either always ran (evaluated applications) or was skipped
   // wholesale (direct invites). A cycle with `interviewsOpen = false`
@@ -174,7 +174,7 @@ export const community = pgTable("community", {
     .default(3),
   // How long a wider-discussion window stays open before auto-
   // resolving with no objection — see docs/spec.md's Recruitment
-  // ("Wider discussion window") and docs/development-plan.md's Phase
+  // ("Wider discussion window") and docs/plans/development-plan.md's Phase
   // 34. Purely time-computed against RecruitmentDecision.
   // widerDiscussionDeadline, the same no-scheduler-job-for-the-status-
   // itself pattern Phase 31's returning-priority window and Assemblies'
@@ -184,7 +184,7 @@ export const community = pgTable("community", {
   // — see src/lib/recruitment/decisions.ts's resolveWiderDiscussionWindows.
   recruitmentWiderDiscussionHours: integer("recruitment_wider_discussion_hours").notNull().default(48),
   // The second of the two time-boxed verification windows
-  // (docs/joining-admission-plan.md §2.2/J2). J2 settled that periods
+  // (docs/plans/archive/joining-admission-plan.md §2.2/J2). J2 settled that periods
   // are community-wide per *mechanism* rather than per lane — stacking
   // nomination and consensus per lane was explicitly ruled out — so
   // there are exactly two knobs: recruitmentWiderDiscussionHours above,
@@ -213,13 +213,13 @@ export const community = pgTable("community", {
   // automatically. A single field for v1, per spec's own framing.
   recruitmentRejectionTemplate: text("recruitment_rejection_template"),
   // "Reply within [N days]" — see docs/spec.md's Task assignment
-  // notification and docs/development-plan.md's Phase 51. Same
+  // notification and docs/plans/development-plan.md's Phase 51. Same
   // community-configurable-threshold pattern as conflictAckWindowHours/
   // recruitmentWiderDiscussionHours above.
   taskNominationResponseDays: integer("task_nomination_response_days").notNull().default(3),
   // "One is just noted, a couple becomes a soft flag... three or more
   // surfaces as a pattern" — see docs/spec.md's Response tracking and
-  // docs/development-plan.md's Phase 52. "Noted" itself needs no
+  // docs/plans/development-plan.md's Phase 52. "Noted" itself needs no
   // threshold of its own — it's just 1 up to (not including)
   // engagementSoftFlagThreshold; see src/lib/engagement.ts's
   // computeEngagementPattern.
@@ -241,7 +241,7 @@ export const community = pgTable("community", {
   accentPrimary: text("accent_primary"),
   accentSecondary: text("accent_secondary"),
   logoUrl: text("logo_url"),
-  // OIDC second auth provider (docs/development-plan.md's Phase 57) —
+  // OIDC second auth provider (docs/plans/development-plan.md's Phase 57) —
   // "provider-pluggable, not one fixed method," alongside (never
   // replacing) magic-link. All three null = OIDC off, magic-link only.
   // The client secret deliberately lives in env (OIDC_CLIENT_SECRET),

@@ -1,5 +1,13 @@
 # Cycle-Scope Remediation Plan — Task-Associated Permissions
 
+**Status: implemented and shipped.** All eight work-plan steps are built, tested and committed.
+`permission_grant.cycle_id` is gone (migration `0051_calm_valkyrie.sql`), `task.cycleId` is the
+single scope every resolver reads, and both new modules shipped — `backstop` (`src/lib/backstop.ts`)
+and `shift_management` (`src/lib/shifts/management.ts`). Coverage lives in `tests/permissions.test.ts`,
+`tests/backstop.test.ts` and `tests/shift-rosters.test.ts`; [`../../../CHANGELOG.md`](../../../CHANGELOG.md)
+has the per-step record. Archived 2026-10-08. Sections below describe the model as it stood
+*before* the change, so read them as the reasoning, not the current state.
+
 **Scope of this plan:** every "task is the authority" permission — the nine current `PermissionGrant` modules plus Budget's owner task — and how their authority relates to cycles. It also designs two new modules — `backstop` (§2.5), the answer to `docs/spec.md:262`'s round-0 "fall-back holder" (implemented nowhere today), and `shift_management` (§2.6), which gives a cycle's shift roster a task-granted manager. The working principle, agreed with the user:
 
 > **A permission granted by a task is scoped by where the task sits.** A task placed in a cycle scopes its permission to that cycle; a task placed in no cycle is a community/evergreen role. One placement field (`task.cycleId`) is the single source of truth — replacing the current two disconnected cycle notions.
@@ -47,7 +55,7 @@ Non-grant task authorities: **Budget owner** is genuinely per-cycle already — 
 
 ### 1.3 Known adjacent bug
 
-The spec-audit plan (§3, `docs/spec-audit-remediation-plan.md`) already records that **cycle clone does not copy `PermissionGrant` rows** — a cloned cycle's coordination/admin tasks win candidacy but confer nothing. Per-cycle authority makes this bug central, not peripheral (see §4.4).
+The spec-audit plan (§3, `docs/plans/spec-audit-remediation-plan.md`) already records that **cycle clone does not copy `PermissionGrant` rows** — a cloned cycle's coordination/admin tasks win candidacy but confer nothing. Per-cycle authority makes this bug central, not peripheral (see §4.4).
 
 ---
 
@@ -168,7 +176,7 @@ Short answer: no — it is strictly cheaper than today, and the two things that 
 
 `conflictReport` deliberately stays **unkeyed** — conflict remains community-level (§2.2).
 
-**Recruitment half — the cycle-shaped intake and authority** (the plan's "genuinely unresolved" recruitment item, `docs/development-plan.full-archive.md` "Beyond"). Recruitment becomes event-driven intake; applications are cycle-keyed for free by the feedback half's `formResponse.cycleId`:
+**Recruitment half — the cycle-shaped intake and authority** (the plan's "genuinely unresolved" recruitment item, `docs/plans/archive/development-plan.full-archive.md` "Beyond"). Recruitment becomes event-driven intake; applications are cycle-keyed for free by the feedback half's `formResponse.cycleId`:
 
 - **Authority (tier `deferred → cycle`).** `recruitment` resolves exactly like `feedback_review`: `listHeldRecruitmentScopes(actor)` = the `task.cycleId`s of the recruitment-granted tasks the actor holds (the `null` community scope included). A recruitment task placed in cycle C evaluates **only** cycle C's applications (`formResponse.cycleId = C`); a cycle-less task is the community/evergreen reviewer covering every application, its own-cycle and untagged. Application listing, evaluation filing, objections, and decisions all resolve against the candidate response's cycle this way, so a cycle-placed evaluator can only act on their own cycle's applicants. Inquiries stay any-holder — an unkeyed community-wide inbox, not a cycle thing.
 - **Per-cycle joining configuration** (new `cycle` columns): `recruitmentApplicationFormId` (uuid pointer, the same non-FK pattern as the community's; null → falls back to the community's form), `applicationsOpen` (default true), `invitesOpen` (default true), `joiningInviteMode` `direct | referral` (default `direct`), `joiningWindowClosesAt` (nullable). A cycle's **joining period** runs from the close of its returning-priority window (`returningWindowClosesAt` — existing members declare first) or cycle start if none, until `joiningWindowClosesAt` (null = until the cycle closes). **Both doors are shut outside that period** and **shut once capacity is reached** ("recruitment opens against whatever capacity remains" — the *displayed* number stays un-clamped per spec's "not a special case"; the *door gate* is the policy).
@@ -318,4 +326,4 @@ Short answer: no — it is strictly cheaper than today, and the two things that 
    - **8c. Joining config + per-cycle intake.** `cycle` joining columns (application-form pointer, `applicationsOpen`, `invitesOpen`, `joiningInviteMode`, `joiningWindowClosesAt`), community-wide door toggles (D13), `updateCycleSettings` + participation-page config, Settings toggles, `/apply` cycle context (form resolution, door/period/capacity gates, `cycleId` tagging). ✅ `0fe0e6c`
    - **8d. Cycle-scoped invites + seeding + visibility.** `community_invite.cycleId`; direct vs referral creation/redemption semantics (D12); direct-invite capacity holds with expiry enforcement; participation seeding on acceptance and redemption (D14); pipeline + participation-page held/outstanding counts. ✅ `969a2d8` (+ `0d13350` for the held-capacity display).
 
-Cross-referenced from: `CHANGELOG.md` (Phases 63, 67, 68), `docs/spec-audit-remediation-plan.md` §3, `docs/development-plan.full-archive.md` "Beyond" (recruitment), `docs/spec.md:867` (`response.cycle_id`).
+Cross-referenced from: `CHANGELOG.md` (Phases 63, 67, 68), `docs/plans/spec-audit-remediation-plan.md` §3, `docs/plans/archive/development-plan.full-archive.md` "Beyond" (recruitment), `docs/spec.md:867` (`response.cycle_id`).

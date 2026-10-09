@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 // Resolves the [cycleScope] segment once for whichever child page
 // (/participation, /budget — the only two moved under it, see
-// docs/development-plan.md's Phase 65) is actually being rendered.
+// docs/plans/development-plan.md's Phase 65) is actually being rendered.
 // resolveViewScopeFromSegment is wrapped in React's cache(), so the
 // child page's own call for the identical (actor, segment) pair below
 // this is a cache hit, not a second DB round trip. An unresolvable

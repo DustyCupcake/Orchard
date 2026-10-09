@@ -1,6 +1,6 @@
 # 🍲 Food & drinks module — build plan
 
-*Restoring module 9 of the original Peach Please spec (`docs/peach-please-platform-spec_v0.5.md`), which was dropped during genericization, as a real optional module of the generic engine — permission-grant-gated by a task like every other module here. Not a Peach-Please-specific script: it fits any community that serves shared food — a camp kitchen, a coop's communal dinners, a retreat — with the same task-granted access model every other module uses.*
+*Restoring module 9 of the original Peach Please spec (v0.5 — a pre-genericization document that was never committed here; its §9 text is quoted in full below and the design conventions it followed are in [`../../design_handoff_conventions/`](../../design_handoff_conventions/)), which was dropped during genericization, as a real optional module of the generic engine — permission-grant-gated by a task like every other module here. Not a Peach-Please-specific script: it fits any community that serves shared food — a camp kitchen, a coop's communal dinners, a retreat — with the same task-granted access model every other module uses.*
 
 ---
 
@@ -218,9 +218,20 @@ All five land by editing constants + one small access lib. Every existing grant 
 
 ## 🛠️ Build steps
 
-Sized the way the codebase already works — lib-first with tests, then UI, verification and CHANGELOG in the same commit as the code. (Per the repo's current convention, these are features, not numbered "Phase N" entries — and new work is documented in its own per-feature doc like this one, not in `docs/development-plan.md` anymore, which now only records the original phased build. This plan is the feature's living document; `CHANGELOG.md` records what got built.)
+Sized the way the codebase already works — lib-first with tests, then UI, verification and CHANGELOG in the same commit as the code. (Per the repo's current convention, these are features, not numbered "Phase N" entries — and new work is documented in its own per-feature doc like this one, not in `docs/plans/development-plan.md` anymore, which now only records the original phased build. This plan is the feature's living document; `CHANGELOG.md` records what got built.)
 
-**Status: Step 1 complete** — `docs/spec.md` now restores the module: an Optional-modules entry (Kitchen, right after Spatial planning), a five-table module-entities block (`MenuPlan`, `Meal`, `Dish`, `DishIngredient`, `FoodIdea`), the sensitive-data field→grant route, and the module list line. Steps 2–7 remain.
+**Status: all seven steps shipped.** `docs/spec.md` restores the module (an Optional-modules entry
+with Kitchen right after Spatial planning, a five-table module-entities block — `MenuPlan`, `Meal`,
+`Dish`, `DishIngredient`, `FoodIdea` — the sensitive-data field→grant route, and the module list
+line); migration `0061_busy_luminals.sql` carries the schema; the `kitchen` permission module, all
+nine `src/lib/kitchen/` files, and the `/kitchen` page and its actions are in place, with 34 tests
+in `tests/kitchen.test.ts` plus four in `tests/sensitive-data.test.ts`. See
+[`../../../CHANGELOG.md`](../../../CHANGELOG.md) for the full record. Archived 2026-10-08.
+
+One deliberate deviation from the plan below: the module does **not** read a dedicated
+`member.allergies` column. It keyword-matches answers to sensitive profile questions instead, so
+what reaches the menu is whatever the community actually collects (`docs/spec.md`'s Sensitive data
+section has the settled form).
 
 **Step 1 — Spec restoration.** Re-add the module to `docs/spec.md`: Optional-modules list ("Kitchen — the spec's Food & drinks module: menu planning with dietary constraints, food schedule, participatory input, ordering/cooking as tasks + shifts"), a module-entities block (the five tables above), and a line in the Sensitive data section noting allergies now feed the menu via a field→grant route. *Done when:* spec and this plan agree; a reader of `spec.md` can find the module in the same place as Budget/Events.
 

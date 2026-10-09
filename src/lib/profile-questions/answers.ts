@@ -112,7 +112,7 @@ async function knownOpenCycleId(actor: Member, cycleId: string): Promise<string 
 // Which cycle a per_cycle/phase answer stamps against — null for
 // once_ever (see profile-question.ts's schema comment). `requested` is an
 // explicit cycle from the caller (submitAnswerInput.cycleId above); without
-// one this is the member's own declared cycle (docs/development-plan.md's
+// one this is the member's own declared cycle (docs/plans/development-plan.md's
 // Phase 65), not whichever cycle the nav's view-scope switcher happens to be
 // on right now — glancing at a different cycle in the nav should never
 // change what a member's own answer stamps against. Throws if a per_cycle/
@@ -298,7 +298,7 @@ export type OutstandingQuestion = {
 //
 // `options.surface`, when given, additionally narrows to questions
 // whose `surfaces` array names it — e.g. Dashboard's onboarding panel
-// (docs/development-plan.md's Phase 56) passes "onboarding" so it only
+// (docs/plans/development-plan.md's Phase 56) passes "onboarding" so it only
 // ever surfaces questions a community actually opted into that flow,
 // never every outstanding question community-wide. Filtered in plain
 // JS against the already-fetched array, same posture requirements.ts's

@@ -81,7 +81,7 @@ function StatRow({ label, value }: { label: React.ReactNode; value: React.ReactN
 
 // `shared` marks a section whose items are outstanding for the Community
 // rather than for this member — which is the case exactly when the module is
-// open to everyone and they hold nothing (docs/open-permissions-plan.md D12).
+// open to everyone and they hold nothing (docs/plans/archive/open-permissions-plan.md D12).
 // The two are rendered in separate passes, personal first, so "yours" never
 // has to compete with "theirs" for attention; the tag is there so the
 // distinction survives the reordering rather than being merely implied by
@@ -127,7 +127,7 @@ const EVENT_STATUS_LABEL: Record<string, string> = {
 
 // The six module needs-action sections, defined once and rendered twice: the
 // `personal` pass first, then the `shared` pass
-// (docs/open-permissions-plan.md D12). They were previously six inline
+// (docs/plans/archive/open-permissions-plan.md D12). They were previously six inline
 // blocks interleaved with the task-side sections; hoisting them here is what
 // makes "personal above shared" expressible at all, and it means the row
 // rendering for each module is written once rather than duplicated per pass.
@@ -342,7 +342,7 @@ export default async function DashboardPage({
   // Spatial planning/Schedule (Phase 68) already read, since Dashboard
   // isn't itself under /[cycleScope]/. Drives Branch health's cycle
   // scoping and the "this cycle" option of the community-overview
-  // toggle below — see docs/development-plan.md's Phase 69.
+  // toggle below — see docs/plans/development-plan.md's Phase 69.
   const activeScopeSegment = await resolveDefaultScopeSegment(viewing);
   const activeScope = await resolveViewScopeFromSegment(viewing, activeScopeSegment);
   const scopeCycleIds = activeScope
@@ -378,7 +378,7 @@ export default async function DashboardPage({
     ? snapshot.activeMemberCount.thisCycle
     : snapshot.activeMemberCount.general;
 
-  // Member onboarding & first session (docs/development-plan.md's
+  // Member onboarding & first session (docs/plans/development-plan.md's
   // Phase 56) — a nudge, never a gate, so this panel only ever renders
   // until hasCompletedOnboarding is set (finished or skipped) and never
   // blocks anything else on this page.

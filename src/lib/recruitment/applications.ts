@@ -123,7 +123,7 @@ export async function submitRecruitmentApplication(
   // application gates on the cycle's own joining state (period + door +
   // capacity room); the general application gates on the community-wide
   // door toggles. An invite's *lane* — fixed at creation by the
-  // inviter's marks, docs/joining-admission-plan.md §2 — decides whether
+  // inviter's marks, docs/plans/archive/joining-admission-plan.md §2 — decides whether
   // its token belongs here at all: a direct lane redeems on
   // /invite/[token] and is rejected on /apply, while nomination and
   // consensus are *this* page with the lane's own window around it, and
@@ -360,7 +360,7 @@ export async function listApplicationAlerts(actor: Member) {
 // Holder-only — full applicant answers, filed evaluations, the
 // live-computed outcome, and (once reached) the persisted decision
 // plus any objections, one row per pending application. Scoped by the
-// holder's recruitment placement (docs/cycle-scope-remediation-plan.md
+// holder's recruitment placement (docs/plans/archive/cycle-scope-remediation-plan.md
 // §4.3): a cycle-placed holder sees only that cycle's applications
 // (formResponse.cycleId in their held scopes); a holder of the
 // cycle-less community/evergreen task sees every application — its own

@@ -460,7 +460,7 @@ async function insertApplicationResponse(formId: string, cycleId: string | null,
   return row;
 }
 
-describe("cycle-scoped recruitment authority (docs/cycle-scope-remediation-plan.md §4.3)", () => {
+describe("cycle-scoped recruitment authority (docs/plans/archive/cycle-scope-remediation-plan.md §4.3)", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
@@ -606,10 +606,10 @@ describe("cycle-scoped recruitment authority (docs/cycle-scope-remediation-plan.
   });
 });
 
-// --- cycle-targeted intake (docs/cycle-scope-remediation-plan.md §4.3,
+// --- cycle-targeted intake (docs/plans/archive/cycle-scope-remediation-plan.md §4.3,
 // work-plan step 8c) ---
 
-describe("cycle-targeted intake (docs/cycle-scope-remediation-plan.md §4.3/8c)", () => {
+describe("cycle-targeted intake (docs/plans/archive/cycle-scope-remediation-plan.md §4.3/8c)", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
@@ -784,10 +784,10 @@ describe("cycle-targeted intake (docs/cycle-scope-remediation-plan.md §4.3/8c)"
 });
 
 // --- cycle invites + capacity holds + joining seed + pipeline
-// visibility (docs/cycle-scope-remediation-plan.md §4.3, work-plan step
+// visibility (docs/plans/archive/cycle-scope-remediation-plan.md §4.3, work-plan step
 // 8d) ---
 
-describe("cycle invites + capacity holds + joining seed (docs/cycle-scope-remediation-plan.md §4.3/8d)", () => {
+describe("cycle invites + capacity holds + joining seed (docs/plans/archive/cycle-scope-remediation-plan.md §4.3/8d)", () => {
   beforeEach(async () => {
     await resetDatabase();
   });

@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 // Core, not module-gated — every Community needs some version of a
 // member directory to reach another member's visible contact methods
 // or activate Emergency access (see docs/spec.md's "Member contact &
-// privacy" and docs/development-plan.md's Phase 46). Plain name list;
+// privacy" and docs/plans/development-plan.md's Phase 46). Plain name list;
 // each member's own visible-to-you methods live on /members/[id].
 // Community-wide navigation belongs to /community, not this directory.
 //

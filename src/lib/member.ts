@@ -104,7 +104,7 @@ export async function findExistingMemberByLoginEmail(email: string) {
 // bug to fix, the correct behavior for a Community that never turns
 // Recruitment on). Once Recruitment is on, an *unrecognized* email
 // verifying an ordinary magic link returns null instead of silently
-// creating a Member — see docs/development-plan.md's Phase 32. Only
+// creating a Member — see docs/plans/development-plan.md's Phase 32. Only
 // new-membership creation is gated: an existing member (an identity
 // already on file) always logs in exactly as before, module on or off.
 export async function findOrCreateMemberByEmail(community: typeof communityTable.$inferSelect, email: string) {

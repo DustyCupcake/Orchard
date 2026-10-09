@@ -85,7 +85,7 @@ function taskHours(t: { effort: string; effortMagnitude: unknown; phaseId: strin
   return 0;
 }
 
-// Contribution category = Phase — see docs/development-plan.md's
+// Contribution category = Phase — see docs/plans/development-plan.md's
 // Phase 23: spec's own example categories ("planning, build, live
 // operation, wind-down") read exactly like Phase names, so this reuses
 // Phase 6's schema rather than inventing a second concept. A task with
@@ -176,7 +176,7 @@ export async function getContributionBreakdown(memberId: string, communityId: st
   // Contribution tracking). A shift isn't a Task, so it doesn't
   // inherit a Task's Effort magnitude for an hours figure —
   // completions are counted, not hour-weighted, for v1
-  // (docs/development-plan.md's Phase 30). ShiftSeries/ShiftOccurrence
+  // (docs/plans/development-plan.md's Phase 30). ShiftSeries/ShiftOccurrence
   // carry no Phase association at all, so — same as a phase-less task
   // — every completion lands in "Overall" rather than being silently
   // dropped or guessed into some other category.
@@ -270,12 +270,12 @@ export type ContributionCategoryAverage = {
 // "The average per category across the cycle's currently active
 // members (Participation status `coming`, not the whole all-time
 // community roster)" — see docs/spec.md's Contribution tracking, and
-// docs/development-plan.md's Phase 31 (closes the TODO Phase 23 left
+// docs/plans/development-plan.md's Phase 31 (closes the TODO Phase 23 left
 // here waiting on Participation to exist). Divided by every `coming`
 // member, not just those with an entry in a given category — a
 // category no one in the cycle has touched should pull the average
 // toward zero, not disappear from the denominator. "The cycle" here is
-// the viewer's own current view-scope cycle (docs/development-plan.md's
+// the viewer's own current view-scope cycle (docs/plans/development-plan.md's
 // Phase 65), not a bare community-wide heuristic. Null when there's no
 // resolved cycle (none open, or scoped to "all active" with 2+
 // candidates), or no one's declared `coming` yet for it — nothing

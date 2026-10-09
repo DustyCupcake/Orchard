@@ -2,7 +2,7 @@ import { pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core
 import { member } from "./member";
 import { objection } from "./recruitment";
 
-// The shielded half of objection handling (docs/joining-admission-plan.md
+// The shielded half of objection handling (docs/plans/archive/joining-admission-plan.md
 // §2.6/§4.3). `objection.raisedBy` is at rest in the objection row but
 // is only ever read by the mediation body; these two tables are what
 // make that promise enforceable rather than merely intended:

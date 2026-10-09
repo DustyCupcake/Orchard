@@ -39,7 +39,7 @@ export const declareParticipationInput = z.object({
 });
 export type DeclareParticipationInput = z.infer<typeof declareParticipationInput>;
 
-// §4.3/8d (D14) + docs/joining-admission-plan.md §2 — "accepting or
+// §4.3/8d (D14) + docs/plans/archive/joining-admission-plan.md §2 — "accepting or
 // redeeming seeds participation(cycle, member, 'coming') idempotently,
 // whatever lane the newcomer arrived through" (J12). Extracted out of
 // the three places that used to each carry their own copy (invites.ts's
@@ -117,7 +117,7 @@ export async function declareParticipation(actor: Member, cycleId: string, input
   }
 
   // A status change is the only thing that could move a
-  // cycle_type_count Tier's count — see docs/development-plan.md's
+  // cycle_type_count Tier's count — see docs/plans/development-plan.md's
   // Phase 40 and src/lib/settings/tiers.ts's syncComputedTiers.
   await syncComputedTiers(actor.id, actor.communityId);
 
@@ -154,7 +154,7 @@ export async function getMyParticipation(actor: Member, cycleId: string) {
 // computeAssemblyPhase already established — null when the Community
 // hasn't set one (most communities never will, per spec, unless
 // Recruitment is on). Outstanding invite links whose lane resolves to
-// the direct path (docs/joining-admission-plan.md §2/§4.1) "hold"
+// the direct path (docs/plans/archive/joining-admission-plan.md §2/§4.1) "hold"
 // capacity slots too, so they count against what's left here the same
 // way getCycleJoiningState counts them at the door; any lane that
 // routes through the evaluated application holds nothing.
@@ -205,7 +205,7 @@ export async function getCycleParticipationSummary(actor: Member, cycleId: strin
 
 // "Every open cycle this member has declared Participation `coming`
 // for" — the nav switcher's own aggregate definition
-// (docs/development-plan.md's Phase 65). Every existing caller of
+// (docs/plans/development-plan.md's Phase 65). Every existing caller of
 // getMyParticipation above resolves one cycle first; this is the bulk
 // counterpart that doesn't exist yet.
 export async function listComingCycleIds(actor: Member): Promise<string[]> {
@@ -265,7 +265,7 @@ export async function listComingMembers(
 // not_coming to" — distinct from the nav's own view-scope resolvers
 // (src/lib/cycles/view-scope.ts): a member glancing at a different
 // cycle in their nav should never stop seeing their own outstanding
-// profile questions (docs/development-plan.md's Phase 65). Most-
+// profile questions (docs/plans/development-plan.md's Phase 65). Most-
 // recently-started wins if a member has somehow declared on more than
 // one open cycle. Falls back to the community's single open cycle when
 // this member has declared on nothing at all — reproduces the old
@@ -315,7 +315,7 @@ export type OpenEventParticipationCard = {
 //
 // Deliberately assembled from those two per-cycle functions rather than a
 // hand-rolled group-by COUNT: outstanding direct-lane invitees "hold"
-// capacity slots just like a declaration does (docs/joining-admission-plan.md
+// capacity slots just like a declaration does (docs/plans/archive/joining-admission-plan.md
 // §2/§4.1), so a second counting path here would be a second thing to keep
 // honest against the Events page. The query count is bounded by the number
 // of open cycles, which is near-always 1 — starting a second one while one's

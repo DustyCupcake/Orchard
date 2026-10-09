@@ -97,7 +97,7 @@ export async function getPlot(actor: Member, plotId: string) {
 }
 
 // Holder-gated — "edited by whoever holds the Spatial-planning task"
-// (docs/development-plan.md's Phase 36 done-when). Read access (any
+// (docs/plans/development-plan.md's Phase 36 done-when). Read access (any
 // member can view) lives in the page itself, not here.
 export async function createPlot(actor: Member, cycleId: string | null, rawInput: CreatePlotInput) {
   // Re-validated here, not just trusted from an API route's own
@@ -152,7 +152,7 @@ export async function updatePlot(actor: Member, plotId: string, rawInput: Update
 // The standalone clone picker's source list — every past Cycle (other
 // than the one being planned) that already has a Plot, most-recent-
 // first, with same-type Cycles bubbled to the front once Cycle type
-// (Phase 40) is in use — see docs/development-plan.md's own note under
+// (Phase 40) is in use — see docs/plans/development-plan.md's own note under
 // Phase 36. Falls back to plain most-recent-first when the target
 // Cycle has no type at all (nothing to match against) — this stays a
 // plain query either way, no schema change on either side.

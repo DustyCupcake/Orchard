@@ -25,7 +25,7 @@ const STATUS_MESSAGE: Record<string, string> = {
 // round-trip entirely: a valid, unexpired, unredeemed, unrevoked token
 // is itself the proof of legitimacy.
 //
-// docs/joining-admission-plan.md §2 splits this page four ways, one per
+// docs/plans/archive/joining-admission-plan.md §2 splits this page four ways, one per
 // lane path, and the branch is made here rather than inside the lib so
 // each shape can say something different about what is about to happen
 // to this person:

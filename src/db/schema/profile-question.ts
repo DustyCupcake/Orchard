@@ -27,7 +27,7 @@ export const profileQuestionResponseTypeEnum = pgEnum("profile_question_response
   "text",
   "single_choice",
   "multi_choice",
-  // See docs/development-plan.md's Phase 44 — its only real consumer is
+  // See docs/plans/development-plan.md's Phase 44 — its only real consumer is
   // an opt-in birthday surfaced as its own layer on /calendar, visible
   // per whatever visibility the answering member already controls for
   // any once-ever answer (i.e. only to themselves — no answer-sharing
@@ -54,7 +54,7 @@ export const profileQuestionScopeEnum = pgEnum("profile_question_scope", [
 // example: `["application", "onboarding"]`) sat deliberately unbuilt
 // since Phase 16, since guessing its shape before a real consumer
 // existed risked getting it wrong the same way building Forms/Profile
-// questions standalone would have. docs/development-plan.md's Phase 56
+// questions standalone would have. docs/plans/development-plan.md's Phase 56
 // (Member onboarding) is that first real consumer — see
 // src/lib/onboarding.ts. Recruitment's own "application" intake never
 // grew into a consumer of this (Phase 33 built application intake on

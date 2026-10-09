@@ -6,7 +6,7 @@ import { isModuleOpenToEveryone, type PermissionModuleKey } from "./permissions"
 
 type Member = typeof member.$inferSelect;
 
-// The one scope read (docs/cycle-scope-remediation-plan.md §2.1/§2.4),
+// The one scope read (docs/plans/archive/cycle-scope-remediation-plan.md §2.1/§2.4),
 // passed by everything that asks "does this actor do coordination
 // here?": `null` is the community-wide superset ("any coordination
 // task, any branch, any cycle" — the Escalation/nav/dashboard gates);
@@ -45,7 +45,7 @@ export const COORDINATION_MODULE_KEYS = [
   "community_coordination",
 ] as const satisfies readonly PermissionModuleKey[];
 //
-// Scope resolution (docs/cycle-scope-remediation-plan.md §2.4):
+// Scope resolution (docs/plans/archive/cycle-scope-remediation-plan.md §2.4):
 // - `null` — any granted coordination task, any branch, any cycle
 //   (the community-wide check used by the Escalation view and the
 //   coordination nav/dashboard gates, all explicitly cross-branch).
@@ -59,7 +59,7 @@ export const COORDINATION_MODULE_KEYS = [
 //   granted task in that branch OR a granted task placed in that
 //   cycle. A task sitting in cycle C is covered by the whole row of
 //   cycle C (any branch), and a task outside every cycle is covered by
-// Scope resolution (docs/cycle-scope-remediation-plan.md §2.4):
+// Scope resolution (docs/plans/archive/cycle-scope-remediation-plan.md §2.4):
 // - `null` — any coordination authority at all, any branch, any cycle
 //   (the Escalation/nav/dashboard gates, all explicitly cross-branch).
 // - a `string` branchId — column semantics: a *cycle-less* granted
@@ -100,7 +100,7 @@ export interface CoordinationCoverage {
 // interface only warns" behaviour.
 async function resolveCoordinationCoverage(actor: Member): Promise<CoordinationCoverage> {
   // An open module of either kind answers community-wide immediately
-  // (docs/open-permissions-plan.md D3): `communityWide: true` short-circuits
+  // (docs/plans/archive/open-permissions-plan.md D3): `communityWide: true` short-circuits
   // every downstream isCoordinationHolder scope check, so an open
   // branch_coordination covers every branch and an open
   // community_coordination is unchanged in effect. Checked before the join
@@ -274,6 +274,62 @@ export async function listCoordinationHoldersForScopes(
     }
   }
   return { byBranch, byCycle, community };
+}
+
+// Every real (non-shadow) holder whose coordination grant covers a task
+// placed at `scope`: a cycle-less community_coordination grant, a
+// cycle-less branch_coordination grant in the task's branch, and any
+// coordination grant placed in the task's cycle. The same three rules
+// resolveCoordinationCoverage and listCoordinationHoldersForScopes apply,
+// answered the other way round — "who covers this task" rather than
+// "what does this member cover" — and for *all* holders rather than the
+// first per scope.
+//
+// Exists for one question: is anyone other than a given member in a
+// position to approve? An approval rule that falls back to ordinary
+// holders when nobody coordinates a scope has to know whether anybody
+// does, and has to be able to leave the requester out of that count (a
+// sole coordinator asking to join a task is not their own approver).
+//
+// A module open to everyone is reported as `everyone`, not expanded into
+// member ids: it is the community saying coordination is nobody's in
+// particular, and listing the whole membership would be both wrong and
+// expensive.
+export async function listCoordinatorIdsForScope(
+  communityId: string,
+  scope: { branchId: string; cycleId: string | null },
+): Promise<{ everyone: boolean; memberIds: Set<string> }> {
+  if (
+    (await isModuleOpenToEveryone(communityId, "branch_coordination")) ||
+    (await isModuleOpenToEveryone(communityId, "community_coordination"))
+  ) {
+    return { everyone: true, memberIds: new Set() };
+  }
+
+  const covers: (SQL | undefined)[] = [
+    and(eq(permissionGrant.moduleKey, "community_coordination"), isNull(task.cycleId)),
+    and(
+      eq(permissionGrant.moduleKey, "branch_coordination"),
+      isNull(task.cycleId),
+      eq(task.branchId, scope.branchId),
+    ),
+  ];
+  if (scope.cycleId !== null) covers.push(eq(task.cycleId, scope.cycleId));
+
+  const rows = await db
+    .selectDistinct({ memberId: taskAssignment.memberId })
+    .from(permissionGrant)
+    .innerJoin(task, eq(task.id, permissionGrant.taskId))
+    .innerJoin(taskAssignment, and(eq(taskAssignment.taskId, task.id), eq(taskAssignment.isShadow, false)))
+    .where(
+      and(
+        eq(permissionGrant.communityId, communityId),
+        inArray(permissionGrant.moduleKey, [...COORDINATION_MODULE_KEYS]),
+        eq(task.communityId, communityId),
+        or(...covers)!,
+      ),
+    );
+  return { everyone: false, memberIds: new Set(rows.map((r) => r.memberId)) };
 }
 
 // The task's own coordination slot (Phase 12's is_coordination_slot,

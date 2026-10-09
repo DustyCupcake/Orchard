@@ -1,10 +1,18 @@
 # Recruitment Access Plan — the task-gated floor, and who may evaluate
 
-**Status:** §1–§3 describe a defect that is live today and are partially mitigated by the
-/recruitment hub (landed, see §5). §4 is **superseded** by `docs/open-permissions-plan.md`
-(see its §2.3 for the scope semantics that now apply to Recruitment). Decisions D1–D5 in §6
-below are specific to the *reporting* half of this doc and still stand; the *design* half has
-moved.
+**Status: mostly superseded; one gap still live.** §1's defect (an unsatisfiable evaluator count)
+is **fixed** — not by the Tier rule this doc proposed, but by
+[`archive/open-permissions-plan.md`](archive/open-permissions-plan.md)'s general per-module open
+flag, which is why no `recruitment_evaluator_rule` table exists and none should be added. §5's
+`/recruitment` hub shipped. §4 is **superseded outright** by that same doc; its §2.3 carries the
+scope semantics that now apply to Recruitment. Decisions D1–D5 in §6 below are specific to the
+*reporting* half and still stand; the *design* half has moved.
+
+**The one piece of real remaining work in this document is §2.4** — the pipeline still calls only
+`requireRecruitmentTaskHolder` and never `listHeldRecruitmentScopes`, so a task-scoped evaluator
+sees every cycle rather than its own. `src/lib/recruitment/pipeline.ts:136` and the `INTERIM:` pin
+in `tests/open-permissions.test.ts:541` are the two places that have to change together. Everything
+else here is either shipped or deliberately superseded.
 
 **Scope:** the Recruitment module's access model — who can see the pipeline, who can file
 an evaluation, who can decide — and the question of whether a Community should be able to
@@ -70,7 +78,7 @@ tuned `recruitmentEvaluatorCount` to 3 has expressed an intent, and quietly rewr
 All thirteen `PermissionModuleKey` values resolve identically — "whoever, non-shadow,
 currently holds a task carrying a `permission_grant` row for this module," scoped by the
 granting task's own `task.cycleId` (`permissions.ts:104-126`, `171-180`; the scope rule is
-`docs/cycle-scope-remediation-plan.md` §2.1). Phase 63 of the development plan
+`docs/plans/archive/cycle-scope-remediation-plan.md` §2.1). Phase 63 of the development plan
 *deliberately removed* nine looser `Community` columns and a `Task.tags` match, because they
 were a second authority path that could be set inconsistently — the `Task.tags` version could
 silently grant live access from an ordinary board-categorisation tag.
@@ -122,7 +130,7 @@ and addressed to the wrong person. §5 fixes this.
 therefore sees **every** Community's applications on `/recruitment`, while `/applications`
 correctly shows only their own scope's. Not a permissions escalation (the route is still
 holder-only) but a display inconsistency that violates the strictness rule D1 in
-`docs/cycle-scope-remediation-plan.md` §6. Worth a separate fix; noted, not fixed here.
+`docs/plans/archive/cycle-scope-remediation-plan.md` §6. Worth a separate fix; noted, not fixed here.
 
 ---
 
@@ -147,7 +155,7 @@ of manual/tenure/completion/cohort).
 
 ## 4. Proposed design (not built) — SUPERSEDED
 
-> **Superseded by `docs/open-permissions-plan.md`.** What follows was written before the
+> **Superseded by `docs/plans/archive/open-permissions-plan.md`.** What follows was written before the
 > question was clarified: the mechanism is not a recruitment-only, Tier-based evaluator rule
 > but a per-module "everyone has this permission" flag on all 14 modules, stored in a new
 > `open_permission_grant` table. The *diagnosis* in §1–§3 still stands — the

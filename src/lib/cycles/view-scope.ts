@@ -11,7 +11,7 @@ type CycleRow = typeof cycle.$inferSelect;
 
 // "Every currently-open cycle the member has actually declared
 // Participation `coming` for" — the nav's own "all active cycles"
-// aggregate definition (docs/development-plan.md's Phase 65). Not
+// aggregate definition (docs/plans/development-plan.md's Phase 65). Not
 // "every cycle ever," not an arbitrary single pick.
 export async function listActiveCyclesForMember(actor: Member): Promise<CycleRow[]> {
   const cycleIds = await listComingCycleIds(actor);

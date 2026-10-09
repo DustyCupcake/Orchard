@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic";
 // has configured as its application, the same field-rendering shape
 // /feedback already uses for the authenticated post-cycle survey.
 //
-// Four things ride on the query string now (docs/joining-admission-plan.md
+// Four things ride on the query string now (docs/plans/archive/joining-admission-plan.md
 // §2.4/§2.8), and all four are the same idea: the link somebody was sent
 // is the context, and the page has to honour it rather than treating
 // itself as the plain public door.

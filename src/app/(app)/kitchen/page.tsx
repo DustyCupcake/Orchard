@@ -417,7 +417,7 @@ export default async function KitchenPage({
       <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Kitchen</h1>
       <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
         The community&rsquo;s food schedule — menus, recipes scaled to the eaters, and food ideas anyone can suggest. See
-        docs/spec.md&rsquo;s &ldquo;Food &amp; drinks&rdquo; and docs/food-drinks-module-plan.md.
+        docs/spec.md&rsquo;s &ldquo;Food &amp; drinks&rdquo; and docs/plans/archive/food-drinks-module-plan.md.
       </p>
 
       {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}

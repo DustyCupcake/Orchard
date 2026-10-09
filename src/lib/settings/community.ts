@@ -31,7 +31,7 @@ export async function getCommunity(actor: Member) {
   return row;
 }
 
-// Deliberately narrow — per docs/development-plan.md's Phase 9 scope
+// Deliberately narrow — per docs/plans/development-plan.md's Phase 9 scope
 // ("branches, tiers, and cycle/phase structure"), not the full
 // Configuration model. membership_model and branch_membership_model
 // stay DB-only for now. The call defaults are wired up here in
@@ -72,7 +72,7 @@ export const updateCommunityInput = z.object({
   // (per-cycle doors live on the cycle itself).
   recruitmentApplicationsOpen: z.boolean().optional(),
   recruitmentInvitesOpen: z.boolean().optional(),
-  // The third door (docs/joining-admission-plan.md §2.3/J3): whether an
+  // The third door (docs/plans/archive/joining-admission-plan.md §2.3/J3): whether an
   // interview can be scheduled at all. Distinct from a lane's
   // `interviewRequired` — that says "an arrival on this lane is
   // interviewed", this says "no interviews are happening right now".
