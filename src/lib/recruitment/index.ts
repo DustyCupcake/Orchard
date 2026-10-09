@@ -16,6 +16,7 @@ export * from "./admission";
 // Standing availability (docs/admission-flow.md §4) — pure DB writes, safe to export.
 export * from "./standing-availability";
 export * from "./subscriptions";
+export * from "./support";
 export * from "./decisions";
 export * from "./objections";
 export * from "./intro-call";

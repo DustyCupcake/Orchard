@@ -358,4 +358,38 @@ describe("migrating a database that already has data", () => {
     // The twins each got their own override, not each other's.
     expect(setOf(twinA).find((r) => r.handles_neither)!.name).not.toBe(setOf(twinB).find((r) => r.handles_neither)!.name);
   });
+
+  // 0094 adds a NOT NULL token to arrivals that already exist. Postgres checks the
+  // constraint against existing rows when the column is added, so a plain
+  // NOT NULL would fail on any database with an arrival in it — the same shape of
+  // failure as 0083. Each existing arrival has to get a token of its own (a
+  // shared or guessable one would let anyone vouch for anybody), and 0095 then
+  // drops the nomination tables whose job the supports now do.
+  it("0094 gives every existing arrival its own support token, and 0095 drops the nomination tables", async () => {
+    db = await createScratchDatabase();
+    await db.migrateBefore("0094_admission_support");
+    const sql = db.sql;
+
+    const [communityId, laneId] = Array.from({ length: 2 }, uuid);
+    await sql`insert into community (id, name) values (${communityId}, 'C')`;
+    await sql`insert into admission_lane (id, community_id, name, kind) values (${laneId}, ${communityId}, 'Open', 'public')`;
+    await sql`insert into admission (community_id, email, name, lane_id, route, token) values
+      (${communityId}, 'a@example.com', 'A', ${laneId}, 'application', 'token-a'),
+      (${communityId}, 'b@example.com', 'B', ${laneId}, 'application', 'token-b'),
+      (${communityId}, 'c@example.com', 'C', ${laneId}, 'application', 'token-c')`;
+    const [{ before }] = await sql`select to_regclass('joining_nomination') is not null as before`;
+    expect(before).toBe(true);
+
+    await db.migrateRemaining();
+
+    const rows = await sql`select token, support_token from admission order by token`;
+    expect(rows).toHaveLength(3);
+    for (const r of rows) {
+      expect(r.support_token).toMatch(/^[0-9a-f]{64}$/);
+      expect(r.support_token).not.toBe(r.token);
+    }
+    expect(new Set(rows.map((r) => r.support_token)).size).toBe(3);
+    const [{ after }] = await sql`select to_regclass('joining_nomination') is null and to_regclass('joining_support') is null as after`;
+    expect(after).toBe(true);
+  });
 });

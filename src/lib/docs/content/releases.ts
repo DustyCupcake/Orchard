@@ -29,6 +29,19 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-10-11",
+    title: "Joining: members' word can skip the rest",
+    summary: "A lane can say that a few members vouching for someone is enough, and nobody has to wait for it.",
+    points: [
+      "Under Settings → Recruitment, a lane with an application or an interview can add \"let members' support skip the rest\" and a number. When that many members have said they know the person — or think they'd fit — the rest of the process is skipped and they're admitted.",
+      "It never makes anyone wait. The person goes through the lane as normal, and if nobody vouches, nothing changes. It replaces the old \"one more member's word\" option, which did make people wait.",
+      "Everyone going through an application or interview gets a link to send to members who know them, on their own page. A member who opens it says how they know the person, once. The person who invited them can't be counted again.",
+      "People reading an application see who has vouched for them, and can add their own word from the applications list without needing the link. You can also ask members by name to look — they each get their own email, and no deadline.",
+      "It never skips past a concern someone has raised. That is always settled by the mediation team first.",
+    ],
+    source: "the support shortcut: members' word skips the rest, alongside the path and never past a concern",
+  },
+  {
     date: "2026-10-10",
     title: "Joining: a full event waits instead of turning people away",
     summary: "An invitation now respects the same doors as an application, and someone approved for an event that has filled up waits for room.",

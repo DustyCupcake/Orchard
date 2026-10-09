@@ -8,6 +8,8 @@ import { assertNotViewingAs } from "@/lib/view-as";
 import {
   raiseObjection,
   raiseObjectionInput,
+  pokeForSupport,
+  recordSupport,
   recordDecisionIfReached,
   resolveWiderDiscussionInput,
   resolveWiderDiscussionManually,
@@ -107,4 +109,39 @@ export async function resolveWiderDiscussionAction(formData: FormData) {
 
   revalidatePath("/applications");
   redirect("/applications?decisionResolved=1");
+}
+
+// A holder who can already see an application supports it from here with one
+// action, no link needed (docs/admission-flow.md §2). The marks are their own.
+export async function supportApplicationAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await recordSupport(actor, {
+      arrivalId: String(formData.get("arrivalId") ?? ""),
+      knowsPersonally: formData.get("knowsPersonally") === "on",
+      thinksGoodFit: formData.get("thinksGoodFit") === "on",
+    });
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/applications");
+  redirect("/applications?supported=1");
+}
+
+// Ask named members to look at somebody's support link: one message each, never
+// a broadcast. Best-effort by design, so the page says who was and wasn't reached
+// rather than failing — and the link itself is always on the page to hand over.
+export async function askMembersToSupportAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    const memberIds = formData.getAll("memberId").map(String).filter(Boolean);
+    const { poked } = await pokeForSupport(actor, String(formData.get("arrivalId") ?? ""), memberIds);
+    if (poked.length === 0) {
+      throw new AppError("Nobody was asked — pick at least one person, and check they have an email on file");
+    }
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/applications");
+  redirect("/applications?asked=1");
 }

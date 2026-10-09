@@ -47,7 +47,7 @@ export * from "./admission-lane";
 export * from "./admission";
 export * from "./community-check";
 export * from "./joining-lane";
-export * from "./joining-support";
+export * from "./admission-support";
 export * from "./inquiry";
 export * from "./recruitment";
 export * from "./recruitment-mediation";

@@ -88,6 +88,12 @@ export const admission = pgTable(
     // process until admission.
     token: text("token").notNull(),
 
+    // The link the person hands to members who know them (§2, the support
+    // shortcut). A separate credential from `token` on purpose: what a
+    // supporter holds can record a vouch and nothing else, and can never act
+    // for the person or read their page.
+    supportToken: text("support_token").notNull(),
+
     // Facts. Each written by exactly one function; see §4. Timestamps
     // rather than booleans because "when" is the question every screen
     // asks ("how long have they sat there"), and a boolean has no answer.
@@ -100,7 +106,7 @@ export const admission = pgTable(
     // evaluations table, and §4 forbids keeping a second opinion of it.
     decisionRecordedAt: timestamp("decision_recorded_at", { withTimezone: true }),
     // Supports received, and whether the shortcut was reached. The count
-    // is read off joining_support rather than stored; what is stored is
+    // is read off admission_support rather than stored; what is stored is
     // *that the shortcut fired*, because that is a one-way fact with no
     // other witness.
     supportShortcutReachedAt: timestamp("support_shortcut_reached_at", { withTimezone: true }),
@@ -120,6 +126,7 @@ export const admission = pgTable(
     // only thing here that must be unique. Everything else is either an
     // id we generated or a nullable pointer that may legitimately be null.
     uniqueIndex("admission_token_idx").on(t.token),
+    uniqueIndex("admission_support_token_idx").on(t.supportToken),
     // One person, one arrival. A second one would mean two lanes could
     // claim the same person and the derived stage could disagree with
     // itself — the exact shape §1 principle 5 exists to prevent. Scoped by

@@ -116,6 +116,7 @@ export async function createAdmissionArrival(input: ArrivalInput): Promise<{ arr
       formResponseId: input.formResponseId ?? null,
       ...snapshot,
       token,
+      supportToken: randomBytes(24).toString("base64url"),
       consentGivenAt: input.consentGiven ? now : null,
       applicationSubmittedAt: input.applicationSubmitted ? now : null,
     })
@@ -564,6 +565,7 @@ export async function ensureArrivalForApplication(formResponseId: string): Promi
       formResponseId,
       ...snapshot,
       token: randomBytes(24).toString("base64url"),
+      supportToken: randomBytes(24).toString("base64url"),
       applicationSubmittedAt: response.submittedAt,
     })
     .onConflictDoNothing()

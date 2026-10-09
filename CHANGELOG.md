@@ -8,6 +8,26 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## the support shortcut: members' word skips the rest, alongside the path and never past a concern
+
+Migrations **0094** and **0095**. [`docs/admission-flow.md`](docs/admission-flow.md) §8 step 3 and §2's "The support shortcut". It replaces nomination, which the earlier commits removed from lanes and this one removes from the database.
+
+**What it is.** A lane with an application and/or an interview can say *N supports skip the rest*. The person starts the lane's normal path at once; whenever N members have vouched, whatever is left — application, interview, evaluation, decision — is skipped and they are admitted (through the one admission function, so a full event waitlists them rather than being overrun). If support never reaches N nothing happens: no window, no wait, no skip button, no lapse job, nothing to be stuck behind. Public applicants get it exactly as invitees do.
+
+**A support** (`admission_support`) is one member's word about one arrival, once, saying how they know them — personally, or as a good fit — resubmittable in place. At least one mark is required, because a support with neither records nothing. Not the person (matched by login email, so a member who is also the applicant can't vouch for themselves) and not whoever invited them, whether the invite is on the arrival or behind the application: the inviter's word is already counted, and counting it twice is how a shortcut becomes a rubber stamp. Every support is shown to the people evaluating the application whether or not the shortcut is reached.
+
+**It never skips past a standing concern.** When count reaches N and an objection stands on the arrival (on its application or its invite), the result is `heldByConcern` and the arrival is *not* marked as having reached the shortcut; the count is taken again the moment the concern is settled. Mediation remains the only way a concern ends.
+
+**An application accepted by the shortcut is accepted the way a `proceed` decision is** (`acceptArrivalByShortcut`): a decision row is made if the evaluators hadn't decided (`rule_outcome: proceed`, resolved accepted) or an open wider-discussion one is resolved accepted, then the member and the Accompaniment task follow as for any acceptance. That is also what stops the evaluators' later decision, or the wider-discussion job, from contradicting an admission already made: a decision row exists, so both are no-ops. An invitee on an interview-only lane (no application) is admitted directly.
+
+**The links.** Each arrival has a second token, `support_token`, a separate credential from their private page's: what a supporter holds can record a vouch and nothing else, and can never act for the person or read their page (0094 gives every existing arrival its own, 244 bits each, before making the column required — tested on a populated database). `/support/<token>` is for signed-in members, and is the only place the person's name is shown to anyone but them and the people evaluating them. The person's own page shows the link ("send this to members who know you") and who has vouched. A holder looking at an application supports it from `/applications` with one action and no link, and sees the vouches on every application there. The inviter's *People you invited, on their way in* section on `/invites` has the link and the ask form — the arrival doesn't exist until the invitee uses the invite, so it can't be asked for at the moment the invite is made.
+
+**Asking.** One function (`pokeForSupport`), two callers (the inviter, and a recruitment holder): one email per named member, never a broadcast; best-effort, so a member with no address or a mailer that isn't configured fails nothing and the asker always has the link; and it implies no deadline, blocks nothing and counts toward nothing — only a recorded support counts. The old email, which promised a window that lapses, is replaced.
+
+**Dropped (0095):** `joining_nomination`, `joining_support` and their enum. Nothing referenced them. `community.recruitment_nomination_window_hours` and `joining_lane` remain, unread, for the clean-up step.
+
+Tests: `support-shortcut.test.ts` (new, 16) and a populated-database migration case; the suite is 1,964, green, lint and `tsc` clean. Checked by hand in `next dev`: a public application shows its support link and "nobody has vouched yet"; a signed-in member opens the link, sees who it's about and records a word; the application list shows "Vouched for by Bob (knows them) — 1 of the 2"; a second word from the list's one-action form admitted the applicant, with the decision accepted and the accepted email sent. **Not checked in a browser:** the inviter's *People you invited* section and the ask-members forms (type-checked and tested through the library), and delivery of the ask email through a real relay.
+
 ## doors checked everywhere somebody enters, and a place in an event taken at admission with a waitlist
 
 No migration. [`docs/admission-flow.md`](docs/admission-flow.md) §8 step 2 (§6 doors and capacity).

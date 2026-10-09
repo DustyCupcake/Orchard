@@ -169,7 +169,7 @@ Two things this deliberately gives up, which I'd like you to confirm:
 The public-application lane always has an application (it *is* the door), so its application toggle is
 fixed on.
 
-### The support shortcut (decided)
+### The support shortcut (decided; built in step 3)
 
 Any lane that has a process (an application and/or an interview) can add a shortcut: **N supports from
 members skip whatever is left and admit.** It is the same mechanism for a public applicant and for an

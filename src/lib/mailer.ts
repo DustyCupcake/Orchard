@@ -185,34 +185,27 @@ export async function sendBackstopHardFlagEmail(
   await sendPlainTextEmail(email, subject, text, `backstop hard flag ("${input.taskTitle}"):\n${input.taskUrl}`);
 }
 
-// docs/joining-admission-plan.md §2.4's "poke": the inviter of a
-// nomination names the members they think also know the invitee, and
-// those members each get one email carrying the support link. No action
-// token and no per-person state here, unlike the task-nomination email
-// above — because "you've been asked to support {name}" has exactly one
-// action (open the link, say how you know them) and supporting is
-// idempotent by construction (src/lib/recruitment/support.ts's
-// recordSupport upserts in place). A token would buy nothing and would
-// expire a link the invitee is still relying on.
-//
-// Deliberately one email per named person rather than one broadcast: the
-// plan is explicit that "nothing broadcasts the nominee's existence
-// beyond who the inviter chose", and a BCC would break that.
-export async function sendNominationSupportRequestEmail(
+// Sent when somebody asks a named member to look at a support link
+// (docs/admission-flow.md §2): one email each, never a broadcast, because
+// nothing should announce a person's existence beyond who was asked. No action
+// token and no per-person state — the link has exactly one action (open it, say
+// how you know them) and recording a support is idempotent by construction. It
+// promises nothing about a deadline, because there isn't one: support is a
+// shortcut alongside the person's own path, not something they wait on.
+export async function sendSupportRequestEmail(
   email: string,
-  input: { askerName: string; nomineeLabel: string | null; supportUrl: string; windowHours: number; onBehalfOfCommunity: boolean },
+  input: { askerName: string; communityName: string; supportUrl: string },
 ) {
-  const subject = `${input.askerName} asked you to vouch for someone${input.nomineeLabel ? ` (${input.nomineeLabel})` : ""}`;
+  const subject = `${input.askerName} asked you to vouch for someone joining ${input.communityName}`;
   const text = [
-    `${input.askerName} has asked you to support someone's join${input.nomineeLabel ? `: ${input.nomineeLabel}` : ""}.`,
+    `${input.askerName} has asked you to support someone's request to join ${input.communityName}.`,
     ``,
     `If you know them, or you'd expect them to fit, this link is all it takes:`,
     `${input.supportUrl}`,
     ``,
-    `You'll be asked to say how you know them. Nothing about this is broadcast, and nobody is told who you supported unless they support it themselves.`,
-    `If nobody gets round to it within ${input.windowHours} hours, nothing happens to them — the request just lapses and they carry on.${input.onBehalfOfCommunity ? " They're also waiting on the community's own application process, so this is a bonus, not a gate." : ""}`,
+    `You'll be asked to say how you know them. Nothing about this is broadcast. If you don't know them, you can ignore this — nothing happens to them either way, they just carry on with the process they're already in.`,
   ].join("\n");
-  await sendPlainTextEmail(email, subject, text, `nomination support request for ${email}:\n${input.supportUrl}`);
+  await sendPlainTextEmail(email, subject, text, `support request for ${email}:\n${input.supportUrl}`);
 }
 
 // The two emails a person in the admission funnel always gets

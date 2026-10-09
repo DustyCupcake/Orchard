@@ -9,6 +9,7 @@ import {
   claimInquiry,
   createCommunityInvite,
   createCommunityInviteInput,
+  pokeForSupport,
   resolveInquiry,
   revokeCommunityInvite,
 } from "@/lib/recruitment";
@@ -63,6 +64,24 @@ export async function createCommunityInviteAction(formData: FormData) {
   // of §2.4's poke option is that the inviter can hand it over or ask
   // specific people *now*, while they still remember who.
   redirect(created ? `/invites?created=1&invite=${created.id}` : "/invites?created=1");
+}
+
+// The inviter asks named members to look at their invitee's support link: one
+// email each, never a broadcast (docs/admission-flow.md §2). Best-effort, so the
+// message says who was reached, and the link is on the page to hand over by hand.
+export async function askMembersToSupportAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    const memberIds = formData.getAll("memberId").map(String).filter(Boolean);
+    const { poked } = await pokeForSupport(actor, String(formData.get("arrivalId") ?? ""), memberIds);
+    if (poked.length === 0) {
+      throw new AppError("Nobody was asked — pick at least one person, and check they have an email on file");
+    }
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/invites");
+  redirect("/invites?asked=1");
 }
 
 export async function revokeCommunityInviteAction(formData: FormData) {

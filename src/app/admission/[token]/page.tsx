@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community } from "@/db/schema";
-import { getArrivalByToken, loadArrivalReadout } from "@/lib/recruitment";
+import { getArrivalByToken, listSupports, loadArrivalReadout, supportLink } from "@/lib/recruitment";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY } from "@/components/ui/kit";
 import { sendSignInLinkAction, withdrawAction } from "./actions";
 
@@ -46,6 +46,11 @@ export default async function AdmissionPage({
     arrival.requiredEvaluation && "A decision, from the people who read your application or met you",
   ].filter(Boolean) as string[];
 
+  const supports = await listSupports(arrival.id);
+  // Shown while there is something to vouch for: a lane with an application or an
+  // interview. (A community check has its own way for the community to speak.)
+  const canBeVouchedFor = arrival.requiredEvaluation && !arrival.admittedMemberId && !arrival.declinedAt && !arrival.withdrawnAt;
+
   const finished = readout.stage === "admitted" || readout.stage === "declined" || readout.stage === "withdrawn";
 
   return (
@@ -80,6 +85,28 @@ export default async function AdmissionPage({
             It goes to {arrival.email}, and works once for 15 minutes.
           </p>
         </form>
+      )}
+
+      {canBeVouchedFor && (
+        <section className="mt-8">
+          <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Members who know you</h2>
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+            If you know people in {communityRow?.name ?? "the community"}, send them this link. It lets them say how they know you
+            {arrival.supportShortcutCount
+              ? ` — and when ${arrival.supportShortcutCount} member${arrival.supportShortcutCount === 1 ? " has" : "s have"} done that, the rest of the process is skipped and you're in.`
+              : ", and the people reading your request will see it."}{" "}
+            It&rsquo;s optional: if nobody does, nothing changes and you simply carry on.
+          </p>
+          <p className="mt-2 break-all text-[length:var(--text-body)] text-[var(--text)]">{supportLink(arrival.supportToken)}</p>
+          <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+            This is a different link from this page&rsquo;s — it can only be used to vouch, never to see or change anything of yours.
+          </p>
+          <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
+            {supports.length === 0
+              ? "Nobody has vouched yet."
+              : `Vouched for by ${supports.map((sp) => sp.name).join(", ")}.`}
+          </p>
+        </section>
       )}
 
       {steps.length > 0 && !finished && (

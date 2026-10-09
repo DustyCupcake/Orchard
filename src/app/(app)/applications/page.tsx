@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { cycle } from "@/db/schema";
+import { cycle, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
@@ -20,10 +20,12 @@ import type { FormField } from "@/lib/forms";
 import { ForbiddenError } from "@/lib/errors";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
 import {
+  askMembersToSupportAction,
   raiseObjectionAction,
   resolveWiderDiscussionAction,
   setRecruitmentSubscriptionAction,
   submitEvaluationAction,
+  supportApplicationAction,
 } from "./actions";
 import SelectField from "@/components/ui/SelectField";
 
@@ -67,6 +69,8 @@ export default async function ApplicationsPage({
     evaluated?: string;
     objectionRaised?: string;
     decisionResolved?: string;
+    supported?: string;
+    asked?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
@@ -74,7 +78,7 @@ export default async function ApplicationsPage({
     redirect("/login");
   }
 
-  const { error, subscribed, unsubscribed, evaluated, objectionRaised, decisionResolved } = await searchParams;
+  const { error, subscribed, unsubscribed, evaluated, objectionRaised, decisionResolved, supported, asked } = await searchParams;
 
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");
@@ -118,6 +122,17 @@ export default async function ApplicationsPage({
     }
   }
 
+  // Everybody who could be asked to vouch — loaded only when there is an
+  // application to ask about, because it is the whole member list.
+  const askable =
+    full.length > 0
+      ? await db
+          .select({ id: member.id, name: member.name })
+          .from(member)
+          .where(and(eq(member.communityId, viewing.communityId), ne(member.id, viewing.id)))
+          .orderBy(member.name)
+      : [];
+
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "3rem", maxWidth: 760 }}>
       <h1>Applications</h1>
@@ -133,6 +148,8 @@ export default async function ApplicationsPage({
         <>
           {error && <p style={{ color: "crimson" }}>{error}</p>}
           {subscribed && <p style={{ color: "#2a7a2a" }}>You&rsquo;re subscribed to application alerts.</p>}
+          {supported && <p style={{ color: "#2a7a2a" }}>Thank you — your word is recorded.</p>}
+          {asked && <p style={{ color: "#2a7a2a" }}>Asked. Each person you named got their own email with the link.</p>}
           {unsubscribed && <p style={{ color: "#2a7a2a" }}>Unsubscribed.</p>}
           {evaluated && <p style={{ color: "#2a7a2a" }}>Your recommendation was saved.</p>}
           {objectionRaised && <p style={{ color: "#2a7a2a" }}>Your objection was recorded.</p>}
@@ -262,7 +279,7 @@ export default async function ApplicationsPage({
               <h2>Applications ({full.length})</h2>
               <p style={{ color: "#666", fontSize: "0.85rem" }}>{coverageLine}</p>
               {full.length === 0 && <p style={{ color: "#666" }}>Nothing pending.</p>}
-              {full.map(({ response, evaluations, outcome, evaluationsFiled, evaluatorsNeeded, decision, widerDiscussionStatus, objections, convertedMember }) => {
+              {full.map(({ response, evaluations, outcome, evaluationsFiled, evaluatorsNeeded, decision, widerDiscussionStatus, objections, convertedMember, arrival, supports }) => {
                 const myEvaluation = evaluations.find((e) => e.evaluatorId === viewing.id);
                 return (
                   <div
@@ -306,6 +323,45 @@ export default async function ApplicationsPage({
                           </li>
                         ))}
                       </ul>
+                    )}
+
+                    {arrival && (
+                      <div style={{ margin: "0 0 0.6rem", fontSize: "0.85rem" }}>
+                        <p style={{ margin: "0 0 0.3rem" }}>
+                          <strong>Vouched for by</strong>{" "}
+                          {supports.length === 0
+                            ? "nobody yet"
+                            : supports.map((sp) => `${sp.name} (${sp.knowsPersonally ? "knows them" : "thinks they'd fit"}${sp.knowsPersonally && sp.thinksGoodFit ? ", and thinks they'd fit" : ""})`).join("; ")}
+                          {arrival.supportShortcutCount
+                            ? ` — ${supports.length} of the ${arrival.supportShortcutCount} that would admit them without the rest`
+                            : ""}
+                        </p>
+                        {!supports.some((sp) => sp.memberId === viewing.id) && (
+                          <form action={supportApplicationAction} style={{ display: "flex", gap: "0.8rem", alignItems: "center", flexWrap: "wrap" }}>
+                            <input type="hidden" name="arrivalId" value={arrival.id} />
+                            <span>I support them:</span>
+                            <label><input type="checkbox" name="knowsPersonally" /> I know them</label>
+                            <label><input type="checkbox" name="thinksGoodFit" /> I think they&rsquo;d fit</label>
+                            <button type="submit" style={{ padding: "0.2rem 0.6rem" }}>Add my word</button>
+                          </form>
+                        )}
+                        <details style={{ marginTop: "0.4rem" }}>
+                          <summary style={{ cursor: "pointer" }}>Ask members who might know them</summary>
+                          <p style={{ margin: "0.3rem 0", color: "#666" }}>
+                            Their link to hand over by hand: <span style={{ wordBreak: "break-all" }}>{appUrl}/support/{arrival.supportToken}</span>
+                          </p>
+                          <form action={askMembersToSupportAction} style={{ display: "flex", flexDirection: "column", gap: "0.3rem", maxWidth: 360 }}>
+                            <input type="hidden" name="arrivalId" value={arrival.id} />
+                            <select name="memberId" multiple size={5} style={{ padding: "0.3rem" }}>
+                              {askable.map((m) => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                              ))}
+                            </select>
+                            <span style={{ color: "#666" }}>Each gets their own email with the link, nobody else hears anything, and if none answer nothing happens to them.</span>
+                            <button type="submit" style={{ padding: "0.2rem 0.6rem", width: "fit-content" }}>Ask them</button>
+                          </form>
+                        </details>
+                      </div>
                     )}
 
                     <form

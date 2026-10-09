@@ -292,6 +292,47 @@ export async function applyAcceptanceSideEffects(
   return withTask ?? converted;
 }
 
+// The support shortcut reaching its number (docs/admission-flow.md §2) accepts
+// an application the way a `proceed` outcome does, so the record, the member and
+// their accompaniment agree about what happened — skipping the rest of the path
+// skips the *evaluating*, not the bookkeeping that follows an acceptance. If the
+// evaluators have not decided yet there is no decision row to resolve, so one is
+// made, saying `proceed` (the nearest honest word) and resolved accepted. A
+// decision already waiting out a wider-discussion window is resolved accepted;
+// one already declined never reaches here, because the arrival would be closed.
+export async function acceptArrivalByShortcut(arrival: typeof admission.$inferSelect) {
+  if (!arrival.formResponseId) return admitArrival(arrival.id);
+  const [existing] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, arrival.formResponseId));
+  let decision: RecruitmentDecisionRow;
+  if (!existing) {
+    [decision] = await db
+      .insert(recruitmentDecision)
+      .values({ formResponseId: arrival.formResponseId, ruleOutcome: "proceed", resolution: "accepted" })
+      .returning();
+  } else if (existing.resolution === null) {
+    [decision] = await db
+      .update(recruitmentDecision)
+      .set({ resolution: "accepted" })
+      .where(eq(recruitmentDecision.id, existing.id))
+      .returning();
+  } else {
+    decision = existing;
+  }
+  await recordArrivalDecision(arrival.formResponseId, "accepted");
+
+  const result = await admitArrival(arrival.id);
+  const communityRow = await getCommunityRow(arrival.communityId);
+  const [fresh] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision.id));
+  // The accompaniment needs a real member to create a task as, which the job
+  // resolves the same way: the recruitment task's holder, else the converted
+  // member's referrer or the earliest evaluator. Nobody to be is a report, not a
+  // guess — the person is admitted either way.
+  const actorMember =
+    (await getRecruitmentTaskHolderMember(communityRow)) ?? (fresh ? await resolveAccompanimentAuthor(communityRow, fresh) : null);
+  if (actorMember && fresh && !result.waitlisted) await applyAcceptanceSideEffects(actorMember, communityRow, fresh);
+  return result;
+}
+
 // The real, persisted trigger point Phase 33 deliberately didn't build
 // — called after every submitEvaluation, but only actually does
 // anything the first time enough evaluators have filed for this

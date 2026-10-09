@@ -12,7 +12,6 @@ import {
 } from "@/db/schema";
 import type { member as memberTable, recruitmentPair as recruitmentPairTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import { sendNominationSupportRequestEmail } from "../mailer";
 import { generateToken } from "../token";
 import { getCommunityRow, requireRecruitmentTaskHolder } from "./access";
 import { isMediationMember } from "./mediation";
@@ -48,67 +47,6 @@ export const namePairingInput = z.object({
   firstResponseId: z.string().uuid().nullable().optional(),
 });
 export type NamePairingInput = z.infer<typeof namePairingInput>;
-
-// §2.4's poke: the inviter names members they think also know the
-// invitee, and those members each get an email carrying the support
-// link. Best-effort in the same way every other send in this codebase
-// is — a member with no email on file, or a mailer that isn't
-// configured, must never fail the invite that was being created. The
-// inviter always gets the link back to hand over by hand, which is the
-// other half of §2.4's "share a link" option and the reason a failed
-// send is a nuisance rather than a loss.
-export async function pokeMembersForSupport(input: {
-  communityId: string;
-  communityName: string;
-  askerId: string;
-  askerName: string;
-  nomineeLabel: string | null;
-  supportUrl: string;
-  windowHours: number;
-  memberIds: string[];
-}): Promise<{ poked: string[]; undeliverable: string[] }> {
-  if (input.memberIds.length === 0) return { poked: [], undeliverable: [] };
-  const recipients = await db
-    .select({ id: member.id, name: member.name, email: memberIdentity.loginEmail })
-    .from(member)
-    .leftJoin(memberIdentity, eq(memberIdentity.memberId, member.id))
-    .where(
-      and(
-        eq(member.communityId, input.communityId),
-        inArray(member.id, input.memberIds),
-        ne(member.id, input.askerId),
-      ),
-    );
-  // Deduplicated by member: leftJoin over memberIdentity can produce a
-  // second row for a member with two identities, and "you've been asked
-  // to support this person" arriving twice is worse than arriving once.
-  const byMember = new Map<string, { name: string; email: string | null }>();
-  for (const r of recipients) {
-    if (!byMember.has(r.id)) byMember.set(r.id, { name: r.name, email: r.email });
-  }
-
-  const poked: string[] = [];
-  const undeliverable: string[] = [];
-  for (const [memberId, person] of byMember) {
-    if (!person.email) {
-      undeliverable.push(memberId);
-      continue;
-    }
-    try {
-      await sendNominationSupportRequestEmail(person.email, {
-        askerName: input.askerName,
-        nomineeLabel: input.nomineeLabel,
-        supportUrl: input.supportUrl,
-        windowHours: input.windowHours,
-        onBehalfOfCommunity: false,
-      });
-      poked.push(memberId);
-    } catch {
-      undeliverable.push(memberId);
-    }
-  }
-  return { poked, undeliverable };
-}
 
 // §2.8 — the namer's "who are you sticking with". Returns one pair row
 // per named person; a named member gets a pair (their support view is

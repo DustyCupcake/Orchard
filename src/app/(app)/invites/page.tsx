@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { cycle } from "@/db/schema";
+import { cycle, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
@@ -13,6 +13,7 @@ import {
   listInquiries,
   listLanes,
   listMyCommunityInvites,
+  listMyInviteesInFlight,
   listOpenLanes,
 } from "@/lib/recruitment";
 import { laneHandles } from "@/lib/recruitment/lane-rules";
@@ -22,6 +23,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import InviteMarkPicker, { type InviteContext } from "./InviteMarkPicker";
 import {
   claimInquiryAction,
+  askMembersToSupportAction,
   createCommunityInviteAction,
   resolveInquiryAction,
   revokeCommunityInviteAction,
@@ -65,6 +67,7 @@ export default async function InvitesPage({
     revoked?: string;
     claimed?: string;
     inquiryResolved?: string;
+    asked?: string;
     invite?: string;
   }>;
 }) {
@@ -73,7 +76,7 @@ export default async function InvitesPage({
     redirect("/login");
   }
 
-  const { error, created, revoked, claimed, inquiryResolved } =
+  const { error, created, revoked, claimed, inquiryResolved, asked } =
     await searchParams;
 
   const communityRow = await getCommunity(viewing);
@@ -92,6 +95,17 @@ export default async function InvitesPage({
           .orderBy(cycle.name)
       : Promise.resolve([]),
   ]);
+  // The people this member invited who are still on their way in, and everyone
+  // they could ask to vouch — the latter only when there is somebody to ask about.
+  const invitees = moduleOn ? await listMyInviteesInFlight(viewing) : [];
+  const askable =
+    invitees.length > 0
+      ? await db
+          .select({ id: member.id, name: member.name })
+          .from(member)
+          .where(and(eq(member.communityId, viewing.communityId), ne(member.id, viewing.id)))
+          .orderBy(member.name)
+      : [];
   const inquiries = moduleOn && isHolder ? await listInquiries(viewing) : [];
   const cycleNames = new Map(cycles.map((c) => [c.id, c.name]));
 
@@ -131,6 +145,7 @@ export default async function InvitesPage({
           {revoked && <Banner tone="success">Invite revoked.</Banner>}
           {claimed && <Banner tone="success">Inquiry claimed.</Banner>}
           {inquiryResolved && <Banner tone="success">Inquiry marked resolved.</Banner>}
+          {asked && <Banner tone="success">Asked. Each person you named got their own email with the link, and nobody else was told anything.</Banner>}
           <section className="mt-6">
             <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Create an invite link</h2>
             <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
@@ -163,6 +178,45 @@ export default async function InvitesPage({
               </button>
             </form>
           </section>
+
+          {invitees.length > 0 && (
+            <section className="mt-8">
+              <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">People you invited, on their way in</h2>
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                Members who know them can vouch for them with the link below. It&rsquo;s optional and never a wait: if nobody does, they just carry on with
+                the process they&rsquo;re already in.
+              </p>
+              <div className="mt-3 space-y-3">
+                {invitees.map((p) => (
+                  <div key={p.id} className={CARD}>
+                    <strong className="text-[var(--text)]">{p.name}</strong>
+                    <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                      {p.supports.length === 0 ? "Nobody has vouched yet." : `Vouched for by ${p.supports.map((s) => s.name).join(", ")}.`}
+                      {p.needed ? ` ${p.needed} would admit them without the rest.` : ""}
+                    </p>
+                    <p className="mt-1 break-all text-[length:var(--text-body)] text-[var(--text)]">{p.link}</p>
+                    <form action={askMembersToSupportAction} className="mt-2 flex max-w-[360px] flex-col gap-2">
+                      <input type="hidden" name="arrivalId" value={p.id} />
+                      <label className={LABEL}>Ask members who might know them</label>
+                      <select name="memberId" multiple size={5} className={`${INPUT} h-auto`}>
+                        {askable.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                        Hold ⌘/Ctrl to pick more than one. Each gets their own email with the link; nobody else hears anything.
+                      </span>
+                      <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
+                        Ask them
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           <section className="mt-8">
             <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Your invite links</h2>

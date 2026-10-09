@@ -2,6 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
+  admission,
   communityInvite,
   form,
   formResponse,
@@ -19,6 +20,7 @@ import { getCommunityRow, isRecruitmentTaskHolder, listHeldRecruitmentScopes, re
 import { computeWiderDiscussionStatus, getRecruitmentDecision } from "./decisions";
 import { listObjections } from "./objections";
 import { consensusDisclosure, consensusWindowFor, recordApplicationConsent } from "./consensus";
+import { listSupports } from "./support";
 import { attachApplicantToPairing, createPairings, resolvePairingForApplication } from "./pairs";
 import { assertEmailFreeToArrive, createAdmissionArrival, personFromApplication } from "./admission";
 import { declarationFromInvite, resolveInviteLane, resolvePublicLane, type AdmissionLane } from "./admission-lanes";
@@ -430,6 +432,13 @@ export async function listApplicationsForEvaluation(actor: Member) {
       );
       const decision = await getRecruitmentDecision(response.id);
       const objections = decision ? await listObjections(actor, response.id) : [];
+      // The vouches on this application, shown to everyone evaluating it whether or
+      // not the lane's support shortcut is reached (docs/admission-flow.md §2).
+      const [arrival] = await db
+        .select({ id: admission.id, supportToken: admission.supportToken, supportShortcutCount: admission.supportShortcutCount })
+        .from(admission)
+        .where(eq(admission.formResponseId, response.id));
+      const supports = arrival ? await listSupports(arrival.id) : [];
       const convertedMember = decision?.convertedMemberId
         ? await db.select().from(member).where(eq(member.id, decision.convertedMemberId)).then((rows) => rows[0] ?? null)
         : null;
@@ -443,6 +452,8 @@ export async function listApplicationsForEvaluation(actor: Member) {
         widerDiscussionStatus: decision ? computeWiderDiscussionStatus(decision) : null,
         objections,
         convertedMember,
+        arrival: arrival ?? null,
+        supports,
       };
     }),
   );
