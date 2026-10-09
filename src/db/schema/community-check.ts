@@ -37,6 +37,14 @@ export const communityCheckStatus = pgEnum("community_check_status", [
 export const COMMUNITY_CHECK_STATUSES = ["open", "concerned", "cleared", "upheld", "overruled"] as const;
 export type CommunityCheckStatus = (typeof COMMUNITY_CHECK_STATUSES)[number];
 
+export const communityCheckConcernResolution = pgEnum("community_check_concern_resolution", [
+  "standing",     // concern raised, awaiting mediation
+  "cleared",      // mediation resolved the concern
+  "upheld",       // mediation concluded concern is valid
+  "overruled",    // body overruled the concern
+  "withdrawn",    // raiser withdrew the concern
+]);
+
 export const communityCheck = pgTable(
   "community_check",
   {
@@ -93,13 +101,7 @@ export const communityCheckConcern = pgTable(
     // The concern text
     note: text("note").notNull(),
     // Current resolution
-    resolution: pgEnum("community_check_concern_resolution", [
-      "standing",     // concern raised, awaiting mediation
-      "cleared",      // mediation resolved the concern
-      "upheld",       // mediation concluded concern is valid
-      "overruled",    // body overruled the concern
-      "withdrawn",    // raiser withdrew the concern
-    ])("resolution").notNull().default("standing"),
+    resolution: communityCheckConcernResolution("resolution").notNull().default("standing"),
     // Resolution details
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolvedById: uuid("resolved_by_id"),

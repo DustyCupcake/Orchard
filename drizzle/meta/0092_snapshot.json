@@ -1,5 +1,5 @@
 {
-  "id": "00721823-c44a-470e-aede-840ff4df14a9",
+  "id": "94c406c9-0b16-4574-a82b-2fb8e51ec3f8",
   "prevId": "b5d92920-65fe-4f1a-a0a5-b6e5a71ee084",
   "version": "7",
   "dialect": "postgresql",
@@ -12393,6 +12393,17 @@
       "values": [
         "funnel",
         "import"
+      ]
+    },
+    "public.community_check_concern_resolution": {
+      "name": "community_check_concern_resolution",
+      "schema": "public",
+      "values": [
+        "standing",
+        "cleared",
+        "upheld",
+        "overruled",
+        "withdrawn"
       ]
     },
     "public.community_check_kind": {

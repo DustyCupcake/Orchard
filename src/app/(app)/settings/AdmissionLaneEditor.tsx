@@ -289,7 +289,7 @@ export default function AdmissionLaneEditor({ initial }: { initial: Array<Admiss
         <p className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Start from a preset</p>
         <p className="mt-1 max-w-[560px] text-[length:var(--text-meta)] text-[var(--text-muted)]">
           A preset fills all lanes at once. Everything stays editable afterwards — nothing here
-          is a mode you're locked into, and a community that relaxes one lane after picking a
+          is a mode you&apos;re locked into, and a community that relaxes one lane after picking a
           preset is in exactly the configuration the cards below describe.
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">

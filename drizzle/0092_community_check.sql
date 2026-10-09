@@ -1,3 +1,6 @@
+CREATE TYPE "public"."community_check_concern_resolution" AS ENUM('standing', 'cleared', 'upheld', 'overruled', 'withdrawn');--> statement-breakpoint
+CREATE TYPE "public"."community_check_kind" AS ENUM('entry', 'evaluation');--> statement-breakpoint
+CREATE TYPE "public"."community_check_status" AS ENUM('open', 'concerned', 'cleared', 'upheld', 'overruled');--> statement-breakpoint
 CREATE TABLE "community_check" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"community_id" uuid NOT NULL,
