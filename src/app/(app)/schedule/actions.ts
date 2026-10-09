@@ -46,15 +46,24 @@ function parsePaintedAvailability(formData: FormData) {
   // describes is added here rather than in the component — the component
   // only produces instants, and where they're wrapped is a parsing rule.
   const { cells } = paintedCellsInput.parse({ cells: parsed });
+  // The old textarea was `required`; a grid can't be, so say what's missing
+  // here rather than letting the schema's "expected array to have >=1 items"
+  // reach the person.
+  if (cells.length === 0) {
+    throw new AppError("Paint at least one stretch of time you could do this in.");
+  }
   return collapseCellsToWindows(cells);
 }
 
-function redirectWithError(err: unknown): never {
+// `compose` keeps the proposal form open behind the error, so a refused
+// submission lands back on the form and not on the list it came from.
+function redirectWithError(err: unknown, compose = false): never {
+  const base = compose ? "/schedule?compose=1&" : "/schedule?";
   if (err instanceof ZodError) {
-    redirect(`/schedule?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
+    redirect(`${base}error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
   }
   if (err instanceof AppError) {
-    redirect(`/schedule?error=${encodeURIComponent(err.message)}`);
+    redirect(`${base}error=${encodeURIComponent(err.message)}`);
   }
   throw err;
 }
@@ -88,7 +97,7 @@ export async function submitEventProposalAction(formData: FormData) {
     });
     await createEventProposal(actor, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, true);
   }
 
   revalidatePath("/schedule");
