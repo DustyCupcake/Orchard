@@ -76,6 +76,19 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     source: "the calendar reads in each member's own time zone, and asks before adopting the browser's",
   },
   {
+    date: "2026-10-09",
+    title: "Proposing a session: paint when you could do it",
+    summary: "You mark the times you're free on a grid, and the planner picks the start. Events also have a time zone.",
+    points: [
+      "When you propose a session, you no longer type start and end times. Set how long it runs, then click or drag on the grid to paint the half-hours you could do it in.",
+      "The grid shows how many different start times that leaves, so you can see how much room you've given the planner. Paint more if it's tight.",
+      "The planner sees everyone's painted times together and can tell whether one stretch of time could hold everything still to be placed.",
+      "Two sessions are only flagged as clashing when they can't both fit in the times painted. Two proposals that could simply run one after the other are left alone.",
+      "Times on the grid are the event's own time zone, set under Settings, so a session proposed for 14:00 is 14:00 for everyone. An event with no dates yet has nothing to paint against.",
+    ],
+    source: "programme proposals paint when they could run, and an event has a time zone",
+  },
+  {
     date: "2026-10-06",
     title: "A tier is something you ask for",
     summary: "You can no longer tick a tier onto your own profile. Someone who can vouch for it confirms.",
