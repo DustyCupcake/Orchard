@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { formatTimeInZone, instantFromZoned } from "../dates/timezone";
 import type { EventSlot } from "./crud";
 
 /**
@@ -321,4 +322,72 @@ export function gridWeeks(days: string[]): string[][] {
     weeks.push(days.slice(i, i + GRID_WEEK_DAYS));
   }
   return weeks;
+}
+
+
+// --- The painting grid's day -------------------------------------------------
+//
+// A column of the grid is a *day of the event*, and that day runs 06:00 to
+// 06:00 rather than midnight to midnight. A session at 01:00 belongs to the
+// evening before it, and a grid that cut the day at midnight would put the end
+// of Saturday's party at the top of Sunday's column, with Sunday's morning
+// below it. Each column reads top to bottom as one waking day.
+
+export const GRID_DAY_START_HOUR = 6;
+export const GRID_ROWS_PER_DAY = (24 * 60) / CELL_MINUTES;
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * The wall clock a row names in the column for `day`: row 0 is 06:00 that
+ * day, and the rows after midnight carry the *next* calendar date, so the
+ * last row of Saturday's column is 05:30 on Sunday.
+ */
+export function gridRowWallClock(day: string, rowIdx: number): { date: string; time: string } {
+  const minutes = GRID_DAY_START_HOUR * 60 + rowIdx * CELL_MINUTES;
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + Math.floor(minutes / 1440));
+  const inDay = minutes % 1440;
+  return {
+    date: date.toISOString().slice(0, 10),
+    time: `${pad2(Math.floor(inDay / 60))}:${pad2(inDay % 60)}`,
+  };
+}
+
+/** The hour a row starts, for the gutter label: "06" ... "23", "00" ... "05". */
+export function gridRowHourLabel(rowIdx: number): string {
+  return pad2((GRID_DAY_START_HOUR + Math.floor((rowIdx * CELL_MINUTES) / 60)) % 24);
+}
+
+/**
+ * The instant one cell of the grid names in a zone, or null when that wall
+ * clock doesn't exist there — a spring-forward gap resolves to a neighbour,
+ * which is detected by the instant not reading back as what was asked for.
+ * A fall-back repeat is two wall clocks naming one instant, which painting
+ * collapses.
+ */
+export function gridCellInstant(day: string, rowIdx: number, timeZone: string): string | null {
+  const { date, time } = gridRowWallClock(day, rowIdx);
+  const instant = instantFromZoned(`${date}T${time}`, timeZone);
+  return formatTimeInZone(instant.toISOString(), timeZone) === time ? instant.toISOString() : null;
+}
+
+/**
+ * A column heading as two short lines ("Sat", "Nov 28") so it can't wrap
+ * and clip in a narrow column. The day is a plain calendar date, so it is
+ * formatted in UTC: formatting noon UTC in a zone east of +12 would name the
+ * next day.
+ */
+export function gridDayHeading(day: string): { weekday: string; date: string } {
+  const at = new Date(`${day}T12:00:00Z`);
+  return {
+    weekday: new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "short" }).format(at),
+    date: new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" }).format(at),
+  };
+}
+
+/** "Sat, Nov 28" — the same day on one line, for a range caption. */
+export function gridDayLabel(day: string): string {
+  const h = gridDayHeading(day);
+  return `${h.weekday}, ${h.date}`;
 }

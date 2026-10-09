@@ -2,20 +2,31 @@
 
 import { useMemo, useRef, useState } from "react";
 import { BUTTON_SECONDARY, LABEL } from "@/components/ui/kit";
-import { formatTimeInZone, instantFromZoned } from "@/lib/dates";
+import { formatTimeInZone } from "@/lib/dates";
 // Deep import, deliberately not the @/lib/event-scheduling barrel. The
 // barrel re-exports crud.ts, which reaches @/db and the postgres driver,
 // whose node built-ins (fs, net, tls) don't resolve in a client bundle —
 // so a client component reaching for the barrel fails the build with a
 // module-not-found on 'fs'. The earlier PreferredSlotsEditor could use the
 // barrel only because its EventSlot import was type-only and erased.
-import { CELL_MINUTES, expandWindowsToCells, gridDays, gridWeeks } from "@/lib/event-scheduling/availability";
+import {
+  CELL_MINUTES,
+  GRID_ROWS_PER_DAY,
+  expandWindowsToCells,
+  gridCellInstant,
+  gridDayHeading,
+  gridDayLabel,
+  gridDays,
+  gridRowHourLabel,
+  gridWeeks,
+} from "@/lib/event-scheduling/availability";
 import type { EventSlot } from "@/lib/event-scheduling/crud";
 
 const ROWS_PER_HOUR = 60 / CELL_MINUTES;
-// The whole day, so an evening or early-morning session doesn't need the
-// grid rebuilt for a wider range first.
-const ROW_COUNT = 24 * ROWS_PER_HOUR;
+// The whole day, 06:00 to 06:00, so an evening or early-morning session
+// doesn't need the grid rebuilt for a wider range first — see
+// gridRowWallClock for why the day starts at six.
+const ROW_COUNT = GRID_ROWS_PER_DAY;
 const CELL_MS = CELL_MINUTES * 60_000;
 
 /**
@@ -131,7 +142,7 @@ export default function AvailabilityGrid({
             Previous week
           </button>
           <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-            {weekdayLabel(days[0], timeZone)} – {weekdayLabel(days[days.length - 1], timeZone)} · week{" "}
+            {gridDayLabel(days[0])} – {gridDayLabel(days[days.length - 1])} · week{" "}
             {week + 1} of {weeks.length}
           </span>
           <button
@@ -154,23 +165,27 @@ export default function AvailabilityGrid({
       >
         <div className="flex select-none">
           <div className="sticky left-0 z-10 flex shrink-0 flex-col bg-[var(--surface)]">
-            <div className="h-8 w-14" />
+            <div className="h-10 w-9" />
             {Array.from({ length: ROW_COUNT }).map((_, rowIdx) => (
               <div
                 key={rowIdx}
                 className={`h-[18px] pr-1 text-right text-[length:var(--text-micro)] text-[var(--text-muted)] ${rowIdx % ROWS_PER_HOUR === 0 ? "visible" : "invisible"}`}
               >
-                {String(Math.floor(rowIdx / ROWS_PER_HOUR)).padStart(2, "0")}
+                {gridRowHourLabel(rowIdx)}
               </div>
             ))}
           </div>
           {days.map((day) => (
-            <div key={day} className="flex w-16 shrink-0 flex-col">
-              <div className="h-8 text-center text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                {weekdayLabel(day, timeZone)}
+            // Columns share whatever width there is, so a short event gets
+            // wide columns instead of a thin strip on the left; the minimum
+            // is what keeps seven of them readable.
+            <div key={day} className="flex min-w-[4.25rem] flex-1 flex-col">
+              <div className="flex h-10 flex-col items-center justify-center text-[length:var(--text-meta)] leading-tight text-[var(--text-muted)]">
+                <span>{gridDayHeading(day).weekday}</span>
+                <span>{gridDayHeading(day).date}</span>
               </div>
               {Array.from({ length: ROW_COUNT }).map((_, rowIdx) => {
-                const iso = cellIso(day, rowIdx, timeZone);
+                const iso = gridCellInstant(day, rowIdx, timeZone);
                 if (!iso) {
                   // The wall clock this row names doesn't exist on this
                   // day (a DST gap). Render an inert cell rather than
@@ -216,32 +231,9 @@ export default function AvailabilityGrid({
   );
 }
 
-function cellIso(day: string, rowIdx: number, timeZone: string): string | null {
-  const hour = Math.floor(rowIdx / ROWS_PER_HOUR);
-  const minute = (rowIdx % ROWS_PER_HOUR) * CELL_MINUTES;
-  const wall = `${day}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-  const instant = instantFromZoned(wall, timeZone);
-  // A DST spring-forward gap makes this wall clock nonexistent, and
-  // instantFromZoned resolves those to a neighbour. Detect it by checking
-  // the instant reads back as the wall clock we asked for.
-  if (instant.toISOString() === "") return null;
-  const roundTrip = formatTimeInZone(instant.toISOString(), timeZone);
-  const wanted = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-  return roundTrip === wanted ? instant.toISOString() : null;
-}
-
 function cellLabel(iso: string, timeZone: string): string {
   const end = new Date(new Date(iso).getTime() + CELL_MS).toISOString();
   return `${formatTimeInZone(iso, timeZone)} – ${formatTimeInZone(end, timeZone)}`;
-}
-
-function weekdayLabel(day: string, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  }).format(new Date(`${day}T12:00:00Z`));
 }
 
 function formatMinutes(cells: number): string {

@@ -4,7 +4,12 @@ import {
   collapseCellsToWindows,
   commonPlacementWindow,
   expandWindowsToCells,
+  gridCellInstant,
+  gridDayHeading,
+  gridDayLabel,
   gridDays,
+  gridRowHourLabel,
+  gridRowWallClock,
   gridWeeks,
   windowMinutes,
   windowsForceClash,
@@ -343,5 +348,48 @@ describe("gridDays / gridWeeks", () => {
 
   it("gives no pages for no days", () => {
     expect(gridWeeks([])).toEqual([]);
+  });
+});
+
+describe("the painting grid's 06:00-to-06:00 day", () => {
+  it("starts a column at 06:00 and carries the after-midnight rows onto the next date", () => {
+    expect(gridRowWallClock("2026-11-07", 0)).toEqual({ date: "2026-11-07", time: "06:00" });
+    expect(gridRowWallClock("2026-11-07", 35)).toEqual({ date: "2026-11-07", time: "23:30" });
+    expect(gridRowWallClock("2026-11-07", 36)).toEqual({ date: "2026-11-08", time: "00:00" });
+    expect(gridRowWallClock("2026-11-07", 47)).toEqual({ date: "2026-11-08", time: "05:30" });
+  });
+
+  it("rolls over a month and a year end", () => {
+    expect(gridRowWallClock("2026-12-31", 36).date).toBe("2027-01-01");
+    expect(gridRowWallClock("2026-02-28", 40).date).toBe("2026-03-01");
+  });
+
+  it("labels the gutter hours from 06 round to 05", () => {
+    const hours = Array.from({ length: 48 }, (_, i) => i)
+      .filter((i) => i % 2 === 0)
+      .map(gridRowHourLabel);
+    expect(hours[0]).toBe("06");
+    expect(hours[17]).toBe("23");
+    expect(hours[18]).toBe("00");
+    expect(hours[23]).toBe("05");
+    expect(new Set(hours).size).toBe(24);
+  });
+
+  it("reads each row as the instant it names in a zone", () => {
+    // 06:00 on 7 Nov in Madrid is UTC+1.
+    expect(gridCellInstant("2026-11-07", 0, "Europe/Madrid")).toBe("2026-11-07T05:00:00.000Z");
+    // The row after midnight is on the next date.
+    expect(gridCellInstant("2026-11-07", 36, "Europe/Madrid")).toBe("2026-11-07T23:00:00.000Z");
+  });
+
+  it("leaves a wall clock a spring-forward skips as an inert cell", () => {
+    // Madrid skips 02:00-03:00 on 2026-03-29; that hour sits in the 28th's column.
+    expect(gridCellInstant("2026-03-28", 40, "Europe/Madrid")).toBeNull(); // 02:00 on the 29th
+    expect(gridCellInstant("2026-03-28", 42, "Europe/Madrid")).not.toBeNull(); // 03:00
+  });
+
+  it("names a day from its plain date, whatever the zone", () => {
+    expect(gridDayHeading("2026-11-28")).toEqual({ weekday: "Sat", date: "Nov 28" });
+    expect(gridDayLabel("2026-11-28")).toBe("Sat, Nov 28");
   });
 });

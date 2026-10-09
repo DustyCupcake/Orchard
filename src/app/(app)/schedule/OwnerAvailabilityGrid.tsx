@@ -3,11 +3,15 @@ import {
   candidatePlacements,
   CELL_MINUTES,
   commonPlacementWindow,
+  GRID_ROWS_PER_DAY,
+  gridCellInstant,
+  gridDayHeading,
+  gridDayLabel,
   gridDays,
+  gridRowHourLabel,
   gridWeeks,
   type EventSlot,
 } from "@/lib/event-scheduling";
-import { formatTimeInZone, instantFromZoned } from "@/lib/dates";
 import Link from "next/link";
 import { BUTTON_SECONDARY, CARD, Tag } from "@/components/ui/kit";
 
@@ -15,7 +19,7 @@ type EventProposalRow = typeof eventProposalTable.$inferSelect;
 
 const CELL_MS = CELL_MINUTES * 60_000;
 const ROWS_PER_HOUR = 60 / CELL_MINUTES;
-const ROW_COUNT = 24 * ROWS_PER_HOUR;
+const ROW_COUNT = GRID_ROWS_PER_DAY;
 
 /**
  * The scheduling owner's cross-proposal availability overlay.
@@ -94,7 +98,7 @@ export default function OwnerAvailabilityGrid({
             <span className={`${BUTTON_SECONDARY} opacity-50`}>Previous week</span>
           )}
           <span>
-            {weekdayLabel(days[0], timeZone)} – {weekdayLabel(days[days.length - 1], timeZone)} · week{" "}
+            {gridDayLabel(days[0])} – {gridDayLabel(days[days.length - 1])} · week{" "}
             {week + 1} of {weeks.length}
           </span>
           {week < weeks.length - 1 ? (
@@ -110,23 +114,25 @@ export default function OwnerAvailabilityGrid({
       <div className="mt-2 overflow-auto rounded-[var(--radius-md)] border border-[var(--border)]">
         <div className="flex select-none">
           <div className="sticky left-0 z-10 flex shrink-0 flex-col bg-[var(--surface)]">
-            <div className="h-8 w-14" />
+            <div className="h-10 w-9" />
             {Array.from({ length: ROW_COUNT }).map((_, rowIdx) => (
               <div
                 key={rowIdx}
                 className={`h-[14px] pr-1 text-right text-[length:var(--text-micro)] text-[var(--text-muted)] ${rowIdx % ROWS_PER_HOUR === 0 ? "visible" : "invisible"}`}
               >
-                {String(Math.floor(rowIdx / ROWS_PER_HOUR)).padStart(2, "0")}
+                {gridRowHourLabel(rowIdx)}
               </div>
             ))}
           </div>
           {days.map((day) => (
-            <div key={day} className="flex min-w-24 flex-1 flex-col">
-              <div className="h-8 text-center text-[length:var(--text-micro)] text-[var(--text-muted)]">
-                {weekdayLabel(day, timeZone)}
+            <div key={day} className="flex min-w-[4.25rem] flex-1 flex-col">
+              <div className="flex h-10 flex-col items-center justify-center text-[length:var(--text-micro)] leading-tight text-[var(--text-muted)]">
+                <span>{gridDayHeading(day).weekday}</span>
+                <span>{gridDayHeading(day).date}</span>
               </div>
               {Array.from({ length: ROW_COUNT }).map((_, rowIdx) => {
-                const cellStart = cellStartMs(day, rowIdx, timeZone);
+                const cellInstant = gridCellInstant(day, rowIdx, timeZone);
+                const cellStart = cellInstant === null ? null : new Date(cellInstant).getTime();
                 if (cellStart === null) {
                   return <div key={`${day}-${rowIdx}`} className="h-[14px] w-full bg-[var(--surface-sunken)]" />;
                 }
@@ -217,35 +223,4 @@ function coversCell(windows: EventSlot[], cellStart: number, cellEnd: number): b
   return windows.some(
     (w) => new Date(w.startsAt).getTime() <= cellStart && new Date(w.endsAt).getTime() >= cellEnd,
   );
-}
-
-/**
- * The UTC instant of one grid cell, or null when that wall clock doesn't
- * exist on this day (a DST spring-forward gap).
- *
- * Duplicated from the host-side grid rather than shared, because that is
- * a client component and this is a server one, so they can't share a
- * module. Both read CELL_MINUTES from the lib, so the cell size can't
- * drift between them — a mismatch would silently offset this overlay by
- * 30 minutes against what hosts painted.
- */
-function cellStartMs(day: string, rowIdx: number, timeZone: string): number | null {
-  const hour = Math.floor(rowIdx / ROWS_PER_HOUR);
-  const minute = (rowIdx % ROWS_PER_HOUR) * CELL_MINUTES;
-  const wanted = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-  const instant = instantFromZoned(`${day}T${wanted}`, timeZone);
-  // Round-trip check: a gap resolves to a neighbour, so its wall clock
-  // won't read back as what we asked for.
-  return formatTimeInZone(instant.toISOString(), timeZone) === wanted
-    ? instant.getTime()
-    : null;
-}
-
-function weekdayLabel(day: string, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  }).format(new Date(`${day}T12:00:00Z`));
 }
