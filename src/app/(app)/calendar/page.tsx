@@ -8,6 +8,7 @@ import { getViewingContext } from "@/lib/view-as";
 import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag, TONE_CLASSES, type Tone } from "@/components/ui/kit";
 import DateModeField, { type DateFieldBase } from "@/components/DateModeField";
 import PageHeader from "@/components/ui/PageHeader";
+import TimeZoneNudge from "./TimeZoneNudge";
 import Tabs from "@/components/ui/Tabs";
 import {
   getCalendarEvent,
@@ -139,8 +140,13 @@ export default async function CalendarPage({
     getCommunity(viewing),
   ]);
 
-  const { year, month: monthNum } = parseMonthParam(month);
-  const weeks = buildMonthGrid(year, monthNum);
+  // The grid and month default take a Date and read its UTC fields, so
+  // "today" in the viewer's zone is passed in as that day's UTC midnight
+  // rather than the real instant, which would read as a different day
+  // for anyone whose zone is not UTC.
+  const todayInZone = new Date(`${view.today}T00:00:00Z`);
+  const { year, month: monthNum } = parseMonthParam(month, todayInZone);
+  const weeks = buildMonthGrid(year, monthNum, todayInZone);
   const prev = shiftMonth(year, monthNum, -1);
   const next = shiftMonth(year, monthNum, 1);
 
@@ -151,8 +157,7 @@ export default async function CalendarPage({
     entriesByDate.set(e.date, list);
   }
 
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const upcoming = view.entries.filter((e) => e.date >= todayStr).slice(0, 20);
+  const upcoming = view.entries.filter((e) => e.date >= view.today).slice(0, 20);
 
   const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
   const cycleById = new Map(cycles.map((c) => [c.id, c]));
@@ -179,6 +184,7 @@ export default async function CalendarPage({
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10 md:px-12 md:py-14">
+      {real.id === viewing.id ? <TimeZoneNudge currentZone={view.timeZone} /> : null}
       <PageHeader
         title="Calendar"
         description={

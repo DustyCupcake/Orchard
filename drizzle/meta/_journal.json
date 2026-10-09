@@ -631,6 +631,13 @@
       "when": 1791451092011,
       "tag": "0089_event_time_zone",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1791529270654,
+      "tag": "0090_member_time_zone",
+      "breakpoints": true
     }
   ]
 }

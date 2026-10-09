@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT, LABEL, SELECT } from "@/components/ui/kit";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import TimeZoneInput from "@/components/TimeZoneInput";
 // Aliased, because the settings screen has its own `SelectField` below and
 // the two are genuinely different things. This one is a bare `<select>`
 // that re-establishes its selection when the server's answer changes;
@@ -292,73 +293,13 @@ export function TextField({
 }
 
 // The Community's wall-clock — see src/lib/dates/timezone.ts.
-//
-// A free text field rather than a select of all ~600 IANA zones: the
-// list is long enough that finding a zone in it is harder than typing
-// it, and a datalist gets both — type "Europe/Lon" and the browser
-// offers the match, or type a zone this runtime doesn't have in its list
-// and it's still accepted. Validated on write by timeZoneInput in
-// lib/settings/community.ts.
-const COMMON_TIME_ZONES = [
-  "UTC",
-  "Europe/London",
-  "Europe/Dublin",
-  "Europe/Lisbon",
-  "Europe/Madrid",
-  "Europe/Paris",
-  "Europe/Berlin",
-  "Europe/Amsterdam",
-  "Europe/Stockholm",
-  "Europe/Warsaw",
-  "Europe/Athens",
-  "Europe/Istanbul",
-  "Europe/Moscow",
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Los_Angeles",
-  "America/Anchorage",
-  "America/Halifax",
-  "America/Sao_Paulo",
-  "America/Mexico_City",
-  "Africa/Cairo",
-  "Africa/Lagos",
-  "Africa/Nairobi",
-  "Africa/Johannesburg",
-  "Asia/Jerusalem",
-  "Asia/Dubai",
-  "Asia/Karachi",
-  "Asia/Kolkata",
-  "Asia/Bangkok",
-  "Asia/Singapore",
-  "Asia/Shanghai",
-  "Asia/Tokyo",
-  "Asia/Seoul",
-  "Australia/Perth",
-  "Australia/Sydney",
-  "Pacific/Auckland",
-  "Pacific/Honolulu",
-];
-
 export function TimeZoneField({ defaultValue }: { defaultValue?: string | null }) {
   return (
     <SettingsField
       label="Time zone"
       hint="The clock every event's times are read in — what a member types as 14:00 and what the programme shows back. Each event can override this for itself."
     >
-      <input
-        type="text"
-        name="timeZone"
-        defaultValue={defaultValue ?? ""}
-        placeholder="UTC"
-        list="time-zone-suggestions"
-        className={INPUT}
-      />
-      <datalist id="time-zone-suggestions">
-        {COMMON_TIME_ZONES.map((zone) => (
-          <option key={zone} value={zone} />
-        ))}
-      </datalist>
+      <TimeZoneInput defaultValue={defaultValue} />
     </SettingsField>
   );
 }

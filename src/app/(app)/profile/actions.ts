@@ -25,6 +25,7 @@ import { addMemberLanguage, deleteMemberLanguage, memberLanguageInput } from "@/
 import { upsertMemberAxisValue } from "@/lib/trait-axes";
 import { leaveTier, requestTier, withdrawTierRequest } from "@/lib/tier-requests";
 import { AppError } from "@/lib/errors";
+import { isValidTimeZone } from "@/lib/dates";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
 
 function redirectWithError(err: unknown): never {
@@ -63,6 +64,15 @@ export async function updateProfile(formData: FormData) {
   }
   const dateDisplayMode = dateDisplayModeRaw === "inherit" ? null : dateDisplayModeRaw === "period" ? "period" : "exact";
 
+  // Blank inherits the Community's zone. Only written when the form
+  // carried the field, like the date display mode above, so another form
+  // posting to this action can't clear it.
+  const hasTimeZone = formData.has("timeZone");
+  const timeZoneRaw = String(formData.get("timeZone") ?? "").trim();
+  if (timeZoneRaw && !isValidTimeZone(timeZoneRaw)) {
+    redirectWithError(new AppError("Not a time zone — try something like Europe/London"));
+  }
+
   if (!name) {
     return;
   }
@@ -75,9 +85,24 @@ export async function updateProfile(formData: FormData) {
   // button, so saving a name or some tags can't change what a member holds.
   await db
     .update(member)
-    .set({ name, tags, emailNotificationsEnabled, ...(hasDateDisplayMode && { dateDisplayMode }) })
+    .set({ name, tags, emailNotificationsEnabled, ...(hasDateDisplayMode && { dateDisplayMode }), ...(hasTimeZone && { timeZone: timeZoneRaw || null }) })
     .where(eq(member.id, current.id));
   revalidatePath("/profile");
+}
+
+// The calendar's "your browser is in a different zone" prompt. Takes the
+// zone the browser reported, which is untrusted input like any other form
+// value: it is validated here and only ever written to the actor's own row.
+export async function setMyTimeZoneAction(formData: FormData) {
+  const current = await requireMember();
+  const timeZone = String(formData.get("timeZone") ?? "").trim();
+  if (!timeZone || !isValidTimeZone(timeZone)) {
+    redirect("/calendar");
+  }
+  await db.update(member).set({ timeZone }).where(eq(member.id, current.id));
+  revalidatePath("/calendar");
+  revalidatePath("/profile");
+  redirect("/calendar");
 }
 
 // Self-service, on the page that already says "these are your answers":

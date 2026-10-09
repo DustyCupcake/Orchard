@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { profileQuestion, tier } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { listOnceEverAnswers, listOutstandingQuestions } from "@/lib/profile-questions";
-import { getCycleTypeCountProgress } from "@/lib/settings";
+import { getCommunity, getCycleTypeCountProgress } from "@/lib/settings";
 import { listPendingAudienceConsents, listAudienceConsentsForAnswers, listAudiencesForQuestions } from "@/lib/sensitive-data";
 import { CONTACT_METHOD_VISIBILITIES, isEmailContactMethod, listOwnContactMethods, resolvePrimaryEmail } from "@/lib/contact-methods";
 import { listMyConsentStatus } from "@/lib/consent";
@@ -17,6 +17,7 @@ import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckFiel
 import AxisScaleField from "@/components/AxisScaleField";
 import ProfileQuestionForm from "@/components/ProfileQuestionForm";
 import { toFieldShape } from "@/lib/field-shape";
+import TimeZoneInput from "@/components/TimeZoneInput";
 import ThemeToggle from "./ThemeToggle";
 import {
   addMemberLanguageAction,
@@ -76,6 +77,7 @@ export default async function ProfilePage({
   }
 
   const { error, verify, sent, verified } = await searchParams;
+  const communityRow = await getCommunity(viewing);
 
   const [
     communityTiers,
@@ -187,6 +189,15 @@ export default async function ProfilePage({
           </SelectField>
           <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
             Read-only date labels only; date inputs and exact dates remain available.
+          </span>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className={LABEL}>Time zone</span>
+          <TimeZoneInput defaultValue={viewing.timeZone} placeholder={communityRow.timeZone ?? "UTC"} />
+          <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+            Which day the calendar puts a deadline or session on, for you. Leave blank to use the
+            community&apos;s{communityRow.timeZone ? ` (${communityRow.timeZone})` : " default, UTC"}.
           </span>
         </label>
 
