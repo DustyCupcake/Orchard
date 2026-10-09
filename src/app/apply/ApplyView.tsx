@@ -140,6 +140,12 @@ export default async function ApplyView({
         <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           That invitation doesn&rsquo;t need an application — open its join link instead.
         </p>
+      ) : !lane ? (
+        <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
+          {cycleContext
+            ? "This event isn’t taking public applications — if you’ve been invited, use your invitation’s link."
+            : "This community isn’t taking public applications right now — if you’ve been invited, use your invitation’s link."}
+        </p>
       ) : notAccepting ? (
         <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
           {cycleContext
