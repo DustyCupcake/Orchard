@@ -263,3 +263,76 @@ export async function isLaneOpen(
     );
   return !!row;
 }
+
+/**
+ * Create an empty lane rule with defaults. Used when adding a new lane.
+ */
+export function createEmptyLane(): AdmissionLaneRule {
+  return {
+    kind: "invite",
+    name: "",
+    handlesKnowsPersonally: false,
+    handlesGoodFitOnly: false,
+    handlesNeither: false,
+    publicSlug: null,
+    applicationRequired: true,
+    interviewRequired: true,
+    verification: "none",
+    reportsNeeded: 2,
+    supportShortcutCount: null,
+  };
+}
+
+/**
+ * Generate a human-readable consequence sentence for a lane rule.
+ * This is the single source of truth for what a lane does — the same
+ * sentence is shown in the settings panel and can be used in tests.
+ */
+export function describeLaneConsequence(rule: AdmissionLaneRule): string {
+  const parts: string[] = [];
+
+  // Verification
+  if (rule.verification === "community_check") {
+    parts.push("community check");
+  } else {
+    parts.push("no community check");
+  }
+
+  // Process
+  const processParts: string[] = [];
+  if (rule.applicationRequired) parts.push("application");
+  if (rule.interviewRequired) parts.push("interview");
+  if (parts.length === 0) {
+    parts.push("admitted immediately");
+  } else {
+    parts.push(parts.join(", "));
+  }
+
+  // Reports needed
+  if (rule.reportsNeeded !== null) {
+    parts.push(`${rule.reportsNeeded} report${rule.reportsNeeded === 1 ? "" : "s"} needed`);
+  }
+
+  // Support shortcut
+  if (rule.supportShortcutCount !== null && rule.supportShortcutCount > 0) {
+    parts.push(`${rule.supportShortcutCount} support${rule.supportShortcutCount === 1 ? "" : "s"} to skip the rest`);
+  }
+
+  return parts.join("; ") + ".";
+}
+
+export type AdmissionLaneRule = {
+  kind: "invite" | "public";
+  name: string;
+  handlesKnowsPersonally: boolean;
+  handlesGoodFitOnly: boolean;
+  handlesNeither: boolean;
+  publicSlug: string | null;
+  applicationRequired: boolean;
+  interviewRequired: boolean;
+  verification: AdmissionVerification;
+  reportsNeeded: number | null;
+  supportShortcutCount: number | null;
+};
+
+export type InitialLaneRules = Array<AdmissionLaneRule & { id?: string }>;
