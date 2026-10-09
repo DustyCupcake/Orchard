@@ -107,64 +107,90 @@ export async function getApplicantAvailability(pollId: string, formResponseId: s
 
 export type AggregateSlot = { slot: string; count: number; qualifies: boolean };
 
-// "The organizer (or anyone checking in on it) only sees the
-// aggregate overlap, not individual raw submissions, until a slot is
-// confirmed" — this never returns who submitted what, only a count
-// and whether the slot meets the poll's resolution criteria.
+// Who counts as a holder, for a person_plus_n_holders poll (the recruitment
+// interview, docs/admission-flow.md §2), and what they have said they are free for
+// *standing*, outside this poll. Passed in rather than read here because the
+// scheduling module knows nothing about recruitment.
+export type HolderContext = {
+  /** An open module makes every member a holder. */
+  everyone: boolean;
+  holderIds: Set<string>;
+  /** Each holder's standing availability — one grid the holder fills in and edits, read as it stands rather than copied onto the poll. */
+  standing: Map<string, Set<string>>;
+};
+
+type PollRow = typeof schedulingPoll.$inferSelect;
+type EntryRow = typeof schedulingEntry.$inferSelect;
+
+// "The organizer (or anyone checking in on it) only sees the aggregate overlap, not
+// individual raw submissions, until a slot is confirmed" — this never returns who
+// submitted what, only a count and whether the slot meets the poll's resolution
+// criteria.
 //
-// A participant's key is memberId, or — as of Phase 34 — a not-yet-a-
-// Member applicant's own formResponseId when that's what's set instead
-// (see schema/scheduling-poll.ts's schedulingEntry comment). Existing
-// member-only polls are unaffected: every entry's formResponseId is
-// null there, so this always falls through to memberId exactly as
-// before. A must_overlap poll's requiredParticipantIds can likewise
-// mix real member ids with a linked applicant's formResponseId — it's
-// an unconstrained uuid[] already (see the field's own schema
-// comment), so this needs no shape change on that side either.
-export async function getPollAggregate(
-  actor: Member,
-  pollId: string,
-): Promise<{ slots: AggregateSlot[]; submittedCount: number }> {
-  const poll = await requirePollInCommunity(actor, pollId);
-
-  const entries = await db.select().from(schedulingEntry).where(eq(schedulingEntry.pollId, pollId));
-
+// A participant's key is memberId, or — for someone who isn't a member — their
+// application's formResponseId (Phase 34) or, for the admission funnel, their
+// arrival's id. Existing member-only polls are unaffected: every entry's other
+// keys are null there.
+//
+// person_plus_n_holders is the interview (§2): a slot qualifies when the person
+// overlaps AND at least N *holders* offered that same slot, N being the lane's
+// reports-needed number. Holders are whoever holds the recruitment task right now,
+// not a list frozen when the poll was made, and what they offer is read live —
+// both their entry on this poll and their standing availability — so a holder who
+// was away when the poll was created can come back, fill in their week, and rescue it.
+export function computeAggregate(
+  poll: PollRow,
+  entries: EntryRow[],
+  holders: HolderContext | null = null,
+): { slots: AggregateSlot[]; submittedCount: number } {
   const participantIdsBySlot = new Map<string, Set<string>>();
+  const add = (slot: string, id: string) => {
+    const set = participantIdsBySlot.get(slot) ?? new Set<string>();
+    set.add(id);
+    participantIdsBySlot.set(slot, set);
+  };
   for (const e of entries) {
-    const participantId = e.memberId ?? e.formResponseId;
+    const participantId = e.memberId ?? e.formResponseId ?? e.arrivalId;
     if (!participantId) continue;
-    for (const slot of e.availableSlots as string[]) {
-      const set = participantIdsBySlot.get(slot) ?? new Set<string>();
-      set.add(participantId);
-      participantIdsBySlot.set(slot, set);
+    for (const slot of e.availableSlots as string[]) add(slot, participantId);
+  }
+  if (poll.resolutionMode === "person_plus_n_holders" && holders) {
+    for (const [memberId, slots] of holders.standing) {
+      for (const slot of slots) add(slot, memberId);
     }
   }
 
   const slots: AggregateSlot[] = [...participantIdsBySlot.entries()]
     .map(([slot, participantIds]) => {
-      const qualifies =
-        poll.resolutionMode === "must_overlap"
-          ? poll.requiredParticipantIds.every((id) => participantIds.has(id))
-          : poll.resolutionMode === "person_plus_n_holders"
-            ? (() => {
-                // In person_plus_n_holders mode:
-                // - The applicant is always the last ID in requiredParticipantIds (the formResponseId)
-                // - All other IDs are holders
-                // - The applicant MUST be present
-                // - At least minAttendance holders must be present
-                const applicantId = poll.requiredParticipantIds[poll.requiredParticipantIds.length - 1];
-                if (!participantIds.has(applicantId)) {
-                  return false;
-                }
-                // At least minAttendance holders must be present
-                const holderIds = poll.requiredParticipantIds.slice(0, -1);
-                const overlappingHolders = holderIds.filter((id) => participantIds.has(id));
-                return overlappingHolders.length >= (poll.minAttendance ?? 1);
-              })()
-            : participantIds.size >= (poll.minAttendance ?? 1);
+      let qualifies: boolean;
+      if (poll.resolutionMode === "must_overlap") {
+        qualifies = poll.requiredParticipantIds.every((id) => participantIds.has(id));
+      } else if (poll.resolutionMode === "person_plus_n_holders") {
+        // The person is the last required participant (earlier ones, on polls made
+        // before holders were read live, are ignored: a holder is whoever is one now).
+        const applicantId = poll.requiredParticipantIds[poll.requiredParticipantIds.length - 1];
+        const isHolder = (id: string) => (holders ? holders.everyone || holders.holderIds.has(id) : true);
+        const overlappingHolders = [...participantIds].filter((id) => id !== applicantId && isHolder(id));
+        qualifies = participantIds.has(applicantId) && overlappingHolders.length >= (poll.minAttendance ?? 1);
+      } else {
+        qualifies = participantIds.size >= (poll.minAttendance ?? 1);
+      }
       return { slot, count: participantIds.size, qualifies };
     })
     .sort((a, b) => a.slot.localeCompare(b.slot));
 
   return { slots, submittedCount: entries.length };
+}
+
+export async function getPollAggregate(
+  actor: Member,
+  pollId: string,
+): Promise<{ slots: AggregateSlot[]; submittedCount: number }> {
+  const poll = await requirePollInCommunity(actor, pollId);
+  const entries = await db.select().from(schedulingEntry).where(eq(schedulingEntry.pollId, pollId));
+  const holders =
+    poll.resolutionMode === "person_plus_n_holders"
+      ? await (await import("../recruitment/interviews")).loadHolderContext(poll.communityId)
+      : null;
+  return computeAggregate(poll, entries, holders);
 }

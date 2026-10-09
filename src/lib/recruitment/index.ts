@@ -17,6 +17,7 @@ export * from "./admission";
 export * from "./standing-availability";
 export * from "./subscriptions";
 export * from "./support";
+export * from "./interviews";
 export * from "./decisions";
 export * from "./objections";
 export * from "./intro-call";

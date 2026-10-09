@@ -57,7 +57,7 @@ import { listReadableSensitiveQuestionIds } from "@/lib/sensitive-data";
 import { isAdmin, requireAdmins } from "@/lib/settings/admins";
 import { updateCommunity } from "@/lib/settings";
 import { getNavContext } from "@/lib/nav";
-import { createFixtures, grantPermission, insertTask, resetDatabase, POLICY_TWO_OF_TWO } from "./helpers";
+import { createFixtures, grantPermission, insertTask, resetDatabase, POLICY_TWO_OF_TWO, withApplicationOnlyLanes } from "./helpers";
 
 // Step 1 of docs/open-permissions-plan.md: the storage. Nothing reads this
 // table yet — `isModuleOpenToEveryone` is Step 2 — so these tests assert the
@@ -716,6 +716,8 @@ describe("open capability resolvers (Step 4)", () => {
       .update(community)
       .set({ modulesEnabled: [...testCommunity.modulesEnabled, "recruitment"] })
       .where(eq(community.id, testCommunity.id));
+    // Evaluation, not the interview, is what these are about.
+    await withApplicationOnlyLanes(testCommunity.id);
     const form = await createForm(alice, {
       title: "Application",
       fields: [
@@ -1015,6 +1017,8 @@ describe("open modules are not misconfigured (Step 5)", () => {
       .update(community)
       .set({ modulesEnabled: [...testCommunity.modulesEnabled, "recruitment"] })
       .where(eq(community.id, testCommunity.id));
+    // Evaluation, not the interview, is what these are about.
+    await withApplicationOnlyLanes(testCommunity.id);
     const form = await createForm(alice, {
       title: "Application",
       fields: [

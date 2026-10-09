@@ -8,6 +8,28 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## the interview comes before the decision, and the holders offer their own times
+
+Migration **0097**. [`docs/admission-flow.md`](docs/admission-flow.md) §8 step 4 (second piece), §2 "Interview" and "The recruitment holders are the process".
+
+**The order was wrong.** The call used to be scheduled *after* a decision that had already admitted the person (a straight proceed set `resolution = accepted` before any poll existed), so "the interview" was a courtesy beside an admission, and the pipeline's own comment recorded the spec's arrow chain and the built code disagreeing about it. A lane that asks for an interview now makes the arrival's poll as they enter (`ensureInterviewPoll`, from `createAdmissionArrival`), the evaluation is the interviewers' reports after the call, and the decision only records what those reports lead to. `recordDecisionIfReached` no longer schedules anything.
+
+**A slot qualifies when the person overlaps *and* at least N holders offered it** — a conjunction, which neither poll mode could say (`must_overlap` is "all of these people", `max_attendance` "any N of anyone"), so `person_plus_n_holders` is its own mode; N is the lane's reports-needed. The poll holds only the person (their arrival's id; a new `scheduling_entry.arrival_id` is their key, because an interview-only arrival has no application to hang one on). **Holders are whoever holds the recruitment task right now, and what they offer is read live** — their entry on the poll and their *standing* availability — so nothing is copied at match time and a holder who was away when the poll was made can fill in their week and rescue it. The aggregate (`computeAggregate`) is one pure function the scheduling page and the recruitment module share.
+
+**Standing availability** (`/recruitment/availability`) is one grid for the next 14 days a holder edits whenever they like. It keeps only slots in that window, and a grid nobody has refreshed for longer than its window offers nothing (a holder who has gone quiet is not "available" next month). It is what the recruitment subscription's "no availability given" counter now reads: a subscriber counts as having offered if they have an entry on the poll *or* offered the confirmed slot standing (`admission.subscription_lapse_processed_at` replaces the decision's marker).
+
+**Confirmation is a person.** `confirmInterview` takes any holder covering the arrival's scope, re-checks the slot against the poll as it stands at that moment, books it, and tells the person; the scheduling page's own confirm button now lets a holder (not only the organizer) confirm an interview poll and the arrival's facts follow either way. **The interviewers are whoever offered the confirmed slot**, standing or on the poll, read back at that moment — which is what lets the set stay open rather than freezing a list of names. `interviewScheduledAt` and `interviewHeldAt` are written from the poll by one function (`syncInterviewFacts`), held when the slot has passed or an interviewer says it happened.
+
+**Who may report follows the lane** (`submitEvaluation`): with an interview, only the interviewers, and only once it has happened (a clear sentence for each refusal); without one, any holder. An application that predates arrivals never had an interview before its decision, so it is given an arrival that doesn't ask for one rather than being made to wait for a call nobody scheduled. Counted per arrival, so two people who interview together each need their own N.
+
+**Doors hold, never skip.** With the interviews door shut (community or event) the arrival waits at this step with no poll, the holders' list says "Interview not set up", and reopening the door makes the polls. A community with no recruitment task has nowhere honest to file a poll, which is reported rather than papered over.
+
+**The pipeline reads the stage function.** `RecruitmentCandidate` is now the arrival with its admission stage, the plain sentence and *what is waiting* ("Interview ready to book", "Interview needs more of you to offer times", "Reports needed (1 of 2)"); a booked interview, a wider discussion window and an arrival waiting for the person to offer times are not the holders' to chase (`wider_discussion` is a new stage). The recruitment hub's table, the dashboard row and `listRecruitmentActionItems` read it; the old call_pending / call_scheduled / accompaniment_assigned stages are gone.
+
+**Emails** — the interview link (choose times) and the confirmed time. **Legacy:** decisions that already carry an intro call keep their `/intro-call/<token>` link working (tested by building the old shape by hand); no new decision makes one, and the clean-up step removes the module.
+
+Tests: `interviews.test.ts` (new, 20), stage cases for the wider discussion and a booked interview, the pipeline suite rewritten around the stage, the subscription-lapse suite re-keyed onto interviews (including standing availability), and the evaluation suites moved to application-only lanes so they stay about evaluation. Checked by hand in `next dev` on a scratch database: applying to an interview lane puts the grid on the person's page and emails the invitation; their times and a holder's standing times save through the APIs the grids post to; the applications list then says "1 time suits them and enough of you — pick one to book", booking writes the facts, emails the person, and the list shows it as booked. **Not checked:** dragging cells in the grids themselves (their endpoints were exercised directly), and *It happened* and filing reports through the page (tested through the library).
+
 ## reports are counted per lane, and how they decide is a form instead of a rules list
 
 Migration **0096**. [`docs/admission-flow.md`](docs/admission-flow.md) §8 step 4 (the first of its pieces) and §2's "How reports decide".
@@ -22,7 +44,7 @@ Migration **0096**. [`docs/admission-flow.md`](docs/admission-flow.md) §8 step 
 
 **Removed:** the decision-rules editor, `requireValidDecisionRules`, the rules schema, and the invite-checkbox conditions with them.
 
-Tests: `decision-policy.test.ts` (new, 14), a populated-database case for 0096, and the recruitment suites translated from rules to the form. **Not checked in a browser:** the new "How reports decide" card (type-checked, built from the same function the tests exercise).
+Tests: `decision-policy.test.ts` (new, 14), a populated-database case for 0096, and the recruitment suites translated from rules to the form. Checked in `next dev`: the new "How reports decide" card shows the generated sentence and reveals the custom fields.
 
 ## the support shortcut: members' word skips the rest, alongside the path and never past a concern
 

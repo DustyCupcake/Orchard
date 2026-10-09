@@ -1105,6 +1105,10 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
     const { releaseWaitlist } = await import("../recruitment/admission");
     await releaseWaitlist(cycleId);
   }
+  if (input.interviewsOpen === true && !row.interviewsOpen) {
+    const { ensureInterviewPollsFor } = await import("../recruitment/interviews");
+    await ensureInterviewPollsFor(row.communityId);
+  }
 
   if (input.startDate !== undefined || input.endDate !== undefined) {
     await recomputePhaseDatesForCycle(db, cycleId, nextStartDate, nextEndDate);

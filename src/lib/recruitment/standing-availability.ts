@@ -1,10 +1,17 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, gt, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { recruitmentStandingAvailability } from "@/db/schema";
+import { member, recruitmentStandingAvailability } from "@/db/schema";
 
-/**
- * Get a member's standing availability. Returns null if not set.
- */
+// docs/admission-flow.md §2: "the recruitment holders offer their own availability".
+// Standing availability is one grid a holder fills in and edits whenever they like,
+// covering a rolling window of the next few weeks. Every incoming interview is
+// matched against it *as it stands* — it is read, never copied onto a poll, so
+// there is nothing to re-paint for each person and a holder who was away can come
+// back and fill in their week. (It is what the recruitment-mode subscription, an
+// on/off alert flag, grows into.)
+export const STANDING_WINDOW_DAYS = 14;
+
+/** A member's own grid, or null if they have never set one. */
 export async function getStandingAvailability(memberId: string) {
   const [row] = await db
     .select()
@@ -14,78 +21,52 @@ export async function getStandingAvailability(memberId: string) {
 }
 
 /**
- * Upsert a member's standing availability. The grid covers a rolling window.
- * The window is automatically set to [now, now + 14 days] if not provided.
+ * Replace a member's standing grid. The window is always [now, now + 14 days]: it
+ * is rolling, so what was offered for dates that have passed simply drops out, and
+ * anything outside the window is not kept (a slot is only ever worth offering where
+ * an interview could actually be scheduled).
  */
-export async function upsertStandingAvailability(input: {
-  memberId: string;
-  availableSlots: string[]; // ISO datetime strings, 30-min granularity
-  windowStart?: Date;
-  windowEnd?: Date;
-}) {
-  const now = new Date();
-  const windowStart = input.windowStart ?? now;
-  const windowEnd = input.windowEnd ?? new Date(now.getTime() + 14 * 86_400_000);
+export async function setStandingAvailability(memberId: string, slots: string[], now: Date = new Date()) {
+  const windowStart = now;
+  const windowEnd = new Date(now.getTime() + STANDING_WINDOW_DAYS * 86_400_000);
+  const kept = [...new Set(slots)].filter((slot) => {
+    const t = new Date(slot).getTime();
+    return Number.isFinite(t) && t >= windowStart.getTime() && t <= windowEnd.getTime();
+  });
 
   const [row] = await db
     .insert(recruitmentStandingAvailability)
-    .values({
-      memberId: input.memberId,
-      availableSlots: input.availableSlots,
-      windowStart,
-      windowEnd,
-      updatedAt: new Date(),
-    })
+    .values({ memberId, availableSlots: kept, windowStart, windowEnd, updatedAt: now })
     .onConflictDoUpdate({
       target: recruitmentStandingAvailability.memberId,
-      set: {
-        availableSlots: input.availableSlots,
-        windowStart,
-        windowEnd,
-        updatedAt: new Date(),
-      },
+      set: { availableSlots: kept, windowStart, windowEnd, updatedAt: now },
     })
     .returning();
-
   return row;
 }
 
 /**
- * Get all recruitment holders' standing availability for a community.
- * Used when matching holders against an incoming applicant.
+ * Everybody's standing slots in a community, keyed by member — only grids that
+ * haven't lapsed (a grid nobody has touched for longer than its window offers
+ * nothing: a member who has gone quiet is not "available" for next month), and only
+ * slots still in the future.
  */
-export async function getAllHoldersStandingAvailability(
-  communityId: string,
-  holderIds: string[],
-) {
+export async function loadStandingSlots(communityId: string, memberIds?: string[], now: Date = new Date()) {
   const rows = await db
-    .select({
-      memberId: recruitmentStandingAvailability.memberId,
-      availableSlots: recruitmentStandingAvailability.availableSlots,
-      windowStart: recruitmentStandingAvailability.windowStart,
-      windowEnd: recruitmentStandingAvailability.windowEnd,
-    })
+    .select({ memberId: recruitmentStandingAvailability.memberId, slots: recruitmentStandingAvailability.availableSlots })
     .from(recruitmentStandingAvailability)
+    .innerJoin(member, eq(member.id, recruitmentStandingAvailability.memberId))
     .where(
       and(
-        eq(recruitmentStandingAvailability.memberId, communityId),
-        inArray(recruitmentStandingAvailability.memberId, holderIds),
+        eq(member.communityId, communityId),
+        gt(recruitmentStandingAvailability.windowEnd, now),
+        ...(memberIds ? [inArray(recruitmentStandingAvailability.memberId, memberIds)] : []),
       ),
     );
-  return rows;
-}
-
-/**
- * Check which holders have availability matching a given applicant's slots.
- * Returns the member IDs of holders whose standing availability overlaps
- * with the applicant's submitted availability.
- */
-export function findHoldersMatchingApplicant(
-  holders: { memberId: string; availableSlots: string[] }[],
-  applicantSlots: string[],
-): string[] {
-  const applicantSet = new Set(applicantSlots);
-  return holders
-    .filter((h) => h.availableSlots.some((slot) => applicantSet.has(slot)))
-    .map((h) => h.memberId);
+  const nowIso = now.getTime();
+  const out = new Map<string, Set<string>>();
+  for (const r of rows) {
+    out.set(r.memberId, new Set((r.slots as string[]).filter((s) => new Date(s).getTime() >= nowIso)));
+  }
+  return out;
 }

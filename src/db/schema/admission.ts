@@ -3,6 +3,7 @@ import { admissionLane, admissionVerification } from "./admission-lane";
 import { community } from "./community";
 import { cycle } from "./cycle";
 import { formResponse } from "./form";
+import { schedulingPoll } from "./scheduling-poll";
 
 // docs/admission-flow.md §4 — one row per person in the funnel, replacing
 // the overlapping state that used to be spread over the invite
@@ -110,6 +111,15 @@ export const admission = pgTable(
     // *that the shortcut fired*, because that is a one-way fact with no
     // other witness.
     supportShortcutReachedAt: timestamp("support_shortcut_reached_at", { withTimezone: true }),
+    // The interview (§2): a scheduling poll made for this arrival when its lane asks
+    // for one, read live — the person's availability, the holders' own, and the slot
+    // a holder confirms. Null until the interview door is open and there is a
+    // recruitment task to file it under. `interviewScheduledAt` and
+    // `interviewHeldAt` below are written from what the poll says.
+    interviewPollId: uuid("interview_poll_id").references(() => schedulingPoll.id),
+    // Processed once, when the interview's slot is confirmed, for the recruitment
+    // subscription's no-availability counter (subscriptions.ts).
+    subscriptionLapseProcessedAt: timestamp("subscription_lapse_processed_at", { withTimezone: true }),
     admittedAt: timestamp("admitted_at", { withTimezone: true }),
     admittedMemberId: uuid("admitted_member_id"),
     declinedAt: timestamp("declined_at", { withTimezone: true }),

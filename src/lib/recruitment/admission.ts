@@ -122,6 +122,19 @@ export async function createAdmissionArrival(input: ArrivalInput): Promise<{ arr
     })
     .returning();
 
+  // A lane with an interview makes the arrival's interview poll as they enter —
+  // the interview comes before the decision (§2). If the interviews door is shut it
+  // is made when the door reopens: the arrival waits at this step, never skips it.
+  // Best-effort: a failure here must not turn someone's application into an error.
+  if (snapshot.requiredInterview && snapshot.requiredVerification === "none") {
+    try {
+      const { ensureInterviewPoll } = await import("./interviews");
+      await ensureInterviewPoll(arrival.id);
+    } catch (err) {
+      console.error("[admission] could not make the interview poll", err);
+    }
+  }
+
   // Direct arrivals are signed in on the spot and told in the same breath;
   // everyone else is going to wait, and a link they can come back to is what
   // makes the wait bearable (§6).
@@ -564,6 +577,10 @@ export async function ensureArrivalForApplication(formResponseId: string): Promi
       inviteId: vouch?.invite.id ?? null,
       formResponseId,
       ...snapshot,
+      // An application that predates arrivals was made on a path with no interview
+      // before its decision (the old call came *after* a decision, and is still
+      // handled for those), so it isn't made to wait for one now.
+      requiredInterview: false,
       token: randomBytes(24).toString("base64url"),
       supportToken: randomBytes(24).toString("base64url"),
       applicationSubmittedAt: response.submittedAt,
@@ -583,14 +600,17 @@ export async function ensureArrivalForApplication(formResponseId: string): Promi
  * holders' lists and any email read the same answer. Reads the evaluations
  * count rather than keeping a second opinion of it.
  */
-export async function loadArrivalReadout(arrival: Arrival) {
+export async function loadArrivalReadout(arrival: Arrival, options: { waitingOnThePerson?: boolean } = {}) {
   const [filed] = arrival.formResponseId
     ? await db
         .select({ count: sql<number>`count(*)::int` })
         .from(evaluation)
         .where(eq(evaluation.formResponseId, arrival.formResponseId))
     : [{ count: 0 }];
-  const [lane] = await db.select({ name: admissionLane.name }).from(admissionLane).where(eq(admissionLane.id, arrival.laneId));
+  const [lane] = await db.select({ name: admissionLane.name }).from(admissionLane).where(eq(admissionLane.id, arrival.laneId));  const [decisionRow] = arrival.formResponseId
+    ? await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, arrival.formResponseId))
+    : [];
+  const widerDiscussionOpen = Boolean(decisionRow && decisionRow.ruleOutcome === "wider_discussion" && decisionRow.resolution === null);
   const readout = computeAdmissionStage(
     {
       verification: arrival.requiredVerification,
@@ -609,6 +629,7 @@ export async function loadArrivalReadout(arrival: Arrival) {
       interviewHeld: Boolean(arrival.interviewHeldAt),
       evaluationsFiled: filed?.count ?? 0,
       decisionRecorded: Boolean(arrival.decisionRecordedAt),
+      widerDiscussionOpen,
       supportShortcutReached: Boolean(arrival.supportShortcutReachedAt),
       admitted: Boolean(arrival.admittedMemberId),
       declined: Boolean(arrival.declinedAt),
@@ -625,6 +646,7 @@ export async function loadArrivalReadout(arrival: Arrival) {
       declinedAt: arrival.declinedAt,
       withdrawnAt: arrival.withdrawnAt,
     },
+    options,
   );
   return { readout, sentence: describeAdmissionStage(readout), laneName: lane?.name ?? null };
 }

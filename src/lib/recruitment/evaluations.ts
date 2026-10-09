@@ -3,11 +3,12 @@ import { z } from "zod";
 import { db } from "@/db";
 import { evaluation, formResponse } from "@/db/schema";
 import type { community as communityTable, member as memberTable } from "@/db/schema";
-import { AppError, NotFoundError } from "../errors";
+import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
 import { getCommunityRow, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
 import { decideFromReports, type DecisionPolicy } from "./decision-policy";
 import { ensureArrivalForApplication } from "./admission";
+import { getInterviewers, syncInterviewFacts } from "./interviews";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityRow = typeof communityTable.$inferSelect;
@@ -132,6 +133,22 @@ export async function submitEvaluation(actor: Member, formResponseId: string, in
   // applications — the §4.3 scope rule, enforced on every write just as
   // it is on the pipeline listing.
   await requireRecruitmentScopeForCycle(actor, responseRow.cycleId);
+
+  // Who may file depends on what the lane contains (docs/admission-flow.md §2):
+  // with an interview, the interviewers — the holders who took part in the call —
+  // and only once it has happened; without one, any holder who reads the
+  // application. An application that predates arrivals never had an interview
+  // before its decision, and isn't made to wait for one now.
+  const arrival = await ensureArrivalForApplication(formResponseId);
+  if (arrival?.requiredInterview) {
+    const synced = await syncInterviewFacts(arrival.id);
+    if (!synced.interviewHeldAt) {
+      throw new ConflictError("The interview hasn't happened yet — reports are filed after it, by the people who took part");
+    }
+    if (!(await getInterviewers(synced)).some((m) => m.id === actor.id)) {
+      throw new ForbiddenError("Only the people who took part in the interview can report on it");
+    }
+  }
 
   const values = { recommendation: input.recommendation, notes: input.notes ?? null, filedAt: new Date() };
 

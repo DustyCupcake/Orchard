@@ -29,6 +29,20 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-10-12",
+    title: "Joining: the conversation comes before the decision",
+    summary: "People who are interviewed are interviewed first, and the decision is made from the reports of the people who met them.",
+    points: [
+      "A lane with an interview now sets one up as the person arrives, on their own page — they paint when they're free, and nobody sees anyone else's times until one is booked.",
+      "Recruitment holders offer their own times once, under Recruitment → Your interview availability: a grid for the next two weeks that counts for every interview automatically. A time is only offered for booking when the person and enough of you offered the same one.",
+      "A holder books it — any holder, not only whoever started the poll — and the person is emailed the time. The people who offered that time are the ones on the call, and they write the reports afterwards.",
+      "Without an interview, any holder who reads an application can report on it, as before.",
+      "How reports decide is four choices in settings instead of a list of rules; how many reports a lane needs is on the lane.",
+      "While conversations are paused, people wait at that step rather than skipping it, and the recruitment page says who is waiting on whom.",
+    ],
+    source: "the interview comes before the decision, and the holders offer their own times",
+  },
+  {
     date: "2026-10-11",
     title: "Joining: members' word can skip the rest",
     summary: "A lane can say that a few members vouching for someone is enough, and nobody has to wait for it.",

@@ -21,6 +21,7 @@ import { computeWiderDiscussionStatus, getRecruitmentDecision } from "./decision
 import { listObjections } from "./objections";
 import { consensusDisclosure, consensusWindowFor, recordApplicationConsent } from "./consensus";
 import { listSupports } from "./support";
+import { getInterviewers, getInterviewState } from "./interviews";
 import { attachApplicantToPairing, createPairings, resolvePairingForApplication } from "./pairs";
 import { assertEmailFreeToArrive, createAdmissionArrival, personFromApplication } from "./admission";
 import { declarationFromInvite, resolveInviteLane, resolvePublicLane, type AdmissionLane } from "./admission-lanes";
@@ -439,6 +440,11 @@ export async function listApplicationsForEvaluation(actor: Member) {
         .from(admission)
         .where(eq(admission.formResponseId, response.id));
       const supports = arrival ? await listSupports(arrival.id) : [];
+      // Where this application's interview is, read live — so a holder looking at the
+      // list can see whether it's waiting on the person, on holders, or ready to book.
+      const [fullArrival] = arrival ? await db.select().from(admission).where(eq(admission.id, arrival.id)) : [];
+      const interview = fullArrival?.requiredInterview ? await getInterviewState(fullArrival) : null;
+      const interviewers = fullArrival?.requiredInterview && interview?.confirmed ? await getInterviewers(fullArrival) : [];
       const convertedMember = decision?.convertedMemberId
         ? await db.select().from(member).where(eq(member.id, decision.convertedMemberId)).then((rows) => rows[0] ?? null)
         : null;
@@ -454,6 +460,8 @@ export async function listApplicationsForEvaluation(actor: Member) {
         convertedMember,
         arrival: arrival ?? null,
         supports,
+        interview,
+        interviewerIds: interviewers.map((m) => m.id),
       };
     }),
   );

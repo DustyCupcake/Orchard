@@ -107,11 +107,6 @@ function FeedSection({
 // Hoisted to module scope so ModuleNeedsActionSections can read them — the
 // six module sections moved out of the page body for D12's two-pass render,
 // and these three label maps are the only thing they needed from in there.
-const NEEDS_ACTION_LABEL: Record<string, string> = {
-  call_pending: "evaluated, call not scheduled yet",
-  decision_pending: "call happened, decision still pending",
-};
-
 const BUDGET_LABEL: Record<string, string> = {
   close_to_voting: "proposal deadline passed — close to voting",
   confirm_funded_set: "voting is in, confirm the funded set",
@@ -153,8 +148,8 @@ function ModuleNeedsActionSections({
             <FeedRow
               key={c.id}
               href="/recruitment"
-              title={`Application from ${new Date(c.submittedAt).toLocaleDateString()}`}
-              tag={<Tag tone="warning">{NEEDS_ACTION_LABEL[c.stage] ?? c.stage}</Tag>}
+              title={`${c.name} — ${new Date(c.submittedAt).toLocaleDateString()}`}
+              tag={<Tag tone="warning">{c.actionLabel ?? "needs you"}</Tag>}
             />
           ))}
         </FeedSection>

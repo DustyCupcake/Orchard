@@ -569,7 +569,7 @@ Each step is its own set of commits, with the suite green, and nothing is left h
 3. **Support shortcut and community check.** Support that actually short-circuits the path (and never
    past a standing concern), for public applicants as well as invitees; inviter excluded; vouches
    visible to evaluators. Community check without creating a member early.
-4. **The funnel order.** Application → interview → evaluation → decision, lanes driving every step
+4. **The funnel order** (built in step 4, in two pieces: reports and the decision form, then the interview). Application → interview → evaluation → decision, lanes driving every step
    (including interview-only and application-less lanes). Standing availability as a rolling grid the
    holder edits themselves, matched against incoming interviews rather than re-painted; the poll
    qualifying when the person overlaps **and** at least N holders offered that slot; confirmation by a

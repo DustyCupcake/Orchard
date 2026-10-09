@@ -36,22 +36,23 @@ const PAIR_LABEL: Record<string, string> = {
   declined: "turned down",
 };
 
+// The stage names are admission-stage.ts's (docs/admission-flow.md §4) — the same
+// ones the person's own page and the dashboard read — in the holders' words.
 const STAGE_LABEL: Record<string, string> = {
-  applied: "Applied",
-  evaluation_in_progress: "Evaluation in progress",
-  call_pending: "Call pending",
-  call_scheduled: "Call scheduled",
+  entered: "Just arrived",
+  awaiting_consent: "Waiting for their consent",
+  check_pending: "Community check open",
+  application_submitted: "Application in",
+  interview_scheduled: "Interview booked",
+  interview_held: "Interview done — reports due",
+  evaluation_in_progress: "Reports coming in",
   decision_pending: "Decision pending",
-  accepted: "Accepted",
+  wider_discussion: "Wider discussion open",
+  admitted: "Admitted",
+  waitlisted: "Waiting for a place",
   declined: "Declined",
-  accompaniment_assigned: "Accompaniment assigned",
+  withdrawn: "Stopped by them",
 };
-
-// "Evaluated-but-uncalled, called-but-undecided" — docs/development-
-// plan.md's Phase 35. The same subset src/lib/recruitment/pipeline.ts's
-// listRecruitmentActionItems surfaces on /dashboard, flagged here too
-// so the pipeline view itself makes the same cases legible in place.
-const NEEDS_ACTION_STAGES = new Set(["call_pending", "decision_pending"]);
 
 const OUTCOME_LABEL: Record<string, string> = {
   proceed: "Proceed",
@@ -544,7 +545,7 @@ export default async function RecruitmentHubPage() {
                 <table className="w-full border-collapse text-[length:var(--text-body)]">
                   <thead>
                     <tr>
-                      <th className={TH}>Submitted</th>
+                      <th className={TH}>Who</th>
                       <th className={TH}>Stage</th>
                       <th className={TH}>Time in stage</th>
                     </tr>
@@ -552,11 +553,16 @@ export default async function RecruitmentHubPage() {
                   <tbody>
                     {pipeline.candidates.map((c) => (
                       <tr key={c.id} className="hover:bg-[var(--surface-sunken)]">
-                        <td className={TD}>{new Date(c.submittedAt).toLocaleDateString()}</td>
                         <td className={TD}>
-                          <span className="flex items-center gap-2">
+                          {c.name}
+                          <span className="block text-[length:var(--text-micro)] text-[var(--text-muted)]">
+                            {c.laneName ?? "—"} · arrived {new Date(c.submittedAt).toLocaleDateString()}
+                          </span>
+                        </td>
+                        <td className={TD}>
+                          <span className="flex flex-wrap items-center gap-2">
                             {STAGE_LABEL[c.stage] ?? c.stage}
-                            {NEEDS_ACTION_STAGES.has(c.stage) && <Tag tone="warning">needs action</Tag>}
+                            {c.needsAction && <Tag tone="warning">{c.actionLabel ?? "needs action"}</Tag>}
                           </span>
                         </td>
                         <td className={TD}>{timeSince(c.stageSince)}</td>

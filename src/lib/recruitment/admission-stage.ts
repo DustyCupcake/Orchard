@@ -39,6 +39,8 @@ export type AdmissionFacts = {
   interviewHeld: boolean;
   evaluationsFiled: number;
   decisionRecorded: boolean;
+  /** The reports led to a wider discussion and its window is still open (§5): the community's, not the holders'. */
+  widerDiscussionOpen?: boolean;
   supportShortcutReached: boolean;
   admitted: boolean;
   declined: boolean;
@@ -60,6 +62,7 @@ export const ADMISSION_STAGES = [
   "interview_scheduled",
   "interview_held",
   "decision_pending",
+  "wider_discussion",
   "check_pending",
   "awaiting_consent",
   "entered",
@@ -76,6 +79,7 @@ export type AdmissionStageReason =
   | "interview_scheduled"
   | "interview_not_held"
   | "held_awaiting_reports"
+  | "wider_discussion_open"
   | "check_pending"
   | "awaiting_consent"
   | "entered";
@@ -245,7 +249,11 @@ export function computeAdmissionStage(
     return done(stage, "evaluations_outstanding", since);
   }
 
-  // Reports in, decision not made: the community's rules own this one.
+  // Reports in and the policy sent them to a wider discussion: the window belongs to
+  // the community, and a standing concern to the mediation body — nobody here is stuck.
+  if (!facts.decisionRecorded && facts.widerDiscussionOpen) return done("wider_discussion", "wider_discussion_open", since);
+
+  // Reports in, decision not made: the community's policy owns this one.
   if (!facts.decisionRecorded) return done("decision_pending", "held_awaiting_reports", since);
 
   // Everything this lane asked for has happened and nothing has objected.
@@ -270,7 +278,9 @@ export function admissionNeedsAction(stage: AdmissionStageReadout): boolean {
   // are visible on their own screens already (§3 shows the window setting
   // and the mediation queue), so listing them here would be a second place
   // the same thing is chased from.
-  if (stage.stage === "awaiting_consent" || stage.stage === "check_pending") return false;
+  if (stage.stage === "awaiting_consent" || stage.stage === "check_pending" || stage.stage === "wider_discussion") return false;
+  // A booked interview is waiting for the call to happen, which nobody can hurry.
+  if (stage.stage === "interview_scheduled") return false;
   // Everything else in flight is an outstanding report, an unscheduled or
   // unheld interview, or a decision unmade — all work the holders own. If
   // the arrival is also waiting on the person's own step, the flag the
@@ -307,6 +317,8 @@ export function describeAdmissionStage(stage: AdmissionStageReadout): string {
       return "Your interview has happened. The people you met are writing up what they think.";
     case "decision_pending":
       return "Everything's been said. The community's rules are deciding now.";
+    case "wider_discussion":
+      return "The people who met you have reported, and the community has a short window to raise any concern before it's decided.";
     case "evaluation_in_progress":
       return evaluationsFiled === 0 && reportsNeeded
         ? `We're looking for ${reportsNeeded} ${reportsNeeded === 1 ? "recommendation" : "recommendations"} about you.`

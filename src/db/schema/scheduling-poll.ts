@@ -86,6 +86,11 @@ export const schedulingEntry = pgTable("scheduling_entry", {
     .references(() => schedulingPoll.id),
   memberId: uuid("member_id").references(() => member.id),
   formResponseId: uuid("form_response_id").references(() => formResponse.id),
+  // A person in the admission funnel (docs/admission-flow.md §4) — the key a new
+  // interview poll uses for the applicant, because an arrival always has one and
+  // an interview-only arrival has no application (so no form response) to hang it
+  // on. Polls made before arrivals existed keep their form response.
+  arrivalId: uuid("arrival_id"),
   availableSlots: jsonb("available_slots").notNull().default([]),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

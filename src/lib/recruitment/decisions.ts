@@ -15,14 +15,10 @@ import {
   taskAssignment,
 } from "@/db/schema";
 import type { community as communityTable, member as memberTable } from "@/db/schema";
-import { describeRecruitmentAuthority } from "./access";
 import { createTask } from "../tasks";
-import { createPoll } from "../scheduling-polls";
-import { generateToken } from "../token";
 import { getCommunityRow, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { computeRecruitmentOutcome } from "./evaluations";
-import { canScheduleInterview } from "./joining";
 import { listGrantingTaskIds } from "../permissions";
 import { admitArrival, ensureArrivalForApplication, recordArrivalDecision } from "./admission";
 
@@ -31,7 +27,6 @@ type CommunityRow = typeof communityTable.$inferSelect;
 type RecruitmentDecisionRow = typeof recruitmentDecision.$inferSelect;
 
 const MS_PER_HOUR = 3600_000;
-const INTRO_CALL_WINDOW_DAYS = 14;
 
 export async function getRecruitmentDecision(formResponseId: string) {
   const [row] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, formResponseId));
@@ -122,67 +117,6 @@ async function resolveAccompanimentAuthor(
 
   const [evaluator] = await db.select().from(member).where(eq(member.id, earliestEvaluation.evaluatorId));
   return evaluator ?? null;
-}
-
-function isoDate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
-// "The intro-call SchedulingPoll is created in must-overlap-specific-
-// people mode against the two evaluators as real, required Member
-// participants, while the applicant is tracked by [their] FormResponse
-// ... required participant for the applicant's side means their own
-// token-linked availability submission, not a memberId" — docs/
-// development-plan.md's Phase 34. requiredParticipantIds mixes real
-// evaluator member ids with the applicant's own formResponseId; that
-// field is an unconstrained uuid[] already (see its own schema
-// comment), and getPollAggregate's participant key already falls back
-// to formResponseId when memberId is null, so must-overlap resolution
-// needs no further special-casing to treat the two uniformly.
-//
-// Returns null when no task grants Recruitment, because the Poll's branchId
-// comes from that task and there is nowhere else to file it: a member has no
-// branch column, and a cycle has none either. That was a pre-existing
-// degradation for the never-granted case, but an open module makes it
-// reachable *deliberately* — so it is reported rather than papered over (see
-// RecruitmentAuthority.needsTaskToFileUnder), and picking an arbitrary
-// branch is deliberately avoided: a real Poll under an unrelated branch is
-// worse than a visible gap. The decision itself is already recorded by
-// recordDecisionIfReached before this is called.
-async function createIntroCallPoll(
-  actor: Member,
-  communityRow: CommunityRow,
-  formResponseId: string,
-  evaluatorIds: string[],
-  reportsNeeded: number,
-) {
-  const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "recruitment");
-  if (grantingTaskIds.length === 0) return null;
-  const [recruitmentTaskRow] = await db.select().from(task).where(inArray(task.id, grantingTaskIds));
-  if (!recruitmentTaskRow) return null;
-
-  // Get all recruitment holders for this community (docs/admission-flow.md §4:
-  // "the person, plus at least the community's evaluator count of holders").
-  // We include all recruitment holders; the new "person_plus_n_holders" mode
-  // will check at confirmation time that the person overlaps AND at least N
-  // holders (where N = lane's reportsNeeded) offered that slot.
-  const authority = await describeRecruitmentAuthority(communityRow.id);
-  const holderIds = authority.holders.map((h: { memberId: string }) => h.memberId);
-
-  const now = new Date();
-  const poll = await createPoll(actor, {
-    branchId: recruitmentTaskRow.branchId,
-    title: "Recruitment intro call",
-    resolutionMode: "person_plus_n_holders",
-    // minAttendance = lane's reportsNeeded (N)
-    minAttendance: reportsNeeded,
-    // Include all holders + the applicant (formResponseId)
-    requiredParticipantIds: [...holderIds, formResponseId],
-    rangeStart: isoDate(now),
-    rangeEnd: isoDate(new Date(now.getTime() + INTRO_CALL_WINDOW_DAYS * 86_400_000)),
-  });
-
-  return { pollId: poll.id, token: generateToken() };
 }
 
 // An accepted application becomes a member through the one admission function
@@ -368,40 +302,10 @@ export async function recordDecisionIfReached(actor: Member, formResponseId: str
   let decisionRow = created;
   await recordArrivalDecision(formResponseId, resolution);
 
-  // "Proceed-adjacent" — proceed and wider_discussion both auto-
-  // schedule the intro call; decline never does. Unless the third door
-  // says otherwise: §2.3/J3 made the interview stage independently
-  // toggleable, so a community (or an event) with interviews closed gets
-  // no poll at all rather than a promise it didn't make. The decision
-  // still records, and the pipeline's stage computation already treats a
-  // decision with no poll as `call_pending`, so the applicant is visible
-  // as waiting rather than as finished.
-  if (result.outcome !== "decline") {
-    const [responseRow] = await db
-      .select({ cycleId: formResponse.cycleId })
-      .from(formResponse)
-      .where(eq(formResponse.id, formResponseId));
-    if (await canScheduleInterview(actor.communityId, responseRow?.cycleId ?? null)) {
-      // Get the lane's reportsNeeded from the arrival (admission table)
-      const [arrivalRow] = await db
-        .select({ reportsNeeded: admission.reportsNeeded })
-        .from(admission)
-        .innerJoin(formResponse, eq(admission.formResponseId, formResponse.id))
-        .where(eq(formResponse.id, formResponseId));
-      const reportsNeeded = arrivalRow?.reportsNeeded ?? 2;
-
-      const evaluatorIds = result.evaluations.map((e) => e.evaluatorId);
-      const introCall = await createIntroCallPoll(actor, communityRow, formResponseId, evaluatorIds, reportsNeeded);
-      if (introCall) {
-        const [updated] = await db
-          .update(recruitmentDecision)
-          .set({ introCallPollId: introCall.pollId, introCallToken: introCall.token })
-          .where(eq(recruitmentDecision.id, created.id))
-          .returning();
-        decisionRow = updated;
-      }
-    }
-  }
+  // There is no call to schedule here any more. The interview comes *before* the
+  // decision (docs/admission-flow.md §2): it was made when the arrival entered, and
+  // the reports being decided from are the interviewers' own. A decision only
+  // records what the reports lead to.
 
   if (resolution === "accepted") {
     const converted = await maybeConvertApplicantToMember(decisionRow);

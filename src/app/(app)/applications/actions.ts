@@ -8,6 +8,8 @@ import { assertNotViewingAs } from "@/lib/view-as";
 import {
   raiseObjection,
   raiseObjectionInput,
+  confirmInterview,
+  markInterviewHeld,
   pokeForSupport,
   recordSupport,
   recordDecisionIfReached,
@@ -144,4 +146,31 @@ export async function askMembersToSupportAction(formData: FormData) {
   }
   revalidatePath("/applications");
   redirect("/applications?asked=1");
+}
+
+// A holder confirms one of the interview times that suit the person and enough of
+// the people who'll be on the call (docs/admission-flow.md §2) — a person, not a
+// job, and any holder rather than only whoever organized the poll.
+export async function confirmInterviewAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await confirmInterview(actor, String(formData.get("arrivalId") ?? ""), String(formData.get("slot") ?? ""));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/applications");
+  redirect("/applications?interviewConfirmed=1");
+}
+
+// An interviewer says the call happened, without waiting for the slot to pass, so
+// reports can be filed.
+export async function markInterviewHeldAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await markInterviewHeld(actor, String(formData.get("arrivalId") ?? ""));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/applications");
+  redirect("/applications?interviewHeld=1");
 }

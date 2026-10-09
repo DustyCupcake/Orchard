@@ -30,9 +30,9 @@ import {
   submitIntroCallAvailability,
   submitRecruitmentApplication,
 } from "@/lib/recruitment";
-import { getPollAggregate, submitAvailabilityAsApplicant } from "@/lib/scheduling-polls";
+import { createPoll } from "@/lib/scheduling-polls";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase, withLegacyLanes, POLICY_TWO_OF_TWO } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withApplicationOnlyLanes, POLICY_TWO_OF_TWO } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
   { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
@@ -45,7 +45,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
-  await withLegacyLanes(communityId);
+  await withApplicationOnlyLanes(communityId);
 }
 
 async function insertTask(
@@ -135,25 +135,20 @@ describe("recordDecisionIfReached", () => {
     expect(await getRecruitmentDecision(application.formResponse.id)).toBeNull();
   });
 
-  it("resolves immediately to accepted for a proceed outcome, and schedules a real intro call", async () => {
+  it("resolves immediately to accepted for a proceed outcome, makes the member, and schedules nothing", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
     const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
 
     expect(decision!.ruleOutcome).toBe("proceed");
     expect(decision!.resolution).toBe("accepted");
-    expect(decision!.introCallPollId).not.toBeNull();
     expect(decision!.accompanimentTaskId).not.toBeNull();
-
-    const [poll] = await db.select().from(schedulingPoll).where(eq(schedulingPoll.id, decision!.introCallPollId!));
-    expect(poll.resolutionMode).toBe("person_plus_n_holders");
-    expect(poll.requiredParticipantIds).toEqual(
-      expect.arrayContaining([setupResult.alice.id, setupResult.bob.id, application.formResponse.id]),
-    );
-    // minAttendance should be 2 (the lane's reportsNeeded)
-    expect(poll.minAttendance).toBe(2);
-    // Should include both holders (alice, bob) + the applicant
-    expect(poll.requiredParticipantIds).toHaveLength(3);
+    expect(decision!.convertedMemberId).not.toBeNull();
+    // The interview comes *before* the decision now (docs/admission-flow.md §2), so a
+    // decision schedules no call: on a lane without one there is nothing to schedule.
+    expect(decision!.introCallPollId).toBeNull();
+    expect(await db.select().from(schedulingPoll).where(eq(schedulingPoll.communityId, fixtures.community.id))).toHaveLength(0);
+    void application;
   });
 
   it("resolves immediately to declined for a decline outcome, with no intro call", async () => {
@@ -167,7 +162,7 @@ describe("recordDecisionIfReached", () => {
     expect(decision!.accompanimentTaskId).toBeNull();
   });
 
-  it("opens a wider_discussion window with resolution still pending, but still schedules the intro call (proceed-adjacent)", async () => {
+  it("opens a wider_discussion window with resolution still pending, and schedules nothing", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures, { widerDiscussionHours: 10 });
     const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
@@ -175,7 +170,7 @@ describe("recordDecisionIfReached", () => {
     expect(decision!.ruleOutcome).toBe("wider_discussion");
     expect(decision!.resolution).toBeNull();
     expect(decision!.defaultResolution).toBe("decline");
-    expect(decision!.introCallPollId).not.toBeNull();
+    expect(decision!.introCallPollId).toBeNull();
     expect(decision!.accompanimentTaskId).toBeNull();
     expect(decision!.widerDiscussionDeadline).not.toBeNull();
     expect(computeWiderDiscussionStatus(decision!)).toBe("open");
@@ -201,7 +196,7 @@ describe("recordDecisionIfReached", () => {
     expect(accompanimentTask.suggestedMemberId).toBeNull();
   });
 
-  it("is idempotent — never creates a second decision, poll, or task", async () => {
+  it("is idempotent — never creates a second decision or task", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
     const { application, decision: first } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
@@ -212,7 +207,7 @@ describe("recordDecisionIfReached", () => {
     const allDecisions = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, application.formResponse.id));
     expect(allDecisions).toHaveLength(1);
     const allPolls = await db.select().from(schedulingPoll).where(eq(schedulingPoll.communityId, fixtures.community.id));
-    expect(allPolls).toHaveLength(1);
+    expect(allPolls).toHaveLength(0);
   });
 });
 
@@ -451,37 +446,31 @@ describe("Objection: raise / list", () => {
   });
 });
 
-describe("getPollAggregate: mixed member + applicant participants", () => {
-  beforeEach(async () => {
-    await resetDatabase();
+// Decisions made before the interview moved in front of the decision carry an intro
+// call of their own, and the link an applicant was given for it has to keep working.
+// New decisions never make one, so the legacy shape is built by hand here.
+async function attachLegacyIntroCall(
+  setupResult: Awaited<ReturnType<typeof setUp>>,
+  decision: typeof recruitmentDecision.$inferSelect,
+) {
+  const poll = await createPoll(setupResult.alice, {
+    branchId: setupResult.task.branchId,
+    title: "Recruitment intro call",
+    resolutionMode: "person_plus_n_holders",
+    minAttendance: 2,
+    requiredParticipantIds: [decision.formResponseId],
+    rangeStart: "2027-06-01",
+    rangeEnd: "2027-06-14",
   });
+  const [updated] = await db
+    .update(recruitmentDecision)
+    .set({ introCallPollId: poll.id, introCallToken: "legacy-token-" + decision.id })
+    .where(eq(recruitmentDecision.id, decision.id))
+    .returning();
+  return updated;
+}
 
-  it("a person_plus_n_holders intro call requires the applicant's own submission AND enough holders", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
-    const pollId = decision!.introCallPollId!;
-
-    const slot = "2027-06-01T10:00:00.000Z";
-    await db.insert(schedulingEntry).values({ pollId, memberId: setupResult.alice.id, availableSlots: [slot] });
-    await db.insert(schedulingEntry).values({ pollId, memberId: setupResult.bob.id, availableSlots: [slot] });
-
-    let aggregate = await getPollAggregate(setupResult.alice, pollId);
-    const beforeApplicant = aggregate.slots.find((s) => s.slot === slot);
-    expect(beforeApplicant?.count).toBe(2);
-    expect(beforeApplicant?.qualifies).toBe(false); // applicant hasn't submitted yet
-
-    await submitAvailabilityAsApplicant(pollId, application.formResponse.id, { slots: [slot] });
-
-    aggregate = await getPollAggregate(setupResult.alice, pollId);
-    const afterApplicant = aggregate.slots.find((s) => s.slot === slot);
-    expect(afterApplicant?.count).toBe(3);
-    // With person_plus_n_holders mode, qualifies if person overlaps AND minAttendance (2) holders overlap
-    expect(afterApplicant?.qualifies).toBe(true);
-  });
-});
-
-describe("Intro call: token-based public access", () => {
+describe("Intro call: token-based public access (decisions made before the interview moved)", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
@@ -489,7 +478,8 @@ describe("Intro call: token-based public access", () => {
   it("resolves a valid token to the right decision + poll, and rejects a bad token", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
+    const { application, decision: made } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
+    const decision = await attachLegacyIntroCall(setupResult, made!);
 
     expect(await getIntroCallByToken("not-a-real-token")).toBeNull();
 
@@ -506,7 +496,8 @@ describe("Intro call: token-based public access", () => {
   it("submits and reads back the applicant's own availability through the real token, keyed by formResponseId", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
+    const { application, decision: made } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
+    const decision = await attachLegacyIntroCall(setupResult, made!);
     const token = decision!.introCallToken!;
 
     const slots = ["2027-06-01T10:00:00.000Z", "2027-06-01T10:30:00.000Z"];

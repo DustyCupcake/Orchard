@@ -21,6 +21,8 @@ import { ForbiddenError } from "@/lib/errors";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
 import {
   askMembersToSupportAction,
+  confirmInterviewAction,
+  markInterviewHeldAction,
   raiseObjectionAction,
   resolveWiderDiscussionAction,
   setRecruitmentSubscriptionAction,
@@ -71,6 +73,8 @@ export default async function ApplicationsPage({
     decisionResolved?: string;
     supported?: string;
     asked?: string;
+    interviewConfirmed?: string;
+    interviewHeld?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
@@ -78,7 +82,7 @@ export default async function ApplicationsPage({
     redirect("/login");
   }
 
-  const { error, subscribed, unsubscribed, evaluated, objectionRaised, decisionResolved, supported, asked } = await searchParams;
+  const { error, subscribed, unsubscribed, evaluated, objectionRaised, decisionResolved, supported, asked, interviewConfirmed, interviewHeld } = await searchParams;
 
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");
@@ -150,6 +154,8 @@ export default async function ApplicationsPage({
           {subscribed && <p style={{ color: "#2a7a2a" }}>You&rsquo;re subscribed to application alerts.</p>}
           {supported && <p style={{ color: "#2a7a2a" }}>Thank you — your word is recorded.</p>}
           {asked && <p style={{ color: "#2a7a2a" }}>Asked. Each person you named got their own email with the link.</p>}
+          {interviewConfirmed && <p style={{ color: "#2a7a2a" }}>Booked. The person has been told the time.</p>}
+          {interviewHeld && <p style={{ color: "#2a7a2a" }}>Noted that the interview happened — reports can be filed now.</p>}
           {unsubscribed && <p style={{ color: "#2a7a2a" }}>Unsubscribed.</p>}
           {evaluated && <p style={{ color: "#2a7a2a" }}>Your recommendation was saved.</p>}
           {objectionRaised && <p style={{ color: "#2a7a2a" }}>Your objection was recorded.</p>}
@@ -279,7 +285,7 @@ export default async function ApplicationsPage({
               <h2>Applications ({full.length})</h2>
               <p style={{ color: "#666", fontSize: "0.85rem" }}>{coverageLine}</p>
               {full.length === 0 && <p style={{ color: "#666" }}>Nothing pending.</p>}
-              {full.map(({ response, evaluations, outcome, evaluationsFiled, evaluatorsNeeded, decision, widerDiscussionStatus, objections, convertedMember, arrival, supports }) => {
+              {full.map(({ response, evaluations, outcome, evaluationsFiled, evaluatorsNeeded, decision, widerDiscussionStatus, objections, convertedMember, arrival, supports, interview, interviewerIds }) => {
                 const myEvaluation = evaluations.find((e) => e.evaluatorId === viewing.id);
                 return (
                   <div
@@ -361,6 +367,47 @@ export default async function ApplicationsPage({
                             <button type="submit" style={{ padding: "0.2rem 0.6rem", width: "fit-content" }}>Ask them</button>
                           </form>
                         </details>
+                      </div>
+                    )}
+
+                    {interview && arrival && (
+                      <div style={{ margin: "0 0 0.6rem", fontSize: "0.85rem" }}>
+                        <p style={{ margin: "0 0 0.3rem" }}>
+                          <strong>Interview:</strong>{" "}
+                          {interview.confirmed
+                            ? `booked for ${new Date(interview.confirmed.start).toLocaleString()}${interview.held ? " — it has happened; the people who took part file the reports" : ""}`
+                            : !interview.poll
+                              ? "not made yet — conversations are closed, or no recruitment task has been created to file it under"
+                              : !interview.personHasOffered
+                                ? "waiting for them to say when they're free"
+                                : interview.qualifyingSlots.length === 0
+                                  ? "waiting for enough of you to offer a time they're free"
+                                  : `${interview.qualifyingSlots.length} time${interview.qualifyingSlots.length === 1 ? "" : "s"} suit them and enough of you — pick one to book`}
+                        </p>
+                        {interview.poll && !interview.confirmed && (
+                          <p style={{ margin: "0 0 0.3rem", color: "#666" }}>
+                            <Link href="/recruitment/availability" style={{ textDecoration: "underline" }}>Your standing availability</Link> counts here
+                            automatically, or offer times for just this one on{" "}
+                            <Link href={`/scheduling-polls/${interview.poll.id}`} style={{ textDecoration: "underline" }}>its poll</Link>.
+                          </p>
+                        )}
+                        {!interview.confirmed && interview.qualifyingSlots.length > 0 && (
+                          <form action={confirmInterviewAction} style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                            <input type="hidden" name="arrivalId" value={arrival.id} />
+                            <SelectField name="slot" defaultValue={interview.qualifyingSlots[0]} style={{ padding: "0.3rem" }}>
+                              {interview.qualifyingSlots.map((slot) => (
+                                <option key={slot} value={slot}>{new Date(slot).toLocaleString()}</option>
+                              ))}
+                            </SelectField>
+                            <button type="submit" style={{ padding: "0.2rem 0.6rem" }}>Book this time</button>
+                          </form>
+                        )}
+                        {interview.confirmed && !interview.held && interviewerIds.includes(viewing.id) && (
+                          <form action={markInterviewHeldAction}>
+                            <input type="hidden" name="arrivalId" value={arrival.id} />
+                            <button type="submit" style={{ padding: "0.2rem 0.6rem" }}>It happened</button>
+                          </form>
+                        )}
                       </div>
                     )}
 

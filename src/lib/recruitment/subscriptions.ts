@@ -1,6 +1,7 @@
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  admission,
   form,
   formResponse,
   member,
@@ -12,6 +13,7 @@ import {
 import type { member as memberTable } from "@/db/schema";
 import { requireModuleEnabled } from "../modules";
 import { getCommunityRow } from "./access";
+import { loadStandingSlots } from "./standing-availability";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -81,7 +83,7 @@ export async function listOpenIntroCallsForSubscriber(actor: Member) {
     .innerJoin(form, eq(formResponse.formId, form.id))
     .where(and(isNull(schedulingPoll.confirmedSlotStart), eq(form.communityId, actor.communityId)));
 
-  return Promise.all(
+  const legacy = await Promise.all(
     rows.map(async (r) => {
       const [entry] = await db
         .select({ id: schedulingEntry.id })
@@ -91,6 +93,28 @@ export async function listOpenIntroCallsForSubscriber(actor: Member) {
       return { formResponseId: r.decision.formResponseId, pollId: r.pollId, submittedByMe: Boolean(entry) };
     }),
   );
+
+  // Interviews now: the poll each arrival with an interview gets as they enter
+  // (docs/admission-flow.md §2), still waiting for a time to be confirmed. What
+  // the subscriber has offered *standing* counts as having offered, so there is
+  // nothing to re-paint onto each one.
+  const interviews = await db
+    .select({ arrivalId: admission.id, formResponseId: admission.formResponseId, pollId: schedulingPoll.id, slots: schedulingPoll.rangeStart })
+    .from(admission)
+    .innerJoin(schedulingPoll, eq(admission.interviewPollId, schedulingPoll.id))
+    .where(and(isNull(schedulingPoll.confirmedSlotStart), eq(admission.communityId, actor.communityId), isNull(admission.admittedMemberId), isNull(admission.declinedAt), isNull(admission.withdrawnAt)));
+  const standing = (await loadStandingSlots(actor.communityId, [actor.id])).get(actor.id);
+  const interviewItems = await Promise.all(
+    interviews.map(async (r) => {
+      const [entry] = await db
+        .select({ id: schedulingEntry.id })
+        .from(schedulingEntry)
+        .where(and(eq(schedulingEntry.pollId, r.pollId), eq(schedulingEntry.memberId, actor.id)))
+        .limit(1);
+      return { formResponseId: r.formResponseId, pollId: r.pollId, submittedByMe: Boolean(entry) || Boolean(standing && standing.size > 0) };
+    }),
+  );
+  return [...legacy, ...interviewItems];
 }
 
 // Scheduled job (see src/instrumentation.ts). **Resolved interpretation
@@ -160,6 +184,46 @@ export async function updateRecruitmentSubscriptionLapses() {
       .update(recruitmentDecision)
       .set({ subscriptionLapseProcessedAt: new Date() })
       .where(eq(recruitmentDecision.id, row.decision.id));
+    processed++;
+  }
+
+  // The interviews now: processed once per arrival, the moment its slot is
+  // confirmed. A subscriber counts as having given availability if they have an
+  // entry on the poll *or* offered the confirmed slot standing.
+  const dueInterviews = await db
+    .select({ arrival: admission, confirmedSlotStart: schedulingPoll.confirmedSlotStart })
+    .from(admission)
+    .innerJoin(schedulingPoll, eq(admission.interviewPollId, schedulingPoll.id))
+    .where(and(isNull(admission.subscriptionLapseProcessedAt), isNotNull(schedulingPoll.confirmedSlotStart)));
+  for (const row of dueInterviews) {
+    const communityRow = await getCommunityRow(row.arrival.communityId);
+    const slot = row.confirmedSlotStart!.toISOString();
+    const activeSubscribers = await db
+      .select({ sub: recruitmentSubscription })
+      .from(recruitmentSubscription)
+      .innerJoin(member, eq(recruitmentSubscription.memberId, member.id))
+      .where(and(eq(recruitmentSubscription.active, true), eq(member.communityId, communityRow.id)));
+    const standing = await loadStandingSlots(communityRow.id, activeSubscribers.map((a) => a.sub.memberId), new Date(0));
+
+    for (const { sub } of activeSubscribers) {
+      const [entry] = await db
+        .select({ id: schedulingEntry.id })
+        .from(schedulingEntry)
+        .where(and(eq(schedulingEntry.pollId, row.arrival.interviewPollId!), eq(schedulingEntry.memberId, sub.memberId)))
+        .limit(1);
+      if (entry || standing.get(sub.memberId)?.has(slot)) {
+        await db.update(recruitmentSubscription).set({ consecutiveNoAvailabilityCount: 0 }).where(eq(recruitmentSubscription.id, sub.id));
+        continue;
+      }
+      const newCount = sub.consecutiveNoAvailabilityCount + 1;
+      const shouldLapse = newCount >= communityRow.recruitmentSubscriptionLapseThreshold;
+      await db
+        .update(recruitmentSubscription)
+        .set({ consecutiveNoAvailabilityCount: newCount, ...(shouldLapse && { active: false }) })
+        .where(eq(recruitmentSubscription.id, sub.id));
+      if (shouldLapse) lapsed++;
+    }
+    await db.update(admission).set({ subscriptionLapseProcessedAt: new Date() }).where(eq(admission.id, row.arrival.id));
     processed++;
   }
 

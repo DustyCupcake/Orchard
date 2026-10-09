@@ -29,7 +29,7 @@ import {
   submitRecruitmentApplication,
 } from "@/lib/recruitment";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase, withLegacyLanes, POLICY_TWO_OF_TWO, setReportsNeeded } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withApplicationOnlyLanes, POLICY_TWO_OF_TWO, setReportsNeeded } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
   { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
@@ -43,7 +43,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
-  await withLegacyLanes(communityId);
+  await withApplicationOnlyLanes(communityId);
 }
 
 async function insertTask(
@@ -76,7 +76,7 @@ async function setUpApplicationPipeline(
 ) {
   const { community: testCommunity, alice, branch } = fixtures;
   await enableRecruitment(testCommunity.id);
-  await withLegacyLanes(testCommunity.id);
+  await withApplicationOnlyLanes(testCommunity.id);
   const form = await createForm(alice, { title: "Application", fields: applicationFields });
   const t = await insertTask(testCommunity.id, branch.id, alice.id);
   await updateCommunity(alice, {
@@ -97,7 +97,7 @@ async function setUpBasicApplication(
 ) {
   const { community: testCommunity, alice } = fixtures;
   await enableRecruitment(testCommunity.id);
-  await withLegacyLanes(testCommunity.id);
+  await withApplicationOnlyLanes(testCommunity.id);
   const form = await createForm(alice, { title: "Application", fields: applicationFields });
   await updateCommunity(alice, { recruitmentApplicationFormId: form.id });
   return { form, alice };
@@ -587,7 +587,7 @@ describe("cycle-targeted intake (docs/cycle-scope-remediation-plan.md §4.3/8c)"
   async function setUpIntakeFixtures(fixtures: Awaited<ReturnType<typeof createFixtures>>) {
     const { community: testCommunity, alice } = fixtures;
     await enableRecruitment(testCommunity.id);
-    await withLegacyLanes(testCommunity.id);
+    await withApplicationOnlyLanes(testCommunity.id);
     await enableCycles(testCommunity.id);
     const form = await createForm(alice, { title: "Application", fields: applicationFields });
     await updateCommunity(alice, { recruitmentApplicationFormId: form.id });
@@ -766,7 +766,7 @@ describe("cycle invites + capacity holds + joining seed (docs/cycle-scope-remedi
   async function setUpInvitesFixtures(fixtures: Awaited<ReturnType<typeof createFixtures>>) {
     const { community: testCommunity, alice } = fixtures;
     await enableRecruitment(testCommunity.id);
-    await withLegacyLanes(testCommunity.id);
+    await withApplicationOnlyLanes(testCommunity.id);
     await enableCycles(testCommunity.id);
     const form = await createForm(alice, { title: "Application", fields: applicationFields });
     await updateCommunity(alice, { recruitmentApplicationFormId: form.id });

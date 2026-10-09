@@ -250,3 +250,38 @@ export async function sendAdmissionAcceptedEmail(
   ].join("\n");
   await sendPlainTextEmail(email, subject, text, `admission accepted for ${email}:\n${input.statusUrl}`);
 }
+
+// The interview emails (docs/admission-flow.md §6): the link to choose times, and
+// the confirmed time. Both carry the person's own page, which is where they pick
+// availability and where the confirmed time is shown.
+export async function sendInterviewInviteEmail(
+  email: string,
+  input: { name: string; communityName: string; statusUrl: string },
+) {
+  const subject = `Choose times for your conversation with ${input.communityName}`;
+  const text = [
+    `Hello ${input.name},`,
+    ``,
+    `${input.communityName} would like to talk with you. Please paint the times you're free on your page — nobody sees anyone else's times until one is confirmed:`,
+    `${input.statusUrl}`,
+    ``,
+    `Once a time suits you and the people who'll be on the call, we'll confirm it and tell you.`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `interview invitation for ${email}:\n${input.statusUrl}`);
+}
+
+export async function sendInterviewConfirmedEmail(
+  email: string,
+  input: { name: string; communityName: string; whenText: string; statusUrl: string },
+) {
+  const subject = `Your conversation with ${input.communityName} is booked`;
+  const text = [
+    `Hello ${input.name},`,
+    ``,
+    `Your conversation with ${input.communityName} is booked for ${input.whenText}.`,
+    ``,
+    `Your page, in case you need it:`,
+    `${input.statusUrl}`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `interview confirmed for ${email}:\n${input.statusUrl}`);
+}

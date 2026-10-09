@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community } from "@/db/schema";
-import { getArrivalByToken, listSupports, loadArrivalReadout, supportLink } from "@/lib/recruitment";
+import { getArrivalByToken, getInterviewAvailability, getInterviewPoll, listSupports, loadArrivalReadout, supportLink, syncInterviewFacts } from "@/lib/recruitment";
+import AvailabilityGrid from "@/app/(app)/scheduling-polls/AvailabilityGrid";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY } from "@/components/ui/kit";
 import { sendSignInLinkAction, withdrawAction } from "./actions";
 
@@ -33,8 +34,11 @@ export default async function AdmissionPage({
   const { token } = await params;
   const { sent, withdrawn } = await searchParams;
 
-  const arrival = await getArrivalByToken(token);
-  if (!arrival) notFound();
+  const found = await getArrivalByToken(token);
+  if (!found) notFound();
+  // What the interview poll says is written onto the arrival before it is read, so
+  // the stage and this page agree about whether the call has been booked or held.
+  const arrival = found.interviewPollId ? await syncInterviewFacts(found.id) : found;
 
   const [communityRow] = await db.select({ name: community.name }).from(community).where(eq(community.id, arrival.communityId));
   const { readout, sentence, laneName } = await loadArrivalReadout(arrival);
@@ -46,6 +50,9 @@ export default async function AdmissionPage({
     arrival.requiredEvaluation && "A decision, from the people who read your application or met you",
   ].filter(Boolean) as string[];
 
+  const interviewPoll = await getInterviewPoll(arrival);
+  const myAvailability = interviewPoll ? await getInterviewAvailability(arrival) : [];
+  const interviewOpen = arrival.requiredInterview && !arrival.admittedMemberId && !arrival.declinedAt && !arrival.withdrawnAt;
   const supports = await listSupports(arrival.id);
   // Shown while there is something to vouch for: a lane with an application or an
   // interview. (A community check has its own way for the community to speak.)
@@ -85,6 +92,41 @@ export default async function AdmissionPage({
             It goes to {arrival.email}, and works once for 15 minutes.
           </p>
         </form>
+      )}
+
+      {interviewOpen && (
+        <section className="mt-8">
+          <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Your conversation</h2>
+          {interviewPoll?.confirmedSlotStart && interviewPoll.confirmedSlotEnd ? (
+            <div className="mt-2">
+              <Banner tone="success">
+                Booked for {new Date(interviewPoll.confirmedSlotStart).toLocaleString()} –{" "}
+                {new Date(interviewPoll.confirmedSlotEnd).toLocaleTimeString()}
+              </Banner>
+            </div>
+          ) : interviewPoll ? (
+            <>
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                Paint the times you&rsquo;re free to talk — nobody sees anyone else&rsquo;s times until one is confirmed, and you can change
+                yours until then. The more you offer, the sooner it can be booked.
+              </p>
+              <div className="mt-4">
+                <AvailabilityGrid
+                  pollId={token}
+                  rangeStart={interviewPoll.rangeStart}
+                  rangeEnd={interviewPoll.rangeEnd}
+                  initialSelected={myAvailability}
+                  readOnly={false}
+                  submitUrl={`/api/admission/${token}/availability`}
+                />
+              </div>
+            </>
+          ) : (
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+              We&rsquo;ll ask you to choose times as soon as conversations are open — nothing for you to do until then.
+            </p>
+          )}
+        </section>
       )}
 
       {canBeVouchedFor && (

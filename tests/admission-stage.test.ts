@@ -337,3 +337,37 @@ describe("the derived admission stage", () => {
     });
   });
 });
+// The reports led to a wider discussion: the window is the community's, and a
+// standing concern the mediation body's, so nobody in the process is stuck on it —
+// which is the difference between this and a decision nobody has made.
+describe("a wider discussion, and a booked interview", () => {
+  const reportsIn = { applicationSubmitted: true, interviewScheduled: true, interviewHeld: true, evaluationsFiled: 2 };
+
+  it("is its own stage once the reports are in and the window is open, and needs nobody", () => {
+    const readout = computeAdmissionStage(path(), facts({ ...reportsIn, widerDiscussionOpen: true }));
+    expect(readout).toMatchObject({ stage: "wider_discussion", reason: "wider_discussion_open" });
+    expect(admissionNeedsAction(readout)).toBe(false);
+    expect(describeAdmissionStage(readout)).toMatch(/short window to raise any concern/);
+  });
+
+  it("is a decision pending, which the holders do own, when no window was opened", () => {
+    const readout = computeAdmissionStage(path(), facts(reportsIn));
+    expect(readout.stage).toBe("decision_pending");
+    expect(admissionNeedsAction(readout)).toBe(true);
+  });
+
+  it("ends when the decision is recorded: the window is a fact about an undecided arrival", () => {
+    const readout = computeAdmissionStage(path(), facts({ ...reportsIn, widerDiscussionOpen: true, decisionRecorded: true }));
+    expect(readout.stage).not.toBe("wider_discussion");
+  });
+
+  it("treats a booked interview as waiting for the call, which nobody can hurry", () => {
+    const booked = computeAdmissionStage(path(), facts({ applicationSubmitted: true, interviewScheduled: true }));
+    expect(booked.stage).toBe("interview_scheduled");
+    expect(admissionNeedsAction(booked)).toBe(false);
+    // Once it has happened, the reports are the holders' to file.
+    const held = computeAdmissionStage(path(), facts({ applicationSubmitted: true, interviewScheduled: true, interviewHeld: true }));
+    expect(held.stage).toBe("interview_held");
+    expect(admissionNeedsAction(held)).toBe(true);
+  });
+});

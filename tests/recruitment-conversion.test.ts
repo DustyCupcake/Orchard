@@ -12,6 +12,7 @@ import {
   participation,
   recruitmentDecision,
   recruitmentSubscription,
+  schedulingPoll,
   task,
   profileAnswer,
   profileQuestion,
@@ -30,13 +31,15 @@ import {
   resolveWiderDiscussionManually,
   resolveWiderDiscussionWindows,
   setRecruitmentSubscriptionActive,
+  setStandingAvailability,
   submitEvaluation,
+  submitInterviewAvailability,
   submitRecruitmentApplication,
   updateRecruitmentSubscriptionLapses,
 } from "@/lib/recruitment";
 import { findOrCreateMemberByEmail } from "@/lib/member";
-import { confirmSlot, submitAvailability, submitAvailabilityAsApplicant } from "@/lib/scheduling-polls";
-import { createFixtures, grantPermission, resetDatabase, withLegacyLanes, POLICY_TWO_OF_TWO } from "./helpers";
+import { confirmSlot, submitAvailability } from "@/lib/scheduling-polls";
+import { createFixtures, grantPermission, resetDatabase, setLanes, withApplicationOnlyLanes, POLICY_TWO_OF_TWO } from "./helpers";
 
 // Phase 48's own resolved shape: a form whose fields are tagged as
 // the applicant's name/email, per src/lib/forms.ts's
@@ -56,7 +59,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
-  await withLegacyLanes(communityId);
+  await withApplicationOnlyLanes(communityId);
 }
 
 async function insertTask(communityId: string, branchId: string, createdBy: string) {
@@ -623,22 +626,26 @@ describe("Recruitment: subscription auto-lapse", () => {
     await resetDatabase();
   });
 
-  async function driveToConfirmedIntroCall(
-    setupResult: Awaited<ReturnType<typeof setUp>>,
-    applicantValues: Record<string, string>,
-  ) {
-    const application = await submitRecruitmentApplication(setupResult.communityId, { values: { email: `${applicantValues.name.toLowerCase()}@example.com`, ...applicantValues } });
-    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
-    const pollId = decision!.introCallPollId!;
-
+  // An interview now: the poll each arrival with an interview gets as they enter
+  // (docs/admission-flow.md §2), the person's availability, the holders', and a
+  // holder confirming a slot that suits them all.
+  async function driveToBookableInterview(setupResult: Awaited<ReturnType<typeof setUp>>, name: string) {
+    // Lanes can only be rewritten before anyone has arrived on them.
+    const [anyone] = await db.select({ id: admission.id }).from(admission).limit(1);
+    if (!anyone) {
+      await setLanes(setupResult.communityId, [
+        { name: "Invited", kind: "invite", handlesKnowsPersonally: true, handlesGoodFitOnly: true, handlesNeither: true, applicationRequired: false, interviewRequired: false },
+        { name: "Open", kind: "public", interviewRequired: true },
+      ]);
+    }
+    const application = await submitRecruitmentApplication(setupResult.communityId, { values: { name, email: `${name.toLowerCase()}@example.com` } });
+    const [arrival] = await db.select().from(admission).where(eq(admission.id, application.arrivalId));
+    const pollId = arrival.interviewPollId!;
     const slot = "2027-06-01T10:00:00.000Z";
     await submitAvailability(setupResult.alice, pollId, { slots: [slot] });
     await submitAvailability(setupResult.bob, pollId, { slots: [slot] });
-    await submitAvailabilityAsApplicant(pollId, application.formResponse.id, { slots: [slot] });
-
-    return { application, decision, pollId, slot };
+    await submitInterviewAvailability(arrival, [slot]);
+    return { application, pollId, slot };
   }
 
   it("increments an active subscriber's count when they give no availability, and lapses at the threshold", async () => {
@@ -651,9 +658,9 @@ describe("Recruitment: subscription auto-lapse", () => {
       .returning();
     await setRecruitmentSubscriptionActive(carol, true);
 
-    // Round 1: carol doesn't submit anything for this intro call.
-    const { pollId: pollId1 } = await driveToConfirmedIntroCall(setupResult, { name: "One" });
-    await confirmSlot(setupResult.alice, pollId1, { slot: "2027-06-01T10:00:00.000Z" });
+    // Round 1: carol doesn't offer anything for this interview.
+    const { pollId: pollId1, slot } = await driveToBookableInterview(setupResult, "One");
+    await confirmSlot(setupResult.alice, pollId1, { slot });
     let result = await updateRecruitmentSubscriptionLapses();
     expect(result.processed).toBe(1);
     expect(result.lapsed).toBe(0);
@@ -663,8 +670,8 @@ describe("Recruitment: subscription auto-lapse", () => {
     expect(sub.active).toBe(true);
 
     // Round 2: still nothing from carol — hits the threshold of 2.
-    const { pollId: pollId2 } = await driveToConfirmedIntroCall(setupResult, { name: "Two" });
-    await confirmSlot(setupResult.alice, pollId2, { slot: "2027-06-01T10:00:00.000Z" });
+    const { pollId: pollId2 } = await driveToBookableInterview(setupResult, "Two");
+    await confirmSlot(setupResult.alice, pollId2, { slot });
     result = await updateRecruitmentSubscriptionLapses();
     expect(result.lapsed).toBe(1);
 
@@ -673,7 +680,7 @@ describe("Recruitment: subscription auto-lapse", () => {
     expect(sub.active).toBe(false);
   });
 
-  it("resets an active subscriber's count to 0 once they submit availability for an intro call", async () => {
+  it("resets an active subscriber's count to 0 once they offer availability for an interview", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures, taggedFields, { lapseThreshold: 5 });
 
@@ -687,7 +694,7 @@ describe("Recruitment: subscription auto-lapse", () => {
       .set({ consecutiveNoAvailabilityCount: 3 })
       .where(eq(recruitmentSubscription.memberId, carol.id));
 
-    const { pollId, slot } = await driveToConfirmedIntroCall(setupResult, { name: "Three" });
+    const { pollId, slot } = await driveToBookableInterview(setupResult, "Three");
 
     const openBefore = await listOpenIntroCallsForSubscriber(carol);
     expect(openBefore).toHaveLength(1);
@@ -705,7 +712,29 @@ describe("Recruitment: subscription auto-lapse", () => {
     expect(sub.consecutiveNoAvailabilityCount).toBe(0);
   });
 
-  it("never touches a decision whose intro call hasn't confirmed a slot yet, and is a no-op for a non-subscriber", async () => {
+  it("counts a standing grid that offered the confirmed slot as having given availability — nothing to re-paint", async () => {
+    const fixtures = await createFixtures();
+    const setupResult = await setUp(fixtures, taggedFields, { lapseThreshold: 5 });
+    const [carol] = await db.insert(member).values({ communityId: setupResult.communityId, name: "Carol" }).returning();
+    await setRecruitmentSubscriptionActive(carol, true);
+    await db.update(recruitmentSubscription).set({ consecutiveNoAvailabilityCount: 3 }).where(eq(recruitmentSubscription.memberId, carol.id));
+
+    const { pollId, slot } = await driveToBookableInterview(setupResult, "Five");
+    // Carol never touches this poll; her standing grid covers the slot. (A standing grid
+    // only offers slots still ahead, so the slot is placed in the near future.)
+    const soon = new Date(Date.now() + 3 * 86_400_000);
+    soon.setUTCMinutes(0, 0, 0);
+    const soonSlot = soon.toISOString();
+    await setStandingAvailability(carol.id, [soonSlot]);
+    await db.update(schedulingPoll).set({ confirmedSlotStart: soon, confirmedSlotEnd: new Date(soon.getTime() + 1_800_000), confirmedBy: setupResult.alice.id, confirmedAt: new Date() }).where(eq(schedulingPoll.id, pollId));
+    void slot;
+
+    await updateRecruitmentSubscriptionLapses();
+    const [sub] = await db.select().from(recruitmentSubscription).where(eq(recruitmentSubscription.memberId, carol.id));
+    expect(sub.consecutiveNoAvailabilityCount).toBe(0);
+  });
+
+  it("never touches an interview that hasn't confirmed a slot yet, and is a no-op for a non-subscriber", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures, taggedFields);
 
@@ -715,7 +744,7 @@ describe("Recruitment: subscription auto-lapse", () => {
       .returning();
     expect(await listOpenIntroCallsForSubscriber(carol)).toEqual([]);
 
-    await driveToConfirmedIntroCall(setupResult, { name: "Four" });
+    await driveToBookableInterview(setupResult, "Four");
     const result = await updateRecruitmentSubscriptionLapses();
     expect(result.processed).toBe(0);
   });

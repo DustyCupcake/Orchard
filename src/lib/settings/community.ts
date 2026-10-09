@@ -207,7 +207,7 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
   // The write and its log share one transaction, so a change can never land
   // without its record — the failure mode that makes an audit log worse than
   // none, because the gap is invisible.
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [updated] = await tx
       .update(community)
       .set({
@@ -310,4 +310,12 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
 
     return updated;
   });
+
+  // The interviews door reopened: anyone held at the interview step gets their
+  // poll now (docs/admission-flow.md §6 — a closed door holds, it never skips).
+  if (input.recruitmentInterviewsOpen === true && !currentRow.recruitmentInterviewsOpen) {
+    const { ensureInterviewPollsFor } = await import("../recruitment/interviews");
+    await ensureInterviewPollsFor(actor.communityId);
+  }
+  return result;
 }

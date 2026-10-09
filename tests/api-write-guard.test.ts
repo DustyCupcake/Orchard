@@ -22,6 +22,7 @@ const PUBLIC_OR_AUTH = new Set([
   "src/app/api/auth/request/route.ts",
   "src/app/api/invite/[token]/redeem/route.ts",
   "src/app/api/intro-call/[token]/availability/route.ts",
+  "src/app/api/admission/[token]/availability/route.ts",
 ]);
 
 function routeFiles(dir: string): string[] {

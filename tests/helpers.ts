@@ -295,3 +295,16 @@ export async function setReportsNeeded(communityId: string, reports: number) {
     .set({ reportsNeeded: reports })
     .where(and(eq(admissionLane.communityId, communityId), isNotNull(admissionLane.reportsNeeded)));
 }
+
+// The legacy lanes, but with no interview: someone arriving by anything but "knows
+// them personally" applies and is evaluated by any holder who reads it. Most of the
+// recruitment suites are about evaluation, decisions and conversion rather than the
+// interview, and an interview step before the decision (docs/admission-flow.md §2)
+// would otherwise be a scheduling ritual in front of every one of them. The
+// interview itself is tested in interviews.test.ts.
+export async function withApplicationOnlyLanes(communityId: string) {
+  return setLanes(
+    communityId,
+    LEGACY_LANES.map((lane) => (lane.kind === "public" || lane.handlesGoodFitOnly || lane.handlesNeither ? { ...lane, interviewRequired: false } : lane)),
+  );
+}

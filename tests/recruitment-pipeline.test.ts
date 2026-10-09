@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, cycle as cycleTable, member, schedulingPoll, task } from "@/db/schema";
+import { community, cycle as cycleTable, member, task } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
 import { claimTask } from "@/lib/tasks";
 import { createTier } from "@/lib/settings";
@@ -17,7 +17,7 @@ import {
   submitRecruitmentApplication,
 } from "@/lib/recruitment";
 import { ForbiddenError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase, withLegacyLanes, POLICY_TWO_OF_TWO } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withApplicationOnlyLanes, POLICY_TWO_OF_TWO } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
   { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
@@ -30,7 +30,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
-  await withLegacyLanes(communityId);
+  await withApplicationOnlyLanes(communityId);
 }
 
 async function insertTask(
@@ -94,123 +94,70 @@ async function submitAndDecide(
   return { application, decision };
 }
 
-describe("getRecruitmentPipeline — computed stage", () => {
+describe("getRecruitmentPipeline — the stage is the admission stage", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  it("is 'applied' right after submission, before any evaluation", async () => {
+  const candidateOf = async (alice: Awaited<ReturnType<typeof setUp>>["alice"], arrivalId: string) =>
+    (await getRecruitmentPipeline(alice)).candidates.find((c) => c.id === arrivalId)!;
+
+  it("is 'application_submitted' right after submission, and the holders owe reports", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
     const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
 
-    const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
-    expect(candidate.stage).toBe("applied");
-    expect(candidate.evaluationsFiled).toBe(0);
+    const candidate = await candidateOf(setupResult.alice, application.arrivalId);
+    expect(candidate).toMatchObject({ stage: "application_submitted", evaluationsFiled: 0, reportsNeeded: 2, name: "Dana", needsAction: true });
+    expect(candidate.actionLabel).toBe("Reports needed (0 of 2)");
+    expect(candidate.formResponseId).toBe(application.formResponse.id);
   });
 
-  it("is 'evaluation_in_progress' once some but not all evaluations are filed", async () => {
+  it("is 'evaluation_in_progress' once some but not all reports are in", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
     const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
     await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
 
-    const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
+    const candidate = await candidateOf(setupResult.alice, application.arrivalId);
     expect(candidate.stage).toBe("evaluation_in_progress");
     expect(candidate.evaluationsFiled).toBe(1);
+    expect(candidate.actionLabel).toBe("Reports needed (1 of 2)");
   });
 
-  it("is 'declined' immediately for a decline outcome, with a stageSince of decidedAt", async () => {
+  it("is 'declined' immediately for a decline outcome, since the decision closed the arrival", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["decline", "decline"]);
+    const { application } = await submitAndDecide(fixtures, setupResult, ["decline", "decline"]);
 
-    const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
+    const candidate = await candidateOf(setupResult.alice, application.arrivalId);
     expect(candidate.stage).toBe("declined");
-    expect(candidate.stageSince).toEqual(decision!.decidedAt);
+    expect(candidate.needsAction).toBe(false);
+    expect(candidate.decision?.resolution).toBe("declined");
   });
 
-  it("is 'accepted' immediately for a proceed outcome, before the Accompaniment task is claimed", async () => {
+  it("is 'admitted' immediately for a proceed outcome, with the member made and an accompaniment task filed", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
     const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"], "accepted@example.com");
     expect(decision!.accompanimentTaskId).not.toBeNull();
 
-    const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
-    expect(candidate.stage).toBe("accepted");
+    const candidate = await candidateOf(setupResult.alice, application.arrivalId);
+    expect(candidate.stage).toBe("admitted");
+    expect(candidate.sentence).toMatch(/You're in/);
   });
 
-  it("becomes 'accompaniment_assigned' once the Accompaniment task is claimed", async () => {
+  it("is 'wider_discussion' while the window is open — the community's, so nobody is stuck", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"], "accompaniment@example.com");
-
-    const [refetchedAlice] = await db.select().from(member).where(eq(member.id, setupResult.alice.id));
-    await claimTask(refetchedAlice, decision!.accompanimentTaskId!);
-
-    const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
-    expect(candidate.stage).toBe("accompaniment_assigned");
-    expect(candidate.stageSince).not.toEqual(decision!.decidedAt);
-  });
-
-  it("is 'call_pending' for a wider_discussion outcome before the intro call confirms a slot", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"], "call_pending@example.com");
+    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"], "wider@example.com");
     expect(decision!.ruleOutcome).toBe("wider_discussion");
-    expect(decision!.introCallPollId).not.toBeNull();
+    // The decision no longer schedules a call: that already happened before it.
+    expect(decision!.introCallPollId).toBeNull();
 
-    const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
-    expect(candidate.stage).toBe("call_pending");
-  });
-
-  it("is 'call_scheduled' once the intro call confirms a slot still in the future", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"], "call_scheduled@example.com");
-
-    const future = new Date(Date.now() + 7 * 86_400_000);
-    await db
-      .update(schedulingPoll)
-      .set({
-        confirmedSlotStart: future,
-        confirmedSlotEnd: new Date(future.getTime() + 3_600_000),
-        confirmedBy: setupResult.alice.id,
-        confirmedAt: new Date(),
-      })
-      .where(eq(schedulingPoll.id, decision!.introCallPollId!));
-
-    const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
-    expect(candidate.stage).toBe("call_scheduled");
-  });
-
-  it("is 'decision_pending' once the confirmed call's slot is in the past", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"], "decision_pending@example.com");
-
-    const past = new Date(Date.now() - 7 * 86_400_000);
-    await db
-      .update(schedulingPoll)
-      .set({
-        confirmedSlotStart: past,
-        confirmedSlotEnd: new Date(past.getTime() + 3_600_000),
-        confirmedBy: setupResult.alice.id,
-        confirmedAt: new Date(Date.now() - 8 * 86_400_000),
-      })
-      .where(eq(schedulingPoll.id, decision!.introCallPollId!));
-
-    const { candidates } = await getRecruitmentPipeline(setupResult.alice);
-    const candidate = candidates.find((c) => c.id === application.formResponse.id)!;
-    expect(candidate.stage).toBe("decision_pending");
-    expect(candidate.stageSince).toEqual(past);
+    const candidate = await candidateOf(setupResult.alice, application.arrivalId);
+    expect(candidate.stage).toBe("wider_discussion");
+    expect(candidate.needsAction).toBe(false);
   });
 });
 
@@ -266,20 +213,20 @@ describe("listRecruitmentActionItems", () => {
     await resetDatabase();
   });
 
-  it("surfaces only call_pending and decision_pending candidates", async () => {
+  it("surfaces only the candidates the holders have to move — not a decided one, nor a window that is the community's", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
 
     const appliedOnly = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Applied", email: "applied@example.com" } });
-    const { application: stuck } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"], "stuck@example.com");
+    const { application: widerDiscussion } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"], "wider@example.com");
     const { application: declined } = await submitAndDecide(fixtures, setupResult, ["decline", "decline"], "declined@example.com");
 
     const actionItems = (await listRecruitmentActionItems(setupResult.alice)).personal;
     const ids = actionItems.map((c) => c.id);
-    expect(ids).toContain(stuck.formResponse.id);
-    expect(ids).not.toContain(appliedOnly.formResponse.id);
-    expect(ids).not.toContain(declined.formResponse.id);
-    expect(actionItems.every((c) => c.stage === "call_pending" || c.stage === "decision_pending")).toBe(true);
+    expect(ids).toContain(appliedOnly.arrivalId);
+    expect(ids).not.toContain(widerDiscussion.arrivalId);
+    expect(ids).not.toContain(declined.arrivalId);
+    expect(actionItems.every((c) => c.needsAction && c.actionLabel)).toBe(true);
   });
 
   it("rejects a non-holder", async () => {
