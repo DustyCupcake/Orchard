@@ -30,6 +30,18 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-09",
+    title: "Proposing a session, and a clearer time grid",
+    summary: "Proposing is a button at the top of the programme page, proposals show who made them, and the time grid is easier to read.",
+    points: [
+      "The programme page has a \"Propose a session\" button at the top. It opens the form on its own, and Cancel takes you back.",
+      "Each proposal from another member says who proposed it, as well as who is hosting.",
+      "On the grid where you paint when you could do a session, each day now runs from 06:00 to 06:00. A late-night session stays with the evening before instead of splitting across two columns.",
+      "A short event gets wide columns that fill the page, and the dates above each column are no longer cut off.",
+    ],
+    source: "proposing a session is the programme page's primary action, proposals say who made them, and the painting grid runs 06:00 to 06:00",
+  },
+  {
+    date: "2026-10-09",
     title: "Say which proposed activities you'd come to",
     summary: "The programme page now lists activities members have proposed that aren't scheduled yet, so you can tell the planner what you'd turn up for.",
     points: [

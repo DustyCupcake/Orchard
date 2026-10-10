@@ -5,7 +5,7 @@ import { BUTTON_PRIMARY } from "@/components/ui/kit";
 import { formatTimeInZone, instantFromZoned } from "@/lib/dates";
 // Deep import: the barrel reaches the database driver, which a client
 // bundle can't resolve — see the programme grid for the longer note.
-import { gridDays } from "@/lib/event-scheduling/availability";
+import { gridDayHeading, gridDays } from "@/lib/event-scheduling/availability";
 
 // A day-by-time paint grid — see docs/spec.md's "Availability input is
 // a drag-select grid, not a typed-in range." Each cell is one half-hour
@@ -39,12 +39,6 @@ function cellIso(day: string, rowIdx: number, timeZone: string): string | null {
   const wanted = wallClock(rowIdx);
   const instant = instantFromZoned(`${day}T${wanted}`, timeZone);
   return formatTimeInZone(instant.toISOString(), timeZone) === wanted ? instant.toISOString() : null;
-}
-
-function dayLabel(day: string, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" }).format(
-    new Date(`${day}T12:00:00Z`),
-  );
 }
 
 export default function AvailabilityGrid({
@@ -129,7 +123,7 @@ export default function AvailabilityGrid({
     <div onPointerUp={() => (dragging.current = false)} onPointerLeave={() => (dragging.current = false)}>
       <div className="flex select-none overflow-x-auto rounded-[var(--radius-md)] border border-[var(--border)]">
         <div className="flex shrink-0 flex-col">
-          <div className="h-8" />
+          <div className="h-10" />
           {Array.from({ length: ROW_COUNT }).map((_, rowIdx) => (
             <div
               key={rowIdx}
@@ -140,9 +134,10 @@ export default function AvailabilityGrid({
           ))}
         </div>
         {days.map((day) => (
-          <div key={day} className="flex w-16 shrink-0 flex-col">
-            <div className="h-8 text-center text-[length:var(--text-meta)] text-[var(--text-muted)]">
-              {dayLabel(day, zone)}
+          <div key={day} className="flex min-w-[4.25rem] flex-1 flex-col">
+            <div className="flex h-10 flex-col items-center justify-center text-[length:var(--text-meta)] leading-tight text-[var(--text-muted)]">
+              <span>{gridDayHeading(day).weekday}</span>
+              <span>{gridDayHeading(day).date}</span>
             </div>
             {Array.from({ length: ROW_COUNT }).map((_, rowIdx) => {
               const iso = cellIso(day, rowIdx, zone);

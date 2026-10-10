@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member } from "@/db/schema";
@@ -19,7 +19,9 @@ import type { EventSlot } from "@/lib/event-scheduling";
 import { effectiveDateDisplayMode, effectiveTimeZone, type PeriodDateContext } from "@/lib/dates";
 import { resolveDefaultScopeSegment, resolveSingleCycleScope } from "@/lib/cycles";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
-import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
+import Link from "next/link";
+import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
+import PageHeader from "@/components/ui/PageHeader";
 import { submitEventProposalAction, updateEventProposalAction } from "./actions";
 import EventReviewSection from "./EventReviewSection";
 import AvailabilityGrid from "./AvailabilityGrid";
@@ -48,6 +50,9 @@ export default async function SchedulePage({
     published?: string;
     // One-based page of the owner overlay, a week at a time.
     week?: string;
+    // Opens the proposal form — the header's "Propose a session" action,
+    // the same `?compose=1` technique /calendar uses for its own.
+    compose?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
@@ -55,7 +60,8 @@ export default async function SchedulePage({
     redirect("/login");
   }
 
-  const { error, submitted, updated, confirmed, declined, pinged, published, week } = await searchParams;
+  const { error, submitted, updated, confirmed, declined, pinged, published, week, compose } = await searchParams;
+  const composeOpen = compose === "1";
 
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "event_scheduling");
@@ -136,13 +142,18 @@ export default async function SchedulePage({
     ),
   );
 
-  const memberIds = [...new Set(reviewProposals.map((p) => p.submittedBy))];
+  // Who made each proposal on show — the open ones from other members and
+  // everything in the owner's review list.
+  const memberIds = [...new Set([...othersProposals, ...reviewProposals].map((p) => p.submittedBy))];
   const memberNameById =
     memberIds.length > 0
       ? new Map(
-          (await db.select().from(member).where(eq(member.communityId, viewing.communityId))).map(
-            (m) => [m.id, m.name] as const,
-          ),
+          (
+            await db
+              .select()
+              .from(member)
+              .where(and(eq(member.communityId, viewing.communityId), inArray(member.id, memberIds)))
+          ).map((m) => [m.id, m.name] as const),
         )
       : new Map<string, string>();
 
@@ -154,7 +165,16 @@ export default async function SchedulePage({
 
   return (
     <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Programme</h1>
+      <PageHeader
+        title="Programme"
+        actions={
+          moduleOn && !composeOpen ? (
+            <Link href="/schedule?compose=1" className={BUTTON_PRIMARY}>
+              Propose a session
+            </Link>
+          ) : undefined
+        }
+      />
 
       {!moduleOn && (
         <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
@@ -201,6 +221,57 @@ export default async function SchedulePage({
             </div>
           )}
 
+          {composeOpen ? (
+            <section className="mt-6">
+              <div className="flex items-center justify-between">
+                <SectionHeading>Propose a session</SectionHeading>
+                <Link href="/schedule" className={BUTTON_GHOST}>
+                  Cancel
+                </Link>
+              </div>
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                You&rsquo;re proposing this as {viewing.name}. The host below can be someone else, and
+                other members will see the proposal under your name.
+              </p>
+              <form action={submitEventProposalAction} className="mt-3 flex max-w-[640px] flex-col gap-2">
+                <input type="hidden" name="cycleId" value={cycleId ?? ""} />
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Host</span>
+                  <input type="text" name="host" required className={INPUT} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Title</span>
+                  <input type="text" name="title" required className={INPUT} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Description</span>
+                  <textarea name="description" rows={2} className={INPUT} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Space needed (optional)</span>
+                  <input type="text" name="spaceNeeds" className={INPUT} />
+                </label>
+                {gridRange ? (
+                  <AvailabilityGrid
+                    rangeStart={gridRange.start}
+                    rangeEnd={gridRange.end}
+                    timeZone={timeZone}
+                    initialWindows={[]}
+                    initialDurationMinutes={0}
+                  />
+                ) : (
+                  <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                    This event has no dates yet, so there&rsquo;s nothing to paint availability
+                    against.
+                  </p>
+                )}
+                <button type="submit" disabled={!gridRange} className={`${BUTTON_PRIMARY} w-fit disabled:cursor-not-allowed disabled:opacity-60`}>
+                  Submit proposal
+                </button>
+              </form>
+            </section>
+          ) : (
+            <>
           <section className="mt-6">
             <SectionHeading>Published programme</SectionHeading>
             {publishedSchedule.filter((p) => p.status === "confirmed").length === 0 && (
@@ -246,6 +317,9 @@ export default async function SchedulePage({
                   <div key={p.id} className={CARD}>
                     <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
                       {p.title} <span className="font-normal text-[var(--text-muted)]">— hosted by {p.host}</span>
+                    </p>
+                    <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                      Proposed by {memberNameById.get(p.submittedBy) ?? "a member"}
                     </p>
                     {p.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{p.description}</p>}
                     <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
@@ -303,7 +377,7 @@ export default async function SchedulePage({
                     {editable && (
                       <details className="mt-2">
                         <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Edit</summary>
-                        <form action={updateEventProposalAction} className="mt-2 flex max-w-md flex-col gap-2">
+                        <form action={updateEventProposalAction} className="mt-2 flex max-w-[640px] flex-col gap-2">
                           <input type="hidden" name="proposalId" value={p.id} />
                           <label className="flex flex-col gap-1">
                             <span className={LABEL}>Host</span>
@@ -345,44 +419,6 @@ export default async function SchedulePage({
                 );
               })}
             </div>
-
-            <h3 className="mt-6 text-[length:var(--text-heading)] font-medium text-[var(--text)]">Submit a proposal</h3>
-            <form action={submitEventProposalAction} className="mt-2 flex max-w-[500px] flex-col gap-2">
-              <input type="hidden" name="cycleId" value={cycleId ?? ""} />
-              <label className="flex flex-col gap-1">
-                <span className={LABEL}>Host</span>
-                <input type="text" name="host" required className={INPUT} />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className={LABEL}>Title</span>
-                <input type="text" name="title" required className={INPUT} />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className={LABEL}>Description</span>
-                <textarea name="description" rows={2} className={INPUT} />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className={LABEL}>Space needed (optional)</span>
-                <input type="text" name="spaceNeeds" className={INPUT} />
-              </label>
-              {gridRange ? (
-                <AvailabilityGrid
-                  rangeStart={gridRange.start}
-                  rangeEnd={gridRange.end}
-                  timeZone={timeZone}
-                  initialWindows={[]}
-                  initialDurationMinutes={0}
-                />
-              ) : (
-                <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  This event has no dates yet, so there&rsquo;s nothing to paint availability
-                  against.
-                </p>
-              )}
-              <button type="submit" disabled={!gridRange} className={`${BUTTON_PRIMARY} w-fit disabled:cursor-not-allowed disabled:opacity-60`}>
-                Submit proposal
-              </button>
-            </form>
           </section>
 
           {showOwnerOverlay && gridRange && (
@@ -412,6 +448,8 @@ export default async function SchedulePage({
               period={period}
               interestById={interestById}
             />
+          )}
+            </>
           )}
         </>
       )}
