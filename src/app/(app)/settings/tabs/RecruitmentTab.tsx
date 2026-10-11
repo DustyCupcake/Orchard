@@ -191,7 +191,7 @@ export default async function RecruitmentTab({
           state={
             <>
               A community-checked arrival stays announced for{" "}
-              {community.recruitmentWiderDiscussionHours}h, and is admitted if nobody objects. A
+              {community.recruitmentWiderDiscussionHours}h, and goes on if nobody raises a concern. A
               concern that can&rsquo;t be resolved is overruled by{" "}
               {community.recruitmentObjectionOverrule === "quorum"
                 ? `${community.recruitmentObjectionQuorum} people`
@@ -199,7 +199,7 @@ export default async function RecruitmentTab({
               .
             </>
           }
-          description="Only applies to a lane set to 'the whole community sees them arrive', and to a decision rule whose outcome is a community check. A window can only let someone in, never out."
+          description="The one window every community check runs for — a lane set to 'the whole community sees them arrive', and a decision that leads to a wider discussion. A window that closes with no concern does what it said it would; one with a concern standing is only ever ended by the mediation body."
         >
           <TextField
             label="Community-check window (hours)"

@@ -33,7 +33,13 @@ export type AdmissionPath = {
 // everywhere here — a missing timestamp means the thing has not happened.
 export type AdmissionFacts = {
   consentGiven: boolean;
-  checkPassed: boolean;
+  /**
+   * A community-check window that opened at entry is running (§5). Not "has the check
+   * passed": a window can end by sending the person back for more, and the lane's path
+   * then has steps after it, so what matters to the stage is only whether it is still
+   * holding the arrival.
+   */
+  checkOpen: boolean;
   applicationSubmitted: boolean;
   interviewScheduled: boolean;
   interviewHeld: boolean;
@@ -189,10 +195,10 @@ export function computeAdmissionStage(
     // Consent comes before the announcement: the arrival is only visible to
     // the community once the person has agreed to it being visible (§5).
     if (!facts.consentGiven) return done("awaiting_consent", "awaiting_consent", facts.enteredAt);
-    if (!facts.checkPassed) return done("check_pending", "check_pending", facts.enteredAt);
+    if (facts.checkOpen) return done("check_pending", "check_pending", facts.enteredAt);
     // §3: on a community-check lane the check *is* the process, so the
-    // person is done. Mediation can still uphold a concern later, which
-    // arrives as `declined`.
+    // person is done once it has ended — unless mediation asked for more, which
+    // added steps to the path and so is not "nothing to evaluate".
     if (nothingToEvaluate) return done("entered", "admitted", facts.checkPassedAt ?? facts.enteredAt);
   }
   // A lane without a community check asks for no consent: the person's own

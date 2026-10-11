@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { communityInvite, cycle } from "@/db/schema";
+import { admission, communityInvite, cycle } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
@@ -9,7 +9,8 @@ import { generateToken } from "../token";
 import { findExistingMemberByLoginEmail, preferredMemberName } from "../member";
 import { entryRefusal } from "./joining";
 import { getCommunityRow, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
-import { completeConsensusArrival, consensusDisclosure, consensusWindowFor } from "./consensus";
+import { consensusDisclosure, consensusWindowFor } from "./consensus";
+import { getOpenCheck } from "./community-check";
 import { admitArrival, createAdmissionArrival, releaseWaitlist } from "./admission";
 import {
   declarationFromInvite,
@@ -129,7 +130,6 @@ export async function createCommunityInvite(actor: Member, input: CreateCommunit
       expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
       awarenessConfirmedAt: input.awarenessConfirmed ? new Date() : null,
       awarenessConfirmedBy: input.awarenessConfirmed ? actor.id : null,
-      consensusState: route === "check" ? "awaiting_consent" : "not_required",
     })
     .returning();
   return created;
@@ -151,12 +151,34 @@ export async function getInviteFollowUp(inviteId: string): Promise<InviteFollowU
   return { invite, lane, route: lane ? laneRoute(laneRuleOf(lane)) : null };
 }
 
+// What an inviter is told about the community check on someone they invited: that it
+// is open, or that it ended with the person declined. Nothing about who raised a
+// concern or what it was — the inviter is outside the shield by design (§5).
+export type InviteCheckState = "open" | "declined" | null;
+
 export async function listMyCommunityInvites(actor: Member) {
-  return db
+  const rows = await db
     .select()
     .from(communityInvite)
     .where(and(eq(communityInvite.communityId, actor.communityId), eq(communityInvite.createdBy, actor.id)))
     .orderBy(desc(communityInvite.createdAt));
+  const redeemed = rows.filter((r) => r.redeemedAt);
+  const arrivals = redeemed.length
+    ? await db
+        .select()
+        .from(admission)
+        .where(inArray(admission.inviteId, redeemed.map((r) => r.id)))
+    : [];
+  const byInvite = new Map(arrivals.map((a) => [a.inviteId, a]));
+  const out: (CommunityInviteRow & { checkState: InviteCheckState })[] = [];
+  for (const row of rows) {
+    const arrival = byInvite.get(row.id);
+    let checkState: InviteCheckState = null;
+    if (arrival && (await getOpenCheck(arrival.id))) checkState = "open";
+    else if (arrival?.declinedAt && arrival.requiredVerification === "community_check") checkState = "declined";
+    out.push({ ...row, checkState });
+  }
+  return out;
 }
 
 async function getOwnCommunityInvite(actor: Member, inviteId: string) {
@@ -253,7 +275,6 @@ export async function listOutstandingReferralInvites(actor: Member) {
       createdAt: communityInvite.createdAt,
       inviterThinksGoodFit: communityInvite.inviterThinksGoodFit,
       inviterKnowsPersonally: communityInvite.inviterKnowsPersonally,
-      consensusState: communityInvite.consensusState,
     })
     .from(communityInvite)
     .where(
@@ -396,7 +417,6 @@ export async function redeemCommunityInvite(
 
   const { communityName, windowHours } = await consensusWindowFor(invite.communityId);
   const disclosure = input.disclosure?.trim() || consensusDisclosure(communityName, windowHours);
-  const deadline = route === "check" ? new Date(Date.now() + windowHours * 3_600_000) : null;
 
   // The claim is atomic: of two simultaneous redemptions of one link, only
   // one gets through. It is undone if the arrival can't be made (the address
@@ -406,7 +426,7 @@ export async function redeemCommunityInvite(
     .set({
       redeemedAt: new Date(),
       ...(route === "check"
-        ? { consentAt: new Date(), consentDisclosure: disclosure, consensusState: "announced" as const, consensusDeadline: deadline }
+        ? { consentAt: new Date(), consentDisclosure: disclosure }
         : {}),
     })
     .where(and(eq(communityInvite.id, invite.id), isNull(communityInvite.redeemedAt)))
@@ -434,8 +454,6 @@ export async function redeemCommunityInvite(
         redeemedAt: null,
         consentAt: null,
         consentDisclosure: null,
-        consensusState: invite.consensusState,
-        consensusDeadline: null,
       })
       .where(eq(communityInvite.id, invite.id));
     throw err;
@@ -450,12 +468,10 @@ export async function redeemCommunityInvite(
     return { kind: "admitted", arrivalId: arrival.id, token, memberId, redirectTo: await firstLoginDestinationFor(memberId) };
   }
   if (route === "check") {
-    return { kind: "check", arrivalId: arrival.id, token, deadline: deadline! };
+    // The window opened with the arrival (consent is what opens it); its deadline is
+    // the one the person is told.
+    const window = await getOpenCheck(arrival.id);
+    return { kind: "check", arrivalId: arrival.id, token, deadline: window!.deadline };
   }
   return { kind: "waiting", arrivalId: arrival.id, token };
 }
-
-// The window's own admission write, exposed so the /invite page can ask
-// "did this one land while nobody objected?" without reaching into
-// consensus.ts's internals.
-export { completeConsensusArrival };

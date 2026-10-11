@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, cycle, formResponse, member, participation, recruitmentApplicationInvite, recruitmentDecision, task, admission, communityInvite } from "@/db/schema";
+import { community, cycle, formResponse, member, participation, recruitmentApplicationInvite, task, admission, communityInvite } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
 import { createCycle, updateCycleSettings } from "@/lib/cycles";
 import { claimTask } from "@/lib/tasks";
@@ -19,10 +19,9 @@ import {
   listApplicationAlerts,
   listApplicationsForEvaluation,
   listHeldRecruitmentScopes,
-  listObjections,
+  listConcerns,
   listOutstandingReferralInvites,
   redeemCommunityInvite,
-  resolveWiderDiscussionManually,
   revokeCommunityInvite,
   setRecruitmentSubscriptionActive,
   submitEvaluation,
@@ -522,42 +521,23 @@ describe("cycle-scoped recruitment authority (docs/cycle-scope-remediation-plan.
     expect(filed.recommendation).toBe("proceed");
   });
 
-  it("a cycle-placed holder cannot resolve another cycle's wider-discussion decision", async () => {
+  it("a cycle-placed holder cannot list concerns on another cycle's application", async () => {
     const fixtures = await createFixtures();
     const { form, cycleA, cycleB } = await setUpCycleFixtures(fixtures);
     const alice = await designateRecruitment(fixtures, cycleA.id);
 
     const other = await insertApplicationResponse(form.id, cycleB.id, "Dana");
-    await db.insert(recruitmentDecision).values({
-      formResponseId: other.id,
-      ruleOutcome: "wider_discussion",
-      defaultResolution: "proceed",
-      resolution: null,
-      widerDiscussionDeadline: new Date(Date.now() + 3_600_000),
-    });
-
-    await expect(
-      resolveWiderDiscussionManually(alice, other.id, { resolution: "accepted" }),
-    ).rejects.toThrow(ForbiddenError);
+    await expect(listConcerns(alice, other.id)).rejects.toThrow(ForbiddenError);
   });
 
-  it("a cycle-placed holder cannot list objections on another cycle's application", async () => {
-    const fixtures = await createFixtures();
-    const { form, cycleA, cycleB } = await setUpCycleFixtures(fixtures);
-    const alice = await designateRecruitment(fixtures, cycleA.id);
-
-    const other = await insertApplicationResponse(form.id, cycleB.id, "Dana");
-    await expect(listObjections(alice, other.id)).rejects.toThrow(ForbiddenError);
-  });
-
-  it("a holder can list objections on an application their scope covers", async () => {
+  it("a holder can list concerns on an application their scope covers", async () => {
     const fixtures = await createFixtures();
     const { form, cycleA } = await setUpCycleFixtures(fixtures);
     const alice = await designateRecruitment(fixtures, cycleA.id);
 
     const own = await insertApplicationResponse(form.id, cycleA.id, "Dana");
     // No decision → no objection rows, but the scope check passes.
-    expect(await listObjections(alice, own.id)).toEqual([]);
+    expect(await listConcerns(alice, own.id)).toEqual([]);
   });
 
   it("holding the community scope and a cycle together covers everything", async () => {

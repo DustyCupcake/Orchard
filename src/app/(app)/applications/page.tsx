@@ -23,8 +23,6 @@ import {
   askMembersToSupportAction,
   confirmInterviewAction,
   markInterviewHeldAction,
-  raiseObjectionAction,
-  resolveWiderDiscussionAction,
   setRecruitmentSubscriptionAction,
   submitEvaluationAction,
   supportApplicationAction,
@@ -55,6 +53,8 @@ const OBJECTION_STATE_LABEL: Record<string, string> = {
   upheld: "the concern stood, and they didn't join",
   overruled: "overruled by the mediation body",
   withdrawn: "withdrawn by whoever raised it",
+  asked_for_more: "the person was asked for more",
+  moot: "answered by how the arrival was decided",
 };
 
 // See docs/spec.md's Recruitment ("Evaluation + decision logic",
@@ -69,8 +69,6 @@ export default async function ApplicationsPage({
     subscribed?: string;
     unsubscribed?: string;
     evaluated?: string;
-    objectionRaised?: string;
-    decisionResolved?: string;
     supported?: string;
     asked?: string;
     interviewConfirmed?: string;
@@ -82,7 +80,7 @@ export default async function ApplicationsPage({
     redirect("/login");
   }
 
-  const { error, subscribed, unsubscribed, evaluated, objectionRaised, decisionResolved, supported, asked, interviewConfirmed, interviewHeld } = await searchParams;
+  const { error, subscribed, unsubscribed, evaluated, supported, asked, interviewConfirmed, interviewHeld } = await searchParams;
 
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");
@@ -158,8 +156,6 @@ export default async function ApplicationsPage({
           {interviewHeld && <p style={{ color: "#2a7a2a" }}>Noted that the interview happened — reports can be filed now.</p>}
           {unsubscribed && <p style={{ color: "#2a7a2a" }}>Unsubscribed.</p>}
           {evaluated && <p style={{ color: "#2a7a2a" }}>Your recommendation was saved.</p>}
-          {objectionRaised && <p style={{ color: "#2a7a2a" }}>Your objection was recorded.</p>}
-          {decisionResolved && <p style={{ color: "#2a7a2a" }}>Decision resolved.</p>}
 
           <section style={{ marginTop: "1rem" }}>
             {lapsed && (
@@ -240,20 +236,14 @@ export default async function ApplicationsPage({
                     )}
                     {a.widerDiscussionStatus && <> · window {a.widerDiscussionStatus}</>}
                   </p>
-                  {a.widerDiscussionStatus === "open" && subscription?.active && (
-                    <form action={raiseObjectionAction} style={{ marginTop: "0.4rem", display: "flex", gap: "0.4rem" }}>
-                      <input type="hidden" name="formResponseId" value={a.id} />
-                      <input
-                        type="text"
-                        name="note"
-                        required
-                        placeholder="Raise an objection…"
-                        style={{ padding: "0.3rem", flex: 1 }}
-                      />
-                      <button type="submit" style={{ padding: "0.3rem 0.6rem" }}>
-                        Raise objection
-                      </button>
-                    </form>
+                  {a.widerDiscussionStatus === "open" && (
+                    <p style={{ margin: "0.4rem 0 0", fontSize: "0.85rem" }}>
+                      Anyone can raise a concern while the window is open —{" "}
+                      <Link href="/community-check" style={{ color: "var(--accent-1)" }}>
+                        see who&rsquo;s waiting on the community
+                      </Link>
+                      .
+                    </p>
                   )}
                 </div>
               ))}
@@ -285,7 +275,7 @@ export default async function ApplicationsPage({
               <h2>Applications ({full.length})</h2>
               <p style={{ color: "#666", fontSize: "0.85rem" }}>{coverageLine}</p>
               {full.length === 0 && <p style={{ color: "#666" }}>Nothing pending.</p>}
-              {full.map(({ response, evaluations, outcome, evaluationsFiled, evaluatorsNeeded, decision, widerDiscussionStatus, objections, convertedMember, arrival, supports, interview, interviewerIds }) => {
+              {full.map(({ response, evaluations, outcome, evaluationsFiled, evaluatorsNeeded, decision, widerDiscussionStatus, widerDiscussionDeadline, objections, convertedMember, arrival, supports, interview, interviewerIds }) => {
                 const myEvaluation = evaluations.find((e) => e.evaluatorId === viewing.id);
                 return (
                   <div
@@ -476,59 +466,38 @@ export default async function ApplicationsPage({
                           <>
                             <p style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
                               Wider-discussion window: <strong>{widerDiscussionStatus}</strong>
-                              {decision.widerDiscussionDeadline &&
-                                ` (closes ${new Date(decision.widerDiscussionDeadline).toLocaleString()})`}
+                              {widerDiscussionDeadline &&
+                                ` (${widerDiscussionStatus === "open" ? "closes" : "closed"} ${new Date(widerDiscussionDeadline).toLocaleString()})`}
+                              . It belongs to the community, not to the holders: it ends when nobody has raised a
+                              concern by its deadline, or when the mediation body has settled the ones that were.
                             </p>
                             {objections.length > 0 && (
-                              <>
-                                <ul style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
-                                  {objections.map((o) => (
-                                    <li key={o.id}>
-                                      {o.note}{" "}
-                                      <span style={{ color: "#666" }}>
-                                        ({new Date(o.raisedAt).toLocaleDateString()} ·{" "}
-                                        {OBJECTION_STATE_LABEL[o.resolution] ?? o.resolution}
-                                        {o.resolutionNote ? ` — ${o.resolutionNote}` : ""})
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                                {/* §2.6/J7, and the reason this block
-                                    looks different from the one it
-                                    replaced: while a concern is
-                                    standing, the two Resolve buttons are
-                                    *gone*, not disabled. The server
-                                    refuses the write either way
-                                    (resolveWiderDiscussionManually), but
-                                    offering an action that silently does
-                                    nothing is how a team ends up
-                                    believing it waved a concern
-                                    through. The action on offer now
-                                    belongs to a different group of
-                                    people and is named. */}
-                                {objections.some((o) => o.resolution === "standing") && (
-                                  <p style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
-                                    Someone has raised a concern and it <strong>stands</strong> until
-                                    the mediation body talks it through — it is not resolved by
-                                    waiting, and it isn&rsquo;t yours to resolve.{" "}
-                                    <Link href="/recruitment/mediation" style={{ color: "var(--accent-1)" }}>
-                                      Open the mediation queue
-                                    </Link>
-                                    .
-                                  </p>
-                                )}
-                              </>
+                              <ul style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
+                                {objections.map((o) => (
+                                  <li key={o.id}>
+                                    {o.note}{" "}
+                                    <span style={{ color: "#666" }}>
+                                      ({new Date(o.raisedAt).toLocaleDateString()} ·{" "}
+                                      {OBJECTION_STATE_LABEL[o.resolution] ?? o.resolution}
+                                      {o.resolutionNote ? ` — ${o.resolutionNote}` : ""})
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
                             )}
-                            {!decision.resolution && !objections.some((o) => o.resolution === "standing") && (
-                              <form action={resolveWiderDiscussionAction} style={{ display: "flex", gap: "0.4rem" }}>
-                                <input type="hidden" name="formResponseId" value={response.id} />
-                                <button type="submit" name="resolution" value="accepted" style={{ padding: "0.3rem 0.6rem" }}>
-                                  Resolve: accepted
-                                </button>
-                                <button type="submit" name="resolution" value="declined" style={{ padding: "0.3rem 0.6rem" }}>
-                                  Resolve: declined
-                                </button>
-                              </form>
+                            {/* §5/J7: while a concern is standing the arrival is the mediation body's.
+                                There is no button here at all — nobody on the recruitment team can wave
+                                a concern through, and a window ends by itself or by mediation. */}
+                            {objections.some((o) => o.resolution === "standing") && (
+                              <p style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
+                                Someone has raised a concern and it <strong>stands</strong> until the mediation
+                                body talks it through — it is not resolved by waiting, and it isn&rsquo;t yours to
+                                resolve.{" "}
+                                <Link href="/recruitment/mediation" style={{ color: "var(--accent-1)" }}>
+                                  Open the mediation queue
+                                </Link>
+                                .
+                              </p>
                             )}
                           </>
                         )}

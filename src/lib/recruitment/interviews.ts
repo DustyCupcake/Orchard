@@ -8,6 +8,7 @@ import { sendInterviewConfirmedEmail, sendInterviewInviteEmail } from "../mailer
 import { createPoll } from "../scheduling-polls/crud";
 import { computeAggregate, type HolderContext } from "../scheduling-polls/availability";
 import { admissionLink } from "./admission";
+import { getOpenCheck } from "./community-check";
 import { describeRecruitmentAuthority, requireRecruitmentScopeForCycle } from "./access";
 import { canScheduleInterview } from "./joining";
 import { loadStandingSlots } from "./standing-availability";
@@ -68,9 +69,12 @@ export async function ensureInterviewPoll(arrivalId: string): Promise<Poll | nul
   }
   if (!arrival.requiredInterview || !inFlight(arrival)) return null;
   // A person must have entered the interview's own step: with an application on
-  // the lane, that is once it has been sent (always true by the time an arrival
-  // exists from one), and a check lane has no interview at all.
-  if (arrival.requiredVerification === "community_check") return null;
+  // the lane, that is once it has been sent (an arrival made from one always has);
+  // and while a community check is holding the arrival the conversation waits for
+  // the window to end — a check lane has none of its own, but mediation can ask for
+  // one, and then it is arranged once the application it is about has arrived.
+  if (await getOpenCheck(arrival.id)) return null;
+  if (arrival.requiredApplication && !arrival.applicationSubmittedAt) return null;
   if (!(await canScheduleInterview(arrival.communityId, arrival.cycleId))) return null;
 
   const grantingTaskIds = await listGrantingTaskIds(arrival.communityId, "recruitment");

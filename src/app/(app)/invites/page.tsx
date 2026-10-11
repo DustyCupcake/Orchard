@@ -232,8 +232,8 @@ export default async function InvitesPage({
                     <div className="flex flex-wrap items-center gap-2">
                       <strong className="text-[var(--text)]">{invite.label || "(unlabeled)"}</strong>
                       <Tag tone={STATUS_TONE[status] ?? "neutral"}>{STATUS_LABEL[status]}</Tag>
-                      {invite.consensusState === "announced" && <Tag tone="warning">community check open</Tag>}
-                      {invite.consensusState === "withheld" && <Tag tone="danger">objected to</Tag>}
+                      {invite.checkState === "open" && <Tag tone="warning">community check open</Tag>}
+                      {invite.checkState === "declined" && <Tag tone="danger">not admitted after the community check</Tag>}
                     </div>
                     {status === "valid" && (
                       <p className="mt-1 break-all text-[length:var(--text-body)] text-[var(--text)]">

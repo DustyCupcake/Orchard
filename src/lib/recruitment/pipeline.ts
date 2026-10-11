@@ -65,7 +65,10 @@ async function toCandidate(arrival: typeof admission.$inferSelect, communityRow:
   const synced = arrival.interviewPollId ? await syncInterviewFacts(arrival.id) : arrival;
   const interview = synced.requiredInterview ? await getInterviewState(synced) : null;
   // Waiting on the person: the interview poll exists and they haven't said when they're free.
-  const waitingOnThePerson = Boolean(interview?.poll && !interview.confirmed && !interview.personHasOffered);
+  // Or an application they were asked for (§5, "ask for more") that hasn't come yet.
+  const waitingOnThePerson =
+    Boolean(interview?.poll && !interview.confirmed && !interview.personHasOffered) ||
+    (synced.requiredApplication && !synced.applicationSubmittedAt);
   const { readout, sentence, laneName } = await loadArrivalReadout(synced, { waitingOnThePerson });
   const decision = synced.formResponseId ? await getRecruitmentDecision(synced.formResponseId) : null;
   // The reports an application has counts live from the evaluations table (§4: no

@@ -371,7 +371,8 @@ different subjects, timers and consequences. They become one mechanism (decided:
 other"):
 
 - A **check** is a time-boxed window on an arrival. Any member can raise a concern (one route, for
-  every arrival). A standing concern holds the arrival and goes to the mediation body.
+  every arrival; any member means any member — a recruitment subscription is not required — except the
+  person's inviter). A standing concern holds the arrival and goes to the mediation body.
 - **"The objector is shielded" means all of it (J7), enumerated because nobody should read this section
   as licence to drop the rest:** the objector's identity is hidden from the evaluators, from the person
   objected to and from the inviter; the objector can **recuse** anyone from even the body's view; and
@@ -578,7 +579,11 @@ Each step is its own set of commits, with the suite green, and nothing is left h
    is no interview, the small decision form in place of the rules list (a data migration of the empty
    rules, and the editor removed), and the pipeline's call stages becoming real.
 5. **One community check**, one way to raise a concern, mediation outcomes applied by the funnel, *ask
-   for more*.
+   for more*. *(Built. One `community_check` row per window, `kind` entry or evaluation, with the
+   concern and shield tables keyed on it; one `/community-check` page for any member; one function
+   that decides a window from its concerns and the clock; "ask for more" offered on an entry window,
+   with an application form on the person's own page. The old `objection*` tables and the invite's
+   consensus columns are migrated and dropped; the manual "resolve the window" action is gone.)*
 6. **Settings.** The lane cards and panel (§2a, §3) with the compatibility rules of §3, public lanes
    with their own addresses, sections that appear only when
    relevant, and consequence sentences generated from the path function.

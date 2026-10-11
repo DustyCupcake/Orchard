@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { admission, community, member, memberIdentity, objection, recruitmentDecision } from "@/db/schema";
+import { admission, community, communityCheckConcern, member, memberIdentity, recruitmentDecision } from "@/db/schema";
 import { createFixtures, grantPermission, insertTask, resetDatabase, setLanes } from "./helpers";
 import { claimTask } from "@/lib/tasks";
 import { createForm } from "@/lib/forms";
@@ -16,6 +16,7 @@ import {
   listMyInviteesInFlight,
   listSupports,
   listSupportsForApplication,
+  openCheck,
   pokeForSupport,
   recordSupport,
   redeemCommunityInvite,
@@ -154,7 +155,8 @@ describe("the shortcut never skips past a concern", () => {
     const { community: c, bob, carol, dave, apply } = await setUp(2);
     const application = await apply("Dana");
     const arrival = (await getArrivalByToken(application.token))!;
-    await db.insert(objection).values({ communityId: c.id, formResponseId: application.formResponse.id, raisedBy: dave.id, note: "a real concern" });
+    const window = await openCheck(arrival, "evaluation", "admit");
+    await db.insert(communityCheckConcern).values({ communityId: c.id, checkId: window.id, raisedById: dave.id, note: "a real concern" });
 
     await recordSupport(bob, { supportToken: arrival.supportToken, ...knows });
     const held = await recordSupport(carol, { supportToken: arrival.supportToken, ...knows });
@@ -163,7 +165,7 @@ describe("the shortcut never skips past a concern", () => {
     // Not marked as reached either: nothing was skipped.
     expect((await getArrivalByToken(application.token))!.supportShortcutReachedAt).toBeNull();
 
-    await db.update(objection).set({ resolution: "cleared", resolvedAt: new Date() }).where(eq(objection.communityId, c.id));
+    await db.update(communityCheckConcern).set({ resolution: "cleared", resolvedAt: new Date() }).where(eq(communityCheckConcern.communityId, c.id));
     const after = await trySupportShortcut(arrival.id);
     expect(after).toMatchObject({ reached: true, heldByConcern: false });
     expect((await getArrivalByToken(application.token))!.admittedMemberId).not.toBeNull();

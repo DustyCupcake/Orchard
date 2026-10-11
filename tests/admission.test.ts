@@ -14,7 +14,7 @@ import {
   redeemCommunityInvite,
   withdrawArrival,
 } from "@/lib/recruitment";
-import { resolveConsensusWindows } from "@/lib/recruitment/consensus";
+import { closeDueChecks, getOpenCheck, listChecksFor } from "@/lib/recruitment";
 import { ConflictError } from "@/lib/errors";
 
 // docs/admission-flow.md §4 and §6: an arrival is a person in the funnel and
@@ -230,8 +230,11 @@ describe("stopping (the disclosure promises 'at any time')", () => {
     if (outcome.kind !== "check") throw new Error("expected a check");
 
     expect(await withdrawArrival(outcome.token)).toBe(true);
-    await db.update(communityInvite).set({ consensusDeadline: new Date(Date.now() - 1000) }).where(eq(communityInvite.id, invite.id));
-    expect((await resolveConsensusWindows()).admitted).toBe(0);
+    // The window ended with them, so there is nothing left for the clock to look at.
+    const arrival = (await getArrivalByToken(outcome.token))!;
+    expect(await getOpenCheck(arrival.id)).toBeNull();
+    expect((await listChecksFor(arrival.id))[0]?.endedAs).toBe("closed");
+    expect((await closeDueChecks()).checked).toBe(0);
     expect(await db.select().from(member).where(eq(member.name, "dana"))).toHaveLength(0);
     const { readout } = await loadArrivalReadout((await getArrivalByToken(outcome.token))!);
     expect(readout.stage).toBe("withdrawn");

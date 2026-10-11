@@ -6,15 +6,11 @@ import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import {
-  raiseObjection,
-  raiseObjectionInput,
   confirmInterview,
   markInterviewHeld,
   pokeForSupport,
   recordSupport,
   recordDecisionIfReached,
-  resolveWiderDiscussionInput,
-  resolveWiderDiscussionManually,
   setRecruitmentSubscriptionActive,
   submitEvaluation,
   submitEvaluationInput,
@@ -77,40 +73,6 @@ export async function submitEvaluationAction(formData: FormData) {
 
   revalidatePath("/applications");
   redirect("/applications?evaluated=1");
-}
-
-// Subscriber-gated, enforced inside raiseObjection.
-export async function raiseObjectionAction(formData: FormData) {
-  const actor = await requireMember();
-  const formResponseId = String(formData.get("formResponseId"));
-
-  try {
-    const input = raiseObjectionInput.parse({ note: String(formData.get("note") ?? "").trim() });
-    await raiseObjection(actor, formResponseId, input);
-  } catch (err) {
-    redirectWithError(err);
-  }
-
-  revalidatePath("/applications");
-  redirect("/applications?objectionRaised=1");
-}
-
-// Holder-gated, enforced inside resolveWiderDiscussionManually — the
-// human-call escape hatch for an objected (or simply not worth
-// waiting out) wider-discussion window.
-export async function resolveWiderDiscussionAction(formData: FormData) {
-  const actor = await requireMember();
-  const formResponseId = String(formData.get("formResponseId"));
-
-  try {
-    const input = resolveWiderDiscussionInput.parse({ resolution: String(formData.get("resolution") ?? "") });
-    await resolveWiderDiscussionManually(actor, formResponseId, input);
-  } catch (err) {
-    redirectWithError(err);
-  }
-
-  revalidatePath("/applications");
-  redirect("/applications?decisionResolved=1");
 }
 
 // A holder who can already see an application supports it from here with one

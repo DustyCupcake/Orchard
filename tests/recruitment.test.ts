@@ -161,8 +161,6 @@ describe("communityInviteStatus", () => {
       awarenessConfirmedBy: null,
       consentAt: null,
       consentDisclosure: null,
-      consensusState: "not_required" as const,
-      consensusDeadline: null,
       createdAt: new Date(),
     };
     expect(communityInviteStatus(base)).toBe("valid");

@@ -2,10 +2,12 @@ import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community } from "@/db/schema";
-import { getArrivalByToken, getInterviewAvailability, getInterviewPoll, listSupports, loadArrivalReadout, supportLink, syncInterviewFacts } from "@/lib/recruitment";
+import { getArrivalByToken, getAskedApplicationForm, getInterviewAvailability, getInterviewPoll, listSupports, loadArrivalReadout, supportLink, syncInterviewFacts } from "@/lib/recruitment";
+import type { FormField } from "@/lib/forms";
+import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
 import AvailabilityGrid from "@/app/(app)/scheduling-polls/AvailabilityGrid";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY } from "@/components/ui/kit";
-import { sendSignInLinkAction, withdrawAction } from "./actions";
+import { sendAskedApplicationAction, sendSignInLinkAction, withdrawAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -29,10 +31,10 @@ export default async function AdmissionPage({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ sent?: string; withdrawn?: string }>;
+  searchParams: Promise<{ sent?: string; withdrawn?: string; error?: string; applied?: string }>;
 }) {
   const { token } = await params;
-  const { sent, withdrawn } = await searchParams;
+  const { sent, withdrawn, error, applied } = await searchParams;
 
   const found = await getArrivalByToken(token);
   if (!found) notFound();
@@ -41,7 +43,13 @@ export default async function AdmissionPage({
   const arrival = found.interviewPollId ? await syncInterviewFacts(found.id) : found;
 
   const [communityRow] = await db.select({ name: community.name }).from(community).where(eq(community.id, arrival.communityId));
-  const { readout, sentence, laneName } = await loadArrivalReadout(arrival);
+  // An application they were asked for and haven't sent: their own next move, so the
+  // holders aren't chasing it (and the sentence below says what it is).
+  const stillOpen = !arrival.admittedMemberId && !arrival.declinedAt && !arrival.withdrawnAt;
+  const needsApplication = stillOpen && arrival.requiredApplication && !arrival.applicationSubmittedAt;
+  const { readout, sentence, laneName } = await loadArrivalReadout(arrival, { waitingOnThePerson: needsApplication });
+  const askedForm = needsApplication ? await getAskedApplicationForm(arrival) : null;
+  const askedFields = (askedForm?.fields as FormField[] | undefined) ?? [];
 
   const steps = [
     arrival.requiredVerification === "community_check" && "Your arrival is announced to the community, and anyone can raise a concern",
@@ -80,7 +88,44 @@ export default async function AdmissionPage({
         </div>
       )}
 
+      {error && (
+        <div className="mt-4">
+          <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
+      {applied && (
+        <div className="mt-4">
+          <Banner tone="success">Thank you — your application is in.</Banner>
+        </div>
+      )}
+
       <p className="mt-6 text-[length:var(--text-body)] text-[var(--text)]">{sentence}</p>
+
+      {needsApplication && askedForm && (
+        <section className="mt-8">
+          <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">A little more about you</h2>
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+            {communityRow?.name ?? "The community"} would like an application from you before it goes any further. It is read by the
+            people who look after joining, and nobody else.
+          </p>
+          {askedForm.description && (
+            <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">{askedForm.description}</p>
+          )}
+          <form action={sendAskedApplicationAction} className="mt-4 flex flex-col gap-4">
+            <input type="hidden" name="token" value={token} />
+            {askedFields.map((f) => (
+              <FieldPreview
+                key={f.key}
+                field={toPreviewShape({ ...f, label: f.label, required: f.required ?? false })}
+                name={`field_${f.key}`}
+              />
+            ))}
+            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+              Send my application
+            </button>
+          </form>
+        </section>
+      )}
 
       {readout.stage === "admitted" && (
         <form action={sendSignInLinkAction} className="mt-4">

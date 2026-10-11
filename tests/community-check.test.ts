@@ -1,22 +1,21 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
   admission,
   community,
   communityInvite,
   cycle,
+  communityCheck,
+  communityCheckConcern,
   member,
-  objection,
   participation,
   recruitmentPair,
-  recruitmentSubscription,
 } from "@/db/schema";
 import { createFixtures, grantPermission, insertTask, resetDatabase, withCheckLane } from "./helpers";
 import { claimTask } from "@/lib/tasks";
 import { addPermissionGrant } from "@/lib/permissions";
-import { createCommunityInvite, redeemCommunityInvite } from "@/lib/recruitment";
-import { resolveConsensusWindows } from "@/lib/recruitment/consensus";
+import { closeDueChecks, createCommunityInvite, getOpenCheck, listChecksFor, raiseConcern, redeemCommunityInvite } from "@/lib/recruitment";
 import {
   canSeeObjectorIdentity,
   consentPartyToObjection,
@@ -27,7 +26,6 @@ import {
   resolveObjection,
   withdrawObjection,
 } from "@/lib/recruitment";
-import { raiseInviteObjection } from "@/lib/recruitment/objections";
 import { listPairings } from "@/lib/recruitment/pairs";
 
 // The community check (docs/admission-flow.md §5), on a lane whose
@@ -52,6 +50,34 @@ async function arrivalOf(inviteId: string) {
   const [row] = await db.select().from(admission).where(eq(admission.inviteId, inviteId));
   return row;
 }
+
+// Any member can raise a concern about an arrival in its window (§5) — no
+// subscription needed, which is what "any member" means.
+async function raise(by: typeof member.$inferSelect, inviteId: string, note: string) {
+  const arrival = await arrivalOf(inviteId);
+  return raiseConcern(by, arrival.id, { note });
+}
+
+async function concernOf(inviteId: string) {
+  const arrival = await arrivalOf(inviteId);
+  const [row] = await db
+    .select({ concern: communityCheckConcern })
+    .from(communityCheckConcern)
+    .innerJoin(communityCheck, eq(communityCheck.id, communityCheckConcern.checkId))
+    .where(eq(communityCheck.arrivalId, arrival.id));
+  return row!.concern;
+}
+
+// The clock running out, without waiting for it.
+async function expireWindow(inviteId: string) {
+  const arrival = await arrivalOf(inviteId);
+  await db
+    .update(communityCheck)
+    .set({ deadline: new Date(Date.now() - 1000) })
+    .where(and(eq(communityCheck.arrivalId, arrival.id), isNull(communityCheck.endedAt)));
+}
+
+const admittedState = async (inviteId: string) => ((await arrivalOf(inviteId)).admittedMemberId ? "admitted" : "waiting");
 
 describe("consensus: consent, shield, standing objections, and the overrule exception", () => {
   beforeEach(resetDatabase);
@@ -115,12 +141,9 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
 
     // The timer can only ever let someone in — and letting them in is the
     // admission function, which makes the member and seeds their place.
-    await db
-      .update(communityInvite)
-      .set({ consensusDeadline: new Date(Date.now() - 1000) })
-      .where(eq(communityInvite.id, invite.id));
-    const result = await resolveConsensusWindows();
-    expect(result.admitted).toBe(1);
+    await expireWindow(invite.id);
+    const result = await closeDueChecks();
+    expect(result.ended).toBe(1);
     const admitted = await arrivalOf(invite.id);
     expect(admitted.admittedMemberId).not.toBeNull();
     expect(admitted.checkPassedAt).not.toBeNull();
@@ -139,22 +162,15 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     const [ev] = await db.insert(cycle).values({ communityId: c.id, name: "Event", startedAt: new Date() }).returning();
     const { invite } = await announceArrival(c.id, alice);
     void ev;
+    await raise(bob, invite.id, "I've heard something about this");
+    await expireWindow(invite.id);
 
-    await db
-      .insert(recruitmentSubscription)
-      .values({ memberId: bob.id, active: true })
-      .returning();
-    await raiseInviteObjection(bob, invite.id, "I've heard something about this");
-    await db
-      .update(communityInvite)
-      .set({ consensusDeadline: new Date(Date.now() - 1000) })
-      .where(eq(communityInvite.id, invite.id));
-
-    const result = await resolveConsensusWindows();
-    expect(result.admitted).toBe(0);
-    expect(result.heldForMediation).toBe(1);
-    const [row] = await db.select().from(communityInvite).where(eq(communityInvite.id, invite.id));
-    expect(row!.consensusState).toBe("announced");
+    const result = await closeDueChecks();
+    expect(result.ended).toBe(0);
+    expect(result.held).toBe(1);
+    // The window is still open and the arrival still waiting: the clock didn't decide.
+    expect(await getOpenCheck((await arrivalOf(invite.id)).id)).not.toBeNull();
+    expect((await arrivalOf(invite.id)).admittedMemberId).toBeNull();
 
     // …and the concern is now a duty item, which is the fix for the
     // veto-by-inaction the plan names.
@@ -170,9 +186,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     const { community: c, alice, branch, bob, carol } = await fixturesOfFour();
     await enableRecruitment(c.id);
     const { invite } = await announceArrival(c.id, alice);
-
-    await db.insert(recruitmentSubscription).values({ memberId: bob.id, active: true }).returning();
-    await raiseInviteObjection(bob, invite.id, "a real concern");
+    await raise(bob, invite.id, "a real concern");
 
     const mediationTask = await insertTask(c.id, branch.id, alice.id, { capacity: 2 });
     await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
@@ -186,11 +200,10 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     // themselves out of their own veto.
     expect(overruleThreshold({ ...c, recruitmentObjectionOverrule: "majority", recruitmentObjectionQuorum: 3 } as never, 0)).toBe(1);
 
-    const [raised] = await db.select().from(objection).where(eq(objection.inviteId, invite.id));
+    const raised = await concernOf(invite.id);
     // Upholding it: the objection stands and the person doesn't join.
     await resolveObjection(alice, { objectionId: raised!.id, outcome: "upheld", note: "we talked; not this time" });
-    const [after] = await db.select().from(communityInvite).where(eq(communityInvite.id, invite.id));
-    expect(after!.consensusState).toBe("withheld");
+    expect((await listChecksFor((await arrivalOf(invite.id)).id))[0]!.endedAs).toBe("upheld");
     // Nobody was made a member, and the arrival is closed rather than deleted.
     const arrival = await arrivalOf(invite.id);
     expect(arrival.admittedMemberId).toBeNull();
@@ -210,13 +223,12 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
       .set({ recruitmentObjectionOverrule: "quorum", recruitmentObjectionQuorum: 5 })
       .where(eq(community.id, c.id));
     const { invite } = await announceArrival(c.id, alice);
-    await db.insert(recruitmentSubscription).values({ memberId: bob.id, active: true }).returning();
-    await raiseInviteObjection(bob, invite.id, "a real concern");
+    await raise(bob, invite.id, "a real concern");
 
     const mediationTask = await insertTask(c.id, branch.id, alice.id, {});
     await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
     await claimTask(alice, mediationTask.id);
-    const [raised] = await db.select().from(objection).where(eq(objection.inviteId, invite.id));
+    const raised = await concernOf(invite.id);
 
     await expect(
       resolveObjection(alice, { objectionId: raised!.id, outcome: "overruled", note: "let's just let them in" }),
@@ -227,9 +239,8 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
       .set({ recruitmentObjectionOverrule: "majority" })
       .where(eq(community.id, c.id));
     await resolveObjection(alice, { objectionId: raised!.id, outcome: "overruled", note: "the record of why" });
-    const [after] = await db.select().from(communityInvite).where(eq(communityInvite.id, invite.id));
-    expect(after!.consensusState).toBe("admitted");
-    const [settlement] = await db.select().from(objection).where(eq(objection.id, raised!.id));
+    expect(await admittedState(invite.id)).toBe("admitted");
+    const [settlement] = await db.select().from(communityCheckConcern).where(eq(communityCheckConcern.id, raised!.id));
     // The exception always carries its note onto the record.
     expect(settlement!.resolutionNote).toBe("the record of why");
   });
@@ -244,14 +255,12 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
       const [dave] = await db.insert(member).values({ communityId: c.id, name: "Dave" }).returning();
       await enableRecruitment(c.id);
       const { invite } = await announceArrival(c.id, alice);
-      await db.insert(recruitmentSubscription).values({ memberId: bob.id, active: true }).returning();
-      await raiseInviteObjection(bob, invite.id, "a real concern");
+      await raise(bob, invite.id, "a real concern");
       const mediationTask = await insertTask(c.id, branch.id, alice.id, { capacity: 3 });
       await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
       for (const holder of [alice, carol, dave]) await claimTask(holder, mediationTask.id);
-      const [raised] = await db.select().from(objection).where(eq(objection.inviteId, invite.id));
-      const inviteState = async () =>
-        (await db.select().from(communityInvite).where(eq(communityInvite.id, invite.id)))[0]!.consensusState;
+      const raised = await concernOf(invite.id);
+      const inviteState = () => admittedState(invite.id);
       return { alice, bob, carol, dave, raised: raised!, inviteState };
     }
 
@@ -264,7 +273,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
 
       // Pressing it again is the same position, not a second vote.
       await resolveObjection(alice, { objectionId: raised.id, outcome: "overruled", note: "still would" });
-      const [afterTwice] = await db.select().from(objection).where(eq(objection.id, raised.id));
+      const [afterTwice] = await db.select().from(communityCheckConcern).where(eq(communityCheckConcern.id, raised.id));
       expect(afterTwice!.resolution).toBe("standing");
       const queue = await getMediationQueue(alice);
       expect(queue.standing[0]!.overruleSupporters.map((s) => s.name)).toEqual(["Alice"]);
@@ -310,8 +319,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     const { community: c, alice, branch, bob, carol } = await fixturesOfFour();
     await enableRecruitment(c.id);
     const { invite } = await announceArrival(c.id, alice);
-    await db.insert(recruitmentSubscription).values({ memberId: bob.id, active: true }).returning();
-    const raised = await raiseInviteObjection(bob, invite.id, "a real concern");
+    const raised = await raise(bob, invite.id, "a real concern");
 
     const mediationTask = await insertTask(c.id, branch.id, alice.id, {});
     await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
@@ -324,7 +332,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     // The evaluator, the inviter and the applicant are all outside the
     // shield, and the inviter cannot even raise one in the first place.
     expect(await canSeeObjectorIdentity(carol, raised)).toBe(false);
-    expect(await canSeeObjectorIdentity(alice, { ...raised, raisedBy: carol.id })).toBe(true);
+    expect(await canSeeObjectorIdentity(alice, { ...raised, raisedById: carol.id })).toBe(true);
     // The applicant is an arrival, and holds none of the roles that could see
     // the shield — they have no member row at all to hold one.
     expect(await arrivalOf(invite.id)).toBeTruthy();
@@ -332,8 +340,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     // inviter cannot object. §2.6 calls the leak "through the invitee's
     // friend" and the cheapest way to keep that promise is to not let
     // the friend raise it at all.
-    await db.insert(recruitmentSubscription).values({ memberId: alice.id, active: true }).returning();
-    await expect(raiseInviteObjection(alice, invite.id, "I invited them and I object")).rejects.toThrow(
+    await expect(raise(alice, invite.id, "I invited them and I object")).rejects.toThrow(
       /You invited this person/,
     );
   });
@@ -342,8 +349,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     const { community: c, alice, branch, bob, carol } = await fixturesOfFour();
     await enableRecruitment(c.id);
     const { invite } = await announceArrival(c.id, alice);
-    await db.insert(recruitmentSubscription).values({ memberId: bob.id, active: true }).returning();
-    const raised = await raiseInviteObjection(bob, invite.id, "a real concern");
+    const raised = await raise(bob, invite.id, "a real concern");
 
     const mediationTask = await insertTask(c.id, branch.id, alice.id, { capacity: 2 });
     await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
@@ -373,8 +379,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     const { community: c, alice, branch, bob } = await fixturesOfFour();
     await enableRecruitment(c.id);
     const { invite } = await announceArrival(c.id, alice);
-    await db.insert(recruitmentSubscription).values({ memberId: bob.id, active: true }).returning();
-    const raised = await raiseInviteObjection(bob, invite.id, "a real concern");
+    const raised = await raise(bob, invite.id, "a real concern");
 
     const mediationTask = await insertTask(c.id, branch.id, alice.id, {});
     await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
@@ -384,8 +389,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     ).rejects.toThrow(/you can't also settle it/);
 
     await withdrawObjection(bob, raised.id);
-    const [after] = await db.select().from(communityInvite).where(eq(communityInvite.id, invite.id));
-    expect(after!.consensusState).toBe("admitted");
+    expect(await admittedState(invite.id)).toBe("admitted");
     // A general (cycle-less) invite has no participation to seed — the
     // arrival *is* the membership, and the cycle case above is where the
     // participation row's absence-then-appearance is asserted.
@@ -397,8 +401,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     const { community: c, alice, branch, bob } = await fixturesOfFour();
     await enableRecruitment(c.id);
     const { invite } = await announceArrival(c.id, alice);
-    await db.insert(recruitmentSubscription).values({ memberId: bob.id, active: true }).returning();
-    await raiseInviteObjection(bob, invite.id, "first concern");
+    await raise(bob, invite.id, "first concern");
     const mediationTask = await insertTask(c.id, branch.id, alice.id, {});
     await addPermissionGrant(alice, "recruitment_mediation", mediationTask.id);
     await claimTask(alice, mediationTask.id);

@@ -1,23 +1,18 @@
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { admission, community, communityInvite, objection, recruitmentApplicationConsent } from "@/db/schema";
-import { admitArrival, getArrivalForInvite } from "./admission";
+import { community, recruitmentApplicationConsent } from "@/db/schema";
 
-// Consensus, the third verification mode (docs/joining-admission-plan.md
-// §2.2/§2.6/J10, work-plan step 5). The machinery already existed for
-// the evaluated path's wider-discussion window; this module is the
-// invite-shaped twin of it, kept deliberately thin so the two windows
-// cannot drift:
+// The consent half of the community check (docs/admission-flow.md §5, and J10 in
+// docs/joining-admission-plan.md). The window itself — opening it, raising a
+// concern in it, what happens when it ends — is community-check.ts and
+// check-outcome.ts; what is left here is the text a person reads and agrees to
+// before their arrival is announced, and the record that they did.
 //
-//   consent    — the two steps J10 insists on. The inviter's awareness
-//                tick at send (on community_invite) and the invitee's
-//                own binding checkbox at redemption (recorded with the
-//                exact text they read).
-//   the window — recruitmentWiderDiscussionHours, reused as §2.2 says it
-//                should be, opened when the arrival is announced.
-//   the timer  — this module's whole authority. It can move a window
-//                from announced to admitted, and it can do nothing
-//                else at all: an objection is never dropped by a clock.
+//   consent    — the two steps J10 insists on. The inviter's awareness tick at
+//                send (on community_invite) and the invitee's own binding
+//                checkbox at redemption (recorded with the exact text they read).
+//   the window — recruitmentWiderDiscussionHours, opened as a community check once
+//                consent is given.
 
 // The text the invitee reads before ticking the box. Generated from the
 // community's own settings rather than written once and frozen, because
@@ -31,90 +26,16 @@ export function consensusDisclosure(communityName: string, windowHours: number):
     `When you join ${communityName}, your arrival is announced to the community.`,
     `For ${windowHours} hours after that, any member can raise a concern about your joining.`,
     "Your inviter has told you this is what happens — they confirmed that when they sent your invite — but this is your own agreement, not theirs.",
-    "If someone raises a concern, it does not disappear: the community's mediation team talks it through with everyone involved, and unless they agree the concern is resolved, your joining is held.",
+    "If someone raises a concern, it does not disappear: the community's mediation team talks it through with everyone involved, and unless they agree the concern is resolved, your joining is held. They may also ask you for a little more — an application, or a conversation — before it goes on.",
     "We will never share who raised a concern with you or with your inviter.",
     "You can ask us to stop at any time, and you do not have to give a reason.",
   ].join(" ");
 }
 
-// The single place a community check ends in admission, so the "no objection
-// by the deadline → admitted" rule exists in one implementation whether the
-// trigger is the scheduled job, a cleared objection, or an overruled one.
-// Splitting it is exactly how the evaluated path ended up with a timer that
-// could both admit and refuse. The person becomes a member here and nowhere
-// earlier (docs/admission-flow.md §6) — through the one admission function,
-// which also seeds their place in the event — so until now they have had a
-// private link to follow their progress and nothing else.
-export async function completeConsensusArrival(invite: typeof communityInvite.$inferSelect) {
-  if (invite.consensusState !== "announced") {
-    return null;
-  }
-  const [updated] = await db
-    .update(communityInvite)
-    .set({ consensusState: "admitted" })
-    .where(and(eq(communityInvite.id, invite.id), eq(communityInvite.consensusState, "announced")))
-    .returning();
-  if (!updated) return null;
-  const arrival = await getArrivalForInvite(updated.id);
-  if (arrival) {
-    await db.update(admission).set({ checkPassedAt: new Date() }).where(eq(admission.id, arrival.id));
-    await admitArrival(arrival.id);
-  }
-  return updated;
-}
-
-// The scheduled half of §2.6. Reads only the windows whose deadline has
-// passed and that have no standing objection, and can therefore only
-// ever admit. An objection makes the row skip the deadline entirely —
-// not "resolve it in the object's favour", just "not this job's to
-// decide" — which is the fix for the plan's named failure: the old
-// evaluated path held an outcome pending on a human and, in a passive
-// team, that meant the objection vetoed the arrival forever with nobody
-// notified. Here the window's expiry is a *duty signal* instead (§5.4's
-// queue), so inaction is visible rather than decisive.
-export async function resolveConsensusWindows() {
-  const due = await db
-    .select()
-    .from(communityInvite)
-    .where(
-      and(
-        eq(communityInvite.consensusState, "announced"),
-        lt(communityInvite.consensusDeadline, new Date()),
-      ),
-    );
-  if (due.length === 0) {
-    return { checked: 0, admitted: 0, heldForMediation: 0 };
-  }
-  const objectionRows = await db
-    .select({ inviteId: objection.inviteId })
-    .from(objection)
-    .where(
-      and(
-        inArray(
-          objection.inviteId,
-          due.map((d) => d.id),
-        ),
-        eq(objection.resolution, "standing"),
-      ),
-    );
-  const heldIds = new Set(objectionRows.map((o) => o.inviteId).filter((v): v is string => Boolean(v)));
-
-  let admitted = 0;
-  for (const invite of due) {
-    if (heldIds.has(invite.id)) continue;
-    if (await completeConsensusArrival(invite)) admitted++;
-  }
-  return { checked: due.length, admitted, heldForMediation: heldIds.size };
-}
-
 // The public-applicant half of J10. There is no redemption step for
 // someone who applied on their own, so the disclosure and the checkbox
 // happen at the application itself and the record lands here instead of
-// on an invite row. The announcement (the window) is the existing
-// decision's wider-discussion window — a public applicant on a consensus
-// lane reaches the community-check stage through the same decision
-// machinery as everybody else, which is the point of §2.6's "one
-// discipline, applied to both".
+// on an invite row.
 export async function recordApplicationConsent(formResponseId: string, disclosure: string) {
   const [created] = await db
     .insert(recruitmentApplicationConsent)

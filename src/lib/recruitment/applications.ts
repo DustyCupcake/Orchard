@@ -1,9 +1,10 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
   admission,
   communityInvite,
+  cycle,
   form,
   formResponse,
   member,
@@ -17,8 +18,8 @@ import { getForm, submitPublicFormResponse } from "../forms";
 import { computeRecruitmentOutcome } from "./evaluations";
 import { entryRefusal, getCycleJoiningState, type CycleJoiningState } from "./joining";
 import { getCommunityRow, isRecruitmentTaskHolder, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
-import { computeWiderDiscussionStatus, getRecruitmentDecision } from "./decisions";
-import { listObjections } from "./objections";
+import { getRecruitmentDecision } from "./decisions";
+import { getWiderDiscussionWindow, listConcerns } from "./community-check";
 import { consensusDisclosure, consensusWindowFor, recordApplicationConsent } from "./consensus";
 import { listSupports } from "./support";
 import { getInterviewers, getInterviewState } from "./interviews";
@@ -316,6 +317,62 @@ export async function getRecruitmentApplicationFormPublicById(communityId: strin
   return formRow ?? null;
 }
 
+// The form somebody fills in when the mediation body has asked them for an
+// application (docs/admission-flow.md §5, "ask for more"): their event's own, else the
+// community's. No door is checked — they are already in the funnel, and the doors
+// govern entering it.
+export async function getAskedApplicationForm(arrival: typeof admission.$inferSelect) {
+  const communityRow = await getCommunityRow(arrival.communityId);
+  let formId = communityRow.recruitmentApplicationFormId;
+  if (arrival.cycleId) {
+    const [cycleRow] = await db.select({ formId: cycle.recruitmentApplicationFormId }).from(cycle).where(eq(cycle.id, arrival.cycleId));
+    formId = cycleRow?.formId ?? formId;
+  }
+  return formId ? getRecruitmentApplicationFormPublicById(arrival.communityId, formId) : null;
+}
+
+/**
+ * The application somebody was asked for. It is attached to the arrival they already
+ * are — name and email stay what they were admitted to the funnel with — and from
+ * here the funnel is the ordinary one: a conversation if one was asked for, then
+ * reports, then a decision.
+ */
+export async function submitAskedApplication(token: string, values: Record<string, unknown>) {
+  const [arrival] = await db.select().from(admission).where(eq(admission.token, token));
+  if (!arrival) throw new NotFoundError("This page isn't valid any more");
+  if (arrival.admittedMemberId || arrival.declinedAt || arrival.withdrawnAt) {
+    throw new ConflictError("This request to join has already finished");
+  }
+  if (!arrival.requiredApplication || arrival.applicationSubmittedAt) {
+    throw new ConflictError("There's no application waiting to be sent");
+  }
+  const formRow = await getAskedApplicationForm(arrival);
+  if (!formRow) throw new AppError("No application form is configured for this community yet");
+  const created = await submitPublicFormResponse(formRow.id, { values });
+  if (arrival.cycleId) {
+    await db.update(formResponse).set({ cycleId: arrival.cycleId }).where(eq(formResponse.id, created.id));
+  }
+  const [claimed] = await db
+    .update(admission)
+    .set({ formResponseId: created.id, applicationSubmittedAt: new Date() })
+    .where(and(eq(admission.id, arrival.id), isNull(admission.formResponseId)))
+    .returning();
+  if (!claimed) throw new ConflictError("An application has already been sent");
+  // A conversation asked for with it can be arranged now there is an application to
+  // be about; best-effort like every place the poll is made.
+  if (claimed.requiredInterview) {
+    try {
+      const { ensureInterviewPoll } = await import("./interviews");
+      await ensureInterviewPoll(claimed.id);
+    } catch (err) {
+      console.error("[admission] could not make the interview poll", err);
+    }
+    const [withPoll] = await db.select().from(admission).where(eq(admission.id, claimed.id));
+    return withPoll ?? claimed;
+  }
+  return claimed;
+}
+
 // Human-readable door enforcement for a resolved application surface —
 // the /apply action runs this to turn a shut or unconfigured door into
 // a clean redirect error; the page uses the resolution's bare state to
@@ -386,7 +443,7 @@ export async function listApplicationAlerts(actor: Member) {
         evaluatorsNeeded,
         outcome,
         resolution: decision?.resolution ?? null,
-        widerDiscussionStatus: decision ? computeWiderDiscussionStatus(decision) : null,
+        widerDiscussionStatus: (await getWiderDiscussionWindow(r.id))?.status ?? null,
       };
     }),
   );
@@ -432,7 +489,8 @@ export async function listApplicationsForEvaluation(actor: Member) {
         response.id,
       );
       const decision = await getRecruitmentDecision(response.id);
-      const objections = decision ? await listObjections(actor, response.id) : [];
+      const objections = decision ? await listConcerns(actor, response.id) : [];
+      const widerDiscussionWindow = await getWiderDiscussionWindow(response.id);
       // The vouches on this application, shown to everyone evaluating it whether or
       // not the lane's support shortcut is reached (docs/admission-flow.md §2).
       const [arrival] = await db
@@ -455,7 +513,8 @@ export async function listApplicationsForEvaluation(actor: Member) {
         evaluationsFiled,
         evaluatorsNeeded,
         decision,
-        widerDiscussionStatus: decision ? computeWiderDiscussionStatus(decision) : null,
+        widerDiscussionStatus: widerDiscussionWindow?.status ?? null,
+        widerDiscussionDeadline: widerDiscussionWindow?.deadline ?? null,
         objections,
         convertedMember,
         arrival: arrival ?? null,

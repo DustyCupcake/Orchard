@@ -41,8 +41,11 @@ export async function resolveObjectionAction(formData: FormData) {
   try {
     const result = await resolveObjection(actor, {
       objectionId: String(formData.get("objectionId") ?? ""),
-      outcome: String(formData.get("outcome") ?? "cleared") as "cleared" | "upheld" | "overruled",
+      outcome: String(formData.get("outcome") ?? "cleared") as "cleared" | "upheld" | "overruled" | "asked_for_more",
       note: String(formData.get("note") ?? "").trim(),
+      // Only read for "ask for more": what to ask the person for.
+      askApplication: formData.get("askApplication") === "on",
+      askInterview: formData.get("askInterview") === "on",
     });
     // An overrule that hasn't reached the threshold records this holder's
     // support and leaves the objection standing.

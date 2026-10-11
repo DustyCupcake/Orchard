@@ -17,7 +17,7 @@ import {
   listOpenIntroCallsForSubscriber,
   getRecruitmentPipeline,
   isMediationMember,
-  listStandingObjectionSummaries,
+  listStandingConcernSummaries,
 } from "@/lib/recruitment";
 import { listPairings, listSharedInterviewOffers } from "@/lib/recruitment/pairs";
 import { listLanes } from "@/lib/recruitment/admission-lanes";
@@ -147,13 +147,13 @@ export default async function RecruitmentHubPage() {
   // where somebody would otherwise assume a concern is theirs, and the
   // whole point of the redesign is that it isn't — it is the mediation
   // body's, and the hub says so in as many words.
-  let standingObjections: Awaited<ReturnType<typeof listStandingObjectionSummaries>> = [];
+  let standingObjections: Awaited<ReturnType<typeof listStandingConcernSummaries>> = [];
   let pairings: Awaited<ReturnType<typeof listPairings>> = [];
   let sharedOffers: Awaited<ReturnType<typeof listSharedInterviewOffers>> = [];
   let isMediationMemberNow = false;
   if (isHolder) {
     [standingObjections, pairings, sharedOffers, isMediationMemberNow] = await Promise.all([
-      listStandingObjectionSummaries(viewing),
+      listStandingConcernSummaries(viewing),
       listPairings(viewing),
       listSharedInterviewOffers(viewing),
       isMediationMember(viewing),
@@ -394,7 +394,15 @@ export default async function RecruitmentHubPage() {
             <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
               {isHolder
                 ? "Full applicant answers, your recommendations, decisions and the wider-discussion window."
-                : "Subscribe to see that something is pending, raise an objection while wider discussion is open, and submit your availability for intro calls."}
+                : "Subscribe to see that something is pending and to offer your availability for interviews."}
+            </p>
+          </li>
+          <li className={CARD}>
+            <Link href="/community-check" className="text-[length:var(--text-heading)] font-medium text-[var(--text)] hover:underline">
+              Community check
+            </Link>
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+              Raise a concern about someone whose arrival the community has a say in. It goes privately to the mediation body.
             </p>
           </li>
           <li className={CARD}>
@@ -605,7 +613,7 @@ export default async function RecruitmentHubPage() {
               <ul className="mt-3 flex flex-col gap-1.5">
                 {standingObjections.map((o) => (
                   <li key={o.id} className="text-[length:var(--text-body)] text-[var(--text-muted)]">
-                    {o.formResponseId ? "An application" : "An announced arrival"} —
+                    An arrival in its community check —
                     raised {timeSince(o.raisedAt)}{" "}
                     {isMediationMemberNow && (
                       <Link href="/recruitment/mediation" className="text-[var(--accent-1)] hover:underline">

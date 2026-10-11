@@ -28,7 +28,7 @@ import {
   requireRecruitmentScopeForCycle,
   requireRecruitmentTaskHolder,
   recordDecisionIfReached,
-  resolveWiderDiscussionWindows,
+  closeDueChecks,
   submitEvaluation,
   submitRecruitmentApplication,
 } from "@/lib/recruitment";
@@ -1048,11 +1048,11 @@ describe("open modules are not misconfigured (Step 5)", () => {
     // The job runs. Before the fallback chain it found no actor (no granting
     // task) and silently created nothing; now it resolves one from the
     // people actually involved.
-    const result = await resolveWiderDiscussionWindows();
+    const result = await closeDueChecks();
     expect(result.checked).toBeGreaterThan(0);
     // No crash and no throw is the assertion that matters here: the job
     // completes with an open module and no granting task.
-    expect(result.resolved).toBe(result.checked);
+    expect(result.ended).toBe(result.checked);
     expect(branch.id).not.toBe(testCommunity.id);
   });
 });

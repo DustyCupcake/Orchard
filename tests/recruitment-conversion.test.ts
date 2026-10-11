@@ -4,13 +4,13 @@ import { db } from "@/db";
 import {
   community,
   admission,
+  communityCheck,
   communityInvite,
   formResponse,
   member,
   memberIdentity,
   memberLanguage,
   participation,
-  recruitmentDecision,
   recruitmentSubscription,
   schedulingPoll,
   task,
@@ -28,8 +28,7 @@ import {
   getRecruitmentDecision,
   listOpenIntroCallsForSubscriber,
   recordDecisionIfReached,
-  resolveWiderDiscussionManually,
-  resolveWiderDiscussionWindows,
+  closeDueChecks,
   setRecruitmentSubscriptionActive,
   setStandingAvailability,
   submitEvaluation,
@@ -507,25 +506,6 @@ describe("Recruitment: applicant→Member conversion", () => {
     expect(identities).toHaveLength(1);
   });
 
-  it("converts on a manually-resolved wider_discussion outcome", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures, taggedFields, { policy: { recruitmentDiscussionEnds: "decline" } });
-
-    const application = await submitRecruitmentApplication(setupResult.communityId, {
-      values: { name: "Gale Applicant", email: "gale@example.com" },
-    });
-    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "unsure" });
-    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "unsure" });
-    await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
-
-    const resolved = await resolveWiderDiscussionManually(setupResult.alice, application.formResponse.id, {
-      resolution: "accepted",
-    });
-    expect(resolved.convertedMemberId).not.toBeNull();
-    const [newMember] = await db.select().from(member).where(eq(member.id, resolved.convertedMemberId!));
-    expect(newMember.name).toBe("Gale Applicant");
-  });
-
   it("converts on the scheduled wider_discussion auto-resolution job", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures, taggedFields, { policy: { recruitmentDiscussionEnds: "admit" } });
@@ -539,13 +519,11 @@ describe("Recruitment: applicant→Member conversion", () => {
 
     // Backdate the deadline, same technique the rest of this suite
     // already uses to exercise a scheduled job without a real wait.
-    await db
-      .update(recruitmentDecision)
-      .set({ widerDiscussionDeadline: new Date(Date.now() - 1000) })
-      .where(eq(recruitmentDecision.formResponseId, application.formResponse.id));
+    const [arrival] = await db.select().from(admission).where(eq(admission.formResponseId, application.formResponse.id));
+    await db.update(communityCheck).set({ deadline: new Date(Date.now() - 1000) }).where(eq(communityCheck.arrivalId, arrival.id));
 
-    const result = await resolveWiderDiscussionWindows();
-    expect(result.resolved).toBe(1);
+    const result = await closeDueChecks();
+    expect(result.ended).toBe(1);
 
     const decision = await getRecruitmentDecision(application.formResponse.id);
     expect(decision!.resolution).toBe("accepted");

@@ -3,7 +3,9 @@
 import { redirect } from "next/navigation";
 import { requestMagicLink } from "@/lib/magic-link";
 import { publicAppUrl } from "@/lib/public-url";
-import { getArrivalByToken, withdrawArrival } from "@/lib/recruitment";
+import { getArrivalByToken, getAskedApplicationForm, submitAskedApplication, withdrawArrival } from "@/lib/recruitment";
+import { formValuesFromFormData, type FormField } from "@/lib/forms";
+import { AppError } from "@/lib/errors";
 
 // Only for the address the arrival itself was admitted with, and only once it
 // has been: this is the person's route from "you're in" to being signed in,
@@ -28,4 +30,23 @@ export async function withdrawAction(formData: FormData) {
   const token = String(formData.get("token") ?? "");
   await withdrawArrival(token);
   redirect(`/admission/${encodeURIComponent(token)}?withdrawn=1`);
+}
+
+// The application the mediation body asked for (docs/admission-flow.md §5). The token
+// is the credential; what the form asks for is read from the form, never from what the
+// request says it is.
+export async function sendAskedApplicationAction(formData: FormData) {
+  const token = String(formData.get("token") ?? "");
+  const back = `/admission/${encodeURIComponent(token)}`;
+  try {
+    const arrival = await getArrivalByToken(token);
+    const formRow = arrival ? await getAskedApplicationForm(arrival) : null;
+    if (!formRow) throw new AppError("There's no application form to fill in right now");
+    const values = formValuesFromFormData(formRow.fields as FormField[], formData);
+    await submitAskedApplication(token, values);
+  } catch (err) {
+    if (err instanceof AppError) redirect(`${back}?error=${encodeURIComponent(err.message)}`);
+    throw err;
+  }
+  redirect(`${back}?applied=1`);
 }

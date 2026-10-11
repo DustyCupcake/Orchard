@@ -8,7 +8,6 @@ import {
   communityInvite,
   member,
   memberIdentity,
-  objection,
   recruitmentApplicationInvite,
 } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
@@ -17,6 +16,7 @@ import { sendSupportRequestEmail } from "../mailer";
 import { publicAppUrl } from "../public-url";
 import { admitArrival, type AdmitResult } from "./admission";
 import { acceptArrivalByShortcut } from "./decisions";
+import { hasStandingConcern, inviterOf } from "./community-check";
 import { requireRecruitmentTaskHolder } from "./access";
 
 type Member = typeof memberTable.$inferSelect;
@@ -45,38 +45,6 @@ export async function getArrivalBySupportToken(supportToken: string): Promise<Ar
 }
 
 const inFlight = (arrival: Arrival) => !arrival.admittedMemberId && !arrival.declinedAt && !arrival.withdrawnAt;
-
-/** The inviter, wherever the invite is recorded: on the arrival, or behind its application. */
-async function inviterOf(arrival: Arrival): Promise<string | null> {
-  if (arrival.inviteId) {
-    const [row] = await db.select({ createdBy: communityInvite.createdBy }).from(communityInvite).where(eq(communityInvite.id, arrival.inviteId));
-    if (row) return row.createdBy;
-  }
-  if (arrival.formResponseId) {
-    const [row] = await db
-      .select({ createdBy: communityInvite.createdBy })
-      .from(recruitmentApplicationInvite)
-      .innerJoin(communityInvite, eq(recruitmentApplicationInvite.communityInviteId, communityInvite.id))
-      .where(eq(recruitmentApplicationInvite.formResponseId, arrival.formResponseId));
-    if (row) return row.createdBy;
-  }
-  return null;
-}
-
-/** Is a concern standing on this arrival? Then nothing may skip past it. */
-export async function hasStandingConcern(arrival: Arrival): Promise<boolean> {
-  const subjects = [
-    arrival.formResponseId ? eq(objection.formResponseId, arrival.formResponseId) : undefined,
-    arrival.inviteId ? eq(objection.inviteId, arrival.inviteId) : undefined,
-  ].filter((c): c is NonNullable<typeof c> => Boolean(c));
-  if (subjects.length === 0) return false;
-  const [row] = await db
-    .select({ id: objection.id })
-    .from(objection)
-    .where(and(eq(objection.resolution, "standing"), subjects.length === 1 ? subjects[0] : sql`(${subjects[0]} or ${subjects[1]})`))
-    .limit(1);
-  return Boolean(row);
-}
 
 export type SupportRow = { memberId: string; name: string; knowsPersonally: boolean; thinksGoodFit: boolean; at: Date };
 
@@ -229,7 +197,7 @@ export async function trySupportShortcut(arrivalId: string): Promise<RecordSuppo
   // Never past a concern. It isn't marked reached either, so it counts again the
   // moment mediation has settled it — and a settled concern admits or declines
   // by its own outcome, which is the only way it ever ends.
-  if (await hasStandingConcern(arrival)) return { reached: true, heldByConcern: true, admitted: null };
+  if (await hasStandingConcern(arrival.id)) return { reached: true, heldByConcern: true, admitted: null };
 
   await db
     .update(admission)

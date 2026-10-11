@@ -14,8 +14,7 @@ export async function register() {
   const { recomputeAttentionLevels } = await import("@/lib/attention");
   const { resolveBrowsePeriods } = await import("@/lib/tasks");
   const { resolveInputRounds } = await import("@/lib/input-rounds");
-  const { resolveWiderDiscussionWindows, updateRecruitmentSubscriptionLapses } = await import("@/lib/recruitment");
-  const { resolveConsensusWindows } = await import("@/lib/recruitment/consensus");
+  const { closeDueChecks, updateRecruitmentSubscriptionLapses } = await import("@/lib/recruitment");
   const { resolveTaskNominationDeadlines } = await import("@/lib/tasks");
   const { logCallSummaryUnreadEngagementEvents } = await import("@/lib/engagement");
 
@@ -27,21 +26,17 @@ export async function register() {
   // Cuts a new Input round whenever a Community's cadence clock comes
   // due — see src/lib/input-rounds/scheduler.ts.
   registerJob("input-round-cutoff", "*/5 * * * *", resolveInputRounds);
-  // Auto-resolves a wider_discussion RecruitmentDecision once its
-  // deadline passes with no Objection raised — see
-  // src/lib/recruitment/decisions.ts.
-  registerJob("recruitment-wider-discussion", "*/5 * * * *", resolveWiderDiscussionWindows);
   // Increments/resets each active RecruitmentSubscription's
   // consecutiveNoAvailabilityCount once its intro-call poll confirms a
   // slot, auto-lapsing past the configured threshold — see
   // src/lib/recruitment/subscriptions.ts.
   registerJob("recruitment-subscription-lapse", "*/5 * * * *", updateRecruitmentSubscriptionLapses);
-  // Admits a consensus-lane arrival whose community-check window closed
-  // with nobody objecting, and nothing else — an objection is never
-  // dropped by a clock, it becomes a duty item for the mediation body
-  // (docs/joining-admission-plan.md §2.6). See
-  // src/lib/recruitment/consensus.ts.
-  registerJob("consensus-window-resolution", "*/5 * * * *", resolveConsensusWindows);
+  // The one community check (docs/admission-flow.md §5): looks at every open
+  // window and does what its record says is due — passes one whose deadline went
+  // by with no concern, and finishes any outcome whose last step failed. A concern
+  // is never dropped by a clock: a standing one holds its window and stays a duty
+  // item for the mediation body. See src/lib/recruitment/check-outcome.ts.
+  registerJob("community-check", "*/5 * * * *", closeDueChecks);
   // Auto-releases a nominated-but-unconfirmed task assignment once its
   // response deadline passes with no reply — see
   // src/lib/tasks/nominations.ts.

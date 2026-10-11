@@ -35,7 +35,7 @@ const path = (over: Partial<AdmissionPath> = {}): AdmissionPath => ({
 
 const facts = (over: Partial<AdmissionStageFacts> = {}): AdmissionStageFacts => ({
   consentGiven: true,
-  checkPassed: false,
+  checkOpen: true,
   applicationSubmitted: false,
   interviewScheduled: false,
   interviewHeld: false,
@@ -148,10 +148,10 @@ describe("the derived admission stage", () => {
     expect(computeAdmissionStage(p, facts({ consentGiven: false })).stage).toBe("awaiting_consent");
     // Consent given: announced, and waiting on the window.
     expect(computeAdmissionStage(p, facts()).stage).toBe("check_pending");
-    // Check passed and nothing stands: the check *is* the process.
-    expect(computeAdmissionStage(p, facts({ checkPassed: true })).reason).toBe("admitted");
+    // The window has ended and nothing stands: the check *is* the process.
+    expect(computeAdmissionStage(p, facts({ checkOpen: false })).reason).toBe("admitted");
     // A concern upheld arrives as a decline, which outranks everything.
-    expect(computeAdmissionStage(p, facts({ checkPassed: true, declined: true })).stage).toBe("declined");
+    expect(computeAdmissionStage(p, facts({ checkOpen: false, declined: true })).stage).toBe("declined");
   });
 
   describe("terminal outcomes outrank every step still outstanding", () => {

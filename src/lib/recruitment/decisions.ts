@@ -1,14 +1,10 @@
-import { and, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
-import { z } from "zod";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
   admission,
   communityInvite,
-  form,
-  formResponse,
   member,
   evaluation,
-  objection,
   recruitmentApplicationInvite,
   recruitmentDecision,
   task,
@@ -16,17 +12,15 @@ import {
 } from "@/db/schema";
 import type { community as communityTable, member as memberTable } from "@/db/schema";
 import { createTask } from "../tasks";
-import { getCommunityRow, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
-import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
+import { getCommunityRow } from "./access";
 import { computeRecruitmentOutcome } from "./evaluations";
 import { listGrantingTaskIds } from "../permissions";
-import { admitArrival, ensureArrivalForApplication, recordArrivalDecision } from "./admission";
+import { admitArrival, closeArrival, ensureArrivalForApplication, recordArrivalDecision } from "./admission";
+import { openCheck } from "./community-check";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityRow = typeof communityTable.$inferSelect;
 type RecruitmentDecisionRow = typeof recruitmentDecision.$inferSelect;
-
-const MS_PER_HOUR = 3600_000;
 
 export async function getRecruitmentDecision(formResponseId: string) {
   const [row] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, formResponseId));
@@ -47,19 +41,6 @@ export async function getAccompaniedMemberId(taskId: string): Promise<string | n
     .from(recruitmentDecision)
     .where(eq(recruitmentDecision.accompanimentTaskId, taskId));
   return row?.convertedMemberId ?? null;
-}
-
-// Purely time-computed from widerDiscussionDeadline, the same no-
-// scheduler-job-for-the-status-itself pattern Phase 31's returning-
-// priority window and Assemblies' computeAssemblyPhase already
-// establish — actually resolving it (a real write, possibly creating
-// an Accompaniment task) is resolveWiderDiscussionWindows' job below.
-export type WiderDiscussionStatus = "open" | "closed" | null;
-export function computeWiderDiscussionStatus(decision: RecruitmentDecisionRow): WiderDiscussionStatus {
-  if (decision.ruleOutcome !== "wider_discussion") return null;
-  if (decision.resolution !== null) return "closed";
-  if (!decision.widerDiscussionDeadline) return null;
-  return new Date() < decision.widerDiscussionDeadline ? "open" : "closed";
 }
 
 // Whoever currently holds the recruitment task, first by claimedAt —
@@ -226,33 +207,48 @@ export async function applyAcceptanceSideEffects(
   return withTask ?? converted;
 }
 
-// The support shortcut reaching its number (docs/admission-flow.md §2) accepts
-// an application the way a `proceed` outcome does, so the record, the member and
-// their accompaniment agree about what happened — skipping the rest of the path
-// skips the *evaluating*, not the bookkeeping that follows an acceptance. If the
-// evaluators have not decided yet there is no decision row to resolve, so one is
-// made, saying `proceed` (the nearest honest word) and resolved accepted. A
-// decision already waiting out a wider-discussion window is resolved accepted;
-// one already declined never reaches here, because the arrival would be closed.
-export async function acceptArrivalByShortcut(arrival: typeof admission.$inferSelect) {
-  if (!arrival.formResponseId) return admitArrival(arrival.id);
+// One decision, applied to one arrival: the funnel's own way of saying "this
+// arrival is accepted" or "this arrival is declined", whatever caused it — the
+// support shortcut reaching its number, a community check that ended (the clock,
+// mediation clearing a concern, mediation upholding one). Nothing here asks who is
+// calling, which is the point (docs/admission-flow.md §5): the old mediation
+// outcome went through a holder-only function and was lost when its caller wasn't
+// one, and the window's clock then applied its *default* in its place.
+//
+// Skipping or deciding the evaluating does not skip the bookkeeping that follows an
+// acceptance, so the record, the member and their accompaniment agree about what
+// happened. If the evaluators have not decided yet there is no decision row to
+// resolve, so one is made, saying `proceed` (the nearest honest word); a decision
+// already waiting out a wider discussion is resolved. An arrival with no
+// application has no decision at all — it is admitted or closed.
+export async function settleArrivalDecision(arrival: typeof admission.$inferSelect, resolution: "accepted" | "declined") {
+  if (!arrival.formResponseId) {
+    if (resolution === "accepted") return admitArrival(arrival.id);
+    await closeArrival(arrival.id, "declined");
+    return null;
+  }
   const [existing] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, arrival.formResponseId));
   let decision: RecruitmentDecisionRow;
   if (!existing) {
     [decision] = await db
       .insert(recruitmentDecision)
-      .values({ formResponseId: arrival.formResponseId, ruleOutcome: "proceed", resolution: "accepted" })
+      .values({
+        formResponseId: arrival.formResponseId,
+        ruleOutcome: resolution === "accepted" ? "proceed" : "decline",
+        resolution,
+      })
       .returning();
-  } else if (existing.resolution === null) {
+  } else if (existing.resolution !== resolution) {
     [decision] = await db
       .update(recruitmentDecision)
-      .set({ resolution: "accepted" })
+      .set({ resolution })
       .where(eq(recruitmentDecision.id, existing.id))
       .returning();
   } else {
     decision = existing;
   }
-  await recordArrivalDecision(arrival.formResponseId, "accepted");
+  await recordArrivalDecision(arrival.formResponseId, resolution);
+  if (resolution === "declined") return null;
 
   const result = await admitArrival(arrival.id);
   const communityRow = await getCommunityRow(arrival.communityId);
@@ -265,6 +261,11 @@ export async function acceptArrivalByShortcut(arrival: typeof admission.$inferSe
     (await getRecruitmentTaskHolderMember(communityRow)) ?? (fresh ? await resolveAccompanimentAuthor(communityRow, fresh) : null);
   if (actorMember && fresh && !result.waitlisted) await applyAcceptanceSideEffects(actorMember, communityRow, fresh);
   return result;
+}
+
+/** The support shortcut reaching its number accepts an application the way a `proceed` does. */
+export async function acceptArrivalByShortcut(arrival: typeof admission.$inferSelect) {
+  return settleArrivalDecision(arrival, "accepted");
 }
 
 // The real, persisted trigger point Phase 33 deliberately didn't build
@@ -283,10 +284,6 @@ export async function recordDecisionIfReached(actor: Member, formResponseId: str
 
   const resolution: "accepted" | "declined" | null =
     result.outcome === "proceed" ? "accepted" : result.outcome === "decline" ? "declined" : null;
-  const widerDiscussionDeadline =
-    result.outcome === "wider_discussion"
-      ? new Date(Date.now() + communityRow.recruitmentWiderDiscussionHours * MS_PER_HOUR)
-      : null;
 
   const [created] = await db
     .insert(recruitmentDecision)
@@ -295,12 +292,20 @@ export async function recordDecisionIfReached(actor: Member, formResponseId: str
       ruleOutcome: result.outcome,
       defaultResolution: result.defaultResolution,
       resolution,
-      widerDiscussionDeadline,
     })
     .returning();
 
   let decisionRow = created;
   await recordArrivalDecision(formResponseId, resolution);
+
+  // A wider discussion is a community check (§5): a window on the arrival in which
+  // any member can raise a concern, ending by what the decision form said it does
+  // when nobody does. The window's length and deadline live on the check, which is
+  // the one place they are read.
+  if (result.outcome === "wider_discussion") {
+    const arrival = await ensureArrivalForApplication(formResponseId);
+    if (arrival) await openCheck(arrival, "evaluation", result.defaultResolution === "proceed" ? "admit" : "decline");
+  }
 
   // There is no call to schedule here any more. The interview comes *before* the
   // decision (docs/admission-flow.md §2): it was made when the arrival entered, and
@@ -314,154 +319,4 @@ export async function recordDecisionIfReached(actor: Member, formResponseId: str
   }
 
   return decisionRow;
-}
-
-export const resolveWiderDiscussionInput = z.object({
-  resolution: z.enum(["accepted", "declined"]),
-});
-export type ResolveWiderDiscussionInput = z.infer<typeof resolveWiderDiscussionInput>;
-
-// The human-call escape hatch spec names but doesn't mechanize: "an
-// objection → evaluators see it and the outcome waits on a human
-// call, not the timer." Callable any time resolution is still pending —
-// but §2.6/J7 closed the loophole this used to have, which is the whole
-// point of the redesign: a recruitment holder can no longer resolve a
-// window that has a standing objection on it. The plan says that
-// decision belongs to the mediation body ("the objection is never
-// thrown out... it stands"), and this is where that promise is enforced
-// rather than stated. A window with no objection is still a holder's to
-// resolve — they can decline to wait out the clock, which is a decision
-// about *timing*, not about overriding anybody's concern.
-export async function resolveWiderDiscussionManually(
-  actor: Member,
-  formResponseId: string,
-  input: ResolveWiderDiscussionInput,
-) {
-  await requireRecruitmentTaskHolder(actor);
-  const [responseRow] = await db
-    .select({ cycleId: formResponse.cycleId })
-    .from(formResponse)
-    .where(eq(formResponse.id, formResponseId));
-  if (!responseRow) {
-    throw new NotFoundError("Application not found");
-  }
-  // Deciding, like evaluating, is scoped to the holder's placement
-  // (§4.3): a cycle-placed recorder only resolves their own cycle's
-  // applications.
-  await requireRecruitmentScopeForCycle(actor, responseRow.cycleId);
-  const decision = await getRecruitmentDecision(formResponseId);
-  if (!decision || decision.ruleOutcome !== "wider_discussion") {
-    throw new NotFoundError("No open wider-discussion decision for this application");
-  }
-  if (decision.resolution) {
-    throw new ConflictError("This decision has already resolved");
-  }
-
-  const [standing] = await db
-    .select({ id: objection.id })
-    .from(objection)
-    .where(
-      and(
-        eq(objection.formResponseId, formResponseId),
-        eq(objection.resolution, "standing"),
-      ),
-    )
-    .limit(1);
-  if (standing) {
-    throw new ForbiddenError(
-      "Someone has raised a concern about this arrival, and it isn't yours to wave through — the mediation team has to talk it through first",
-    );
-  }
-
-  const [updated] = await db
-    .update(recruitmentDecision)
-    .set({ resolution: input.resolution })
-    .where(eq(recruitmentDecision.id, decision.id))
-    .returning();
-  await recordArrivalDecision(decision.formResponseId, input.resolution);
-
-  if (input.resolution === "accepted") {
-    const communityRow = await getCommunityRow(actor.communityId);
-    return applyAcceptanceSideEffects(actor, communityRow, updated);
-  }
-  return updated;
-}
-
-// Scheduled job (see src/instrumentation.ts) — the actual write a
-// closed wider-discussion window needs, unlike the purely-read
-// computeWiderDiscussionStatus above. Skips any decision with a raised
-// Objection: "an objection → evaluators see it and the outcome waits
-// on a human call, not the timer" — resolveWiderDiscussionManually is
-// that human call.
-export async function resolveWiderDiscussionWindows() {
-  const due = await db
-    .select()
-    .from(recruitmentDecision)
-    .where(
-      and(
-        eq(recruitmentDecision.ruleOutcome, "wider_discussion"),
-        isNull(recruitmentDecision.resolution),
-        lt(recruitmentDecision.widerDiscussionDeadline, new Date()),
-      ),
-    );
-
-  let resolved = 0;
-  let accompanimentsCreated = 0;
-  for (const decision of due) {
-    const [objectionRow] = await db
-      .select({ id: objection.id })
-      .from(objection)
-      .where(
-        and(
-          eq(objection.formResponseId, decision.formResponseId),
-          // §2.6/J7: only a *standing* objection holds the window. One
-          // the body has already settled is history, and letting a
-          // settled objection keep blocking the arrival would re-create
-          // the veto-by-inaction this whole redesign is about.
-          eq(objection.resolution, "standing"),
-        ),
-      )
-      .limit(1);
-    if (objectionRow) continue;
-
-    const resolution = decision.defaultResolution === "proceed" ? "accepted" : "declined";
-    const [updated] = await db
-      .update(recruitmentDecision)
-      .set({ resolution })
-      .where(eq(recruitmentDecision.id, decision.id))
-      .returning();
-    resolved++;
-    await recordArrivalDecision(decision.formResponseId, resolution);
-
-    if (resolution === "accepted") {
-      const [formRow] = await db
-        .select({ communityId: form.communityId })
-        .from(formResponse)
-        .innerJoin(form, eq(formResponse.formId, form.id))
-        .where(eq(formResponse.id, decision.formResponseId));
-      const communityRow = await getCommunityRow(formRow.communityId);
-      // Conversion needs no acting Member (it's a pure record-creation
-      // step, same as findOrCreateMemberByEmail), so this still runs
-      // even if the recruitment task currently has no holder —
-      // Accompaniment's own task creation genuinely does need a real
-      // actor to create a Task as, so that part alone stays gated on
-      // one existing.
-      const converted = await maybeConvertApplicantToMember(updated);
-      // The job needs a real actor to create a Task as, so it resolves one:
-      // the recruitment task's holder when there is a granting task, else the
-      // fallback chain (the converted member's referrer, then the earliest
-      // evaluator). Without the second path an open module with no granting
-      // task would resolve wider-discussion windows but never create the
-      // Accompaniment task that resolution is supposed to produce.
-      const actorMember =
-        (await getRecruitmentTaskHolderMember(communityRow)) ??
-        (await resolveAccompanimentAuthor(communityRow, converted));
-      if (actorMember) {
-        const withTask = await applyAcceptanceSideEffects(actorMember, communityRow, converted);
-        if (withTask?.accompanimentTaskId) accompanimentsCreated++;
-      }
-    }
-  }
-
-  return { checked: due.length, resolved, accompanimentsCreated };
 }

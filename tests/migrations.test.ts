@@ -136,7 +136,10 @@ describe("migrating a database that already has data", () => {
     await sql`insert into objection (form_response_id, raised_by, note) values
       (${responseA}, ${memberA}, 'concern in A'), (${responseB}, ${memberB}, 'concern in B')`;
 
-    await db.migrateRemaining();
+    // Up to 0083 only: it is 0083's own backfill under test, and later migrations
+    // (0099) move these rows into the community check — and, rightly, refuse to carry
+    // standing concerns that have no arrival, which is what these two are.
+    await db.migrateTo("0083_joining_admission_back_end");
 
     // Each objection took the community of *its own* form, not one community's
     // for all of them.
@@ -446,5 +449,106 @@ describe("migrating a database that already has data", () => {
     expect(of(marks)).toMatchObject({ recruitment_in_when: "no_no_one_yes", recruitment_decline_outright_at: null, recruitment_discussion_ends: "decline" });
     // The old rules are kept, unread, so the carry can be checked against its source.
     expect(of(standard).recruitment_decision_rules).toHaveLength(3);
+  });
+
+  // 0099 moves every window and every concern into the one community check. What
+  // could go wrong on real data: a window that is open and must stay open with its
+  // own deadline, concerns that must keep their ids (the shield rows are copied by
+  // id alone), a settled history that must read back as it was, a decision's wider
+  // discussion that becomes an evaluation window saying what a quiet one does, and
+  // — the one that must never be silent — a concern still standing with nothing to
+  // hang its window on, which stops the migration rather than being dropped.
+  async function seedChecks(sql: ScratchDatabase["sql"]) {
+    const ids = Object.fromEntries(
+      ["community", "alice", "bob", "mira", "lane", "form", "inviteOpen", "inviteDone", "arrivalOpen", "arrivalDone", "arrivalDiscussion", "response", "concernOpen", "concernDone", "concernDiscussion", "decision"].map((k) => [k, uuid()]),
+    ) as Record<string, string>;
+    await sql`insert into community (id, name, recruitment_wider_discussion_hours) values (${ids.community}, 'C', 24)`;
+    await sql`insert into member (id, community_id, name) values (${ids.alice}, ${ids.community}, 'Alice'), (${ids.bob}, ${ids.community}, 'Bob'), (${ids.mira}, ${ids.community}, 'Mira')`;
+    await sql`insert into admission_lane (id, community_id, name, kind) values (${ids.lane}, ${ids.community}, 'Check', 'invite')`;
+    await sql`insert into form (id, community_id, title, created_by, fields) values (${ids.form}, ${ids.community}, 'Application', ${ids.alice}, '[]'::jsonb)`;
+    await sql`insert into form_response (id, form_id, values) values (${ids.response}, ${ids.form}, '{}'::jsonb)`;
+
+    // 1. an invitee whose announced window is still open, with a concern standing on it
+    await sql`insert into community_invite (id, community_id, created_by, token, consensus_state, consensus_deadline, consent_at)
+      values (${ids.inviteOpen}, ${ids.community}, ${ids.alice}, 'tok-open', 'announced', now() + interval '10 hours', now() - interval '14 hours')`;
+    await sql`insert into admission (id, community_id, email, name, lane_id, route, invite_id, token, support_token, required_verification)
+      values (${ids.arrivalOpen}, ${ids.community}, 'open@example.com', 'Open', ${ids.lane}, 'invite', ${ids.inviteOpen}, 'tok-a', 'sup-a', 'community_check')`;
+    await sql`insert into objection (id, community_id, invite_id, raised_by, note) values (${ids.concernOpen}, ${ids.community}, ${ids.inviteOpen}, ${ids.bob}, 'still open')`;
+    await sql`insert into objection_party_exclusion (objection_id, member_id, added_by) values (${ids.concernOpen}, ${ids.mira}, ${ids.bob})`;
+    await sql`insert into objection_party_consent (objection_id, member_id, note) values (${ids.concernOpen}, ${ids.alice}, 'tell her')`;
+
+    // 2. an invitee admitted after a concern was cleared
+    await sql`insert into community_invite (id, community_id, created_by, token, consensus_state, consensus_deadline, consent_at)
+      values (${ids.inviteDone}, ${ids.community}, ${ids.alice}, 'tok-done', 'admitted', now() - interval '3 hours', now() - interval '30 hours')`;
+    await sql`insert into admission (id, community_id, email, name, lane_id, route, invite_id, token, support_token, required_verification, admitted_at, admitted_member_id)
+      values (${ids.arrivalDone}, ${ids.community}, 'done@example.com', 'Done', ${ids.lane}, 'invite', ${ids.inviteDone}, 'tok-b', 'sup-b', 'community_check', now() - interval '2 hours', ${ids.alice})`;
+    await sql`insert into objection (id, community_id, invite_id, raised_by, note, resolution, resolved_at, resolved_by_id, resolution_note)
+      values (${ids.concernDone}, ${ids.community}, ${ids.inviteDone}, ${ids.bob}, 'was cleared', 'cleared', now() - interval '4 hours', ${ids.mira}, 'we talked')`;
+    await sql`insert into objection_overrule_support (objection_id, member_id, note) values (${ids.concernDone}, ${ids.mira}, 'would have')`;
+
+    // 3. an application whose reports led to a wider discussion that defaults to admitting
+    await sql`insert into admission (id, community_id, email, name, lane_id, route, form_response_id, token, support_token)
+      values (${ids.arrivalDiscussion}, ${ids.community}, 'talk@example.com', 'Talk', ${ids.lane}, 'application', ${ids.response}, 'tok-c', 'sup-c')`;
+    await sql`insert into recruitment_decision (id, form_response_id, rule_outcome, default_resolution, wider_discussion_deadline)
+      values (${ids.decision}, ${ids.response}, 'wider_discussion', 'proceed', now() + interval '5 hours')`;
+    await sql`insert into objection (id, community_id, form_response_id, raised_by, note) values (${ids.concernDiscussion}, ${ids.community}, ${ids.response}, ${ids.bob}, 'about the application')`;
+    return ids;
+  }
+
+  it("0099 carries every window and concern into the one check, keeping ids, deadlines and the shield", async () => {
+    db = await createScratchDatabase();
+    await db.migrateBefore("0098_drop_unused_check_tables");
+    const sql = db.sql;
+    const ids = await seedChecks(sql);
+
+    await db.migrateRemaining();
+
+    const checks = await sql`select arrival_id, kind, on_quiet, window_hours, deadline, ended_at, ended_as from community_check`;
+    const of = (arrivalId: string) => checks.find((c) => c.arrival_id === arrivalId)!;
+
+    // The open window stays open, with the deadline it already had.
+    expect(of(ids.arrivalOpen)).toMatchObject({ kind: "entry", on_quiet: "continue", window_hours: 24, ended_at: null, ended_as: null });
+    expect(new Date(of(ids.arrivalOpen).deadline).getTime()).toBeGreaterThan(Date.now() + 9 * 3_600_000);
+    // The finished one is history: ended, and ended by a cleared concern.
+    expect(of(ids.arrivalDone)).toMatchObject({ kind: "entry", ended_as: "cleared" });
+    expect(of(ids.arrivalDone).ended_at).not.toBeNull();
+    // A wider discussion that defaulted to proceed now says so, and is still open.
+    expect(of(ids.arrivalDiscussion)).toMatchObject({ kind: "evaluation", on_quiet: "admit", ended_at: null });
+
+    // Every concern kept its id, its words and its state; none is lost, none duplicated.
+    const concerns = await sql`select id, note, resolution, raised_by_id, resolved_by_id, resolution_note from community_check_concern order by note`;
+    expect(concerns).toHaveLength(3);
+    expect(concerns.find((c) => c.id === ids.concernOpen)).toMatchObject({ note: "still open", resolution: "standing", raised_by_id: ids.bob });
+    expect(concerns.find((c) => c.id === ids.concernDone)).toMatchObject({ resolution: "cleared", resolved_by_id: ids.mira, resolution_note: "we talked" });
+    expect(concerns.find((c) => c.id === ids.concernDiscussion)).toMatchObject({ resolution: "standing" });
+
+    // The shield came across by id: who was recused, who may be told, who would overrule.
+    const [exclusion] = await sql`select concern_id, member_id, added_by_id from community_check_concern_exclusion`;
+    expect(exclusion).toMatchObject({ concern_id: ids.concernOpen, member_id: ids.mira, added_by_id: ids.bob });
+    const [consent] = await sql`select concern_id, member_id, note from community_check_concern_consent`;
+    expect(consent).toMatchObject({ concern_id: ids.concernOpen, member_id: ids.alice, note: "tell her" });
+    const [support] = await sql`select concern_id, member_id, note from community_check_overrule_support`;
+    expect(support).toMatchObject({ concern_id: ids.concernDone, member_id: ids.mira, note: "would have" });
+
+    // And the old shapes are gone.
+    const [{ gone }] = await sql`select to_regclass('objection') is null and to_regclass('objection_party_exclusion') is null as gone`;
+    expect(gone).toBe(true);
+    const cols = await sql`select column_name from information_schema.columns where table_name = 'community_invite' and column_name like 'consensus%'`;
+    expect(cols).toHaveLength(0);
+  });
+
+  it("0099 stops rather than drop a standing concern that has no arrival to belong to", async () => {
+    db = await createScratchDatabase();
+    await db.migrateBefore("0098_drop_unused_check_tables");
+    const sql = db.sql;
+    const [communityId, bob, formId, responseId] = Array.from({ length: 4 }, uuid);
+    await sql`insert into community (id, name) values (${communityId}, 'C')`;
+    await sql`insert into member (id, community_id, name) values (${bob}, ${communityId}, 'Bob')`;
+    await sql`insert into form (id, community_id, title, created_by, fields) values (${formId}, ${communityId}, 'Application', ${bob}, '[]'::jsonb)`;
+    await sql`insert into form_response (id, form_id, values) values (${responseId}, ${formId}, '{}'::jsonb)`;
+    // An application that predates arrivals, with a concern standing on it.
+    await sql`insert into objection (community_id, form_response_id, raised_by, note) values (${communityId}, ${responseId}, ${bob}, 'standing')`;
+
+    await expect(db.migrateRemaining()).rejects.toThrow(/standing concern has no arrival/);
   });
 });

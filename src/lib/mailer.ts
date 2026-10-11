@@ -285,3 +285,25 @@ export async function sendInterviewConfirmedEmail(
   ].join("\n");
   await sendPlainTextEmail(email, subject, text, `interview confirmed for ${email}:\n${input.statusUrl}`);
 }
+
+// The community would like a little more before it goes on (docs/admission-flow.md
+// §5, "ask for more"). Says what is being asked for and nothing about why: a person
+// is never told that someone raised a concern, who it was, or what it said.
+export async function sendAskedForMoreEmail(
+  email: string,
+  input: { name: string; communityName: string; statusUrl: string; application: boolean; interview: boolean },
+) {
+  const wanted = [input.application && "an application", input.interview && "a conversation"].filter(Boolean).join(" and ");
+  const subject = `${input.communityName} would like to know a little more`;
+  const text = [
+    `Hello ${input.name},`,
+    ``,
+    `Before ${input.communityName} goes any further, it would like ${wanted} from you.`,
+    ``,
+    `Your page says what to do, and lets you do it:`,
+    `${input.statusUrl}`,
+    ``,
+    `You can stop at any time, without giving a reason.`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `asked for more for ${email}:\n${input.statusUrl}`);
+}

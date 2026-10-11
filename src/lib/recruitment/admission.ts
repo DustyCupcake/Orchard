@@ -30,6 +30,7 @@ import { answerProfileQuestion } from "../profile-questions";
 import { sendAdmissionAcceptedEmail, sendAdmissionReceivedEmail } from "../mailer";
 import { publicAppUrl } from "../public-url";
 import { countCapacityHolds } from "./joining";
+import { closeOpenCheck, getOpenCheck, hasStandingConcern, openCheck } from "./community-check";
 import { requireCycleInitiationEligibility } from "../cycles/crud";
 import type { member as memberTable } from "@/db/schema";
 import type { AdmissionLane, AdmissionLaneSnapshot } from "./admission-lanes";
@@ -122,6 +123,14 @@ export async function createAdmissionArrival(input: ArrivalInput): Promise<{ arr
     })
     .returning();
 
+  // A lane whose verification is a community check opens its window once the person
+  // has agreed to being announced (§5). The window is the one mechanism a wider
+  // discussion uses too; what a quiet one does here is let the arrival go on to
+  // whatever its path has left.
+  if (snapshot.requiredVerification === "community_check" && input.consentGiven) {
+    await openCheck(arrival, "entry", "continue");
+  }
+
   // A lane with an interview makes the arrival's interview poll as they enter —
   // the interview comes before the decision (§2). If the interviews door is shut it
   // is made when the door reopens: the arrival waits at this step, never skips it.
@@ -144,7 +153,7 @@ export async function createAdmissionArrival(input: ArrivalInput): Promise<{ arr
   return { arrival, token };
 }
 
-async function communityNameOf(communityId: string): Promise<string> {
+export async function communityNameOf(communityId: string): Promise<string> {
   const [row] = await db.select({ name: community.name }).from(community).where(eq(community.id, communityId));
   return row?.name ?? "the community";
 }
@@ -186,6 +195,7 @@ export async function closeArrival(arrivalId: string, how: "declined" | "withdra
     .update(admission)
     .set(how === "declined" ? { declinedAt: now } : { withdrawnAt: now })
     .where(and(eq(admission.id, arrivalId), isNull(admission.admittedMemberId)));
+  await closeOpenCheck(arrivalId);
 }
 
 /**
@@ -204,6 +214,7 @@ export async function recordArrivalDecision(formResponseId: string, resolution: 
     .update(admission)
     .set(resolution === "declined" ? { decisionRecordedAt: now, declinedAt: now } : { decisionRecordedAt: now, declinedAt: null })
     .where(and(eq(admission.id, arrival.id), isNull(admission.admittedMemberId)));
+  if (resolution === "declined") await closeOpenCheck(arrival.id);
 }
 
 export async function getArrivalForFormResponse(formResponseId: string): Promise<Arrival | null> {
@@ -250,6 +261,13 @@ export async function admitArrival(arrivalId: string, opts: AdmitOptions = {}): 
     if (arrival.admittedMemberId) return { arrival, memberId: arrival.admittedMemberId, created: false, already: true, waitlisted: false };
     if (arrival.declinedAt) throw new ConflictError("This request to join was declined");
     if (arrival.withdrawnAt) throw new ConflictError("This request to join was withdrawn");
+    // Whatever asked for this — the clock, a decision, the support shortcut, an
+    // administrator — a concern that stands is never admitted over; only mediation
+    // settles it (§5). Checked here, at the one place a member is made, so no caller
+    // has to remember it.
+    if (await hasStandingConcern(arrival.id, tx)) {
+      throw new ConflictError("Someone has raised a concern about this arrival, and it stands until the mediation body has talked it through");
+    }
 
     const [invite] = arrival.inviteId
       ? await tx.select().from(communityInvite).where(eq(communityInvite.id, arrival.inviteId))
@@ -334,6 +352,7 @@ export async function admitArrival(arrivalId: string, opts: AdmitOptions = {}): 
       .update(admission)
       .set({ admittedAt: now, admittedMemberId: memberId, waitlistedAt: null })
       .where(eq(admission.id, arrival.id));
+    await closeOpenCheck(arrival.id, tx);
     if (invite) {
       await tx
         .update(communityInvite)
@@ -607,10 +626,12 @@ export async function loadArrivalReadout(arrival: Arrival, options: { waitingOnT
         .from(evaluation)
         .where(eq(evaluation.formResponseId, arrival.formResponseId))
     : [{ count: 0 }];
-  const [lane] = await db.select({ name: admissionLane.name }).from(admissionLane).where(eq(admissionLane.id, arrival.laneId));  const [decisionRow] = arrival.formResponseId
-    ? await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, arrival.formResponseId))
-    : [];
-  const widerDiscussionOpen = Boolean(decisionRow && decisionRow.ruleOutcome === "wider_discussion" && decisionRow.resolution === null);
+  const [lane] = await db.select({ name: admissionLane.name }).from(admissionLane).where(eq(admissionLane.id, arrival.laneId));
+  // The one community check: a window open on the arrival, either because its lane
+  // announces arrivals (entry) or because the reports led to a wider discussion.
+  const openWindow = await getOpenCheck(arrival.id);
+  const checkOpen = openWindow?.kind === "entry";
+  const widerDiscussionOpen = openWindow?.kind === "evaluation";
   const readout = computeAdmissionStage(
     {
       verification: arrival.requiredVerification,
@@ -623,7 +644,7 @@ export async function loadArrivalReadout(arrival: Arrival, options: { waitingOnT
     {
       enteredAt: arrival.createdAt,
       consentGiven: Boolean(arrival.consentGivenAt),
-      checkPassed: Boolean(arrival.checkPassedAt),
+      checkOpen,
       applicationSubmitted: Boolean(arrival.applicationSubmittedAt),
       interviewScheduled: Boolean(arrival.interviewScheduledAt),
       interviewHeld: Boolean(arrival.interviewHeldAt),
@@ -655,18 +676,13 @@ export async function loadArrivalReadout(arrival: Arrival, options: { waitingOnT
  * The person stops. The disclosure for a community check promises "you can
  * ask us to stop at any time, and you do not have to give a reason", and an
  * application or interview is no different. Nothing is deleted. An invite
- * that was spent stays spent; a check that was running is marked withheld so
- * its window can't admit someone who has asked to stop.
+ * that was spent stays spent; a check that was running is closed so its window
+ * can't admit someone who has asked to stop.
  */
 export async function withdrawArrival(token: string): Promise<boolean> {
   const arrival = await getArrivalByToken(token);
   if (!arrival || arrival.admittedMemberId || arrival.withdrawnAt || arrival.declinedAt) return false;
+  // Ends any window that was running, so it can't admit someone who has asked to stop.
   await closeArrival(arrival.id, "withdrawn");
-  if (arrival.inviteId) {
-    await db
-      .update(communityInvite)
-      .set({ consensusState: "withheld" })
-      .where(and(eq(communityInvite.id, arrival.inviteId), eq(communityInvite.consensusState, "announced")));
-  }
   return true;
 }

@@ -2,29 +2,31 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
-  admission as admissionTable,
+  admission,
   community,
-  communityInvite,
-  formResponse,
+  communityCheck,
+  communityCheckConcern,
+  communityCheckConcernConsent,
+  communityCheckConcernExclusion,
+  communityCheckOverruleSupport,
   member,
-  objection,
-  objectionPartyConsent,
-  objectionOverruleSupport,
-  objectionPartyExclusion,
-  recruitmentDecision,
   task,
   taskAssignment,
 } from "@/db/schema";
-import type { community as communityTable, member as memberTable, objection as objectionTable } from "@/db/schema";
+import type { community as communityTable, member as memberTable, communityCheckConcern as concernTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import { admitArrival, closeArrival, getArrivalForInvite, recordArrivalDecision } from "./admission";
 import { isModuleOpenToEveryone, listGrantingTaskIds } from "../permissions";
 import type { PermissionModuleKey } from "../permissions";
 import { isSharedByOpenness, type NeedsAction } from "../needs-action";
+import { assertCanAskForMore, reconcileCheck } from "./check-outcome";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityRow = typeof communityTable.$inferSelect;
-type ObjectionRow = typeof objectionTable.$inferSelect;
+// A concern raised in a community check. The body's own word for it is still
+// "objection" in a few names below (the shield functions, the queue), which are
+// the ones the rest of the app calls; what is stored is the unified check's
+// concern, and `raisedById` is the shield at rest.
+type ObjectionRow = typeof concernTable.$inferSelect;
 
 // §2.7/J8 — the mediation body is its own grant, and the community
 // chooses which task(s) carry it. The resolver here is deliberately the
@@ -166,12 +168,12 @@ export function overruleAvailability(communityRow: CommunityRow, bodySize: numbe
 // listObjections: the note, the timestamp, the count. They are not
 // shown an identity, so they cannot accidentally learn one.
 export async function canSeeObjectorIdentity(actor: Member, row: ObjectionRow): Promise<boolean> {
-  if (row.raisedBy === actor.id) return true;
+  if (row.raisedById === actor.id) return true;
   if (!(await isMediationMember(actor))) return false;
   const excluded = await db
-    .select({ id: objectionPartyExclusion.id })
-    .from(objectionPartyExclusion)
-    .where(and(eq(objectionPartyExclusion.objectionId, row.id), eq(objectionPartyExclusion.memberId, actor.id)))
+    .select({ id: communityCheckConcernExclusion.id })
+    .from(communityCheckConcernExclusion)
+    .where(and(eq(communityCheckConcernExclusion.concernId, row.id), eq(communityCheckConcernExclusion.memberId, actor.id)))
     .limit(1);
   return excluded.length === 0;
 }
@@ -180,9 +182,9 @@ export async function canSeeObjectorIdentity(actor: Member, row: ObjectionRow): 
 // "needs the body" from "nobody can see this at all".
 export async function objectionIsVisibleToBody(row: ObjectionRow): Promise<boolean> {
   const excluded = await db
-    .select({ memberId: objectionPartyExclusion.memberId })
-    .from(objectionPartyExclusion)
-    .where(eq(objectionPartyExclusion.objectionId, row.id));
+    .select({ memberId: communityCheckConcernExclusion.memberId })
+    .from(communityCheckConcernExclusion)
+    .where(eq(communityCheckConcernExclusion.concernId, row.id));
   const body = await listMediationMembers(row.communityId);
   if (body.length === 0) return false;
   const excludedIds = new Set(excluded.map((e) => e.memberId));
@@ -204,22 +206,22 @@ export type RecuseFromObjectionInput = z.infer<typeof recuseFromObjectionInput>;
 // the second.
 export async function recuseFromObjection(actor: Member, input: RecuseFromObjectionInput) {
   const row = await getObjectionForShield(actor, input.objectionId);
-  if (row.raisedBy !== actor.id) {
+  if (row.raisedById !== actor.id) {
     throw new ForbiddenError("Only the person who raised this objection can recuse anyone from it");
   }
   const [existing] = await db
-    .select({ id: objectionPartyExclusion.id })
-    .from(objectionPartyExclusion)
+    .select({ id: communityCheckConcernExclusion.id })
+    .from(communityCheckConcernExclusion)
     .where(
       and(
-        eq(objectionPartyExclusion.objectionId, row.id),
-        eq(objectionPartyExclusion.memberId, input.memberId),
+        eq(communityCheckConcernExclusion.concernId, row.id),
+        eq(communityCheckConcernExclusion.memberId, input.memberId),
       ),
     );
   if (existing) return existing;
   const [created] = await db
-    .insert(objectionPartyExclusion)
-    .values({ objectionId: row.id, memberId: input.memberId, addedBy: actor.id })
+    .insert(communityCheckConcernExclusion)
+    .values({ concernId: row.id, memberId: input.memberId, addedById: actor.id })
     .returning();
   return created;
 }
@@ -229,46 +231,46 @@ export async function consentPartyToObjection(
   input: { objectionId: string; memberId: string; note?: string | null },
 ) {
   const row = await getObjectionForShield(actor, input.objectionId);
-  if (row.raisedBy !== actor.id) {
+  if (row.raisedById !== actor.id) {
     throw new ForbiddenError("Only the person who raised this objection can consent to anyone being told");
   }
   const [existing] = await db
     .select()
-    .from(objectionPartyConsent)
+    .from(communityCheckConcernConsent)
     .where(
       and(
-        eq(objectionPartyConsent.objectionId, row.id),
-        eq(objectionPartyConsent.memberId, input.memberId),
+        eq(communityCheckConcernConsent.concernId, row.id),
+        eq(communityCheckConcernConsent.memberId, input.memberId),
       ),
     );
   if (existing) {
     const [updated] = await db
-      .update(objectionPartyConsent)
+      .update(communityCheckConcernConsent)
       .set({ withdrawnAt: null, note: input.note ?? null, grantedAt: new Date() })
-      .where(eq(objectionPartyConsent.id, existing.id))
+      .where(eq(communityCheckConcernConsent.id, existing.id))
       .returning();
     return updated;
   }
   const [created] = await db
-    .insert(objectionPartyConsent)
-    .values({ objectionId: row.id, memberId: input.memberId, note: input.note ?? null })
+    .insert(communityCheckConcernConsent)
+    .values({ concernId: row.id, memberId: input.memberId, note: input.note ?? null })
     .returning();
   return created;
 }
 
 export async function withdrawConsentToObjection(actor: Member, objectionId: string, memberId: string) {
   const row = await getObjectionForShield(actor, objectionId);
-  if (row.raisedBy !== actor.id) {
+  if (row.raisedById !== actor.id) {
     throw new ForbiddenError("Only the person who raised this objection can withdraw a consent");
   }
   const [updated] = await db
-    .update(objectionPartyConsent)
+    .update(communityCheckConcernConsent)
     .set({ withdrawnAt: new Date() })
     .where(
       and(
-        eq(objectionPartyConsent.objectionId, row.id),
-        eq(objectionPartyConsent.memberId, memberId),
-        isNull(objectionPartyConsent.withdrawnAt),
+        eq(communityCheckConcernConsent.concernId, row.id),
+        eq(communityCheckConcernConsent.memberId, memberId),
+        isNull(communityCheckConcernConsent.withdrawnAt),
       ),
     )
     .returning();
@@ -277,19 +279,19 @@ export async function withdrawConsentToObjection(actor: Member, objectionId: str
 
 export async function listObjectionParties(objectionId: string) {
   const [excluded, consented] = await Promise.all([
-    db.select().from(objectionPartyExclusion).where(eq(objectionPartyExclusion.objectionId, objectionId)),
+    db.select().from(communityCheckConcernExclusion).where(eq(communityCheckConcernExclusion.concernId, objectionId)),
     db
       .select()
-      .from(objectionPartyConsent)
-      .where(and(eq(objectionPartyConsent.objectionId, objectionId), isNull(objectionPartyConsent.withdrawnAt))),
+      .from(communityCheckConcernConsent)
+      .where(and(eq(communityCheckConcernConsent.concernId, objectionId), isNull(communityCheckConcernConsent.withdrawnAt))),
   ]);
   return { excluded, consented };
 }
 
 async function getObjectionForShield(actor: Member, objectionId: string): Promise<ObjectionRow> {
-  const [row] = await db.select().from(objection).where(eq(objection.id, objectionId));
+  const [row] = await db.select().from(communityCheckConcern).where(eq(communityCheckConcern.id, objectionId));
   if (!row || row.communityId !== actor.communityId) {
-    throw new NotFoundError("Objection not found");
+    throw new NotFoundError("Concern not found");
   }
   return row;
 }
@@ -298,9 +300,25 @@ async function getObjectionForShield(actor: Member, objectionId: string): Promis
 // The queue (§5.4)
 // ---------------------------------------------------------------------------
 
-export type MediationSubject =
-  | { kind: "application"; formResponseId: string; cycleId: string | null; submittedAt: Date }
-  | { kind: "invite"; inviteId: string; cycleId: string | null; createdAt: Date; consentAt: Date | null };
+// What a concern is about: the arrival, and how its window came to be open. The body
+// is told who the person is — talking with the objector, the person and whoever
+// invited them separately is the work, and it can't start without a name.
+export type MediationSubject = {
+  arrivalId: string;
+  name: string;
+  route: "invite" | "application";
+  checkKind: "entry" | "evaluation";
+  cycleId: string | null;
+  enteredAt: Date;
+  /** The application, when there is one — so the body can read what the evaluators read. */
+  formResponseId: string | null;
+  /** When the person agreed to being announced, if their lane announces arrivals. */
+  consentAt: Date | null;
+  /** Whether this window is still running, so the queue can say "closes" or "closed". */
+  deadline: Date;
+  /** What "ask for more" could still ask for on this arrival, so the form offers only what makes sense. */
+  mayAskFor: { application: boolean; interview: boolean } | null;
+};
 
 export type MediationItem = {
   id: string;
@@ -352,9 +370,9 @@ export async function getMediationQueue(actor: Member): Promise<MediationQueue> 
   const [rows, body, authority] = await Promise.all([
     db
       .select()
-      .from(objection)
-      .where(eq(objection.communityId, actor.communityId))
-      .orderBy(desc(objection.raisedAt)),
+      .from(communityCheckConcern)
+      .where(eq(communityCheckConcern.communityId, actor.communityId))
+      .orderBy(desc(communityCheckConcern.raisedAt)),
     listMediationMembers(actor.communityId),
     describeMediationAuthority(actor.communityId),
   ]);
@@ -365,20 +383,20 @@ export async function getMediationQueue(actor: Member): Promise<MediationQueue> 
     if (!subject) continue;
     const [excluded, consented, objector] = await Promise.all([
       db
-        .select({ id: objectionPartyExclusion.id })
-        .from(objectionPartyExclusion)
-        .where(eq(objectionPartyExclusion.objectionId, row.id)),
+        .select({ id: communityCheckConcernExclusion.id })
+        .from(communityCheckConcernExclusion)
+        .where(eq(communityCheckConcernExclusion.concernId, row.id)),
       db
-        .select({ id: objectionPartyConsent.id })
-        .from(objectionPartyConsent)
-        .where(and(eq(objectionPartyConsent.objectionId, row.id), isNull(objectionPartyConsent.withdrawnAt))),
-      db.select({ name: member.name }).from(member).where(eq(member.id, row.raisedBy)),
+        .select({ id: communityCheckConcernConsent.id })
+        .from(communityCheckConcernConsent)
+        .where(and(eq(communityCheckConcernConsent.concernId, row.id), isNull(communityCheckConcernConsent.withdrawnAt))),
+      db.select({ name: member.name }).from(member).where(eq(member.id, row.raisedById)),
     ]);
     // The identity is filled in only for the objector themselves; every
     // other reader of this queue gets a shielded objection, which is the
     // whole point (§2.6) and the reason this is a per-row read rather
     // than one shared object.
-    const maySee = row.raisedBy === actor.id;
+    const maySee = row.raisedById === actor.id;
     items.push({
       id: row.id,
       note: row.note,
@@ -428,9 +446,9 @@ export type ObjectorRecord = {
 export async function describeObjectorRecord(communityId: string, memberId: string): Promise<ObjectorRecord | null> {
   await requireMediationMemberId(communityId);
   const rows = await db
-    .select({ resolution: objection.resolution })
-    .from(objection)
-    .where(and(eq(objection.communityId, communityId), eq(objection.raisedBy, memberId)));
+    .select({ resolution: communityCheckConcern.resolution })
+    .from(communityCheckConcern)
+    .where(and(eq(communityCheckConcern.communityId, communityId), eq(communityCheckConcern.raisedById, memberId)));
   if (rows.length === 0) return null;
   const [person] = await db.select({ name: member.name }).from(member).where(eq(member.id, memberId));
   const count = (r: ObjectionRow["resolution"]) => rows.filter((x) => x.resolution === r).length;
@@ -456,27 +474,34 @@ async function requireMediationMemberId(communityId: string) {
 }
 
 async function describeObjectionSubject(row: ObjectionRow): Promise<MediationSubject | null> {
-  if (row.formResponseId) {
-    const [response] = await db
-      .select({ cycleId: formResponse.cycleId, submittedAt: formResponse.submittedAt })
-      .from(formResponse)
-      .where(eq(formResponse.id, row.formResponseId));
-    if (!response) return null;
-    return { kind: "application", formResponseId: row.formResponseId, cycleId: response.cycleId, submittedAt: response.submittedAt };
-  }
-  if (row.inviteId) {
-    const [invite] = await db
-      .select({
-        cycleId: communityInvite.cycleId,
-        createdAt: communityInvite.createdAt,
-        consentAt: communityInvite.consentAt,
-      })
-      .from(communityInvite)
-      .where(eq(communityInvite.id, row.inviteId));
-    if (!invite) return null;
-    return { kind: "invite", inviteId: row.inviteId, cycleId: invite.cycleId, createdAt: invite.createdAt, consentAt: invite.consentAt };
-  }
-  return null;
+  const [found] = await db
+    .select({ check: communityCheck, arrival: admission })
+    .from(communityCheck)
+    .innerJoin(admission, eq(admission.id, communityCheck.arrivalId))
+    .where(eq(communityCheck.id, row.checkId));
+  if (!found) return null;
+  const { check, arrival } = found;
+  // Only an entry window can still be asked for more (check-outcome.ts), and only the
+  // steps the arrival doesn't already have.
+  const askable =
+    check.kind === "entry" && !check.endedAt
+      ? {
+          application: !arrival.requiredApplication,
+          interview: !arrival.requiredInterview,
+        }
+      : null;
+  return {
+    arrivalId: arrival.id,
+    name: arrival.name,
+    route: arrival.route,
+    checkKind: check.kind,
+    cycleId: arrival.cycleId,
+    enteredAt: arrival.createdAt,
+    formResponseId: arrival.formResponseId,
+    consentAt: arrival.consentGivenAt,
+    deadline: check.deadline,
+    mayAskFor: askable && (askable.application || askable.interview) ? askable : null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -486,12 +511,16 @@ async function describeObjectionSubject(row: ObjectionRow): Promise<MediationSub
 export const resolveObjectionInput = z.object({
   objectionId: z.string().uuid(),
   // `cleared` and `upheld` are mediation succeeding and mediation
-  // concluding the objection holds; `overruled` is the exception the
-  // threshold guards. `withdrawn` is deliberately absent here — that one
-  // belongs to the objector and goes through withdrawObjection, so it
-  // can never be recorded as something the body did.
-  outcome: z.enum(["cleared", "upheld", "overruled"]),
+  // concluding the concern holds; `overruled` is the exception the
+  // threshold guards; `asked_for_more` sends the person back to give more (an
+  // application, a conversation) before anything is decided. `withdrawn` is
+  // deliberately absent here — that one belongs to the objector and goes through
+  // withdrawObjection, so it can never be recorded as something the body did.
+  outcome: z.enum(["cleared", "upheld", "overruled", "asked_for_more"]),
   note: z.string().min(1),
+  // Only for `asked_for_more`: what to ask for.
+  askApplication: z.boolean().optional(),
+  askInterview: z.boolean().optional(),
 });
 export type ResolveObjectionInput = z.infer<typeof resolveObjectionInput>;
 
@@ -504,7 +533,7 @@ export async function resolveObjection(actor: Member, input: ResolveObjectionInp
   // "You raised this, so you can't also settle it" answers the question
   // they actually asked, and is true regardless of what else they hold.
   const row = await getObjectionForShield(actor, input.objectionId);
-  if (row.raisedBy === actor.id) {
+  if (row.raisedById === actor.id) {
     throw new ConflictError("You raised this objection — you can't also settle it");
   }
   await requireMediationMember(actor);
@@ -522,6 +551,26 @@ export async function resolveObjection(actor: Member, input: ResolveObjectionInp
   const communityRow = (await db.select().from(community).where(eq(community.id, actor.communityId)))[0];
   if (!communityRow) {
     throw new NotFoundError("Community not found");
+  }
+
+  // Asking for more changes the person's path, so what is being asked is checked
+  // against the arrival *before* the concern is marked settled — a refusal here
+  // leaves it standing rather than settled with nothing done.
+  if (input.outcome === "asked_for_more") {
+    const [found] = await db
+      .select({ check: communityCheck, arrival: admission })
+      .from(communityCheck)
+      .innerJoin(admission, eq(admission.id, communityCheck.arrivalId))
+      .where(eq(communityCheck.id, row.checkId));
+    if (!found) throw new NotFoundError("Concern not found");
+    assertCanAskForMore(found.arrival, found.check, {
+      application: Boolean(input.askApplication),
+      interview: Boolean(input.askInterview),
+    });
+    await db
+      .update(communityCheck)
+      .set({ askedApplication: Boolean(input.askApplication), askedInterview: Boolean(input.askInterview) })
+      .where(eq(communityCheck.id, found.check.id));
   }
 
   // The note that is written onto the record. For every outcome but a
@@ -550,10 +599,10 @@ export async function resolveObjection(actor: Member, input: ResolveObjectionInp
       throw new ForbiddenError("Only someone who currently holds the mediation role can support an overrule");
     }
     await db
-      .insert(objectionOverruleSupport)
-      .values({ objectionId: row.id, memberId: actor.id, note: input.note })
+      .insert(communityCheckOverruleSupport)
+      .values({ concernId: row.id, memberId: actor.id, note: input.note })
       .onConflictDoUpdate({
-        target: [objectionOverruleSupport.objectionId, objectionOverruleSupport.memberId],
+        target: [communityCheckOverruleSupport.concernId, communityCheckOverruleSupport.memberId],
         set: { note: input.note, supportedAt: new Date() },
       });
 
@@ -568,7 +617,7 @@ export async function resolveObjection(actor: Member, input: ResolveObjectionInp
   }
 
   const [updated] = await db
-    .update(objection)
+    .update(communityCheckConcern)
     .set({
       resolution: input.outcome,
       resolvedAt: new Date(),
@@ -580,13 +629,17 @@ export async function resolveObjection(actor: Member, input: ResolveObjectionInp
       // without a stated reason is the one that most obviously does.
       resolutionNote,
     })
-    .where(and(eq(objection.id, row.id), eq(objection.resolution, "standing")))
+    .where(and(eq(communityCheckConcern.id, row.id), eq(communityCheckConcern.resolution, "standing")))
     .returning();
   if (!updated) {
     throw new ConflictError("This objection has already been settled");
   }
 
-  await applyObjectionOutcomeToSubject(updated, input.outcome, actor);
+  // The outcome is the funnel's to apply (check-outcome.ts), from what is now on the
+  // record — not this function's, and not a holder-only function's. If applying it
+  // fails, the next look at the window (the job's, or the next settlement's) finishes
+  // it, because the answer is already written.
+  await reconcileCheck(updated.checkId);
   return updated;
 }
 
@@ -600,14 +653,14 @@ export type OverruleSupporter = { memberId: string; name: string; note: string }
 async function countedOverruleSupporters(objectionId: string, body: MediationMember[]): Promise<OverruleSupporter[]> {
   const [rows, recused] = await Promise.all([
     db
-      .select({ memberId: objectionOverruleSupport.memberId, note: objectionOverruleSupport.note })
-      .from(objectionOverruleSupport)
-      .where(eq(objectionOverruleSupport.objectionId, objectionId))
-      .orderBy(objectionOverruleSupport.supportedAt),
+      .select({ memberId: communityCheckOverruleSupport.memberId, note: communityCheckOverruleSupport.note })
+      .from(communityCheckOverruleSupport)
+      .where(eq(communityCheckOverruleSupport.concernId, objectionId))
+      .orderBy(communityCheckOverruleSupport.supportedAt),
     db
-      .select({ memberId: objectionPartyExclusion.memberId })
-      .from(objectionPartyExclusion)
-      .where(eq(objectionPartyExclusion.objectionId, objectionId)),
+      .select({ memberId: communityCheckConcernExclusion.memberId })
+      .from(communityCheckConcernExclusion)
+      .where(eq(communityCheckConcernExclusion.concernId, objectionId)),
   ]);
   const recusedIds = new Set(recused.map((r) => r.memberId));
   const nameById = new Map(body.map((m) => [m.memberId, m.name]));
@@ -630,115 +683,35 @@ function composeOverruleRecord(supporters: OverruleSupporter[], bodySize: number
 
 async function isRecusedFrom(objectionId: string, memberId: string) {
   const rows = await db
-    .select({ id: objectionPartyExclusion.id })
-    .from(objectionPartyExclusion)
-    .where(and(eq(objectionPartyExclusion.objectionId, objectionId), eq(objectionPartyExclusion.memberId, memberId)));
+    .select({ id: communityCheckConcernExclusion.id })
+    .from(communityCheckConcernExclusion)
+    .where(and(eq(communityCheckConcernExclusion.concernId, objectionId), eq(communityCheckConcernExclusion.memberId, memberId)));
   return rows.length > 0;
 }
 
-// The single place an objection's outcome turns into an admission
-// decision. Both subject shapes resolve to the same three meanings:
-//
-//   cleared   — mediation resolved the concern; the arrival carries on.
-//   upheld    — the objection stands; the arrival is refused. This is
-//               the *default* the plan insists on (§2.6): the burden of
-//               persuasion is on the community, not on the newcomer.
-//   overruled — the exception; the body voted the concern down and the
-//               arrival carries on anyway, over it.
-//
-// For the evaluated path the arrival is the recruitment decision, so
-// this reuses decisions.ts's own resolution path (conversion +
-// accompaniment) rather than re-implementing either. For a consensus
-// invite it is the invite's own consensus state, and "admission
-// completes" means the *arrival* is seeded — the participation row the
-// roster and the capacity count are built from. A consensus invitee's
-// Member row already exists by the time a window can object, because
-// consent is what they had to give to be told any of this; what has not
-// happened yet is their place in the event, and that is what an upheld
-// objection holds back. Withholding it is not a punishment — it is the
-// body declining to complete an admission they have not agreed to, and
-// what happens to the account afterwards is a conversation the
-// mediation record is there to support.
-async function applyObjectionOutcomeToSubject(
-  row: ObjectionRow,
-  outcome: "cleared" | "upheld" | "overruled",
-  actor: Member,
-) {
-  const admits = outcome === "cleared" || outcome === "overruled";
-  if (row.formResponseId) {
-    const [decision] = await db
-      .select()
-      .from(recruitmentDecision)
-      .where(eq(recruitmentDecision.formResponseId, row.formResponseId));
-    if (decision) {
-      if (decision.resolution === null) {
-        const { resolveWiderDiscussionManually } = await import("./decisions");
-        await resolveWiderDiscussionManually(actor, row.formResponseId, {
-          resolution: admits ? "accepted" : "declined",
-        });
-      } else if (decision.resolution !== (admits ? "accepted" : "declined")) {
-        const [patched] = await db
-          .update(recruitmentDecision)
-          .set({ resolution: admits ? "accepted" : "declined" })
-          .where(eq(recruitmentDecision.id, decision.id))
-          .returning();
-        await recordArrivalDecision(row.formResponseId, admits ? "accepted" : "declined");
-        if (admits && patched) {
-          const { applyAcceptanceSideEffects } = await import("./decisions");
-          const [communityRow] = await db
-            .select()
-            .from(community)
-            .where(eq(community.id, row.communityId));
-          if (communityRow) {
-            await applyAcceptanceSideEffects(actor, communityRow, patched);
-          }
-        }
-      }
-    }
-  }
-  if (row.inviteId) {
-    const [invite] = await db.select().from(communityInvite).where(eq(communityInvite.id, row.inviteId));
-    if (invite) {
-      await db
-        .update(communityInvite)
-        .set({ consensusState: admits ? "admitted" : "withheld" })
-        .where(eq(communityInvite.id, invite.id));
-      // The arrival is what the body is deciding about: admitting completes
-      // it through the one admission function, withholding closes it.
-      const arrival = await getArrivalForInvite(invite.id);
-      if (arrival) {
-        if (admits) {
-          await db.update(admissionTable).set({ checkPassedAt: new Date() }).where(eq(admissionTable.id, arrival.id));
-          await admitArrival(arrival.id);
-        } else {
-          await closeArrival(arrival.id, "declined");
-        }
-      }
-    }
-  }
-}
-
-// §2.6 — the objector may withdraw their own objection, which admits the
-// arrival exactly as a clearance does. Kept separate from
+// §2.6 — the objector may withdraw their own objection, which lets the
+// arrival carry on exactly as a clearance does. Kept separate from
 // resolveObjection so the "the body did this" and "they changed their
 // mind" records can never be confused by a later reader.
 export async function withdrawObjection(actor: Member, objectionId: string) {
   const row = await getObjectionForShield(actor, objectionId);
-  if (row.raisedBy !== actor.id) {
+  if (row.raisedById !== actor.id) {
     throw new ForbiddenError("Only the person who raised this objection can withdraw it");
   }
   if (row.resolution !== "standing") {
     throw new ConflictError("This objection has already been settled");
   }
   const [updated] = await db
-    .update(objection)
+    .update(communityCheckConcern)
     .set({ resolution: "withdrawn", resolvedAt: new Date(), resolvedById: actor.id, resolutionNote: null })
-    .where(and(eq(objection.id, row.id), eq(objection.resolution, "standing")))
+    .where(and(eq(communityCheckConcern.id, row.id), eq(communityCheckConcern.resolution, "standing")))
     .returning();
   if (!updated) {
     throw new ConflictError("This objection has already been settled");
   }
-  await applyObjectionOutcomeToSubject(updated, "cleared", actor);
+  // Withdrawing lets the arrival carry on exactly as a clearance does: nothing is
+  // standing, so the window passes.
+  await reconcileCheck(updated.checkId);
   return updated;
 }
 
@@ -760,47 +733,46 @@ export async function listMediationActionItems(actor: Member): Promise<NeedsActi
   const empty = { personal: [], shared: [] };
   if (!(await isMediationMember(actor))) return empty;
   const rows = await db
-    .select({ id: objection.id, formResponseId: objection.formResponseId, inviteId: objection.inviteId, raisedAt: objection.raisedAt })
-    .from(objection)
-    .where(and(eq(objection.communityId, actor.communityId), eq(objection.resolution, "standing")))
-    .orderBy(objection.raisedAt);
+    .select({
+      id: communityCheckConcern.id,
+      raisedAt: communityCheckConcern.raisedAt,
+      route: admission.route,
+      kind: communityCheck.kind,
+    })
+    .from(communityCheckConcern)
+    .innerJoin(communityCheck, eq(communityCheck.id, communityCheckConcern.checkId))
+    .innerJoin(admission, eq(admission.id, communityCheck.arrivalId))
+    .where(and(eq(communityCheckConcern.communityId, actor.communityId), eq(communityCheckConcern.resolution, "standing")))
+    .orderBy(communityCheckConcern.raisedAt);
 
-  const items: MediationActionItem[] = [];
-  for (const row of rows) {
-    if (row.formResponseId) {
-      items.push({
-        id: row.id,
-        raisedAt: row.raisedAt,
-        subject: "application",
-        subjectLabel: "an application",
-      });
-    } else if (row.inviteId) {
-      items.push({
-        id: row.id,
-        raisedAt: row.raisedAt,
-        subject: "invite",
-        subjectLabel: "an announced arrival",
-      });
-    }
-  }
+  const items: MediationActionItem[] = rows.map((row) => ({
+    id: row.id,
+    raisedAt: row.raisedAt,
+    // Where the window came from: after the reports ("an application") or at the door
+    // ("an announced arrival"). Not who or what — the duty is the same either way.
+    subject: row.kind === "evaluation" ? "application" : "invite",
+    subjectLabel: row.kind === "evaluation" ? "an application" : "an announced arrival",
+  }));
   const grantingTaskIds = await listGrantingTaskIds(actor.communityId, MEDIATION_MODULE);
   const shared = await isSharedByOpenness(actor.communityId, MEDIATION_MODULE, actor.id, grantingTaskIds);
   return shared ? { personal: [], shared: items } : { personal: items, shared: [] };
 }
 
-// Whether *this* application has an objection the body still owes an
-// answer to, used by the applications pipeline's at-a-glance badge
-// (§5.4). Counts only — the pipeline has no business holding a note, let
-// alone an identity, and a count is enough to say "the body has this".
+// Whether *this* application has a concern the body still owes an answer to, used
+// by the applications pipeline's at-a-glance badge (§5.4). Counts only — the
+// pipeline has no business holding a note, let alone an identity, and a count is
+// enough to say "the body has this".
 export async function standingObjectionCount(communityId: string, formResponseId: string): Promise<number> {
   const rows = await db
-    .select({ id: objection.id })
-    .from(objection)
+    .select({ id: communityCheckConcern.id })
+    .from(communityCheckConcern)
+    .innerJoin(communityCheck, eq(communityCheck.id, communityCheckConcern.checkId))
+    .innerJoin(admission, eq(admission.id, communityCheck.arrivalId))
     .where(
       and(
-        eq(objection.communityId, communityId),
-        eq(objection.formResponseId, formResponseId),
-        eq(objection.resolution, "standing"),
+        eq(communityCheckConcern.communityId, communityId),
+        eq(admission.formResponseId, formResponseId),
+        eq(communityCheckConcern.resolution, "standing"),
       ),
     );
   return rows.length;

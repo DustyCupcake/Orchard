@@ -30,6 +30,20 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-12",
+    title: "Joining: one community check, and one way to raise a concern",
+    summary: "When the community has a say in someone's arrival, it's the same window and the same page whichever way they came.",
+    points: [
+      "Anyone in the community can raise a concern about an arrival that is open to one — from the new Community check page, under Recruitment. You don't need to be subscribed to anything. The only person who can't is whoever invited them.",
+      "A concern holds their arrival until the mediation team has talked it through. A clock never ends it, nobody is refused by a timer, and nothing admits someone over a concern that stands.",
+      "Who raised it stays hidden from the person, from whoever invited them and from the people who read their application. You can withdraw your concern at any time.",
+      "The mediation team can now also ask for more: an application, and a conversation if they want one. The person is emailed what's being asked (never why), fills in the application on their own page, and then goes through the ordinary steps — read, interviewed, decided.",
+      "The recruitment holders no longer have a button to close a wider discussion. It ends by itself when nobody has raised a concern by the deadline, or when the mediation team has settled the ones that were raised.",
+      "If something goes wrong while an outcome is being applied, the next look at the window finishes it, rather than the outcome being lost.",
+    ],
+    source: "one community check, one way to raise a concern, and the body can ask for more",
+  },
+  {
+    date: "2026-10-12",
     title: "Joining: the conversation comes before the decision",
     summary: "People who are interviewed are interviewed first, and the decision is made from the reports of the people who met them.",
     points: [

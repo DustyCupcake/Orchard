@@ -27,11 +27,15 @@ const RESOLUTION_LABEL: Record<string, string> = {
   upheld: "the objection stands",
   overruled: "overruled",
   withdrawn: "withdrawn by whoever raised it",
+  asked_for_more: "they were asked for more",
+  moot: "answered by how the arrival was decided",
 };
 
+// What the window was, in the body's words: opened at the door, or after the
+// reports led to a wider discussion.
 const SUBJECT_LABEL: Record<string, string> = {
-  application: "An application",
-  invite: "An announced arrival",
+  evaluation: "After the reports",
+  entry: "An announced arrival",
 };
 
 type PartyList = { excluded: string[]; consented: string[] };
@@ -244,7 +248,7 @@ export default async function RecruitmentMediationPage({
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
-                    {SUBJECT_LABEL[item.subject.kind]}
+                    {item.subject.name} — {SUBJECT_LABEL[item.subject.checkKind]}
                   </span>
                   <Tag tone={item.resolution === "overruled" ? "warning" : "neutral"}>
                     {RESOLUTION_LABEL[item.resolution] ?? item.resolution}
@@ -310,21 +314,21 @@ function StandingObjection({
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">
-          {SUBJECT_LABEL[item.subject.kind]}
+          {item.subject.name} — {SUBJECT_LABEL[item.subject.checkKind]}
         </span>
         <Tag tone="warning">standing</Tag>
         <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
           raised {new Date(item.raisedAt).toLocaleDateString()}
         </span>
-        {item.subject.kind === "invite" && item.subject.consentAt && (
+        {item.subject.consentAt && (
           <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-            · the invitee consented on {new Date(item.subject.consentAt).toLocaleDateString()}
+            · they consented on {new Date(item.subject.consentAt).toLocaleDateString()}
           </span>
         )}
       </div>
 
       <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">{item.note}</p>
-      {item.subject.kind === "application" && (
+      {item.subject.formResponseId && (
         <Link
           href={`/applications#response-${item.subject.formResponseId}`}
           className="mt-1 inline-block text-[length:var(--text-body)] text-[var(--accent-1)] underline"
@@ -361,6 +365,11 @@ function StandingObjection({
           <button type="submit" name="outcome" value="upheld" className={BUTTON_SECONDARY}>
             It stands — they don&rsquo;t join
           </button>
+          {item.subject.mayAskFor && (
+            <button type="submit" name="outcome" value="asked_for_more" className={BUTTON_SECONDARY}>
+              Ask them for more
+            </button>
+          )}
           {canOverrule && (
             <button type="submit" name="outcome" value="overruled" className={BUTTON_SECONDARY}>
               {needsOthers
@@ -369,6 +378,28 @@ function StandingObjection({
             </button>
           )}
         </div>
+        {item.subject.mayAskFor && (
+          <fieldset className="flex flex-col gap-1 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+            <legend className="px-1 text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">
+              Or ask for more, before anything is decided
+            </legend>
+            {item.subject.mayAskFor.application && (
+              <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
+                <input type="checkbox" name="askApplication" /> An application
+              </label>
+            )}
+            {item.subject.mayAskFor.interview && (
+              <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
+                <input type="checkbox" name="askInterview" /> A conversation
+              </label>
+            )}
+            <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+              They are taken back to those steps, read about and decided like anyone else; this concern is closed by it.
+              A conversation can only be asked for together with an application, because reports are written about one.
+              Fill in the note above, tick what to ask for, then press the button.
+            </span>
+          </fieldset>
+        )}
         {canOverrule && needsOthers && (
           <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
             An overrule takes {threshold} of the {bodySize} people on the body, each adding their own
