@@ -117,11 +117,23 @@ export const recruitmentPair = pgTable("recruitment_pair", {
   // The person who named the other. Always a Member — even for a manual
   // link, where that member is the one who did the linking, because
   // there is no version of a pairing with nobody behind it.
-  requestedById: uuid("requested_by_id")
-    .notNull()
-    .references(() => member.id),
+  //
+  // Nullable since pairing moved onto arrivals (docs/admission-flow.md §2): a person
+  // applying with somebody who made the link from their own page has no member behind
+  // them, so the namer is `firstArrivalId`; this is the member who named or linked them
+  // (an inviter naming members, or the team linking two arrivals by hand).
+  requestedById: uuid("requested_by_id").references(() => member.id),
   // The namer's own side, when the namer is an applicant too (the
   // public-application lane's "who are you sticking with" answer).
+  // The pair is between *arrivals* (§4): the first is the person who made the link, or
+  // was named; the second is whoever arrived through it. An arrival needn't have an
+  // application (a lane that asks only for a conversation), which is why this is no
+  // longer keyed on form responses (kept below only until they are dropped).
+  firstArrivalId: uuid("first_arrival_id").references(() => admission.id),
+  secondArrivalId: uuid("second_arrival_id").references(() => admission.id),
+  // Linked by hand by the recruitment/mediation team, so either of the two people may
+  // confirm it; otherwise only the namer (the first arrival) can.
+  linkedByTeam: boolean("linked_by_team").notNull().default(false),
   firstResponseId: uuid("first_response_id").references(() => formResponse.id),
   secondMemberId: uuid("second_member_id").references(() => member.id),
   secondResponseId: uuid("second_response_id").references(() => formResponse.id),

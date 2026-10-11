@@ -21,7 +21,7 @@ import {
 } from "@/lib/recruitment";
 import { listPairings, listSharedInterviewOffers } from "@/lib/recruitment/pairs";
 import { listLanes } from "@/lib/recruitment/admission-lanes";
-import { answerSharedInterviewAction } from "./actions";
+import { answerSharedInterviewAction, linkArrivalsAction } from "./actions";
 import { ForbiddenError } from "@/lib/errors";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
 import { Banner, BUTTON_SECONDARY, CARD, Tag } from "@/components/ui/kit";
@@ -644,7 +644,7 @@ export default async function RecruitmentHubPage() {
                 {pairings.map((p) => (
                   <div key={p.id} className={`${CARD} flex flex-wrap items-center gap-2`}>
                     <span className="text-[length:var(--text-body)] text-[var(--text)]">
-                      {p.namer?.name ?? "Someone"} · {p.namedMember ? p.namedMember.name : "someone applying"}
+                      {p.namer?.name ?? "Someone"} · {p.other ? p.other.name : "nobody yet"}{p.linkedByTeam ? " · linked by the team" : ""}
                     </span>
                     <Tag
                       tone={
@@ -666,6 +666,38 @@ export default async function RecruitmentHubPage() {
             </section>
           )}
 
+          {pipeline && pipeline.candidates.filter((c) => !["admitted", "declined", "withdrawn"].includes(c.stage)).length >= 2 && (
+            <section className="mt-6">
+              <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Link two people who are coming together</h2>
+              <p className="mt-1 max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">
+                For two people you know are arriving together who didn&rsquo;t say so. It only records the fact, and waits for one of them to
+                confirm it on their own page before they can be offered a single interview.
+              </p>
+              <form action={linkArrivalsAction} className={`${CARD} mt-3 flex flex-wrap items-end gap-3`}>
+                {(["firstArrivalId", "secondArrivalId"] as const).map((name) => (
+                  <label key={name} className="flex flex-col gap-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                    {name === "firstArrivalId" ? "One person" : "The other"}
+                    <select name={name} required defaultValue="" className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[length:var(--text-body)] text-[var(--text)]">
+                      <option value="" disabled>
+                        — choose —
+                      </option>
+                      {pipeline.candidates
+                        .filter((c) => !["admitted", "declined", "withdrawn"].includes(c.stage))
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                ))}
+                <button type="submit" className={BUTTON_SECONDARY}>
+                  Link them
+                </button>
+              </form>
+            </section>
+          )}
+
           {sharedOffers.length > 0 && (
             <section className="mt-6">
               <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Shared interviews to offer</h2>
@@ -678,7 +710,7 @@ export default async function RecruitmentHubPage() {
                 {sharedOffers.map((o) => (
                   <form key={o.pairId} action={answerSharedInterviewAction} className={`${CARD} flex flex-wrap items-center gap-2`}>
                     <input type="hidden" name="pairId" value={o.pairId} />
-                    <span className="text-[length:var(--text-body)] text-[var(--text)]">Two applicants, one interview</span>
+                    <span className="text-[length:var(--text-body)] text-[var(--text)]">{o.names.first} and {o.names.second}: one interview</span>
                     <button type="submit" name="accept" value="1" className={BUTTON_SECONDARY}>
                       Offer it
                     </button>

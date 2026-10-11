@@ -23,7 +23,7 @@ import { getOpenCheck, getWiderDiscussionWindow, listConcerns, listConcernsForAr
 import { consensusDisclosure, consensusWindowFor, recordApplicationConsent } from "./consensus";
 import { listSupports } from "./support";
 import { getInterviewers, getInterviewState } from "./interviews";
-import { attachApplicantToPairing, createPairings, resolvePairingForApplication } from "./pairs";
+import { attachArrivalToPairing, createPairings, resolvePairingForApplication } from "./pairs";
 import { assertEmailFreeToArrive, createAdmissionArrival, personFromApplication } from "./admission";
 import { declarationFromInvite, resolveInviteLane, resolvePublicLane, type AdmissionLane } from "./admission-lanes";
 import type { FormField } from "../forms";
@@ -262,7 +262,7 @@ export async function submitRecruitmentApplication(
   // to make a decision; it exists so two humans can be shown each other's
   // name and offered one interview between them.
   if (pairing) {
-    await attachApplicantToPairing(pairing.token, formResponseCreated.id, targetCycleId);
+    await attachArrivalToPairing(pairing.token, arrival.id);
   }
   const pairingMemberIds = input.pairingMemberIds ?? [];
   if (invite && pairingMemberIds.length > 0) {
@@ -276,7 +276,7 @@ export async function submitRecruitmentApplication(
     // than the platform inventing a "who is this from?" record.
     await createPairings(
       { communityId, memberId: invite.createdBy },
-      { nomineeMemberIds: pairingMemberIds, pokeMemberIds: [], cycleId: targetCycleId, firstResponseId: formResponseCreated.id },
+      { nomineeMemberIds: pairingMemberIds, pokeMemberIds: [], cycleId: targetCycleId, firstArrivalId: arrival.id },
       { requireMember: false },
     );
   }

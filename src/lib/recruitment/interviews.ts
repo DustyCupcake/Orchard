@@ -279,7 +279,8 @@ export async function confirmInterview(actor: Member, arrivalId: string, slot: s
     .update(schedulingPoll)
     .set({ confirmedSlotStart: start, confirmedSlotEnd: new Date(start.getTime() + SLOT_MS), confirmedBy: actor.id, confirmedAt: new Date() })
     .where(eq(schedulingPoll.id, state.poll.id));
-  return onInterviewConfirmed(state.poll.id);
+  await onInterviewConfirmed(state.poll.id);
+  return loadArrival(arrivalId);
 }
 
 /**
@@ -288,27 +289,33 @@ export async function confirmInterview(actor: Member, arrivalId: string, slot: s
  * only when the scheduled fact is first written.
  */
 export async function onInterviewConfirmed(pollId: string): Promise<Arrival> {
-  const [row] = await db.select().from(admission).where(eq(admission.interviewPollId, pollId));
-  if (!row) throw new NotFoundError("No interview belongs to that poll");
-  const before = row.interviewScheduledAt;
-  const arrival = await syncInterviewFacts(row.id);
-  if (!before && arrival.interviewScheduledAt) {
-    const poll = await getInterviewPoll(arrival);
-    if (poll?.confirmedSlotStart) {
-      try {
-        const [communityRow] = await db.select({ name: community.name }).from(community).where(eq(community.id, arrival.communityId));
-        await sendInterviewConfirmedEmail(arrival.email, {
-          name: arrival.name,
-          communityName: communityRow?.name ?? "the community",
-          whenText: poll.confirmedSlotStart.toLocaleString("en-GB", { dateStyle: "full", timeStyle: "short", timeZone: "UTC" }) + " UTC",
-          statusUrl: admissionLink(arrival.token),
-        });
-      } catch (err) {
-        console.error("[interview] could not send the confirmation email", err);
+  // One poll is one person's — or, for a shared interview, two people's: each is
+  // brought forward and each told.
+  const rows = await db.select().from(admission).where(eq(admission.interviewPollId, pollId));
+  if (rows.length === 0) throw new NotFoundError("No interview belongs to that poll");
+  let first: Arrival | null = null;
+  for (const row of rows) {
+    const before = row.interviewScheduledAt;
+    const arrival = await syncInterviewFacts(row.id);
+    first ??= arrival;
+    if (!before && arrival.interviewScheduledAt) {
+      const poll = await getInterviewPoll(arrival);
+      if (poll?.confirmedSlotStart) {
+        try {
+          const [communityRow] = await db.select({ name: community.name }).from(community).where(eq(community.id, arrival.communityId));
+          await sendInterviewConfirmedEmail(arrival.email, {
+            name: arrival.name,
+            communityName: communityRow?.name ?? "the community",
+            whenText: poll.confirmedSlotStart.toLocaleString("en-GB", { dateStyle: "full", timeStyle: "short", timeZone: "UTC" }) + " UTC",
+            statusUrl: admissionLink(arrival.token),
+          });
+        } catch (err) {
+          console.error("[interview] could not send the confirmation email", err);
+        }
       }
     }
   }
-  return arrival;
+  return first!;
 }
 
 /** An interviewer says the call happened, without waiting for the slot to pass. */

@@ -8,6 +8,20 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## pairing is between arrivals, made from the person's own page, and the shared interview is a holder's to offer
+
+Migration **0104**. [`docs/admission-flow.md`](docs/admission-flow.md) §8 step 8 (first half) and §2, "Pairing and a shared interview".
+
+**The pair is between arrivals.** `recruitment_pair` was keyed on application form responses and the namer was a member, so a lane that asks only for a conversation couldn't pair people and a public applicant — who isn't a member — couldn't name anyone. It now has `first_arrival_id` / `second_arrival_id` (backfilled from the applications' arrivals), `requested_by_id` is nullable (the member who named or linked, when there is one) and `linked_by_team` says who may confirm. The first arrival is the person who made the link; the second is whoever arrived through it.
+
+**The apply-together link is on the person's own page** (*Applying with someone?* on `/admission/<token>`): one open link per person, asking again returns the same one so a link already sent doesn't go stale; `/pair/<token>` now only carries whoever uses it to the application, paired. **The namer confirms there too** — "is this who you meant?" — because the namer is a person in the funnel, not necessarily a member with a login. Either person may confirm a pair the team linked by hand (new **Link two people who are coming together** on the Recruitment hub, which `linkApplicationsManually` had never had a screen for), and declining is a recorded answer.
+
+**The shared interview is the interview's own machinery.** Accepting puts the second person on the first's poll as a second required participant, so the slot has to suit *both* of them and enough holders (`computeAggregate` now requires every required participant rather than only the last); both arrivals are booked and told together (`onInterviewConfirmed` brings forward every arrival on a poll) and have the same interviewers; each interviewer files a report for each person, each counting its own N. The second person's own poll and its two coordination tasks are removed (every poll spins up two) and any times holders had offered for it are merged across, never lost.
+
+**The opt-in is checked on the write.** The offer was listed only to recruitment holders but answering it was open to any member who reached the action, so anyone could accept or decline for any pair; `answerSharedInterviewOffer` now requires a recruitment holder covering the pair's scope (one of the three defects the plan named for step 1).
+
+Tests: `pairing.test.ts` (new, 14) — the link, once-only use, who may confirm, the team's route, the offer's conditions and who may answer it, the merged poll, both booked and decided separately.
+
 ## the sign-in provider: admitted means they can sign in, and a sign-in is never a duplicate
 
 Migration **0103**. [`docs/admission-flow.md`](docs/admission-flow.md) §8 step 7 and §6a. Not covered by the plan, added because Peach Please already had the problem: an administrator way to remove an empty duplicate member.

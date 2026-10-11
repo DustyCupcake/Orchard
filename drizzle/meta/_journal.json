@@ -729,6 +729,13 @@
       "when": 1791737236223,
       "tag": "0103_sign_in_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1791738178233,
+      "tag": "0104_pairing_on_arrivals",
+      "breakpoints": true
     }
   ]
 }

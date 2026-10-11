@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import { AppError } from "@/lib/errors";
-import { answerSharedInterviewOffer, sharedInterviewInput } from "@/lib/recruitment/pairs";
+import { answerSharedInterviewOffer, linkArrivalsManually, sharedInterviewInput } from "@/lib/recruitment/pairs";
 
 async function requireMember() {
   const actor = await requireRealMember();
@@ -37,6 +37,21 @@ export async function answerSharedInterviewAction(formData: FormData) {
       accept: formData.get("accept") === "1",
     });
     await answerSharedInterviewOffer(actor, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  redirect("/recruitment");
+}
+
+// §2.8's manual route: the team links two people it knows are coming together. It waits for
+// one of them to confirm on their own page — the team's word is not theirs.
+export async function linkArrivalsAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await linkArrivalsManually(actor, {
+      firstArrivalId: String(formData.get("firstArrivalId") ?? ""),
+      secondArrivalId: String(formData.get("secondArrivalId") ?? ""),
+    });
   } catch (err) {
     redirectWithError(err);
   }

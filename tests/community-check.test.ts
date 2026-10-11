@@ -437,7 +437,7 @@ describe("pairing is fact-only (docs/joining-admission-plan.md §2.8/J9)", () =>
     const { createPairings } = await import("@/lib/recruitment/pairs");
     const pairs = await createPairings(
       { communityId: c.id, memberId: alice.id },
-      { nomineeMemberIds: [bob.id], pokeMemberIds: [], cycleId: null, firstResponseId: null },
+      { nomineeMemberIds: [bob.id], pokeMemberIds: [], cycleId: null, firstArrivalId: null },
       { requireMember: false },
     );
     expect(pairs).toHaveLength(1);
@@ -450,7 +450,7 @@ describe("pairing is fact-only (docs/joining-admission-plan.md §2.8/J9)", () =>
 
     const listed = await listPairings(alice);
     expect(listed[0].namer?.name).toBe("Alice");
-    expect(listed[0].namedMember?.name).toBe("Bob");
+    expect(listed[0].other?.name).toBe("Bob");
     // A pair whose other half is an existing member can never share an
     // interview — there is only one applicant — and the list says so
     // rather than implying one was available and skipped.

@@ -7,7 +7,9 @@ import type { FormField } from "@/lib/forms";
 import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
 import AvailabilityGrid from "@/app/(app)/scheduling-polls/AvailabilityGrid";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY } from "@/components/ui/kit";
-import { sendAskedApplicationAction, sendSignInLinkAction, withdrawAction } from "./actions";
+import { answerPairingAction, makeApplyTogetherLinkAction, sendAskedApplicationAction, sendSignInLinkAction, withdrawAction } from "./actions";
+import { listPairingsForArrival } from "@/lib/recruitment/pairs";
+import { publicAppUrl } from "@/lib/public-url";
 
 export const dynamic = "force-dynamic";
 
@@ -31,10 +33,10 @@ export default async function AdmissionPage({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ sent?: string; withdrawn?: string; error?: string; applied?: string }>;
+  searchParams: Promise<{ sent?: string; withdrawn?: string; error?: string; applied?: string; paired?: string }>;
 }) {
   const { token } = await params;
-  const { sent, withdrawn, error, applied } = await searchParams;
+  const { sent, withdrawn, error, applied, paired } = await searchParams;
 
   const found = await getArrivalByToken(token);
   if (!found) notFound();
@@ -72,6 +74,11 @@ export default async function AdmissionPage({
     ? await db.select({ status: signInSetup.status }).from(signInSetup).where(eq(signInSetup.memberId, arrival.admittedMemberId))
     : [];
   const signInPending = Boolean(setup && setup.status !== "done");
+
+  // Who they are applying with (§2, pairing): the link to send, and — if somebody used it, or the
+  // team linked them — the question of whether that is who they meant.
+  const pairings = await listPairingsForArrival(arrival, (t) => `${publicAppUrl()}/pair/${t}`);
+  const canPair = stillOpen && (arrival.requiredApplication || arrival.requiredInterview);
 
   const finished = readout.stage === "admitted" || readout.stage === "declined" || readout.stage === "withdrawn";
 
@@ -208,6 +215,64 @@ export default async function AdmissionPage({
               ? "Nobody has vouched yet."
               : `Vouched for by ${supports.map((sp) => sp.name).join(", ")}.`}
           </p>
+        </section>
+      )}
+
+      {(canPair || pairings.length > 0) && (
+        <section className="mt-8">
+          <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Applying with someone?</h2>
+          {paired && (
+            <div className="mt-2">
+              <Banner tone="success">Thanks — that&rsquo;s settled.</Banner>
+            </div>
+          )}
+          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+            If you&rsquo;re joining together, you can be offered a single interview between you. That&rsquo;s all it does: nothing about how
+            either of you is assessed changes, and either of you can say no to the shared interview later.
+          </p>
+          {pairings.map((p) => (
+            <div key={p.id} className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+              {p.link ? (
+                <>
+                  <p className="text-[length:var(--text-body)] text-[var(--text)]">Send this link to the person you&rsquo;re applying with:</p>
+                  <p className="mt-1 break-all text-[length:var(--text-body)] text-[var(--text)]">{p.link}</p>
+                  <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">Nobody has used it yet.</p>
+                </>
+              ) : p.canAnswer ? (
+                <>
+                  <p className="text-[length:var(--text-body)] text-[var(--text)]">
+                    {p.otherName ?? "Someone"} {p.otherName ? "is down as applying with you. Is that who you meant?" : "applied through your link. Is that who you meant?"}
+                  </p>
+                  <form action={answerPairingAction} className="mt-2 flex flex-wrap gap-2">
+                    <input type="hidden" name="token" value={token} />
+                    <input type="hidden" name="pairId" value={p.id} />
+                    <button type="submit" name="accept" value="1" className={BUTTON_PRIMARY}>
+                      Yes, that&rsquo;s them
+                    </button>
+                    <button type="submit" name="accept" value="0" className={BUTTON_SECONDARY}>
+                      No, that&rsquo;s someone else
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
+                  {p.status === "accepted"
+                    ? `You're applying with ${p.otherName ?? "someone"}.`
+                    : p.status === "declined"
+                      ? "That pairing was turned down. You're each still applying on your own account — nothing about that changes."
+                      : `Waiting for ${p.otherName ?? "them"} to be confirmed.`}
+                </p>
+              )}
+            </div>
+          ))}
+          {canPair && !pairings.some((p) => p.link) && (
+            <form action={makeApplyTogetherLinkAction} className="mt-3">
+              <input type="hidden" name="token" value={token} />
+              <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
+                Make a link for the person I&rsquo;m applying with
+              </button>
+            </form>
+          )}
         </section>
       )}
 

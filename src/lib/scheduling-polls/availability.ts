@@ -132,8 +132,8 @@ type EntryRow = typeof schedulingEntry.$inferSelect;
 // arrival's id. Existing member-only polls are unaffected: every entry's other
 // keys are null there.
 //
-// person_plus_n_holders is the interview (§2): a slot qualifies when the person
-// overlaps AND at least N *holders* offered that same slot, N being the lane's
+// person_plus_n_holders is the interview (§2): a slot qualifies when the person (or
+// both people, for a shared interview) overlaps AND at least N *holders* offered that same slot, N being the lane's
 // reports-needed number. Holders are whoever holds the recruitment task right now,
 // not a list frozen when the poll was made, and what they offer is read live —
 // both their entry on this poll and their standing availability — so a holder who
@@ -166,12 +166,13 @@ export function computeAggregate(
       if (poll.resolutionMode === "must_overlap") {
         qualifies = poll.requiredParticipantIds.every((id) => participantIds.has(id));
       } else if (poll.resolutionMode === "person_plus_n_holders") {
-        // The person is the last required participant (earlier ones, on polls made
-        // before holders were read live, are ignored: a holder is whoever is one now).
-        const applicantId = poll.requiredParticipantIds[poll.requiredParticipantIds.length - 1];
+        // The required participants are the people being interviewed — one, or two who
+        // opted into a shared interview (§2, pairing) — and every one of them has to be
+        // free; the holders are everyone else who offered the slot and is one now.
+        const people = new Set(poll.requiredParticipantIds);
         const isHolder = (id: string) => (holders ? holders.everyone || holders.holderIds.has(id) : true);
-        const overlappingHolders = [...participantIds].filter((id) => id !== applicantId && isHolder(id));
-        qualifies = participantIds.has(applicantId) && overlappingHolders.length >= (poll.minAttendance ?? 1);
+        const overlappingHolders = [...participantIds].filter((id) => !people.has(id) && isHolder(id));
+        qualifies = [...people].every((id) => participantIds.has(id)) && overlappingHolders.length >= (poll.minAttendance ?? 1);
       } else {
         qualifies = participantIds.size >= (poll.minAttendance ?? 1);
       }
