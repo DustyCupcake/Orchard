@@ -179,7 +179,7 @@ describe("recordDecisionIfReached", () => {
     expect(decision!.introCallPollId).toBeNull();
     expect(decision!.accompanimentTaskId).toBeNull();
     // Its window is a community check on the arrival, not a field of the decision.
-    const arrival = (await getArrivalForFormResponse(decision!.formResponseId))!;
+    const arrival = (await getArrivalForFormResponse(decision!.formResponseId!))!;
     expect((await getOpenCheck(arrival.id))!.kind).toBe("evaluation");
   });
 
@@ -355,7 +355,7 @@ describe("the wider discussion is a community check", () => {
       const { fixtures, setupResult, arrival, decision } = await undecided();
       await raiseConcern(fixtures.bob, arrival.id, { note: "I know this person and have concerns" });
 
-      const listed = await listConcerns(setupResult.alice, decision.formResponseId);
+      const listed = await listConcerns(setupResult.alice, decision.formResponseId!);
       expect(listed).toHaveLength(1);
       expect(listed[0].note).toBe("I know this person and have concerns");
       expect(listed[0]).not.toHaveProperty("raisedById");
@@ -367,7 +367,7 @@ describe("the wider discussion is a community check", () => {
     it("lists only to the holders", async () => {
       const { decision } = await undecided();
       const { alice: strangerAlice } = await createFixtures();
-      await expect(listConcerns(strangerAlice, decision.formResponseId)).rejects.toThrow(ForbiddenError);
+      await expect(listConcerns(strangerAlice, decision.formResponseId!)).rejects.toThrow(ForbiddenError);
     });
   });
 
@@ -504,7 +504,7 @@ async function attachLegacyIntroCall(
     title: "Recruitment intro call",
     resolutionMode: "person_plus_n_holders",
     minAttendance: 2,
-    requiredParticipantIds: [decision.formResponseId],
+    requiredParticipantIds: [decision.formResponseId!],
     rangeStart: "2027-06-01",
     rangeEnd: "2027-06-14",
   });

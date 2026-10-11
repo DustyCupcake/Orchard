@@ -141,6 +141,17 @@ describe("asking an arrival for more", () => {
     expect(sent.interviewPollId).not.toBeNull();
   });
 
+  it("can ask for a conversation on its own, and it is arranged at once — reports are about the person", async () => {
+    const { arrival, bob, mira, alice } = await setUp();
+    const concern = await raiseConcern(bob, arrival.id, { note: "I'd like to talk to them" });
+    await resolveObjection(mira, { objectionId: concern.id, outcome: "asked_for_more", note: "a conversation", askInterview: true });
+
+    const asked = await fresh(arrival.id);
+    expect(asked).toMatchObject({ requiredApplication: false, requiredInterview: true, requiredEvaluation: true, formResponseId: null });
+    expect(asked.interviewPollId).not.toBeNull();
+    void alice;
+  });
+
   describe("refuses what makes no sense, and leaves the concern standing when it does", () => {
     it("asking for nothing", async () => {
       const { arrival, bob, mira } = await setUp();
@@ -148,15 +159,6 @@ describe("asking an arrival for more", () => {
       await expect(resolveObjection(mira, { objectionId: concern.id, outcome: "asked_for_more", note: "more" })).rejects.toThrow(/Say what you'd like to ask for/);
       expect((await db.select().from(communityCheckConcern).where(eq(communityCheckConcern.id, concern.id)))[0].resolution).toBe("standing");
       expect(await getOpenCheck(arrival.id)).not.toBeNull();
-    });
-
-    it("a conversation alone, because reports are written about an application", async () => {
-      const { arrival, bob, mira } = await setUp();
-      const concern = await raiseConcern(bob, arrival.id, { note: "a concern" });
-      await expect(
-        resolveObjection(mira, { objectionId: concern.id, outcome: "asked_for_more", note: "talk", askInterview: true }),
-      ).rejects.toThrow(/only be asked for together with one/);
-      expect((await db.select().from(communityCheckConcern).where(eq(communityCheckConcern.id, concern.id)))[0].resolution).toBe("standing");
     });
 
     it("after the reports: the application and the conversation were had, so there is nothing more to ask for", async () => {

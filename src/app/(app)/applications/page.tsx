@@ -12,6 +12,7 @@ import {
   isRecruitmentTaskHolder,
   listApplicationAlerts,
   listApplicationsForEvaluation,
+  listConversationsForEvaluation,
   listHeldRecruitmentScopes,
   listOpenIntroCallsForSubscriber,
   listOutstandingReferralInvites,
@@ -24,6 +25,7 @@ import {
   confirmInterviewAction,
   markInterviewHeldAction,
   setRecruitmentSubscriptionAction,
+  submitArrivalEvaluationAction,
   submitEvaluationAction,
   supportApplicationAction,
 } from "./actions";
@@ -112,9 +114,11 @@ export default async function ApplicationsPage({
 
   let alerts: Awaited<ReturnType<typeof listApplicationAlerts>> = [];
   let full: Awaited<ReturnType<typeof listApplicationsForEvaluation>> = [];
+  let conversations: Awaited<ReturnType<typeof listConversationsForEvaluation>> = [];
   let referralInvites: Awaited<ReturnType<typeof listOutstandingReferralInvites>> = [];
   if (moduleOn && isHolder) {
     full = await listApplicationsForEvaluation(viewing);
+    conversations = await listConversationsForEvaluation(viewing);
     referralInvites = await listOutstandingReferralInvites(viewing);
   } else if (moduleOn) {
     try {
@@ -298,6 +302,24 @@ export default async function ApplicationsPage({
                           </li>
                         );
                       })}
+
+              {conversations.length > 0 && (
+                <>
+                  <h2>Conversations without an application ({conversations.length})</h2>
+                  <p style={{ color: "#666", fontSize: "0.85rem" }}>
+                    People whose lane asks only for a conversation. There is nothing to read: you meet them, and the people who took part
+                    report.
+                  </p>
+                  {conversations.map((item) => (
+                    <ConversationCard
+                      key={item.arrival.id}
+                      item={item}
+                      viewingId={viewing.id}
+                      cycleName={item.arrival.cycleId ? (cycleNameById.get(item.arrival.cycleId) ?? "that event") : null}
+                    />
+                  ))}
+                </>
+              )}
                     </ul>
 
                     <p style={{ margin: "0 0 0.4rem", fontSize: "0.85rem" }}>
@@ -361,44 +383,7 @@ export default async function ApplicationsPage({
                     )}
 
                     {interview && arrival && (
-                      <div style={{ margin: "0 0 0.6rem", fontSize: "0.85rem" }}>
-                        <p style={{ margin: "0 0 0.3rem" }}>
-                          <strong>Interview:</strong>{" "}
-                          {interview.confirmed
-                            ? `booked for ${new Date(interview.confirmed.start).toLocaleString()}${interview.held ? " — it has happened; the people who took part file the reports" : ""}`
-                            : !interview.poll
-                              ? "not made yet — conversations are closed, or no recruitment task has been created to file it under"
-                              : !interview.personHasOffered
-                                ? "waiting for them to say when they're free"
-                                : interview.qualifyingSlots.length === 0
-                                  ? "waiting for enough of you to offer a time they're free"
-                                  : `${interview.qualifyingSlots.length} time${interview.qualifyingSlots.length === 1 ? "" : "s"} suit them and enough of you — pick one to book`}
-                        </p>
-                        {interview.poll && !interview.confirmed && (
-                          <p style={{ margin: "0 0 0.3rem", color: "#666" }}>
-                            <Link href="/recruitment/availability" style={{ textDecoration: "underline" }}>Your standing availability</Link> counts here
-                            automatically, or offer times for just this one on{" "}
-                            <Link href={`/scheduling-polls/${interview.poll.id}`} style={{ textDecoration: "underline" }}>its poll</Link>.
-                          </p>
-                        )}
-                        {!interview.confirmed && interview.qualifyingSlots.length > 0 && (
-                          <form action={confirmInterviewAction} style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-                            <input type="hidden" name="arrivalId" value={arrival.id} />
-                            <SelectField name="slot" defaultValue={interview.qualifyingSlots[0]} style={{ padding: "0.3rem" }}>
-                              {interview.qualifyingSlots.map((slot) => (
-                                <option key={slot} value={slot}>{new Date(slot).toLocaleString()}</option>
-                              ))}
-                            </SelectField>
-                            <button type="submit" style={{ padding: "0.2rem 0.6rem" }}>Book this time</button>
-                          </form>
-                        )}
-                        {interview.confirmed && !interview.held && interviewerIds.includes(viewing.id) && (
-                          <form action={markInterviewHeldAction}>
-                            <input type="hidden" name="arrivalId" value={arrival.id} />
-                            <button type="submit" style={{ padding: "0.2rem 0.6rem" }}>It happened</button>
-                          </form>
-                        )}
-                      </div>
+                      <InterviewBlock interview={interview} arrivalId={arrival.id} interviewerIds={interviewerIds} viewingId={viewing.id} />
                     )}
 
                     <form
@@ -539,5 +524,151 @@ export default async function ApplicationsPage({
         </>
       )}
     </main>
+  );
+}
+
+// Where a person's interview is, read live — so a holder looking at the list can see
+// whether it's waiting on the person, on holders, or ready to book — and the two things a
+// holder does with it. Shared by the applications and by the arrivals that sent none.
+type InterviewState = NonNullable<Awaited<ReturnType<typeof listApplicationsForEvaluation>>[number]["interview"]>;
+function InterviewBlock({
+  interview,
+  arrivalId,
+  interviewerIds,
+  viewingId,
+}: {
+  interview: InterviewState;
+  arrivalId: string;
+  interviewerIds: string[];
+  viewingId: string;
+}) {
+  return (
+    <div style={{ margin: "0 0 0.6rem", fontSize: "0.85rem" }}>
+        <p style={{ margin: "0 0 0.3rem" }}>
+          <strong>Interview:</strong>{" "}
+          {interview.confirmed
+            ? `booked for ${new Date(interview.confirmed.start).toLocaleString()}${interview.held ? " — it has happened; the people who took part file the reports" : ""}`
+            : !interview.poll
+              ? "not made yet — conversations are closed, or no recruitment task has been created to file it under"
+              : !interview.personHasOffered
+                ? "waiting for them to say when they're free"
+                : interview.qualifyingSlots.length === 0
+                  ? "waiting for enough of you to offer a time they're free"
+                  : `${interview.qualifyingSlots.length} time${interview.qualifyingSlots.length === 1 ? "" : "s"} suit them and enough of you — pick one to book`}
+        </p>
+        {interview.poll && !interview.confirmed && (
+          <p style={{ margin: "0 0 0.3rem", color: "#666" }}>
+            <Link href="/recruitment/availability" style={{ textDecoration: "underline" }}>Your standing availability</Link> counts here
+            automatically, or offer times for just this one on{" "}
+            <Link href={`/scheduling-polls/${interview.poll.id}`} style={{ textDecoration: "underline" }}>its poll</Link>.
+          </p>
+        )}
+        {!interview.confirmed && interview.qualifyingSlots.length > 0 && (
+          <form action={confirmInterviewAction} style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            <input type="hidden" name="arrivalId" value={arrivalId} />
+            <SelectField name="slot" defaultValue={interview.qualifyingSlots[0]} style={{ padding: "0.3rem" }}>
+              {interview.qualifyingSlots.map((slot) => (
+                <option key={slot} value={slot}>{new Date(slot).toLocaleString()}</option>
+              ))}
+            </SelectField>
+            <button type="submit" style={{ padding: "0.2rem 0.6rem" }}>Book this time</button>
+          </form>
+        )}
+        {interview.confirmed && !interview.held && interviewerIds.includes(viewingId) && (
+          <form action={markInterviewHeldAction}>
+            <input type="hidden" name="arrivalId" value={arrivalId} />
+            <button type="submit" style={{ padding: "0.2rem 0.6rem" }}>It happened</button>
+          </form>
+        )}
+      </div>
+  );
+}
+
+// An arrival whose lane asks only for a conversation has no application to read, so what
+// a holder is shown is the person, where their conversation is, and the reports on it.
+type Conversation = Awaited<ReturnType<typeof listConversationsForEvaluation>>[number];
+function ConversationCard({ item, viewingId, cycleName }: { item: Conversation; viewingId: string; cycleName: string | null }) {
+  const { arrival, evaluations, outcome, evaluationsFiled, evaluatorsNeeded, decision, supports, interview, interviewerIds, concerns, windowDeadline } = item;
+  const mine = evaluations.find((e) => e.evaluatorId === viewingId);
+  return (
+    <div style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.75rem", marginBottom: "0.75rem" }}>
+      <p style={{ margin: "0 0 0.4rem", fontSize: "0.8rem", color: "#666" }}>
+        Arrived {new Date(arrival.createdAt).toLocaleString()}
+        {cycleName ? ` — for ${cycleName}` : " — not tied to an event"} — no application: their lane asks for a conversation
+      </p>
+      <p style={{ margin: "0 0 0.4rem" }}>
+        <strong>{arrival.name}</strong> <span style={{ color: "#666" }}>({arrival.email})</span>
+      </p>
+      <p style={{ margin: "0 0 0.4rem", fontSize: "0.85rem" }}>
+        {evaluationsFiled}/{evaluatorsNeeded} reports filed
+        {outcome && (
+          <>
+            {" "}
+            · outcome: <strong>{OUTCOME_LABEL[outcome] ?? outcome}</strong>
+          </>
+        )}
+        {supports.length > 0 && <> · vouched for by {supports.map((sp) => sp.name).join(", ")}</>}
+      </p>
+      {evaluations.length > 0 && (
+        <ul style={{ margin: "0 0 0.5rem", fontSize: "0.85rem" }}>
+          {evaluations.map((e) => (
+            <li key={e.id}>
+              {e.evaluatorId === viewingId ? "You" : "Another interviewer"}: {e.recommendation}
+              {e.notes ? ` — ${e.notes}` : ""}
+            </li>
+          ))}
+        </ul>
+      )}
+      {interview && <InterviewBlock interview={interview} arrivalId={arrival.id} interviewerIds={interviewerIds} viewingId={viewingId} />}
+      {interview?.held && (
+        <form action={submitArrivalEvaluationAction} style={{ display: "flex", flexDirection: "column", gap: "0.4rem", maxWidth: 400 }}>
+          <input type="hidden" name="arrivalId" value={arrival.id} />
+          <label style={{ fontSize: "0.85rem" }}>
+            Your recommendation
+            <br />
+            <SelectField name="recommendation" defaultValue={mine?.recommendation ?? "unsure"} style={{ padding: "0.3rem" }}>
+              <option value="proceed">Proceed</option>
+              <option value="unsure">Unsure</option>
+              <option value="decline">Decline</option>
+            </SelectField>
+          </label>
+          <label style={{ fontSize: "0.85rem" }}>
+            Notes (optional)
+            <br />
+            <textarea name="notes" rows={2} defaultValue={mine?.notes ?? ""} style={{ padding: "0.3rem", width: "100%" }} />
+          </label>
+          <button type="submit" style={{ padding: "0.3rem 0.6rem", width: "fit-content" }}>
+            {mine ? "Update recommendation" : "File recommendation"}
+          </button>
+        </form>
+      )}
+      {decision && (
+        <p style={{ margin: "0.6rem 0 0", fontSize: "0.85rem" }}>
+          Decision: <strong>{OUTCOME_LABEL[decision.ruleOutcome] ?? decision.ruleOutcome}</strong>
+          {decision.resolution && (
+            <>
+              {" "}
+              → <strong>{RESOLUTION_LABEL[decision.resolution] ?? decision.resolution}</strong>
+            </>
+          )}
+        </p>
+      )}
+      {windowDeadline && (
+        <p style={{ margin: "0.4rem 0 0", fontSize: "0.85rem" }}>
+          Community check open until {new Date(windowDeadline).toLocaleString()}.{" "}
+          {concerns.some((c) => c.resolution === "standing") ? (
+            <>
+              A concern stands until the{" "}
+              <Link href="/recruitment/mediation" style={{ color: "var(--accent-1)" }}>
+                mediation body
+              </Link>{" "}
+              has talked it through; it isn&rsquo;t yours to resolve.
+            </>
+          ) : (
+            "Anyone can raise a concern in the window."
+          )}
+        </p>
+      )}
+    </div>
   );
 }

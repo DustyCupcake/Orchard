@@ -10,7 +10,9 @@ import {
   markInterviewHeld,
   pokeForSupport,
   recordSupport,
+  recordArrivalDecisionIfReached,
   recordDecisionIfReached,
+  submitArrivalEvaluation,
   setRecruitmentSubscriptionActive,
   submitEvaluation,
   submitEvaluationInput,
@@ -71,6 +73,25 @@ export async function submitEvaluationAction(formData: FormData) {
     redirectWithError(err);
   }
 
+  revalidatePath("/applications");
+  redirect("/applications?evaluated=1");
+}
+
+// The same for an arrival that has no application (a lane that asks only for a
+// conversation): the report is about the person.
+export async function submitArrivalEvaluationAction(formData: FormData) {
+  const actor = await requireMember();
+  const arrivalId = String(formData.get("arrivalId"));
+  try {
+    const input = submitEvaluationInput.parse({
+      recommendation: String(formData.get("recommendation") ?? ""),
+      notes: String(formData.get("notes") ?? "").trim() || null,
+    });
+    await submitArrivalEvaluation(actor, arrivalId, input);
+    await recordArrivalDecisionIfReached(actor, arrivalId);
+  } catch (err) {
+    redirectWithError(err);
+  }
   revalidatePath("/applications");
   redirect("/applications?evaluated=1");
 }

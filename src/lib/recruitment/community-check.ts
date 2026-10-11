@@ -264,6 +264,19 @@ export async function listConcerns(actor: Member, formResponseId: string) {
   await requireRecruitmentScopeForCycle(actor, response.cycleId);
   const [arrival] = await db.select().from(admission).where(eq(admission.formResponseId, formResponseId));
   if (!arrival) return [];
+  return concernsOf(arrival.id);
+}
+
+/** The same for an arrival that has no application (a lane that asks only for a conversation). */
+export async function listConcernsForArrival(actor: Member, arrivalId: string) {
+  await requireRecruitmentTaskHolder(actor);
+  const [arrival] = await db.select().from(admission).where(eq(admission.id, arrivalId));
+  if (!arrival || arrival.communityId !== actor.communityId) throw new NotFoundError("Arrival not found");
+  await requireRecruitmentScopeForCycle(actor, arrival.cycleId);
+  return concernsOf(arrival.id);
+}
+
+function concernsOf(arrivalId: string) {
   return db
     .select({
       id: communityCheckConcern.id,
@@ -275,7 +288,7 @@ export async function listConcerns(actor: Member, formResponseId: string) {
     })
     .from(communityCheckConcern)
     .innerJoin(communityCheck, eq(communityCheck.id, communityCheckConcern.checkId))
-    .where(eq(communityCheck.arrivalId, arrival.id))
+    .where(eq(communityCheck.arrivalId, arrivalId))
     .orderBy(communityCheckConcern.raisedAt);
 }
 

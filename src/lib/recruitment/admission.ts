@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { db } from "@/db";
@@ -205,10 +205,9 @@ export async function closeArrival(arrivalId: string, how: "declined" | "withdra
  * fact every screen needs, so the stage never has to go and read it. An
  * acceptance writes nothing more — admission is the admission function's.
  */
-export async function recordArrivalDecision(formResponseId: string, resolution: "accepted" | "declined" | null): Promise<void> {
+export async function recordArrivalDecision(arrivalId: string, resolution: "accepted" | "declined" | null): Promise<void> {
   if (!resolution) return;
-  const arrival = await ensureArrivalForApplication(formResponseId);
-  if (!arrival) return;
+  const arrival = { id: arrivalId };
   const now = new Date();
   await db
     .update(admission)
@@ -359,12 +358,17 @@ export async function admitArrival(arrivalId: string, opts: AdmitOptions = {}): 
         .set({ redeemedByMemberId: memberId })
         .where(and(eq(communityInvite.id, invite.id), isNull(communityInvite.redeemedByMemberId)));
     }
-    if (arrival.formResponseId) {
-      await tx
-        .update(recruitmentDecision)
-        .set({ convertedMemberId: memberId })
-        .where(and(eq(recruitmentDecision.formResponseId, arrival.formResponseId), isNull(recruitmentDecision.convertedMemberId)));
-    }
+    await tx
+      .update(recruitmentDecision)
+      .set({ convertedMemberId: memberId })
+      .where(
+        and(
+          arrival.formResponseId
+            ? or(eq(recruitmentDecision.arrivalId, arrival.id), eq(recruitmentDecision.formResponseId, arrival.formResponseId))
+            : eq(recruitmentDecision.arrivalId, arrival.id),
+          isNull(recruitmentDecision.convertedMemberId),
+        ),
+      );
     return { arrival, memberId, created, already: false, waitlisted: false as const };
   });
 
@@ -554,6 +558,16 @@ export function personFromApplication(
  * only for a form that can't identify a person at all.
  */
 export async function ensureArrivalForApplication(formResponseId: string): Promise<Arrival | null> {
+  const arrival = await ensureArrivalForApplicationRaw(formResponseId);
+  if (arrival) {
+    // Reports and a decision made before the arrival existed belong to it from here on.
+    await db.update(evaluation).set({ arrivalId: arrival.id }).where(and(eq(evaluation.formResponseId, formResponseId), isNull(evaluation.arrivalId)));
+    await db.update(recruitmentDecision).set({ arrivalId: arrival.id }).where(and(eq(recruitmentDecision.formResponseId, formResponseId), isNull(recruitmentDecision.arrivalId)));
+  }
+  return arrival;
+}
+
+async function ensureArrivalForApplicationRaw(formResponseId: string): Promise<Arrival | null> {
   const existing = await getArrivalForFormResponse(formResponseId);
   if (existing) return existing;
 
@@ -620,12 +634,10 @@ export async function ensureArrivalForApplication(formResponseId: string): Promi
  * count rather than keeping a second opinion of it.
  */
 export async function loadArrivalReadout(arrival: Arrival, options: { waitingOnThePerson?: boolean } = {}) {
-  const [filed] = arrival.formResponseId
-    ? await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(evaluation)
-        .where(eq(evaluation.formResponseId, arrival.formResponseId))
-    : [{ count: 0 }];
+  const [filed] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(evaluation)
+    .where(eq(evaluation.arrivalId, arrival.id));
   const [lane] = await db.select({ name: admissionLane.name }).from(admissionLane).where(eq(admissionLane.id, arrival.laneId));
   // The one community check: a window open on the arrival, either because its lane
   // announces arrivals (entry) or because the reports led to a wider discussion.

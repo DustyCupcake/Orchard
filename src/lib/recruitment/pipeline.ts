@@ -9,7 +9,7 @@ import { requireModuleEnabled } from "../modules";
 import { getCommunityRow, requireRecruitmentTaskHolder } from "./access";
 import { isSharedByOpenness, type NeedsAction } from "../needs-action";
 import { listGrantingTaskIds } from "../permissions";
-import { getRecruitmentDecision } from "./decisions";
+import { getArrivalDecision } from "./decisions";
 import { admissionNeedsAction, type AdmissionStage, type AdmissionStageReadout } from "./admission-stage";
 import { loadArrivalReadout } from "./admission";
 import { getInterviewState, syncInterviewFacts, type InterviewState } from "./interviews";
@@ -70,7 +70,7 @@ async function toCandidate(arrival: typeof admission.$inferSelect, communityRow:
     Boolean(interview?.poll && !interview.confirmed && !interview.personHasOffered) ||
     (synced.requiredApplication && !synced.applicationSubmittedAt);
   const { readout, sentence, laneName } = await loadArrivalReadout(synced, { waitingOnThePerson });
-  const decision = synced.formResponseId ? await getRecruitmentDecision(synced.formResponseId) : null;
+  const decision = await getArrivalDecision(synced.id);
   // The reports an application has counts live from the evaluations table (§4: no
   // second opinion of it kept on the arrival).
   void communityRow;

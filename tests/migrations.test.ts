@@ -551,4 +551,42 @@ describe("migrating a database that already has data", () => {
 
     await expect(db.migrateRemaining()).rejects.toThrow(/standing concern has no arrival/);
   });
+
+  // 0101 keys reports and decisions on the arrival. Existing ones have to land on the arrival
+  // their application made — not on one of another person's — and one whose application has no
+  // arrival yet must keep working (it is linked when the arrival is made), so the column is
+  // nullable and the application key stays.
+  it("0101 gives existing reports and decisions the arrival their application made, and leaves orphans alone", async () => {
+    db = await createScratchDatabase();
+    await db.migrateBefore("0101_reports_keyed_on_arrival");
+    const sql = db.sql;
+    const [communityId, lane, alice, bob, form, respA, respB, respOrphan, arrA, arrB] = Array.from({ length: 10 }, uuid);
+    await sql`insert into community (id, name) values (${communityId}, 'C')`;
+    await sql`insert into member (id, community_id, name) values (${alice}, ${communityId}, 'Alice')`;
+    await sql`insert into member (id, community_id, name) values (${bob}, ${communityId}, 'Bob')`;
+    await sql`insert into admission_lane (id, community_id, name, kind) values (${lane}, ${communityId}, 'Open', 'public')`;
+    await sql`insert into form (id, community_id, title, created_by, fields) values (${form}, ${communityId}, 'A', ${alice}, '[]'::jsonb)`;
+    await sql`insert into form_response (id, form_id, values) values (${respA}, ${form}, '{}'::jsonb), (${respB}, ${form}, '{}'::jsonb), (${respOrphan}, ${form}, '{}'::jsonb)`;
+    await sql`insert into admission (id, community_id, email, name, lane_id, route, form_response_id, token, support_token) values
+      (${arrA}, ${communityId}, 'a@example.com', 'A', ${lane}, 'application', ${respA}, 'ta', 'sa'),
+      (${arrB}, ${communityId}, 'b@example.com', 'B', ${lane}, 'application', ${respB}, 'tb', 'sb')`;
+    await sql`insert into evaluation (form_response_id, evaluator_id, recommendation) values
+      (${respA}, ${alice}, 'proceed'), (${respB}, ${alice}, 'decline'), (${respOrphan}, ${alice}, 'unsure')`;
+    await sql`insert into recruitment_decision (form_response_id, rule_outcome) values (${respA}, 'proceed'), (${respOrphan}, 'decline')`;
+
+    await db.migrateRemaining();
+
+    const reports = await sql`select form_response_id, arrival_id from evaluation`;
+    const of = (r: string) => reports.find((x) => x.form_response_id === r)!;
+    expect(of(respA).arrival_id).toBe(arrA);
+    expect(of(respB).arrival_id).toBe(arrB);
+    expect(of(respOrphan).arrival_id).toBeNull();
+    const decisions = await sql`select form_response_id, arrival_id from recruitment_decision`;
+    expect(decisions.find((d) => d.form_response_id === respA)!.arrival_id).toBe(arrA);
+    expect(decisions.find((d) => d.form_response_id === respOrphan)!.arrival_id).toBeNull();
+    // A report with no application is now possible, and it is the arrival's.
+    await sql`insert into evaluation (arrival_id, evaluator_id, recommendation) values (${arrA}, ${bob}, 'unsure')`;
+    // …but not two from the same person about the same arrival.
+    await expect(sql`insert into evaluation (arrival_id, evaluator_id, recommendation) values (${arrA}, ${bob}, 'proceed')`).rejects.toThrow();
+  });
 });

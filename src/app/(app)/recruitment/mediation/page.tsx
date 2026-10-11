@@ -395,7 +395,6 @@ function StandingObjection({
             )}
             <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
               They are taken back to those steps, read about and decided like anyone else; this concern is closed by it.
-              A conversation can only be asked for together with an application, because reports are written about one.
               Fill in the note above, tick what to ask for, then press the button.
             </span>
           </fieldset>

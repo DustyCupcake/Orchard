@@ -15,11 +15,11 @@ import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
 import { getForm, submitPublicFormResponse } from "../forms";
-import { computeRecruitmentOutcome } from "./evaluations";
+import { computeArrivalOutcome, computeRecruitmentOutcome } from "./evaluations";
 import { entryRefusal, getCycleJoiningState, type CycleJoiningState } from "./joining";
 import { getCommunityRow, isRecruitmentTaskHolder, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
-import { getRecruitmentDecision } from "./decisions";
-import { getWiderDiscussionWindow, listConcerns } from "./community-check";
+import { getArrivalDecision, getRecruitmentDecision } from "./decisions";
+import { getOpenCheck, getWiderDiscussionWindow, listConcerns, listConcernsForArrival } from "./community-check";
 import { consensusDisclosure, consensusWindowFor, recordApplicationConsent } from "./consensus";
 import { listSupports } from "./support";
 import { getInterviewers, getInterviewState } from "./interviews";
@@ -444,6 +444,54 @@ export async function listApplicationAlerts(actor: Member) {
         outcome,
         resolution: decision?.resolution ?? null,
         widerDiscussionStatus: (await getWiderDiscussionWindow(r.id))?.status ?? null,
+      };
+    }),
+  );
+}
+
+// Holder-only — the arrivals a lane brought in *without* an application (it asks only
+// for a conversation), which are evaluated like any other: the interview, the reports
+// from the people who took part, the decision. They have no form answers to show, so
+// what is listed is the person, how they came and where they are. Scoped like the
+// applications are.
+export async function listConversationsForEvaluation(actor: Member) {
+  await requireRecruitmentTaskHolder(actor);
+  const communityRow = await getCommunityRow(actor.communityId);
+  const heldScopes = await listHeldRecruitmentScopes(actor);
+  const arrivals = await db
+    .select()
+    .from(admission)
+    .where(
+      and(
+        eq(admission.communityId, actor.communityId),
+        eq(admission.requiredEvaluation, true),
+        isNull(admission.formResponseId),
+        isNull(admission.admittedMemberId),
+        isNull(admission.declinedAt),
+        isNull(admission.withdrawnAt),
+      ),
+    )
+    .orderBy(desc(admission.createdAt));
+  const covered = arrivals.filter((a) => heldScopes.has(null) || (a.cycleId !== null && heldScopes.has(a.cycleId)));
+  return Promise.all(
+    covered.map(async (arrival) => {
+      const { outcome, evaluationsFiled, evaluatorsNeeded, evaluations } = await computeArrivalOutcome(communityRow, arrival.id);
+      const decision = await getArrivalDecision(arrival.id);
+      const interview = arrival.requiredInterview ? await getInterviewState(arrival) : null;
+      const interviewers = arrival.requiredInterview && interview?.confirmed ? await getInterviewers(arrival) : [];
+      const window = await getOpenCheck(arrival.id);
+      return {
+        arrival,
+        evaluations,
+        outcome,
+        evaluationsFiled,
+        evaluatorsNeeded,
+        decision,
+        supports: await listSupports(arrival.id),
+        interview,
+        interviewerIds: interviewers.map((m) => m.id),
+        concerns: await listConcernsForArrival(actor, arrival.id),
+        windowDeadline: window?.deadline ?? null,
       };
     }),
   );

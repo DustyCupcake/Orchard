@@ -33,7 +33,8 @@ export async function submitIntroCallAvailability(token: string, input: SubmitAv
   if (!found) {
     throw new NotFoundError("Intro call not found");
   }
-  return submitAvailabilityAsApplicant(found.poll.id, found.decision.formResponseId, input);
+  // Legacy: an intro call only ever came with an application.
+  return submitAvailabilityAsApplicant(found.poll.id, found.decision.formResponseId!, input);
 }
 
 export async function getIntroCallAvailability(token: string) {
@@ -41,5 +42,5 @@ export async function getIntroCallAvailability(token: string) {
   if (!found) {
     throw new NotFoundError("Intro call not found");
   }
-  return getApplicantAvailability(found.poll.id, found.decision.formResponseId);
+  return getApplicantAvailability(found.poll.id, found.decision.formResponseId!);
 }

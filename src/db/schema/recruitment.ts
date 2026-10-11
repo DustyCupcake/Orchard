@@ -1,4 +1,5 @@
-import { boolean, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { admission } from "./admission";
 import { community } from "./community";
 import { communityInvite } from "./community-invite";
 import { cycle } from "./cycle";
@@ -41,18 +42,21 @@ export const recruitmentSubscription = pgTable("recruitment_subscription", {
 // no DB-level unique constraint), the same posture Assemblies'
 // responses / Budget's votes already use — an evaluator changing
 // their mind before a decision is reached is a real, low-stakes case.
+//
+// Keyed on the *arrival* (docs/admission-flow.md §4): a report is about a person in the
+// funnel, and a lane that asks only for a conversation has nobody's application to
+// hang it on. `formResponseId` is the application when there is one.
 export const evaluation = pgTable("evaluation", {
   id: uuid("id").primaryKey().defaultRandom(),
-  formResponseId: uuid("form_response_id")
-    .notNull()
-    .references(() => formResponse.id),
+  formResponseId: uuid("form_response_id").references(() => formResponse.id),
+  arrivalId: uuid("arrival_id").references(() => admission.id),
   evaluatorId: uuid("evaluator_id")
     .notNull()
     .references(() => member.id),
   recommendation: recruitmentRecommendationEnum("recommendation").notNull(),
   notes: text("notes"),
   filedAt: timestamp("filed_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [uniqueIndex("evaluation_arrival_evaluator_unique").on(t.arrivalId, t.evaluatorId)]);
 
 // A resolved interpretation this phase needs to build for spec's own
 // "when the applicant came through an invite link, its
@@ -198,9 +202,13 @@ export const recruitmentDecisionResolutionEnum = pgEnum("recruitment_decision_re
 // side effect fires at most once per decision.
 export const recruitmentDecision = pgTable("recruitment_decision", {
   id: uuid("id").primaryKey().defaultRandom(),
+  // One decision per arrival; `formResponseId` is the application when there is one
+  // (a lane that asks only for a conversation decides without it).
   formResponseId: uuid("form_response_id")
-    .notNull()
     .references(() => formResponse.id)
+    .unique(),
+  arrivalId: uuid("arrival_id")
+    .references(() => admission.id)
     .unique(),
   ruleOutcome: recruitmentDecisionOutcomeEnum("rule_outcome").notNull(),
   defaultResolution: recruitmentDecisionLeaningEnum("default_resolution"),

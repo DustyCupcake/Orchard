@@ -80,9 +80,7 @@ async function markStandingMoot(checkId: string) {
  * It is offered on a window that opened at entry, because that is when there is
  * something left to ask for: an arrival whose window opened after its reports has
  * already given an application and been interviewed as its lane asked, and a
- * second round of the same would be a decision made twice. Reports and decisions
- * are written about an application, so an arrival with none cannot be asked for an
- * interview alone.
+ * second round of the same would be a decision made twice.
  */
 export function assertCanAskForMore(arrival: Arrival, check: Pick<Check, "kind">, ask: AskForMore): void {
   if (!ask.application && !ask.interview) {
@@ -98,11 +96,6 @@ export function assertCanAskForMore(arrival: Arrival, check: Pick<Check, "kind">
   }
   if (ask.interview && arrival.requiredInterview) {
     throw new ConflictError("They've already been asked for a conversation");
-  }
-  if (ask.interview && !ask.application && !arrival.formResponseId && !arrival.requiredApplication) {
-    throw new ConflictError(
-      "Reports and decisions are written about an application, so a conversation can only be asked for together with one",
-    );
   }
 }
 
@@ -182,7 +175,19 @@ export async function reconcileCheck(checkId: string): Promise<ReconcileResult> 
     await markStandingMoot(check.id);
     const won = await endCheckRow(check.id, "asked_for_more", decidedBy(asked));
     // Only the call that ended it tells the person, so asking once is one email.
-    if (won) await notifyAskedForMore(arrival, check);
+    if (won) {
+      await notifyAskedForMore(arrival, check);
+      // A conversation asked for on its own can be arranged now the window no longer holds
+      // them; one asked for with an application waits for the application (submitAskedApplication).
+      if (check.askedInterview && !check.askedApplication) {
+        try {
+          const { ensureInterviewPoll } = await import("./interviews");
+          await ensureInterviewPoll(arrival.id);
+        } catch (err) {
+          console.error("[community check] could not make the interview poll", err);
+        }
+      }
+    }
     return "ended";
   }
 
@@ -244,7 +249,11 @@ async function adoptLegacyDiscussions() {
     .from(recruitmentDecision)
     .where(and(eq(recruitmentDecision.ruleOutcome, "wider_discussion"), isNull(recruitmentDecision.resolution)));
   for (const decision of waiting) {
-    const arrival = await ensureArrivalForApplication(decision.formResponseId);
+    const arrival = decision.arrivalId
+      ? (await db.select().from(admission).where(eq(admission.id, decision.arrivalId)))[0]
+      : decision.formResponseId
+        ? await ensureArrivalForApplication(decision.formResponseId)
+        : null;
     if (!arrival || arrivalIsFinished(arrival)) continue;
     if ((await listChecksFor(arrival.id)).some((c) => c.kind === "evaluation")) continue;
     await openCheck(arrival, "evaluation", decision.defaultResolution === "proceed" ? "admit" : "decline", {

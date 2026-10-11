@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
   admission,
@@ -13,10 +13,10 @@ import {
 import type { community as communityTable, member as memberTable } from "@/db/schema";
 import { createTask } from "../tasks";
 import { getCommunityRow } from "./access";
-import { computeRecruitmentOutcome } from "./evaluations";
+import { computeArrivalOutcome } from "./evaluations";
 import { listGrantingTaskIds } from "../permissions";
 import { admitArrival, closeArrival, ensureArrivalForApplication, recordArrivalDecision } from "./admission";
-import { openCheck } from "./community-check";
+import { inviterOf, openCheck } from "./community-check";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityRow = typeof communityTable.$inferSelect;
@@ -25,6 +25,20 @@ type RecruitmentDecisionRow = typeof recruitmentDecision.$inferSelect;
 export async function getRecruitmentDecision(formResponseId: string) {
   const [row] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, formResponseId));
   return row ?? null;
+}
+
+// A decision is about an arrival (§4); the application is simply one thing it can have.
+export async function getArrivalDecision(arrivalId: string) {
+  const [row] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.arrivalId, arrivalId));
+  return row ?? null;
+}
+
+async function arrivalOfDecision(decision: RecruitmentDecisionRow) {
+  if (decision.arrivalId) {
+    const [row] = await db.select().from(admission).where(eq(admission.id, decision.arrivalId));
+    if (row) return row;
+  }
+  return decision.formResponseId ? ensureArrivalForApplication(decision.formResponseId) : null;
 }
 
 // The reverse lookup a task detail page needs to know "is this task an
@@ -91,7 +105,7 @@ async function resolveAccompanimentAuthor(
   const [earliestEvaluation] = await db
     .select({ evaluatorId: evaluation.evaluatorId })
     .from(evaluation)
-    .where(eq(evaluation.formResponseId, decision.formResponseId))
+    .where(decision.arrivalId ? eq(evaluation.arrivalId, decision.arrivalId) : eq(evaluation.formResponseId, decision.formResponseId!))
     .orderBy(evaluation.filedAt)
     .limit(1);
   if (!earliestEvaluation) return null;
@@ -111,7 +125,7 @@ async function resolveAccompanimentAuthor(
 // submitRecruitmentApplication no longer lets such a form take applications.
 async function maybeConvertApplicantToMember(decision: RecruitmentDecisionRow): Promise<RecruitmentDecisionRow> {
   if (decision.convertedMemberId) return decision;
-  const arrival = await ensureArrivalForApplication(decision.formResponseId);
+  const arrival = await arrivalOfDecision(decision);
   if (!arrival) return decision;
   await admitArrival(arrival.id);
   const [updated] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision.id));
@@ -144,12 +158,8 @@ async function maybeCreateAccompanimentTask(actor: Member, communityRow: Communi
     const [convertedMember] = await db.select().from(member).where(eq(member.id, decision.convertedMemberId));
     suggestedMemberId = convertedMember?.referredByMemberId ?? null;
   } else {
-    const [linked] = await db
-      .select({ createdBy: communityInvite.createdBy })
-      .from(recruitmentApplicationInvite)
-      .innerJoin(communityInvite, eq(recruitmentApplicationInvite.communityInviteId, communityInvite.id))
-      .where(eq(recruitmentApplicationInvite.formResponseId, decision.formResponseId));
-    suggestedMemberId = linked?.createdBy ?? null;
+    const found = await arrivalOfDecision(decision);
+    suggestedMemberId = found ? await inviterOf(found) : null;
   }
 
   const [waiting] = decision.convertedMemberId
@@ -157,13 +167,23 @@ async function maybeCreateAccompanimentTask(actor: Member, communityRow: Communi
     : await db
         .select({ id: admission.id })
         .from(admission)
-        .where(and(eq(admission.formResponseId, decision.formResponseId), isNotNull(admission.waitlistedAt)));
+        .where(
+          and(
+            decision.arrivalId ? eq(admission.id, decision.arrivalId) : eq(admission.formResponseId, decision.formResponseId!),
+            isNotNull(admission.waitlistedAt),
+          ),
+        );
 
+  // What the task points at: the application when there is one, else the arrival
+  // (a lane that asks only for a conversation has no application to read).
+  const about = decision.formResponseId
+    ? `accepted via the application submitted through /apply (id ${decision.formResponseId}) — see /applications for the full submission`
+    : `accepted after a conversation (arrival ${decision.arrivalId}) — see /applications for the report`;
   const description = waiting
-    ? `Accompany the new member accepted via the application submitted through /apply (id ${decision.formResponseId}) — see /applications for the full submission. They are accepted but waiting for a place in a full event, so they are not a member yet; they become one, and this task applies, when room appears or an administrator admits them.`
+    ? `Accompany the new member ${about}. They are accepted but waiting for a place in a full event, so they are not a member yet; they become one, and this task applies, when room appears or an administrator admits them.`
     : decision.convertedMemberId
-    ? `Accompany the new member accepted via the application submitted through /apply (id ${decision.formResponseId}) — see /applications for the full submission.`
-    : `Accompany the new member accepted via the application submitted through /apply (id ${decision.formResponseId}) — see /applications for the full submission. The application Form isn't tagged with a name/email field, so no Member was created automatically; someone will need to invite or otherwise onboard this person by hand.`;
+    ? `Accompany the new member ${about}.`
+    : `Accompany the new member ${about}. The application Form isn't tagged with a name/email field, so no Member was created automatically; someone will need to invite or otherwise onboard this person by hand.`;
 
   const created = await createTask(
     actor,
@@ -222,17 +242,23 @@ export async function applyAcceptanceSideEffects(
 // already waiting out a wider discussion is resolved. An arrival with no
 // application has no decision at all — it is admitted or closed.
 export async function settleArrivalDecision(arrival: typeof admission.$inferSelect, resolution: "accepted" | "declined") {
-  if (!arrival.formResponseId) {
+  // An arrival whose lane asks for no reports and sent no application (a community
+  // check on its own) has nothing a decision would be about.
+  if (!arrival.formResponseId && !arrival.requiredEvaluation) {
     if (resolution === "accepted") return admitArrival(arrival.id);
     await closeArrival(arrival.id, "declined");
     return null;
   }
-  const [existing] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, arrival.formResponseId));
+  const [existing] = await db
+    .select()
+    .from(recruitmentDecision)
+    .where(arrival.formResponseId ? or(eq(recruitmentDecision.arrivalId, arrival.id), eq(recruitmentDecision.formResponseId, arrival.formResponseId)) : eq(recruitmentDecision.arrivalId, arrival.id));
   let decision: RecruitmentDecisionRow;
   if (!existing) {
     [decision] = await db
       .insert(recruitmentDecision)
       .values({
+        arrivalId: arrival.id,
         formResponseId: arrival.formResponseId,
         ruleOutcome: resolution === "accepted" ? "proceed" : "decline",
         resolution,
@@ -247,7 +273,7 @@ export async function settleArrivalDecision(arrival: typeof admission.$inferSele
   } else {
     decision = existing;
   }
-  await recordArrivalDecision(arrival.formResponseId, resolution);
+  await recordArrivalDecision(arrival.id, resolution);
   if (resolution === "declined") return null;
 
   const result = await admitArrival(arrival.id);
@@ -268,18 +294,19 @@ export async function acceptArrivalByShortcut(arrival: typeof admission.$inferSe
   return settleArrivalDecision(arrival, "accepted");
 }
 
-// The real, persisted trigger point Phase 33 deliberately didn't build
-// — called after every submitEvaluation, but only actually does
-// anything the first time enough evaluators have filed for this
-// formResponseId (idempotent: a recruitmentDecision row already
-// existing means this is a no-op). See src/db/schema/recruitment.ts's
-// recruitmentDecision comment for the full state-machine reasoning.
-export async function recordDecisionIfReached(actor: Member, formResponseId: string) {
-  const existing = await getRecruitmentDecision(formResponseId);
+// The real, persisted trigger point Phase 33 deliberately didn't build — called after
+// every report, but only actually does anything the first time enough of them are in for
+// the arrival (idempotent: a recruitmentDecision row already existing means this is a
+// no-op). See src/db/schema/recruitment.ts's recruitmentDecision comment for the full
+// state-machine reasoning.
+export async function recordArrivalDecisionIfReached(actor: Member, arrivalId: string) {
+  const existing = await getArrivalDecision(arrivalId);
   if (existing) return existing;
 
-  const communityRow = await getCommunityRow(actor.communityId);
-  const result = await computeRecruitmentOutcome(communityRow, formResponseId);
+  const [arrival] = await db.select().from(admission).where(eq(admission.id, arrivalId));
+  if (!arrival) return null;
+  const communityRow = await getCommunityRow(arrival.communityId);
+  const result = await computeArrivalOutcome(communityRow, arrivalId);
   if (!result.outcome) return null;
 
   const resolution: "accepted" | "declined" | null =
@@ -288,7 +315,8 @@ export async function recordDecisionIfReached(actor: Member, formResponseId: str
   const [created] = await db
     .insert(recruitmentDecision)
     .values({
-      formResponseId,
+      arrivalId,
+      formResponseId: arrival.formResponseId,
       ruleOutcome: result.outcome,
       defaultResolution: result.defaultResolution,
       resolution,
@@ -296,15 +324,14 @@ export async function recordDecisionIfReached(actor: Member, formResponseId: str
     .returning();
 
   let decisionRow = created;
-  await recordArrivalDecision(formResponseId, resolution);
+  await recordArrivalDecision(arrivalId, resolution);
 
   // A wider discussion is a community check (§5): a window on the arrival in which
   // any member can raise a concern, ending by what the decision form said it does
   // when nobody does. The window's length and deadline live on the check, which is
   // the one place they are read.
   if (result.outcome === "wider_discussion") {
-    const arrival = await ensureArrivalForApplication(formResponseId);
-    if (arrival) await openCheck(arrival, "evaluation", result.defaultResolution === "proceed" ? "admit" : "decline");
+    await openCheck(arrival, "evaluation", result.defaultResolution === "proceed" ? "admit" : "decline");
   }
 
   // There is no call to schedule here any more. The interview comes *before* the
@@ -319,4 +346,13 @@ export async function recordDecisionIfReached(actor: Member, formResponseId: str
   }
 
   return decisionRow;
+}
+
+// The same, asked about an application (an application that predates arrivals is given
+// its arrival first).
+export async function recordDecisionIfReached(actor: Member, formResponseId: string) {
+  const existing = await getRecruitmentDecision(formResponseId);
+  if (existing) return existing;
+  const arrival = await ensureArrivalForApplication(formResponseId);
+  return arrival ? recordArrivalDecisionIfReached(actor, arrival.id) : null;
 }

@@ -511,10 +511,10 @@ async function shareIntroCall(pair: PairRow) {
   if (!poll) {
     throw new NotFoundError("That interview no longer exists");
   }
-  if (!poll.requiredParticipantIds.includes(withoutPoll.formResponseId)) {
+  if (!poll.requiredParticipantIds.includes(withoutPoll.formResponseId!)) {
     await db
       .update(schedulingPoll)
-      .set({ requiredParticipantIds: [...poll.requiredParticipantIds, withoutPoll.formResponseId] })
+      .set({ requiredParticipantIds: [...poll.requiredParticipantIds, withoutPoll.formResponseId!] })
       .where(eq(schedulingPoll.id, poll.id));
   }
   const [updated] = await db

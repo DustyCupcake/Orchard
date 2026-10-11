@@ -582,7 +582,7 @@ Each step is its own set of commits, with the suite green, and nothing is left h
    for more*. *(Built. One `community_check` row per window, `kind` entry or evaluation, with the
    concern and shield tables keyed on it; one `/community-check` page for any member; one function
    that decides a window from its concerns and the clock; "ask for more" offered on an entry window,
-   with an application form on the person's own page. The old `objection*` tables and the invite's
+   with an application form on the person's own page; reports and decisions were then re-keyed on the arrival so a conversation-only lane can be decided. The old `objection*` tables and the invite's
    consensus columns are migrated and dropped; the manual "resolve the window" action is gone.)*
 6. **Settings.** The lane cards and panel (§2a, §3) with the compatibility rules of §3, public lanes
    with their own addresses, sections that appear only when
