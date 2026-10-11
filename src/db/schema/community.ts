@@ -34,6 +34,9 @@ export const objectionOverruleModeEnum = pgEnum("objection_overrule_mode", ["maj
 
 // A single Community row per deployment. Everything else in the schema
 // belongs to one — see docs/spec.md's "Community" section.
+export const ssoJoinPolicyEnum = pgEnum("sso_join_policy", ["anyone_with_role", "admitted_only"]);
+export const SSO_JOIN_POLICIES = ["anyone_with_role", "admitted_only"] as const;
+
 export const community = pgTable("community", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -279,6 +282,20 @@ export const community = pgTable("community", {
   // that's the behavior a Community configuring OIDC at all most likely
   // wants — flip it off for a softer transition.
   oidcPrimary: boolean("oidc_primary").notNull().default(true),
+  // docs/admission-flow.md §6a — what "admitted" means to the provider. All three are
+  // off (or today's behaviour) until a community turns them on, and meaningless while
+  // single sign-on is unconfigured. The service token that makes the first two work is
+  // an environment credential (ZITADEL_TOKEN), never a column.
+  //   create on admit: admission creates the person at the provider (or finds them),
+  //     sends their invite and grants the role, so "admitted" means they can sign in.
+  //   revoke on leave: leaving or being removed takes the role back, so the provider
+  //     and Orchard cannot disagree about who belongs.
+  //   join policy: whether anyone carrying the role gets an account on first sign-in
+  //     (today's behaviour) or only people admitted here — anyone else is held for an
+  //     administrator instead.
+  ssoCreateOnAdmit: boolean("sso_create_on_admit").notNull().default(false),
+  ssoRevokeOnLeave: boolean("sso_revoke_on_leave").notNull().default(false),
+  ssoJoinPolicy: ssoJoinPolicyEnum("sso_join_policy").notNull().default("anyone_with_role"),
   // When the /settings nudge offering to decide the community's settings
   // together through an Assembly was first shown. This is the nudge's own
   // clock anchor, not a community setting: the prompt is offered while

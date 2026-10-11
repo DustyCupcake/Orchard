@@ -30,6 +30,18 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-12",
+    title: "Signing in with your community's account system",
+    summary: "If your community signs in through its own provider (Zitadel), being admitted can now set that account up for you — and signing in no longer makes a second copy of you.",
+    points: [
+      "An administrator can turn on creating a sign-in account when someone is admitted: the provider emails them to set up how they sign in, and Orchard gives them the role. If the provider is down, they're admitted anyway and an administrator sees what's left, with a button to try again.",
+      "Signing in at the provider no longer creates a duplicate member when you already have one. If you were admitted here and the provider has confirmed your email, you're connected automatically. Otherwise an administrator is asked to connect you — you're told so when you try.",
+      "Optionally, only people admitted here can join through the provider, and leaving takes the role back.",
+      "Administrators can remove an empty member — a duplicate or a test account — as long as nothing is attached to them. If something is, it tells you exactly what.",
+    ],
+    source: "the sign-in provider: admitted means they can sign in, and a sign-in is never a duplicate",
+  },
+  {
+    date: "2026-10-12",
     title: "Settings: only what your lanes need",
     summary: "The recruitment settings stop asking about things none of your lanes uses.",
     points: [

@@ -14,6 +14,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   oidc_not_configured: "Single sign-on isn't configured for this community.",
   oidc_state_missing: "That sign-in attempt expired or was tampered with — try again.",
   oidc_error: "Something went wrong signing in with Zitadel — try again.",
+  oidc_held:
+    "You're signed in to Zitadel, but an administrator needs to connect you to your account here first. They've been told — try again once they have.",
   oidc_not_authorized:
     "You're signed in to Zitadel, but don't have the role needed for an Orchard account. Contact an admin if you think this is wrong.",
 };

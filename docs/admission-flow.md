@@ -591,6 +591,7 @@ Each step is its own set of commits, with the suite green, and nothing is left h
 7. **Sign-in provider (§6a).** First a spike against the real Zitadel tenant with a throwaway user, then
    the provisioning step inside admission, the link by `sub`, the safe claim by verified email, the
    administrators' to-do and retry, and revocation on leaving.
+   *(Built. The spike was run in two parts — `zitadel-spike.mjs` and `zitadel-spike2.mjs` — and the build uses only calls proven against the tenant. Added beyond the plan, at the user's request: an administrator "remove an empty member" tool, for the duplicate a sign-in leaves behind.)*
 8. **Pairing and clean-up.** The apply-together link on the person's own page, the manual-link route
    for holders, one report of the call and two recommendation sets for a shared interview, dead code
    removed, and **`docs/spec.md` amended in step with the code** — this plan rewrites the Recruitment

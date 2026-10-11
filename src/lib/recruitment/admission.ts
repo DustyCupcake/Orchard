@@ -387,9 +387,23 @@ export async function admitArrival(arrivalId: string, opts: AdmitOptions = {}): 
       console.error("[admission] could not seed answers from the application", err);
     }
   }
+  // The provider (docs/admission-flow.md §6a): if the community asked for it, the person is
+  // given an account there and the role to use it, and the provider emails them to set up
+  // their own sign-in. Never waits on, and never undoes, the admission — what happened is
+  // recorded for the administrators' to-do, and a retry is always safe.
+  let signInInvited = false;
+  if (!result.already) {
+    try {
+      const { provisionSignIn } = await import("../sign-in/provision");
+      signInInvited = (await provisionSignIn(result.memberId)).invited;
+    } catch (err) {
+      console.error("[admission] could not set up the sign-in account", err);
+    }
+  }
   if (opts.notify !== false && result.arrival.origin === "funnel") {
     try {
       await sendAdmissionAcceptedEmail(result.arrival.email, {
+        signInInvited,
         name: result.arrival.name,
         communityName: await communityNameOf(result.arrival.communityId),
         statusUrl: admissionLink(result.arrival.token),

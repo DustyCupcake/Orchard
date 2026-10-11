@@ -40,6 +40,9 @@ import {
   updateTierInput,
 } from "@/lib/settings";
 import { saveCommunityLanes } from "@/lib/recruitment/admission-lanes";
+import { markSignInSetUp, retrySignInSetup } from "@/lib/sign-in/provision";
+import { removeEmptyMember } from "@/lib/sign-in/remove-member";
+import { linkSignInToMember, turnAwaySignIn } from "@/lib/sign-in/unmatched";
 import type { AdmissionLaneRule } from "@/lib/recruitment/lane-rules";
 import { checkboxGroup, checkboxOf, defined, number, optionalText, text } from "./form-values";
 import {
@@ -193,6 +196,84 @@ export async function updateSsoAction(formData: FormData) {
         }),
       ),
     );
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+// General → what "admitted" means at the provider (docs/admission-flow.md §6a). All three are
+// off (or today's behaviour) until a community turns them on.
+export async function updateSsoProvisioningAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    await updateCommunity(
+      actor,
+      updateCommunityInput.parse(
+        defined({
+          ssoCreateOnAdmit: checkboxOf(formData, "ssoCreateOnAdmit"),
+          ssoRevokeOnLeave: checkboxOf(formData, "ssoRevokeOnLeave"),
+          ssoJoinPolicy: (text(formData, "ssoJoinPolicy") || undefined) as "anyone_with_role" | "admitted_only" | undefined,
+        }),
+      ),
+    );
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+export async function retrySignInSetupAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await retrySignInSetup(actor, text(formData, "memberId"));
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+export async function markSignInSetUpAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await markSignInSetUp(actor, text(formData, "memberId"));
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+export async function linkSignInAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    const memberId = text(formData, "memberId");
+    if (!memberId) throw new AppError("Choose which member they are");
+    await linkSignInToMember(actor, text(formData, "unmatchedId"), memberId);
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+export async function turnAwaySignInAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await turnAwaySignIn(actor, text(formData, "unmatchedId"));
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+// An administrator removing a member who has nothing to their name (a duplicate left by a
+// sign-in, a test account). Refuses, naming what is attached, otherwise.
+export async function removeEmptyMemberAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    const memberId = text(formData, "memberId");
+    if (!memberId) throw new AppError("Choose which member to remove");
+    await removeEmptyMember(actor, memberId);
   } catch (err) {
     redirectWithError(err, "general");
   }

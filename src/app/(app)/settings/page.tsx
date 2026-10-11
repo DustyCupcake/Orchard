@@ -344,7 +344,7 @@ export default async function SettingsPage({
           The `requireAdmins` call in every action below stays the actual
           gate either way. */}
       <fieldset disabled={!authorized} className="mt-6 min-w-0">
-        {activeTab === "general" && <GeneralTab community={communityRow} tiers={tiers} />}
+        {activeTab === "general" && <GeneralTab community={communityRow} tiers={tiers} viewer={viewing} />}
 
         {activeTab === "permissions" && permissionsData && <PermissionsTab {...permissionsData} />}
 

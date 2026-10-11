@@ -234,7 +234,7 @@ export async function sendAdmissionReceivedEmail(
 
 export async function sendAdmissionAcceptedEmail(
   email: string,
-  input: { name: string; communityName: string; statusUrl: string; loginUrl: string },
+  input: { name: string; communityName: string; statusUrl: string; loginUrl: string; signInInvited?: boolean },
 ) {
   const subject = `You're in — welcome to ${input.communityName}`;
   const text = [
@@ -242,8 +242,12 @@ export async function sendAdmissionAcceptedEmail(
     ``,
     `You've been accepted into ${input.communityName}.`,
     ``,
-    `To sign in, request a login link here with this email address:`,
-    `${input.loginUrl}`,
+    ...(input.signInInvited
+      ? [
+          `You'll get a separate email from the community's sign-in service, asking you to set up how you sign in. Do that first, then come back here:`,
+          `${input.loginUrl}`,
+        ]
+      : [`To sign in, request a login link here with this email address:`, `${input.loginUrl}`]),
     ``,
     `Your progress page, if you want to look back at it:`,
     `${input.statusUrl}`,

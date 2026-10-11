@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community } from "@/db/schema";
+import { community, signInSetup } from "@/db/schema";
 import { getArrivalByToken, getAskedApplicationForm, getInterviewAvailability, getInterviewPoll, listSupports, loadArrivalReadout, supportLink, syncInterviewFacts } from "@/lib/recruitment";
 import type { FormField } from "@/lib/forms";
 import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
@@ -66,6 +66,13 @@ export default async function AdmissionPage({
   // interview. (A community check has its own way for the community to speak.)
   const canBeVouchedFor = arrival.requiredEvaluation && !arrival.admittedMemberId && !arrival.declinedAt && !arrival.withdrawnAt;
 
+  // Admitted, but their account at the community's sign-in provider isn't ready yet
+  // (docs/admission-flow.md §6a): the admission stands, and the person is told what is left.
+  const [setup] = arrival.admittedMemberId
+    ? await db.select({ status: signInSetup.status }).from(signInSetup).where(eq(signInSetup.memberId, arrival.admittedMemberId))
+    : [];
+  const signInPending = Boolean(setup && setup.status !== "done");
+
   const finished = readout.stage === "admitted" || readout.stage === "declined" || readout.stage === "withdrawn";
 
   return (
@@ -125,6 +132,14 @@ export default async function AdmissionPage({
             </button>
           </form>
         </section>
+      )}
+
+      {readout.stage === "admitted" && signInPending && (
+        <div className="mt-4">
+          <Banner tone="warning">
+            You&rsquo;re admitted, but your sign-in is still being set up — someone is sorting it out. You don&rsquo;t need to do anything yet.
+          </Banner>
+        </div>
       )}
 
       {readout.stage === "admitted" && (

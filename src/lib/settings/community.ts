@@ -122,6 +122,10 @@ export const updateCommunityInput = z.object({
   oidcClientId: z.string().min(1).nullable().optional(),
   oidcRequiredRole: z.string().min(1).nullable().optional(),
   oidcPrimary: z.boolean().optional(),
+  // docs/admission-flow.md §6a, all off until a community turns them on.
+  ssoCreateOnAdmit: z.boolean().optional(),
+  ssoRevokeOnLeave: z.boolean().optional(),
+  ssoJoinPolicy: z.enum(["anyone_with_role", "admitted_only"]).optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -288,6 +292,9 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         ...(input.oidcClientId !== undefined && { oidcClientId: input.oidcClientId }),
         ...(input.oidcRequiredRole !== undefined && { oidcRequiredRole: input.oidcRequiredRole }),
         ...(input.oidcPrimary !== undefined && { oidcPrimary: input.oidcPrimary }),
+        ...(input.ssoCreateOnAdmit !== undefined && { ssoCreateOnAdmit: input.ssoCreateOnAdmit }),
+        ...(input.ssoRevokeOnLeave !== undefined && { ssoRevokeOnLeave: input.ssoRevokeOnLeave }),
+        ...(input.ssoJoinPolicy !== undefined && { ssoJoinPolicy: input.ssoJoinPolicy }),
       })
       .where(eq(community.id, actor.communityId))
       .returning();
