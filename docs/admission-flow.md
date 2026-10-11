@@ -587,6 +587,7 @@ Each step is its own set of commits, with the suite green, and nothing is left h
 6. **Settings.** The lane cards and panel (§2a, §3) with the compatibility rules of §3, public lanes
    with their own addresses, sections that appear only when
    relevant, and consequence sentences generated from the path function.
+   *(Built. The cards and panel, compatibility rules and addresses came with step 1; the remainder — whole sections following from the lanes in play, via `laneRelevance` — is step 6 proper.)*
 7. **Sign-in provider (§6a).** First a spike against the real Zitadel tenant with a throwaway user, then
    the provisioning step inside admission, the link by `sub`, the safe claim by verified email, the
    administrators' to-do and retry, and revocation on leaving.

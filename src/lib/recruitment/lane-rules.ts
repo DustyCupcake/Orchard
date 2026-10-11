@@ -245,6 +245,49 @@ export function describeLanePath(rule: AdmissionLaneRule): string {
  * decide a person's path, so the screen cannot describe something the system
  * does not do (§3): who it is for, then what they go through.
  */
+/**
+ * What the lanes in play mean for the rest of the settings screen (docs/admission-flow.md
+ * §3): a section that configures something no lane uses is not shown, so a community is
+ * never asked how reports decide when nothing is reported on, or how long a check runs when
+ * nothing is checked.
+ *
+ * "In play" is a lane open anywhere — at the community's door or in any event that has
+ * chosen it — because a setting that only an event's lane needs is still a setting that
+ * community needs to find. Pure, like everything that reads a lane's path, so the screen
+ * and the server cannot disagree about what a configuration involves.
+ */
+export type LaneRelevance = {
+  anyLane: boolean;
+  /** Some lane asks for an application: the form, and the public /apply page, mean something. */
+  anyApplication: boolean;
+  /** Some lane asks for an interview: the interviews door and interviewers' availability do. */
+  anyInterview: boolean;
+  /** Some lane has something to evaluate: how reports decide, and declines, do. */
+  evaluates: boolean;
+  /** Some lane announces arrivals to the community. */
+  anyCheck: boolean;
+  /** Some lane turns the support shortcut on. */
+  anyShortcut: boolean;
+};
+
+export function laneRelevance(
+  lanes: Pick<AdmissionLaneRule, "id" | "applicationRequired" | "interviewRequired" | "verification" | "supportShortcutCount" | "openInCommunity">[],
+  /** Ids of the lanes some event has opened. */
+  openInEvents: Iterable<string> = [],
+): LaneRelevance {
+  const inEvents = new Set(openInEvents);
+  const inPlay = lanes.filter((l) => l.openInCommunity || (l.id !== undefined && inEvents.has(l.id)));
+  const process = inPlay.filter((l) => laneRoute(l) === "process");
+  return {
+    anyLane: inPlay.length > 0,
+    anyApplication: inPlay.some((l) => l.applicationRequired),
+    anyInterview: inPlay.some((l) => l.interviewRequired),
+    evaluates: process.length > 0,
+    anyCheck: inPlay.some((l) => l.verification === "community_check"),
+    anyShortcut: process.some((l) => (l.supportShortcutCount ?? 0) > 0),
+  };
+}
+
 export function describeLaneConsequence(rule: AdmissionLaneRule): string {
   const who =
     rule.kind === "public"

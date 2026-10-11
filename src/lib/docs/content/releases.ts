@@ -30,6 +30,18 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-12",
+    title: "Settings: only what your lanes need",
+    summary: "The recruitment settings stop asking about things none of your lanes uses.",
+    points: [
+      "If none of your lanes asks for an application or an interview, the application and evaluation settings are replaced by one line saying so — and come back the moment you add a lane that needs them.",
+      "The application form, the interviewers' availability threshold and the interviews door only appear when a lane asks for an application or an interview.",
+      "The Community check settings — how long a window stays open, who settles a concern, and what it takes to overrule one — only appear when a lane announces arrivals to the community or your decision rules can open a wider discussion.",
+      "A conversation-only lane now works end to end: the people who took part in the call report on the person, and a decision follows, without an application to read.",
+    ],
+    source: "the recruitment settings show only what the lanes in play need",
+  },
+  {
+    date: "2026-10-12",
     title: "Joining: one community check, and one way to raise a concern",
     summary: "When the community has a say in someone's arrival, it's the same window and the same page whichever way they came.",
     points: [

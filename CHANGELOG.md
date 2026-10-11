@@ -8,6 +8,18 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## the recruitment settings show only what the lanes in play need
+
+[`docs/admission-flow.md`](docs/admission-flow.md) §8 step 6 and §3, "what is offered, and what is hidden". The lane cards and panel (name, who it's for, how they arrive, what they go through, reports needed, a live consequence sentence), the compatibility rules (a community check is the whole process; a public lane must ask for an application; every kind of invite belongs to exactly one lane in each context) and the lanes' own addresses were built in step 1 and the decision form in step 4; this step is the rest of §3: **whole sections follow from the lanes.**
+
+**One pure function decides it.** `laneRelevance(lanes, openInEvents)` reads the lanes in play — open at the community's door or chosen by any event — and answers what they involve: whether any asks for an application, an interview, anything to evaluate (a lane that is neither a community check nor "admitted immediately"), a community check, or the support shortcut. It lives beside `laneRoute`, so the screen and the path function cannot disagree about what a configuration means; it is unit-tested, including a lane only an event has opened and a shortcut count left on a lane with nothing to skip.
+
+**What disappears.** With no lane that evaluates, the application and evaluation section is one panel saying there is nothing to configure and what would make it appear; otherwise the application *form* appears only if a lane asks for an application, the interviewers' no-show threshold and the interviews door only if a lane has an interview, and "how reports decide" only if something is reported on. The **Community check** section (the window's length, who settles concerns — named, or a plain warning that nobody holds the role yet — and the overrule threshold) appears only when a lane announces arrivals or the decision form is set to open a wider discussion, and is its own section rather than a card inside the evaluation one. There are no support-shortcut community settings to hide: the number lives on the lane. Doors are always shown, minus the interviews door when no lane has an interview.
+
+**Hiding never clears.** A field the screen doesn't show is absent from the post, and absent means untouched: the application-form field was the one that would have been cleared to nothing by `optionalText`, so the action now reads it only if it was sent.
+
+**Also.** The applications page's "Conversations without an application" block (added with the previous commit) had landed inside the first application's field list; it now follows the list. Verified in `next dev`: a conversation-only lane shows no application form and a Community check section; the same lane switched to "admitted immediately" shows "Nothing to evaluate" and no interviews door; and a report filed on a conversation-only arrival is stored against the arrival.
+
 ## reports and decisions are about the arrival, so a lane that asks only for a conversation can be decided
 
 Migrations **0101–0102**. [`docs/admission-flow.md`](docs/admission-flow.md) §4; found while building "ask for more".

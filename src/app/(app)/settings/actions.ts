@@ -323,7 +323,11 @@ export async function updateRecruitmentApplicationAction(formData: FormData) {
     await requireAdmins(actor);
     const input = updateCommunityInput.parse(
       defined({
-        recruitmentApplicationFormId: optionalText(formData, "recruitmentApplicationFormId"),
+        // Fields the screen doesn't show (no lane asks for a form, or for an interview) are
+        // absent from the post, and absent means untouched — never cleared.
+        recruitmentApplicationFormId: formData.has("recruitmentApplicationFormId")
+          ? optionalText(formData, "recruitmentApplicationFormId")
+          : undefined,
         recruitmentSubscriptionLapseThreshold: number(formData, "recruitmentSubscriptionLapseThreshold"),
         recruitmentRejectionTemplate: optionalText(formData, "recruitmentRejectionTemplate"),
       }),

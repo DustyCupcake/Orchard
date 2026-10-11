@@ -22,6 +22,7 @@ import {
   describeLaneConsequence,
   declarationFromMarks,
   laneHoldsCapacity,
+  laneRelevance,
   laneRoute,
   normalizeLaneRule,
   createEmptyLane,
@@ -351,6 +352,50 @@ describe("saving the community's lanes", () => {
     const rules = (await listLanes(c.id)).map(laneRuleOf);
     expect(rules).toHaveLength(LEGACY_LANES.length);
     expect(validateLanes(rules)).toEqual([]);
+  });
+});
+
+// docs/admission-flow.md §3: whole sections of the settings screen follow from the lanes in
+// play, so a community is never asked to configure something nothing uses.
+describe("what the lanes in play mean for the settings screen", () => {
+  const lane = (over: Partial<AdmissionLaneRule> = {}): AdmissionLaneRule => ({
+    ...createEmptyLane("invite"),
+    applicationRequired: false,
+    interviewRequired: false,
+    verification: "none",
+    reportsNeeded: null,
+    supportShortcutCount: null,
+    openInCommunity: true,
+    ...over,
+  });
+
+  it("has nothing to evaluate, check or shortcut when every lane admits at once", () => {
+    expect(laneRelevance([lane({ id: "a" })])).toEqual({
+      anyLane: true, anyApplication: false, anyInterview: false, evaluates: false, anyCheck: false, anyShortcut: false,
+    });
+    expect(laneRelevance([])).toMatchObject({ anyLane: false, evaluates: false });
+  });
+
+  it("evaluates when any lane has an application or an interview, and says which", () => {
+    expect(laneRelevance([lane({ applicationRequired: true, reportsNeeded: 2 })])).toMatchObject({ evaluates: true, anyApplication: true, anyInterview: false });
+    expect(laneRelevance([lane({ interviewRequired: true, reportsNeeded: 2 })])).toMatchObject({ evaluates: true, anyApplication: false, anyInterview: true });
+  });
+
+  it("treats a community check as the whole process: a check, and nothing to evaluate", () => {
+    expect(laneRelevance([lane({ verification: "community_check" })])).toMatchObject({ anyCheck: true, evaluates: false });
+  });
+
+  it("offers the support shortcut only on a lane that evaluates and turns it on", () => {
+    expect(laneRelevance([lane({ applicationRequired: true, reportsNeeded: 2, supportShortcutCount: 3 })]).anyShortcut).toBe(true);
+    expect(laneRelevance([lane({ applicationRequired: true, reportsNeeded: 2, supportShortcutCount: null })]).anyShortcut).toBe(false);
+    // A count left on a lane that no longer has anything to skip means nothing.
+    expect(laneRelevance([lane({ supportShortcutCount: 3 })]).anyShortcut).toBe(false);
+  });
+
+  it("counts a lane only an event has opened, and ignores one open nowhere", () => {
+    const eventOnly = lane({ id: "event-lane", applicationRequired: true, reportsNeeded: 2, openInCommunity: false });
+    expect(laneRelevance([eventOnly]).evaluates).toBe(false);
+    expect(laneRelevance([eventOnly], ["event-lane"]).evaluates).toBe(true);
   });
 });
 

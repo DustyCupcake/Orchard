@@ -302,24 +302,6 @@ export default async function ApplicationsPage({
                           </li>
                         );
                       })}
-
-              {conversations.length > 0 && (
-                <>
-                  <h2>Conversations without an application ({conversations.length})</h2>
-                  <p style={{ color: "#666", fontSize: "0.85rem" }}>
-                    People whose lane asks only for a conversation. There is nothing to read: you meet them, and the people who took part
-                    report.
-                  </p>
-                  {conversations.map((item) => (
-                    <ConversationCard
-                      key={item.arrival.id}
-                      item={item}
-                      viewingId={viewing.id}
-                      cycleName={item.arrival.cycleId ? (cycleNameById.get(item.arrival.cycleId) ?? "that event") : null}
-                    />
-                  ))}
-                </>
-              )}
                     </ul>
 
                     <p style={{ margin: "0 0 0.4rem", fontSize: "0.85rem" }}>
@@ -519,6 +501,24 @@ export default async function ApplicationsPage({
                   </div>
                 );
               })}
+
+              {conversations.length > 0 && (
+                <>
+                  <h2>Conversations without an application ({conversations.length})</h2>
+                  <p style={{ color: "#666", fontSize: "0.85rem" }}>
+                    People whose lane asks only for a conversation. There is nothing to read: you meet them, and the people who took part
+                    report.
+                  </p>
+                  {conversations.map((item) => (
+                    <ConversationCard
+                      key={item.arrival.id}
+                      item={item}
+                      viewingId={viewing.id}
+                      cycleName={item.arrival.cycleId ? (cycleNameById.get(item.arrival.cycleId) ?? "that event") : null}
+                    />
+                  ))}
+                </>
+              )}
             </section>
           )}
         </>
