@@ -152,8 +152,6 @@ describe("getRecruitmentPipeline — the stage is the admission stage", () => {
     const setupResult = await setUp(fixtures);
     const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"], "wider@example.com");
     expect(decision!.ruleOutcome).toBe("wider_discussion");
-    // The decision no longer schedules a call: that already happened before it.
-    expect(decision!.introCallPollId).toBeNull();
 
     const candidate = await candidateOf(setupResult.alice, application.arrivalId);
     expect(candidate.stage).toBe("wider_discussion");

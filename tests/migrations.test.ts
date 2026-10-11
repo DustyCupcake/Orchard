@@ -424,7 +424,9 @@ describe("migrating a database that already has data", () => {
         { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
       ])}::jsonb)`;
 
-    await db.migrateRemaining();
+    // Up to 0096 only: it is 0096's carry under test, and a later migration drops the old
+    // columns it is compared against.
+    await db.migrateTo("0096_decision_policy");
 
     const rows = await sql`select id, recruitment_in_when, recruitment_custom_min_yes, recruitment_custom_max_no,
       recruitment_any_no_means, recruitment_discussion_ends, recruitment_decline_outright_at,
@@ -588,5 +590,43 @@ describe("migrating a database that already has data", () => {
     await sql`insert into evaluation (arrival_id, evaluator_id, recommendation) values (${arrA}, ${bob}, 'unsure')`;
     // …but not two from the same person about the same arrival.
     await expect(sql`insert into evaluation (arrival_id, evaluator_id, recommendation) values (${arrA}, ${bob}, 'proceed')`).rejects.toThrow();
+  });
+
+  // 0104 moves each pair onto the arrivals its applications made, and the clean-up migration
+  // after it drops the response columns it replaced. A pair whose application has no arrival
+  // yet keeps no pointer (the arrival is made lazily, and there is nothing to point at), so the
+  // test pins what is carried and that nothing else is invented.
+  it("0104 carries pairs onto arrivals, and the clean-up drops the old columns and tables", async () => {
+    db = await createScratchDatabase();
+    await db.migrateBefore("0104_pairing_on_arrivals");
+    const sql = db.sql;
+    const [communityId, lane, alice, form, respA, respB, respC, arrA, arrB] = Array.from({ length: 9 }, uuid);
+    await sql`insert into community (id, name) values (${communityId}, 'C')`;
+    await sql`insert into member (id, community_id, name) values (${alice}, ${communityId}, 'Alice')`;
+    await sql`insert into admission_lane (id, community_id, name, kind) values (${lane}, ${communityId}, 'Open', 'public')`;
+    await sql`insert into form (id, community_id, title, created_by, fields) values (${form}, ${communityId}, 'A', ${alice}, '[]'::jsonb)`;
+    await sql`insert into form_response (id, form_id, values) values (${respA}, ${form}, '{}'::jsonb), (${respB}, ${form}, '{}'::jsonb), (${respC}, ${form}, '{}'::jsonb)`;
+    await sql`insert into admission (id, community_id, email, name, lane_id, route, form_response_id, token, support_token) values
+      (${arrA}, ${communityId}, 'a@example.com', 'A', ${lane}, 'application', ${respA}, 'ta', 'sa'),
+      (${arrB}, ${communityId}, 'b@example.com', 'B', ${lane}, 'application', ${respB}, 'tb', 'sb')`;
+    await sql`insert into recruitment_pair (community_id, token, requested_by_id, first_response_id, second_response_id, status) values
+      (${communityId}, 'pair-1', ${alice}, ${respA}, ${respB}, 'accepted'),
+      (${communityId}, 'pair-2', ${alice}, ${respA}, ${respC}, 'awaiting_accept')`;
+
+    await db.migrateRemaining();
+
+    const pairs = await sql`select token, first_arrival_id, second_arrival_id, linked_by_team from recruitment_pair order by token`;
+    expect(pairs[0]).toMatchObject({ token: "pair-1", first_arrival_id: arrA, second_arrival_id: arrB, linked_by_team: false });
+    // The second application has no arrival, so there is nothing to carry for that side.
+    expect(pairs[1]).toMatchObject({ token: "pair-2", first_arrival_id: arrA, second_arrival_id: null });
+
+    const [{ gone }] = await sql`select to_regclass('joining_lane') is null as gone`;
+    expect(gone).toBe(true);
+    const cols = await sql`select column_name from information_schema.columns
+      where (table_name = 'recruitment_pair' and column_name in ('first_response_id', 'second_response_id'))
+         or (table_name = 'community' and column_name in ('recruitment_decision_rules', 'recruitment_evaluator_count', 'recruitment_nomination_window_hours', 'recruitment_subscription_lapse_threshold'))
+         or (table_name = 'recruitment_decision' and column_name in ('intro_call_poll_id', 'intro_call_token'))
+         or (table_name = 'member' and column_name = 'joined_via_invite_id')`;
+    expect(cols).toHaveLength(0);
   });
 });

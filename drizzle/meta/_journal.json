@@ -736,6 +736,13 @@
       "when": 1791738178233,
       "tag": "0104_pairing_on_arrivals",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1791738783853,
+      "tag": "0105_drop_legacy_recruitment",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import type { DbOrTx } from "@/db";
@@ -351,9 +351,3 @@ export async function listOpenChecks(executor: DbOrTx = db): Promise<Check[]> {
   return executor.select().from(communityCheck).where(isNull(communityCheck.endedAt));
 }
 
-export async function listOpenChecksPastDeadline(executor: DbOrTx = db): Promise<Check[]> {
-  return executor
-    .select()
-    .from(communityCheck)
-    .where(and(isNull(communityCheck.endedAt), lt(communityCheck.deadline, new Date())));
-}

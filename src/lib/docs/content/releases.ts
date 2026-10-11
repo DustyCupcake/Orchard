@@ -30,6 +30,18 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-12",
+    title: "Joining: people arriving together, and a tidier back end",
+    summary: "If you're applying with someone you can now say so from your own page, and the old intro-call machinery is gone.",
+    points: [
+      "On your own page, \"Applying with someone?\" makes a link for the person you're applying with. When they use it, you're asked whether it's who you meant. If both of you are waiting for an interview, the people looking after joining can offer you one interview between you — you each still get your own recommendation.",
+      "The team can also link two people they know are coming together, from the Recruitment page; one of the two confirms it on their own page.",
+      "Your recruitment subscription is yours alone now: it no longer switches itself off after a few interviews you didn't offer times for.",
+      "The old intro-call link is retired — the interview is arranged from the person's own page before anyone decides.",
+    ],
+    source: "the clean-up: the legacy intro call, the lapsing subscription and the old columns are gone",
+  },
+  {
+    date: "2026-10-12",
     title: "Signing in with your community's account system",
     summary: "If your community signs in through its own provider (Zitadel), being admitted can now set that account up for you — and signing in no longer makes a second copy of you.",
     points: [

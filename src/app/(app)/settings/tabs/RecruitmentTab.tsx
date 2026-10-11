@@ -143,19 +143,13 @@ export default async function RecruitmentTab({
           action={updateRecruitmentApplicationAction}
           submitLabel="Save application settings"
           title={relevance.anyApplication ? "Form, readers and words" : "Readers and words"}
-          stateLabel="Which form applicants fill in, when a subscription lapses, and whether a decline draft is written"
+          stateLabel="Which form applicants fill in, and whether a decline draft is written"
           state={
             <>
               {relevance.anyApplication &&
                 (activeForms.find((f) => f.id === community.recruitmentApplicationFormId)
                   ? `Applicants fill in "${activeForms.find((f) => f.id === community.recruitmentApplicationFormId)!.title}". `
                   : "No application form chosen. ")}
-              {relevance.anyInterview && (
-                <>
-                  A subscription lapses after {community.recruitmentSubscriptionLapseThreshold} no-show
-                  {community.recruitmentSubscriptionLapseThreshold === 1 ? "" : "s"} ·{" "}
-                </>
-              )}
               {community.recruitmentRejectionTemplate?.trim()
                 ? "a decline draft exists"
                 : "no decline draft written"}
@@ -175,15 +169,6 @@ export default async function RecruitmentTab({
                 ...activeForms.map((f) => ({ value: f.id, label: f.title })),
               ]}
               hint="This is what renders at the public /apply page, and what any lane asking for a form asks with. An event can point at a different form of its own."
-            />
-          )}
-          {relevance.anyInterview && (
-            <TextField
-              label="Lapse a subscription after this many no-shows"
-              name="recruitmentSubscriptionLapseThreshold"
-              type="number"
-              defaultValue={community.recruitmentSubscriptionLapseThreshold}
-              hint="Turns a subscription off after this many interviews in a row where the member offered no availability. A subscription is how a member is told something is pending and offers times for interviews."
             />
           )}
           <TextAreaField

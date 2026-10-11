@@ -8,7 +8,6 @@ import {
   communityCheckConcern,
   member,
   recruitmentDecision,
-  schedulingEntry,
   schedulingPoll,
   task,
 } from "@/db/schema";
@@ -22,8 +21,6 @@ import {
   closeDueChecks,
   createCommunityInvite,
   getArrivalForFormResponse,
-  getIntroCallAvailability,
-  getIntroCallByToken,
   getOpenCheck,
   getRecruitmentDecision,
   listChecksFor,
@@ -33,10 +30,8 @@ import {
   recordDecisionIfReached,
   resolveObjection,
   submitEvaluation,
-  submitIntroCallAvailability,
   submitRecruitmentApplication,
 } from "@/lib/recruitment";
-import { createPoll } from "@/lib/scheduling-polls";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase, withApplicationOnlyLanes, POLICY_TWO_OF_TWO } from "./helpers";
 
@@ -150,21 +145,19 @@ describe("recordDecisionIfReached", () => {
     expect(decision!.resolution).toBe("accepted");
     expect(decision!.accompanimentTaskId).not.toBeNull();
     expect(decision!.convertedMemberId).not.toBeNull();
-    // The interview comes *before* the decision now (docs/admission-flow.md §2), so a
-    // decision schedules no call: on a lane without one there is nothing to schedule.
-    expect(decision!.introCallPollId).toBeNull();
+    // The interview comes *before* the decision (docs/admission-flow.md §2), so a decision
+    // schedules nothing: on a lane without one there is nothing to schedule.
     expect(await db.select().from(schedulingPoll).where(eq(schedulingPoll.communityId, fixtures.community.id))).toHaveLength(0);
     void application;
   });
 
-  it("resolves immediately to declined for a decline outcome, with no intro call", async () => {
+  it("resolves immediately to declined for a decline outcome, and schedules nothing", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
     const { decision } = await submitAndDecide(fixtures, setupResult, ["decline", "decline"]);
 
     expect(decision!.ruleOutcome).toBe("decline");
     expect(decision!.resolution).toBe("declined");
-    expect(decision!.introCallPollId).toBeNull();
     expect(decision!.accompanimentTaskId).toBeNull();
   });
 
@@ -176,7 +169,6 @@ describe("recordDecisionIfReached", () => {
     expect(decision!.ruleOutcome).toBe("wider_discussion");
     expect(decision!.resolution).toBeNull();
     expect(decision!.defaultResolution).toBe("decline");
-    expect(decision!.introCallPollId).toBeNull();
     expect(decision!.accompanimentTaskId).toBeNull();
     // Its window is a community check on the arrival, not a field of the decision.
     const arrival = (await getArrivalForFormResponse(decision!.formResponseId!))!;
@@ -489,75 +481,5 @@ describe("the wider discussion is a community check", () => {
       expect(other.resolution).toBe("moot");
       expect((await db.select().from(admission).where(eq(admission.id, base.arrival.id)))[0].declinedAt).not.toBeNull();
     });
-  });
-});
-
-// Decisions made before the interview moved in front of the decision carry an intro
-// call of their own, and the link an applicant was given for it has to keep working.
-// New decisions never make one, so the legacy shape is built by hand here.
-async function attachLegacyIntroCall(
-  setupResult: Awaited<ReturnType<typeof setUp>>,
-  decision: typeof recruitmentDecision.$inferSelect,
-) {
-  const poll = await createPoll(setupResult.alice, {
-    branchId: setupResult.task.branchId,
-    title: "Recruitment intro call",
-    resolutionMode: "person_plus_n_holders",
-    minAttendance: 2,
-    requiredParticipantIds: [decision.formResponseId!],
-    rangeStart: "2027-06-01",
-    rangeEnd: "2027-06-14",
-  });
-  const [updated] = await db
-    .update(recruitmentDecision)
-    .set({ introCallPollId: poll.id, introCallToken: "legacy-token-" + decision.id })
-    .where(eq(recruitmentDecision.id, decision.id))
-    .returning();
-  return updated;
-}
-
-describe("Intro call: token-based public access (decisions made before the interview moved)", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("resolves a valid token to the right decision + poll, and rejects a bad token", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { application, decision: made } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
-    const decision = await attachLegacyIntroCall(setupResult, made!);
-
-    expect(await getIntroCallByToken("not-a-real-token")).toBeNull();
-
-    // Plaintext, not hashed — see src/db/schema/recruitment.ts's
-    // recruitmentDecision comment: there's no automated delivery
-    // channel for this token, so a human (the evaluator) has to be
-    // able to read it back off the decision row to relay it.
-    expect(decision!.introCallToken).toBeTruthy();
-    const found = await getIntroCallByToken(decision!.introCallToken!);
-    expect(found?.decision.formResponseId).toBe(application.formResponse.id);
-    expect(found?.poll.id).toBe(decision!.introCallPollId);
-  });
-
-  it("submits and reads back the applicant's own availability through the real token, keyed by formResponseId", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { application, decision: made } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
-    const decision = await attachLegacyIntroCall(setupResult, made!);
-    const token = decision!.introCallToken!;
-
-    const slots = ["2027-06-01T10:00:00.000Z", "2027-06-01T10:30:00.000Z"];
-    await submitIntroCallAvailability(token, { slots });
-
-    const [entry] = await db
-      .select()
-      .from(schedulingEntry)
-      .where(eq(schedulingEntry.formResponseId, application.formResponse.id));
-    expect(entry.memberId).toBeNull();
-    expect(entry.availableSlots).toEqual(slots);
-    expect(await getIntroCallAvailability(token)).toEqual(slots);
-
-    const readBack = await getIntroCallAvailability("not-the-real-token").catch((err) => err);
-    expect(readBack).toBeInstanceOf(NotFoundError);
   });
 });

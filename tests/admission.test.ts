@@ -100,7 +100,7 @@ describe("admitting an arrival (§6)", () => {
     if (outcome.kind !== "admitted") return;
 
     const [created] = await db.select().from(member).where(eq(member.id, outcome.memberId));
-    expect(created).toMatchObject({ referredByMemberId: alice.id, joinedViaInviteId: invite.id });
+    expect(created).toMatchObject({ referredByMemberId: alice.id });
     const identities = await db.select().from(memberIdentity).where(eq(memberIdentity.memberId, created.id));
     expect(identities).toMatchObject([{ provider: "magic_link", loginEmail: "dana@example.com" }]);
 

@@ -2,10 +2,8 @@ import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
   admission,
-  communityInvite,
   member,
   evaluation,
-  recruitmentApplicationInvite,
   recruitmentDecision,
   task,
   taskAssignment,

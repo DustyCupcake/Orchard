@@ -1,11 +1,10 @@
-import { boolean, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { admission } from "./admission";
 import { community } from "./community";
 import { communityInvite } from "./community-invite";
 import { cycle } from "./cycle";
 import { formResponse } from "./form";
 import { member } from "./member";
-import { schedulingPoll } from "./scheduling-poll";
 import { task } from "./task";
 
 export const recruitmentRecommendationEnum = pgEnum("recruitment_recommendation", [
@@ -18,11 +17,8 @@ export const recruitmentRecommendationEnum = pgEnum("recruitment_recommendation"
 // activate for application alerts and the availability tool Phase
 // 34's scheduling needs" — see docs/spec.md's Recruitment. One row per
 // member, created on first activation and toggled in place afterward
-// rather than deleted on deactivation, so
-// consecutiveNoAvailabilityCount survives an activate/deactivate
-// cycle. That counter is Phase 34's own to increment — its scheduling
-// flow is what actually knows whether a subscriber gave availability;
-// this phase only ever reads it back at 0.
+// rather than deleted on deactivation. It is the person's own
+// setting and never lapses by itself (docs/admission-flow.md §7).
 export const recruitmentSubscription = pgTable("recruitment_subscription", {
   id: uuid("id").primaryKey().defaultRandom(),
   memberId: uuid("member_id")
@@ -30,7 +26,6 @@ export const recruitmentSubscription = pgTable("recruitment_subscription", {
     .references(() => member.id)
     .unique(),
   active: boolean("active").notNull().default(false),
-  consecutiveNoAvailabilityCount: integer("consecutive_no_availability_count").notNull().default(0),
 });
 
 // One row per evaluator, against the application FormResponse — "the
@@ -134,9 +129,7 @@ export const recruitmentPair = pgTable("recruitment_pair", {
   // Linked by hand by the recruitment/mediation team, so either of the two people may
   // confirm it; otherwise only the namer (the first arrival) can.
   linkedByTeam: boolean("linked_by_team").notNull().default(false),
-  firstResponseId: uuid("first_response_id").references(() => formResponse.id),
   secondMemberId: uuid("second_member_id").references(() => member.id),
-  secondResponseId: uuid("second_response_id").references(() => formResponse.id),
   status: recruitmentPairStatusEnum("status").notNull().default("awaiting_applicant"),
   // §2.8 — the joint interview is opt-in, so "offered", "said yes" and
   // "said no" are three separate recorded facts rather than one
@@ -208,9 +201,9 @@ export const recruitmentDecisionResolutionEnum = pgEnum("recruitment_decision_re
 // without naming a mechanism for what that call actually does).
 // defaultResolution/widerDiscussionDeadline are only ever set when
 // ruleOutcome is wider_discussion — see
-// src/lib/recruitment/evaluations.ts's requireValidDecisionRules for
-// where a rule's own defaultResolution is validated.
-// introCallPollId/accompanimentTaskId are idempotency markers — each
+// the decision form (decision-policy.ts), which is where the
+// defaultResolution comes from.
+// accompanimentTaskId and convertedMemberId are idempotency markers — each
 // side effect fires at most once per decision.
 export const recruitmentDecision = pgTable("recruitment_decision", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -227,20 +220,7 @@ export const recruitmentDecision = pgTable("recruitment_decision", {
   resolution: recruitmentDecisionResolutionEnum("resolution"),
   widerDiscussionDeadline: timestamp("wider_discussion_deadline", { withTimezone: true }),
   decidedAt: timestamp("decided_at", { withTimezone: true }).notNull().defaultNow(),
-  // Real FKs — neither scheduling-poll.ts nor task.ts has any reason
-  // to import this file back.
-  introCallPollId: uuid("intro_call_poll_id").references(() => schedulingPoll.id),
-  // Plaintext, not hashed like magic-link/session tokens — corrected
-  // from an initial "hash it like a login token" instinct: this app
-  // has no outbound-email layer to deliver it automatically (unlike a
-  // magic link, which the mailer sends directly), and a Form's fields
-  // are opaque to the platform, so there's no reliable way to extract
-  // the applicant's contact info to send it either. The only real
-  // delivery path is a human (the evaluator) copying the link from
-  // /applications and sending it themselves — the same "shareable,
-  // resendable, human-relayed link" shape CommunityInvite's own token
-  // already established, for the identical reason.
-  introCallToken: text("intro_call_token").unique(),
+  // Real FK — task.ts has no reason to import this file back.
   accompanimentTaskId: uuid("accompaniment_task_id").references(() => task.id),
   // docs/development-plan.md's Phase 48: the real conversion step
   // Phases 32-34 deliberately left un-mechanized (see this file's own
@@ -254,10 +234,4 @@ export const recruitmentDecision = pgTable("recruitment_decision", {
   // gets this set, a real, visible limitation rather than a silent
   // failure (surfaced on the Accompaniment task's own description).
   convertedMemberId: uuid("converted_member_id").references(() => member.id),
-  // Idempotency marker for src/lib/recruitment/subscriptions.ts's
-  // updateRecruitmentSubscriptionLapses scheduled job — set once this
-  // decision's intro-call poll has confirmed a slot and every
-  // currently-active subscriber's consecutiveNoAvailabilityCount has
-  // been updated for it, so a decision is never processed twice.
-  subscriptionLapseProcessedAt: timestamp("subscription_lapse_processed_at", { withTimezone: true }),
 });

@@ -14,7 +14,7 @@ import {
   getRecruitmentApplicationForm,
   isRecruitmentTaskHolder,
   listApplicationAlerts,
-  listOpenIntroCallsForSubscriber,
+  listOpenInterviewsForSubscriber,
   getRecruitmentPipeline,
   isMediationMember,
   listStandingConcernSummaries,
@@ -114,13 +114,13 @@ export default async function RecruitmentHubPage() {
     );
   }
 
-  const [isHolder, admin, authority, form, subscription, openIntroCalls, appUrl, openCycles] = await Promise.all([
+  const [isHolder, admin, authority, form, subscription, openInterviews, appUrl, openCycles] = await Promise.all([
     isRecruitmentTaskHolder(viewing),
     isAdmin(viewing),
     describeRecruitmentAuthority(viewing.communityId),
     getRecruitmentApplicationForm(viewing),
     getMyRecruitmentSubscription(viewing),
-    listOpenIntroCallsForSubscriber(viewing),
+    listOpenInterviewsForSubscriber(viewing),
     resolveAppUrlFromHeaders(),
     // Open (not closed) events only, newest first — a closed event admits
     // nobody, so its doors are not worth a row here.
@@ -316,15 +316,15 @@ export default async function RecruitmentHubPage() {
       {/* The other half of the open story, and the one that is genuinely a
           gap: an open module has no granting task, and both decision
           side-effects take their branchId from that task. There is no
-          member- or cycle-scoped branch to fall back on, so a real intro-call
+          member- or cycle-scoped branch to fall back on, so a real interview
           poll and a real accompaniment task are not created. Reported rather
           than filed under an arbitrary branch. */}
       {open && needsTaskToFileUnder && canAct && (
         <section className="mt-6">
           <Banner tone="warning">
             Recruitment is open to everyone, so applications can be evaluated and decided — but no
-            task grants Recruitment, and the intro call and the accompaniment task that follow a
-            decision are filed under that task&rsquo;s branch. Without one, those two are not created.
+            task grants Recruitment, and the interview and the accompaniment task are filed under that
+            task&rsquo;s branch. Without one, those two are not created.
             {admin ? (
               <>
                 {" "}
@@ -422,13 +422,13 @@ export default async function RecruitmentHubPage() {
             {subscription?.active ? (
               <>
                 You&rsquo;re subscribed to application alerts
-                {openIntroCalls.length > 0 && (
+                {openInterviews.length > 0 && (
                   <>
                     {" "}and have{" "}
-                    {openIntroCalls.length === 1 ? "an intro call" : `${openIntroCalls.length} intro calls`} still
+                    {openInterviews.length === 1 ? "an interview" : `${openInterviews.length} interviews`} still
                     gathering availability —{" "}
                     <Link
-                      href={`/scheduling-polls/${openIntroCalls[0].pollId}`}
+                      href={`/scheduling-polls/${openInterviews[0].pollId}`}
                       className="text-[var(--accent-1)] hover:underline"
                     >
                       submit yours

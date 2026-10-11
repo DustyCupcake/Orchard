@@ -117,9 +117,6 @@ export const admission = pgTable(
     // recruitment task to file it under. `interviewScheduledAt` and
     // `interviewHeldAt` below are written from what the poll says.
     interviewPollId: uuid("interview_poll_id").references(() => schedulingPoll.id),
-    // Processed once, when the interview's slot is confirmed, for the recruitment
-    // subscription's no-availability counter (subscriptions.ts).
-    subscriptionLapseProcessedAt: timestamp("subscription_lapse_processed_at", { withTimezone: true }),
     admittedAt: timestamp("admitted_at", { withTimezone: true }),
     admittedMemberId: uuid("admitted_member_id"),
     declinedAt: timestamp("declined_at", { withTimezone: true }),

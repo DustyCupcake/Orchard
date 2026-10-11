@@ -178,19 +178,6 @@ export async function canSeeObjectorIdentity(actor: Member, row: ObjectionRow): 
   return excluded.length === 0;
 }
 
-// Whether *anyone* in the body may see it — what the queue uses to sort
-// "needs the body" from "nobody can see this at all".
-export async function objectionIsVisibleToBody(row: ObjectionRow): Promise<boolean> {
-  const excluded = await db
-    .select({ memberId: communityCheckConcernExclusion.memberId })
-    .from(communityCheckConcernExclusion)
-    .where(eq(communityCheckConcernExclusion.concernId, row.id));
-  const body = await listMediationMembers(row.communityId);
-  if (body.length === 0) return false;
-  const excludedIds = new Set(excluded.map((e) => e.memberId));
-  return body.some((m) => !excludedIds.has(m.memberId));
-}
-
 export const recuseFromObjectionInput = z.object({
   objectionId: z.string().uuid(),
   memberId: z.string().uuid(),
@@ -424,53 +411,6 @@ export async function getMediationQueue(actor: Member): Promise<MediationQueue> 
     standing: items.filter((i) => i.resolution === "standing"),
     settled: items.filter((i) => i.resolution !== "standing"),
   };
-}
-
-// §2.6 — "a pattern of failing to persuade is visible to the body on its
-// own records." The chronic-objector question is answerable without
-// anyone having to keep a private tally, and without it becoming a
-// blacklist: these are *objections and their outcomes*, never a score.
-// A member with four upheld objections is not a problem the community has
-// a word for here; a member whose objections get overruled four times in
-// a row is a signal the body should see while it is deciding the fifth.
-export type ObjectorRecord = {
-  memberId: string;
-  name: string;
-  raised: number;
-  cleared: number;
-  upheld: number;
-  overruled: number;
-  withdrawn: number;
-};
-
-export async function describeObjectorRecord(communityId: string, memberId: string): Promise<ObjectorRecord | null> {
-  await requireMediationMemberId(communityId);
-  const rows = await db
-    .select({ resolution: communityCheckConcern.resolution })
-    .from(communityCheckConcern)
-    .where(and(eq(communityCheckConcern.communityId, communityId), eq(communityCheckConcern.raisedById, memberId)));
-  if (rows.length === 0) return null;
-  const [person] = await db.select({ name: member.name }).from(member).where(eq(member.id, memberId));
-  const count = (r: ObjectionRow["resolution"]) => rows.filter((x) => x.resolution === r).length;
-  return {
-    memberId,
-    name: person?.name ?? "A member",
-    raised: rows.length,
-    cleared: count("cleared"),
-    upheld: count("upheld"),
-    overruled: count("overruled"),
-    withdrawn: count("withdrawn"),
-  };
-}
-
-// The record read is body-only; this takes a resolved body membership
-// check so callers that already hold `MediationMember` don't re-resolve
-// per row.
-async function requireMediationMemberId(communityId: string) {
-  const body = await listMediationMembers(communityId);
-  if (body.length === 0) {
-    throw new ForbiddenError("Nobody holds Recruitment mediation in this community");
-  }
 }
 
 async function describeObjectionSubject(row: ObjectionRow): Promise<MediationSubject | null> {
@@ -758,22 +698,3 @@ export async function listMediationActionItems(actor: Member): Promise<NeedsActi
   return shared ? { personal: [], shared: items } : { personal: items, shared: [] };
 }
 
-// Whether *this* application has a concern the body still owes an answer to, used
-// by the applications pipeline's at-a-glance badge (§5.4). Counts only — the
-// pipeline has no business holding a note, let alone an identity, and a count is
-// enough to say "the body has this".
-export async function standingObjectionCount(communityId: string, formResponseId: string): Promise<number> {
-  const rows = await db
-    .select({ id: communityCheckConcern.id })
-    .from(communityCheckConcern)
-    .innerJoin(communityCheck, eq(communityCheck.id, communityCheckConcern.checkId))
-    .innerJoin(admission, eq(admission.id, communityCheck.arrivalId))
-    .where(
-      and(
-        eq(communityCheckConcern.communityId, communityId),
-        eq(admission.formResponseId, formResponseId),
-        eq(communityCheckConcern.resolution, "standing"),
-      ),
-    );
-  return rows.length;
-}

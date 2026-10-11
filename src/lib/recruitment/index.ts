@@ -21,7 +21,6 @@ export * from "./interviews";
 export * from "./decisions";
 export * from "./community-check";
 export * from "./check-outcome";
-export * from "./intro-call";
 export * from "./pipeline";
 export * from "./consensus";
 export * from "./mediation";

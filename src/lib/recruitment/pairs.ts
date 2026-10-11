@@ -509,8 +509,12 @@ async function shareInterview(actor: Member, first: Arrival, second: Arrival) {
   // tasks on the board — and then the poll. Best-effort: a leftover is untidy, not wrong.
   try {
     const { deleteTask } = await import("../tasks/crud");
-    const orphaned = await db.select({ id: task.id }).from(task).where(eq(task.sourcePollId, oldPollId));
-    for (const t of orphaned) await deleteTask(actor, t.id);
+    // Only a task's creator may delete it, and the poll's organizer made them.
+    const orphaned = await db.select({ id: task.id, createdBy: task.createdBy }).from(task).where(eq(task.sourcePollId, oldPollId));
+    for (const t of orphaned) {
+      const [creator] = await db.select().from(member).where(eq(member.id, t.createdBy));
+      await deleteTask(creator ?? actor, t.id);
+    }
     await db.delete(schedulingPoll).where(eq(schedulingPoll.id, oldPollId));
   } catch (err) {
     console.error("[pairing] could not tidy the second person's old poll", err);

@@ -894,7 +894,6 @@ describe("cycle invites + capacity holds + joining seed (docs/cycle-scope-remedi
 
     const [newMember] = await db.select().from(member).where(eq(member.id, outcome.memberId));
     expect(newMember.communityId).toBe(fixtures.community.id);
-    expect(newMember.joinedViaInviteId).toBe(created.id);
     const [row] = await db
       .select()
       .from(participation)

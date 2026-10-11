@@ -13,11 +13,7 @@ import { member } from "./member";
 // to view or resend later (the `label` field only makes sense if the
 // creator can still see which link is which) — a deliberately
 // different tradeoff, not an oversight. Real FKs throughout (a fresh
-// schema file, no circular-import reason to avoid them here) — the
-// non-FK side of the Member↔CommunityInvite pair lives on
-// member.joinedViaInviteId instead, since member.ts is the earlier,
-// more-core file (same "the newer module file holds the real FK"
-// convention the Budget module already established).
+// schema file, no circular-import reason to avoid them here).
 export const communityInvite = pgTable("community_invite", {
   id: uuid("id").primaryKey().defaultRandom(),
   communityId: uuid("community_id")

@@ -176,7 +176,7 @@ describe("redeemCommunityInvite", () => {
     await resetDatabase();
   });
 
-  it("creates a Member with referredByMemberId/joinedViaInviteId set, and marks the invite redeemed", async () => {
+  it("creates a Member with referredByMemberId set, and marks the invite redeemed", async () => {
     const { alice } = await createFixtures();
     await enableRecruitment(alice.communityId);
     const invite = await createCommunityInvite(alice, { inviterKnowsPersonally: true });
@@ -191,7 +191,6 @@ describe("redeemCommunityInvite", () => {
     const [newMember] = await db.select().from(member).where(eq(member.id, outcome.memberId));
     expect(newMember.communityId).toBe(alice.communityId);
     expect(newMember.referredByMemberId).toBe(alice.id);
-    expect(newMember.joinedViaInviteId).toBe(invite.id);
     expect(newMember.name).toBe("dana");
 
     const [identity] = await db

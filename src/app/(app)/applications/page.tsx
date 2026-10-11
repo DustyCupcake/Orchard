@@ -14,7 +14,7 @@ import {
   listApplicationsForEvaluation,
   listConversationsForEvaluation,
   listHeldRecruitmentScopes,
-  listOpenIntroCallsForSubscriber,
+  listOpenInterviewsForSubscriber,
   listOutstandingReferralInvites,
 } from "@/lib/recruitment";
 import type { FormField } from "@/lib/forms";
@@ -87,12 +87,12 @@ export default async function ApplicationsPage({
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");
 
-  const [subscription, isHolder, form, appUrl, openIntroCalls, heldScopes, cycles] = await Promise.all([
+  const [subscription, isHolder, form, appUrl, openInterviews, heldScopes, cycles] = await Promise.all([
     moduleOn ? getMyRecruitmentSubscription(viewing) : Promise.resolve(null),
     moduleOn ? isRecruitmentTaskHolder(viewing) : Promise.resolve(false),
     moduleOn ? getRecruitmentApplicationForm(viewing) : Promise.resolve(null),
     resolveAppUrlFromHeaders(),
-    moduleOn ? listOpenIntroCallsForSubscriber(viewing) : Promise.resolve([]),
+    moduleOn ? listOpenInterviewsForSubscriber(viewing) : Promise.resolve([]),
     moduleOn ? listHeldRecruitmentScopes(viewing) : Promise.resolve(new Set<string | null>()),
     moduleOn
       ? db.select({ id: cycle.id, name: cycle.name }).from(cycle).where(eq(cycle.communityId, viewing.communityId))
@@ -107,11 +107,6 @@ export default async function ApplicationsPage({
   const coverageLine = heldScopes.has(null)
     ? "You cover the community-wide scope — every application, event-tagged or not."
     : `You cover only: ${heldScopeCycles.map((c) => c.name).join(", ")}.`;
-  const lapsed =
-    Boolean(subscription?.id) &&
-    !subscription?.active &&
-    (subscription?.consecutiveNoAvailabilityCount ?? 0) >= communityRow.recruitmentSubscriptionLapseThreshold;
-
   let alerts: Awaited<ReturnType<typeof listApplicationAlerts>> = [];
   let full: Awaited<ReturnType<typeof listApplicationsForEvaluation>> = [];
   let conversations: Awaited<ReturnType<typeof listConversationsForEvaluation>> = [];
@@ -162,17 +157,10 @@ export default async function ApplicationsPage({
           {evaluated && <p style={{ color: "#2a7a2a" }}>Your recommendation was saved.</p>}
 
           <section style={{ marginTop: "1rem" }}>
-            {lapsed && (
-              <p style={{ color: "#b45309", fontSize: "0.85rem", marginBottom: "0.4rem" }}>
-                You were automatically unsubscribed after {subscription?.consecutiveNoAvailabilityCount}{" "}
-                intro calls in a row with no availability from you — no penalty, just a pause. Resubscribe
-                any time below.
-              </p>
-            )}
             <form action={setRecruitmentSubscriptionAction}>
               <input type="hidden" name="active" value={(!subscription?.active).toString()} />
               <button type="submit" style={{ padding: "0.4rem 1rem" }}>
-                {subscription?.active ? "Unsubscribe from alerts" : lapsed ? "Resubscribe" : "Subscribe to application alerts"}
+                {subscription?.active ? "Unsubscribe from alerts" : "Subscribe to application alerts"}
               </button>
               {subscription?.active && (
                 <span style={{ marginLeft: "0.5rem", fontSize: "0.85rem", color: "#666" }}>
@@ -181,13 +169,13 @@ export default async function ApplicationsPage({
               )}
             </form>
 
-            {subscription?.active && openIntroCalls.length > 0 && (
+            {subscription?.active && openInterviews.length > 0 && (
               <div style={{ marginTop: "0.6rem" }}>
                 <p style={{ fontSize: "0.85rem", margin: "0 0 0.3rem" }}>
-                  Intro call{openIntroCalls.length > 1 ? "s" : ""} still gathering availability:
+                  Interview{openInterviews.length > 1 ? "s" : ""} still gathering availability:
                 </p>
                 <ul style={{ margin: 0, fontSize: "0.85rem" }}>
-                  {openIntroCalls.map((c) => (
+                  {openInterviews.map((c) => (
                     <li key={c.pollId}>
                       <Link href={`/scheduling-polls/${c.pollId}`}>
                         {c.submittedByMe ? "Update your availability" : "Submit your availability"}
@@ -412,22 +400,6 @@ export default async function ApplicationsPage({
                             </>
                           )}
                         </p>
-
-                        {decision.introCallPollId && (
-                          <p style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
-                            Intro call scheduled —{" "}
-                            <Link href={`/scheduling-polls/${decision.introCallPollId}`}>manage as a member</Link>.
-                            {decision.introCallToken && (
-                              <>
-                                {" "}
-                                Send the applicant this link to submit their own availability:{" "}
-                                <span style={{ wordBreak: "break-all" }}>
-                                  {appUrl}/intro-call/{decision.introCallToken}
-                                </span>
-                              </>
-                            )}
-                          </p>
-                        )}
 
                         {widerDiscussionStatus && (
                           <>

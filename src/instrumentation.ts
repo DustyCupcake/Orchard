@@ -14,7 +14,7 @@ export async function register() {
   const { recomputeAttentionLevels } = await import("@/lib/attention");
   const { resolveBrowsePeriods } = await import("@/lib/tasks");
   const { resolveInputRounds } = await import("@/lib/input-rounds");
-  const { closeDueChecks, updateRecruitmentSubscriptionLapses } = await import("@/lib/recruitment");
+  const { closeDueChecks } = await import("@/lib/recruitment");
   const { resolveTaskNominationDeadlines } = await import("@/lib/tasks");
   const { logCallSummaryUnreadEngagementEvents } = await import("@/lib/engagement");
 
@@ -26,11 +26,6 @@ export async function register() {
   // Cuts a new Input round whenever a Community's cadence clock comes
   // due — see src/lib/input-rounds/scheduler.ts.
   registerJob("input-round-cutoff", "*/5 * * * *", resolveInputRounds);
-  // Increments/resets each active RecruitmentSubscription's
-  // consecutiveNoAvailabilityCount once its intro-call poll confirms a
-  // slot, auto-lapsing past the configured threshold — see
-  // src/lib/recruitment/subscriptions.ts.
-  registerJob("recruitment-subscription-lapse", "*/5 * * * *", updateRecruitmentSubscriptionLapses);
   // The one community check (docs/admission-flow.md §5): looks at every open
   // window and does what its record says is due — passes one whose deadline went
   // by with no concern, and finishes any outcome whose last step failed. A concern

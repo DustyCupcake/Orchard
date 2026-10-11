@@ -8,6 +8,20 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## the clean-up: the legacy intro call, the lapsing subscription and the old columns are gone
+
+Migration **0105**. [`docs/admission-flow.md`](docs/admission-flow.md) §7 and §8 step 8 (second half). Nothing here changes what a person or a community sees; it removes what the funnel replaced, so there is one way to do each thing.
+
+**Gone.** The **legacy intro call**: `intro-call.ts`, the `/intro-call/<token>` page and its two API routes, the decision's `intro_call_poll_id` and `intro_call_token`, and the scheduling poll's applicant-by-form-response participant (`scheduling_entry.form_response_id`, `submitAvailabilityAsApplicant`) — the interview is an arrival's own poll now, and a decision schedules nothing. The **auto-lapsing subscription**: `consecutive_no_availability_count`, `recruitment_subscription_lapse_threshold`, its scheduled job, its settings field and the warning on the applications page; a subscription is the person's own setting and nothing else changes it (with standing availability the mechanism was moot, and it quietly cancelled something chosen on purpose). `listOpenIntroCallsForSubscriber` is `listOpenInterviewsForSubscriber`, reading interviews only. The **old configuration**: `recruitment_decision_rules` and `recruitment_evaluator_count` (carried into the decision form and onto each lane by 0096 and 0089; a poll whose arrival has no reports-needed falls back to the lane default, 2), `recruitment_nomination_window_hours`, and the `joining_lane` table and its two enums (carried into lanes by 0089). `member.joined_via_invite_id`, which was written and never read; `recruitment_pair`'s response columns (0104 had already moved each pair onto its arrivals); `admission.subscription_lapse_processed_at` and the decision's twin. Nine functions with no caller anywhere (`getLane`, `getArrivalForInvite`, `listOpenChecksPastDeadline`, `hasApplicationConsent`, `getInviteFollowUp`, `communityJoiningDoors`, `objectionIsVisibleToBody`, `describeObjectorRecord`, `standingObjectionCount`). The founding-settings assembly template no longer asks about "the four invitation lanes".
+
+**Kept, deliberately.** `recruitment_decision.wider_discussion_deadline` and `default_resolution`: a wider discussion that predates community-check windows is given its window the first time the job runs, with the deadline and answer it already had, and that is the one remaining reader. Old settings-history rows keep their field labels, because the log outlives the settings.
+
+**Not built.** The plan's "nudge a holder who has no availability covering a confirmed interview" as a pull-notification: the pipeline already says *Interview needs more of you to offer times* on the needs-action list, which is the same information in the place holders look.
+
+**Docs brought in line.** `docs/spec.md` (the pipeline view's stages and what counts as needing action, the subscription, the scheduling poll's third mode, the member table), `README.md`'s Recruitment entry and `docs/admission-flow.md`'s status; `docs/joining-admission-plan.md` already points at the flow document. Populated-database tests: 0104 carries pairs onto arrivals and the clean-up drops what it says; the 0096 and 0083 tests now stop at their own migration, since later ones drop the columns they compare against.
+
+Tests: the subscription auto-lapse suite and the legacy intro-call suites were deleted with what they tested; whole suite 2,046 tests.
+
 ## pairing is between arrivals, made from the person's own page, and the shared interview is a holder's to offer
 
 Migration **0104**. [`docs/admission-flow.md`](docs/admission-flow.md) §8 step 8 (first half) and §2, "Pairing and a shared interview".

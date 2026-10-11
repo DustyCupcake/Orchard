@@ -1,6 +1,6 @@
 # Admission flow — one funnel, decided per lane
 
-**Status:** proposed, not built. Written after an audit found that the front half of recruitment
+**Status:** built — all eight steps of §8 have landed, and this document is now the record of how admission works rather than a proposal. Where a passage below still says *proposed* or *not built*, it is describing the plan as it stood when it was written; the CHANGELOG entries for each step say what was built and what was decided on the way. It was originally written when nothing was built. Written after an audit found that the front half of recruitment
 (doors, lanes, nomination, consensus) and the back half (evaluation, interview, decision) are two
 machines joined only where an invite is sent to `/apply`. This document replaces the *flow* parts of
 [`joining-admission-plan.md`](joining-admission-plan.md). That plan's decisions about lanes, the
@@ -599,6 +599,7 @@ Each step is its own set of commits, with the suite green, and nothing is left h
    decision input, and the pipeline view's scope note), and `CONTRIBUTING.md` makes the spec the
    current state of the system, so it moves with the code and not after it. The in-app documentation,
    `README.md`'s feature list and `CHANGELOG.md` come in line at the same time.
+   *(Built in two parts. Pairing: between arrivals, made from the person's own page, the team's manual route, and the shared interview as a holder's opt-in checked on the write, on the interview's own poll. Clean-up: the legacy intro call, the subscription auto-lapse, the decision-rules / evaluator-count / nomination-window columns, `joining_lane`, `member.joined_via_invite_id`, the applicant-by-form-response scheduling participant and the dead functions are gone, and the spec, README and CHANGELOG are in line. Not built, and why: the "nudge a holder with no availability" pull-notification — the pipeline already says "Interview needs more of you to offer times" on the needs-action list, which is the same information in the place holders look. `recruitment_decision.wider_discussion_deadline` is kept: it is read once, to give a wider discussion that predates windows the deadline it already had.)*
 
 Three defects are fixed in step 1 rather than separately, because the code they live in is being
 replaced: the unchecked shared-interview answer (the offer is listed only to holders, but answering it

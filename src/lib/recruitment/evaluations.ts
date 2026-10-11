@@ -8,6 +8,7 @@ import { requireModuleEnabled } from "../modules";
 import { getCommunityRow, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
 import { decideFromReports, type DecisionPolicy } from "./decision-policy";
 import { ensureArrivalForApplication } from "./admission";
+import { DEFAULT_REPORTS_NEEDED } from "./lane-rules";
 import { getInterviewers, syncInterviewFacts } from "./interviews";
 
 type Member = typeof memberTable.$inferSelect;
@@ -48,7 +49,6 @@ export function policyOf(communityRow: Pick<
 
 type OutcomeCommunity = Pick<
   CommunityRow,
-  | "recruitmentEvaluatorCount"
   | "recruitmentInWhen"
   | "recruitmentCustomMinYes"
   | "recruitmentCustomMaxNo"
@@ -81,7 +81,7 @@ function outcomeOf(communityRow: OutcomeCommunity, evaluations: EvaluationRow[],
 export async function computeArrivalOutcome(communityRow: OutcomeCommunity, arrivalId: string) {
   const [arrival] = await db.select({ reportsNeeded: admission.reportsNeeded }).from(admission).where(eq(admission.id, arrivalId));
   const evaluations = await db.select().from(evaluation).where(eq(evaluation.arrivalId, arrivalId));
-  return outcomeOf(communityRow, evaluations, arrival?.reportsNeeded ?? communityRow.recruitmentEvaluatorCount);
+  return outcomeOf(communityRow, evaluations, arrival?.reportsNeeded ?? DEFAULT_REPORTS_NEEDED);
 }
 
 // The same, asked about an application. An application that predates arrivals is
@@ -91,7 +91,7 @@ export async function computeRecruitmentOutcome(communityRow: OutcomeCommunity, 
   const arrival = await ensureArrivalForApplication(formResponseId);
   if (arrival) return computeArrivalOutcome(communityRow, arrival.id);
   const evaluations = await db.select().from(evaluation).where(eq(evaluation.formResponseId, formResponseId));
-  return outcomeOf(communityRow, evaluations, communityRow.recruitmentEvaluatorCount);
+  return outcomeOf(communityRow, evaluations, DEFAULT_REPORTS_NEEDED);
 }
 
 export const submitEvaluationInput = z.object({

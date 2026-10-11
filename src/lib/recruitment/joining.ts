@@ -1,13 +1,12 @@
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import { community, communityInvite, cycle, participation } from "@/db/schema";
-import type { community as communityTable, cycle as cycleTable } from "@/db/schema";
+import type { cycle as cycleTable } from "@/db/schema";
 import { NotFoundError } from "../errors";
 import { declarationFromInvite, laneRuleOf, listOpenLanes } from "./admission-lanes";
 import { laneHandles, laneHoldsCapacity } from "./lane-rules";
 
 type CycleRow = typeof cycleTable.$inferSelect;
-type CommunityRow = typeof communityTable.$inferSelect;
 
 // The per-cycle joining state docs/cycle-scope-remediation-plan.md §4.3
 // (work-plan step 8c) describes: does this cycle's door admit a
@@ -56,14 +55,6 @@ export type CommunityJoiningDoors = {
   invitesOpen: boolean;
   interviewsOpen: boolean;
 };
-
-export function communityJoiningDoors(communityRow: CommunityRow): CommunityJoiningDoors {
-  return {
-    applicationsOpen: communityRow.recruitmentApplicationsOpen,
-    invitesOpen: communityRow.recruitmentInvitesOpen,
-    interviewsOpen: communityRow.recruitmentInterviewsOpen,
-  };
-}
 
 export async function getCycleJoiningState(communityId: string, cycleId: string): Promise<CycleJoiningState> {
   const [row] = await db

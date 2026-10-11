@@ -409,7 +409,6 @@ export async function updateRecruitmentApplicationAction(formData: FormData) {
         recruitmentApplicationFormId: formData.has("recruitmentApplicationFormId")
           ? optionalText(formData, "recruitmentApplicationFormId")
           : undefined,
-        recruitmentSubscriptionLapseThreshold: number(formData, "recruitmentSubscriptionLapseThreshold"),
         recruitmentRejectionTemplate: optionalText(formData, "recruitmentRejectionTemplate"),
       }),
     );

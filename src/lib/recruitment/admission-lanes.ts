@@ -104,11 +104,6 @@ export async function listLanes(communityId: string, opts: { includeArchived?: b
     .orderBy(asc(admissionLane.createdAt), asc(admissionLane.name));
 }
 
-export async function getLane(laneId: string): Promise<AdmissionLane | null> {
-  const [row] = await db.select().from(admissionLane).where(eq(admissionLane.id, laneId));
-  return row ?? null;
-}
-
 /**
  * The lanes that are open in a context: the community's general door
  * (`cycleId` null), or one event. An event follows the community's set unless

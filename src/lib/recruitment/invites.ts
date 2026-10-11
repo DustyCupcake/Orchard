@@ -144,13 +144,6 @@ export type InviteFollowUp = {
   route: LaneRoute | null;
 };
 
-export async function getInviteFollowUp(inviteId: string): Promise<InviteFollowUp | null> {
-  const [invite] = await db.select().from(communityInvite).where(eq(communityInvite.id, inviteId));
-  if (!invite) return null;
-  const lane = await resolveInviteLane(invite.communityId, invite.cycleId, declarationFromInvite(invite));
-  return { invite, lane, route: lane ? laneRoute(laneRuleOf(lane)) : null };
-}
-
 // What an inviter is told about the community check on someone they invited: that it
 // is open, or that it ended with the person declined. Nothing about who raised a
 // concern or what it was — the inviter is outside the shield by design (§5).

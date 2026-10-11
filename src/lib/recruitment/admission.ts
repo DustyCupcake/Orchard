@@ -182,11 +182,6 @@ export async function getArrivalByToken(token: string): Promise<Arrival | null> 
   return row ?? null;
 }
 
-export async function getArrivalForInvite(inviteId: string): Promise<Arrival | null> {
-  const [row] = await db.select().from(admission).where(eq(admission.inviteId, inviteId));
-  return row ?? null;
-}
-
 /** Close an arrival without admitting it. Nothing is deleted: the record of
  *  who arrived and what happened is the community's history (§4). */
 export async function closeArrival(arrivalId: string, how: "declined" | "withdrawn"): Promise<void> {
@@ -281,7 +276,6 @@ export async function admitArrival(arrivalId: string, opts: AdmitOptions = {}): 
           .where(eq(recruitmentApplicationInvite.formResponseId, arrival.formResponseId))
       : [];
     const inviterId = invite?.createdBy ?? linked?.createdBy ?? null;
-    const viaInviteId = invite?.id ?? linked?.id ?? null;
 
     const existing = await findExistingMemberByLoginEmailIn(tx, arrival.email);
 
@@ -329,7 +323,6 @@ export async function admitArrival(arrivalId: string, opts: AdmitOptions = {}): 
           communityId: arrival.communityId,
           name: arrival.name,
           referredByMemberId: inviterId,
-          joinedViaInviteId: viaInviteId,
         })
         .returning();
       await tx.insert(memberIdentity).values({ memberId: newMember.id, provider: "magic_link", loginEmail: arrival.email });

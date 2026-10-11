@@ -1,7 +1,6 @@
 import { boolean, date, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { branch } from "./branch";
 import { community } from "./community";
-import { formResponse } from "./form";
 import { member } from "./member";
 
 export const pollResolutionModeEnum = pgEnum("poll_resolution_mode", [
@@ -85,7 +84,6 @@ export const schedulingEntry = pgTable("scheduling_entry", {
     .notNull()
     .references(() => schedulingPoll.id),
   memberId: uuid("member_id").references(() => member.id),
-  formResponseId: uuid("form_response_id").references(() => formResponse.id),
   // A person in the admission funnel (docs/admission-flow.md §4) — the key a new
   // interview poll uses for the applicant, because an arrival always has one and
   // an interview-only arrival has no application (so no form response) to hang it

@@ -44,14 +44,6 @@ export async function recordApplicationConsent(formResponseId: string, disclosur
   return created;
 }
 
-export async function hasApplicationConsent(formResponseId: string): Promise<boolean> {
-  const rows = await db
-    .select({ id: recruitmentApplicationConsent.id })
-    .from(recruitmentApplicationConsent)
-    .where(eq(recruitmentApplicationConsent.formResponseId, formResponseId));
-  return rows.length > 0;
-}
-
 // Reads the community's own settings for the number the disclosure
 // quotes, so the caller (the /apply page, the invite form) never has to
 // know which column the window lives in — and so the disclosure text

@@ -394,7 +394,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
     // arrival *is* the membership, and the cycle case above is where the
     // participation row's absence-then-appearance is asserted.
     const [created] = await db.select().from(member).where(eq(member.name, "dana"));
-    expect(created.joinedViaInviteId).toBe(invite.id);
+    expect(created.referredByMemberId).toBe(alice.id);
   });
 
   it("shows the body who raised what, and how it went, on its own records", async () => {

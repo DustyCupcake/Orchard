@@ -73,7 +73,6 @@ export const updateCommunityInput = z.object({
   // are per-mechanism rather than per-lane on purpose: J2 ruled out
   // stacking nomination and consensus on a lane precisely because two
   // windows means two timers and nobody knows who resolves what.
-  recruitmentNominationWindowHours: z.number().int().positive().max(24 * 30).optional(),
   recruitmentObjectionOverrule: z.enum(objectionOverruleModeEnum.enumValues).optional(),
   // Only meaningful in `quorum` mode, and bounded so it can't be set to
   // a number that silently disables the overrule: the mediation page
@@ -89,7 +88,6 @@ export const updateCommunityInput = z.object({
   recruitmentAnyNoMeans: z.enum(ANY_NO_MEANS).optional(),
   recruitmentDiscussionEnds: z.enum(DISCUSSION_ENDS).optional(),
   recruitmentDeclineOutrightAt: z.number().int().min(1).max(50).nullable().optional(),
-  recruitmentSubscriptionLapseThreshold: z.number().int().positive().optional(),
   recruitmentWiderDiscussionHours: z.number().int().positive().optional(),
   // Null clears it — "surfaced to whoever's about to send an actual
   // decline, never sent automatically."
@@ -248,9 +246,6 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         ...(input.recruitmentInterviewsOpen !== undefined && {
           recruitmentInterviewsOpen: input.recruitmentInterviewsOpen,
         }),
-        ...(input.recruitmentNominationWindowHours !== undefined && {
-          recruitmentNominationWindowHours: input.recruitmentNominationWindowHours,
-        }),
         ...(input.recruitmentObjectionOverrule !== undefined && {
           recruitmentObjectionOverrule: input.recruitmentObjectionOverrule,
         }),
@@ -263,9 +258,6 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         ...(input.recruitmentAnyNoMeans !== undefined && { recruitmentAnyNoMeans: input.recruitmentAnyNoMeans }),
         ...(input.recruitmentDiscussionEnds !== undefined && { recruitmentDiscussionEnds: input.recruitmentDiscussionEnds }),
         ...(input.recruitmentDeclineOutrightAt !== undefined && { recruitmentDeclineOutrightAt: input.recruitmentDeclineOutrightAt }),
-        ...(input.recruitmentSubscriptionLapseThreshold !== undefined && {
-          recruitmentSubscriptionLapseThreshold: input.recruitmentSubscriptionLapseThreshold,
-        }),
         ...(input.recruitmentWiderDiscussionHours !== undefined && {
           recruitmentWiderDiscussionHours: input.recruitmentWiderDiscussionHours,
         }),
