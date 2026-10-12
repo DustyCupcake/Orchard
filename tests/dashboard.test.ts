@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   branch as branchTable,
+  budgetCycle,
   community,
   conflictReport,
   member,
@@ -16,7 +17,7 @@ import { createTier, updateCommunity } from "@/lib/settings";
 import { closeCycle, createCycle } from "@/lib/cycles";
 import { declareParticipation } from "@/lib/participation";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
-import { createBudgetCycle, submitBudgetVote } from "@/lib/budget";
+import { createBudgetCycle, getBudgetCycleForCycle, submitBudgetVote } from "@/lib/budget";
 import { setPermissionGrant, type PermissionModuleKey } from "@/lib/permissions";
 import { closeProposalsToVoting } from "@/lib/budget";
 import { createEventProposal } from "@/lib/event-scheduling";
@@ -438,12 +439,14 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     createdBy: string,
     title: string,
     grantModule?: PermissionModuleKey,
+    cycleId: string | null = null,
   ) {
     const [row] = await db
       .insert(task)
       .values({
         communityId,
         branchId,
+        cycleId,
         title,
         effort: "owns_a_thing",
         effortMagnitude: { hours_per_week: 2 },
@@ -468,7 +471,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
 
     const feed = await getPersonalFeed(alice);
     expect(feed.budgetNeedsAction.personal).toEqual([
-      { cycleId: cycleRow.id, cycleTitle: "Season budget", kind: "close_to_voting" },
+      { cycleId: cycleRow.id, scopeCycleId: null, cycleTitle: "Season budget", kind: "close_to_voting" },
     ]);
   });
 
@@ -500,6 +503,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     const feed = await getPersonalFeed(alice);
     expect(feed.budgetNeedsAction.personal).toContainEqual({
       cycleId: cycleRow.id,
+      scopeCycleId: null,
       cycleTitle: "Season budget",
       kind: "confirm_funded_set",
     });
@@ -519,6 +523,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     const feed = await getPersonalFeed(bob);
     expect(feed.budgetNeedsAction.personal).toContainEqual({
       cycleId: cycleRow.id,
+      scopeCycleId: null,
       cycleTitle: "Season budget",
       kind: "cast_vote",
     });
@@ -538,6 +543,37 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
 
     const feed = await getPersonalFeed(bob);
     expect(feed.budgetNeedsAction.personal).toEqual([]);
+  });
+
+  it("Budget: a budget with no deadline never asks the owner to close it", async () => {
+    const { alice, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const ownerTask = await insertOwnerTask(alice.communityId, branch.id, alice.id, "Budget owner", "budget");
+    await claimTask(alice, ownerTask.id);
+    await createBudgetCycle(alice, { title: "Open-ended budget" });
+
+    const feed = await getPersonalFeed(alice);
+    expect(feed.budgetNeedsAction.personal).toEqual([]);
+  });
+
+  it("Budget: every running event's budget is read, each pointing at its own event", async () => {
+    const { alice, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const a = await createCycle(alice, { source: "blank", name: "Reunion" });
+    const b = await createCycle(alice, { source: "blank", name: "Harvest", confirmed: true });
+    // One owner grant per event, both held by Alice.
+    for (const ev of [a, b]) {
+      const t = await insertOwnerTask(alice.communityId, branch.id, alice.id, `Owner of ${ev.name}`, "budget", ev.id);
+      await claimTask(alice, t.id);
+    }
+    const budgetA = (await getBudgetCycleForCycle(alice, a.id))!;
+    const budgetB = (await getBudgetCycleForCycle(alice, b.id))!;
+    await db.update(budgetCycle).set({ proposalDeadline: new Date(Date.now() - 1000) }).where(eq(budgetCycle.id, budgetA.id));
+    await db.update(budgetCycle).set({ proposalDeadline: new Date(Date.now() - 1000) }).where(eq(budgetCycle.id, budgetB.id));
+
+    const feed = await getPersonalFeed(alice);
+    expect(feed.budgetNeedsAction.personal).toHaveLength(2);
+    expect(feed.budgetNeedsAction.personal.map((n) => n.scopeCycleId).sort()).toEqual([a.id, b.id].sort());
   });
 
   it("Event scheduling: owner sees an unresolved proposal, a non-owner sees nothing", async () => {

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { budgetCycle, community, task, taskAssignment } from "@/db/schema";
 import { closeCycle, createCycle } from "@/lib/cycles";
-import { createBudgetCycle, markBudgetCycleDone } from "@/lib/budget";
+import { createBudgetCycle, getBudgetCycleForCycle, markBudgetCycleDone } from "@/lib/budget";
 import { claimTask } from "@/lib/tasks";
 import { grantPermission, createFixtures, resetDatabase } from "./helpers";
 import { setPermissionGrant } from "@/lib/permissions";
@@ -85,14 +85,11 @@ describe("closeCycle", () => {
     const ownerTask = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cyc.id });
     await setPermissionGrant(alice, "budget", ownerTask.id);
     await claimTask(alice, ownerTask.id);
-    const budgetCycleRow = await createBudgetCycle(alice, {
-      title: "Season budget",
-      cycleId: cyc.id,
-      proposalDeadline: inOneWeek(),
-    });
+    // The event's budget was made with it, so there is always one to wrap up.
+    const budgetCycleRow = (await getBudgetCycleForCycle(alice, cyc.id))!;
 
     await expect(closeCycle(alice, cyc.id)).rejects.toThrow(ConfirmationRequiredError);
-    await expect(closeCycle(alice, cyc.id)).rejects.toThrow(/Season budget/);
+    await expect(closeCycle(alice, cyc.id)).rejects.toThrow(/2027 Season Budget/);
 
     const closed = await closeCycle(alice, cyc.id, { overrideBudgetWarning: true });
     expect(closed.closedAt).not.toBeNull();
@@ -105,17 +102,13 @@ describe("closeCycle", () => {
     const ownerTask2 = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cyc2.id });
     await setPermissionGrant(alice, "budget", ownerTask2.id);
     await claimTask(alice, ownerTask2.id);
-    const budgetCycle2 = await createBudgetCycle(alice, {
-      title: "Next season budget",
-      cycleId: cyc2.id,
-      proposalDeadline: inOneWeek(),
-    });
+    const budgetCycle2 = (await getBudgetCycleForCycle(alice, cyc2.id))!;
     await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, budgetCycle2.id));
     await markBudgetCycleDone(alice, budgetCycle2.id);
     await expect(closeCycle(alice, cyc2.id)).resolves.toMatchObject({ closedAt: expect.any(Date) });
   });
 
-  it("never warns when Budget is disabled, or no BudgetCycle is tied to this specific cycle", async () => {
+  it("never warns when Budget is disabled, or the event has no budget of its own", async () => {
     const { community: testCommunity, alice } = await createFixtures();
     await enableCycles(testCommunity.id);
     const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
@@ -123,14 +116,15 @@ describe("closeCycle", () => {
     // Budget disabled entirely.
     await expect(closeCycle(alice, cyc.id)).resolves.toMatchObject({ closedAt: expect.any(Date) });
 
-    // Budget enabled, but its one active cycle isn't tied to *this*
-    // real Cycle (cycleId null, or tied to a different one).
+    // Budget enabled, but this event has none: it predates the module and
+    // nobody has opened its Budget page, so there is nothing to wrap up. A
+    // community's own budget (cycleId null) and another event's don't count.
     const { community: otherCommunity, alice: otherAlice } = await createFixtures();
     await enableCycles(otherCommunity.id);
+    const otherCycle = await createCycle(otherAlice, { source: "blank", name: "Early cycle" });
     await db.update(community).set({ modulesEnabled: ["budget"] }).where(eq(community.id, otherCommunity.id));
-    const otherCycle = await createCycle(otherAlice, { source: "blank", name: "Untied cycle" });
     await createBudgetCycle(otherAlice, {
-      title: "Untied budget",
+      title: "Community budget",
       proposalDeadline: inOneWeek(),
     });
 

@@ -514,7 +514,7 @@ export const howItWorks: DocSection = {
         },
         {
           kind: "para",
-          text: "Anyone submits a proposal with a real cost breakdown. The owner closes proposals to voting, everyone ranks the full list, and the results show totals, cost per member, and what the top of the ranking would add up to. The owner then produces a final budget, which the ranking informs but doesn't determine — and if the final set departs from the ranked order, a reason is published explaining why.",
+          text: "Every event has a budget of its own, made with it, and the community has one more for spending that belongs to no event. Anyone submits a proposal with a real cost breakdown. The owner closes proposals to voting, everyone ranks the full list, and the results show totals, cost per member, and what the top of the ranking would add up to. The owner then produces a final budget, which the ranking informs but doesn't determine — and if the final set departs from the ranked order, a reason is published explaining why.",
         },
         {
           kind: "heading",

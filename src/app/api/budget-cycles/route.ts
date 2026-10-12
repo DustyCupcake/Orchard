@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMember, errorResponse, requireWriteMember } from "@/lib/api";
-import { createBudgetCycle, createBudgetCycleInput, getCurrentBudgetCycle } from "@/lib/budget";
+import {
+  createBudgetCycle,
+  createBudgetCycleInput,
+  getBudgetCycleForScope,
+  getCurrentBudgetCycle,
+} from "@/lib/budget";
 import { requireAdmins } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
-// The current (most recently created) cycle for the actor's Community
-// — see src/lib/budget/cycles.ts's getCurrentBudgetCycle for why "the
-// current one" is enough for v1 (one active cycle at a time).
-export async function GET() {
+// `?cycleId=<event id>` returns that event's budget (the newest one it has);
+// without it, the most recently created budget in the Community, as before.
+// Concurrent events each have a budget now, so a caller that cares which
+// event should say so.
+export async function GET(request: NextRequest) {
   try {
     const actor = await requireMember();
-    const budgetCycle = await getCurrentBudgetCycle(actor);
+    const cycleId = request.nextUrl.searchParams.get("cycleId");
+    const budgetCycle = cycleId
+      ? await getBudgetCycleForScope(actor, cycleId)
+      : await getCurrentBudgetCycle(actor);
     return NextResponse.json({ budgetCycle });
   } catch (err) {
     return errorResponse(err);

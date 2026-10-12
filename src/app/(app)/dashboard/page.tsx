@@ -181,7 +181,7 @@ async function ModuleNeedsActionSections({
           {pick(feed.budgetNeedsAction).map((b, i) => (
             <FeedRow
               key={`${b.cycleId}-${b.kind}-${i}`}
-              href="/budget"
+              href={b.scopeCycleId ? `/${b.scopeCycleId}/budget` : "/budget/fund"}
               title={b.cycleTitle}
               tag={<Tag tone="warning">{BUDGET_LABEL[b.kind] ?? b.kind}</Tag>}
             />

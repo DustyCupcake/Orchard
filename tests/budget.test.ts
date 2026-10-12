@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { branch, budgetCycle, task, taskAssignment } from "@/db/schema";
+import { branch, budgetCycle, cycle as cycleTable, task, taskAssignment } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { updateCommunity } from "@/lib/settings";
 import {
@@ -17,7 +17,8 @@ import {
   isBudgetOwner,
   listBudgetProposals,
   markBudgetCycleDone,
-  startBudgetCycleForNewCycle,
+  ensureEventBudget,
+  listActiveBudgetCycles,
   submitBudgetProposal,
   submitBudgetVote,
   updateBudgetCycle,
@@ -111,6 +112,137 @@ describe("BudgetCycle creation", () => {
   it("getCurrentBudgetCycle is null until one exists", async () => {
     const { alice } = await createFixtures();
     expect(await getCurrentBudgetCycle(alice)).toBeNull();
+  });
+
+  it("takes no deadline: proposals then stay open until the owner closes them", async () => {
+    const { alice, bob } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+
+    const created = await createBudgetCycle(alice, { title: "Open-ended" });
+    expect(created.proposalDeadline).toBeNull();
+
+    const proposal = await submitBudgetProposal(bob, created.id, {
+      title: "Anything",
+      lineItems: [{ label: "X", amount: 10 }],
+    });
+    expect(proposal.title).toBe("Anything");
+  });
+
+  it("starts a community budget while an event has one, and the reverse", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
+    expect(await getBudgetCycleForCycle(alice, event.id)).not.toBeNull();
+
+    // The old rule — one unfinished budget per community — made this a conflict.
+    const community = await createBudgetCycle(alice, { title: "Community round" });
+    expect(community.cycleId).toBeNull();
+    expect((await getBudgetCycleForCycle(alice, event.id))?.cycleId).toBe(event.id);
+  });
+
+  it("refuses a second budget for an event, however the first ended", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
+    const first = (await getBudgetCycleForCycle(alice, event.id))!;
+    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, first.id));
+
+    await expect(createBudgetCycle(alice, { title: "Another", cycleId: event.id })).rejects.toThrow(ConflictError);
+  });
+
+  it("holds an event to one unfinished budget in the database too", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
+
+    await expect(
+      db.insert(budgetCycle).values({
+        communityId: alice.communityId,
+        cycleId: event.id,
+        title: "Racing duplicate",
+        createdBy: alice.id,
+      }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("An event's budget is made with the event", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("exists as soon as the event does, titled after it and with no deadline", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
+
+    const budget = await getBudgetCycleForCycle(alice, event.id);
+    expect(budget?.title).toBe("Reunion Budget");
+    expect(budget?.proposalDeadline).toBeNull();
+    expect(budget?.status).toBe("proposals_open");
+    expect(budget?.createdBy).toBe(alice.id);
+  });
+
+  it("gives two concurrent events a budget each", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const a = await createCycle(alice, { source: "blank", name: "Reunion" });
+    const b = await createCycle(alice, { source: "blank", name: "Harvest", confirmed: true });
+
+    const budgetA = await getBudgetCycleForCycle(alice, a.id);
+    const budgetB = await getBudgetCycleForCycle(alice, b.id);
+    expect(budgetA?.id).not.toBe(budgetB?.id);
+    expect((await listActiveBudgetCycles(alice)).map((r) => r.id).sort()).toEqual([budgetA!.id, budgetB!.id].sort());
+  });
+
+  it("makes nothing while the module is off, and the first visit makes it once it is on", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
+    expect(await getBudgetCycleForCycle(alice, event.id)).toBeNull();
+    expect(await ensureEventBudget(alice, event.id)).toBeNull();
+
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const made = await ensureEventBudget(alice, event.id);
+    expect(made?.cycleId).toBe(event.id);
+  });
+
+  it("creates it exactly once however many first visits race", async () => {
+    const { alice, bob } = await createFixtures();
+    await updateCommunity(alice, { cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+
+    const results = await Promise.all([
+      ensureEventBudget(alice, event.id),
+      ensureEventBudget(bob, event.id),
+      ensureEventBudget(alice, event.id),
+      ensureEventBudget(bob, event.id),
+      ensureEventBudget(alice, event.id),
+    ]);
+    expect(new Set(results.map((r) => r!.id)).size).toBe(1);
+    const rows = await db.select().from(budgetCycle).where(eq(budgetCycle.cycleId, event.id));
+    expect(rows).toHaveLength(1);
+  });
+
+  it("does not backfill an event that was closed before it had a budget", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
+    await db.update(cycleTable).set({ closedAt: new Date() }).where(eq(cycleTable.id, event.id));
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+
+    expect(await ensureEventBudget(alice, event.id)).toBeNull();
+  });
+
+  it("refuses an event from another community", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
+    const { alice: otherAlice } = await createFixtures();
+    await updateCommunity(otherAlice, { modulesEnabled: ["budget"] });
+
+    await expect(ensureEventBudget(otherAlice, event.id)).rejects.toThrow(NotFoundError);
   });
 });
 
@@ -482,22 +614,11 @@ describe("Budget owner authority", () => {
       title: "Untied budget",
       proposalDeadline: inOneWeek(),
     });
-    // Confirm untied so we can create more
-    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, untied.id));
+    // Each event is born with its own budget.
     const cycleA = await createCycle(alice, { source: "blank", name: "Season A", confirmed: true });
     const cycleB = await createCycle(alice, { source: "blank", name: "Season B", confirmed: true });
-
-    const tiedA = await createBudgetCycle(alice, {
-      title: "Season A budget",
-      cycleId: cycleA.id,
-      proposalDeadline: inOneWeek(),
-    });
-    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, tiedA.id));
-    const tiedB = await createBudgetCycle(alice, {
-      title: "Season B budget",
-      cycleId: cycleB.id,
-      proposalDeadline: inOneWeek(),
-    });
+    const tiedA = (await getBudgetCycleForCycle(alice, cycleA.id))!;
+    const tiedB = (await getBudgetCycleForCycle(alice, cycleB.id))!;
 
     expect(await isBudgetOwner(alice, untied)).toBe(true);
     expect(await isBudgetOwner(alice, tiedA)).toBe(false);
@@ -516,17 +637,8 @@ describe("Budget owner authority", () => {
     const otherScopeOwner = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, cycleB.id);
     await claimTask(alice, otherScopeOwner.id);
 
-    const budgetA = await createBudgetCycle(alice, {
-      title: "Season A budget",
-      cycleId: cycleA.id,
-      proposalDeadline: inOneWeek(),
-    });
-    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, budgetA.id));
-    const budgetB = await createBudgetCycle(alice, {
-      title: "Season B budget",
-      cycleId: cycleB.id,
-      proposalDeadline: inOneWeek(),
-    });
+    const budgetA = (await getBudgetCycleForCycle(alice, cycleA.id))!;
+    const budgetB = (await getBudgetCycleForCycle(alice, cycleB.id))!;
 
     expect(await isBudgetOwner(alice, budgetA)).toBe(false);
     expect(await isBudgetOwner(alice, budgetB)).toBe(true);
@@ -632,7 +744,7 @@ describe("updateBudgetCycle", () => {
     const updated = await updateBudgetCycle(alice, cycle.id, { title: "Renamed budget" });
     expect(updated.title).toBe("Renamed budget");
     expect(updated.fixedCosts).toEqual(cycle.fixedCosts);
-    expect(new Date(updated.proposalDeadline).getTime()).toBe(new Date(cycle.proposalDeadline).getTime());
+    expect(new Date(updated.proposalDeadline!).getTime()).toBe(new Date(cycle.proposalDeadline!).getTime());
 
     const newDeadline = inOneWeek();
     const updated2 = await updateBudgetCycle(alice, cycle.id, {
@@ -641,70 +753,65 @@ describe("updateBudgetCycle", () => {
     });
     expect(updated2.title).toBe("Renamed budget");
     expect(updated2.fixedCosts).toEqual([{ label: "Revised", amount: 999 }]);
-    expect(new Date(updated2.proposalDeadline).toISOString()).toBe(newDeadline);
+    expect(new Date(updated2.proposalDeadline!).toISOString()).toBe(newDeadline);
+  });
+
+  it("clears the deadline when sent null, and leaves it alone when not sent", async () => {
+    const { alice, cycle } = await setUpVotingCycle();
+    expect(cycle.proposalDeadline).not.toBeNull();
+
+    const untouched = await updateBudgetCycle(alice, cycle.id, { title: "Still dated" });
+    expect(untouched.proposalDeadline).not.toBeNull();
+
+    const cleared = await updateBudgetCycle(alice, cycle.id, { proposalDeadline: null });
+    expect(cleared.proposalDeadline).toBeNull();
   });
 });
 
-describe("startBudgetCycleForNewCycle", () => {
+describe("carrying fixed costs forward to a new event's budget", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  it("returns null — nothing to carry an owner task forward from yet", async () => {
+  it("starts the first event's budget with no fixed costs", async () => {
     const { alice } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
-    const newCycle = await createCycle(alice, { source: "blank", name: "First season" });
+    const first = await createCycle(alice, { source: "blank", name: "First season" });
 
-    expect(await startBudgetCycleForNewCycle(alice, newCycle)).toBeNull();
-    expect(await getCurrentBudgetCycle(alice)).toBeNull();
+    expect((await getBudgetCycleForCycle(alice, first.id))?.fixedCosts).toEqual([]);
   });
 
-  it("returns null — the community's last BudgetCycle is still active", async () => {
+  it("ignores the community's own budget, however recent", async () => {
     const { alice } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
     await createBudgetCycle(alice, {
-      title: "Still open",
-      proposalDeadline: inOneWeek(),
+      title: "Community round",
+      fixedCosts: [{ label: "Server", amount: 5 }],
     });
-    const newCycle = await createCycle(alice, { source: "blank", name: "Next season" });
+    const event = await createCycle(alice, { source: "blank", name: "Next season" });
 
-    expect(await startBudgetCycleForNewCycle(alice, newCycle)).toBeNull();
+    expect((await getBudgetCycleForCycle(alice, event.id))?.fixedCosts).toEqual([]);
   });
 
-  it("carries fixed costs forward but never inherits the previous Cycle's owner authority", async () => {
-    const { alice, bob, branch: testBranch } = await createFixtures();
+  it("carries the previous event's fixed costs forward but never its owner authority", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
     const previousCycle = await createCycle(alice, { source: "blank", name: "Last season" });
     const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, previousCycle.id);
     await claimTask(alice, ownerTask.id);
-    const previous = await createBudgetCycle(alice, {
-      title: "Last season's budget",
-      cycleId: previousCycle.id,
-      fixedCosts: [{ label: "Site fee", amount: 2000 }],
-      proposalDeadline: inOneWeek(),
-    });
-    const p1 = await submitBudgetProposal(bob, previous.id, {
-      title: "P1",
-      lineItems: [{ label: "X", amount: 100 }],
-    });
-    await closeProposalsToVoting(alice, previous.id);
-    await submitBudgetVote(alice, previous.id, { rankedProposalIds: [p1.id] });
-    await confirmBudgetCycle(alice, previous.id, { confirmedProposalIds: [p1.id] });
+    const previous = (await getBudgetCycleForCycle(alice, previousCycle.id))!;
+    await updateBudgetCycle(alice, previous.id, { fixedCosts: [{ label: "Site fee", amount: 2000 }] });
     expect(await isBudgetOwner(alice, previous)).toBe(true);
 
-    // Explicitly confirm starting a new cycle despite previous being open
+    // The previous event is still open, so starting another asks to be confirmed.
     const newCycle = await createCycle(alice, { source: "blank", name: "Next season", confirmed: true });
-    const started = await startBudgetCycleForNewCycle(alice, newCycle);
-    expect(started).not.toBeNull();
-    expect(started!.cycleId).toBe(newCycle.id);
-    expect(started!.title).toBe("Next season Budget");
+    const started = (await getBudgetCycleForCycle(alice, newCycle.id))!;
+    expect(started.cycleId).toBe(newCycle.id);
+    expect(started.title).toBe("Next season Budget");
     expect(started).not.toHaveProperty("ownerTaskId");
-    expect(started!.fixedCosts).toEqual([{ label: "Site fee", amount: 2000 }]);
-    expect(started!.status).toBe("proposals_open");
-    expect(await isBudgetOwner(alice, started!)).toBe(false);
-
-    const linked = await getBudgetCycleForCycle(alice, newCycle.id);
-    expect(linked?.id).toBe(started!.id);
+    expect(started.fixedCosts).toEqual([{ label: "Site fee", amount: 2000 }]);
+    expect(started.status).toBe("proposals_open");
+    expect(await isBudgetOwner(alice, started)).toBe(false);
   });
 });
 
@@ -716,16 +823,17 @@ describe("getBudgetCycleForCycle", () => {
   it("finds the BudgetCycle tied to a specific real Cycle, ignoring ones tied to another or none", async () => {
     const { alice } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
-    const realCycle = await createCycle(alice, { source: "blank", name: "2027 Season" });
     const untied = await createBudgetCycle(alice, {
       title: "Untied budget",
       proposalDeadline: inOneWeek(),
     });
-    expect(await getBudgetCycleForCycle(alice, realCycle.id)).toBeNull();
+    const realCycle = await createCycle(alice, { source: "blank", name: "2027 Season", confirmed: true });
+    const otherCycle = await createCycle(alice, { source: "blank", name: "2028 Season", confirmed: true });
 
-    await db.update(budgetCycle).set({ cycleId: realCycle.id }).where(eq(budgetCycle.id, untied.id));
     const found = await getBudgetCycleForCycle(alice, realCycle.id);
-    expect(found?.id).toBe(untied.id);
+    expect(found?.cycleId).toBe(realCycle.id);
+    expect(found?.id).not.toBe(untied.id);
+    expect((await getBudgetCycleForCycle(alice, otherCycle.id))?.id).not.toBe(found?.id);
   });
 });
 
@@ -738,14 +846,7 @@ describe("getBudgetCycleForScope exact scope resolution", () => {
     const { alice } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
     const realCycle = await createCycle(alice, { source: "blank", name: "2027 Season" });
-
-    const cycleBudget = await createBudgetCycle(alice, {
-      title: "Cycle budget",
-      cycleId: realCycle.id,
-      proposalDeadline: inOneWeek(),
-    });
-    // Confirm cycle budget so we can create another
-    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, cycleBudget.id));
+    const cycleBudget = (await getBudgetCycleForCycle(alice, realCycle.id))!;
     const evergreenBudget = await createBudgetCycle(alice, {
       title: "Evergreen budget",
       proposalDeadline: inOneWeek(),
@@ -763,24 +864,24 @@ describe("getBudgetCycleForScope exact scope resolution", () => {
   });
 
   it("newest BudgetCycle wins when multiple exist for same scope", async () => {
+    // An event now has one budget, but earlier rounds for the same event can
+    // still exist as history, so the read path still has to pick the newest.
     const { alice } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
     const realCycle = await createCycle(alice, { source: "blank", name: "2027 Season" });
-
-    const older = await createBudgetCycle(alice, {
-      title: "Older cycle budget",
-      cycleId: realCycle.id,
-      proposalDeadline: inOneWeek(),
-    });
-    // Confirm older so we can create newer
+    const older = (await getBudgetCycleForCycle(alice, realCycle.id))!;
     await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, older.id));
     // Small delay to ensure different createdAt
     await new Promise((r) => setTimeout(r, 10));
-    const newer = await createBudgetCycle(alice, {
-      title: "Newer cycle budget",
-      cycleId: realCycle.id,
-      proposalDeadline: inOneWeek(),
-    });
+    const [newer] = await db
+      .insert(budgetCycle)
+      .values({
+        communityId: alice.communityId,
+        cycleId: realCycle.id,
+        title: "Newer cycle budget",
+        createdBy: alice.id,
+      })
+      .returning();
 
     const found = await getBudgetCycleForScope(alice, realCycle.id);
     expect(found?.id).toBe(newer.id);
@@ -830,11 +931,7 @@ describe("Line item multipliers", () => {
     const realCycle = await createCycle(alice, { source: "blank", name: "Reunion" });
     await declareParticipation(alice, realCycle.id, { status: "coming" });
     const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, realCycle.id);
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      cycleId: realCycle.id,
-      proposalDeadline: inOneWeek(),
-    });
+    const cycle = (await getBudgetCycleForCycle(alice, realCycle.id))!;
 
     const created = await submitBudgetProposal(bob, cycle.id, {
       title: "Catering",

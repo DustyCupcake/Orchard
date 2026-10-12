@@ -1,4 +1,5 @@
-import { integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { branch } from "./branch";
 import { community } from "./community";
 import { cycle } from "./cycle";
@@ -13,56 +14,71 @@ export const budgetCycleStatusEnum = pgEnum("budget_cycle_status", [
 
 // Collecting what's on the table before deciding what gets funded — see
 // docs/spec.md's "Budget" and docs/plans/development-plan.md's Phase 26/27.
-// Only one active (non-`confirmed`) cycle per Community at a time for
-// v1 — see src/lib/budget/cycles.ts's getCurrentBudgetCycle/
-// createBudgetCycle.
-export const budgetCycle = pgTable("budget_cycle", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  communityId: uuid("community_id")
-    .notNull()
-    .references(() => community.id),
-  // Ties to a real Cycle when cycles are on — the same optional-
-  // association pattern Task itself already uses.
-  cycleId: uuid("cycle_id").references(() => cycle.id),
-  title: text("title").notNull(),
-  // Array of {label, amount} — the non-negotiable floor, entered by the
-  // owner before proposals open. Amounts are whole-currency-unit
-  // integers, no cents modeling — the same minimal-precision posture
-  // Task.capacity/Effort magnitude already take elsewhere in this
-  // codebase; a resolved interpretation, since spec names no currency
-  // or precision requirement and this module never moves real money
-  // itself (see Phase 27's Contributions: "still just a number shown
-  // to that member, not a payment integration").
-  fixedCosts: jsonb("fixed_costs").notNull().default([]),
-  proposalDeadline: timestamp("proposal_deadline", { withTimezone: true }).notNull(),
-  status: budgetCycleStatusEnum("status").notNull().default("proposals_open"),
-  // Budget authority is not stored on this row. A single-cardinality
-  // `budget` PermissionGrant is configured under Settings → Access &
-  // permissions, and its task's placement must match this row's
-  // `cycleId` (including null === null) for its current holder to own
-  // this budget cycle.
-  // Set only on confirming (status -> `confirmed`) — see
-  // src/lib/budget/voting.ts's confirmBudgetCycle. "A human selection
-  // informed by, not bound to, the ranked order" (docs/spec.md's
-  // Budget: Confirmation) — a plain jsonb array of proposal ids rather
-  // than a join table, matching lineItems/fixedCosts' own "opaque list,
-  // read only by whoever's looking" posture elsewhere in this schema.
-  confirmedProposalIds: jsonb("confirmed_proposal_ids"),
-  // Required whenever confirmedProposalIds deviates from the aggregate
-  // ranked order for the same funded count — see
-  // src/lib/budget/voting.ts's requiresConfirmationRationale.
-  confirmationRationale: text("confirmation_rationale"),
-  createdBy: uuid("created_by")
-    .notNull()
-    .references(() => member.id),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  // A small, deliberate confirmation from the current owner (Phase
-  // 65) — separate from `status` reaching `confirmed` above, since a
-  // cycle can be closed even after the funded set is decided. Lets
-  // closeCycle (src/lib/cycles/lifecycle.ts) skip its own warning. Set
-  // only by src/lib/budget/voting.ts's markBudgetCycleDone.
-  ownerMarkedDoneAt: timestamp("owner_marked_done_at", { withTimezone: true }),
-});
+// An event's budget is the event's own: one is made with the event
+// (src/lib/budget/cycles.ts's ensureEventBudget), and at most one
+// unfinished row can exist per event. Rows with no `cycle_id` are the
+// community's own, and are held to one unfinished row per community by
+// createBudgetCycle. See docs/plans/budget-funds-plan.md.
+export const budgetCycle = pgTable(
+  "budget_cycle",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => community.id),
+    // Ties to a real Cycle when cycles are on — the same optional-
+    // association pattern Task itself already uses.
+    cycleId: uuid("cycle_id").references(() => cycle.id),
+    title: text("title").notNull(),
+    // Array of {label, amount} — the non-negotiable floor, entered by the
+    // owner before proposals open. Amounts are whole-currency-unit
+    // integers, no cents modeling — the same minimal-precision posture
+    // Task.capacity/Effort magnitude already take elsewhere in this
+    // codebase; a resolved interpretation, since spec names no currency
+    // or precision requirement and this module never moves real money
+    // itself (see Phase 27's Contributions: "still just a number shown
+    // to that member, not a payment integration").
+    fixedCosts: jsonb("fixed_costs").notNull().default([]),
+    // Optional: blank means proposals stay open until the owner closes them. An event's
+    // budget is made with the event, and there is no honest date to invent for it. See
+    // docs/plans/budget-funds-plan.md D2.
+    proposalDeadline: timestamp("proposal_deadline", { withTimezone: true }),
+    status: budgetCycleStatusEnum("status").notNull().default("proposals_open"),
+    // Budget authority is not stored on this row. A single-cardinality
+    // `budget` PermissionGrant is configured under Settings → Access &
+    // permissions, and its task's placement must match this row's
+    // `cycleId` (including null === null) for its current holder to own
+    // this budget cycle.
+    // Set only on confirming (status -> `confirmed`) — see
+    // src/lib/budget/voting.ts's confirmBudgetCycle. "A human selection
+    // informed by, not bound to, the ranked order" (docs/spec.md's
+    // Budget: Confirmation) — a plain jsonb array of proposal ids rather
+    // than a join table, matching lineItems/fixedCosts' own "opaque list,
+    // read only by whoever's looking" posture elsewhere in this schema.
+    confirmedProposalIds: jsonb("confirmed_proposal_ids"),
+    // Required whenever confirmedProposalIds deviates from the aggregate
+    // ranked order for the same funded count — see
+    // src/lib/budget/voting.ts's requiresConfirmationRationale.
+    confirmationRationale: text("confirmation_rationale"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => member.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // A small, deliberate confirmation from the current owner (Phase
+    // 65) — separate from `status` reaching `confirmed` above, since a
+    // cycle can be closed even after the funded set is decided. Lets
+    // closeCycle (src/lib/cycles/lifecycle.ts) skip its own warning. Set
+    // only by src/lib/budget/voting.ts's markBudgetCycleDone.
+    ownerMarkedDoneAt: timestamp("owner_marked_done_at", { withTimezone: true }),
+  },
+  (t) => [
+    // One unfinished budget per event. A finished one stays as history, so an event's
+    // earlier rounds are not a conflict; only a second *open* one is.
+    uniqueIndex("budget_cycle_one_unfinished_per_event")
+      .on(t.cycleId)
+      .where(sql`${t.cycleId} is not null and ${t.status} <> 'confirmed'`),
+  ],
+);
 
 // An itemized funding request against a BudgetCycle — any member,
 // before its deadline; editable by the submitter until then.

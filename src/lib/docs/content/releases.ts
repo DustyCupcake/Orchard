@@ -29,11 +29,24 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-10-12",
+    title: "Every event has its own budget",
+    summary: "An event's budget is made with the event, so there is nothing to start, and two events running together each have theirs.",
+    points: [
+      "Creating an event creates its budget, named after the event, with the previous event's fixed costs carried over as a starting point. There is no longer a \"start a budget period\" step for an event.",
+      "Two events running at the same time each have a budget. Before, the second one had to wait until the first was confirmed.",
+      "Proposal deadlines are optional. With none, proposals stay open until the budget's owner closes them, and the owner can add or remove a date whenever proposals are open.",
+      "The community's own budget, for spending outside any event, has its own page, reachable from each event's budget and back.",
+      "The calendar and your dashboard now show every running budget, each linking to its own event, instead of only the newest.",
+    ],
+    source: "Every event has its own budget: made with the event, optional deadlines, and one per running event",
+  },
+  {
     date: "2026-10-11",
     title: "Budget and Shifts: propose from the top of the page",
     summary: "Both pages have a main button at the top that opens the form on its own, and Shifts says what things mean in plainer words.",
     points: [
-      "On Budget, \"Submit a proposal\" opens the form on its own, and an Admin starts a new budget period from the same place.",
+      "On Budget, \"Submit a proposal\" opens the form on its own.",
       "On Shifts, \"Add a shift series\" opens a form with a short explanation of each choice. The box that asked you to paste a task's ID is gone.",
       "To turn a task into a recurring shift, use \"Make this a recurring shift…\" in the task's menu. It opens the form with the task's details filled in, so you can check them first.",
       "Shifts uses plainer labels: \"Sign-ups not open yet\", \"Move to\", \"Add dates\", and a tag on shifts you're signed up for.",

@@ -34,11 +34,12 @@ function requireLineItems(items: BudgetLineItem[]) {
 // checked against both its stored status and the deadline itself, since
 // the owner moving it to `voting` (Phase 27) is a separate, later event
 // from the deadline simply passing.
-function requireProposalsOpen(cycleRow: { status: string; proposalDeadline: Date | string }) {
+function requireProposalsOpen(cycleRow: { status: string; proposalDeadline: Date | string | null }) {
   if (cycleRow.status !== "proposals_open") {
     throw new ConflictError("This budget period is no longer accepting proposals");
   }
-  if (new Date() > new Date(cycleRow.proposalDeadline)) {
+  // No deadline means proposals stay open until the owner closes them.
+  if (cycleRow.proposalDeadline && new Date() > new Date(cycleRow.proposalDeadline)) {
     throw new ConflictError("The proposal deadline has passed");
   }
 }

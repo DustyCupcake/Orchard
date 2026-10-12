@@ -25,6 +25,7 @@ import {
 } from "@/lib/budget";
 import { requireAdmins } from "@/lib/settings";
 import { AppError } from "@/lib/errors";
+import { budgetPath } from "./paths";
 
 // LineItemsEditor.tsx mirrors its row state into one hidden JSON
 // input — same "real <form>, client component only produces the
@@ -66,7 +67,7 @@ function parseProposalLineItemsJson(raw: string): unknown {
 // "period"), so the error lands back on that open form rather than on the
 // page behind it.
 function redirectWithError(cycleScope: string, err: unknown, compose?: string): never {
-  const back = `/${cycleScope}/budget?${compose ? `compose=${compose}&` : ""}error=`;
+  const back = `${budgetPath(cycleScope)}?${compose ? `compose=${compose}&` : ""}error=`;
   if (err instanceof ZodError) {
     redirect(back + encodeURIComponent(err.issues[0]?.message ?? "Invalid input"));
   }
@@ -109,15 +110,15 @@ export async function createBudgetCycleAction(formData: FormData) {
       title: String(formData.get("title") ?? ""),
       cycleId,
       fixedCosts: parseLineItemsJson(String(formData.get("fixedCostsJson") ?? "")),
-      proposalDeadline: deadlineRaw ? await eventInstantFromLocal(actor.communityId, cycleId, deadlineRaw) : "",
+      proposalDeadline: deadlineRaw ? await eventInstantFromLocal(actor.communityId, cycleId, deadlineRaw) : null,
     });
     await createBudgetCycle(actor, input);
   } catch (err) {
     redirectWithError(cycleScope, err, "period");
   }
 
-  revalidatePath(`/${cycleScope}/budget`);
-  redirect(`/${cycleScope}/budget`);
+  revalidatePath(budgetPath(cycleScope));
+  redirect(budgetPath(cycleScope));
 }
 
 // Owner-only, enforced inside updateBudgetCycle — lets the title/fixed
@@ -136,6 +137,9 @@ export async function updateBudgetCycleAction(formData: FormData) {
   try {
     const titleRaw = String(formData.get("title") ?? "").trim();
     const deadlineRaw = String(formData.get("proposalDeadline") ?? "").trim();
+    // "No deadline" is a real choice, not an absent field: it clears one
+    // that was set. A blank date field alone still means "leave it".
+    const noDeadline = formData.get("noDeadline") === "on";
     // Unlike the old raw-textarea convention (blank meant "leave
     // untouched"), LineItemsEditor is always pre-loaded with the
     // current fixed costs, so its payload is always the full,
@@ -143,17 +147,19 @@ export async function updateBudgetCycleAction(formData: FormData) {
     const input = updateBudgetCycleInput.parse({
       title: titleRaw || undefined,
       fixedCosts: parseLineItemsJson(String(formData.get("fixedCostsJson") ?? "")),
-      proposalDeadline: deadlineRaw
-        ? await eventInstantFromLocal(actor.communityId, (await getBudgetCycle(actor, budgetCycleId)).cycleId, deadlineRaw)
-        : undefined,
+      proposalDeadline: noDeadline
+        ? null
+        : deadlineRaw
+          ? await eventInstantFromLocal(actor.communityId, (await getBudgetCycle(actor, budgetCycleId)).cycleId, deadlineRaw)
+          : undefined,
     });
     await updateBudgetCycle(actor, budgetCycleId, input);
   } catch (err) {
     redirectWithError(cycleScope, err);
   }
 
-  revalidatePath(`/${cycleScope}/budget`);
-  redirect(`/${cycleScope}/budget?cycleUpdated=1`);
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?cycleUpdated=1`);
 }
 
 // Open to any member — "any member submits an itemized proposal ...
@@ -175,8 +181,8 @@ export async function submitBudgetProposalAction(formData: FormData) {
     redirectWithError(cycleScope, err, "proposal");
   }
 
-  revalidatePath(`/${cycleScope}/budget`);
-  redirect(`/${cycleScope}/budget?submitted=1`);
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?submitted=1`);
 }
 
 // Submitter-only, enforced inside updateBudgetProposal.
@@ -197,8 +203,8 @@ export async function updateBudgetProposalAction(formData: FormData) {
     redirectWithError(cycleScope, err);
   }
 
-  revalidatePath(`/${cycleScope}/budget`);
-  redirect(`/${cycleScope}/budget?updated=1`);
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?updated=1`);
 }
 
 // Owner-only, enforced inside closeProposalsToVoting.
@@ -213,8 +219,8 @@ export async function closeProposalsToVotingAction(formData: FormData) {
     redirectWithError(cycleScope, err);
   }
 
-  revalidatePath(`/${cycleScope}/budget`);
-  redirect(`/${cycleScope}/budget?votingOpened=1`);
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?votingOpened=1`);
 }
 
 // A rank per proposal (via a <select> 1..N, no client JS drag-and-drop
@@ -248,8 +254,8 @@ export async function submitBudgetVoteAction(formData: FormData) {
     redirectWithError(cycleScope, err);
   }
 
-  revalidatePath(`/${cycleScope}/budget`);
-  redirect(`/${cycleScope}/budget?voted=1`);
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?voted=1`);
 }
 
 // Owner-only, enforced inside confirmBudgetCycle — including the
@@ -270,8 +276,8 @@ export async function confirmBudgetCycleAction(formData: FormData) {
     redirectWithError(cycleScope, err);
   }
 
-  revalidatePath(`/${cycleScope}/budget`);
-  redirect(`/${cycleScope}/budget?confirmed=1`);
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?confirmed=1`);
 }
 
 // The owner's own small confirmation (docs/plans/development-plan.md's Phase
@@ -288,6 +294,6 @@ export async function markBudgetCycleDoneAction(formData: FormData) {
     redirectWithError(cycleScope, err);
   }
 
-  revalidatePath(`/${cycleScope}/budget`);
-  redirect(`/${cycleScope}/budget?markedDone=1`);
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?markedDone=1`);
 }

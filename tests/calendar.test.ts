@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { assembly, community, task } from "@/db/schema";
+import { assembly, budgetCycle, community, task } from "@/db/schema";
 import { createCycle } from "@/lib/cycles";
 import { claimTask, createTaskMilestone } from "@/lib/tasks";
 import { createCalendarEvent, acceptCalendarEventInvite } from "@/lib/calendar-events";
@@ -9,12 +9,16 @@ import { createProfileQuestion, answerProfileQuestion } from "@/lib/profile-ques
 import { createAssembly } from "@/lib/assemblies";
 import { createPoll, submitAvailability, confirmSlot } from "@/lib/scheduling-polls";
 import { createEventProposal, confirmEventProposalSlot, declineEventProposal, publishEventSchedule } from "@/lib/event-scheduling";
-import { createBudgetCycle } from "@/lib/budget";
+import { createBudgetCycle, getBudgetCycleForCycle } from "@/lib/budget";
 import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
 import { updateCommunity } from "@/lib/settings";
 import { getCalendarView } from "@/lib/calendar";
 import { setPermissionGrant } from "@/lib/permissions";
 import { createFixtures, grantPermission, grantShiftManagementTo, resetDatabase } from "./helpers";
+
+async function updateBudgetCycleDeadline(budgetCycleId: string, deadline: Date | null) {
+  await db.update(budgetCycle).set({ proposalDeadline: deadline }).where(eq(budgetCycle.id, budgetCycleId));
+}
 
 async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
@@ -420,6 +424,26 @@ describe("getCalendarView", () => {
         label: "Season budget — proposal deadline",
       }),
     );
+  });
+
+  it("shows one deadline per budget that has one, each linking to its own page", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const a = await createCycle(alice, { source: "blank", name: "Reunion" });
+    // Harvest's budget is left without a deadline, as one made with an event is.
+    await createCycle(alice, { source: "blank", name: "Harvest", confirmed: true });
+    const budgetA = (await getBudgetCycleForCycle(alice, a.id))!;
+    await updateBudgetCycleDeadline(budgetA.id, new Date(slot(48)));
+    await createBudgetCycle(alice, { title: "Community round", proposalDeadline: slot(72) });
+
+    const entries = (await getCalendarView(alice)).entries.filter((e) => e.kind === "budget_deadline");
+    expect(entries.map((e) => [e.label, e.href]).sort()).toEqual(
+      [
+        ["Reunion Budget — proposal deadline", `/${a.id}/budget`],
+        ["Community round — proposal deadline", "/budget/fund"],
+      ].sort(),
+    );
+    expect(entries.some((e) => e.label.startsWith("Harvest"))).toBe(false);
   });
 
   it("sorts every entry by date ascending regardless of source order", async () => {

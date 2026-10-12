@@ -645,6 +645,13 @@
       "when": 1791557290152,
       "tag": "0091_event_proposal_interest",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1791826460579,
+      "tag": "0092_budget_event_ownership",
+      "breakpoints": true
     }
   ]
 }

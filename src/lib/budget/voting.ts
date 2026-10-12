@@ -9,8 +9,8 @@ import type { NeedsAction } from "../needs-action";
 import {
   getBudgetCycle,
   getBudgetCycleAttendeeCount,
-  getCurrentBudgetCycle,
   lineItemInput,
+  listActiveBudgetCycles,
   requireValidLineItems,
   sumLineItems,
 } from "./cycles";
@@ -98,14 +98,15 @@ export async function closeProposalsToVoting(actor: Member, budgetCycleId: strin
 export const updateBudgetCycleInput = z.object({
   title: z.string().min(1).optional(),
   fixedCosts: z.array(lineItemInput).optional(),
-  proposalDeadline: z.string().datetime().optional(),
+  // null clears the deadline: proposals then stay open until the owner closes them.
+  proposalDeadline: z.string().datetime().nullable().optional(),
 });
 export type UpdateBudgetCycleInput = z.infer<typeof updateBudgetCycleInput>;
 
 // Lets the owner correct a title/fixed-costs/deadline mistake —
-// including a proposalDeadline auto-filled as a placeholder when this
-// cycle was started via startBudgetCycleForNewCycle's opt-in
-// convenience — without having to get it exactly right up front. Only
+// including a proposalDeadline that was only ever a guess, or one that is
+// no longer wanted (null clears it) — without having to get it exactly right
+// up front. Only
 // while proposals_open: once voting has opened, the proposal set (and
 // by extension the deadline that closed it) is settled history, the
 // same "locks, no further edits" posture proposals.ts's
@@ -125,7 +126,9 @@ export async function updateBudgetCycle(actor: Member, budgetCycleId: string, in
     .set({
       ...(input.title !== undefined && { title: input.title }),
       ...(input.fixedCosts !== undefined && { fixedCosts: input.fixedCosts }),
-      ...(input.proposalDeadline !== undefined && { proposalDeadline: new Date(input.proposalDeadline) }),
+      ...(input.proposalDeadline !== undefined && {
+        proposalDeadline: input.proposalDeadline === null ? null : new Date(input.proposalDeadline),
+      }),
     })
     .where(eq(budgetCycle.id, budgetCycleId))
     .returning();
@@ -388,6 +391,8 @@ export async function markBudgetCycleDone(actor: Member, budgetCycleId: string) 
 
 export interface BudgetNeedsAction {
   cycleId: string;
+  /** The event this budget belongs to; null for the community's own. Where its link goes. */
+  scopeCycleId: string | null;
   cycleTitle: string;
   kind: "close_to_voting" | "confirm_funded_set" | "cast_vote";
 }
@@ -395,16 +400,23 @@ export interface BudgetNeedsAction {
 // Dashboard's own needs-action surface — see docs/plans/development-plan.md's
 // Phase 49 ("Budget/Event-scheduling/Shifts/Conflict-management never
 // got wired into Dashboard the way Recruitment/Spatial-planning did").
-// Only the current cycle (v1's own "one active cycle at a time"
-// posture, same as getCurrentBudgetCycle everywhere else) — a past
-// confirmed cycle never needs action from anyone again. Gracefully
-// returns [] rather than throwing for a non-owner, unlike
+// Every unfinished budget — one per running event, plus the community's own —
+// since a past confirmed one never needs action from anyone again.
+// Gracefully returns [] rather than throwing for a non-owner, unlike
 // requireBudgetOwner's own gate — this is read for every member's
 // Dashboard, not just the owner's, since cast_vote applies to anyone.
 export async function listBudgetNeedsAction(actor: Member): Promise<NeedsAction<BudgetNeedsAction>> {
-  const cycleRow = await getCurrentBudgetCycle(actor);
-  if (!cycleRow || cycleRow.status === "confirmed") return { personal: [], shared: [] };
+  const personal: BudgetNeedsAction[] = [];
+  const shared: BudgetNeedsAction[] = [];
+  for (const cycleRow of await listActiveBudgetCycles(actor)) {
+    const found = await budgetNeedsActionFor(actor, cycleRow);
+    personal.push(...found.personal);
+    shared.push(...found.shared);
+  }
+  return { personal, shared };
+}
 
+async function budgetNeedsActionFor(actor: Member, cycleRow: BudgetCycleRow): Promise<NeedsAction<BudgetNeedsAction>> {
   // The one needs-action list that genuinely contains both kinds of item, and
   // so the only one that can't be all-or-nothing (D12):
   //
@@ -424,11 +436,12 @@ export async function listBudgetNeedsAction(actor: Member): Promise<NeedsAction<
     // owner by openness is not the same as holding the task.
     const reallyHolds = await holdsBudgetGrant(actor, cycleRow);
     const management: BudgetNeedsAction[] = [];
-    if (cycleRow.status === "proposals_open" && cycleRow.proposalDeadline < new Date()) {
-      management.push({ cycleId: cycleRow.id, cycleTitle: cycleRow.title, kind: "close_to_voting" });
+    // Only a budget with a deadline can be past it; one without stays open until the owner closes it.
+    if (cycleRow.status === "proposals_open" && cycleRow.proposalDeadline && cycleRow.proposalDeadline < new Date()) {
+      management.push({ cycleId: cycleRow.id, scopeCycleId: cycleRow.cycleId, cycleTitle: cycleRow.title, kind: "close_to_voting" });
     }
     if (cycleRow.status === "voting" && !cycleRow.confirmedProposalIds) {
-      management.push({ cycleId: cycleRow.id, cycleTitle: cycleRow.title, kind: "confirm_funded_set" });
+      management.push({ cycleId: cycleRow.id, scopeCycleId: cycleRow.cycleId, cycleTitle: cycleRow.title, kind: "confirm_funded_set" });
     }
     (reallyHolds ? personal : shared).push(...management);
   }
@@ -439,7 +452,7 @@ export async function listBudgetNeedsAction(actor: Member): Promise<NeedsAction<
       .from(budgetVote)
       .where(and(eq(budgetVote.budgetCycleId, cycleRow.id), eq(budgetVote.memberId, actor.id)));
     if (!myVote) {
-      personal.push({ cycleId: cycleRow.id, cycleTitle: cycleRow.title, kind: "cast_vote" });
+      personal.push({ cycleId: cycleRow.id, scopeCycleId: cycleRow.cycleId, cycleTitle: cycleRow.title, kind: "cast_vote" });
     }
   }
 
