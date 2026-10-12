@@ -100,7 +100,6 @@ import {
   resolvePingAction,
   resolveSignalAction,
   resumeAction,
-  rotateIntoShiftAction,
   setOutgoingAction,
   splitSubtaskAction,
   stopShadowingAction,
@@ -297,9 +296,9 @@ export default async function TaskDetailPage({
 
   const groupCoverage = await getGroupCoverageStatus(db, id, requirements);
   const shiftsModuleOn = isModuleEnabled(communityRow, "shifts");
-  // D10 (§4.8) — rotateTaskIntoShift creates a *standing* series, which
-  // is the standing scope's shift manager's act; holding the source task
-  // no longer grants it. Show the action to whoever can actually take it.
+  // D10 (§4.8) — a standing series is the standing scope's shift manager's
+  // act; holding the source task no longer grants it. Show the link to the
+  // pre-filled "add a shift series" form to whoever can actually take it.
   const isStandingShiftManager = shiftsModuleOn && (await isShiftManagerForScope(viewing, null));
   const myEndorsements = isCommunityEndorsed
     ? await listMyEndorsements(
@@ -548,10 +547,7 @@ export default async function TaskDetailPage({
   }
   if (isStandingShiftManager) {
     menuItems.push(
-      <form action={rotateIntoShiftAction}>
-        <input type="hidden" name="taskId" value={taskRow.id} />
-        <button type="submit">Rotate this task into a shift</button>
-      </form>,
+      <Link href={`/shifts?compose=1&fromTask=${taskRow.id}`}>Make this a recurring shift…</Link>,
     );
   }
   if (canPingCoordinator) {

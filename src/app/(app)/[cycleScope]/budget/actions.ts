@@ -45,17 +45,33 @@ function parseLineItemsJson(raw: string): unknown {
   }
 }
 
+// A proposal with nothing in the line items editor reaches the schema as
+// an empty array, whose own message ("expected array to have >=1 items")
+// means nothing to the person who left the rows blank.
+function parseProposalLineItemsJson(raw: string): unknown {
+  const items = parseLineItemsJson(raw) as unknown[];
+  if (items.length === 0) {
+    throw new AppError("Add at least one line item with a label and an amount");
+  }
+  return items;
+}
+
 // Every form on this page carries a hidden `cycleScope` field so a
 // redirect after submitting lands back on the exact scoped URL it came
 // from (docs/plans/development-plan.md's Phase 65) — never the bare /budget,
 // which could bounce through the redirect shim to a *different*
 // default scope.
-function redirectWithError(cycleScope: string, err: unknown): never {
+//
+// `compose` names the form a refused submission came from ("proposal" /
+// "period"), so the error lands back on that open form rather than on the
+// page behind it.
+function redirectWithError(cycleScope: string, err: unknown, compose?: string): never {
+  const back = `/${cycleScope}/budget?${compose ? `compose=${compose}&` : ""}error=`;
   if (err instanceof ZodError) {
-    redirect(`/${cycleScope}/budget?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
+    redirect(back + encodeURIComponent(err.issues[0]?.message ?? "Invalid input"));
   }
   if (err instanceof AppError) {
-    redirect(`/${cycleScope}/budget?error=${encodeURIComponent(err.message)}`);
+    redirect(back + encodeURIComponent(err.message));
   }
   throw err;
 }
@@ -97,7 +113,7 @@ export async function createBudgetCycleAction(formData: FormData) {
     });
     await createBudgetCycle(actor, input);
   } catch (err) {
-    redirectWithError(cycleScope, err);
+    redirectWithError(cycleScope, err, "period");
   }
 
   revalidatePath(`/${cycleScope}/budget`);
@@ -151,12 +167,12 @@ export async function submitBudgetProposalAction(formData: FormData) {
     const input = submitBudgetProposalInput.parse({
       title: String(formData.get("title") ?? ""),
       description: String(formData.get("description") ?? "").trim() || undefined,
-      lineItems: parseLineItemsJson(String(formData.get("lineItemsJson") ?? "")),
+      lineItems: parseProposalLineItemsJson(String(formData.get("lineItemsJson") ?? "")),
       branchId: String(formData.get("branchId") ?? "").trim() || null,
     });
     await submitBudgetProposal(actor, budgetCycleId, input);
   } catch (err) {
-    redirectWithError(cycleScope, err);
+    redirectWithError(cycleScope, err, "proposal");
   }
 
   revalidatePath(`/${cycleScope}/budget`);
@@ -173,7 +189,7 @@ export async function updateBudgetProposalAction(formData: FormData) {
     const input = updateBudgetProposalInput.parse({
       title: String(formData.get("title") ?? ""),
       description: String(formData.get("description") ?? "").trim() || undefined,
-      lineItems: parseLineItemsJson(String(formData.get("lineItemsJson") ?? "")),
+      lineItems: parseProposalLineItemsJson(String(formData.get("lineItemsJson") ?? "")),
       branchId: String(formData.get("branchId") ?? "").trim() || null,
     });
     await updateBudgetProposal(actor, proposalId, input);

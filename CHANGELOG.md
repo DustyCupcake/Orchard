@@ -8,6 +8,18 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## Budget and Shifts: proposing from the header, plain wording on Shifts, and the front door skips for logged-in members
+
+Budget and Shifts were the two modules the design-system pass hadn't re-laid-out. Both now follow the shape Programme took in the previous entry.
+
+- **Budget: "Submit a proposal" is the header's primary action.** The proposal form used to sit at the bottom of the page under every existing proposal. The button opens it on its own (`?compose=proposal`, same technique as `/schedule` and `/calendar`) with Cancel; a refused submission lands back on the open form, and a proposal with every line-item row left blank now says "Add at least one line item with a label and an amount" instead of the schema's raw array-length message. An Admin's "Start a budget period" moved from the bottom of the page into the header too (`?compose=period`), secondary while a period is already running. The page says what to do when there is no period, "Close proposals" carries a sentence on what it does, and an empty proposals list links to the form.
+- **Shifts: "Add a shift series" is the header's primary action**, shown only to someone who can actually add one (an open event to place it in, or the standing shift manager). The form opens in place (`?compose=1`) with plain-language labels; the capacity field says what it means, and the placement help text explains collecting-versus-open rosters.
+- **"Rotated from an existing task?" is gone.** It was a free-text box wanting a pasted task UUID. The task page's overflow-menu item is now "Make this a recurring shift…", a link to `/shifts?compose=1&fromTask=<id>` which pre-fills title, description, branch and capacity from that task (looked up in the viewer's own community only, ignored otherwise), instead of the old one-click `rotateIntoShiftAction` that created a standing series with no chance to review it. The action was removed; `rotateTaskIntoShift` and its API route are unchanged.
+- **Shifts wording.** "Collecting — sign-ups closed" is "Sign-ups not open yet"; "Open sign-ups for this roster (one-way)" is "Open sign-ups" with a sentence saying it can't be undone; "Re-place into" is "Move to"; "Occurrences" are "Shifts"; "Generate occurrences" is "Add dates" with "Repeat weekly" and "Pick exact times"; "My series" is "Series you manage". A series you've signed up for shows "You're signed up", and pending proposals sit above the upcoming list because they are waiting on someone.
+- **The front door skips for logged-in members.** `/` redirected nobody and showed "Continue as <name>"; a logged-in member now goes straight to `/dashboard`. The branded landing page and system-status check stay for people who aren't logged in.
+
+Checked: `tsc`, lint, `next build`. Not exercised in a browser or against a database.
+
 ## proposing a session is the programme page's primary action, proposals say who made them, and the painting grid runs 06:00 to 06:00
 
 Three things about the programme page that read wrong once it was in front of people.

@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { desc } from "drizzle-orm";
 import { db } from "@/db";
 import { healthCheck } from "@/db/schema";
 import { getCurrentMember } from "@/lib/session";
 import { getOrCreateCommunity } from "@/lib/community";
-import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "@/components/ui/kit";
+import { BUTTON_PRIMARY } from "@/components/ui/kit";
 
 // DB access must happen per-request, not be baked in at build time.
 export const dynamic = "force-dynamic";
@@ -31,12 +32,17 @@ async function getStatus() {
 // check kept but demoted to a collapsed diagnostic at the bottom
 // rather than deleted — still genuinely useful for confirming a fresh
 // deploy is actually talking to Postgres.
+//
+// Someone who is already logged in never sees it: the front door is for
+// people who aren't in yet, and a "Continue as …" button in front of
+// the dashboard was a click that asked them nothing.
 export default async function Home() {
-  const [status, currentMember, community] = await Promise.all([
-    getStatus(),
-    getCurrentMember(),
-    getOrCreateCommunity(),
-  ]);
+  const currentMember = await getCurrentMember();
+  if (currentMember) {
+    redirect("/dashboard");
+  }
+
+  const [status, community] = await Promise.all([getStatus(), getOrCreateCommunity()]);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 py-16">
@@ -57,20 +63,9 @@ export default async function Home() {
       </div>
 
       <div className="mt-8 flex items-center gap-3">
-        {currentMember ? (
-          <>
-            <Link href="/dashboard" className={BUTTON_PRIMARY}>
-              Continue as {currentMember.name}
-            </Link>
-            <Link href="/profile" className={BUTTON_SECONDARY}>
-              Profile
-            </Link>
-          </>
-        ) : (
-          <Link href="/login" className={BUTTON_PRIMARY}>
-            Log in
-          </Link>
-        )}
+        <Link href="/login" className={BUTTON_PRIMARY}>
+          Log in
+        </Link>
       </div>
 
       <details className="mt-16 w-full max-w-sm">

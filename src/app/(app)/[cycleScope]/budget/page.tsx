@@ -21,7 +21,9 @@ import type { BudgetLineItem } from "@/lib/budget";
 import { resolveSingleCycleScope } from "@/lib/cycles";
 import { effectiveTimeZone, localInputFromInstant } from "@/lib/dates";
 import { ForbiddenError } from "@/lib/errors";
-import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag, type Tone } from "@/components/ui/kit";
+import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag, type Tone } from "@/components/ui/kit";
+import PageHeader from "@/components/ui/PageHeader";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import {
   closeProposalsToVotingAction,
   createBudgetCycleAction,
@@ -129,6 +131,10 @@ export default async function BudgetPage({
     voted?: string;
     confirmed?: string;
     markedDone?: string;
+    // Opens a form in place of the page body — the header's primary
+    // action, the same `?compose=` technique /schedule and /calendar
+    // use. "proposal" is any member's; "period" is an Admin's.
+    compose?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
@@ -139,7 +145,7 @@ export default async function BudgetPage({
   const clock = await getViewerClock();
 
   const { cycleScope } = await params;
-  const { error, submitted, updated, cycleUpdated, votingOpened, voted, confirmed, markedDone } = await searchParams;
+  const { error, submitted, updated, cycleUpdated, votingOpened, voted, confirmed, markedDone, compose } = await searchParams;
 
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "budget");
@@ -164,9 +170,8 @@ export default async function BudgetPage({
   if (moduleOn && resolution.kind === "ambiguous") {
     return (
       <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Budget</h1>
-        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Scoped to multiple active events — pick one to see its budget:</p>
-        <div className="mt-4 flex flex-wrap gap-2">
+        <PageHeader title="Budget" description="Several events are running at once — pick the one whose budget you want to see." />
+        <div className="flex flex-wrap gap-2">
           {resolution.candidates.map((c) => (
             <Link key={c.id} href={`/${c.id}/budget`} className={BUTTON_SECONDARY}>
               {c.name}
@@ -240,9 +245,41 @@ export default async function BudgetPage({
           }));
   const branchTotals = currentCycle ? budgetByBranch(fixedCosts, branchRollupProposals, attendeeCount) : new Map();
 
+  // What the header's primary action can open right now. A proposal needs
+  // proposals to be open; a new period needs an Admin and no unfinished one.
+  const canPropose = moduleOn && currentCycle?.status === "proposals_open";
+  const canStartPeriod = moduleOn && isAdminNow && canStartNewCycle;
+  const composing =
+    compose === "proposal" && canPropose && currentCycle
+      ? ("proposal" as const)
+      : compose === "period" && canStartPeriod
+        ? ("period" as const)
+        : null;
+  const backHref = `/${cycleScope}/budget`;
+
+  const headerAction = composing ? undefined : canPropose ? (
+    <Link href={`${backHref}?compose=proposal`} className={BUTTON_PRIMARY}>
+      Submit a proposal
+    </Link>
+  ) : canStartPeriod ? (
+    <Link href={`${backHref}?compose=period`} className={currentCycle ? BUTTON_SECONDARY : BUTTON_PRIMARY}>
+      Start a budget period
+    </Link>
+  ) : undefined;
+
+  const headerDescription = !moduleOn
+    ? undefined
+    : composing === "proposal"
+      ? `Submitting to ${currentCycle?.title}`
+      : composing === "period"
+        ? "Set up what the community is deciding on, and by when."
+        : currentCycle
+          ? "Members propose what to spend on, everyone ranks the proposals, and the owner confirms the result."
+          : "Where the community decides together what to spend on.";
+
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Budget</h1>
+      <PageHeader title={composing === "proposal" ? "Submit a proposal" : composing === "period" ? "Start a budget period" : "Budget"} description={headerDescription} actions={headerAction} />
 
       {!moduleOn && (
         <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
@@ -294,7 +331,106 @@ export default async function BudgetPage({
             </div>
           )}
 
-          {currentCycle && (
+          {composing === "proposal" && currentCycle && (
+            <section>
+              <div className="flex items-center justify-between">
+                <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
+                  You&rsquo;re proposing this as {viewing.name}. Proposal deadline {clock.deadline(currentCycle.proposalDeadline)}.
+                </p>
+                <Link href={backHref} className={BUTTON_GHOST}>
+                  Cancel
+                </Link>
+              </div>
+              <form action={submitBudgetProposalAction} className="mt-4 flex max-w-[640px] flex-col gap-3">
+                <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
+                <input type="hidden" name="cycleScope" value={cycleScope} />
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Title</span>
+                  <input type="text" name="title" required className={INPUT} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Description (optional)</span>
+                  <textarea name="description" rows={3} className={INPUT} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Branch (optional)</span>
+                  <SelectField name="branchId" defaultValue="" className={INPUT}>
+                    <option value="">No branch</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </SelectField>
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                    The default for the whole proposal — a line item below can pick a different one.
+                  </span>
+                </label>
+                <div className="flex flex-col gap-1">
+                  <span className={LABEL}>What would the money go on?</span>
+                  <LineItemsEditor name="lineItemsJson" initialItems={[]} branches={branches} minItems={1} />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <SubmitButton className={BUTTON_PRIMARY} pendingLabel="Submitting…">
+                    Submit proposal
+                  </SubmitButton>
+                  <Link href={backHref} className={BUTTON_SECONDARY}>
+                    Cancel
+                  </Link>
+                </div>
+              </form>
+            </section>
+          )}
+
+          {composing === "period" && (
+            <section>
+              <div className="flex items-center justify-end">
+                <Link href={backHref} className={BUTTON_GHOST}>
+                  Cancel
+                </Link>
+              </div>
+              <form action={createBudgetCycleAction} className="mt-2 flex max-w-[640px] flex-col gap-3">
+                <input type="hidden" name="cycleScope" value={cycleScope} />
+                <input type="hidden" name="cycleId" value={resolvedCycleId ?? ""} />
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Title</span>
+                  <input type="text" name="title" required className={INPUT} />
+                </label>
+                <div className="flex flex-col gap-1">
+                  <span className={LABEL}>Fixed costs (optional)</span>
+                  <LineItemsEditor name="fixedCostsJson" initialItems={[]} branches={branches} />
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                    Costs that are already certain, counted before any proposal.
+                  </span>
+                </div>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Proposal deadline, {eventClock}</span>
+                  <input type="datetime-local" name="proposalDeadline" required className={`${INPUT} w-fit`} />
+                </label>
+                <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                  Designate this scope&rsquo;s Budget owner under Settings → Access &amp; permissions.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <SubmitButton className={BUTTON_PRIMARY} pendingLabel="Starting…">
+                    Start period
+                  </SubmitButton>
+                  <Link href={backHref} className={BUTTON_SECONDARY}>
+                    Cancel
+                  </Link>
+                </div>
+              </form>
+            </section>
+          )}
+
+          {!composing && !currentCycle && (
+            <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
+              {canStartPeriod
+                ? "No budget period is running. Start one to collect proposals."
+                : "No budget period is open right now. An Admin starts one when the community is ready to plan spending."}
+            </p>
+          )}
+
+          {!composing && currentCycle && (
             <section className="mt-6">
               <div className="flex items-center gap-2">
                 <SectionHeading>{currentCycle.title}</SectionHeading>
@@ -394,7 +530,15 @@ export default async function BudgetPage({
                     Proposals ({proposals.length}
                     {proposals.length > 0 && <>, {formatAmount(proposalsTotal)} total</>})
                   </h3>
-                  {proposals.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
+                  {proposals.length === 0 && (
+                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                      None yet — be the first to{" "}
+                      <Link href={`${backHref}?compose=proposal`} className="text-[var(--accent-1)] underline">
+                        submit one
+                      </Link>
+                      .
+                    </p>
+                  )}
                   <div className="mt-2 flex flex-col gap-2">
                     {proposals.map((p) => {
                       const items = p.lineItems as BudgetLineItem[];
@@ -448,44 +592,15 @@ export default async function BudgetPage({
                     })}
                   </div>
 
-                  <h3 className="mt-6 text-[length:var(--text-heading)] font-medium text-[var(--text)]">Submit a proposal</h3>
-                  <form action={submitBudgetProposalAction} className="mt-2 flex max-w-[640px] flex-col gap-2">
-                    <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
-                    <input type="hidden" name="cycleScope" value={cycleScope} />
-                    <label className="flex flex-col gap-1">
-                      <span className={LABEL}>Title</span>
-                      <input type="text" name="title" required className={INPUT} />
-                    </label>
-                    <label className="flex flex-col gap-1">
-                      <span className={LABEL}>Description</span>
-                      <textarea name="description" rows={2} className={INPUT} />
-                    </label>
-                    <label className="flex flex-col gap-1">
-                      <span className={LABEL}>Branch (optional) — this proposal&rsquo;s default; a line item below can override it</span>
-                      <select name="branchId" defaultValue="" className={INPUT}>
-                        <option value="">No branch</option>
-                        {branches.map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="flex flex-col gap-1">
-                      <span className={LABEL}>Line items</span>
-                      <LineItemsEditor name="lineItemsJson" initialItems={[]} branches={branches} minItems={1} />
-                    </div>
-                    <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                      Submit proposal
-                    </button>
-                  </form>
-
                   {isOwner && (
-                    <form action={closeProposalsToVotingAction} className="mt-6">
+                    <form action={closeProposalsToVotingAction} className="mt-6 border-t border-[var(--border)] pt-4">
                       <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
                       <input type="hidden" name="cycleScope" value={cycleScope} />
-                      <button type="submit" className={BUTTON_PRIMARY}>
-                        Close proposals — open voting
+                      <p className="mb-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                        As owner, you decide when proposing ends. Closing it opens ranked voting and no more proposals can be added.
+                      </p>
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        Close proposals and open voting
                       </button>
                     </form>
                   )}
@@ -507,33 +622,6 @@ export default async function BudgetPage({
             </section>
           )}
 
-          {isAdminNow && canStartNewCycle && (
-            <section className="mt-8 border-t border-[var(--border)] pt-6">
-              <SectionHeading>Start a new budget period</SectionHeading>
-              <form action={createBudgetCycleAction} className="mt-3 flex max-w-[640px] flex-col gap-2">
-                <input type="hidden" name="cycleScope" value={cycleScope} />
-                <input type="hidden" name="cycleId" value={resolvedCycleId ?? ""} />
-                <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Title</span>
-                  <input type="text" name="title" required className={INPUT} />
-                </label>
-                <div className="flex flex-col gap-1">
-                  <span className={LABEL}>Fixed costs (optional)</span>
-                  <LineItemsEditor name="fixedCostsJson" initialItems={[]} branches={branches} />
-                </div>
-                <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Proposal deadline, {eventClock}</span>
-                  <input type="datetime-local" name="proposalDeadline" required className={`${INPUT} w-fit`} />
-                </label>
-                <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  Designate this scope&rsquo;s Budget owner under Settings → Access &amp; permissions.
-                </p>
-                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                  Start period
-                </button>
-              </form>
-            </section>
-          )}
         </>
       )}
     </main>

@@ -29,6 +29,19 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-10-11",
+    title: "Budget and Shifts: propose from the top of the page",
+    summary: "Both pages have a main button at the top that opens the form on its own, and Shifts says what things mean in plainer words.",
+    points: [
+      "On Budget, \"Submit a proposal\" opens the form on its own, and an Admin starts a new budget period from the same place.",
+      "On Shifts, \"Add a shift series\" opens a form with a short explanation of each choice. The box that asked you to paste a task's ID is gone.",
+      "To turn a task into a recurring shift, use \"Make this a recurring shift…\" in the task's menu. It opens the form with the task's details filled in, so you can check them first.",
+      "Shifts uses plainer labels: \"Sign-ups not open yet\", \"Move to\", \"Add dates\", and a tag on shifts you're signed up for.",
+      "Opening the app's address while you're logged in takes you straight to your dashboard.",
+    ],
+    source: "Budget and Shifts: proposing from the header, plain wording on Shifts, and the front door skips for logged-in members",
+  },
+  {
     date: "2026-10-09",
     title: "Proposing a session, and a clearer time grid",
     summary: "Proposing is a button at the top of the programme page, proposals show who made them, and the time grid is easier to read.",
