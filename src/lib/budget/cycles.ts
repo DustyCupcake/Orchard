@@ -104,70 +104,12 @@ export async function getBudgetCycleAttendeeCount(
   return summary.comingCount;
 }
 
-export const createBudgetCycleInput = z.object({
-  title: z.string().min(1),
-  cycleId: z.string().uuid().nullable().optional(),
-  fixedCosts: z.array(lineItemInput).optional(),
-  // Optional: blank means proposals stay open until the owner closes them.
-  proposalDeadline: z.string().datetime().nullable().optional(),
-});
-export type CreateBudgetCycleInput = z.infer<typeof createBudgetCycleInput>;
-
 async function getCommunityRow(communityId: string) {
   const [row] = await db.select().from(community).where(eq(community.id, communityId));
   if (!row) {
     throw new NotFoundError("Community not found");
   }
   return row;
-}
-
-// A budget belongs to one scope — an event, or the community itself
-// (`cycleId` null) — and each scope runs one at a time. An event has exactly
-// one budget, made with it (ensureEventBudget below), so asking for a second
-// is a conflict however the first ended. The community's own scope may start
-// a fresh one once the last has been confirmed. Two events no longer stand in
-// each other's way: the old rule, one unfinished budget per *community*,
-// stopped a second concurrent event from having a budget at all. See
-// docs/plans/budget-funds-plan.md D1 and D3.
-export async function createBudgetCycle(actor: Member, input: CreateBudgetCycleInput) {
-  const communityRow = await getCommunityRow(actor.communityId);
-  requireModuleEnabled(communityRow, "budget");
-
-  const scopeCycleId = input.cycleId ?? null;
-  if (scopeCycleId) {
-    const [cycleRow] = await db
-      .select({ id: cycle.id })
-      .from(cycle)
-      .where(and(eq(cycle.id, scopeCycleId), eq(cycle.communityId, actor.communityId)));
-    if (!cycleRow) {
-      throw new NotFoundError("Event not found in your community");
-    }
-  }
-
-  if (input.fixedCosts) {
-    await requireValidLineItems(actor.communityId, input.fixedCosts);
-  }
-
-  const existing = await getBudgetCycleForScope(actor, scopeCycleId);
-  if (scopeCycleId && existing) {
-    throw new ConflictError("This event already has a budget");
-  }
-  if (!scopeCycleId && existing && existing.status !== "confirmed") {
-    throw new ConflictError("This Community already has an active budget period");
-  }
-
-  const [created] = await db
-    .insert(budgetCycle)
-    .values({
-      communityId: actor.communityId,
-      cycleId: scopeCycleId,
-      title: input.title,
-      fixedCosts: input.fixedCosts ?? [],
-      proposalDeadline: input.proposalDeadline ? new Date(input.proposalDeadline) : null,
-      createdBy: actor.id,
-    })
-    .returning();
-  return created;
 }
 
 // The most recently created budget in the actor's Community, whatever its

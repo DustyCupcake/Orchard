@@ -189,7 +189,7 @@ export const why: DocSection = {
       blocks: [
         {
           kind: "para",
-          text: "Results come back. Nothing is applied. A community assembly closes and publishes what was said; the actual change to a rule, a branch, or a setting is a separate thing somebody does afterwards. A budget vote ranks the proposals; the person holding the budget decides what to fund and publishes a reason if they depart from the ranking.",
+          text: "Results come back. Nothing is applied. A community assembly closes and publishes what was said; the actual change to a rule, a branch, or a setting is a separate thing somebody does afterwards. Members back the budget proposals they want funded; the person holding the budget approves what has been backed, or declines with a reason.",
         },
         {
           kind: "heading",

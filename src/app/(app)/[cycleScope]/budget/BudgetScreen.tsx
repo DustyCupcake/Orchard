@@ -5,86 +5,34 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
-import { getCommunity, listBranches, requireAdmins } from "@/lib/settings";
+import { getCommunity, listBranches } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import {
   ensureEventBudget,
-  getBudgetCycleAttendeeCount,
-  getBudgetCycleForScope,
-  getBudgetVotingView,
+  getBudgetPledges,
+  getEventPlan,
   isBudgetOwner,
-  lineItemTotal,
-  listBudgetProposals,
-  sumLineItems,
+  listBudgetProposalViews,
 } from "@/lib/budget";
 import type { BudgetLineItem } from "@/lib/budget";
 import { resolveSingleCycleScope } from "@/lib/cycles";
 import { effectiveTimeZone, localInputFromInstant } from "@/lib/dates";
-import { ForbiddenError } from "@/lib/errors";
-import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL, Tag, type Tone } from "@/components/ui/kit";
+import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import PageHeader from "@/components/ui/PageHeader";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import SelectField from "@/components/ui/SelectField";
 import {
-  closeProposalsToVotingAction,
-  createBudgetCycleAction,
   markBudgetCycleDoneAction,
+  setBudgetPledgeAction,
   submitBudgetProposalAction,
   updateBudgetCycleAction,
-  updateBudgetProposalAction,
 } from "./actions";
-import BudgetVotingSection from "./BudgetVotingSection";
-import { budgetPath, COMMUNITY_BUDGET_SCOPE } from "./paths";
+import { budgetByBranch, formatAmount, formatLineItemDetail } from "./format";
 import LineItemsEditor from "./LineItemsEditor";
-import SelectField from "@/components/ui/SelectField";
+import { budgetPath, COMMUNITY_BUDGET_SCOPE } from "./paths";
+import ProposalCard from "./ProposalCard";
 
 export const dynamic = "force-dynamic";
-
-function formatAmount(n: number) {
-  return n.toLocaleString();
-}
-
-// "8 × 50 = 400" / "23 attendees × 10 = 230" — the per-line breakdown
-// shown next to a multiplied item so the total isn't a mystery. A
-// plain (non-multiplied) item just shows its amount, unchanged from
-// before this existed. branchNameById is only passed once a Branch on
-// the item actually differs from something worth calling out — see
-// callers below.
-function formatLineItemDetail(item: BudgetLineItem, attendeeCount: number | null) {
-  const total = lineItemTotal(item, attendeeCount);
-  if (item.perAttendee) {
-    return attendeeCount === null
-      ? `${formatAmount(item.amount)} per attendee — no event linked, so this counts as ${formatAmount(0)} for now`
-      : `${attendeeCount} attendee${attendeeCount === 1 ? "" : "s"} × ${formatAmount(item.amount)} = ${formatAmount(total)}`;
-  }
-  if (item.quantity && item.quantity > 1) {
-    return `${item.quantity} × ${formatAmount(item.amount)} = ${formatAmount(total)}`;
-  }
-  return formatAmount(item.amount);
-}
-
-// Rolls fixed costs and every given proposal's line items up by
-// Branch — a line item's own branchId when it has one, else its
-// parent proposal's branchId, else "unassigned" (null). Which
-// proposals to include is the caller's call (see below): everything
-// submitted so far while nothing's decided yet, or just the confirmed
-// set once it has been.
-function budgetByBranch(
-  fixedCosts: BudgetLineItem[],
-  proposalsForRollup: { branchId: string | null; lineItems: BudgetLineItem[] }[],
-  attendeeCount: number | null,
-): Map<string | null, number> {
-  const totals = new Map<string | null, number>();
-  const add = (branchId: string | null, amount: number) => totals.set(branchId, (totals.get(branchId) ?? 0) + amount);
-  for (const item of fixedCosts) {
-    add(item.branchId ?? null, lineItemTotal(item, attendeeCount));
-  }
-  for (const p of proposalsForRollup) {
-    for (const item of p.lineItems) {
-      add(item.branchId ?? p.branchId ?? null, lineItemTotal(item, attendeeCount));
-    }
-  }
-  return totals;
-}
 
 // datetime-local wants "YYYY-MM-DDTHH:mm" with no offset. The deadline is
 // typed on the event's clock, so the field is filled in on that clock too —
@@ -93,49 +41,52 @@ function toDatetimeLocal(date: Date, timeZone: string) {
   return localInputFromInstant(date.toISOString(), timeZone);
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  proposals_open: "Proposals open",
-  voting: "Voting",
-  confirmed: "Confirmed",
-};
-
-const STATUS_TONE: Record<string, Tone> = {
-  proposals_open: "neutral",
-  voting: "warning",
-  confirmed: "success",
-};
-
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
-// See docs/spec.md's Budget and docs/plans/development-plan.md's Phases
-// 26-27: fixed costs & proposals while `proposals_open`, ranked-choice
-// voting and owner confirmation once the owner closes proposals.
-// Moved under /[cycleScope]/ in Phase 65 — Budget is the one
-// single-owner-per-cycle page this phase touches (Event scheduling/
-// Spatial planning ownership is Phase 68's job), so it needs a real
-// "which cycle?" prompt when the aggregate scope is genuinely
-// ambiguous. See the resolution comment below for exactly how far that
-// goes and what's deliberately left untouched.
+function SubHeading({ children }: { children: React.ReactNode }) {
+  return <h3 className="mt-6 text-[length:var(--text-heading)] font-medium text-[var(--text)]">{children}</h3>;
+}
+
 export type BudgetSearchParams = {
   error?: string;
   submitted?: string;
   updated?: string;
+  withdrawn?: string;
+  approved?: string;
+  declined?: string;
+  pledged?: string;
   cycleUpdated?: string;
-  votingOpened?: string;
-  voted?: string;
-  confirmed?: string;
   markedDone?: string;
-  // Opens a form in place of the page body — the header's primary
-  // action, the same `?compose=` technique /schedule and /calendar
-  // use. "proposal" is any member's; "period" is an Admin's, on the
-  // community's own budget only (an event's is made with it).
+  // Opens the proposal form in place of the page body — the header's primary
+  // action, the same `?compose=` technique /schedule and /calendar use.
   compose?: string;
 };
 
+const NOTICES: [keyof BudgetSearchParams, string][] = [
+  ["submitted", "Proposal submitted."],
+  ["updated", "Proposal updated."],
+  ["withdrawn", "Proposal withdrawn."],
+  ["approved", "Proposal approved."],
+  ["declined", "Proposal declined."],
+  ["pledged", "Your pledge was saved."],
+  ["cycleUpdated", "Budget updated."],
+  ["markedDone", "Marked done — closing this event won’t warn about Budget."],
+];
+
+// See docs/spec.md's Budget and docs/plans/budget-funds-plan.md: proposals are
+// always open, in an event's budget and in the community's own; members back
+// them, and the holder of the budget approves up to what the backers cover. An
+// event's plan is its fixed costs plus what has been approved.
+//
+// Moved under /[cycleScope]/ in Phase 65 — Budget is the one
+// single-owner-per-cycle page that phase touches, so it needs a real "which
+// cycle?" prompt when the aggregate scope is genuinely ambiguous. The
+// community's own budget is the same screen at /budget/fund.
+//
 // `cycleScope` is the URL's scope segment — `active`, a real event id, or
-// COMMUNITY_BUDGET_SCOPE for the community's own budget at /budget/fund.
+// COMMUNITY_BUDGET_SCOPE for the community's own budget.
 export default async function BudgetScreen({
   cycleScope,
   searchParams,
@@ -149,27 +100,17 @@ export default async function BudgetScreen({
   }
 
   const clock = await getViewerClock();
-
-  const { error, submitted, updated, cycleUpdated, votingOpened, voted, confirmed, markedDone, compose } = searchParams;
+  const { error, compose } = searchParams;
 
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "budget");
-
-  let isAdminNow = false;
-  try {
-    await requireAdmins(viewing);
-    isAdminNow = true;
-  } catch (err) {
-    if (!(err instanceof ForbiddenError)) throw err;
-  }
 
   // Resolve the URL's exact view scope. A concrete Cycle id is looked up
   // in the actor's Community by resolveSingleCycleScope; the aggregate
   // "active" segment resolves to its one candidate or falls back to the
   // community's own budget when there is no active Cycle; and the
   // community's own page names itself. The displayed Budget is always
-  // selected by that exact scope — never by the Community's most
-  // recently-created row.
+  // selected by that exact scope.
   const isCommunityPage = cycleScope === COMMUNITY_BUDGET_SCOPE;
   const resolution =
     moduleOn && !isCommunityPage ? await resolveSingleCycleScope(viewing, cycleScope) : ({ kind: "none" } as const);
@@ -192,86 +133,57 @@ export default async function BudgetScreen({
     );
   }
   const resolvedCycleId = resolution.kind === "resolved" ? resolution.cycle.id : null;
+  const isCommunityBudget = resolvedCycleId === null;
+  const eventName = resolution.kind === "resolved" ? resolution.cycle.name : null;
   // The clock the deadline is typed on — the event's, else the community's.
   const eventClock = effectiveTimeZone(resolution.kind === "resolved" ? resolution.cycle : null, communityRow);
+  const backHref = budgetPath(cycleScope);
 
   // An event's budget is made with it. One that predates that, or whose
   // creation hiccuped, is made here on first visit (ensureEventBudget is
   // idempotent and safe under concurrent first visits). A closed event with
-  // none is not backfilled: it never had one to keep.
-  const currentCycle = moduleOn
-    ? resolvedCycleId
-      ? await ensureEventBudget(viewing, resolvedCycleId)
-      : await getBudgetCycleForScope(viewing, null)
-    : null;
-  // Only the community's own budget is ever started by hand, and only once the
-  // last one is done: an event has exactly one, from the moment it exists.
-  const canStartNewCycle =
-    moduleOn && resolvedCycleId === null && (!currentCycle || currentCycle.status === "confirmed");
-  const isOwner = currentCycle ? await isBudgetOwner(viewing, currentCycle) : false;
+  // none is not backfilled: it never had one to keep. The community's own
+  // budget has no row at all — it is just its proposals.
+  const currentCycle = moduleOn && resolvedCycleId ? await ensureEventBudget(viewing, resolvedCycleId) : null;
+  const hasBudget = moduleOn && (isCommunityBudget || currentCycle !== null);
+  const finished = currentCycle?.status === "confirmed";
+  const eventClosed = resolution.kind === "resolved" && Boolean(resolution.cycle.closedAt);
+  const takingPart = hasBudget && !finished && !eventClosed;
 
-  const [branches, proposals, votingView, attendeeCount] = await Promise.all([
+  const [branches, proposalViews, plan, pledges, isHolder, allMembers] = await Promise.all([
     moduleOn ? listBranches(viewing) : Promise.resolve([]),
-    currentCycle && currentCycle.status === "proposals_open"
-      ? listBudgetProposals(viewing, currentCycle.id)
-      : Promise.resolve([]),
-    currentCycle && currentCycle.status !== "proposals_open"
-      ? getBudgetVotingView(viewing, currentCycle.id)
-      : Promise.resolve(null),
-    currentCycle ? getBudgetCycleAttendeeCount(viewing, currentCycle) : Promise.resolve(null),
+    hasBudget ? listBudgetProposalViews(viewing, resolvedCycleId) : Promise.resolve([]),
+    currentCycle ? getEventPlan(viewing, currentCycle.id) : Promise.resolve(null),
+    currentCycle ? getBudgetPledges(viewing, currentCycle.id) : Promise.resolve(null),
+    hasBudget ? isBudgetOwner(viewing, { cycleId: resolvedCycleId }) : Promise.resolve(false),
+    hasBudget ? db.select().from(member).where(eq(member.communityId, viewing.communityId)) : Promise.resolve([]),
   ]);
+  const memberNameById = new Map(allMembers.map((m) => [m.id, m.name] as const));
   const branchNameById = new Map(branches.map((b) => [b.id, b.name] as const));
+  const attendeeCount = plan?.attendeeCount ?? null;
 
-  const memberNameById = currentCycle
-    ? new Map(
-        (await db.select().from(member).where(eq(member.communityId, viewing.communityId))).map(
-          (m) => [m.id, m.name] as const,
-        ),
-      )
-    : new Map<string, string>();
+  const open = proposalViews.filter((v) => v.proposal.status === "open");
+  const approved = proposalViews.filter((v) => v.proposal.status === "approved");
+  const settled = proposalViews.filter((v) => v.proposal.status === "declined" || v.proposal.status === "withdrawn");
+  const approvedTotal = approved.reduce((sum, v) => sum + (v.proposal.approvedAmount ?? 0), 0);
 
   const fixedCosts = (currentCycle?.fixedCosts as BudgetLineItem[] | undefined) ?? [];
-  const fixedTotal = sumLineItems(fixedCosts, attendeeCount);
-  const proposalsTotal = proposals.reduce(
-    (sum, p) => sum + sumLineItems(p.lineItems as BudgetLineItem[], attendeeCount),
-    0,
+  const branchTotals = budgetByBranch(
+    fixedCosts,
+    approved.map((v) => ({
+      branchId: v.proposal.branchId,
+      lineItems: v.proposal.lineItems as BudgetLineItem[],
+      totalAmount: v.proposal.totalAmount,
+      approvedAmount: v.proposal.approvedAmount,
+    })),
+    attendeeCount,
   );
-  const confirmedIds = new Set((currentCycle?.confirmedProposalIds as string[] | null) ?? []);
-  const myContributionSignal =
-    votingView?.myVote?.contributionSignal !== undefined ? votingView?.myVote?.contributionSignal : null;
 
-  // Confirmed cycles roll up only the funded set (the real, final
-  // per-branch budget); anything still open rolls up every proposal
-  // submitted so far, since nothing's been decided yet — "requested",
-  // not "funded".
-  const branchRollupProposals =
-    currentCycle?.status === "confirmed"
-      ? (votingView?.ranked ?? [])
-          .filter((r) => confirmedIds.has(r.proposal.id))
-          .map((r) => ({ branchId: r.proposal.branchId, lineItems: r.proposal.lineItems as BudgetLineItem[] }))
-      : currentCycle?.status === "proposals_open"
-        ? proposals.map((p) => ({ branchId: p.branchId, lineItems: p.lineItems as BudgetLineItem[] }))
-        : (votingView?.ranked ?? []).map((r) => ({
-            branchId: r.proposal.branchId,
-            lineItems: r.proposal.lineItems as BudgetLineItem[],
-          }));
-  const branchTotals = currentCycle ? budgetByBranch(fixedCosts, branchRollupProposals, attendeeCount) : new Map();
-
-  // What the header's primary action can open right now. A proposal needs
-  // proposals to be open; a new round on the community's own budget needs an
-  // Admin and no unfinished one.
-  const canPropose = moduleOn && currentCycle?.status === "proposals_open";
-  const canStartPeriod = moduleOn && isAdminNow && canStartNewCycle;
-  const composing =
-    compose === "proposal" && canPropose && currentCycle
-      ? ("proposal" as const)
-      : compose === "period" && canStartPeriod
-        ? ("period" as const)
-        : null;
-  const backHref = budgetPath(cycleScope);
-  // Which budget this is, so each page can point at the other.
-  const isCommunityBudget = resolvedCycleId === null;
-  const eventName = resolution.kind === "resolved" ? resolution.cycle.name : null;
+  // A set deadline stops new proposals after it, though members can still back
+  // and the owner still decide what is there.
+  const deadlinePassed = Boolean(currentCycle?.proposalDeadline && new Date() > new Date(currentCycle.proposalDeadline));
+  const canPropose = takingPart && !deadlinePassed;
+  const composing = compose === "proposal" && canPropose ? ("proposal" as const) : null;
 
   const headerAction = composing ? undefined : (
     <>
@@ -285,42 +197,49 @@ export default async function BudgetScreen({
           Community budget
         </Link>
       )}
-      {canPropose ? (
+      {canPropose && (
         <Link href={`${backHref}?compose=proposal`} className={BUTTON_PRIMARY}>
-          Submit a proposal
+          Propose spending
         </Link>
-      ) : canStartPeriod ? (
-        <Link href={`${backHref}?compose=period`} className={BUTTON_PRIMARY}>
-          Open a spending round
-        </Link>
-      ) : null}
+      )}
     </>
   );
 
   const headerDescription = !moduleOn
     ? undefined
-    : composing === "proposal"
-      ? `Submitting to ${currentCycle?.title}`
-      : composing === "period"
-        ? "Set up what the community is deciding on, and by when."
-        : isCommunityBudget
-          ? "The community's own budget, outside any event. Each event has a budget of its own."
-          : eventName
-            ? `${eventName}. Members propose what to spend on, everyone ranks the proposals, and the owner confirms the result.`
-            : undefined;
+    : composing
+      ? isCommunityBudget
+        ? "Proposing spending from the community's own budget"
+        : `Proposing spending in ${currentCycle?.title}`
+      : isCommunityBudget
+        ? "The community's own budget, outside any event. Anyone can propose spending; other members back it, and the budget's owner approves what has been backed."
+        : eventName
+          ? `${eventName}. Anyone can propose spending; other members back it, and the budget's owner approves what has been backed.`
+          : undefined;
+
+  const cardProps = {
+    cycleScope,
+    branches,
+    attendeeCount,
+    viewerId: viewing.id,
+    isHolder,
+    takingPart,
+    inEvent: !isCommunityBudget,
+  };
+  const renderCard = (v: (typeof proposalViews)[number]) => (
+    <ProposalCard
+      key={v.proposal.id}
+      view={v}
+      proposerName={memberNameById.get(v.proposal.submittedBy) ?? "—"}
+      fromEarlierRound={isCommunityBudget && v.proposal.budgetCycleId !== null}
+      {...cardProps}
+    />
+  );
 
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
       <PageHeader
-        title={
-          composing === "proposal"
-            ? "Submit a proposal"
-            : composing === "period"
-              ? "Open a spending round"
-              : isCommunityBudget
-                ? "Community budget"
-                : "Budget"
-        }
+        title={composing ? "Propose spending" : isCommunityBudget ? "Community budget" : "Budget"}
         description={headerDescription}
         actions={headerAction}
       />
@@ -339,57 +258,38 @@ export default async function BudgetScreen({
               <Banner tone="danger">{error}</Banner>
             </div>
           )}
-          {submitted && (
-            <div className="mt-4">
-              <Banner tone="success">Proposal submitted.</Banner>
-            </div>
-          )}
-          {updated && (
-            <div className="mt-4">
-              <Banner tone="success">Proposal updated.</Banner>
-            </div>
-          )}
-          {cycleUpdated && (
-            <div className="mt-4">
-              <Banner tone="success">Budget updated.</Banner>
-            </div>
-          )}
-          {votingOpened && (
-            <div className="mt-4">
-              <Banner tone="success">Proposals closed — voting is open.</Banner>
-            </div>
-          )}
-          {voted && (
-            <div className="mt-4">
-              <Banner tone="success">Your vote was recorded.</Banner>
-            </div>
-          )}
-          {confirmed && (
-            <div className="mt-4">
-              <Banner tone="success">Budget confirmed.</Banner>
-            </div>
-          )}
-          {markedDone && (
-            <div className="mt-4">
-              <Banner tone="success">Marked done — closing this event won&rsquo;t warn about Budget.</Banner>
-            </div>
+          {NOTICES.map(
+            ([key, text]) =>
+              searchParams[key] && (
+                <div key={key} className="mt-4">
+                  <Banner tone="success">{text}</Banner>
+                </div>
+              ),
           )}
 
-          {composing === "proposal" && currentCycle && (
+          {!hasBudget && (
+            <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
+              This event has no budget — it was closed before it had one, so there is none to keep.
+            </p>
+          )}
+
+          {composing && (
             <section>
               <div className="flex items-center justify-between">
                 <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
-                  You&rsquo;re proposing this as {viewing.name}.{" "}
-                  {currentCycle.proposalDeadline
+                  You&rsquo;re proposing this as {viewing.name}, so you&rsquo;re the first person behind it.{" "}
+                  {currentCycle?.proposalDeadline
                     ? `Proposals close ${clock.deadline(currentCycle.proposalDeadline)}.`
-                    : "Proposals stay open until the owner closes them."}
+                    : isCommunityBudget
+                      ? ""
+                      : "Proposals stay open until the owner finishes the budget."}
                 </p>
                 <Link href={backHref} className={BUTTON_GHOST}>
                   Cancel
                 </Link>
               </div>
               <form action={submitBudgetProposalAction} className="mt-4 flex max-w-[640px] flex-col gap-3">
-                <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
+                <input type="hidden" name="budgetCycleId" value={currentCycle?.id ?? ""} />
                 <input type="hidden" name="cycleScope" value={cycleScope} />
                 <label className="flex flex-col gap-1">
                   <span className={LABEL}>Title</span>
@@ -415,7 +315,13 @@ export default async function BudgetScreen({
                 </label>
                 <div className="flex flex-col gap-1">
                   <span className={LABEL}>What would the money go on?</span>
-                  <LineItemsEditor name="lineItemsJson" initialItems={[]} branches={branches} minItems={1} />
+                  <LineItemsEditor
+                    name="lineItemsJson"
+                    initialItems={[]}
+                    branches={branches}
+                    minItems={1}
+                    allowPerAttendee={!isCommunityBudget}
+                  />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <SubmitButton className={BUTTON_PRIMARY} pendingLabel="Submitting…">
@@ -429,75 +335,91 @@ export default async function BudgetScreen({
             </section>
           )}
 
-          {composing === "period" && (
-            <section>
-              <div className="flex items-center justify-end">
-                <Link href={backHref} className={BUTTON_GHOST}>
-                  Cancel
-                </Link>
-              </div>
-              <form action={createBudgetCycleAction} className="mt-2 flex max-w-[640px] flex-col gap-3">
-                <input type="hidden" name="cycleScope" value={cycleScope} />
-                <input type="hidden" name="cycleId" value={resolvedCycleId ?? ""} />
-                <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Title</span>
-                  <input type="text" name="title" required className={INPUT} />
-                </label>
-                <div className="flex flex-col gap-1">
-                  <span className={LABEL}>Fixed costs (optional)</span>
-                  <LineItemsEditor name="fixedCostsJson" initialItems={[]} branches={branches} />
-                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                    Costs that are already certain, counted before any proposal.
-                  </span>
-                </div>
-                <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Proposals close (optional), {eventClock}</span>
-                  <input type="datetime-local" name="proposalDeadline" className={`${INPUT} w-fit`} />
-                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                    Leave it empty and proposals stay open until the owner closes them.
-                  </span>
-                </label>
-                <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  Designate this scope&rsquo;s Budget owner under Settings → Access &amp; permissions.
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <SubmitButton className={BUTTON_PRIMARY} pendingLabel="Starting…">
-                    Open round
-                  </SubmitButton>
-                  <Link href={backHref} className={BUTTON_SECONDARY}>
-                    Cancel
-                  </Link>
-                </div>
-              </form>
-            </section>
-          )}
-
-          {!composing && !currentCycle && (
-            <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
-              {isCommunityBudget
-                ? canStartPeriod
-                  ? "No spending round is running. Open one to collect proposals."
-                  : "No spending round is open right now. An Admin opens one when the community is ready to plan spending."
-                : "This event has no budget — it was closed before it had one, so there is none to keep."}
-            </p>
-          )}
-
-          {!composing && currentCycle && (
+          {!composing && hasBudget && (
             <section className="mt-6">
-              <div className="flex items-center gap-2">
-                <SectionHeading>{currentCycle.title}</SectionHeading>
-                <Tag tone={STATUS_TONE[currentCycle.status]}>{STATUS_LABEL[currentCycle.status] ?? currentCycle.status}</Tag>
-              </div>
-              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                {currentCycle.proposalDeadline
-                  ? `Proposals close ${clock.deadline(currentCycle.proposalDeadline)}`
-                  : "Proposals stay open until the owner closes them"}
-                <br />
-                Budget authority is configured separately under Settings → Access &amp; permissions.
-              </p>
+              {currentCycle && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <SectionHeading>{currentCycle.title}</SectionHeading>
+                    <Tag tone={finished ? "success" : "neutral"}>{finished ? "Done" : "Open"}</Tag>
+                  </div>
+                  <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                    {currentCycle.proposalDeadline
+                      ? `Proposals close ${clock.deadline(currentCycle.proposalDeadline)}${deadlinePassed ? " — closed to new proposals" : ""}`
+                      : "Proposals stay open until the owner finishes the budget"}
+                    <br />
+                    Budget authority is configured separately under Settings → Access &amp; permissions.
+                  </p>
+                </>
+              )}
 
-              {isOwner && currentCycle.status === "proposals_open" && (
-                <details className="mt-2">
+              {currentCycle && plan && (
+                <div className={`mt-4 ${CARD}`}>
+                  <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">The plan so far</h3>
+                  <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
+                    {formatAmount(plan.fixedTotal)} fixed costs + {formatAmount(plan.approvedTotal)} approved ={" "}
+                    <span className="font-semibold">{formatAmount(plan.planTotal)}</span>
+                  </p>
+                  {plan.perMember !== null && plan.planTotal > 0 && (
+                    <p className="mt-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                      About {formatAmount(plan.perMember)} each over {plan.contributorCount}{" "}
+                      {plan.attendeeCount && plan.attendeeCount > 0 ? "people coming" : "members"}.
+                    </p>
+                  )}
+                  {plan.pendingCount > 0 && (
+                    <p className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                      {plan.pendingCount} proposal{plan.pendingCount === 1 ? "" : "s"} still waiting for a decision, asking{" "}
+                      {formatAmount(plan.pendingTotal)} between them.
+                    </p>
+                  )}
+                  {pledges && (
+                    <div className="mt-3 border-t border-[var(--border)] pt-3">
+                      <p className="text-[length:var(--text-body)] text-[var(--text)]">
+                        {pledges.count === 0
+                          ? "Nobody has said what they'd contribute yet."
+                          : pledges.count === 1
+                            ? `1 person has pledged ${formatAmount(pledges.total)}.`
+                            : `${pledges.count} people have pledged ${formatAmount(pledges.total)} between them.`}
+                      </p>
+                      {takingPart && (
+                        <form action={setBudgetPledgeAction} className="mt-2 flex flex-wrap items-end gap-2">
+                          <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
+                          <input type="hidden" name="cycleScope" value={cycleScope} />
+                          <label className="flex flex-col gap-1">
+                            <span className={LABEL}>How much would you contribute?</span>
+                            <input
+                              type="number"
+                              name="amount"
+                              min={0}
+                              defaultValue={pledges.mine ?? ""}
+                              placeholder="Not pledged"
+                              className={`${INPUT} w-36`}
+                            />
+                          </label>
+                          <button type="submit" className={BUTTON_SECONDARY}>
+                            Save
+                          </button>
+                          <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                            Only you and the owner see what you put. Empty it to take it back.
+                          </span>
+                        </form>
+                      )}
+                      {pledges.entries && pledges.entries.length > 0 && (
+                        <ul className="mt-2 flex flex-col gap-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                          {pledges.entries.map((p) => (
+                            <li key={p.memberId}>
+                              {p.name}: {formatAmount(p.amount)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {currentCycle && isHolder && !finished && (
+                <details className="mt-3">
                   <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
                     Edit title / fixed costs / deadline
                   </summary>
@@ -527,7 +449,7 @@ export default async function BudgetScreen({
                         />
                       </label>
                       <CheckField
-                        label="No deadline — keep proposals open until the owner closes them"
+                        label="No deadline — keep proposals open until the owner finishes the budget"
                         name="noDeadline"
                         defaultChecked={!currentCycle.proposalDeadline}
                       />
@@ -539,44 +461,28 @@ export default async function BudgetScreen({
                 </details>
               )}
 
-              {isOwner && currentCycle.status === "confirmed" && (
-                <div className="mt-2">
-                  {currentCycle.ownerMarkedDoneAt ? (
-                    <p className="text-[length:var(--text-body)] text-[var(--success)]">
-                      Marked done — closing this event won&rsquo;t warn about its Budget.
-                    </p>
-                  ) : (
-                    <form action={markBudgetCycleDoneAction}>
-                      <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
-                      <input type="hidden" name="cycleScope" value={cycleScope} />
-                      <button type="submit" className={BUTTON_SECONDARY}>
-                        Mark this budget done
-                      </button>
-                    </form>
-                  )}
-                </div>
-              )}
-
-              <h3 className="mt-4 text-[length:var(--text-heading)] font-medium text-[var(--text)]">
-                Fixed costs {fixedCosts.length > 0 && <>({formatAmount(fixedTotal)} total)</>}
-              </h3>
-              {fixedCosts.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None entered.</p>}
-              {fixedCosts.length > 0 && (
-                <ul className="mt-1 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text)]">
-                  {fixedCosts.map((c, i) => (
-                    <li key={i}>
-                      {c.label}: {formatLineItemDetail(c, attendeeCount)}
-                      {c.branchId && <> · {branchNameById.get(c.branchId) ?? "—"}</>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {branchTotals.size > 0 && (
+              {currentCycle && (
                 <>
-                  <h3 className="mt-4 text-[length:var(--text-heading)] font-medium text-[var(--text)]">
-                    {currentCycle.status === "confirmed" ? "Confirmed budget by branch" : "Requested so far, by branch"}
-                  </h3>
+                  <SubHeading>
+                    Fixed costs {fixedCosts.length > 0 && <>({formatAmount(plan?.fixedTotal ?? 0)} total)</>}
+                  </SubHeading>
+                  {fixedCosts.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None entered.</p>}
+                  {fixedCosts.length > 0 && (
+                    <ul className="mt-1 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text)]">
+                      {fixedCosts.map((c, i) => (
+                        <li key={i}>
+                          {c.label}: {formatLineItemDetail(c, attendeeCount)}
+                          {c.branchId && <> · {branchNameById.get(c.branchId) ?? "—"}</>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+
+              {branchTotals.size > 0 && approved.length + fixedCosts.length > 0 && (
+                <>
+                  <SubHeading>Planned, by branch</SubHeading>
                   <ul className="mt-1 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text)]">
                     {[...branchTotals.entries()]
                       .sort((a, b) => b[1] - a[1])
@@ -589,104 +495,65 @@ export default async function BudgetScreen({
                 </>
               )}
 
-              {currentCycle.status === "proposals_open" && (
-                <>
-                  <h3 className="mt-6 text-[length:var(--text-heading)] font-medium text-[var(--text)]">
-                    Proposals ({proposals.length}
-                    {proposals.length > 0 && <>, {formatAmount(proposalsTotal)} total</>})
-                  </h3>
-                  {proposals.length === 0 && (
-                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                      None yet — be the first to{" "}
+              {isCommunityBudget && approved.length > 0 && (
+                <p className="mt-4 text-[length:var(--text-body)] text-[var(--text)]">
+                  Approved so far: <span className="font-semibold">{formatAmount(approvedTotal)}</span>
+                </p>
+              )}
+
+              <SubHeading>Waiting for a decision ({open.length})</SubHeading>
+              {open.length === 0 && (
+                <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                  Nothing is waiting.
+                  {canPropose && (
+                    <>
+                      {" "}
                       <Link href={`${backHref}?compose=proposal`} className="text-[var(--accent-1)] underline">
-                        submit one
+                        Propose something
                       </Link>
                       .
-                    </p>
+                    </>
                   )}
-                  <div className="mt-2 flex flex-col gap-2">
-                    {proposals.map((p) => {
-                      const items = p.lineItems as BudgetLineItem[];
-                      const liveTotal = sumLineItems(items, attendeeCount);
-                      const mine = p.submittedBy === viewing.id;
-                      return (
-                        <div key={p.id} className={CARD}>
-                          <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                            {memberNameById.get(p.submittedBy) ?? "—"}
-                            {p.branchId && <> · {branchNameById.get(p.branchId) ?? "—"}</>} ·{" "}
-                            {formatAmount(liveTotal)} total
-                          </p>
-                          <p className="mt-1 text-[length:var(--text-body)] font-medium text-[var(--text)]">{p.title}</p>
-                          {p.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{p.description}</p>}
-                          <ul className="mt-1.5 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                            {items.map((it, i) => (
-                              <li key={i}>
-                                {it.label}: {formatLineItemDetail(it, attendeeCount)}
-                                {it.branchId && it.branchId !== p.branchId && (
-                                  <> · {branchNameById.get(it.branchId) ?? "—"}</>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
+                </p>
+              )}
+              <div className="mt-2 flex flex-col gap-2">{open.map(renderCard)}</div>
 
-                          {mine && currentCycle.status === "proposals_open" && (
-                            <details className="mt-2">
-                              <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Edit</summary>
-                              <form action={updateBudgetProposalAction} className="mt-2 flex flex-col gap-2">
-                                <input type="hidden" name="proposalId" value={p.id} />
-                                <input type="hidden" name="cycleScope" value={cycleScope} />
-                                <input type="text" name="title" defaultValue={p.title} required className={INPUT} />
-                                <textarea name="description" defaultValue={p.description ?? ""} rows={2} className={INPUT} />
-                                <SelectField name="branchId" defaultValue={p.branchId ?? ""} className={INPUT}>
-                                  <option value="">No branch</option>
-                                  {branches.map((b) => (
-                                    <option key={b.id} value={b.id}>
-                                      {b.name}
-                                    </option>
-                                  ))}
-                                </SelectField>
-                                <LineItemsEditor name="lineItemsJson" initialItems={items} branches={branches} minItems={1} />
-                                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                                  Save changes
-                                </button>
-                              </form>
-                            </details>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {isOwner && (
-                    <form action={closeProposalsToVotingAction} className="mt-6 border-t border-[var(--border)] pt-4">
-                      <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
-                      <input type="hidden" name="cycleScope" value={cycleScope} />
-                      <p className="mb-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                        As owner, you decide when proposing ends. Closing it opens ranked voting and no more proposals can be added.
-                      </p>
-                      <button type="submit" className={BUTTON_SECONDARY}>
-                        Close proposals and open voting
-                      </button>
-                    </form>
-                  )}
+              {approved.length > 0 && (
+                <>
+                  <SubHeading>Approved ({approved.length})</SubHeading>
+                  <div className="mt-2 flex flex-col gap-2">{approved.map(renderCard)}</div>
                 </>
               )}
 
-              {currentCycle.status !== "proposals_open" && votingView && (
-                <BudgetVotingSection
-                  currentCycle={currentCycle}
-                  votingView={votingView}
-                  isOwner={isOwner}
-                  memberNameById={memberNameById}
-                  branchNameById={branchNameById}
-                  confirmedIds={confirmedIds}
-                  myContributionSignal={myContributionSignal}
-                  cycleScope={cycleScope}
-                />
+              {settled.length > 0 && (
+                <details className="mt-6">
+                  <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
+                    Declined and withdrawn ({settled.length})
+                  </summary>
+                  <div className="mt-2 flex flex-col gap-2">{settled.map(renderCard)}</div>
+                </details>
+              )}
+
+              {currentCycle && isHolder && !currentCycle.ownerMarkedDoneAt && (
+                <form action={markBudgetCycleDoneAction} className="mt-6 border-t border-[var(--border)] pt-4">
+                  <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
+                  <input type="hidden" name="cycleScope" value={cycleScope} />
+                  <p className="mb-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                    When the plan is settled, mark the budget done.{finished ? "" : " It stops taking proposals and can’t be edited any more, and"}{" "}
+                    closing the event won&rsquo;t warn about it.
+                  </p>
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Mark this budget done
+                  </button>
+                </form>
+              )}
+              {currentCycle?.ownerMarkedDoneAt && (
+                <p className="mt-6 text-[length:var(--text-body)] text-[var(--success)]">
+                  Marked done — closing this event won&rsquo;t warn about its Budget.
+                </p>
               )}
             </section>
           )}
-
         </>
       )}
     </main>

@@ -46,7 +46,7 @@ import {
 } from "@/lib/recruitment/joining-lanes";
 import { JOINING_LANE_ORDER } from "@/lib/recruitment/lanes";
 import type { JoinLaneKind } from "@/db/schema";
-import { checkboxGroup, checkboxOf, defined, number, optionalText, text } from "./form-values";
+import { checkboxGroup, checkboxOf, defined, number, optionalNumber, optionalText, text } from "./form-values";
 import {
   archiveProfileQuestion,
   createProfileQuestion,
@@ -317,6 +317,23 @@ export async function updateModulesSettingsAction(formData: FormData) {
   }
 
   revalidatePath("/settings");
+}
+
+// Modules → Budget: how much money each backer of a proposal stands behind.
+// Blank (or 0) clears it, which asks for no backing at all.
+export async function updateBudgetSettingsAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    await updateCommunity(
+      actor,
+      updateCommunityInput.parse({ fundSupportPerBacker: optionalNumber(formData, "fundSupportPerBacker") }),
+    );
+  } catch (err) {
+    redirectWithError(err, "modules");
+  }
+  revalidatePath("/settings");
+  revalidatePath("/budget");
 }
 
 export async function updatePostCycleFeedbackAction(formData: FormData) {

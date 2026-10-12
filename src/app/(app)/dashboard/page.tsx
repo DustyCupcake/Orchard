@@ -114,11 +114,11 @@ const NEEDS_ACTION_LABEL: Record<string, string> = {
   decision_pending: "call happened, decision still pending",
 };
 
-const BUDGET_LABEL: Record<string, string> = {
-  close_to_voting: "proposal deadline passed — close to voting",
-  confirm_funded_set: "voting is in, confirm the funded set",
-  cast_vote: "voting is open — cast your vote",
-};
+// A budget has one thing to wait on: proposals for its owner to decide. The row
+// says how many.
+function budgetLabel(count: number) {
+  return `${count} proposal${count === 1 ? "" : "s"} waiting for a decision`;
+}
 
 const EVENT_STATUS_LABEL: Record<string, string> = {
   conflict: "flagged conflicting",
@@ -180,10 +180,10 @@ async function ModuleNeedsActionSections({
         <FeedSection title="Budget needs your attention" shared={shared}>
           {pick(feed.budgetNeedsAction).map((b, i) => (
             <FeedRow
-              key={`${b.cycleId}-${b.kind}-${i}`}
+              key={`${b.scopeCycleId ?? "community"}-${b.kind}-${i}`}
               href={b.scopeCycleId ? `/${b.scopeCycleId}/budget` : "/budget/fund"}
-              title={b.cycleTitle}
-              tag={<Tag tone="warning">{BUDGET_LABEL[b.kind] ?? b.kind}</Tag>}
+              title={b.title}
+              tag={<Tag tone="warning">{budgetLabel(b.count)}</Tag>}
             />
           ))}
         </FeedSection>

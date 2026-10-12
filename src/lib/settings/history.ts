@@ -238,6 +238,7 @@ const FIELD_LABEL: Record<string, string> = {
   defaultCallHasAgenda: "calls need an agenda",
   defaultCallNeedsSummary: "calls need a summary",
   defaultCallRequireRead: "summaries need reading",
+  fundSupportPerBacker: "how much each backer of a budget proposal stands behind",
   engagementSoftFlagThreshold: "when a single response is worth noticing",
   engagementPatternThreshold: "when a response counts as a pattern",
   cycleIndicatorsEnabled: "breaking indicators out per event",

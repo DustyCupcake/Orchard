@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { budgetCycle, community, task, taskAssignment } from "@/db/schema";
+import { community, task, taskAssignment } from "@/db/schema";
 import { closeCycle, createCycle } from "@/lib/cycles";
-import { createBudgetCycle, getBudgetCycleForCycle, markBudgetCycleDone } from "@/lib/budget";
+import { getBudgetCycleForCycle, markBudgetCycleDone } from "@/lib/budget";
 import { claimTask } from "@/lib/tasks";
 import { grantPermission, createFixtures, resetDatabase } from "./helpers";
 import { setPermissionGrant } from "@/lib/permissions";
@@ -32,10 +32,6 @@ async function insertTask(
     })
     .returning();
   return row;
-}
-
-function inOneWeek() {
-  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 }
 
 // docs/plans/development-plan.md's Phase 65 — "any current Admin can close
@@ -95,15 +91,13 @@ describe("closeCycle", () => {
     expect(closed.closedAt).not.toBeNull();
 
     // Once the owner's marked it done, no warning needed even without
-    // an override.
-    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, budgetCycleRow.id));
+    // an override. (It no longer has to be taken through a vote first.)
     await markBudgetCycleDone(alice, budgetCycleRow.id);
     const cyc2 = await createCycle(alice, { source: "blank", name: "2028 Season" });
     const ownerTask2 = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cyc2.id });
     await setPermissionGrant(alice, "budget", ownerTask2.id);
     await claimTask(alice, ownerTask2.id);
     const budgetCycle2 = (await getBudgetCycleForCycle(alice, cyc2.id))!;
-    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, budgetCycle2.id));
     await markBudgetCycleDone(alice, budgetCycle2.id);
     await expect(closeCycle(alice, cyc2.id)).resolves.toMatchObject({ closedAt: expect.any(Date) });
   });
@@ -117,16 +111,11 @@ describe("closeCycle", () => {
     await expect(closeCycle(alice, cyc.id)).resolves.toMatchObject({ closedAt: expect.any(Date) });
 
     // Budget enabled, but this event has none: it predates the module and
-    // nobody has opened its Budget page, so there is nothing to wrap up. A
-    // community's own budget (cycleId null) and another event's don't count.
+    // nobody has opened its Budget page, so there is nothing to wrap up.
     const { community: otherCommunity, alice: otherAlice } = await createFixtures();
     await enableCycles(otherCommunity.id);
     const otherCycle = await createCycle(otherAlice, { source: "blank", name: "Early cycle" });
     await db.update(community).set({ modulesEnabled: ["budget"] }).where(eq(community.id, otherCommunity.id));
-    await createBudgetCycle(otherAlice, {
-      title: "Community budget",
-      proposalDeadline: inOneWeek(),
-    });
 
     await expect(closeCycle(otherAlice, otherCycle.id)).resolves.toMatchObject({ closedAt: expect.any(Date) });
   });

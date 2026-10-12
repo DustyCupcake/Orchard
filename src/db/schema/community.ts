@@ -223,6 +223,13 @@ export const community = pgTable("community", {
   // threshold of its own — it's just 1 up to (not including)
   // engagementSoftFlagThreshold; see src/lib/engagement.ts's
   // computeEngagementPattern.
+  // How much money each person standing behind a budget proposal covers: a
+  // proposal is "backed up to" its backers (the proposer plus whoever supports
+  // it) times this, and its scope's holder can approve it only up to that.
+  // Null or 0 means no backing is required and the holder decides alone — the
+  // default, because the right figure depends on a community's currency and
+  // scale, which the app doesn't know. docs/plans/budget-funds-plan.md D12.
+  fundSupportPerBacker: integer("fund_support_per_backer"),
   engagementSoftFlagThreshold: integer("engagement_soft_flag_threshold").notNull().default(2),
   engagementPatternThreshold: integer("engagement_pattern_threshold").notNull().default(3),
   // How long a published, require_read CallSummary waits before a

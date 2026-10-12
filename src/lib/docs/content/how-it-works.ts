@@ -514,7 +514,7 @@ export const howItWorks: DocSection = {
         },
         {
           kind: "para",
-          text: "Every event has a budget of its own, made with it, and the community has one more for spending that belongs to no event. Anyone submits a proposal with a real cost breakdown. The owner closes proposals to voting, everyone ranks the full list, and the results show totals, cost per member, and what the top of the ranking would add up to. The owner then produces a final budget, which the ranking informs but doesn't determine — and if the final set departs from the ranked order, a reason is published explaining why.",
+          text: "Every event has a budget of its own, made with it, and the community has one more for spending that belongs to no event. Anyone proposes spending at any time, with a real cost breakdown, and other members back the proposals they want funded. The community decides how much money each person behind a proposal stands behind, so a small proposal needs nobody but its proposer and a big one needs several people, and the budget's owner can approve a proposal up to what is backed. An event's plan is its fixed costs plus what has been approved, with the share per person that works out to, and anyone can say how much they would contribute.",
         },
         {
           kind: "heading",

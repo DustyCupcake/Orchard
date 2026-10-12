@@ -652,6 +652,13 @@
       "when": 1791826460579,
       "tag": "0092_budget_event_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1791827618414,
+      "tag": "0093_budget_backed_proposals",
+      "breakpoints": true
     }
   ]
 }

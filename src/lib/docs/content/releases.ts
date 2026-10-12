@@ -30,6 +30,20 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-12",
+    title: "Back the spending you want funded",
+    summary: "Budgets no longer run in rounds or ask everyone to rank. Anyone proposes spending whenever they like, other members back it, and the budget's owner approves what has been backed.",
+    points: [
+      "Propose spending at any time, in an event's budget or in the community's own. The proposal needs the people behind it that the community has decided on, and your own proposal counts as the first.",
+      "Press \"Support this\" on a proposal you want funded, and press it again to take it back. You can't support your own, because you're already behind it.",
+      "A community can set how much money each person behind a proposal stands behind. A small proposal then needs nobody else, and a large one needs several people. Left unset, the budget's owner decides alone.",
+      "The owner can approve a proposal up to what is backed, or decline it with a reason you can read.",
+      "An event's budget shows its plan: fixed costs plus what has been approved, and roughly what that comes to for each person. You can say how much you'd contribute; only you and the owner see your figure, and everyone sees the total.",
+      "The ranked vote and the owner's confirmation step are gone. The owner can mark a budget done whenever its plan is settled.",
+    ],
+    source: "Budget decides spending with backed proposals: no rounds, no ranking, no confirmation, for events and the community alike",
+  },
+  {
+    date: "2026-10-12",
     title: "Every event has its own budget",
     summary: "An event's budget is made with the event, so there is nothing to start, and two events running together each have theirs.",
     points: [

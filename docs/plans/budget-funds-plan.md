@@ -1,8 +1,9 @@
 # Budget: events own their budgets, proposals replace rounds, and a community fund keeps the money between events
 
-**Status (2026-10-12):** **Phase 1 is built** (events own their budgets; see the dated note under
-*Phase 1* for where it differs from the text below, and `CHANGELOG.md` for how it was verified).
-Phases 2 and 3 are not started. This was a proposal agreed with the product owner and written up for
+**Status (2026-10-12):** **Phases 1 and 2 are built** (events own their budgets; proposals replace
+rounds, ranking and confirmation, for events and the community alike). See the dated notes under
+*Phase 1* and *Phase 2* for where they differ from the text below, and `CHANGELOG.md` for how each
+was verified. Phase 3 (the ledger, contributions, allocations and settlement) is not started. This was a proposal agreed with the product owner and written up for
 them to edit before any code. Three phases, each shippable on its own: **Phase 1** makes an
 event's budget belong to the event (fixing the mismatch that prompted this); **Phase 2** replaces
 rounds, ranked voting and confirmation with always-open proposals that members back, for events and
@@ -396,6 +397,25 @@ back and the scope's holder approves (D4, D12, D15). Ranking, ballots and confir
 `confirmBudgetCycle`, `requiresConfirmationRationale` and their routes, `BudgetVotingSection`, the
 `voting` and `confirmed` states, and the dashboard rows `close_to_voting`, `cast_vote` and
 `confirm_funded_set`. What remains of `voting.ts` is the owner-authority check and needs-action.
+
+**Built 2026-10-12, with these differences from the text above:**
+
+- *"Earlier rounds"* is a label ("from an earlier round") on each carried-over community proposal
+  rather than a separate list: a converted round has no proposals of its own that the list does not
+  already show.
+- *`createBudgetCycle`, `POST /api/budget-cycles` and the Admin's round form are removed*, not left
+  idle. With no rounds there is nothing to start by hand; an event's budget is made with it (Phase
+  1) and the community's is just its proposals. Nothing in the plan said otherwise, but it was
+  worth removing deliberately.
+- *`budget_cycle.status` keeps two meanings only:* open (`proposals_open`) and finished
+  (`confirmed`). Marking a budget done sets the latter, so every existing check of "is it
+  unfinished" (the unique index, the calendar, the nav, the dashboard) stayed correct untouched.
+  `voting` is no longer written; Postgres cannot drop an enum value, so it stays unused.
+- *The pledge list is the holder's, not the open module's.* An open Budget module makes every
+  member an "owner" for deciding proposals, but individual pledges use `holdsBudgetGrant` (D13).
+- *Mark-done became available whenever it is true*, which resolves the rough edge noted under Phase 1.
+- The community's own budget holder keeps the nav pin by an explicit scope check, since that budget
+  has no row for the nav to find.
 
 **Done when.** A member proposes in an event and in the fund; another supports; a proposal asking for
 more than its backers cover cannot be approved for the excess, on the page *and* on a direct call;

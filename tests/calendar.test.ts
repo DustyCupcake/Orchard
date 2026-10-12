@@ -9,7 +9,7 @@ import { createProfileQuestion, answerProfileQuestion } from "@/lib/profile-ques
 import { createAssembly } from "@/lib/assemblies";
 import { createPoll, submitAvailability, confirmSlot } from "@/lib/scheduling-polls";
 import { createEventProposal, confirmEventProposalSlot, declineEventProposal, publishEventSchedule } from "@/lib/event-scheduling";
-import { createBudgetCycle, getBudgetCycleForCycle } from "@/lib/budget";
+import { getBudgetCycleForCycle } from "@/lib/budget";
 import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
 import { updateCommunity } from "@/lib/settings";
 import { getCalendarView } from "@/lib/calendar";
@@ -305,22 +305,11 @@ describe("getCalendarView", () => {
     });
 
     it("places a deadline on the viewer's own day", async () => {
-      const { alice, branch: testBranch } = await createFixtures();
-      await updateCommunity(alice, { modulesEnabled: ["budget"] });
-      const [ownerTask] = await db
-        .insert(task)
-        .values({
-          communityId: alice.communityId,
-          branchId: testBranch.id,
-          title: "Budget owner",
-          effort: "owns_a_thing",
-          effortMagnitude: { hours_per_week: 2 },
-          createdBy: alice.id,
-        })
-        .returning();
-      await setPermissionGrant(alice, "budget", ownerTask.id);
-      await claimTask(alice, ownerTask.id);
-      await createBudgetCycle(alice, { title: "Season budget", proposalDeadline: "2030-06-10T23:30:00.000Z" });
+      const { alice } = await createFixtures();
+      await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+      const event = await createCycle(alice, { source: "blank", name: "Season" });
+      const budget = (await getBudgetCycleForCycle(alice, event.id))!;
+      await updateBudgetCycleDeadline(budget.id, new Date("2030-06-10T23:30:00.000Z"));
 
       const deadlineDay = async (actor: Parameters<typeof getCalendarView>[0]) =>
         (await getCalendarView(actor)).entries.find((e) => e.kind === "budget_deadline")?.date;
@@ -395,35 +384,24 @@ describe("getCalendarView", () => {
     expect(bobView.entries.filter((e) => e.kind === "shift_occurrence")).toEqual([]);
   });
 
-  it("includes the current Budget cycle's proposal deadline while proposals are open, not once voting starts", async () => {
-    const { alice, branch: testBranch } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const [ownerTask] = await db
-      .insert(task)
-      .values({
-        communityId: alice.communityId,
-        branchId: testBranch.id,
-        title: "Budget owner",
-        effort: "owns_a_thing",
-        effortMagnitude: { hours_per_week: 2 },
-        createdBy: alice.id,
-      })
-      .returning();
-    await setPermissionGrant(alice, "budget", ownerTask.id);
-    await claimTask(alice, ownerTask.id);
-    await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: slot(48),
-    });
+  it("includes an event budget's proposal deadline while it is open, and not once it is done", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Season" });
+    const budget = (await getBudgetCycleForCycle(alice, event.id))!;
+    await updateBudgetCycleDeadline(budget.id, new Date(slot(48)));
 
     const view = await getCalendarView(alice);
     expect(view.entries).toContainEqual(
       expect.objectContaining({
         date: slot(48).slice(0, 10),
         kind: "budget_deadline",
-        label: "Season budget — proposal deadline",
+        label: "Season Budget — proposal deadline",
       }),
     );
+
+    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, budget.id));
+    expect((await getCalendarView(alice)).entries.some((e) => e.kind === "budget_deadline")).toBe(false);
   });
 
   it("shows one deadline per budget that has one, each linking to its own page", async () => {
@@ -434,15 +412,9 @@ describe("getCalendarView", () => {
     await createCycle(alice, { source: "blank", name: "Harvest", confirmed: true });
     const budgetA = (await getBudgetCycleForCycle(alice, a.id))!;
     await updateBudgetCycleDeadline(budgetA.id, new Date(slot(48)));
-    await createBudgetCycle(alice, { title: "Community round", proposalDeadline: slot(72) });
 
     const entries = (await getCalendarView(alice)).entries.filter((e) => e.kind === "budget_deadline");
-    expect(entries.map((e) => [e.label, e.href]).sort()).toEqual(
-      [
-        ["Reunion Budget — proposal deadline", `/${a.id}/budget`],
-        ["Community round — proposal deadline", "/budget/fund"],
-      ].sort(),
-    );
+    expect(entries.map((e) => [e.label, e.href])).toEqual([["Reunion Budget — proposal deadline", `/${a.id}/budget`]]);
     expect(entries.some((e) => e.label.startsWith("Harvest"))).toBe(false);
   });
 
