@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getViewerClock } from "@/lib/view-clock";
+import AccompanimentCard from "./AccompanimentCard";
 import { formatInstant } from "@/lib/dates";
 import { redirect } from "next/navigation";
 import { CheckCircle, Tree, Users, ChartLineUp, Warning } from "@phosphor-icons/react/dist/ssr";
@@ -493,6 +494,8 @@ export default async function DashboardPage({
       ) : (
         <EventParticipationCards viewing={viewing} action={declareEventStatusAction} />
       )}
+
+      <AccompanimentCard viewing={viewing} />
 
       {!viewing.hasCompletedOnboarding && (
         <section className="mt-8 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-5">

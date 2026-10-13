@@ -183,7 +183,7 @@ describe("recordDecisionIfReached", () => {
 
     const [accompanimentTask] = await db.select().from(task).where(eq(task.id, decision!.accompanimentTaskId!));
     expect(accompanimentTask.suggestedMemberId).toBe(setupResult.alice.id);
-    expect(accompanimentTask.title).toBe("Accompany new member");
+    expect(accompanimentTask.title).toBe("Accompany Dana");
   });
 
   it("leaves suggestedMemberId null when the application had no linked invite", async () => {

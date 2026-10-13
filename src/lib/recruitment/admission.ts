@@ -393,10 +393,23 @@ export async function admitArrival(arrivalId: string, opts: AdmitOptions = {}): 
       console.error("[admission] could not set up the sign-in account", err);
     }
   }
+  // Someone to accompany them (docs/plans/accompaniment-plan.md §3.2): made here, at the one
+  // place a member is made, so every route through the funnel behaves alike. Never undoes the
+  // admission either; when it can't be made the recruitment hub says why.
+  let accompanied = false;
+  if (!result.already) {
+    try {
+      const { ensureAccompaniment } = await import("../accompaniment");
+      accompanied = (await ensureAccompaniment(result.arrival, result.memberId, { isNewMember: result.created })).status === "created";
+    } catch (err) {
+      console.error("[admission] could not set up the accompaniment", err);
+    }
+  }
   if (opts.notify !== false && result.arrival.origin === "funnel") {
     try {
       await sendAdmissionAcceptedEmail(result.arrival.email, {
         signInInvited,
+        accompaniment: accompanied,
         name: result.arrival.name,
         communityName: await communityNameOf(result.arrival.communityId),
         statusUrl: admissionLink(result.arrival.token),

@@ -525,6 +525,29 @@ export async function updateRecruitmentCheckWindowAction(formData: FormData) {
   revalidatePath("/recruitment/mediation");
 }
 
+// Recruitment → Accompaniment (docs/plans/accompaniment-plan.md §3.3): whether a new member
+// gets someone to accompany them, who may, and how long it lasts. Changing it never touches an
+// accompaniment already running — each one's end was fixed when it began.
+export async function updateAccompanimentSettingsAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    await updateCommunity(
+      actor,
+      updateCommunityInput.parse(
+        defined({
+          accompanimentEnabled: checkboxOf(formData, "accompanimentEnabled"),
+          accompanimentTierId: optionalText(formData, "accompanimentTierId"),
+          accompanimentEndsAfterDays: number(formData, "accompanimentEndsAfterDays"),
+        }),
+      ),
+    );
+  } catch (err) {
+    redirectWithError(err, "recruitment");
+  }
+  revalidatePath("/settings");
+}
+
 // Recruitment → the admission lanes (docs/plans/admission-flow.md §2a, §3). The one
 // card on this tab that is genuinely a form about a *design*, and the one that
 // most needed to stop sharing a Save button with everything else. The whole

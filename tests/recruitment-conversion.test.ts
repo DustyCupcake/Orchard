@@ -567,16 +567,14 @@ describe("Recruitment: applicant→Member conversion", () => {
     await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
     const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
 
-    // Accepted, and waiting: the decision is made, nobody is a member yet, and
-    // the accompaniment task says why rather than blaming the form.
+    // Accepted, and waiting: the decision is made, nobody is a member yet, and so there is
+    // nobody to accompany. The accompaniment is made when the person is (docs/plans/accompaniment-plan.md §3.2).
     expect(decision!.resolution).toBe("accepted");
     expect(decision!.convertedMemberId).toBeNull();
+    expect(decision!.accompanimentTaskId).toBeNull();
     const [waiting] = await db.select().from(admission).where(eq(admission.id, application.arrivalId));
     expect(waiting.waitlistedAt).not.toBeNull();
     expect(await db.select().from(member).where(eq(member.name, "Dana Applicant"))).toHaveLength(0);
-    const [accompaniment] = await db.select().from(task).where(eq(task.id, decision!.accompanimentTaskId!));
-    expect(accompaniment.description).toMatch(/waiting for a place/);
-    expect(accompaniment.description).not.toMatch(/isn't tagged/);
 
     // Alice stops coming; that frees the place and admits the person waiting.
     await declareParticipation(setupResult.alice, cycleRow.id, { status: "not_coming" });
@@ -585,6 +583,10 @@ describe("Recruitment: applicant→Member conversion", () => {
     expect(admitted.waitlistedAt).toBeNull();
     const after = await getRecruitmentDecision(application.formResponse.id);
     expect(after!.convertedMemberId).toBe(admitted.admittedMemberId);
+    // …and the accompaniment now exists, named for the person who has become a member.
+    expect(after!.accompanimentTaskId).not.toBeNull();
+    const [accompaniment] = await db.select().from(task).where(eq(task.id, after!.accompanimentTaskId!));
+    expect(accompaniment.title).toBe("Accompany Dana Applicant");
     const [place] = await db
       .select()
       .from(participation)

@@ -15,6 +15,7 @@ export async function register() {
   const { resolveBrowsePeriods } = await import("@/lib/tasks");
   const { resolveInputRounds } = await import("@/lib/input-rounds");
   const { closeDueChecks } = await import("@/lib/recruitment");
+  const { runAccompaniments } = await import("@/lib/accompaniment");
   const { resolveTaskNominationDeadlines } = await import("@/lib/tasks");
   const { logCallSummaryUnreadEngagementEvents } = await import("@/lib/engagement");
 
@@ -32,6 +33,9 @@ export async function register() {
   // is never dropped by a clock: a standing one holds its window and stays a duty
   // item for the mediation body. See src/lib/recruitment/check-outcome.ts.
   registerJob("community-check", "*/5 * * * *", closeDueChecks);
+  // Ends an accompaniment that has run out or whose task was finished, and tells a new
+  // member who has taken on accompanying them — see src/lib/accompaniment.ts.
+  registerJob("accompaniment", "*/5 * * * *", () => runAccompaniments());
   // Auto-releases a nominated-but-unconfirmed task assignment once its
   // response deadline passes with no reply — see
   // src/lib/tasks/nominations.ts.

@@ -30,6 +30,17 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-13",
+    title: "New members always know who is accompanying them",
+    summary: "Someone is named to accompany each new member, the new member is told, and they can ask for someone else.",
+    points: [
+      "When you join, someone from the community is named to accompany you: a person to ask questions of and check in with while you find your feet. You're told in your welcome email, on your first screen and on a card on your dashboard, and you get an email as soon as somebody has taken it on.",
+      "If it isn't a good fit, press \"Ask for someone else\" on that card. It goes back to being open, with a plain note that it's about the fit, and nobody is marked down for it.",
+      "It lasts for a set time (90 days unless your community says otherwise), or until your accompanier marks it done. Administrators can switch it off, say who may do it, and change how long it lasts, under Settings → Recruitment → Accompaniment.",
+    ],
+    source: "accompaniment is a thing of its own: made when a member is, told to the member, and theirs to say isn't working",
+  },
+  {
+    date: "2026-10-13",
     title: "Events are funded by the community's budget, and settled when they close",
     summary: "An event can ask the community's budget for what it is short, and closing an event settles its money.",
     points: [

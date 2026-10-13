@@ -168,6 +168,14 @@ export const community = pgTable("community", {
   // mechanism and share this. Stored with each window's deadline when it opens
   // (community_check.window_hours), so changing it never moves one already running.
   recruitmentWiderDiscussionHours: integer("recruitment_wider_discussion_hours").notNull().default(48),
+  // Accompaniment (docs/plans/accompaniment-plan.md §3.3): whether a new member gets
+  // someone to accompany them, who may, and for how long. On by default because that is
+  // what the platform has always done; a community that doesn't want it turns it off.
+  accompanimentEnabled: boolean("accompaniment_enabled").notNull().default(true),
+  // Null = any member may accompany. Otherwise the task is made with this tier as its
+  // requirement, through the ordinary requirement mechanism rather than a rule of its own.
+  accompanimentTierId: uuid("accompaniment_tier_id").references(() => tier.id),
+  accompanimentEndsAfterDays: integer("accompaniment_ends_after_days").notNull().default(90),
   // §2.6/J7 — the overrule threshold. An objection is never thrown out
   // by a timer; mediation either clears it or it stands, and admitting
   // *anyway* is the documented exception. The community chooses how

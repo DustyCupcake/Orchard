@@ -234,7 +234,7 @@ export async function sendAdmissionReceivedEmail(
 
 export async function sendAdmissionAcceptedEmail(
   email: string,
-  input: { name: string; communityName: string; statusUrl: string; loginUrl: string; signInInvited?: boolean },
+  input: { name: string; communityName: string; statusUrl: string; loginUrl: string; signInInvited?: boolean; accompaniment?: boolean },
 ) {
   const subject = `You're in — welcome to ${input.communityName}`;
   const text = [
@@ -248,11 +248,34 @@ export async function sendAdmissionAcceptedEmail(
           `${input.loginUrl}`,
         ]
       : [`To sign in, request a login link here with this email address:`, `${input.loginUrl}`]),
+    ...(input.accompaniment
+      ? [
+          ``,
+          `Someone from ${input.communityName} will be named to accompany you: a person you can ask questions of and check in with while you find your feet. You'll see who it is on your dashboard, and you'll get an email when it's settled. If it isn't a good fit, you can ask for someone else there, and nobody will mind.`,
+        ]
+      : []),
     ``,
     `Your progress page, if you want to look back at it:`,
     `${input.statusUrl}`,
   ].join("\n");
   await sendPlainTextEmail(email, subject, text, `admission accepted for ${email}:\n${input.statusUrl}`);
+}
+
+// Sent once each time somebody takes on accompanying a new member (see src/lib/accompaniment.ts).
+export async function sendAccompanierNamedEmail(
+  email: string,
+  input: { name: string; communityName: string; accompanierName: string; dashboardUrl: string },
+) {
+  const subject = `${input.accompanierName} will accompany you in ${input.communityName}`;
+  const text = [
+    `Hello ${input.name},`,
+    ``,
+    `${input.accompanierName} has taken on accompanying you in ${input.communityName}: someone you can ask questions of and check in with while you find your feet.`,
+    ``,
+    `You can see who they are, and ask for someone else if it isn't a good fit, on your dashboard:`,
+    `${input.dashboardUrl}`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `accompanier named for ${email}: ${input.accompanierName}`);
 }
 
 // The interview emails (docs/plans/admission-flow.md §6): the link to choose times, and
