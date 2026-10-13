@@ -56,11 +56,14 @@ export default function LineItemsEditor({
   initialItems,
   branches,
   minItems = 0,
+  allowPerAttendee = true,
 }: {
   name: string;
   initialItems: BudgetLineItem[];
   branches: { id: string; name: string }[];
   minItems?: number;
+  /** Off for the community's own budget, which has no attendees to multiply by. */
+  allowPerAttendee?: boolean;
 }) {
   const [rows, setRows] = useState<Row[]>(
     initialItems.length > 0 ? initialItems.map((item) => ({ ...item, key: generateKey() })) : [emptyRow()],
@@ -118,7 +121,7 @@ export default function LineItemsEditor({
             >
               <option value="none">×1</option>
               <option value="quantity">fixed quantity…</option>
-              <option value="attendee">× attendees</option>
+              {allowPerAttendee && <option value="attendee">× attendees</option>}
             </select>
             {mode === "quantity" && (
               <input

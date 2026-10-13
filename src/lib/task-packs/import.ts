@@ -13,6 +13,7 @@ import {
 } from "../cycles";
 import { recomputeBoundary, type StoredBoundary } from "../dates";
 import { isAdmin } from "../settings/admins";
+import { ensureNewEventBudget } from "../budget/cycles";
 import { copyPermissionGrants, type PermissionModuleKey } from "../permissions";
 import { getTaskPack } from "./crud";
 import { findClosestNameMatch } from "./match-name";
@@ -204,7 +205,7 @@ export async function commitPackImport(actor: Member, input: CommitPackImportInp
     .where(eq(branch.communityId, actor.communityId));
   const existingBranchIds = new Set(existingBranches.map((b) => b.id));
 
-  return db.transaction(async (tx) => {
+  const created = await db.transaction(async (tx) => {
     const [newCycle] = await tx
       .insert(cycle)
       .values({
@@ -376,4 +377,8 @@ export async function commitPackImport(actor: Member, input: CommitPackImportInp
 
     return newCycle;
   });
+
+  // An event's budget is made with it, when Budget is on.
+  await ensureNewEventBudget(actor, created.id);
+  return created;
 }

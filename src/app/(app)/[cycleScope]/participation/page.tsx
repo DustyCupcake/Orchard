@@ -12,7 +12,7 @@ import {
   resolveViewScopeFromSegment,
   startBoundaryOf,
 } from "@/lib/cycles";
-import { getBudgetCycleForCycle, getCurrentBudgetCycle } from "@/lib/budget";
+import { getBudgetCycleForCycle } from "@/lib/budget";
 import {
   getCycleParticipationSummary,
   getMyParticipation,
@@ -113,7 +113,6 @@ export default async function ParticipationPage({
     phaseAdded?: string;
     highlightUpdated?: string;
     cycleCreated?: string;
-    budgetNotStarted?: string;
     cycleClosed?: string;
     shiftOpened?: string;
     proposalConfirmed?: string;
@@ -136,7 +135,6 @@ export default async function ParticipationPage({
     phaseAdded,
     highlightUpdated,
     cycleCreated,
-    budgetNotStarted,
     cycleClosed,
     shiftOpened,
     proposalConfirmed,
@@ -195,13 +193,6 @@ export default async function ParticipationPage({
       {cycleCreated && (
         <div className="mt-4">
           <Banner tone="success">Event created — set its dates below, if you know them yet.</Banner>
-        </div>
-      )}
-      {budgetNotStarted && (
-        <div className="mt-4">
-          <Banner tone="warning">
-            Couldn&rsquo;t auto-start this event&rsquo;s Budget — start one by hand from /budget.
-          </Banner>
         </div>
       )}
       {cycleClosed && (
@@ -384,23 +375,14 @@ async function StartNewCycleSection({
   previewEnd?: string;
   previewView: "grid" | "list";
 }) {
-  const [cycleTypes, packs, preview, communityRow, previousBudgetCycle] = await Promise.all([
+  const [cycleTypes, packs, preview] = await Promise.all([
     listCycleTypes(viewing),
     listTaskPacks(viewing),
     hasPreviousCycle && (previewStart || previewEnd)
       ? previewClonePreviousCycle(viewing, previewStart || null, previewEnd || null)
       : Promise.resolve(null),
-    getCommunity(viewing),
-    getCurrentBudgetCycle(viewing),
   ]);
   const packNameById = new Map(packs.map((p) => [p.id, p.name]));
-  // Only offer the auto-start checkbox when startBudgetCycleForNewCycle
-  // (src/lib/budget/cycles.ts) would actually succeed — Budget on, and a
-  // previous BudgetCycle whose fixed costs can be carried forward isn't
-  // itself still active. Otherwise this Community's very first Budget
-  // cycle still has to be started by hand from /budget.
-  const canAutoStartBudget =
-    isModuleEnabled(communityRow, "budget") && previousBudgetCycle?.status === "confirmed";
   // "Correctly pre-selects that pack when starting a new Cycle of that
   // type" — see docs/plans/development-plan.md's Phase 55 Done-when. No
   // client JS to pre-fill one <select> from another's chosen value, so
@@ -512,13 +494,6 @@ async function StartNewCycleSection({
           roster&rsquo;s occurrence timestamps immediately; a clone started without them defers the
           shift occurrences until you set dates in the event settings form above.
         </p>
-        {canAutoStartBudget && (
-          <CheckField
-            label={`Also start a budget period for this event (fixed costs carried forward from "${previousBudgetCycle!.title}")`}
-            name="startBudget"
-            defaultChecked
-          />
-        )}
         {openCycleName && <CheckField label="I understand — start anyway" name="confirmed" />}
         <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
           Create
@@ -596,7 +571,7 @@ async function ParticipationForCycle({
     isAdminNow && !closed && isModuleEnabled(communityRow, "budget")
       ? await getBudgetCycleForCycle(viewing, cycleId)
       : null;
-  const needsBudgetDoneWarning = Boolean(budgetCycleRow && !budgetCycleRow.ownerMarkedDoneAt);
+  const needsBudgetDoneWarning = Boolean(budgetCycleRow && !budgetCycleRow.settledAt);
   // The same "questions for this event" the Dashboard's and Community's
   // declare-joining controls route to on submit — linked from here too so
   // the full form's submitter isn't left wondering where to answer them.
@@ -1046,7 +1021,7 @@ async function ParticipationForCycle({
           {needsBudgetDoneWarning && (
             <div className="mt-3">
               <Banner tone="warning">
-                The current Budget owner hasn&rsquo;t marked &ldquo;{budgetCycleRow!.title}&rdquo; done yet.
+                &ldquo;{budgetCycleRow!.title}&rdquo; hasn&rsquo;t been settled yet — settling it closes its books and returns any surplus to the community&rsquo;s budget.
               </Banner>
             </div>
           )}

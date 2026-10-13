@@ -645,6 +645,41 @@
       "when": 1791557290152,
       "tag": "0091_event_proposal_interest",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1791826460579,
+      "tag": "0092_budget_event_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1791827618414,
+      "tag": "0093_budget_backed_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1791875101258,
+      "tag": "0094_budget_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1791876124746,
+      "tag": "0095_budget_contribution_ask",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1791877776013,
+      "tag": "0096_budget_allocation_settlement",
+      "breakpoints": true
     }
   ]
 }

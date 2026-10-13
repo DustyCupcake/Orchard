@@ -27,6 +27,7 @@ import { cloneSpatialPlanIntoNewCycle } from "../spatial-planning";
 import { recomputeCalendarEventDatesForCycle } from "../calendar-events";
 import { normalizeTaskMilestonesForCycle, normalizeTaskMilestonesForPhase } from "../tasks/milestones";
 import { copyPermissionGrants, logPermissionClaim, type PermissionModuleKey } from "../permissions";
+import { ensureNewEventBudget } from "../budget/cycles";
 import { requireCycleOpen } from "./lifecycle";
 import { isValidTimeZone } from "../dates/timezone";
 import {
@@ -233,24 +234,28 @@ export async function createCycle(actor: Member, input: CreateCycleInput) {
     }
   }
 
-  if (input.source === "clone_previous") {
-    return cloneMostRecentCycle(
-      actor,
-      input.name,
-      input.cycleTypeId ?? null,
-      input.cloneSpatialPlan ?? false,
-      input.startDate ?? null,
-      input.endDate ?? null,
-    );
-  }
-  return createBlankCycle(
-    actor,
-    input.name,
-    input.startDate ?? null,
-    input.endDate ?? null,
-    input.cycleTypeId ?? null,
-    input.phases ?? [],
-  );
+  const created =
+    input.source === "clone_previous"
+      ? await cloneMostRecentCycle(
+          actor,
+          input.name,
+          input.cycleTypeId ?? null,
+          input.cloneSpatialPlan ?? false,
+          input.startDate ?? null,
+          input.endDate ?? null,
+        )
+      : await createBlankCycle(
+          actor,
+          input.name,
+          input.startDate ?? null,
+          input.endDate ?? null,
+          input.cycleTypeId ?? null,
+          input.phases ?? [],
+        );
+
+  // An event's budget is made with it, when Budget is on.
+  await ensureNewEventBudget(actor, created.id);
+  return created;
 }
 
 // Resolves a phase's start/end immediately against the Cycle's own

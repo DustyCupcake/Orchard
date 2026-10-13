@@ -10,7 +10,7 @@ import { listPolls } from "../scheduling-polls";
 import { listPublishedSchedule } from "../event-scheduling";
 import { isModuleEnabled } from "../modules";
 import { getCommunity } from "../settings";
-import { getCurrentBudgetCycle } from "../budget";
+import { listActiveBudgetCycles } from "../budget";
 import { listMySignupsWithOccurrence } from "../shifts";
 
 type Member = typeof memberTable.$inferSelect;
@@ -217,17 +217,20 @@ export async function getCalendarView(actor: Member) {
     }
   }
 
-  // The current BudgetCycle's own proposal deadline, while it's still
-  // meaningful (proposals_open) — visible to every member the same way
-  // /budget itself already is, not a new restriction.
+  // Each budget's own proposal deadline, while it's still meaningful
+  // (proposals_open) — one per running event, plus the community's own,
+  // each linking to its own page. A budget with no deadline adds nothing:
+  // its proposals stay open until the owner closes them. Visible to every
+  // member the same way the Budget page itself already is, not a new
+  // restriction.
   if (isModuleEnabled(communityRow, "budget")) {
-    const budgetCycle = await getCurrentBudgetCycle(actor);
-    if (budgetCycle && budgetCycle.status === "proposals_open") {
+    for (const budgetCycle of await listActiveBudgetCycles(actor)) {
+      if (budgetCycle.status !== "proposals_open" || !budgetCycle.proposalDeadline) continue;
       entries.push({
         date: dayInZone(budgetCycle.proposalDeadline, timeZone),
         kind: "budget_deadline",
         label: `${budgetCycle.title} — proposal deadline`,
-        href: "/budget",
+        href: budgetCycle.cycleId ? `/${budgetCycle.cycleId}/budget` : "/budget/fund",
       });
     }
   }

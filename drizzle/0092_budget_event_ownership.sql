@@ -1,0 +1,2 @@
+ALTER TABLE "budget_cycle" ALTER COLUMN "proposal_deadline" DROP NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "budget_cycle_one_unfinished_per_event" ON "budget_cycle" USING btree ("cycle_id") WHERE "budget_cycle"."cycle_id" is not null and "budget_cycle"."status" <> 'confirmed';

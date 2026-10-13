@@ -8,7 +8,6 @@ import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import { declareParticipation, declareParticipationInput } from "@/lib/participation";
-import { startBudgetCycleForNewCycle } from "@/lib/budget";
 import {
   addPhase,
   closeCycle,
@@ -96,7 +95,6 @@ export async function createCycleAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const cycleTypeId = String(formData.get("cycleTypeId") ?? "").trim() || null;
   const confirmed = formData.get("confirmed") === "on";
-  const startBudget = formData.get("startBudget") === "on";
 
   let created;
   try {
@@ -116,21 +114,8 @@ export async function createCycleAction(formData: FormData) {
     redirectWithError(cycleScope, err);
   }
 
-  // Best-effort and opt-in only (the checkbox above) — a Budget hiccup
-  // here never means the Cycle itself failed to start; see
-  // src/lib/budget/cycles.ts's startBudgetCycleForNewCycle.
-  let budgetStarted = false;
-  if (startBudget) {
-    try {
-      budgetStarted = Boolean(await startBudgetCycleForNewCycle(actor, created));
-    } catch {
-      budgetStarted = false;
-    }
-  }
-
   revalidatePath(`/${cycleScope}/participation`);
-  const budgetFlag = startBudget && !budgetStarted ? "&budgetNotStarted=1" : "";
-  redirect(`/${created.id}/participation?cycleCreated=1${budgetFlag}`);
+  redirect(`/${created.id}/participation?cycleCreated=1`);
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside updateCycleSettings.

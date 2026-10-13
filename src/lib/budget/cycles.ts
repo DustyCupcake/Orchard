@@ -1,10 +1,10 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { branch, budgetCycle, community, cycle } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, NotFoundError } from "../errors";
-import { requireModuleEnabled } from "../modules";
+import { isModuleEnabled, requireModuleEnabled } from "../modules";
 import { getCycleParticipationSummary } from "../participation";
 
 type Member = typeof memberTable.$inferSelect;
@@ -104,14 +104,6 @@ export async function getBudgetCycleAttendeeCount(
   return summary.comingCount;
 }
 
-export const createBudgetCycleInput = z.object({
-  title: z.string().min(1),
-  cycleId: z.string().uuid().nullable().optional(),
-  fixedCosts: z.array(lineItemInput).optional(),
-  proposalDeadline: z.string().datetime(),
-});
-export type CreateBudgetCycleInput = z.infer<typeof createBudgetCycleInput>;
-
 async function getCommunityRow(communityId: string) {
   const [row] = await db.select().from(community).where(eq(community.id, communityId));
   if (!row) {
@@ -120,52 +112,11 @@ async function getCommunityRow(communityId: string) {
   return row;
 }
 
-// "One active cycle at a time for v1" — see docs/plans/development-plan.md's
-// Phase 26 out-of-scope note. A prior cycle sitting at `confirmed`
-// (Phase 27) doesn't block starting a fresh one; anything still
-// `proposals_open`/`voting` does.
-export async function createBudgetCycle(actor: Member, input: CreateBudgetCycleInput) {
-  const communityRow = await getCommunityRow(actor.communityId);
-  requireModuleEnabled(communityRow, "budget");
-
-  if (input.cycleId) {
-    const [cycleRow] = await db
-      .select({ id: cycle.id })
-      .from(cycle)
-      .where(and(eq(cycle.id, input.cycleId), eq(cycle.communityId, actor.communityId)));
-    if (!cycleRow) {
-      throw new NotFoundError("Event not found in your community");
-    }
-  }
-
-  if (input.fixedCosts) {
-    await requireValidLineItems(actor.communityId, input.fixedCosts);
-  }
-
-  const existing = await getCurrentBudgetCycle(actor);
-  if (existing && existing.status !== "confirmed") {
-    throw new ConflictError("This Community already has an active budget period");
-  }
-
-  const [created] = await db
-    .insert(budgetCycle)
-    .values({
-      communityId: actor.communityId,
-      cycleId: input.cycleId ?? null,
-      title: input.title,
-      fixedCosts: input.fixedCosts ?? [],
-      proposalDeadline: new Date(input.proposalDeadline),
-      createdBy: actor.id,
-    })
-    .returning();
-  return created;
-}
-
-// The most recently created cycle for the actor's Community — the only
-// one that matters day to day, since v1 keeps at most one non-
-// `confirmed` cycle at a time (see createBudgetCycle above). A past
-// `confirmed` cycle still surfaces here until a new one is started, so
-// /budget can show its final funded set rather than going blank.
+// The most recently created budget in the actor's Community, whatever its
+// scope. Only the API's bare GET still asks "the" current one; every page
+// and feed reads a specific scope (getBudgetCycleForScope) or all the
+// unfinished ones (listActiveBudgetCycles), because concurrent events each
+// have a budget of their own.
 export async function getCurrentBudgetCycle(actor: Member) {
   const [row] = await db
     .select()
@@ -218,36 +169,85 @@ export async function getBudgetCycleForCycle(actor: Member, cycleId: string) {
   return getBudgetCycleForScope(actor, cycleId);
 }
 
-// Opt-in convenience for "start a Cycle and also start its Budget" —
-// never automatic on its own (a brand-new Cycle otherwise starts with
-// no Budget process until someone actually sets one up, same as Event
-// scheduling/Spatial planning — docs/spec.md's "Concurrent cycles &
-// view scope"). Only called when the admin explicitly checked the box
-// on the create-Cycle form — see .../participation/actions.ts's
-// createCycleAction.
-//
-// Carries the previous BudgetCycle's fixed costs forward as a starting
-// point — a recipe, not an inheritance of authority. Budget ownership
-// is configured independently for the new Cycle's scope under Settings →
-// Access & permissions; this convenience never reuses the previous
-// Cycle's owner task. proposalDeadline has no repeatable recipe to carry
-// forward (a point in time, not a shape) — two weeks out is a visible
-// placeholder the owner is expected to revise with updateBudgetCycle
-// before relying on it.
-//
-// Returns null (not an error) rather than creating anything when
-// there's no previous BudgetCycle to carry fixed costs forward from yet,
-// or the community's last one is still active — the "one active cycle at
-// a time" invariant createBudgetCycle itself enforces. Either
-// way the admin can still start one by hand from /budget.
-export async function startBudgetCycleForNewCycle(actor: Member, newCycle: { id: string; name: string }) {
-  const previous = await getCurrentBudgetCycle(actor);
-  if (!previous || previous.status !== "confirmed") return null;
+// Every unfinished budget in the Community — one per running event, and the
+// community's own if it has one. What the calendar, the nav and the
+// dashboard read now that "the current budget" is no longer a single row.
+export async function listActiveBudgetCycles(actor: Member) {
+  return db
+    .select()
+    .from(budgetCycle)
+    .where(and(eq(budgetCycle.communityId, actor.communityId), ne(budgetCycle.status, "confirmed")))
+    .orderBy(desc(budgetCycle.createdAt));
+}
 
-  return createBudgetCycle(actor, {
-    title: `${newCycle.name} Budget`,
-    cycleId: newCycle.id,
-    fixedCosts: previous.fixedCosts as BudgetLineItem[],
-    proposalDeadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-  });
+// An event's budget, made with the event (docs/plans/archive/budget-funds-plan.md D1).
+// Idempotent: it returns the event's budget if it has one, creates it if the
+// event is open and the module is on, and otherwise returns null — a closed
+// event with no budget is not backfilled, and a community with Budget off has
+// none to make. Safe to call from every place that might be first (the
+// moment an event is created, and the Budget page of an event that predates
+// this), including concurrently: the unfinished-per-event unique index lets
+// exactly one insert win and the others read what it wrote.
+//
+// Titled after the event. Fixed costs are carried forward from the most
+// recent *other event's* budget as a starting point — a recipe, not an
+// inheritance of authority: Budget ownership is configured independently for
+// the new event's scope under Settings → Access & permissions. There is no
+// deadline, because there is no honest date to invent (D2); the owner can set
+// one if the event wants it.
+export async function ensureEventBudget(actor: Member, cycleId: string) {
+  const communityRow = await getCommunityRow(actor.communityId);
+  if (!isModuleEnabled(communityRow, "budget")) return null;
+
+  const existing = await getBudgetCycleForScope(actor, cycleId);
+  if (existing) return existing;
+
+  const [eventRow] = await db
+    .select()
+    .from(cycle)
+    .where(and(eq(cycle.id, cycleId), eq(cycle.communityId, actor.communityId)));
+  if (!eventRow) {
+    throw new NotFoundError("Event not found in your community");
+  }
+  if (eventRow.closedAt) return null;
+
+  const [previous] = await db
+    .select({ fixedCosts: budgetCycle.fixedCosts })
+    .from(budgetCycle)
+    .where(
+      and(
+        eq(budgetCycle.communityId, actor.communityId),
+        isNotNull(budgetCycle.cycleId),
+        ne(budgetCycle.cycleId, cycleId),
+      ),
+    )
+    .orderBy(desc(budgetCycle.createdAt))
+    .limit(1);
+
+  const [created] = await db
+    .insert(budgetCycle)
+    .values({
+      communityId: actor.communityId,
+      cycleId,
+      title: `${eventRow.name} Budget`,
+      fixedCosts: previous?.fixedCosts ?? [],
+      proposalDeadline: null,
+      createdBy: eventRow.startedBy ?? actor.id,
+    })
+    .onConflictDoNothing()
+    .returning();
+  return created ?? (await getBudgetCycleForScope(actor, cycleId));
+}
+
+// What every place that creates an event calls straight after: the event's
+// budget is made with it (D1). A failure here must never mean the event
+// itself failed to start, so it is swallowed — the event's Budget page makes
+// the budget on first visit (ensureEventBudget is idempotent), which is why
+// nothing is lost by letting this one be best-effort.
+export async function ensureNewEventBudget(actor: Member, cycleId: string) {
+  try {
+    await ensureEventBudget(actor, cycleId);
+  } catch {
+    // Made lazily instead; see above.
+  }
 }

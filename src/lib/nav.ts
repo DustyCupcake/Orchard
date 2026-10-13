@@ -14,8 +14,8 @@ import { isCoordinationHolder } from "./coordination";
 import { isRecruitmentTaskHolder } from "./recruitment";
 import { isEventSchedulingOwner } from "./event-scheduling/conflicts";
 import { isSpatialPlanningHolder } from "./spatial-planning";
-import { getCurrentBudgetCycle } from "./budget/cycles";
-import { isBudgetOwner } from "./budget/voting";
+import { listActiveBudgetCycles } from "./budget/cycles";
+import { isBudgetOwner } from "./budget/owner";
 import { listShiftSeries, isShiftCoordinator } from "./shifts/series";
 import { isKitchenOwner } from "./kitchen";
 import { getPersonalFeed } from "./dashboard";
@@ -91,10 +91,16 @@ async function isAnyShiftCoordinator(actor: Member) {
   return false;
 }
 
+// Owner of any budget in play: an unfinished event's, or the community's own
+// (which has no row of its own now that it is just proposals, so it is asked
+// about directly). Not just whichever was created last: concurrent events each
+// have one.
 async function isAnyBudgetOwner(actor: Member) {
-  const cycle = await getCurrentBudgetCycle(actor);
-  if (!cycle) return false;
-  return isBudgetOwner(actor, cycle);
+  if (await isBudgetOwner(actor, { cycleId: null })) return true;
+  for (const budget of await listActiveBudgetCycles(actor)) {
+    if (await isBudgetOwner(actor, budget)) return true;
+  }
+  return false;
 }
 
 export type NavContext = {

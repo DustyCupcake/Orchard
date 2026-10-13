@@ -145,7 +145,7 @@ That's the right level of trust for the ordinary, day-to-day settings — the on
 Orchard also handles the things you'd expect a camp platform to handle, just built on the same underlying ideas:
 
 - **Calendar** — everything with a date in one place: phase and milestone dates for the season you're in, branch calls, workshops, input-round and assembly deadlines, birthdays for anyone who's chosen to share theirs — each its own layer you can show or hide. Events you create are just yours until you choose to share them; share with a branch or the whole camp and it goes out as an invitation each person accepts or declines for themselves, not something anyone else decides on your behalf.
-- **Budget** — proposals, ranked voting on priorities, real visibility into where money's going.
+- **Budget** — proposals the community backs, an approved plan with the share each person is looking at, real visibility into where money's going.
 - **Events & workshops** — proposing, scheduling, avoiding conflicts, publishing.
 - **Spatial planning** — laying out camp, sleeping arrangements, drag-and-drop with real dimensions, not just a text list. Move your own tent and it's provisional until whoever's running the layout signs off — never blocked, but never silently final either.
 - **Shifts** — the recurring stuff that's never really "done," kept separate from one-off tasks.

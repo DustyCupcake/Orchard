@@ -109,6 +109,9 @@ export const updateCommunityInput = z.object({
   // see src/db/schema/community.ts's own comments and
   // src/lib/engagement.ts.
   engagementSoftFlagThreshold: z.number().int().positive().optional(),
+  // How much money each backer of a budget proposal stands behind; null or 0
+  // asks for no backing at all. See src/db/schema/community.ts.
+  fundSupportPerBacker: z.number().int().nonnegative().nullable().optional(),
   engagementPatternThreshold: z.number().int().positive().optional(),
   callSummaryReadWindowDays: z.number().int().positive().optional(),
   // Community branding — see design_handoff_conventions/README.md. Null
@@ -251,6 +254,9 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         ...(input.onsiteModeEnabled !== undefined && { onsiteModeEnabled: input.onsiteModeEnabled }),
         ...(input.taskNominationResponseDays !== undefined && {
           taskNominationResponseDays: input.taskNominationResponseDays,
+        }),
+        ...(input.fundSupportPerBacker !== undefined && {
+          fundSupportPerBacker: input.fundSupportPerBacker === 0 ? null : input.fundSupportPerBacker,
         }),
         ...(input.engagementSoftFlagThreshold !== undefined && {
           engagementSoftFlagThreshold: input.engagementSoftFlagThreshold,
