@@ -61,7 +61,7 @@ Run a subset by naming files: `./scripts/test.sh tests/coordination.test.ts`. Th
 ./scripts/check.sh tests/cycles.test.ts   # …plus a test subset
 ```
 
-CI gates a pull request on two independent things — the `checks` Docker stage (`npm run lint`, then `npx tsc --noEmit`) and the test suite — and until `scripts/check.sh` existed there was no single local command reproducing both. This section used to document only the tests, which meant the only way to find out a change didn't lint was to push and let CI say so.
+CI gates a pull request on two independent things — the `checks` Docker stage (`npm run lint`, then `npx tsc --noEmit`) and the test suite — and until `scripts/check.sh` existed there was no single local command reproducing both. This section used to document only the tests, which meant the only way to find out a change didn't lint was to push and let CI say so. CI runs them side by side, with the suite split across six parallel shards, and a push to `main` skips the suite when it is the very tree a pull request's run already passed (a squash merge of an up-to-date branch), so a PR's green run is not paid for twice; anything else, including a tag, runs it in full.
 
 **Don't run `npm run lint` directly.** It resolves ESLint from *your host's* `node_modules`, so a host whose tree predates a dependency bump runs whatever that tree has. When Next 15 → 16 landed, that meant `eslint-config-next` 15.5.27 against a config written for 16, and the failure was `Cannot find module '.../eslint-config-next/core-web-vitals'` — which reads as a broken `eslint.config.mjs` and invites editing a correct file. It isn't one.
 

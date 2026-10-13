@@ -21,7 +21,20 @@ name: Build and publish image
 #                        Pushing the tag does not also move :latest (that is
 #                        the branch's job, and the tag is normally the same
 #                        commit).
-# Either way the test suite has to pass first.
+# Either way the test suite has to pass before anything is published.
+#
+# Shape, and why (this used to be one serial chain: ~9 minutes of tests on one
+# runner, then the build, and then the same again when the PR merged):
+#   - the suite is split across parallel shards, each with its own Postgres, so
+#     it takes as long as its slowest shard instead of the sum of all of them;
+#   - lint, type-check and the image build run at the same time as the tests
+#     rather than after them, and only *publishing* waits for the tests;
+#   - a push to main skips the tests when the commit has the very same tree a
+#     pull request's run already passed (the normal case: a squash merge of a
+#     branch that was up to date). The tree is the content, so identical means
+#     there is nothing new to test; if main moved in between, or the merge was
+#     anything but a plain squash, the tree differs and the suite runs in full.
+#     Tags and manual runs always run it.
 #
 # A pull request runs everything except publishing: the test suite, lint and
 # type-check, and a full build of the image. It never logs in to Docker Hub and
@@ -59,19 +72,71 @@ env:
   IMAGE: docker.io/dustycupcake/orchard
 
 jobs:
-  # The integration suite, gating the image push below. It runs through
-  # the same scripts/test.sh as `npm test` locally, so CI and a developer
-  # machine start the same Postgres (same shared_buffers/max_connections
-  # as production) and run the same batching. ORCHARD_TEST_HOST=1 runs
-  # vitest on the runner's Node rather than inside a second container:
-  # the runner is already a clean Linux box, and setup-node pins the
-  # version to the one the Dockerfile ships (node:22), which is what the
-  # container indirection exists to guarantee locally. The script still
-  # starts its own Postgres with `docker run`, which ubuntu-latest has.
-  test:
+  # Whether this push to main is byte-for-byte what a pull request's tests
+  # already passed. The test jobs below record the tree they passed as a commit
+  # status on the PR's head; this looks for one matching the tree of the commit
+  # that landed. Any doubt (no PR, no status, an API error) means "no", and the
+  # suite runs.
+  verified:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
+      statuses: read
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          skip=false
+          tree=$(gh api "repos/$REPO/commits/$SHA" --jq .commit.tree.sha) || tree=
+          if [ -n "$tree" ]; then
+            for head in $(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[].head.sha' || true); do
+              if gh api "repos/$REPO/commits/$head/statuses" \
+                --jq "[.[] | select(.context == \"tests-passed-for-tree\" and .state == \"success\" and .description == \"$tree\")] | length" \
+                | grep -qv '^0$'; then
+                skip=true
+                echo "Tests already passed for tree $tree on the pull request's head $head."
+                break
+              fi
+            done
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
+  # The integration suite, gating the image push below. Each shard runs
+  # through the same scripts/test.sh as `npm test` locally, so CI and a
+  # developer machine start the same Postgres (same shared_buffers/
+  # max_connections as production) and run the same batching.
+  # ORCHARD_TEST_HOST=1 runs vitest on the runner's Node rather than inside a
+  # second container: the runner is already a clean Linux box, and setup-node
+  # pins the version to the one the Dockerfile ships (node:22), which is what
+  # the container indirection exists to guarantee locally. The script still
+  # starts its own Postgres with `docker run`, which ubuntu-latest has — one
+  # per shard, since the suite truncates between files and shards must not
+  # share a database.
+  #
+  # Files are dealt out round-robin from the sorted list, so a shard is
+  # reproducible from the file list alone. A new test file lands in some shard
+  # without anyone editing this workflow.
+  test:
+    needs: verified
+    # `always()` so that a skipped `verified` (every PR, tag and manual run)
+    # does not skip this too; the condition is what actually decides.
+    if: ${{ !cancelled() && needs.verified.outputs.skip != 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    env:
+      SHARDS: 6
     steps:
       - uses: actions/checkout@v4
 
@@ -82,11 +147,41 @@ jobs:
 
       - run: npm ci --no-audit --no-fund
 
-      - name: Test suite
-        run: ORCHARD_TEST_HOST=1 npm test
+      - name: Test suite (shard ${{ matrix.shard }} of ${{ env.SHARDS }})
+        run: |
+          mapfile -t files < <(printf '%s\n' tests/*.test.ts | sort | awk -v n="$SHARDS" -v k="${{ matrix.shard }}" '(NR - 1) % n == k - 1')
+          printf '%s\n' "${files[@]}"
+          ORCHARD_TEST_HOST=1 bash scripts/test.sh "${files[@]}"
 
-  build:
+  # Every shard has passed. Say so on the PR's head commit, keyed by the tree
+  # that was tested (the run checks out the PR merged into main, so this is the
+  # tree a squash merge would produce). `verified` looks for exactly this. It
+  # is a courtesy and never a gate: a fork's or Dependabot's token cannot write
+  # statuses, and then the merge simply runs the suite again.
+  record:
     needs: test
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record the tested tree on the pull request
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          gh api "repos/$REPO/statuses/$HEAD_SHA" \
+            -f state=success -f context=tests-passed-for-tree -f description="$tree"
+
+  # Lint, type-check and a full build of the image, in parallel with the tests.
+  # On main this also writes the layer cache that `publish` then reads, so
+  # publishing is a cache hit rather than a second build.
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -108,10 +203,39 @@ jobs:
           cache-from: type=gha
           cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
 
+      # Builds the whole image and discards it: the point is that it still
+      # builds. The cache is read but only written on main (a PR, especially
+      # from a fork, shouldn't be able to seed it).
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          outputs: type=cacheonly
+          cache-from: type=gha
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
+
+  # Publishing: main, tags and manual runs only, and only once the tests have
+  # passed (or were already shown to pass for this exact tree) and the image
+  # builds. A pull request stops before this and never sees a secret.
+  publish:
+    needs: [verified, test, build]
+    if: >-
+      ${{ !cancelled() && github.event_name != 'pull_request'
+      && needs.build.result == 'success'
+      && (needs.test.result == 'success'
+          || (needs.test.result == 'skipped' && needs.verified.outputs.skip == 'true')) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v4
+
       # Username isn't sensitive (it's already public in the image tag
       # above) — only the access token needs to be a secret.
       - uses: docker/login-action@v4
-        if: github.event_name != 'pull_request'
         with:
           username: dustycupcake
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -140,15 +264,14 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      # On a pull request this is the build check and nothing more: `push` is
-      # false, so nothing leaves the runner. The cache is read but not written
-      # (a PR, especially from a fork, shouldn't be able to seed it).
+      # Every layer is a cache hit from `build` above, so this is mostly the
+      # push.
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
+          cache-to: type=gha,mode=max
