@@ -1,0 +1,2 @@
+ALTER TABLE "sensitive_field_access_rule" ADD COLUMN "unlocked_by_accompaniment" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "accompaniment" ADD COLUMN "shares_answers" boolean DEFAULT false NOT NULL;

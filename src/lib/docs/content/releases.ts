@@ -30,6 +30,17 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-13",
+    title: "You choose what your accompanier can see about you",
+    summary: "A new member decides whether their accompanier can see more than the basics, and it's only ever for that one person.",
+    points: [
+      "Your accompanier always sees how you're getting on with what you've taken on. Anything more is yours to choose, on the Your accompanier card on your dashboard: your working style, your contribution overview, and any answers you've said you're happy to share with them.",
+      "It's for the person accompanying you now. If someone else takes over, or you ask for someone else, nothing carries over and you're asked again.",
+      "Administrators can ask a profile question that only your accompanier can read, such as how you like to be supported. You'd still be asked before anything is shared.",
+    ],
+    source: "what a new member lets their accompanier see is theirs to choose, to one person at a time, and a question can name the accompanier as its audience",
+  },
+  {
+    date: "2026-10-13",
     title: "Reminders to check in with someone you accompany",
     summary: "When you accompany a new member, your dashboard reminds you when it's a good time to check in.",
     points: [

@@ -1,8 +1,8 @@
 import type { member as memberTable } from "@/db/schema";
-import { getMyAccompaniment } from "@/lib/accompaniment";
+import { communityHasAccompanierQuestions, getMyAccompaniment } from "@/lib/accompaniment";
 import { getViewerClock } from "@/lib/view-clock";
-import { BUTTON_SECONDARY } from "@/components/ui/kit";
-import { askForSomeoneElseAction } from "./actions";
+import { BUTTON_SECONDARY, CheckField } from "@/components/ui/kit";
+import { askForSomeoneElseAction, setMySharesAction } from "./actions";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -13,6 +13,7 @@ export default async function AccompanimentCard({ viewing }: { viewing: Member }
   const mine = await getMyAccompaniment(viewing.id);
   if (!mine) return null;
   const clock = await getViewerClock();
+  const hasAnswersToShare = await communityHasAccompanierQuestions(viewing.communityId);
 
   if (mine.endedAt) {
     if (!mine.endedRecently) return null;
@@ -34,13 +35,50 @@ export default async function AccompanimentCard({ viewing }: { viewing: Member }
         <>
           <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
             <strong>{mine.accompanier.name}</strong> is accompanying you: someone you can ask questions of and check
-            in with while you find your feet. They can see whether you are keeping up with what you have taken on,
-            and nothing else about you.
+            in with while you find your feet. They can see whether you are keeping up with what you have taken on.
+            Anything more is up to you.
           </p>
           <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
             Until {clock.date(mine.endsOn)}. If it isn&rsquo;t a good fit, you can ask for someone else, and nobody will
             mind.
           </p>
+          <form action={setMySharesAction} className="mt-4 flex max-w-[520px] flex-col gap-2">
+            <h3 className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
+              What {mine.accompanier.name} can see about you
+            </h3>
+            <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+              Always: your name, when you joined, the tasks you hold and whether you&rsquo;re keeping up with them.
+              Anything more is up to you, and only for {mine.accompanier.name}: if someone else takes over, you&rsquo;ll be
+              asked again.
+            </p>
+            {mine.sharesWereForSomeoneElse && (
+              <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                You&rsquo;d chosen what to share with someone else. That doesn&rsquo;t carry over.
+              </p>
+            )}
+            <CheckField
+              name="axes"
+              label="My working style: where I put myself on the scales in my profile"
+              defaultChecked={mine.shares.axes}
+            />
+            <CheckField
+              name="contribution"
+              label="My contribution overview: what I've done and what I have in hand"
+              defaultChecked={mine.shares.contribution}
+            />
+            {hasAnswersToShare && (
+              <CheckField
+                name="answers"
+                label="Answers I've said I'm happy to share with my accompanier"
+                defaultChecked={mine.shares.answers}
+              />
+            )}
+            <div>
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Save
+              </button>
+            </div>
+          </form>
           <form action={askForSomeoneElseAction} className="mt-3">
             <button type="submit" className={BUTTON_SECONDARY}>
               Ask for someone else

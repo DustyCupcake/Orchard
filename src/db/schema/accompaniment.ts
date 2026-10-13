@@ -1,4 +1,4 @@
-import { index, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { admission } from "./admission";
 import { community } from "./community";
@@ -39,6 +39,20 @@ export const accompaniment = pgTable(
     // The member said they would like someone else. The task went back to unclaimed and
     // the accompaniment stayed open; this is only so the next person to look can see why.
     askedForSomeoneElseAt: timestamp("asked_for_someone_else_at", { withTimezone: true }),
+    // What the new member has chosen to let their accompanier see beyond the basics
+    // (docs/plans/accompaniment-plan.md §4.2). Off until they say. Consent is to a person, not to a
+    // role (§4.3), so these only count while the accompanier is the one they were set for
+    // (`shared_with_member_id`); when the task changes hands they read as off again, nothing is
+    // rewritten, and the member is asked afresh. A derived reset can't be missed by a code path that
+    // forgot to do it.
+    sharesAxes: boolean("shares_axes").notNull().default(false),
+    sharesContribution: boolean("shares_contribution").notNull().default(false),
+    // The third thing: profile answers the member has agreed to share with "my accompanier" (an
+    // audience route on a question, see sensitive_field_access_rule). The switch is the person's
+    // choice about this accompanier; the per-answer consent is about the answer. Both have to be yes.
+    sharesAnswers: boolean("shares_answers").notNull().default(false),
+    sharedWithMemberId: uuid("shared_with_member_id").references(() => member.id),
+    sharedAt: timestamp("shared_at", { withTimezone: true }),
     // Whoever the member was last told is accompanying them, so a change of holder is
     // announced once and a quiet re-claim isn't announced twice. Compared with the
     // task's current holder by the job; never read as "who accompanies".

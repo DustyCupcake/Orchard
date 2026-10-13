@@ -442,6 +442,9 @@ function AudiencePickers({
           </option>
         ))}
       </select>
+      <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
+        <input type="checkbox" name="unlockedByAccompaniment" /> or the accompanier of the member who answered
+      </label>
       <select name="unlockedByTaskId" defaultValue="" className={INPUT}>
         <option value="">— or anyone holding one task —</option>
         {communityTasks.map((t) => (
@@ -664,6 +667,9 @@ function ruleRoute(r: Rule, maps: NameMaps): string {
   if (r.unlockedByGrantModuleKey) {
     return `anyone holding a ${PERMISSION_MODULE_LABELS[r.unlockedByGrantModuleKey]} grant`;
   }
+  if (r.unlockedByAccompaniment) {
+    return "the accompanier of whoever answered, for an answer they chose to share with them";
+  }
   return "nobody — this rule has no unlock route";
 }
 
@@ -874,8 +880,11 @@ async function QuestionCard({
                     ...PERMISSION_MODULE_KEYS.map((k) => ({ value: k, label: PERMISSION_MODULE_LABELS[k] })),
                   ]}
                 />
+                <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
+                  <input type="checkbox" name="unlockedByAccompaniment" /> Or the accompanier of whoever answered
+                </label>
                 <TextField
-                  label="Or via a task (pick exactly one of the three)"
+                  label="Or via a task (pick exactly one of the four)"
                   name="unlockedByTaskId"
                   placeholder="paste the task's ID from its /tasks/… URL"
                   hint={`Tasks this community has: ${communityTasks.length}`}

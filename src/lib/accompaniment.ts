@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "@/db";
-import { accompaniment, admission, admissionSupport, community, cycle, evaluation, member, recruitmentDecision, task, taskAssignment, taskMilestone } from "@/db/schema";
+import { accompaniment, admission, admissionSupport, community, cycle, evaluation, member, profileAnswer, profileQuestion, recruitmentDecision, sensitiveFieldAccessRule, task, taskAssignment, taskMilestone } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, NotFoundError } from "./errors";
 import { createRequirement, createTask } from "./tasks";
@@ -14,6 +15,11 @@ import { sendAccompanierNamedEmail } from "./mailer";
 import { publicAppUrl } from "./public-url";
 import { effectiveTimeZone, localDateInZone } from "./dates";
 import { planCheckIns } from "./accompaniment-check-ins";
+import { effectiveShares, getOpenAccompanimentOf, type Shares } from "./accompaniment-access";
+import { AXIS_SCALE_MAX, AXIS_SCALE_MIN, listMemberAxisValues, listTraitAxes } from "./trait-axes";
+import { getContributionBreakdown } from "./contribution";
+import { resolveReadableQuestions } from "./sensitive-data";
+import { formatFieldValue } from "./field-shape";
 
 type Member = typeof memberTable.$inferSelect;
 type Arrival = typeof admission.$inferSelect;
@@ -266,6 +272,10 @@ export type MyAccompaniment = {
   endedRecently: boolean;
   /** Whoever holds the task right now; null until someone does. */
   accompanier: { id: string; name: string } | null;
+  /** What this person lets their current accompanier see beyond the basics. All off for a new one. */
+  shares: Shares;
+  /** They had made choices, but for someone who is no longer the accompanier: nothing carries over. */
+  sharesWereForSomeoneElse: boolean;
 };
 
 async function currentHolder(taskId: string) {
@@ -294,6 +304,7 @@ export async function getMyAccompaniment(memberId: string): Promise<MyAccompanim
     .limit(1);
   if (!row) return null;
   const endedAt = row.a.endedAt ?? (row.taskStatus === "done" ? row.taskChangedAt : null);
+  const accompanier = endedAt ? null : await currentHolder(row.a.taskId);
   return {
     id: row.a.id,
     taskId: row.a.taskId,
@@ -302,8 +313,140 @@ export async function getMyAccompaniment(memberId: string): Promise<MyAccompanim
     endedAt,
     askedForSomeoneElseAt: row.a.askedForSomeoneElseAt,
     endedRecently: endedAt !== null && Date.now() - endedAt.getTime() <= THANKS_DAYS * DAY_MS,
-    accompanier: endedAt ? null : await currentHolder(row.a.taskId),
+    accompanier,
+    shares: effectiveShares(row.a, accompanier?.id ?? null, endedAt !== null),
+    sharesWereForSomeoneElse: Boolean(accompanier && row.a.sharedWithMemberId && row.a.sharedWithMemberId !== accompanier.id),
   };
+}
+
+export const setSharesInput = z.object({ axes: z.boolean(), contribution: z.boolean(), answers: z.boolean().optional() });
+export type SetSharesInput = z.infer<typeof setSharesInput>;
+
+/**
+ * The new member chooses what their accompanier may see beyond the basics. Made for the person
+ * who is accompanying them *now*: it is a choice about a person, so when the task changes hands the
+ * next one starts from nothing and the member is asked again. There has to be someone to choose it
+ * for, which is why the switches only appear once somebody has taken the task on.
+ */
+export async function setMyShares(actor: Member, rawInput: SetSharesInput) {
+  const input = setSharesInput.parse(rawInput);
+  const mine = await getMyAccompaniment(actor.id);
+  if (!mine || mine.endedAt) throw new NotFoundError("Nobody is accompanying you right now");
+  if (!mine.accompanier) throw new ConflictError("You can choose what to share once somebody is accompanying you");
+  await db
+    .update(accompaniment)
+    .set({
+      sharesAxes: input.axes,
+      sharesContribution: input.contribution,
+      sharesAnswers: input.answers ?? false,
+      sharedWithMemberId: mine.accompanier.id,
+      sharedAt: new Date(),
+    })
+    .where(eq(accompaniment.id, mine.id));
+}
+
+export type AccompaniedView = {
+  memberId: string;
+  name: string;
+  joinedAt: Date;
+  shares: Shares;
+  /** Null: not shared with you. */
+  axes: { axis: string; position: string }[] | null;
+  /** Null: not shared with you. A line per category, what they have done and what is in hand. */
+  contribution: { category: string; done: number; inHand: number; ahead: number; shifts: number }[] | null;
+  /** Null: not shared with you. The answers they agreed to share with whoever accompanies them. */
+  answers: { question: string; value: string }[] | null;
+};
+
+/**
+ * Whether this community has any question an accompanier could ever read: one with the accompanier
+ * as an audience. The member's third switch only appears when it does, so nobody is offered a
+ * choice that would share nothing.
+ */
+export async function communityHasAccompanierQuestions(communityId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: sensitiveFieldAccessRule.id })
+    .from(sensitiveFieldAccessRule)
+    .innerJoin(profileQuestion, eq(sensitiveFieldAccessRule.questionId, profileQuestion.id))
+    .where(and(eq(sensitiveFieldAccessRule.communityId, communityId), eq(sensitiveFieldAccessRule.unlockedByAccompaniment, true), isNull(profileQuestion.archivedAt)))
+    .limit(1);
+  return Boolean(row);
+}
+
+// "leans toward X" in words, for a scale with no labels of its own.
+function axisPosition(lowLabel: string, highLabel: string, optionLabels: string[], value: number): string {
+  const named = optionLabels.length === AXIS_SCALE_MAX - AXIS_SCALE_MIN + 1 ? optionLabels[value - AXIS_SCALE_MIN] : undefined;
+  if (named) return named;
+  if (value === 0) return "somewhere in the middle";
+  const toward = value < 0 ? lowLabel : highLabel;
+  return Math.abs(value) >= 2 ? `strongly toward ${toward}` : `leaning toward ${toward}`;
+}
+
+/**
+ * What the person accompanied has chosen to let *this* accompanier see, and the things themselves.
+ * Null for anyone who isn't the accompanier of an open accompaniment on this task: a shadow, the
+ * recruitment team, an administrator. The basics (their name, when they joined, and the
+ * engagement summary the task page already shows) are not behind a switch, and the member is
+ * told they are on their dashboard card; everything here is.
+ */
+export async function getAccompaniedView(actor: Member, taskId: string): Promise<AccompaniedView | null> {
+  const [link] = await db.select({ memberId: accompaniment.memberId }).from(accompaniment).where(eq(accompaniment.taskId, taskId));
+  if (!link) return null;
+  const open = await getOpenAccompanimentOf(link.memberId);
+  if (!open || open.holderId !== actor.id) return null;
+
+  const [person] = await db.select({ name: member.name, joinedAt: member.joinedAt }).from(member).where(eq(member.id, link.memberId));
+  if (!person) return null;
+  const shares = effectiveShares(open.accompaniment, open.holderId, false);
+
+  let axes: AccompaniedView["axes"] = null;
+  if (shares.axes) {
+    const [defs, values] = await Promise.all([listTraitAxes(actor), listMemberAxisValues(link.memberId)]);
+    axes = defs
+      .filter((d) => values.has(d.id))
+      .map((d) => ({ axis: `${d.lowLabel} to ${d.highLabel}`, position: axisPosition(d.lowLabel, d.highLabel, d.optionLabels, values.get(d.id)!) }));
+  }
+
+  let contribution: AccompaniedView["contribution"] = null;
+  if (shares.contribution) {
+    const categories = await getContributionBreakdown(link.memberId, actor.communityId);
+    contribution = categories.map((c) => ({
+      category: c.name,
+      done: c.completed.count,
+      inHand: c.active.count,
+      ahead: c.future.count,
+      shifts: c.shiftCompletions.count,
+    }));
+  }
+  // The answers go through the one resolver, with the viewer and the owner, so what is shown here can
+  // never be wider than what the member grid or any other reader would show the same person.
+  let answers: AccompaniedView["answers"] = null;
+  if (shares.answers) {
+    const rows = await db
+      .select({ question: profileQuestion, answer: profileAnswer })
+      .from(profileAnswer)
+      .innerJoin(profileQuestion, eq(profileAnswer.questionId, profileQuestion.id))
+      .innerJoin(sensitiveFieldAccessRule, eq(sensitiveFieldAccessRule.questionId, profileQuestion.id))
+      .where(
+        and(
+          eq(profileAnswer.memberId, link.memberId),
+          eq(profileAnswer.status, "answered"),
+          isNull(profileAnswer.cycleId),
+          isNull(profileQuestion.archivedAt),
+          eq(sensitiveFieldAccessRule.unlockedByAccompaniment, true),
+        ),
+      );
+    const unique = [...new Map(rows.map((r) => [r.question.id, r])).values()];
+    const readable = await resolveReadableQuestions(
+      actor,
+      link.memberId,
+      unique.map((r) => ({ questionId: r.question.id, sensitive: r.question.sensitive, shareWithAudience: r.answer.shareWithAudience })),
+    );
+    answers = unique
+      .filter((r) => readable.has(r.question.id))
+      .map((r) => ({ question: r.question.label, value: formatFieldValue(r.answer.value, r.question.responseType) }));
+  }
+  return { memberId: link.memberId, name: person.name, joinedAt: person.joinedAt, shares, axes, contribution, answers };
 }
 
 /**
@@ -340,7 +483,17 @@ export async function askForSomeoneElse(actor: Member) {
     for (const h of holders) await releaseAssignmentInTx(tx, mine.taskId, actor.communityId, h.memberId);
     await tx
       .update(accompaniment)
-      .set({ askedForSomeoneElseAt: new Date(), announcedHolderId: null })
+      .set({
+        askedForSomeoneElseAt: new Date(),
+        announcedHolderId: null,
+        // What they chose to show was for the person they've just asked to be replaced, and doesn't
+        // wait around for that person to come back.
+        sharesAxes: false,
+        sharesContribution: false,
+        sharesAnswers: false,
+        sharedWithMemberId: null,
+        sharedAt: null,
+      })
       .where(eq(accompaniment.id, mine.id));
   });
   await addComment(actor, mine.taskId, {
@@ -392,6 +545,14 @@ export async function runAccompaniments(now: Date = new Date()) {
       continue;
     }
     if (holder.id === a.announcedHolderId) continue;
+    // A different person now holds it, so what was chosen for the last one is put away for good,
+    // rather than left to read as consent again if the last one ever came back.
+    if (a.sharedWithMemberId && a.sharedWithMemberId !== holder.id) {
+      await db
+        .update(accompaniment)
+        .set({ sharesAxes: false, sharesContribution: false, sharesAnswers: false, sharedWithMemberId: null, sharedAt: null })
+        .where(eq(accompaniment.id, a.id));
+    }
     try {
       const email = await resolvePrimaryEmail(a.memberId);
       const [newcomer] = await db.select({ name: member.name }).from(member).where(eq(member.id, a.memberId));

@@ -7,7 +7,7 @@ import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import { respondToNomination, respondToNominationInput } from "@/lib/tasks";
 import { completeOnboarding } from "@/lib/onboarding";
-import { askForSomeoneElse } from "@/lib/accompaniment";
+import { askForSomeoneElse, setMyShares } from "@/lib/accompaniment";
 import { dismissMySuggestion } from "@/lib/tasks/suggestions";
 import { claimTask } from "@/lib/tasks";
 import { setTaskMilestoneDone } from "@/lib/tasks/milestones";
@@ -265,6 +265,23 @@ export async function completeCheckInAction(formData: FormData) {
   const actor = await requireRealMember();
   try {
     await setTaskMilestoneDone(actor, String(formData.get("milestoneId") ?? ""), true);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/dashboard");
+}
+
+// What the new member lets their accompanier see beyond the basics (docs/plans/accompaniment-plan.md §4.2):
+// a plain form of checkboxes, so an unticked one is "no". Made for whoever is accompanying them now.
+export async function setMySharesAction(formData: FormData) {
+  await assertNotViewingAs();
+  const actor = await requireRealMember();
+  try {
+    await setMyShares(actor, {
+      axes: formData.get("axes") === "on",
+      contribution: formData.get("contribution") === "on",
+      answers: formData.get("answers") === "on",
+    });
   } catch (err) {
     redirectWithError(err);
   }

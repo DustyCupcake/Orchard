@@ -16,6 +16,7 @@ import {
 import type { member as memberTable } from "@/db/schema";
 import { resolveViewScopeCycleForMember } from "./cycles";
 import { ForbiddenError, NotFoundError } from "./errors";
+import { accompanierMaySee } from "./accompaniment-access";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -251,7 +252,9 @@ export async function getVisibleContribution(actor: Member, targetMemberId: stri
   if (!target) {
     throw new NotFoundError("Member not found in your community");
   }
-  if (!target.contributionVisible) {
+  // Visible to everyone if they made it so, or to their accompanier if they chose that
+  // (docs/plans/accompaniment-plan.md §4.2): a narrower door, opened only for the one person.
+  if (!target.contributionVisible && !(await accompanierMaySee(actor.id, target.id, "contribution"))) {
     throw new ForbiddenError("This member hasn't made their contribution picture visible");
   }
 

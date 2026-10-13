@@ -728,4 +728,29 @@ describe("migrating a database that already has data", () => {
       { label: "Before the event", anchor: "before_event", days: 14 },
     ]);
   });
+
+  // 0117 and 0118 add what a new member may share with their accompanier, and the accompanier as an
+  // audience for a question. Nothing that exists is shared or reachable by either: every accompaniment
+  // starts with nothing chosen, and every existing rule stays the kind of rule it was.
+  it("0117 and 0118 leave every existing accompaniment unshared and every existing rule as it was", async () => {
+    db = await createScratchDatabase();
+    await db.migrateBefore("0117_accompaniment_shares");
+    const sql = db.sql;
+    const [communityId, alice, dana, branchId, t, q, tierId] = Array.from({ length: 7 }, uuid);
+    await sql`insert into community (id, name) values (${communityId}, 'C')`;
+    await sql`insert into member (id, community_id, name) values (${alice}, ${communityId}, 'Alice'), (${dana}, ${communityId}, 'Dana')`;
+    await sql`insert into branch (id, community_id, name) values (${branchId}, ${communityId}, 'Seed')`;
+    await sql`insert into task (id, community_id, branch_id, title, effort, effort_magnitude, created_by) values (${t}, ${communityId}, ${branchId}, 'Accompany Dana', 'owns_a_thing', '{}'::jsonb, ${alice})`;
+    await sql`insert into accompaniment (community_id, member_id, task_id, ends_on) values (${communityId}, ${dana}, ${t}, now() + interval '90 days')`;
+    await sql`insert into tier (id, community_id, name) values (${tierId}, ${communityId}, 'Welfare')`;
+    await sql`insert into profile_question (id, community_id, label, response_type, scope, sensitive) values (${q}, ${communityId}, 'Medication', 'text', 'once_ever', true)`;
+    await sql`insert into sensitive_field_access_rule (community_id, question_id, unlocked_by_tier_id) values (${communityId}, ${q}, ${tierId})`;
+
+    await db.migrateRemaining();
+
+    const [a] = await sql`select shares_axes, shares_contribution, shares_answers, shared_with_member_id, shared_at from accompaniment`;
+    expect(a).toMatchObject({ shares_axes: false, shares_contribution: false, shares_answers: false, shared_with_member_id: null, shared_at: null });
+    const [r] = await sql`select unlocked_by_accompaniment, unlocked_by_tier_id from sensitive_field_access_rule`;
+    expect(r).toMatchObject({ unlocked_by_accompaniment: false, unlocked_by_tier_id: tierId });
+  });
 });

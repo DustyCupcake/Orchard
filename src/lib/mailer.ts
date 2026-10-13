@@ -272,7 +272,8 @@ export async function sendAccompanierNamedEmail(
     ``,
     `${input.accompanierName} has taken on accompanying you in ${input.communityName}: someone you can ask questions of and check in with while you find your feet.`,
     ``,
-    `You can see who they are, and ask for someone else if it isn't a good fit, on your dashboard:`,
+    `You can see who they are on your dashboard, ask for someone else if it isn't a good fit, and choose whether they can see a little more about you, such as your working style. By default they can't.`,
+    ``,
     `${input.dashboardUrl}`,
   ].join("\n");
   await sendPlainTextEmail(email, subject, text, `accompanier named for ${email}: ${input.accompanierName}`);
