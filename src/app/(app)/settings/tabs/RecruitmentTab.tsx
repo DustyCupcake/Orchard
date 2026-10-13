@@ -4,6 +4,8 @@ import { listMediationMembers } from "@/lib/recruitment/mediation";
 import type { community as communityTable, form as formTable, tier as tierTable } from "@/db/schema";
 import { policyOf } from "@/lib/recruitment/evaluations";
 import { describeDecisionPolicy } from "@/lib/recruitment/decision-policy";
+import { CHECK_IN_ANCHOR_LABEL, CHECK_IN_ANCHORS } from "@/lib/accompaniment-check-ins";
+import { INPUT } from "@/components/ui/kit";
 import { SelectField, SettingsGroup, SettingsPanel, SettingsSection, TextAreaField, TextField, ToggleField } from "../ui";
 import {
   saveAdmissionLanesAction,
@@ -12,6 +14,7 @@ import {
   updateRecruitmentDoorsAction,
   updateRecruitmentCheckWindowAction,
   updateAccompanimentSettingsAction,
+  updateAccompanimentCheckInsAction,
 } from "../actions";
 import AdmissionLaneEditor from "../AdmissionLaneEditor";
 import DecisionPolicyEditor from "../DecisionPolicyEditor";
@@ -350,6 +353,37 @@ export default async function RecruitmentTab({
             defaultValue={community.accompanimentEndsAfterDays}
             hint="Counted from when the person is admitted. It also ends sooner if the accompanier marks the task done."
           />
+        </SettingsGroup>
+
+        <SettingsGroup
+          action={updateAccompanimentCheckInsAction}
+          submitLabel="Save check-ins"
+          title="Check-ins"
+          stateLabel="The moments the accompanier is reminded to check in"
+          state={
+            community.accompanimentCheckIns.length === 0
+              ? "No check-ins: the accompanier is only there if the new member asks."
+              : community.accompanimentCheckIns
+                  .map((c) => `${c.label} (${c.days} ${CHECK_IN_ANCHOR_LABEL[c.anchor]})`)
+                  .join(" · ")
+          }
+          description="Each one becomes a milestone on the accompaniment task when it is made, and shows on the accompanier's dashboard once its date comes, until they mark it done. A check-in before the event is left out when there is no event with a start date, or when its date has already passed. Clear a name to remove a check-in."
+        >
+          <div className="flex flex-col gap-2">
+            {[...community.accompanimentCheckIns, null, null].map((c, i) => (
+              <div key={i} className="flex flex-wrap items-center gap-2">
+                <input name="checkInLabel" defaultValue={c?.label ?? ""} placeholder="A name, like “Say hello”" aria-label="Check-in name" className={`${INPUT} w-56`} />
+                <input name="checkInDays" type="number" min={0} max={365} defaultValue={c?.days ?? ""} placeholder="days" aria-label="Days" className={`${INPUT} w-24`} />
+                <select name="checkInAnchor" defaultValue={c?.anchor ?? "after_joining"} aria-label="From" className={INPUT}>
+                  {CHECK_IN_ANCHORS.map((a) => (
+                    <option key={a} value={a}>
+                      {CHECK_IN_ANCHOR_LABEL[a]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
         </SettingsGroup>
       </SettingsSection>
     </div>

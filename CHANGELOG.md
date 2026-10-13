@@ -8,6 +8,22 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## check-ins are milestones on the accompaniment task, from a short list the community edits, due on the accompanier's dashboard until they say they're done
+
+Migration **0116**. [`docs/plans/accompaniment-plan.md`](docs/plans/accompaniment-plan.md) §5, step 3 of §8.
+
+**A short list, with defaults** (`community.accompaniment_check_ins`): each row is a name and a number of days from one of two anchors, *after they join* or *before the event they are joining starts*. The defaults are "Say hello" at 3 days, "How is it going?" at 30 and "Before the event" at 14; an empty list means none. It is the only setting the plan needed for this, because the thing that would have made it a lot of settings (dates relative to a person) is computed once, when the accompaniment is made, and stored as an ordinary date. At most 12 rows, a name of at most 80 characters, 0 to 365 days; validated in one place (`src/lib/accompaniment-check-ins.ts`) for the screen and the server alike.
+
+**Made with the accompaniment.** Each row becomes a `task_milestone`: absolute, confirmed, with the date fixed that day and never moved. *Before the event* counts back from the event the person was admitted for, else the next open event that has a start date still ahead, and is **left out** when there is none, and **left out when its date has already passed**: a check-in that is overdue before anybody has been given the task is noise. They are not re-dated if someone takes the task on late, so a "say hello" that is already due is simply due, and says *was due* the day it was.
+
+**Milestones get a done state**, the first they have had: `completed_at` / `completed_by`, set and cleared by a current holder of the task through the same rule as editing one, available on every milestone. It changes nothing about attention levels or deadlines; it is for the person doing the thing to say so. The task page marks a check-in with a tag, shows *done* with its date, and offers **Mark done** / **Not done after all** to a holder. `check_in` is a flag on the milestone so the dashboard can say "due" for these and not for a deposit date.
+
+**Reminders are derived, not sent.** The accompanier's dashboard has a *Time to check in* section: on an open accompaniment they hold, a check-in whose date has come and which isn't done, soonest first, saying *due today* or *was due 12 Oct* with an *overdue* tag, a link to the task and **Done**. A shadow doesn't see it, and it goes when the accompaniment ends. Nothing is emailed and nothing is held against anybody if one sits: an email nudge is left until this has been seen to be too quiet, as the plan says.
+
+**Settings** (Recruitment → Accompaniment → Check-ins): its own card and its own Save, so a mistyped row can't revert the settings beside it. Zero-JS like the rest of that tab: the rows are plain fields, a row whose name is cleared is removed, and there are always two blank ones to add to. Changing the list never touches an accompaniment already running. **Accompaniments that already exist get no check-ins**: they were made before there was anything to make them from.
+
+Tests: `accompaniment-check-ins.test.ts` (new, 17) and a populated-database case for 0116; whole suite 2,357 passing against a real Postgres.
+
 ## suggestions say why: everyone with a reason is suggested for a new member's accompaniment, and a suggested person can say it isn't for them
 
 Migration **0115**. [`docs/plans/accompaniment-plan.md`](docs/plans/accompaniment-plan.md) §3.4 and §3.5, step 2 of §8.

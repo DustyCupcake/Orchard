@@ -274,6 +274,7 @@ const FIELD_LABEL: Record<string, string> = {
   accompanimentEnabled: "accompanying new members",
   accompanimentTierId: "who may accompany a new member",
   accompanimentEndsAfterDays: "how long an accompaniment lasts",
+  accompanimentCheckIns: "the accompaniment check-ins",
   recruitmentObjectionOverrule: "how a concern can be overruled",
   recruitmentObjectionQuorum: "how many people it takes to overrule",
   recruitmentRejectionTemplate: "the starting point for a decline",

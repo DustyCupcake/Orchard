@@ -30,6 +30,17 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-13",
+    title: "Reminders to check in with someone you accompany",
+    summary: "When you accompany a new member, your dashboard reminds you when it's a good time to check in.",
+    points: [
+      "Each accompaniment comes with a few check-ins (by default a hello after three days and a catch-up after a month, plus one before the event if there's one coming). When one's date comes, it shows on your dashboard until you mark it done. Nothing is emailed.",
+      "If you take the task on late, the ones already past just say they were due. Nothing is held against you if one sits.",
+      "Administrators can change the list, or empty it, under Settings → Recruitment → Accompaniment.",
+    ],
+    source: "check-ins are milestones on the accompaniment task, from a short list the community edits, due on the accompanier's dashboard until they say they're done",
+  },
+  {
+    date: "2026-10-13",
     title: "You might be asked to accompany someone new",
     summary: "If you invited, vouched for or interviewed a new member, you may see a note asking if you'd like to accompany them.",
     points: [
