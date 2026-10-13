@@ -8,6 +8,17 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## CI runs the test suite in parallel, alongside the build, and does not repeat it when a passed PR merges
+
+A pull request's run took ~12 minutes (9 of them the suite on one runner, then lint, type-check and the build in series after it), and merging it ran all of that again on `main`.
+
+- **Sharded tests.** `.github/workflows/docker-build.yml`'s `test` job is a six-way matrix; each shard takes every sixth file of the sorted list and runs it through `scripts/test.sh` against its own Postgres (the suite truncates between files, so shards cannot share one). A new test file joins a shard with no workflow edit. `fail-fast` is off so one shard's failure doesn't hide another's.
+- **Build in parallel.** Lint, type-check and the image build (`build`) no longer wait for the tests; only publishing does. `publish` is a separate job, run for `main`, tags and manual runs, once the tests have passed and `build` has written the layer cache it then reads.
+- **No second run on merge.** When every shard passes on a pull request, `record` posts a commit status `tests-passed-for-tree` on its head whose description is the tree that was tested (the run checks out the PR merged into `main`). On a push to `main`, `verified` looks up the pull request(s) for the commit and skips the suite only if one carries that status for the commit's own tree. A squash merge of an up-to-date branch has exactly that tree; if `main` moved first, or the merge was not a squash, the trees differ and the suite runs. Tags and manual runs never skip. The status is best-effort: a fork's or Dependabot's token can't write it, and then the merge just runs the suite as before. Lint, type-check and the build still run on `main` regardless.
+- No branch protection names the old job names, so renaming `test` and `build` broke nothing.
+
+Not measured yet: shard balance (files are dealt round-robin, not by cost). The first runs' timings will say whether to deal them by duration instead.
+
 ## Budget funds events from the community's budget, and settling an event closes its books
 
 Step 3c of [`docs/plans/archive/budget-funds-plan.md`](docs/plans/archive/budget-funds-plan.md), the last of the plan, which is now archived. Money moves between the community's budget and an event's only here.
