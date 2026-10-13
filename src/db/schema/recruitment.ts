@@ -18,7 +18,7 @@ export const recruitmentRecommendationEnum = pgEnum("recruitment_recommendation"
 // 34's scheduling needs" — see docs/spec.md's Recruitment. One row per
 // member, created on first activation and toggled in place afterward
 // rather than deleted on deactivation. It is the person's own
-// setting and never lapses by itself (docs/admission-flow.md §7).
+// setting and never lapses by itself (docs/plans/admission-flow.md §7).
 export const recruitmentSubscription = pgTable("recruitment_subscription", {
   id: uuid("id").primaryKey().defaultRandom(),
   memberId: uuid("member_id")
@@ -38,7 +38,7 @@ export const recruitmentSubscription = pgTable("recruitment_subscription", {
 // responses / Budget's votes already use — an evaluator changing
 // their mind before a decision is reached is a real, low-stakes case.
 //
-// Keyed on the *arrival* (docs/admission-flow.md §4): a report is about a person in the
+// Keyed on the *arrival* (docs/plans/admission-flow.md §4): a report is about a person in the
 // funnel, and a lane that asks only for a conversation has nobody's application to
 // hang it on. `formResponseId` is the application when there is one.
 export const evaluation = pgTable("evaluation", {
@@ -80,7 +80,7 @@ export const recruitmentApplicationInvite = pgTable("recruitment_application_inv
     .references(() => communityInvite.id),
 });
 
-// "Who are you sticking with" (docs/joining-admission-plan.md
+// "Who are you sticking with" (docs/plans/archive/joining-admission-plan.md
 // §2.8/J9). Pairing is *fact only*: the platform records that A named B
 // and never decides anything from it. The three shapes the plan names
 // all land on this one row:
@@ -113,7 +113,7 @@ export const recruitmentPair = pgTable("recruitment_pair", {
   // link, where that member is the one who did the linking, because
   // there is no version of a pairing with nobody behind it.
   //
-  // Nullable since pairing moved onto arrivals (docs/admission-flow.md §2): a person
+  // Nullable since pairing moved onto arrivals (docs/plans/admission-flow.md §2): a person
   // applying with somebody who made the link from their own page has no member behind
   // them, so the namer is `firstArrivalId`; this is the member who named or linked them
   // (an inviter naming members, or the team linking two arrivals by hand).
@@ -222,7 +222,7 @@ export const recruitmentDecision = pgTable("recruitment_decision", {
   decidedAt: timestamp("decided_at", { withTimezone: true }).notNull().defaultNow(),
   // Real FK — task.ts has no reason to import this file back.
   accompanimentTaskId: uuid("accompaniment_task_id").references(() => task.id),
-  // docs/development-plan.md's Phase 48: the real conversion step
+  // docs/plans/development-plan.md's Phase 48: the real conversion step
   // Phases 32-34 deliberately left un-mechanized (see this file's own
   // recruitmentDecision comment above, and decisions.ts's
   // maybeCreateAccompanimentTask, which used to have no Member row to

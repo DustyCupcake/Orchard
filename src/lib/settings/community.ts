@@ -6,6 +6,7 @@ import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
 import { ANY_NO_MEANS, DISCUSSION_ENDS, IN_WHEN, validateDecisionPolicy } from "../recruitment/decision-policy";
 import { policyOf } from "../recruitment/evaluations";
+import { isValidTimeZone } from "../dates/timezone";
 import { requireNotOnsiteLocked } from "../onsite-mode";
 import { recordSettingChanges } from "./history";
 
@@ -15,6 +16,14 @@ const hexColor = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}$/, "Must be a hex color like #3a6cd9");
 
+// Validated as a real zone rather than any string, because an unusable
+// one doesn't fail loudly later — effectiveTimeZone would quietly fall
+// back to UTC and every time on the programme would read an hour out
+// from what the Community typed.
+const timeZoneInput = z
+  .string()
+  .refine(isValidTimeZone, "Not a time zone — try something like Europe/London");
+
 export async function getCommunity(actor: Member) {
   const [row] = await db.select().from(community).where(eq(community.id, actor.communityId));
   if (!row) {
@@ -23,7 +32,7 @@ export async function getCommunity(actor: Member) {
   return row;
 }
 
-// Deliberately narrow — per docs/development-plan.md's Phase 9 scope
+// Deliberately narrow — per docs/plans/development-plan.md's Phase 9 scope
 // ("branches, tiers, and cycle/phase structure"), not the full
 // Configuration model. membership_model and branch_membership_model
 // stay DB-only for now. The call defaults are wired up here in
@@ -35,6 +44,7 @@ export const updateCommunityInput = z.object({
   cyclesEnabled: z.boolean().optional(),
   phasesEnabled: z.boolean().optional(),
   defaultDateDisplayMode: z.enum(dateDisplayModeEnum.enumValues).optional(),
+  timeZone: timeZoneInput.nullable().optional(),
   cycleInitiationTierId: z.string().uuid().nullable().optional(),
   defaultCallHasAgenda: z.boolean().optional(),
   defaultCallNeedsSummary: z.boolean().optional(),
@@ -63,7 +73,7 @@ export const updateCommunityInput = z.object({
   // (per-cycle doors live on the cycle itself).
   recruitmentApplicationsOpen: z.boolean().optional(),
   recruitmentInvitesOpen: z.boolean().optional(),
-  // The third door (docs/joining-admission-plan.md §2.3/J3): whether an
+  // The third door (docs/plans/archive/joining-admission-plan.md §2.3/J3): whether an
   // interview can be scheduled at all. Distinct from a lane's
   // `interviewRequired` — that says "an arrival on this lane is
   // interviewed", this says "no interviews are happening right now".
@@ -80,7 +90,7 @@ export const updateCommunityInput = z.object({
   // exception is unavailable, which only works if the number stays
   // somewhere a body could plausibly reach.
   recruitmentObjectionQuorum: z.number().int().min(1).max(50).optional(),
-  // How reports decide (docs/admission-flow.md §2): one small policy for the
+  // How reports decide (docs/plans/admission-flow.md §2): one small policy for the
   // whole community. How many reports a lane needs is the lane's own.
   recruitmentInWhen: z.enum(IN_WHEN).optional(),
   recruitmentCustomMinYes: z.number().int().min(0).max(50).optional(),
@@ -104,6 +114,9 @@ export const updateCommunityInput = z.object({
   // see src/db/schema/community.ts's own comments and
   // src/lib/engagement.ts.
   engagementSoftFlagThreshold: z.number().int().positive().optional(),
+  // How much money each backer of a budget proposal stands behind; null or 0
+  // asks for no backing at all. See src/db/schema/community.ts.
+  fundSupportPerBacker: z.number().int().nonnegative().nullable().optional(),
   engagementPatternThreshold: z.number().int().positive().optional(),
   callSummaryReadWindowDays: z.number().int().positive().optional(),
   // Community branding — see design_handoff_conventions/README.md. Null
@@ -120,7 +133,7 @@ export const updateCommunityInput = z.object({
   oidcClientId: z.string().min(1).nullable().optional(),
   oidcRequiredRole: z.string().min(1).nullable().optional(),
   oidcPrimary: z.boolean().optional(),
-  // docs/admission-flow.md §6a, all off until a community turns them on.
+  // docs/plans/admission-flow.md §6a, all off until a community turns them on.
   ssoCreateOnAdmit: z.boolean().optional(),
   ssoRevokeOnLeave: z.boolean().optional(),
   ssoJoinPolicy: z.enum(["anyone_with_role", "admitted_only"]).optional(),
@@ -217,6 +230,7 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         ...(input.cyclesEnabled !== undefined && { cyclesEnabled: input.cyclesEnabled }),
         ...(input.phasesEnabled !== undefined && { phasesEnabled: input.phasesEnabled }),
         ...(input.defaultDateDisplayMode !== undefined && { defaultDateDisplayMode: input.defaultDateDisplayMode }),
+        ...(input.timeZone !== undefined && { timeZone: input.timeZone }),
         ...(input.cycleInitiationTierId !== undefined && {
           cycleInitiationTierId: input.cycleInitiationTierId,
         }),
@@ -268,6 +282,9 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         ...(input.taskNominationResponseDays !== undefined && {
           taskNominationResponseDays: input.taskNominationResponseDays,
         }),
+        ...(input.fundSupportPerBacker !== undefined && {
+          fundSupportPerBacker: input.fundSupportPerBacker === 0 ? null : input.fundSupportPerBacker,
+        }),
         ...(input.engagementSoftFlagThreshold !== undefined && {
           engagementSoftFlagThreshold: input.engagementSoftFlagThreshold,
         }),
@@ -311,7 +328,7 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
   });
 
   // The interviews door reopened: anyone held at the interview step gets their
-  // poll now (docs/admission-flow.md §6 — a closed door holds, it never skips).
+  // poll now (docs/plans/admission-flow.md §6 — a closed door holds, it never skips).
   if (input.recruitmentInterviewsOpen === true && !currentRow.recruitmentInterviewsOpen) {
     const { ensureInterviewPollsFor } = await import("../recruitment/interviews");
     await ensureInterviewPollsFor(actor.communityId);

@@ -25,7 +25,7 @@ import {
 } from "@/lib/recruitment";
 import { ConflictError, ForbiddenError } from "@/lib/errors";
 
-// docs/admission-flow.md §4: reports and decisions are about an *arrival*, with the
+// docs/plans/admission-flow.md §4: reports and decisions are about an *arrival*, with the
 // application simply one thing it can have. A lane that asks only for a conversation —
 // no application — used to wait for its interview and then have nobody's application
 // to hang the reports on, so it could never be decided.

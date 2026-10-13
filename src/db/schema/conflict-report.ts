@@ -26,7 +26,7 @@ export const conflictReport = pgTable("conflict_report", {
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   resolutionNote: text("resolution_note"),
   // Widens visibility from the single point-of-contact to the whole
-  // non-excluded team — see docs/development-plan.md's Phase 21 ("a
+  // non-excluded team — see docs/plans/development-plan.md's Phase 21 ("a
   // resolved interpretation for a case spec names but doesn't fully
   // define the mechanics of: escalating widens visibility ... rather
   // than to some undefined higher authority").

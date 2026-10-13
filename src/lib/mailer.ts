@@ -97,7 +97,7 @@ export async function sendMagicLinkEmail(email: string, url: string) {
 // Task assignment notification. The first real click-to-act email this
 // app sends — every prior notification stayed a visible in-app flag,
 // deliberately, since nothing needed one-click action before this (see
-// docs/development-plan.md's Phase 51). Each of the three URLs already
+// docs/plans/development-plan.md's Phase 51). Each of the three URLs already
 // carries its own single-use, single-action token — see
 // src/lib/notifications/action-tokens.ts — so clicking one needs no
 // login and can't be repurposed into a different response.
@@ -155,7 +155,7 @@ export async function sendEmailVerificationEmail(email: string, url: string) {
 
 // A plain outbound message (targeted or community-wide announcement) —
 // see docs/spec.md's Outbound communications and
-// docs/development-plan.md's Phase 53. One-way, no action tokens: "a
+// docs/plans/development-plan.md's Phase 53. One-way, no action tokens: "a
 // plain message has nothing to click," unlike the task-nomination
 // email above.
 export async function sendOutboundMessageEmail(
@@ -166,7 +166,7 @@ export async function sendOutboundMessageEmail(
   await sendPlainTextEmail(email, input.subject, text, `outbound message for ${email}: "${input.subject}"`);
 }
 
-// D7 (docs/cycle-scope-remediation-plan.md §4.7) — the one backstop
+// D7 (docs/plans/archive/cycle-scope-remediation-plan.md §4.7) — the one backstop
 // notification: a critical task in the backstop's scope has hard-flagged.
 // Informational, no action token: the backstop's own job is to get it
 // moving, which the ordinary claim path already lets them do; this email
@@ -186,7 +186,7 @@ export async function sendBackstopHardFlagEmail(
 }
 
 // Sent when somebody asks a named member to look at a support link
-// (docs/admission-flow.md §2): one email each, never a broadcast, because
+// (docs/plans/admission-flow.md §2): one email each, never a broadcast, because
 // nothing should announce a person's existence beyond who was asked. No action
 // token and no per-person state — the link has exactly one action (open it, say
 // how you know them) and recording a support is idempotent by construction. It
@@ -209,7 +209,7 @@ export async function sendSupportRequestEmail(
 }
 
 // The two emails a person in the admission funnel always gets
-// (docs/admission-flow.md §6): that we have them, with the private link to
+// (docs/plans/admission-flow.md §6): that we have them, with the private link to
 // follow where they are, and that they are in. Nothing else is sent to
 // someone who is not yet a member, so these are deliberately plain and each
 // carries only what that moment needs. The link is the arrival's own token
@@ -255,7 +255,7 @@ export async function sendAdmissionAcceptedEmail(
   await sendPlainTextEmail(email, subject, text, `admission accepted for ${email}:\n${input.statusUrl}`);
 }
 
-// The interview emails (docs/admission-flow.md §6): the link to choose times, and
+// The interview emails (docs/plans/admission-flow.md §6): the link to choose times, and
 // the confirmed time. Both carry the person's own page, which is where they pick
 // availability and where the confirmed time is shown.
 export async function sendInterviewInviteEmail(
@@ -290,7 +290,7 @@ export async function sendInterviewConfirmedEmail(
   await sendPlainTextEmail(email, subject, text, `interview confirmed for ${email}:\n${input.statusUrl}`);
 }
 
-// The community would like a little more before it goes on (docs/admission-flow.md
+// The community would like a little more before it goes on (docs/plans/admission-flow.md
 // §5, "ask for more"). Says what is being asked for and nothing about why: a person
 // is never told that someone raised a concern, who it was, or what it said.
 export async function sendAskedForMoreEmail(

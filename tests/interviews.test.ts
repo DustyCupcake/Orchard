@@ -27,7 +27,7 @@ import {
 } from "@/lib/recruitment";
 import { ConflictError, ForbiddenError } from "@/lib/errors";
 
-// docs/admission-flow.md §2, "Interview". The interview comes before the decision:
+// docs/plans/admission-flow.md §2, "Interview". The interview comes before the decision:
 // a poll is made for each arrival whose lane asks for one, the person and the
 // holders say when they're free (the holders standing, or on this poll), a slot
 // qualifies when the person overlaps and at least N holders offered it, a holder —

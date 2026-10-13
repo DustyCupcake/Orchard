@@ -25,7 +25,7 @@ async function requireMember() {
   return actor;
 }
 
-// The one way to raise a concern about an arrival (docs/admission-flow.md §5),
+// The one way to raise a concern about an arrival (docs/plans/admission-flow.md §5),
 // whichever way its window opened. Open to any member except whoever stood behind
 // the arrival, enforced inside raiseConcern.
 export async function raiseConcernAction(formData: FormData) {

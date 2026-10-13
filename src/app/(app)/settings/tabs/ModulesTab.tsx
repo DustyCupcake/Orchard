@@ -1,7 +1,8 @@
 import type { community as communityTable, form as formTable } from "@/db/schema";
 import { MODULE_DEFINITIONS } from "@/lib/modules";
 import { SelectField, SettingsGroup, SettingsSection, ToggleField } from "../ui";
-import { updateModulesSettingsAction, updatePostCycleFeedbackAction } from "../actions";
+import { updateBudgetSettingsAction, updateModulesSettingsAction, updatePostCycleFeedbackAction } from "../actions";
+import PerBackerField from "./PerBackerField";
 
 // A short, honest line per module: what turns off when you untick it.
 // The old tab was a bare list of checkboxes with no consequences stated,
@@ -9,7 +10,7 @@ import { updateModulesSettingsAction, updatePostCycleFeedbackAction } from "../a
 // wrote the module could answer.
 const MODULE_CONSEQUENCE: Record<string, string> = {
   sensitive_data: "The sensitive-fields layer. Turning it off doesn't un-mark anything you've already marked sensitive — it stops the access rules from being enforced.",
-  budget: "Budget cycles, proposals and voting. Data stays; the pages go.",
+  budget: "Each event's budget, the community's own, and the proposals in them. Data stays; the pages go.",
   event_scheduling: "Event proposals, review and the published Programme.",
   shifts: "Shift series, sign-ups and confirmations.",
   recruitment: "Invites, applications, the pipeline and mediation. Turn this off and the Recruitment tab below stops mattering.",
@@ -54,6 +55,28 @@ export default function ModulesTab({
           ))}
         </SettingsGroup>
       </SettingsSection>
+
+      {community.modulesEnabled.includes("budget") && (
+        <SettingsSection
+          title="Budget"
+          description="Anyone can propose spending, in an event's budget or in the community's own, and other members back it. The budget's owner approves what has been backed."
+        >
+          <SettingsGroup
+            action={updateBudgetSettingsAction}
+            submitLabel="Save budget settings"
+            title="How much backing a proposal needs"
+            stateLabel="How much money each person behind a budget proposal stands behind"
+            state={
+              community.fundSupportPerBacker
+                ? `Each person behind a proposal stands behind ${community.fundSupportPerBacker}`
+                : "Not set — a budget's owner decides alone, and nothing needs backing"
+            }
+            description="A proposal for more than its backers cover can't be approved for the excess. Applies to every budget, events' and the community's."
+          >
+            <PerBackerField defaultValue={community.fundSupportPerBacker} />
+          </SettingsGroup>
+        </SettingsSection>
+      )}
 
       <SettingsSection
         title="After an event"

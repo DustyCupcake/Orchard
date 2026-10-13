@@ -5,7 +5,7 @@ import { getStandingAvailability, requireRecruitmentTaskHolder, setStandingAvail
 
 export const dynamic = "force-dynamic";
 
-// A holder's own standing grid (docs/admission-flow.md §2): one grid, read by
+// A holder's own standing grid (docs/plans/admission-flow.md §2): one grid, read by
 // every incoming interview as it stands, edited whenever they like.
 export async function GET() {
   try {

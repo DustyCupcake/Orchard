@@ -18,7 +18,7 @@ import {
 type Member = typeof memberTable.$inferSelect;
 type Setup = typeof signInSetup.$inferSelect;
 
-// docs/admission-flow.md §6a — making "admitted" mean something at the provider.
+// docs/plans/admission-flow.md §6a — making "admitted" mean something at the provider.
 //
 // Admission never waits on any of this and is never undone by it: the person is admitted
 // either way, and what is recorded here is whether they can also sign in yet. It is
@@ -155,7 +155,7 @@ export async function markSignInSetUp(actor: Member, memberId: string) {
 }
 
 /**
- * Take the person's role at the provider back, because they have left (docs/admission-flow.md
+ * Take the person's role at the provider back, because they have left (docs/plans/admission-flow.md
  * §6a: the provider and Orchard can't disagree about who belongs). Returns null when the
  * community hasn't asked for it or there's nothing to revoke, true when done, false when it
  * failed — which the caller reports rather than hides, since a person who left but can still

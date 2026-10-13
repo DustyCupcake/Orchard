@@ -18,7 +18,7 @@ async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
 }
 
-// docs/development-plan.md's Phase 65 — every resolver here backs
+// docs/plans/development-plan.md's Phase 65 — every resolver here backs
 // either the URL-driven scope (resolveViewScopeFromSegment,
 // resolveSingleCycleScope, resolveDefaultScopeSegment — used by
 // /[cycleScope]/participation and /budget) or the off-URL scope

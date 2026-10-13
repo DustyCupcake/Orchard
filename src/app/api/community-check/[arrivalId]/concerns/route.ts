@@ -5,7 +5,7 @@ import { raiseConcern, raiseConcernInput } from "@/lib/recruitment";
 export const dynamic = "force-dynamic";
 
 // The one way to raise a concern about an arrival whose community check is open
-// (docs/admission-flow.md §5). Any member of the community except whoever stood
+// (docs/plans/admission-flow.md §5). Any member of the community except whoever stood
 // behind the arrival; enforced inside raiseConcern.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ arrivalId: string }> }) {
   try {

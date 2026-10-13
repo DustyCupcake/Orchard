@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { cycle, shiftOccurrence, shiftSeries } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
+import { getEventTimeZone } from "../cycles/time-zone";
+import { instantFromZoned } from "../dates/timezone";
 import { getShiftSeries, requireShiftCoordinator } from "./series";
 
 type Member = typeof memberTable.$inferSelect;
@@ -41,11 +43,13 @@ export const generateShiftOccurrencesInput = z.discriminatedUnion("mode", [
 ]);
 export type GenerateShiftOccurrencesInput = z.infer<typeof generateShiftOccurrencesInput>;
 
-// UTC throughout, matching this codebase's general posture elsewhere
-// (Budget deadlines, Event scheduling slots) — no per-viewer timezone
-// conversion for the generation inputs themselves.
-function computeWeeklySlots(input: z.infer<typeof weeklyPatternInput>) {
-  const [hour, minute] = input.startTime.split(":").map(Number);
+// startTime is a wall-clock at the venue, so each date is resolved
+// against the event's zone rather than as UTC. That is what makes a weekly
+// 09:00 shift stay at 09:00 across a clock change: the instants are
+// computed per date, not by adding seven days to the first one. The dates
+// themselves are plain days, so the weekday is read off the date directly
+// and doesn't depend on any zone.
+function computeWeeklySlots(input: z.infer<typeof weeklyPatternInput>, timeZone: string) {
   const daysSet = new Set(input.daysOfWeek);
   const slots: { startsAt: Date; endsAt: Date }[] = [];
 
@@ -60,9 +64,8 @@ function computeWeeklySlots(input: z.infer<typeof weeklyPatternInput>) {
 
   while (cursor <= end) {
     if (daysSet.has(cursor.getUTCDay())) {
-      const startsAt = new Date(
-        Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), cursor.getUTCDate(), hour, minute),
-      );
+      const day = cursor.toISOString().slice(0, 10);
+      const startsAt = instantFromZoned(`${day}T${input.startTime}`, timeZone);
       slots.push({ startsAt, endsAt: new Date(startsAt.getTime() + input.durationMinutes * 60_000) });
     }
     cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -84,7 +87,7 @@ export async function generateShiftOccurrences(
 
   const slots =
     input.mode === "weekly"
-      ? computeWeeklySlots(input)
+      ? computeWeeklySlots(input, await getEventTimeZone(actor.communityId, series.cycleId))
       : input.slots.map((s) => ({ startsAt: new Date(s.startsAt), endsAt: new Date(s.endsAt) }));
 
   if (slots.length === 0) {

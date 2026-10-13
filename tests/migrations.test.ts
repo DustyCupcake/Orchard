@@ -25,15 +25,15 @@ describe("migrating a database that already has data", () => {
   // afterwards; Postgres checks the constraint against existing rows when the
   // column is added, so with one objection in the table the ADD COLUMN itself
   // failed, the whole batch rolled back, and the container never started.
-  // 0089 carries every community's four lanes over as rows. The ways this
+  // 0097 carries every community's four lanes over as rows. The ways this
   // can go wrong on real data: a community with no joining_lane rows at all
   // (the defaults are read live from code, never snapshotted, so "no rows"
   // is the *normal* state, not an edge case), one that had edited its rows,
   // and one that had opted into nomination — the one carry that needs a
   // decision rather than a copy.
-  it("0089 carries four lanes over per community, keeping each community's own configuration", async () => {
+  it("0097 carries four lanes over per community, keeping each community's own configuration", async () => {
     db = await createScratchDatabase();
-    await db.migrateBefore("0089_admission_lane");
+    await db.migrateBefore("0097_admission_lane");
     const sql = db.sql;
 
     const [plain, edited, nominating] = Array.from({ length: 3 }, uuid);
@@ -137,7 +137,7 @@ describe("migrating a database that already has data", () => {
       (${responseA}, ${memberA}, 'concern in A'), (${responseB}, ${memberB}, 'concern in B')`;
 
     // Up to 0083 only: it is 0083's own backfill under test, and later migrations
-    // (0099) move these rows into the community check — and, rightly, refuse to carry
+    // (0107) move these rows into the community check — and, rightly, refuse to carry
     // standing concerns that have no arrival, which is what these two are.
     await db.migrateTo("0083_joining_admission_back_end");
 
@@ -287,16 +287,16 @@ describe("migrating a database that already has data", () => {
     expect(rows.every((r) => r.profile_completed_at === null)).toBe(true);
   });
 
-  // 0093 retires per-event override rows in favour of an event choosing which
+  // 0101 retires per-event override rows in favour of an event choosing which
   // lanes are open (§2a). The ways it can go wrong on real data: an event that
   // overrode only some lanes must still have a lane for *every* kind of
   // arrival (or an invite has nowhere to go there), two events with the same
   // name must not collide on the carried lane's name, an event that overrode
   // nothing must be left following the community, and nothing may leak into
   // the community's own door.
-  it("0093 turns each event's overrides into lanes open only there, and leaves other events following the community", async () => {
+  it("0101 turns each event's overrides into lanes open only there, and leaves other events following the community", async () => {
     db = await createScratchDatabase();
-    await db.migrateBefore("0089_admission_lane");
+    await db.migrateBefore("0097_admission_lane");
     const sql = db.sql;
 
     const [communityId, plainEvent, overriddenEvent, twinA, twinB] = Array.from({ length: 5 }, uuid);
@@ -362,15 +362,15 @@ describe("migrating a database that already has data", () => {
     expect(setOf(twinA).find((r) => r.handles_neither)!.name).not.toBe(setOf(twinB).find((r) => r.handles_neither)!.name);
   });
 
-  // 0094 adds a NOT NULL token to arrivals that already exist. Postgres checks the
+  // 0102 adds a NOT NULL token to arrivals that already exist. Postgres checks the
   // constraint against existing rows when the column is added, so a plain
   // NOT NULL would fail on any database with an arrival in it — the same shape of
   // failure as 0083. Each existing arrival has to get a token of its own (a
-  // shared or guessable one would let anyone vouch for anybody), and 0095 then
+  // shared or guessable one would let anyone vouch for anybody), and 0103 then
   // drops the nomination tables whose job the supports now do.
-  it("0094 gives every existing arrival its own support token, and 0095 drops the nomination tables", async () => {
+  it("0102 gives every existing arrival its own support token, and 0103 drops the nomination tables", async () => {
     db = await createScratchDatabase();
-    await db.migrateBefore("0094_admission_support");
+    await db.migrateBefore("0102_admission_support");
     const sql = db.sql;
 
     const [communityId, laneId] = Array.from({ length: 2 }, uuid);
@@ -396,7 +396,7 @@ describe("migrating a database that already has data", () => {
     expect(after).toBe(true);
   });
 
-  // 0096 replaces the ordered decision rules with a small form. The rules could
+  // 0104 replaces the ordered decision rules with a small form. The rules could
   // only say "at least N said X", so the recoverable shapes are few and the carry
   // has to translate each rather than reset every community to the default. The
   // ways it can go wrong on real data: a community with no rules (the normal
@@ -404,9 +404,9 @@ describe("migrating a database that already has data", () => {
   // otherwise discuss" shape, a fallback that declines or that admits, and rules
   // that read the inviter's marks, which have no equivalent and must not be
   // half-translated into something that decides differently.
-  it("0096 carries each community's decision rules into the form, and drops what has no equivalent", async () => {
+  it("0104 carries each community's decision rules into the form, and drops what has no equivalent", async () => {
     db = await createScratchDatabase();
-    await db.migrateBefore("0096_decision_policy");
+    await db.migrateBefore("0104_decision_policy");
     const sql = db.sql;
 
     const [none, standard, declines, admits, marks] = Array.from({ length: 5 }, uuid);
@@ -424,9 +424,9 @@ describe("migrating a database that already has data", () => {
         { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
       ])}::jsonb)`;
 
-    // Up to 0096 only: it is 0096's carry under test, and a later migration drops the old
+    // Up to 0104 only: it is 0104's carry under test, and a later migration drops the old
     // columns it is compared against.
-    await db.migrateTo("0096_decision_policy");
+    await db.migrateTo("0104_decision_policy");
 
     const rows = await sql`select id, recruitment_in_when, recruitment_custom_min_yes, recruitment_custom_max_no,
       recruitment_any_no_means, recruitment_discussion_ends, recruitment_decline_outright_at,
@@ -453,7 +453,7 @@ describe("migrating a database that already has data", () => {
     expect(of(standard).recruitment_decision_rules).toHaveLength(3);
   });
 
-  // 0099 moves every window and every concern into the one community check. What
+  // 0107 moves every window and every concern into the one community check. What
   // could go wrong on real data: a window that is open and must stay open with its
   // own deadline, concerns that must keep their ids (the shield rows are copied by
   // id alone), a settled history that must read back as it was, a decision's wider
@@ -497,9 +497,9 @@ describe("migrating a database that already has data", () => {
     return ids;
   }
 
-  it("0099 carries every window and concern into the one check, keeping ids, deadlines and the shield", async () => {
+  it("0107 carries every window and concern into the one check, keeping ids, deadlines and the shield", async () => {
     db = await createScratchDatabase();
-    await db.migrateBefore("0098_drop_unused_check_tables");
+    await db.migrateBefore("0106_drop_unused_check_tables");
     const sql = db.sql;
     const ids = await seedChecks(sql);
 
@@ -539,9 +539,9 @@ describe("migrating a database that already has data", () => {
     expect(cols).toHaveLength(0);
   });
 
-  it("0099 stops rather than drop a standing concern that has no arrival to belong to", async () => {
+  it("0107 stops rather than drop a standing concern that has no arrival to belong to", async () => {
     db = await createScratchDatabase();
-    await db.migrateBefore("0098_drop_unused_check_tables");
+    await db.migrateBefore("0106_drop_unused_check_tables");
     const sql = db.sql;
     const [communityId, bob, formId, responseId] = Array.from({ length: 4 }, uuid);
     await sql`insert into community (id, name) values (${communityId}, 'C')`;
@@ -554,13 +554,13 @@ describe("migrating a database that already has data", () => {
     await expect(db.migrateRemaining()).rejects.toThrow(/standing concern has no arrival/);
   });
 
-  // 0101 keys reports and decisions on the arrival. Existing ones have to land on the arrival
+  // 0109 keys reports and decisions on the arrival. Existing ones have to land on the arrival
   // their application made — not on one of another person's — and one whose application has no
   // arrival yet must keep working (it is linked when the arrival is made), so the column is
   // nullable and the application key stays.
-  it("0101 gives existing reports and decisions the arrival their application made, and leaves orphans alone", async () => {
+  it("0109 gives existing reports and decisions the arrival their application made, and leaves orphans alone", async () => {
     db = await createScratchDatabase();
-    await db.migrateBefore("0101_reports_keyed_on_arrival");
+    await db.migrateBefore("0109_reports_keyed_on_arrival");
     const sql = db.sql;
     const [communityId, lane, alice, bob, form, respA, respB, respOrphan, arrA, arrB] = Array.from({ length: 10 }, uuid);
     await sql`insert into community (id, name) values (${communityId}, 'C')`;
@@ -592,13 +592,13 @@ describe("migrating a database that already has data", () => {
     await expect(sql`insert into evaluation (arrival_id, evaluator_id, recommendation) values (${arrA}, ${bob}, 'proceed')`).rejects.toThrow();
   });
 
-  // 0104 moves each pair onto the arrivals its applications made, and the clean-up migration
+  // 0112 moves each pair onto the arrivals its applications made, and the clean-up migration
   // after it drops the response columns it replaced. A pair whose application has no arrival
   // yet keeps no pointer (the arrival is made lazily, and there is nothing to point at), so the
   // test pins what is carried and that nothing else is invented.
-  it("0104 carries pairs onto arrivals, and the clean-up drops the old columns and tables", async () => {
+  it("0112 carries pairs onto arrivals, and the clean-up drops the old columns and tables", async () => {
     db = await createScratchDatabase();
-    await db.migrateBefore("0104_pairing_on_arrivals");
+    await db.migrateBefore("0112_pairing_on_arrivals");
     const sql = db.sql;
     const [communityId, lane, alice, form, respA, respB, respC, arrA, arrB] = Array.from({ length: 9 }, uuid);
     await sql`insert into community (id, name) values (${communityId}, 'C')`;

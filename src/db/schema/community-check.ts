@@ -4,7 +4,7 @@ import { admission } from "./admission";
 import { community } from "./community";
 import { member } from "./member";
 
-// docs/admission-flow.md §5 — one community check.
+// docs/plans/admission-flow.md §5 — one community check.
 //
 // There used to be two, built twice with different subjects, timers and
 // consequences: a *wider discussion* window on an evaluated application, and a
@@ -148,7 +148,7 @@ export const communityCheckConcern = pgTable(
   ],
 );
 
-// The shield around whoever raised a concern (docs/admission-flow.md §5, "all of
+// The shield around whoever raised a concern (docs/plans/admission-flow.md §5, "all of
 // it"). Two tables and four actions, and none of them goes away with the merge:
 //
 //   exclusion — the objector takes named people out of even the mediation body's

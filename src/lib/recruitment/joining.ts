@@ -8,7 +8,7 @@ import { laneHandles, laneHoldsCapacity } from "./lane-rules";
 
 type CycleRow = typeof cycleTable.$inferSelect;
 
-// The per-cycle joining state docs/cycle-scope-remediation-plan.md §4.3
+// The per-cycle joining state docs/plans/archive/cycle-scope-remediation-plan.md §4.3
 // (work-plan step 8c) describes: does this cycle's door admit a
 // specific kind of newcomer right now? Three independent gates compose
 // it —
@@ -20,7 +20,7 @@ type CycleRow = typeof cycleTable.$inferSelect;
 //                the cycle closes). A closed cycle's period is never
 //                open.
 //   door       — the cycle's own applicationsOpen / invitesOpen /
-//                interviewsOpen flag (docs/joining-admission-plan.md
+//                interviewsOpen flag (docs/plans/archive/joining-admission-plan.md
 //                §2.3/J3 — the third one is what finally makes the
 //                interview stage a door rather than a side effect).
 //   capacity   — a set capacity that comingCount already fills
@@ -30,7 +30,7 @@ type CycleRow = typeof cycleTable.$inferSelect;
 //                the policy. Direct-lane issues count too: an
 //                *outstanding* invite whose lane resolves to the direct
 //                path holds a capacity slot until redeemed, revoked, or
-//                expired (docs/joining-admission-plan.md §2/§4.1), so
+//                expired (docs/plans/archive/joining-admission-plan.md §2/§4.1), so
 //                issued-but-unspent slots fill the room as well.
 export type CycleJoiningState = {
   cycle: CycleRow;
@@ -115,7 +115,7 @@ export async function canScheduleInterview(communityId: string, cycleId: string 
 
 
 // An *outstanding* invite holds a place in a capped event when the lane it
-// resolves to in that event admits straight away (docs/admission-flow.md §6):
+// resolves to in that event admits straight away (docs/plans/admission-flow.md §6):
 // the issued-but-unspent invite is a promise of a place, so it counts against
 // the room the same as someone already coming. An invite whose lane runs a
 // check or a process holds nothing — nobody has committed the room yet. An
@@ -152,7 +152,7 @@ export async function countCapacityHolds(communityId: string, cycleId: string): 
 //   application     — somebody is sending an application (`withInvite`: with an invite behind it)
 export type EntryVia = "invite_created" | "invite_redeemed" | "application";
 
-// docs/admission-flow.md §6: every door is checked where it matters, and doors
+// docs/plans/admission-flow.md §6: every door is checked where it matters, and doors
 // govern *entering* — a closed one stops new entries and says so, and a person
 // already in the funnel carries on. This is the one place that is decided, for
 // the three ways in, so creating an invite, opening it and sending an

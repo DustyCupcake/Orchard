@@ -754,7 +754,7 @@ export default function PlotEditor({
       downloadBlob(`${selectedPlacement.label}.geojson`, JSON.stringify(feature, null, 2), "application/geo+json");
     } else {
       // Whole-Plot scope: every Zone and every Placement in one
-      // FeatureCollection — docs/development-plan.md's Phase 37
+      // FeatureCollection — docs/plans/development-plan.md's Phase 37
       // "extends Phase 36's export to include Placement as an export
       // scope."
       const collection = plotToGeoJSONFeatureCollection(zones, placements, calibration);

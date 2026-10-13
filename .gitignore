@@ -24,3 +24,19 @@ node_modules/
 next-env.d.ts
 npm-debug.log*
 *.tsbuildinfo
+
+# Git worktrees created by agent tooling, nested inside this repo. Tracked
+# here rather than left to .git/info/exclude, which the tooling writes per
+# clone: that file is local and unversioned, so the ignore works on whichever
+# machine ran the tool and silently doesn't exist anywhere else.
+#
+# Worth being explicit about, because a worktree is a whole second checkout of
+# this repository — tests, migrations and all. One nested under the working
+# tree was picked up by vitest's default `**/*.test.ts` glob, so the suite ran
+# 95 duplicate files (191 instead of 96), every test twice against a different
+# commit's source, and a failure in there reported as a local failure. It also
+# reached the Docker build context via `COPY . .`, where the `checks` stage
+# linted it and produced eight warnings against files CI never sees. Both
+# consumers are also excluded at their own end (vitest.config.ts and
+# .dockerignore) — this line is the third guard, and the only one that travels.
+**/.claude/worktrees/

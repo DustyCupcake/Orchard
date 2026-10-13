@@ -10,7 +10,7 @@ import {
   type AdmissionStageReason,
 } from "@/lib/recruitment/admission-stage";
 
-// docs/admission-flow.md §4 — the stage is a pure function of the facts
+// docs/plans/admission-flow.md §4 — the stage is a pure function of the facts
 // and the path. §8 step 1 asks for "tests for every row of §2", which is
 // what the lane fixtures below are: one per row of the table of paths a
 // lane can produce.

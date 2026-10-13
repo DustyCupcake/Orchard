@@ -6,7 +6,7 @@ import { supportAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-// The link a person hands to members who know them (docs/admission-flow.md §2).
+// The link a person hands to members who know them (docs/plans/admission-flow.md §2).
 // It is a separate credential from the person's own page, and what it can do is
 // deliberately small: a member who opens it can say how they know the person,
 // once, and nothing else — it can never act for the person or show their page.

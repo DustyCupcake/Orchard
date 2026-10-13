@@ -57,7 +57,7 @@ export async function getMyAvailability(actor: Member, pollId: string) {
 export type AggregateSlot = { slot: string; count: number; qualifies: boolean };
 
 // Who counts as a holder, for a person_plus_n_holders poll (the recruitment
-// interview, docs/admission-flow.md §2), and what they have said they are free for
+// interview, docs/plans/admission-flow.md §2), and what they have said they are free for
 // *standing*, outside this poll. Passed in rather than read here because the
 // scheduling module knows nothing about recruitment.
 export type HolderContext = {

@@ -6,6 +6,7 @@ import {
   SettingsGroup,
   SettingsSection,
   TextField,
+  TimeZoneField,
   ToggleField,
 } from "../ui";
 import {
@@ -34,7 +35,7 @@ export default function GeneralTab({
           action={updateGeneralBasicsAction}
           submitLabel="Save basics"
           title="Name and structure"
-        stateLabel="The community name, whether it runs events, whether events have phases, and how dates are displayed"
+        stateLabel="The community name, its time zone, whether it runs events, whether events have phases, and how dates are displayed"
           state={
             <>
               {community.name} ·{" "}
@@ -43,6 +44,8 @@ export default function GeneralTab({
                 community.phasesEnabled ? "phases on" : "no phases",
                 community.onsiteModeEnabled ? "on-site mode on" : "on-site mode off",
               ].join(" · ")}{" "}
+              ·{" "}
+              {community.timeZone ?? "UTC"}{" "}
               ·{" "}
               {community.defaultDateDisplayMode === "period"
                 ? "dates read as periods"
@@ -87,6 +90,7 @@ export default function GeneralTab({
             ]}
             hint="A starting point for every member; anyone can override it for themselves."
           />
+          <TimeZoneField defaultValue={community.timeZone} />
           <SelectField
             label="Starting an event needs this tier"
             name="cycleInitiationTierId"

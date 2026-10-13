@@ -2,7 +2,7 @@ import ApplyView from "../ApplyView";
 
 export const dynamic = "force-dynamic";
 
-// A public lane with its own address (docs/admission-flow.md §2a): another
+// A public lane with its own address (docs/plans/admission-flow.md §2a): another
 // starting point with its own process, served at /apply/<slug>.
 export default async function ApplyLanePage({
   params,

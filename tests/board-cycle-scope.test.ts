@@ -21,7 +21,7 @@ async function backstopIn(cycleId: string) {
   return row!;
 }
 
-// docs/development-plan.md's Phase 67 — the board's own cycle-scope
+// docs/plans/development-plan.md's Phase 67 — the board's own cycle-scope
 // filter (listTasks's new `cycleScope` option), exercised directly
 // rather than through the board page itself (no page.tsx in this repo
 // has automated test coverage — see every prior phase's own note on

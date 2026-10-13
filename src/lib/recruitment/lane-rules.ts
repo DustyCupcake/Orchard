@@ -8,7 +8,7 @@ import type { AdmissionVerification } from "@/db/schema";
 // `@/db` in for its values would drag the database client into the browser
 // bundle). The db half is admission-lanes.ts, which resolves rows into these.
 //
-// docs/admission-flow.md §2a: a lane is defined by what the system already
+// docs/plans/admission-flow.md §2a: a lane is defined by what the system already
 // knows about an arrival, never by something a person picks from a menu. An
 // invite lane says which inviter declarations it handles; a public lane is
 // the link someone arrived by.
@@ -246,7 +246,7 @@ export function describeLanePath(rule: AdmissionLaneRule): string {
  * does not do (§3): who it is for, then what they go through.
  */
 /**
- * What the lanes in play mean for the rest of the settings screen (docs/admission-flow.md
+ * What the lanes in play mean for the rest of the settings screen (docs/plans/admission-flow.md
  * §3): a section that configures something no lane uses is not shown, so a community is
  * never asked how reports decide when nothing is reported on, or how long a check runs when
  * nothing is checked.

@@ -163,7 +163,7 @@ describe("exportCycleAsTaskPack", () => {
     await expect(exportCycleAsTaskPack(alice, otherCycle.id, { name: "Steal" })).rejects.toThrow(NotFoundError);
   });
 
-  // docs/cycle-scope-remediation-plan.md §4.4 — the grant-copy story:
+  // docs/plans/archive/cycle-scope-remediation-plan.md §4.4 — the grant-copy story:
   // a pack is a cycle "in a box", and a cycle's authority tasks are
   // part of what it carries. Each imported task's module grants must
   // travel on its item so commitPackImport can re-grant it.
@@ -310,7 +310,7 @@ describe("commitPackImport", () => {
     expect(newMilestones[0].phaseId).toBe(newPhases[0].id);
   });
 
-  // docs/cycle-scope-remediation-plan.md §4.4 — the imported task keeps
+  // docs/plans/archive/cycle-scope-remediation-plan.md §4.4 — the imported task keeps
   // the modules its source granted, and because it lands in the imported
   // cycle those grant rows are already scoped to that cycle (§2.1), the
   // same way cloned grants are.
@@ -395,7 +395,7 @@ describe("commitPackImport", () => {
     expect(suggestions).toEqual([{ hint: branch.name, suggestedBranchId: branch.id, matchKind: "exact" }]);
   });
 
-  // docs/development-plan.md's Phase 59 — the near-match suggestion
+  // docs/plans/development-plan.md's Phase 59 — the near-match suggestion
   // Phase 55's own review screen deliberately deferred ("Wood" vs.
   // "Woods" instead of forcing "create new" on anything short of an
   // exact name).

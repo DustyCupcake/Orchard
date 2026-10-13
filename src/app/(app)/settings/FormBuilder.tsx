@@ -16,7 +16,7 @@ const FORM_RESPONSE_TYPES: ResponseType[] = [...RESPONSE_TYPES];
 // A field's key is generated once, here, when it's added — and never
 // touched again for the life of the field, even as its label/type/
 // options are edited afterward. This is what lets "fully edit" an
-// existing Form's fields (docs/development-plan.md's Phase 58) stay
+// existing Form's fields (docs/plans/development-plan.md's Phase 58) stay
 // safe: an existing FormResponse.values lookup is keyed on this same
 // string, so silently regenerating it from the (now-different) label
 // would orphan every past answer under the old key. It also sidesteps

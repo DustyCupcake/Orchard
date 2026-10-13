@@ -10,7 +10,7 @@ async function enableCycles(communityId: string) {
   await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, communityId));
 }
 
-// docs/development-plan.md's Phase 66 — resolveCrossCycleContext backs
+// docs/plans/development-plan.md's Phase 66 — resolveCrossCycleContext backs
 // the task detail page's cross-cycle-boundary banner and its "?scope="
 // confirm-switch prompt. Never itself writes Member.lastViewedCycleId
 // (see switchToLinkedScopeAction, the actual writer, in

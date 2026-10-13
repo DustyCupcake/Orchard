@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // scripts/zitadel-spike2.mjs — the second probe, for the parts of
-// docs/admission-flow.md §6a the first spike (scripts/zitadel-spike.mjs) did
+// docs/plans/admission-flow.md §6a the first spike (scripts/zitadel-spike.mjs) did
 // not cover, run against the real tenant BEFORE the provisioning code is
 // written around them:
 //   1. Finding a person by email (a user who ALREADY exists must get the role

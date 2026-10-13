@@ -15,7 +15,7 @@ import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
 import { getCommunityRow, listHeldRecruitmentScopes, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
 
-// docs/admission-flow.md §5 — the community check, one mechanism.
+// docs/plans/admission-flow.md §5 — the community check, one mechanism.
 //
 // This file is the window itself: opening it, reading it, raising a concern in
 // it. What happens when it *ends* — the arrival admitted, declined, sent back for

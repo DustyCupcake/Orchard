@@ -5,12 +5,12 @@ import { member } from "./member";
 import { task } from "./task";
 
 // Spatial planning — see docs/spec.md's "Spatial planning" (including
-// its "Cloning across cycles" subsection) and docs/development-plan.md's
+// its "Cloning across cycles" subsection) and docs/plans/development-plan.md's
 // Phase 36-38. Phase 36 builds Plot/Zone; Placement/PlacementMember/
 // SpacePreference/PlacementTemplate are Phase 37's.
 
 // The base a site gets planned against — one per Cycle, not one per
-// Community (docs/development-plan.md's Phase 36: a Community running
+// Community (docs/plans/development-plan.md's Phase 36: a Community running
 // recurring Cycles genuinely re-plans its site each time). cycleId is
 // nullable, same "optional association, ties to a real Cycle when
 // cycles are on" pattern BudgetCycle/EventProposal already use — a

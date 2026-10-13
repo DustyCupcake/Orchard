@@ -1,6 +1,7 @@
 "use server";
 
 import { ZodError } from "zod";
+import { eventInstantFromLocal } from "@/lib/cycles";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
@@ -102,7 +103,9 @@ export async function activateProposalAction(formData: FormData) {
       tags: tags.length > 0 ? tags : undefined,
       openness: String(formData.get("openness") ?? "request"),
       endorsementThreshold: endorsementThresholdRaw ? Number(endorsementThresholdRaw) : undefined,
-      browsePeriodEnd: browsePeriodEndRaw ? new Date(browsePeriodEndRaw).toISOString() : undefined,
+      browsePeriodEnd: browsePeriodEndRaw
+        ? await eventInstantFromLocal(actor.communityId, cycleIdRaw || null, browsePeriodEndRaw)
+        : undefined,
       requirements,
       dependsOnTaskIds: dependsOnTaskIds.length > 0 ? dependsOnTaskIds : undefined,
       grantModuleKeys: grantModuleKeys.length > 0 ? grantModuleKeys : undefined,

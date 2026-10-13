@@ -6,7 +6,7 @@ import { isModuleOpenToEveryone, type PermissionModuleKey } from "./permissions"
 
 type Member = typeof member.$inferSelect;
 
-// The one scope read (docs/cycle-scope-remediation-plan.md §2.1/§2.4),
+// The one scope read (docs/plans/archive/cycle-scope-remediation-plan.md §2.1/§2.4),
 // passed by everything that asks "does this actor do coordination
 // here?": `null` is the community-wide superset ("any coordination
 // task, any branch, any cycle" — the Escalation/nav/dashboard gates);
@@ -45,7 +45,7 @@ export const COORDINATION_MODULE_KEYS = [
   "community_coordination",
 ] as const satisfies readonly PermissionModuleKey[];
 //
-// Scope resolution (docs/cycle-scope-remediation-plan.md §2.4):
+// Scope resolution (docs/plans/archive/cycle-scope-remediation-plan.md §2.4):
 // - `null` — any granted coordination task, any branch, any cycle
 //   (the community-wide check used by the Escalation view and the
 //   coordination nav/dashboard gates, all explicitly cross-branch).
@@ -59,7 +59,7 @@ export const COORDINATION_MODULE_KEYS = [
 //   granted task in that branch OR a granted task placed in that
 //   cycle. A task sitting in cycle C is covered by the whole row of
 //   cycle C (any branch), and a task outside every cycle is covered by
-// Scope resolution (docs/cycle-scope-remediation-plan.md §2.4):
+// Scope resolution (docs/plans/archive/cycle-scope-remediation-plan.md §2.4):
 // - `null` — any coordination authority at all, any branch, any cycle
 //   (the Escalation/nav/dashboard gates, all explicitly cross-branch).
 // - a `string` branchId — column semantics: a *cycle-less* granted
@@ -100,7 +100,7 @@ export interface CoordinationCoverage {
 // interface only warns" behaviour.
 async function resolveCoordinationCoverage(actor: Member): Promise<CoordinationCoverage> {
   // An open module of either kind answers community-wide immediately
-  // (docs/open-permissions-plan.md D3): `communityWide: true` short-circuits
+  // (docs/plans/archive/open-permissions-plan.md D3): `communityWide: true` short-circuits
   // every downstream isCoordinationHolder scope check, so an open
   // branch_coordination covers every branch and an open
   // community_coordination is unchanged in effect. Checked before the join

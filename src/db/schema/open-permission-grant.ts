@@ -5,7 +5,7 @@ import { permissionGrantModuleEnum } from "./permission-grant";
 
 // "Everyone has this permission" — a Community's deliberate decision that
 // a capability is open to all its members rather than carried by whoever
-// holds a task granting it. See docs/open-permissions-plan.md.
+// holds a task granting it. See docs/plans/archive/open-permissions-plan.md.
 //
 // A row is the whole fact: "this Community has module M open". There is no
 // grant row, because there is no task: a row here and a `permission_grant`

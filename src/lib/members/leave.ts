@@ -77,7 +77,7 @@ export async function anonymiseMember(
   const target = actor;
 
   // Before the identity rows go: what the provider knows them by is the one thing that says
-  // whose role to take back (docs/admission-flow.md §6a, "leaving closes the door"). Outside
+  // whose role to take back (docs/plans/admission-flow.md §6a, "leaving closes the door"). Outside
   // the transaction and best-effort — a provider that is down must not stop somebody leaving —
   // and reported, since a person who left but can still sign in there is the very disagreement
   // this setting exists to prevent.

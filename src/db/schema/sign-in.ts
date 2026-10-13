@@ -2,7 +2,7 @@ import { boolean, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid }
 import { community } from "./community";
 import { member } from "./member";
 
-// docs/admission-flow.md §6a — when a community's sign-in is its own identity
+// docs/plans/admission-flow.md §6a — when a community's sign-in is its own identity
 // provider, "admitted" has to mean something there too.
 
 // The state of making a newly admitted member able to sign in at the provider. A

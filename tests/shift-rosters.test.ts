@@ -21,7 +21,7 @@ import {
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantShiftManagementTo, resetDatabase } from "./helpers";
 
-// D9–D11 (docs/cycle-scope-remediation-plan.md §2.6/§4.8/§5.6): cycle-
+// D9–D11 (docs/plans/archive/cycle-scope-remediation-plan.md §2.6/§4.8/§5.6): cycle-
 // scoped shift rosters — placement as the scope declaration,
 // grant-based management (D10), and the collecting window / one-way
 // open act / proposal-confirmation flow (D11).

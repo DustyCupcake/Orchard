@@ -16,13 +16,13 @@ export const branchMembershipModelEnum = pgEnum("branch_membership_model", ["eme
 
 // How much of the mediation body has to agree before an objection can be
 // overruled in favour of admitting someone anyway
-// (docs/joining-admission-plan.md §2.6/J7). Declared here, next to the
+// (docs/plans/archive/joining-admission-plan.md §2.6/J7). Declared here, next to the
 // columns that use it, rather than in the recruitment module's own
 // schema file: like every other settings-facing vocabulary in this file
 // (membershipModelEnum, dateDisplayModeEnum) it is a *configuration*
 // choice, and a db/schema file importing another module's file for it
 // would be a dependency direction this schema has never taken.
-// docs/admission-flow.md §2, "How reports decide": the small fixed form that
+// docs/plans/admission-flow.md §2, "How reports decide": the small fixed form that
 // replaced the ordered rules list. The values mirror decision-policy.ts, which a
 // client component can import and this file cannot.
 export const recruitmentInWhenEnum = pgEnum("recruitment_in_when", ["no_no_one_yes", "more_yes_than_no", "all_yes", "custom"]);
@@ -51,6 +51,11 @@ export const community = pgTable("community", {
   // Community-wide default for read-only date labels. A Member can
   // override this, or leave its own nullable override null to inherit it.
   defaultDateDisplayMode: dateDisplayModeEnum("default_date_display_mode").notNull().default("exact"),
+  // The wall-clock a Community's events run in — see
+  // src/lib/dates/timezone.ts. A Cycle inherits this unless it overrides
+  // it, so a community that runs one event abroad sets the exception on
+  // the event rather than moving everyone's default. Null reads as UTC.
+  timeZone: text("time_zone"),
   onsiteModeEnabled: boolean("onsite_mode_enabled").notNull().default(false),
   // How long the conflict team has to acknowledge a new report before
   // it's shown as overdue — see docs/spec.md's Conflict management
@@ -59,7 +64,7 @@ export const community = pgTable("community", {
   //
   // The Admins task isn't a dedicated Community → Task column, same as
   // branch coordination below — see `PermissionGrant`
-  // (src/db/schema/permission-grant.ts, docs/development-plan.md's
+  // (src/db/schema/permission-grant.ts, docs/plans/development-plan.md's
   // Phase 63), which replaced both this and every other single-task/
   // tag-based access gate with one real table. adminsEverClaimed
   // latches true the first time any admin-module PermissionGrant's task
@@ -140,7 +145,7 @@ export const community = pgTable("community", {
   cycleIndicatorsEnabled: boolean("cycle_indicators_enabled").notNull().default(false),
   recruitmentApplicationsOpen: boolean("recruitment_applications_open").notNull().default(true),
   recruitmentInvitesOpen: boolean("recruitment_invites_open").notNull().default(true),
-  // The third door (docs/joining-admission-plan.md §2.3/J3/D13): the
+  // The third door (docs/plans/archive/joining-admission-plan.md §2.3/J3/D13): the
   // interview stage, finally a door of its own instead of something
   // that either always ran (evaluated applications) or was skipped
   // wholesale (direct invites). A cycle with `interviewsOpen = false`
@@ -150,7 +155,7 @@ export const community = pgTable("community", {
   // evaluated path, so a community that touches nothing keeps it.
   recruitmentInterviewsOpen: boolean("recruitment_interviews_open").notNull().default(true),
   // How reports decide — one small policy for the whole community
-  // (docs/admission-flow.md §2). How *many* reports a lane needs is the lane's
+  // (docs/plans/admission-flow.md §2). How *many* reports a lane needs is the lane's
   // own; this says what a full set of them means.
   recruitmentInWhen: recruitmentInWhenEnum("recruitment_in_when").notNull().default("no_no_one_yes"),
   recruitmentCustomMinYes: integer("recruitment_custom_min_yes").notNull().default(1),
@@ -158,7 +163,7 @@ export const community = pgTable("community", {
   recruitmentAnyNoMeans: recruitmentAnyNoMeansEnum("recruitment_any_no_means").notNull().default("wider_discussion"),
   recruitmentDiscussionEnds: recruitmentDiscussionEndsEnum("recruitment_discussion_ends").notNull().default("decline"),
   recruitmentDeclineOutrightAt: integer("recruitment_decline_outright_at"),
-  // How long every community-check window stays open (docs/admission-flow.md §5): a lane
+  // How long every community-check window stays open (docs/plans/admission-flow.md §5): a lane
   // that announces arrivals, and a decision that opens a wider discussion, are one
   // mechanism and share this. Stored with each window's deadline when it opens
   // (community_check.window_hours), so changing it never moves one already running.
@@ -180,16 +185,23 @@ export const community = pgTable("community", {
   // automatically. A single field for v1, per spec's own framing.
   recruitmentRejectionTemplate: text("recruitment_rejection_template"),
   // "Reply within [N days]" — see docs/spec.md's Task assignment
-  // notification and docs/development-plan.md's Phase 51. Same
+  // notification and docs/plans/development-plan.md's Phase 51. Same
   // community-configurable-threshold pattern as conflictAckWindowHours/
   // recruitmentWiderDiscussionHours above.
   taskNominationResponseDays: integer("task_nomination_response_days").notNull().default(3),
   // "One is just noted, a couple becomes a soft flag... three or more
   // surfaces as a pattern" — see docs/spec.md's Response tracking and
-  // docs/development-plan.md's Phase 52. "Noted" itself needs no
+  // docs/plans/development-plan.md's Phase 52. "Noted" itself needs no
   // threshold of its own — it's just 1 up to (not including)
   // engagementSoftFlagThreshold; see src/lib/engagement.ts's
   // computeEngagementPattern.
+  // How much money each person standing behind a budget proposal covers: a
+  // proposal is "backed up to" its backers (the proposer plus whoever supports
+  // it) times this, and its scope's holder can approve it only up to that.
+  // Null or 0 means no backing is required and the holder decides alone — the
+  // default, because the right figure depends on a community's currency and
+  // scale, which the app doesn't know. docs/plans/archive/budget-funds-plan.md D12.
+  fundSupportPerBacker: integer("fund_support_per_backer"),
   engagementSoftFlagThreshold: integer("engagement_soft_flag_threshold").notNull().default(2),
   engagementPatternThreshold: integer("engagement_pattern_threshold").notNull().default(3),
   // How long a published, require_read CallSummary waits before a
@@ -208,7 +220,7 @@ export const community = pgTable("community", {
   accentPrimary: text("accent_primary"),
   accentSecondary: text("accent_secondary"),
   logoUrl: text("logo_url"),
-  // OIDC second auth provider (docs/development-plan.md's Phase 57) —
+  // OIDC second auth provider (docs/plans/development-plan.md's Phase 57) —
   // "provider-pluggable, not one fixed method," alongside (never
   // replacing) magic-link. All three null = OIDC off, magic-link only.
   // The client secret deliberately lives in env (OIDC_CLIENT_SECRET),
@@ -233,7 +245,7 @@ export const community = pgTable("community", {
   // that's the behavior a Community configuring OIDC at all most likely
   // wants — flip it off for a softer transition.
   oidcPrimary: boolean("oidc_primary").notNull().default(true),
-  // docs/admission-flow.md §6a — what "admitted" means to the provider. All three are
+  // docs/plans/admission-flow.md §6a — what "admitted" means to the provider. All three are
   // off (or today's behaviour) until a community turns them on, and meaningless while
   // single sign-on is unconfigured. The service token that makes the first two work is
   // an environment credential (ZITADEL_TOKEN), never a column.

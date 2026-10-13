@@ -5,6 +5,8 @@ import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { listGrantingTaskIds } from "../permissions";
 import { sendInterviewConfirmedEmail, sendInterviewInviteEmail } from "../mailer";
+import { getEventTimeZone } from "../cycles/time-zone";
+import { formatInstant } from "../dates";
 import { createPoll } from "../scheduling-polls/crud";
 import { computeAggregate, type HolderContext } from "../scheduling-polls/availability";
 import { admissionLink } from "./admission";
@@ -17,7 +19,7 @@ type Member = typeof memberTable.$inferSelect;
 type Arrival = typeof admission.$inferSelect;
 type Poll = typeof schedulingPoll.$inferSelect;
 
-// docs/admission-flow.md §2, "Interview". The interview is a step with the same
+// docs/plans/admission-flow.md §2, "Interview". The interview is a step with the same
 // standing as the application, and it comes *before* the decision. A lane that
 // asks for one gets a scheduling poll for each arrival as they enter; the person
 // paints when they are free, the recruitment holders offer their own availability
@@ -306,7 +308,9 @@ export async function onInterviewConfirmed(pollId: string): Promise<Arrival> {
           await sendInterviewConfirmedEmail(arrival.email, {
             name: arrival.name,
             communityName: communityRow?.name ?? "the community",
-            whenText: poll.confirmedSlotStart.toLocaleString("en-GB", { dateStyle: "full", timeStyle: "short", timeZone: "UTC" }) + " UTC",
+            // On the event's clock (the community's when it isn't for one), zone named: an
+            // email has no viewer, and "UTC" read as the server's was only right by accident.
+            whenText: formatInstant(poll.confirmedSlotStart, await getEventTimeZone(arrival.communityId, arrival.cycleId), "datetime", { zoneName: true }),
             statusUrl: admissionLink(arrival.token),
           });
         } catch (err) {

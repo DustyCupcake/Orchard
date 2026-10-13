@@ -63,7 +63,7 @@ export const FOUNDING_SETTINGS_DESCRIPTION =
   "change by hand. Delete anything you've already settled; add anything " +
   "this missed.";
 
-// How someone arrives is a *lane* the community defines (docs/admission-flow.md §2a), so the
+// How someone arrives is a *lane* the community defines (docs/plans/admission-flow.md §2a), so the
 // question asks about the shape of the path rather than naming fixed lanes.
 const KNOWN_PERSONALLY_PATHS = [
   "They're in straight away",

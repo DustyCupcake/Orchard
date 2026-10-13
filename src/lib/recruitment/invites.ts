@@ -29,7 +29,7 @@ export const createCommunityInviteInput = z.object({
   inviterThinksGoodFit: z.boolean().optional(),
   inviterKnowsPersonally: z.boolean().optional(),
   expiresAt: z.string().min(1).nullable().optional(),
-  // docs/joining-admission-plan.md §2.1 — the marks below fix the
+  // docs/plans/archive/joining-admission-plan.md §2.1 — the marks below fix the
   // invite's *lane* at send time (knows-personally, good-fit, neither);
   // the cycle this invite is for (null = a general community invite)
   // picks the context its lane rule resolves in.
@@ -48,7 +48,7 @@ export type CreateCommunityInviteInput = z.infer<typeof createCommunityInviteInp
 // task into a shift." Always single-use, no multi-use variant per
 // spec's explicit CampTool callout.
 //
-// The inviter's two marks pick the lane (docs/admission-flow.md §2a), and
+// The inviter's two marks pick the lane (docs/plans/admission-flow.md §2a), and
 // what the lane asks of the invitee happens to the invite here at creation
 // so the inviter finds out *before* they hand the link over rather than the
 // recipient finding out after:
@@ -85,7 +85,7 @@ export async function createCommunityInvite(actor: Member, input: CreateCommunit
   }
   const route = laneRoute(laneRuleOf(lane));
 
-  // The doors, checked where they matter (docs/admission-flow.md §6) by the same
+  // The doors, checked where they matter (docs/plans/admission-flow.md §6) by the same
   // function that checks them when the link is opened and when an application
   // is sent. A closed interviews door is not among them: it holds an arrival at
   // the interview step rather than stopping anyone at the entrance.
@@ -241,7 +241,7 @@ export async function getCommunityInviteLane(
   return lane ? { lane, route: laneRoute(laneRuleOf(lane)) } : null;
 }
 
-// §4.3/8d + docs/joining-admission-plan.md §2 pipeline visibility:
+// §4.3/8d + docs/plans/archive/joining-admission-plan.md §2 pipeline visibility:
 // outstanding *cycle* invites whose path is anything but `direct`
 // belong on the recruitment pipeline alongside the applications
 // themselves, because that is where they funnel — a nomination is
@@ -342,7 +342,7 @@ export type RedemptionOutcome =
 
 // Public — no actor. A valid, unexpired, unredeemed, unrevoked token *is*
 // the proof of standing (docs/spec.md). What redeeming does depends on the
-// lane the invite takes (docs/admission-flow.md §2a), and in every case the
+// lane the invite takes (docs/plans/admission-flow.md §2a), and in every case the
 // person becomes an *arrival* first (§4); only a lane that admits on the
 // spot makes them a member in the same breath, and only through the one
 // admission function.

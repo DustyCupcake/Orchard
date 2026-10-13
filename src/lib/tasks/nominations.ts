@@ -233,7 +233,7 @@ async function applyNominationResponse(
       }
     }
 
-    // See docs/development-plan.md's Phase 52: an unanswered nomination
+    // See docs/plans/development-plan.md's Phase 52: an unanswered nomination
     // is itself one of Response tracking's named non-response kinds;
     // any of the three real human responses (including a decline —
     // saying no is still re-engaging, silence is what the record

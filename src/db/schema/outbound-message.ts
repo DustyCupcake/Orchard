@@ -12,7 +12,7 @@ export const outboundMessageScopeEnum = pgEnum("outbound_message_scope", [
 
 // See docs/spec.md's "Outbound communications" (three tiers,
 // increasingly gated — direct asks are Phase 51's own TaskNomination,
-// this covers the other two) and docs/development-plan.md's Phase 53.
+// this covers the other two) and docs/plans/development-plan.md's Phase 53.
 // A message never stores its recipient roster — "every send resolves
 // its recipient set live at send time" per the dev-plan's own scope
 // line — src/lib/messages.ts recomputes the audience from `scope`/

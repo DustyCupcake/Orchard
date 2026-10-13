@@ -7,7 +7,7 @@ import { member } from "./member";
 // suggesting a different approach, three or more surfaces as a pattern
 // worth a human conversation — never an automatic sanction. The
 // pattern resets once the person responds and re-engages." — see
-// docs/spec.md's Response tracking and docs/development-plan.md's
+// docs/spec.md's Response tracking and docs/plans/development-plan.md's
 // Phase 52. Every kind here is a genuine non-response this codebase
 // already produces somewhere — this phase adds the logging, not a new
 // detection mechanism per kind:
@@ -30,7 +30,7 @@ export const engagementEventKindEnum = pgEnum("engagement_event_kind", [
 // resolvedAt is set on every one of a member's open rows at once, the
 // moment they take any of the real response actions this system
 // tracks (see src/lib/engagement.ts's resolveEngagementForMember) — "a
-// global reset, not per-kind" (docs/development-plan.md's Phase 52).
+// global reset, not per-kind" (docs/plans/development-plan.md's Phase 52).
 // taskId is nullable and purely contextual (a coordinator glancing at
 // *why* — this is never itemized/drilled-into by design, spec frames
 // the whole thing as a computed pattern level, not an event log to

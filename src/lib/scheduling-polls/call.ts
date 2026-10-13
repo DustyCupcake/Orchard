@@ -98,7 +98,7 @@ export async function markSummaryRead(actor: Member, summaryId: string) {
     .returning();
 
   // Reading a require_read summary is a real response action — see
-  // docs/development-plan.md's Phase 52.
+  // docs/plans/development-plan.md's Phase 52.
   await resolveEngagementForMember(db, actor.id);
 
   return created;

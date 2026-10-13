@@ -388,7 +388,7 @@ describe("getContributionCommunityAverage (Phase 31)", () => {
     await declareParticipation(bob, cyc.id, { status: "coming" });
 
     // Only alice has active tasks — her own plus the cycle's auto-claimed
-    // Backstop task (docs/cycle-scope-remediation-plan.md §4.7); bob
+    // Backstop task (docs/plans/archive/cycle-scope-remediation-plan.md §4.7); bob
     // contributes a real zero, not an excluded denominator.
     const t = await insertTask(alice.communityId, branch.id, alice.id, { status: "claimed" });
     await assign(t.id, alice.id);

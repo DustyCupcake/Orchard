@@ -4,7 +4,7 @@ import { BUTTON_PRIMARY } from "@/components/ui/kit";
 
 export const dynamic = "force-dynamic";
 
-// docs/admission-flow.md §2, "Pairing": the link somebody sends to the person they are
+// docs/plans/admission-flow.md §2, "Pairing": the link somebody sends to the person they are
 // applying with. All it does is carry them to the application, paired. The confirming half
 // — "is this who you meant?" — is on the namer's own page (/admission/<token>), because the
 // namer is a person in the funnel, not necessarily a member with a login.

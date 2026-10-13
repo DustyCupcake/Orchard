@@ -1,6 +1,6 @@
 {
-  "id": "3c0bb6d9-3bdf-4256-880c-16ff5b1c91ec",
-  "prevId": "94c406c9-0b16-4574-a82b-2fb8e51ec3f8",
+  "id": "1c6d2184-a2a4-418f-b1ef-25c733eecb52",
+  "prevId": "ce4b7e2b-bfb5-422d-9163-70b9e13d8c0a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -91,6 +91,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'exact'"
+        },
+        "time_zone": {
+          "name": "time_zone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "onsite_mode_enabled": {
           "name": "onsite_mode_enabled",
@@ -270,6 +276,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": 3
+        },
+        "fund_support_per_backer": {
+          "name": "fund_support_per_backer",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "engagement_soft_flag_threshold": {
           "name": "engagement_soft_flag_threshold",
@@ -745,13 +757,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "own_admission_lanes": {
-          "name": "own_admission_lanes",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
         "recruitment_application_form_id": {
           "name": "recruitment_application_form_id",
           "type": "uuid",
@@ -800,6 +805,12 @@
         "end_date": {
           "name": "end_date",
           "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "time_zone": {
+          "name": "time_zone",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -1082,6 +1093,12 @@
           "name": "date_display_mode",
           "type": "date_display_mode",
           "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "time_zone": {
+          "name": "time_zone",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -5828,7 +5845,7 @@
           "name": "proposal_deadline",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "status": {
           "name": "status",
@@ -5870,7 +5887,24 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "budget_cycle_one_unfinished_per_event": {
+          "name": "budget_cycle_one_unfinished_per_event",
+          "columns": [
+            {
+              "expression": "cycle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"budget_cycle\".\"cycle_id\" is not null and \"budget_cycle\".\"status\" <> 'confirmed'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "budget_cycle_community_id_community_id_fk": {
           "name": "budget_cycle_community_id_community_id_fk",
@@ -5918,8 +5952,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.budget_proposal": {
-      "name": "budget_proposal",
+    "public.budget_pledge": {
+      "name": "budget_pledge",
       "schema": "",
       "columns": {
         "id": {
@@ -5934,6 +5968,106 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "budget_pledge_budget_cycle_id_budget_cycle_id_fk": {
+          "name": "budget_pledge_budget_cycle_id_budget_cycle_id_fk",
+          "tableFrom": "budget_pledge",
+          "tableTo": "budget_cycle",
+          "columnsFrom": [
+            "budget_cycle_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "budget_pledge_member_id_member_id_fk": {
+          "name": "budget_pledge_member_id_member_id_fk",
+          "tableFrom": "budget_pledge",
+          "tableTo": "member",
+          "columnsFrom": [
+            "member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "budget_pledge_member_unique": {
+          "name": "budget_pledge_member_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "budget_cycle_id",
+            "member_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.budget_proposal": {
+      "name": "budget_proposal",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "community_id": {
+          "name": "community_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cycle_id": {
+          "name": "cycle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "budget_cycle_id": {
+          "name": "budget_cycle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "submitted_by": {
           "name": "submitted_by",
@@ -5978,6 +6112,38 @@
           "primaryKey": false,
           "notNull": false
         },
+        "status": {
+          "name": "status",
+          "type": "budget_proposal_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decision_note": {
+          "name": "decision_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approved_amount": {
+          "name": "approved_amount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "submitted_at": {
           "name": "submitted_at",
           "type": "timestamp with time zone",
@@ -5988,6 +6154,32 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "budget_proposal_community_id_community_id_fk": {
+          "name": "budget_proposal_community_id_community_id_fk",
+          "tableFrom": "budget_proposal",
+          "tableTo": "community",
+          "columnsFrom": [
+            "community_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "budget_proposal_cycle_id_cycle_id_fk": {
+          "name": "budget_proposal_cycle_id_cycle_id_fk",
+          "tableFrom": "budget_proposal",
+          "tableTo": "cycle",
+          "columnsFrom": [
+            "cycle_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "budget_proposal_budget_cycle_id_budget_cycle_id_fk": {
           "name": "budget_proposal_budget_cycle_id_budget_cycle_id_fk",
           "tableFrom": "budget_proposal",
@@ -6039,10 +6231,98 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "budget_proposal_decided_by_member_id_fk": {
+          "name": "budget_proposal_decided_by_member_id_fk",
+          "tableFrom": "budget_proposal",
+          "tableTo": "member",
+          "columnsFrom": [
+            "decided_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.budget_proposal_support": {
+      "name": "budget_proposal_support",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "proposal_id": {
+          "name": "proposal_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "budget_proposal_support_proposal_id_budget_proposal_id_fk": {
+          "name": "budget_proposal_support_proposal_id_budget_proposal_id_fk",
+          "tableFrom": "budget_proposal_support",
+          "tableTo": "budget_proposal",
+          "columnsFrom": [
+            "proposal_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "budget_proposal_support_member_id_member_id_fk": {
+          "name": "budget_proposal_support_member_id_member_id_fk",
+          "tableFrom": "budget_proposal_support",
+          "tableTo": "member",
+          "columnsFrom": [
+            "member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "budget_proposal_support_member_unique": {
+          "name": "budget_proposal_support_member_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "proposal_id",
+            "member_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -6329,6 +6609,95 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.event_proposal_interest": {
+      "name": "event_proposal_interest",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "proposal_id": {
+          "name": "proposal_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level": {
+          "name": "level",
+          "type": "event_proposal_interest_level",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "event_proposal_interest_proposal_id_event_proposal_id_fk": {
+          "name": "event_proposal_interest_proposal_id_event_proposal_id_fk",
+          "tableFrom": "event_proposal_interest",
+          "tableTo": "event_proposal",
+          "columnsFrom": [
+            "proposal_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "event_proposal_interest_member_id_member_id_fk": {
+          "name": "event_proposal_interest_member_id_member_id_fk",
+          "tableFrom": "event_proposal_interest",
+          "tableTo": "member",
+          "columnsFrom": [
+            "member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "event_proposal_interest_member_unique": {
+          "name": "event_proposal_interest_member_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "proposal_id",
+            "member_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -6913,1161 +7282,6 @@
           ]
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.admission_lane": {
-      "name": "admission_lane",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "community_id": {
-          "name": "community_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "admission_lane_kind",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "handles_knows_personally": {
-          "name": "handles_knows_personally",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "handles_good_fit_only": {
-          "name": "handles_good_fit_only",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "handles_neither": {
-          "name": "handles_neither",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "public_slug": {
-          "name": "public_slug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "application_required": {
-          "name": "application_required",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "interview_required": {
-          "name": "interview_required",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "verification": {
-          "name": "verification",
-          "type": "admission_verification",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'none'"
-        },
-        "reports_needed": {
-          "name": "reports_needed",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "support_shortcut_count": {
-          "name": "support_shortcut_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "open_in_community": {
-          "name": "open_in_community",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "archived_at": {
-          "name": "archived_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "admission_lane_community_name_idx": {
-          "name": "admission_lane_community_name_idx",
-          "columns": [
-            {
-              "expression": "community_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "admission_lane_community_public_slug_idx": {
-          "name": "admission_lane_community_public_slug_idx",
-          "columns": [
-            {
-              "expression": "community_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "public_slug",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "admission_lane_community_id_community_id_fk": {
-          "name": "admission_lane_community_id_community_id_fk",
-          "tableFrom": "admission_lane",
-          "tableTo": "community",
-          "columnsFrom": [
-            "community_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.cycle_admission_lane": {
-      "name": "cycle_admission_lane",
-      "schema": "",
-      "columns": {
-        "cycle_id": {
-          "name": "cycle_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "lane_id": {
-          "name": "lane_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "cycle_admission_lane_unique": {
-          "name": "cycle_admission_lane_unique",
-          "columns": [
-            {
-              "expression": "cycle_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "lane_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "cycle_admission_lane_cycle_id_cycle_id_fk": {
-          "name": "cycle_admission_lane_cycle_id_cycle_id_fk",
-          "tableFrom": "cycle_admission_lane",
-          "tableTo": "cycle",
-          "columnsFrom": [
-            "cycle_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "cycle_admission_lane_lane_id_admission_lane_id_fk": {
-          "name": "cycle_admission_lane_lane_id_admission_lane_id_fk",
-          "tableFrom": "cycle_admission_lane",
-          "tableTo": "admission_lane",
-          "columnsFrom": [
-            "lane_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.admission": {
-      "name": "admission",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "community_id": {
-          "name": "community_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cycle_id": {
-          "name": "cycle_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "lane_id": {
-          "name": "lane_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "route": {
-          "name": "route",
-          "type": "admission_arrival_route",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "origin": {
-          "name": "origin",
-          "type": "admission_origin",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'funnel'"
-        },
-        "invite_id": {
-          "name": "invite_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "form_response_id": {
-          "name": "form_response_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "required_verification": {
-          "name": "required_verification",
-          "type": "admission_verification",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'none'"
-        },
-        "required_application": {
-          "name": "required_application",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "required_interview": {
-          "name": "required_interview",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "required_evaluation": {
-          "name": "required_evaluation",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "reports_needed": {
-          "name": "reports_needed",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "support_shortcut_count": {
-          "name": "support_shortcut_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "token": {
-          "name": "token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "consent_given_at": {
-          "name": "consent_given_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "check_passed_at": {
-          "name": "check_passed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "application_submitted_at": {
-          "name": "application_submitted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "interview_scheduled_at": {
-          "name": "interview_scheduled_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "interview_held_at": {
-          "name": "interview_held_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "decision_recorded_at": {
-          "name": "decision_recorded_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "support_shortcut_reached_at": {
-          "name": "support_shortcut_reached_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "admitted_at": {
-          "name": "admitted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "admitted_member_id": {
-          "name": "admitted_member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "declined_at": {
-          "name": "declined_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "withdrawn_at": {
-          "name": "withdrawn_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "waitlisted_at": {
-          "name": "waitlisted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "admission_token_idx": {
-          "name": "admission_token_idx",
-          "columns": [
-            {
-              "expression": "token",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "admission_community_email_unique": {
-          "name": "admission_community_email_unique",
-          "columns": [
-            {
-              "expression": "community_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "email",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "admission_community_id_community_id_fk": {
-          "name": "admission_community_id_community_id_fk",
-          "tableFrom": "admission",
-          "tableTo": "community",
-          "columnsFrom": [
-            "community_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "admission_cycle_id_cycle_id_fk": {
-          "name": "admission_cycle_id_cycle_id_fk",
-          "tableFrom": "admission",
-          "tableTo": "cycle",
-          "columnsFrom": [
-            "cycle_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "admission_lane_id_admission_lane_id_fk": {
-          "name": "admission_lane_id_admission_lane_id_fk",
-          "tableFrom": "admission",
-          "tableTo": "admission_lane",
-          "columnsFrom": [
-            "lane_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "admission_form_response_id_form_response_id_fk": {
-          "name": "admission_form_response_id_form_response_id_fk",
-          "tableFrom": "admission",
-          "tableTo": "form_response",
-          "columnsFrom": [
-            "form_response_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.community_check": {
-      "name": "community_check",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "community_id": {
-          "name": "community_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "arrival_id": {
-          "name": "arrival_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "community_check_kind",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "window_hours": {
-          "name": "window_hours",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "deadline": {
-          "name": "deadline",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "community_check_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'open'"
-        },
-        "standing_concern_count": {
-          "name": "standing_concern_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "timer_signaled_at": {
-          "name": "timer_signaled_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolved_at": {
-          "name": "resolved_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolved_by_id": {
-          "name": "resolved_by_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolution_note": {
-          "name": "resolution_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ask_for_more_application": {
-          "name": "ask_for_more_application",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "ask_for_more_interview": {
-          "name": "ask_for_more_interview",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "asked_for_more_by_id": {
-          "name": "asked_for_more_by_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "asked_for_more_at": {
-          "name": "asked_for_more_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "community_check_arrival_unique": {
-          "name": "community_check_arrival_unique",
-          "columns": [
-            {
-              "expression": "arrival_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "community_check_community_id_community_id_fk": {
-          "name": "community_check_community_id_community_id_fk",
-          "tableFrom": "community_check",
-          "tableTo": "community",
-          "columnsFrom": [
-            "community_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.community_check_concern": {
-      "name": "community_check_concern",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "check_id": {
-          "name": "check_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "raised_by_id": {
-          "name": "raised_by_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "resolution": {
-          "name": "resolution",
-          "type": "community_check_concern_resolution",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'standing'"
-        },
-        "resolved_at": {
-          "name": "resolved_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolved_by_id": {
-          "name": "resolved_by_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolution_note": {
-          "name": "resolution_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "overrule_supporter_count": {
-          "name": "overrule_supporter_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "community_check_concern_check_id_idx": {
-          "name": "community_check_concern_check_id_idx",
-          "columns": [
-            {
-              "expression": "check_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "community_check_concern_raised_by_idx": {
-          "name": "community_check_concern_raised_by_idx",
-          "columns": [
-            {
-              "expression": "raised_by_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "community_check_concern_check_id_community_check_id_fk": {
-          "name": "community_check_concern_check_id_community_check_id_fk",
-          "tableFrom": "community_check_concern",
-          "tableTo": "community_check",
-          "columnsFrom": [
-            "check_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "community_check_concern_raised_by_id_member_id_fk": {
-          "name": "community_check_concern_raised_by_id_member_id_fk",
-          "tableFrom": "community_check_concern",
-          "tableTo": "member",
-          "columnsFrom": [
-            "raised_by_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.community_check_concern_consent": {
-      "name": "community_check_concern_consent",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "concern_id": {
-          "name": "concern_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "granted_at": {
-          "name": "granted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "withdrawn_at": {
-          "name": "withdrawn_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "community_check_concern_consent_concern_member_unique": {
-          "name": "community_check_concern_consent_concern_member_unique",
-          "columns": [
-            {
-              "expression": "concern_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "member_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "community_check_concern_consent_concern_id_community_check_concern_id_fk": {
-          "name": "community_check_concern_consent_concern_id_community_check_concern_id_fk",
-          "tableFrom": "community_check_concern_consent",
-          "tableTo": "community_check_concern",
-          "columnsFrom": [
-            "concern_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "community_check_concern_consent_member_id_member_id_fk": {
-          "name": "community_check_concern_consent_member_id_member_id_fk",
-          "tableFrom": "community_check_concern_consent",
-          "tableTo": "member",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.community_check_concern_exclusion": {
-      "name": "community_check_concern_exclusion",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "concern_id": {
-          "name": "concern_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "added_by_id": {
-          "name": "added_by_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "added_at": {
-          "name": "added_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "community_check_concern_exclusion_concern_member_unique": {
-          "name": "community_check_concern_exclusion_concern_member_unique",
-          "columns": [
-            {
-              "expression": "concern_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "member_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "community_check_concern_exclusion_concern_id_community_check_concern_id_fk": {
-          "name": "community_check_concern_exclusion_concern_id_community_check_concern_id_fk",
-          "tableFrom": "community_check_concern_exclusion",
-          "tableTo": "community_check_concern",
-          "columnsFrom": [
-            "concern_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "community_check_concern_exclusion_member_id_member_id_fk": {
-          "name": "community_check_concern_exclusion_member_id_member_id_fk",
-          "tableFrom": "community_check_concern_exclusion",
-          "tableTo": "member",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "community_check_concern_exclusion_added_by_id_member_id_fk": {
-          "name": "community_check_concern_exclusion_added_by_id_member_id_fk",
-          "tableFrom": "community_check_concern_exclusion",
-          "tableTo": "member",
-          "columnsFrom": [
-            "added_by_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.community_check_overrule_support": {
-      "name": "community_check_overrule_support",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "concern_id": {
-          "name": "concern_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "supported_at": {
-          "name": "supported_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "community_check_overrule_support_concern_member_unique": {
-          "name": "community_check_overrule_support_concern_member_unique",
-          "columns": [
-            {
-              "expression": "concern_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "member_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "community_check_overrule_support_concern_id_community_check_concern_id_fk": {
-          "name": "community_check_overrule_support_concern_id_community_check_concern_id_fk",
-          "tableFrom": "community_check_overrule_support",
-          "tableTo": "community_check_concern",
-          "columnsFrom": [
-            "concern_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "community_check_overrule_support_member_id_member_id_fk": {
-          "name": "community_check_overrule_support_member_id_member_id_fk",
-          "tableFrom": "community_check_overrule_support",
-          "tableTo": "member",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -9529,65 +8743,6 @@
           "tableTo": "member",
           "columnsFrom": [
             "added_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.recruitment_standing_availability": {
-      "name": "recruitment_standing_availability",
-      "schema": "",
-      "columns": {
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "available_slots": {
-          "name": "available_slots",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "window_start": {
-          "name": "window_start",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "window_end": {
-          "name": "window_end",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "recruitment_standing_availability_member_id_member_id_fk": {
-          "name": "recruitment_standing_availability_member_id_member_id_fk",
-          "tableFrom": "recruitment_standing_availability",
-          "tableTo": "member",
-          "columnsFrom": [
-            "member_id"
           ],
           "columnsTo": [
             "id"
@@ -11068,6 +10223,96 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.permission_holding": {
+      "name": "permission_holding",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "community_id": {
+          "name": "community_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_title": {
+          "name": "task_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "module_keys": {
+          "name": "module_keys",
+          "type": "permission_grant_module[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "released_at": {
+          "name": "released_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "permission_holding_community_id_community_id_fk": {
+          "name": "permission_holding_community_id_community_id_fk",
+          "tableFrom": "permission_holding",
+          "tableTo": "community",
+          "columnsFrom": [
+            "community_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_holding_member_id_member_id_fk": {
+          "name": "permission_holding_member_id_member_id_fk",
+          "tableFrom": "permission_holding",
+          "tableTo": "member",
+          "columnsFrom": [
+            "member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.open_permission_grant": {
       "name": "open_permission_grant",
       "schema": "",
@@ -12398,8 +11643,7 @@
       "schema": "public",
       "values": [
         "must_overlap",
-        "max_attendance",
-        "person_plus_n_holders"
+        "max_attendance"
       ]
     },
     "public.budget_cycle_status": {
@@ -12409,6 +11653,25 @@
         "proposals_open",
         "voting",
         "confirmed"
+      ]
+    },
+    "public.budget_proposal_status": {
+      "name": "budget_proposal_status",
+      "schema": "public",
+      "values": [
+        "open",
+        "approved",
+        "declined",
+        "withdrawn",
+        "closed"
+      ]
+    },
+    "public.event_proposal_interest_level": {
+      "name": "event_proposal_interest_level",
+      "schema": "public",
+      "values": [
+        "yes",
+        "maybe"
       ]
     },
     "public.event_proposal_status": {
@@ -12449,68 +11712,6 @@
         "announced",
         "admitted",
         "withheld"
-      ]
-    },
-    "public.admission_lane_kind": {
-      "name": "admission_lane_kind",
-      "schema": "public",
-      "values": [
-        "invite",
-        "public"
-      ]
-    },
-    "public.admission_verification": {
-      "name": "admission_verification",
-      "schema": "public",
-      "values": [
-        "none",
-        "community_check"
-      ]
-    },
-    "public.admission_arrival_route": {
-      "name": "admission_arrival_route",
-      "schema": "public",
-      "values": [
-        "invite",
-        "application"
-      ]
-    },
-    "public.admission_origin": {
-      "name": "admission_origin",
-      "schema": "public",
-      "values": [
-        "funnel",
-        "import"
-      ]
-    },
-    "public.community_check_concern_resolution": {
-      "name": "community_check_concern_resolution",
-      "schema": "public",
-      "values": [
-        "standing",
-        "cleared",
-        "upheld",
-        "overruled",
-        "withdrawn"
-      ]
-    },
-    "public.community_check_kind": {
-      "name": "community_check_kind",
-      "schema": "public",
-      "values": [
-        "entry",
-        "evaluation"
-      ]
-    },
-    "public.community_check_status": {
-      "name": "community_check_status",
-      "schema": "public",
-      "values": [
-        "open",
-        "concerned",
-        "cleared",
-        "upheld",
-        "overruled"
       ]
     },
     "public.joining_lane_kind": {

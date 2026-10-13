@@ -8,7 +8,7 @@ import { resolvePrimaryEmail } from "./contact-methods";
 
 type Member = typeof memberTable.$inferSelect;
 
-// The backstop module (docs/cycle-scope-remediation-plan.md §2.5/§4.7) —
+// The backstop module (docs/plans/archive/cycle-scope-remediation-plan.md §2.5/§4.7) —
 // the standing, task-granted accountable holder for critical tasks in a
 // scope. Scope comes from the granted task's own placement, exactly the
 // §2.1 rule every other module uses: a task placed in cycle C is cycle

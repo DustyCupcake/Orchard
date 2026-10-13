@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import { FlameIcon } from "@phosphor-icons/react/dist/ssr";
 import type { requirement as requirementTable } from "@/db/schema";
 import { describeRequirement, isSelfAssignWorthAskingAbout } from "@/lib/tasks";
@@ -50,7 +51,7 @@ type Task = {
 // - One primary action per state, everything else in the ⋯ menu.
 // - Requirements summarize: unmet individual gates listed, the rest
 //   collapse to "N of M met"; soft_priority is detail-page-only.
-export default function TaskCard({
+export default async function TaskCard({
   task,
   assignments,
   requirements,
@@ -73,7 +74,7 @@ export default function TaskCard({
   branchName: string;
   currentMemberId: string;
   myPendingRequestId: string | null;
-  // §5.3 (docs/cycle-scope-remediation-plan.md) — the viewer's own
+  // §5.3 (docs/plans/archive/cycle-scope-remediation-plan.md) — the viewer's own
   // coordination coverage resolved from both dimensions: their branch
   // column or the task's cycle row. `coordinationName` is the
   // covering holder's name (whoever holds it, for every viewer).
@@ -81,6 +82,7 @@ export default function TaskCard({
   coordinationName: string | null;
   backstopName: string | null;
 }) {
+  const clock = await getViewerClock();
   // A shadow isn't a real holder — doesn't count toward capacity, isn't
   // who "Held by" means — see docs/spec.md's "Shadow slots & succession"
   // and lifecycle.ts's assignmentCount(), which excludes them the same way.
@@ -249,11 +251,11 @@ export default function TaskCard({
           {task.title}
         </Link>
         {attention && <Tag tone={ATTENTION_TONE[task.attentionLevel] ?? "neutral"}>{attention.label}</Tag>}
-        {/* docs/cycle-scope-remediation-plan.md §5.5 — an unclaimed
+        {/* docs/plans/archive/cycle-scope-remediation-plan.md §5.5 — an unclaimed
             critical in a scope that has a backstop names its accountable
             holder while staying open and claimable by anyone (D5). */}
         {backstopName && <Tag tone="danger">Backstop: {backstopName}</Tag>}
-        {/* docs/cycle-scope-remediation-plan.md §5.3 — the covering
+        {/* docs/plans/archive/cycle-scope-remediation-plan.md §5.3 — the covering
             coordination holder, resolved from both dimensions (§2.4):
             a cycle-less holder lights up its branch column, a
             cycle-placed holder its cycle row. */}
@@ -283,7 +285,7 @@ export default function TaskCard({
       )}
       {task.status === "waiting" && (
         <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[length:var(--text-meta)] text-[var(--text)]">
-          <DateChip date={task.nextCheckinAt ?? "—"} label="Check-in" />
+          <DateChip date={task.nextCheckinAt ? clock.date(task.nextCheckinAt) : "—"} label="Check-in" />
           {task.waitingNote && <span className="text-[var(--text-muted)]">— {task.waitingNote}</span>}
         </p>
       )}

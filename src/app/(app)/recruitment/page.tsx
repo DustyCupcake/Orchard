@@ -26,6 +26,7 @@ import { ForbiddenError } from "@/lib/errors";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
 import { Banner, BUTTON_SECONDARY, CARD, Tag } from "@/components/ui/kit";
 import PageHeader from "@/components/ui/PageHeader";
+import { getViewerClock } from "@/lib/view-clock";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ const PAIR_LABEL: Record<string, string> = {
   declined: "turned down",
 };
 
-// The stage names are admission-stage.ts's (docs/admission-flow.md §4) — the same
+// The stage names are admission-stage.ts's (docs/plans/admission-flow.md §4) — the same
 // ones the person's own page and the dashboard read — in the holders' words.
 const STAGE_LABEL: Record<string, string> = {
   entered: "Just arrived",
@@ -94,6 +95,7 @@ const MAX_EVENT_ROWS = 6;
 // gets the most useful content; the pipeline is the last section, not the
 // page's premise.
 export default async function RecruitmentHubPage() {
+  const clock = await getViewerClock();
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
@@ -474,7 +476,7 @@ export default async function RecruitmentHubPage() {
               {alerts.map((a) => (
                 <li key={a.id} className={CARD}>
                   <p className="text-[length:var(--text-body)] text-[var(--text)]">
-                    Submitted {new Date(a.submittedAt).toLocaleDateString()} ·{" "}
+                    Submitted {clock.date(a.submittedAt)} ·{" "}
                     {a.evaluationsFiled}/{a.evaluatorsNeeded} evaluations filed
                     {a.outcome && (
                       <>
@@ -564,7 +566,7 @@ export default async function RecruitmentHubPage() {
                         <td className={TD}>
                           {c.name}
                           <span className="block text-[length:var(--text-micro)] text-[var(--text-muted)]">
-                            {c.laneName ?? "—"} · arrived {new Date(c.submittedAt).toLocaleDateString()}
+                            {c.laneName ?? "—"} · arrived {clock.date(c.submittedAt)}
                           </span>
                         </td>
                         <td className={TD}>

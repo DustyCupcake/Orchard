@@ -17,7 +17,7 @@ import {
 import { closeDueChecks, getOpenCheck, listChecksFor } from "@/lib/recruitment";
 import { ConflictError } from "@/lib/errors";
 
-// docs/admission-flow.md §4 and §6: an arrival is a person in the funnel and
+// docs/plans/admission-flow.md §4 and §6: an arrival is a person in the funnel and
 // not a member; admission is the one function that makes one. These test the
 // promises that make that worth having — nobody is a member early, the same
 // thing happens whichever way they came in, it is safe to run twice, and the

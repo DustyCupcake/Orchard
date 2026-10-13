@@ -6,6 +6,7 @@ import { ForbiddenError } from "../errors";
 import { isModuleOpenToEveryone, listGrantingTaskIds } from "../permissions";
 import { cycleScopeCondition } from "./crud";
 import type { EventSlot } from "./crud";
+import { windowMinutes, windowsForceClash } from "./availability";
 
 type Member = typeof memberTable.$inferSelect;
 type EventProposalRow = typeof eventProposal.$inferSelect;
@@ -27,7 +28,7 @@ type EventProposalRow = typeof eventProposal.$inferSelect;
 export async function isEventSchedulingOwner(actor: Member, cycleId?: string | null) {
   // An open module short-circuits *before* the cycleId tri-state is
   // consulted: open means the community/evergreen scope, which is already a
-  // superset for a `cycle`-tier module (docs/open-permissions-plan.md D3),
+  // superset for a `cycle`-tier module (docs/plans/archive/open-permissions-plan.md D3),
   // so it answers true for every scope — `undefined`, `null`, and any real
   // cycle id alike. That is why isEventSchedulingOwner does not grow an
   // `open` path per scope and why listGrantingTaskIdsForScope stays
@@ -62,10 +63,6 @@ export async function requireEventSchedulingOwner(actor: Member, cycleId?: strin
   }
 }
 
-function slotsOverlap(a: EventSlot, b: EventSlot) {
-  return new Date(a.startsAt) < new Date(b.endsAt) && new Date(b.startsAt) < new Date(a.endsAt);
-}
-
 // "Preferred, or confirmed once set" — a proposal's operative window(s)
 // for conflict-checking purposes are its locked-in confirmedSlot if it
 // has one, otherwise every slot it's still proposing.
@@ -75,14 +72,30 @@ function operativeSlots(p: EventProposalRow): EventSlot[] {
 }
 
 // "Overlapping time range + an exact spaceNeeds string match — no
-// room-graph or capacity modeling" — docs/development-plan.md's
+// room-graph or capacity modeling" — docs/plans/development-plan.md's
 // resolved interpretation. A blank spaceNeeds on either side never
 // conflicts with anything on the space dimension.
+//
+// What "overlapping" means changed when preferred_slots became painted
+// availability rather than fixed placements — see availability.ts's
+// windowsForceClash for why plain overlap would now flag clashes that
+// don't exist. A confirmed proposal is a concrete placement, so it
+// counts for the whole of its confirmed slot rather than for
+// durationMinutes — otherwise a slot the owner stretched past the stated
+// length would read as room to move. An unconfirmed one counts for
+// durationMinutes, which is what makes "can this one still dodge"
+// answerable.
+function occupiedMinutes(p: EventProposalRow) {
+  return p.confirmedSlot ? windowMinutes(p.confirmedSlot as EventSlot) : p.durationMinutes;
+}
+
 function proposalsConflict(a: EventProposalRow, b: EventProposalRow) {
   if (!a.spaceNeeds || !b.spaceNeeds || a.spaceNeeds !== b.spaceNeeds) return false;
   const slotsA = operativeSlots(a);
   const slotsB = operativeSlots(b);
-  return slotsA.some((sa) => slotsB.some((sb) => slotsOverlap(sa, sb)));
+  return slotsA.some((sa) =>
+    slotsB.some((sb) => windowsForceClash(sa, sb, occupiedMinutes(a), occupiedMinutes(b))),
+  );
 }
 
 // Scans every non-declined proposal in scope and persists a fresh

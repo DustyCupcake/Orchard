@@ -1,4 +1,5 @@
 import { desc, eq } from "drizzle-orm";
+import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { cycle, member } from "@/db/schema";
@@ -26,6 +27,8 @@ export default async function FeedbackPage({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { error, submitted } = await searchParams;
 
@@ -134,7 +137,7 @@ export default async function FeedbackPage({
                       {" — "}
                       {r.cycleId ? cycleNameById.get(r.cycleId) ?? "—" : "General"}
                       {" — "}
-                      {new Date(r.submittedAt).toLocaleString()}
+                      {clock.dateTime(r.submittedAt)}
                     </p>
                     <ul className="mt-2 flex flex-col gap-1 text-[length:var(--text-body)] text-[var(--text)]">
                       {fields.map((f) => {

@@ -5,7 +5,7 @@ import { listConcerns } from "@/lib/recruitment";
 export const dynamic = "force-dynamic";
 
 // Holder-only, enforced inside listConcerns. raisedById is never included — it is
-// the shield (docs/admission-flow.md §5). Raising a concern is its own route, on the
+// the shield (docs/plans/admission-flow.md §5). Raising a concern is its own route, on the
 // arrival: POST /api/community-check/[arrivalId]/concerns.
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {

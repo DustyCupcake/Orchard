@@ -66,7 +66,7 @@ export async function listCurrentRoundQuestions(actor: Member) {
 
 // Purely a computed display hint for "get your questions in" — no
 // state, no notification actually sent (this codebase doesn't have a
-// real outbound-notification layer yet — see docs/development-plan.md's
+// real outbound-notification layer yet — see docs/plans/development-plan.md's
 // "Beyond Phase 19"), just "how long until the next cutoff," derived
 // live from Community.nextInputRoundCutoffAt.
 export async function getNextCutoffAt(actor: Member): Promise<Date | null> {

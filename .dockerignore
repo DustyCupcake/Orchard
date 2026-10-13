@@ -1,3 +1,17 @@
+# Build context. Anything here is invisible to `docker build`, which is also
+# what CI builds from — and CI checks out only *tracked* files, so every
+# local-only path in .gitignore has to be repeated here or it leaks in.
+#
+# That repetition is the whole reason this file exists beyond size: without
+# it, a developer's `docker build --target checks` lints files CI will never
+# see. It is not hypothetical — `.claude/worktrees/<name>/` is an untracked
+# git worktree, and because the patterns below are ROOT-ANCHORED (Docker
+# matches them against the full path), a bare `tests` excludes only the
+# top-level `tests/` and not a worktree's own copy of one. So a stray
+# worktree arrived in the context with its tests, src and configs, and the
+# `checks` stage reported eight lint warnings against files that do not
+# exist in CI's checkout. Real lint signal was 1 of 9.
+
 node_modules
 .next
 .git
@@ -7,3 +21,21 @@ docs
 *.md
 tests
 vitest.config.ts
+
+# Editor / OS cruft
+.DS_Store
+.vscode
+.idea
+*.swp
+
+# Mirrors .gitignore. `docker-compose.override.yml` is the local-only
+# Compose override, and .rebuild-state is scripts/rebuild.sh's saved
+# change-detection state — neither belongs in an image, and the second is
+# specific to whichever box is deploying.
+docker-compose.override.yml
+.rebuild-state
+*.tsbuildinfo
+
+# Agent/editor tooling. `.claude/launch.json` is tracked, but the worktrees
+# nested inside it are not, and they are whole checkouts of the repo.
+.claude

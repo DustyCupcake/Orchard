@@ -14,7 +14,7 @@ export const taskJoinRequestStatusEnum = pgEnum("task_join_request_status", [
 // reusing BrowseInterest: BrowseInterest is specifically the
 // browse-period / community-endorsed candidacy shape (reached_out,
 // status only meaningful for community_endorsed), a different,
-// still-deferred mechanism per docs/development-plan.md's Phase 12.
+// still-deferred mechanism per docs/plans/development-plan.md's Phase 12.
 export const taskJoinRequest = pgTable("task_join_request", {
   id: uuid("id").primaryKey().defaultRandom(),
   taskId: uuid("task_id")

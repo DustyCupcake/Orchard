@@ -10,6 +10,8 @@ import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY } from "@/components/ui/kit";
 import { answerPairingAction, makeApplyTogetherLinkAction, sendAskedApplicationAction, sendSignInLinkAction, withdrawAction } from "./actions";
 import { listPairingsForArrival } from "@/lib/recruitment/pairs";
 import { publicAppUrl } from "@/lib/public-url";
+import { getEventTimeZone } from "@/lib/cycles/time-zone";
+import { formatInstant } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +24,7 @@ export const metadata = {
   referrer: "no-referrer" as const,
 };
 
-// docs/admission-flow.md §4: "where they are, in plain words, and what
+// docs/plans/admission-flow.md §4: "where they are, in plain words, and what
 // happens next" — the one place a person in the process can see that. It has
 // no login, because they have no account yet; the link they were given is the
 // proof. It says nothing the person didn't give us or isn't owed: their own
@@ -43,6 +45,9 @@ export default async function AdmissionPage({
   // What the interview poll says is written onto the arrival before it is read, so
   // the stage and this page agree about whether the call has been booked or held.
   const arrival = found.interviewPollId ? await syncInterviewFacts(found.id) : found;
+  // No account, so no member zone: the interview is read on the event's clock (the
+  // community's when it isn't for one event), with the zone named. Never the server's.
+  const interviewZone = await getEventTimeZone(arrival.communityId, arrival.cycleId);
 
   const [communityRow] = await db.select({ name: community.name }).from(community).where(eq(community.id, arrival.communityId));
   // An application they were asked for and haven't sent: their own next move, so the
@@ -69,7 +74,7 @@ export default async function AdmissionPage({
   const canBeVouchedFor = arrival.requiredEvaluation && !arrival.admittedMemberId && !arrival.declinedAt && !arrival.withdrawnAt;
 
   // Admitted, but their account at the community's sign-in provider isn't ready yet
-  // (docs/admission-flow.md §6a): the admission stands, and the person is told what is left.
+  // (docs/plans/admission-flow.md §6a): the admission stands, and the person is told what is left.
   const [setup] = arrival.admittedMemberId
     ? await db.select({ status: signInSetup.status }).from(signInSetup).where(eq(signInSetup.memberId, arrival.admittedMemberId))
     : [];
@@ -167,8 +172,8 @@ export default async function AdmissionPage({
           {interviewPoll?.confirmedSlotStart && interviewPoll.confirmedSlotEnd ? (
             <div className="mt-2">
               <Banner tone="success">
-                Booked for {new Date(interviewPoll.confirmedSlotStart).toLocaleString()} –{" "}
-                {new Date(interviewPoll.confirmedSlotEnd).toLocaleTimeString()}
+                Booked for {formatInstant(interviewPoll.confirmedSlotStart, interviewZone, "datetime", { zoneName: true })} –{" "}
+                {formatInstant(interviewPoll.confirmedSlotEnd, interviewZone, "time")}
               </Banner>
             </div>
           ) : interviewPoll ? (

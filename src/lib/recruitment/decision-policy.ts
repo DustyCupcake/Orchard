@@ -1,4 +1,4 @@
-// docs/admission-flow.md §2, "How reports decide". How MANY reports a lane
+// docs/plans/admission-flow.md §2, "How reports decide". How MANY reports a lane
 // needs is set on the lane; how those reports decide is this, one small policy
 // for the whole community. It replaces the ordered list of "at least N said X"
 // rules, which could only say "at least" — it had no "no more than", so the

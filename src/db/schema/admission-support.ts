@@ -2,7 +2,7 @@ import { boolean, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-c
 import { admission } from "./admission";
 import { member } from "./member";
 
-// docs/admission-flow.md §2, "The support shortcut". A support is one member's
+// docs/plans/admission-flow.md §2, "The support shortcut". A support is one member's
 // word for one arrival: they know the person, or think they'd fit, and have said
 // so once. It replaces the nomination model, which made people *wait* on
 // supports; this is only a record, with no state and no deadline. N of them skip

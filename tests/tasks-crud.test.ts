@@ -507,3 +507,118 @@ describe("tag filtering (bulk task selection's clustering mechanism)", () => {
     expect(await listDistinctTags(alice)).toEqual(["fruit", "pre-launch"]);
   });
 });
+
+// Which rung of the approval ladder a permission-granting task sits on decides
+// who can take the role, so `openness` is an authority field on those tasks
+// rather than a cosmetic one. This was unguarded while the *cycle move* on the
+// same task was guarded — and `PATCH /api/tasks/[id]` takes the whole
+// updateTaskInput behind requireWriteMember, so any member could retune
+// someone else's ladder.
+//
+// The Admin case was the sharp end of it. `requireAdmins` filters on
+// `openness = 'community_endorsed'` and ignores placement, so moving an Admins
+// task off that rung strips Admin from every current holder — who is then
+// refused at the very screen that would fix it, and which no task-edit form
+// exposes `openness` to undo. Demonstrated, then fixed.
+describe("openness on a permission-granting task", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  async function makeAdminsTask(communityId: string, branchId: string, alice: { id: string }) {
+    const t = await insertTask(communityId, branchId, alice.id, {
+      title: "Admins",
+      openness: "community_endorsed",
+      // A community_endorsed task is only coherent with both a threshold and
+      // a window to clear it in (requireEndorsementFields), so a fixture
+      // that omits them isn't a real Admins task.
+      endorsementThreshold: 2,
+      browsePeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
+    await grantPermission(communityId, "admin", t.id);
+    return t;
+  }
+
+  // `requireAdmins` returns early for every member while `adminsEverClaimed`
+  // is false — the guard against a fresh install locking itself out. Without
+  // latching it, "only an admin may do this" tests nothing at all, because
+  // everyone is an admin.
+  async function latchAdmins(communityId: string) {
+    await db
+      .update(community)
+      .set({ adminsEverClaimed: true })
+      .where(eq(community.id, communityId));
+  }
+
+  it("refuses to move an Admins task off community-endorsed, even for an admin", async () => {
+    const { community: c, branch, alice } = await createFixtures();
+    const t = await makeAdminsTask(c.id, branch.id, alice);
+    await latchAdmins(c.id);
+    // The actor has to actually hold it, or requireAdmins refuses first and
+    // the test would pass for the wrong reason.
+    await claimTask(alice, t.id);
+
+    await expect(updateTask(alice, t.id, { openness: "open" })).rejects.toThrow(
+      /only a community-endorsed task can confer them/i,
+    );
+    await expect(updateTask(alice, t.id, { openness: "coordination_approved" })).rejects.toThrow(
+      ConflictError,
+    );
+
+    // Untouched, so the grant still works.
+    const [after] = await db.select().from(task).where(eq(task.id, t.id));
+    expect(after.openness).toBe("community_endorsed");
+  });
+
+  it("refuses the openness change to a non-admin even for a harmless module", async () => {
+    const { community: c, branch, alice, bob } = await createFixtures();
+    const t = await insertTask(c.id, branch.id, alice.id, { title: "Kitchen lead" });
+    await grantPermission(c.id, "kitchen", t.id);
+    await makeAdminsTask(c.id, branch.id, alice);
+    await latchAdmins(c.id);
+
+    // kitchen -> open would make the role instantly claimable by anyone.
+    await expect(updateTask(bob, t.id, { openness: "open" })).rejects.toThrow(ForbiddenError);
+    const [after] = await db.select().from(task).where(eq(task.id, t.id));
+    expect(after.openness).toBe("request");
+  });
+
+  it("still lets an admin retune openness on a non-Admin grant", async () => {
+    const { community: c, branch, alice } = await createFixtures();
+    const t = await insertTask(c.id, branch.id, alice.id, { title: "Kitchen lead" });
+    await grantPermission(c.id, "kitchen", t.id);
+    const admins = await makeAdminsTask(c.id, branch.id, alice);
+    await latchAdmins(c.id);
+    await claimTask(alice, admins.id);
+
+    const updated = await updateTask(alice, t.id, { openness: "coordination_approved" });
+    expect(updated.openness).toBe("coordination_approved");
+  });
+
+  it("leaves openness on an ordinary task entirely alone", async () => {
+    // The guard is scoped to tasks that actually grant something. A task
+    // holding no grant mints no authority, so its openness is nobody else's
+    // business and gating it would be a surprise.
+    const { community: c, branch, alice, bob } = await createFixtures();
+    const t = await insertTask(c.id, branch.id, alice.id, { title: "Water the trees" });
+
+    const updated = await updateTask(bob, t.id, { openness: "open" });
+    expect(updated.openness).toBe("open");
+  });
+
+  it("treats re-submitting the same openness as no change at all", async () => {
+    // Every settings-style form resubmits its own fields, so an unchanged
+    // openness must not trip the guard — the Admins task's own edit form
+    // would otherwise be unable to save a title change.
+    const { community: c, branch, alice } = await createFixtures();
+    const t = await makeAdminsTask(c.id, branch.id, alice);
+    await latchAdmins(c.id);
+    await claimTask(alice, t.id);
+
+    const updated = await updateTask(alice, t.id, {
+      title: "Admins (renamed)",
+      openness: "community_endorsed",
+    });
+    expect(updated.title).toBe("Admins (renamed)");
+  });
+});

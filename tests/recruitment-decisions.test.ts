@@ -145,7 +145,7 @@ describe("recordDecisionIfReached", () => {
     expect(decision!.resolution).toBe("accepted");
     expect(decision!.accompanimentTaskId).not.toBeNull();
     expect(decision!.convertedMemberId).not.toBeNull();
-    // The interview comes *before* the decision (docs/admission-flow.md §2), so a decision
+    // The interview comes *before* the decision (docs/plans/admission-flow.md §2), so a decision
     // schedules nothing: on a lane without one there is nothing to schedule.
     expect(await db.select().from(schedulingPoll).where(eq(schedulingPoll.communityId, fixtures.community.id))).toHaveLength(0);
     void application;
@@ -210,7 +210,7 @@ describe("recordDecisionIfReached", () => {
   });
 });
 
-// The wider discussion is the one community check (docs/admission-flow.md §5): a
+// The wider discussion is the one community check (docs/plans/admission-flow.md §5): a
 // window on the arrival, opened when the reports lead to it, in which any member can
 // raise a concern — not a field on the decision with a timer of its own.
 describe("the wider discussion is a community check", () => {

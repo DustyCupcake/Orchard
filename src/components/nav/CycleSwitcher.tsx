@@ -7,7 +7,7 @@ import { NavIcon } from "./phosphor-icon-map";
 import { setViewScopeAction } from "@/app/(app)/nav-actions";
 import type { NavContext } from "@/lib/nav";
 
-// The global cycle-switcher (docs/development-plan.md's Phase 65) —
+// The global cycle-switcher (docs/plans/development-plan.md's Phase 65) —
 // rendered from AppShell.tsx right below the sidebar header, both
 // mobile and desktop. `urlScope`/`subPath` are parsed by AppShell from
 // the live pathname (this component's own author has no server-side
@@ -32,7 +32,7 @@ export default function CycleSwitcher({
   ctx: NavContext["cycleSwitcher"];
   urlScope: string | null;
   // null on any page that isn't itself URL-scoped (the board, dashboard,
-  // task detail, ...) — docs/development-plan.md's Phase 67 is the
+  // task detail, ...) — docs/plans/development-plan.md's Phase 67 is the
   // first consumer of the switcher outside Participation/Budget, and
   // those pages have nowhere scope-specific to navigate to on
   // selection; selectScope below just refreshes them in place instead.

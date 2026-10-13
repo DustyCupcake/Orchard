@@ -97,7 +97,7 @@ export async function submitArrivalEvaluationAction(formData: FormData) {
 }
 
 // A holder who can already see an application supports it from here with one
-// action, no link needed (docs/admission-flow.md §2). The marks are their own.
+// action, no link needed (docs/plans/admission-flow.md §2). The marks are their own.
 export async function supportApplicationAction(formData: FormData) {
   const actor = await requireMember();
   try {
@@ -132,7 +132,7 @@ export async function askMembersToSupportAction(formData: FormData) {
 }
 
 // A holder confirms one of the interview times that suit the person and enough of
-// the people who'll be on the call (docs/admission-flow.md §2) — a person, not a
+// the people who'll be on the call (docs/plans/admission-flow.md §2) — a person, not a
 // job, and any holder rather than only whoever organized the poll.
 export async function confirmInterviewAction(formData: FormData) {
   const actor = await requireMember();

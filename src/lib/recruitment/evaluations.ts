@@ -27,7 +27,7 @@ function countRecommendations(evaluations: Pick<EvaluationRow, "recommendation">
   return counts;
 }
 
-/** The community's one policy for how reports decide (docs/admission-flow.md §2). */
+/** The community's one policy for how reports decide (docs/plans/admission-flow.md §2). */
 export function policyOf(communityRow: Pick<
   CommunityRow,
   | "recruitmentInWhen"
@@ -100,7 +100,7 @@ export const submitEvaluationInput = z.object({
 });
 export type SubmitEvaluationInput = z.infer<typeof submitEvaluationInput>;
 
-// Who may file depends on what the lane contains (docs/admission-flow.md §2): with an
+// Who may file depends on what the lane contains (docs/plans/admission-flow.md §2): with an
 // interview, the interviewers — the holders who took part in the call — and only once
 // it has happened; without one, any holder who reads the application. An application
 // that predates arrivals never had an interview before its decision, and isn't made

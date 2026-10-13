@@ -166,7 +166,7 @@ describe("activating a proposal", () => {
     expect(deps.map((d) => d.dependsOnTaskId)).toEqual([existingTask.id]);
   });
 
-  // docs/development-plan.md's Phase 64 — "Permissions granted by this
+  // docs/plans/development-plan.md's Phase 64 — "Permissions granted by this
   // task" on the activation screen itself, a follow-up write against
   // the newly-created task's own id (see crud.ts's own comment on why
   // it can't be folded into createTask). Alice counts as Admin here

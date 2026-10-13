@@ -8,7 +8,7 @@ import { recordSettingChanges } from "../settings/history";
 
 type Member = typeof memberTable.$inferSelect;
 
-// docs/admission-flow.md §6a — the sign-ins Orchard would not turn into a member by
+// docs/plans/admission-flow.md §6a — the sign-ins Orchard would not turn into a member by
 // itself (resolve.ts), held for an administrator.
 
 export async function listUnmatchedSignIns(actor: Member) {

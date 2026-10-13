@@ -9,7 +9,7 @@ export async function GET() {
   try {
     const actor = await requireMember();
     // Same off-URL nav-switcher resolution the dashboard page itself
-    // reads (docs/development-plan.md's Phase 69) — this API mirrors the
+    // reads (docs/plans/development-plan.md's Phase 69) — this API mirrors the
     // page's data, so it shouldn't fall back to a stale, unscoped read.
     const scopeSegment = await resolveDefaultScopeSegment(actor);
     const scope = await resolveViewScopeFromSegment(actor, scopeSegment);

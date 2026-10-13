@@ -1,12 +1,13 @@
 "use server";
 
 import { ZodError } from "zod";
+import { getEventTimeZone } from "@/lib/cycles";
+import { instantFromZoned, isValidTimeZone } from "@/lib/dates";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import { declareParticipation, declareParticipationInput } from "@/lib/participation";
-import { startBudgetCycleForNewCycle } from "@/lib/budget";
 import {
   addPhase,
   closeCycle,
@@ -24,7 +25,7 @@ import { AppError, ConfirmationRequiredError } from "@/lib/errors";
 
 // Every form on this page carries a hidden `cycleScope` field so a
 // redirect after submitting lands back on the exact scoped URL it came
-// from (docs/development-plan.md's Phase 65) — never the bare
+// from (docs/plans/development-plan.md's Phase 65) — never the bare
 // /participation, which could bounce through the redirect shim to a
 // *different* default scope than the one the member was just looking
 // at.
@@ -89,7 +90,6 @@ export async function createCycleAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const cycleTypeId = String(formData.get("cycleTypeId") ?? "").trim() || null;
   const confirmed = formData.get("confirmed") === "on";
-  const startBudget = formData.get("startBudget") === "on";
 
   let created;
   try {
@@ -109,21 +109,8 @@ export async function createCycleAction(formData: FormData) {
     redirectWithError(cycleScope, err);
   }
 
-  // Best-effort and opt-in only (the checkbox above) — a Budget hiccup
-  // here never means the Cycle itself failed to start; see
-  // src/lib/budget/cycles.ts's startBudgetCycleForNewCycle.
-  let budgetStarted = false;
-  if (startBudget) {
-    try {
-      budgetStarted = Boolean(await startBudgetCycleForNewCycle(actor, created));
-    } catch {
-      budgetStarted = false;
-    }
-  }
-
   revalidatePath(`/${cycleScope}/participation`);
-  const budgetFlag = startBudget && !budgetStarted ? "&budgetNotStarted=1" : "";
-  redirect(`/${created.id}/participation?cycleCreated=1${budgetFlag}`);
+  redirect(`/${created.id}/participation?cycleCreated=1`);
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside updateCycleSettings.
@@ -135,15 +122,26 @@ export async function updateCycleSettingsAction(formData: FormData) {
   const windowRaw = String(formData.get("returningWindowClosesAt") ?? "").trim();
   const startDateRaw = String(formData.get("startDate") ?? "").trim();
   const endDateRaw = String(formData.get("endDate") ?? "").trim();
+  const timeZoneRaw = String(formData.get("timeZone") ?? "").trim();
   const applicationFormId = String(formData.get("recruitmentApplicationFormId") ?? "").trim() || null;
   const joiningWindowRaw = String(formData.get("joiningWindowClosesAt") ?? "").trim();
 
   try {
+    // The windows are typed on the event's clock — the one this same form
+    // is saving, or the community's when it's being cleared. An unusable
+    // zone is left for the schema to reject with its own message rather
+    // than throwing from here first.
+    const clock = isValidTimeZone(timeZoneRaw)
+      ? timeZoneRaw
+      : await getEventTimeZone(actor.communityId, null);
     const input = updateCycleSettingsInput.parse({
       capacity: capacityRaw ? Number(capacityRaw) : null,
-      returningWindowClosesAt: windowRaw ? new Date(windowRaw).toISOString() : null,
+      returningWindowClosesAt: windowRaw ? instantFromZoned(windowRaw, clock).toISOString() : null,
       startDate: startDateRaw || null,
       endDate: endDateRaw || null,
+      // Blank inherits the Community's zone rather than pinning UTC —
+      // see src/lib/dates/timezone.ts.
+      timeZone: timeZoneRaw || null,
       recruitmentApplicationFormId: applicationFormId,
       applicationsOpen: formData.get("applicationsOpen") === "on",
       invitesOpen: formData.get("invitesOpen") === "on",
@@ -153,7 +151,7 @@ export async function updateCycleSettingsAction(formData: FormData) {
       // settings screen's per-card forms need doesn't apply to a form that
       // owns all three).
       interviewsOpen: formData.get("interviewsOpen") === "on",
-      joiningWindowClosesAt: joiningWindowRaw ? new Date(joiningWindowRaw).toISOString() : null,
+      joiningWindowClosesAt: joiningWindowRaw ? instantFromZoned(joiningWindowRaw, clock).toISOString() : null,
     });
     await updateCycleSettings(actor, cycleId, input);
   } catch (err) {
@@ -164,7 +162,7 @@ export async function updateCycleSettingsAction(formData: FormData) {
   redirect(`/${cycleScope}/participation?settingsUpdated=1`);
 }
 
-// docs/admission-flow.md §2a — which lanes an event opens. Its own action, its
+// docs/plans/admission-flow.md §2a — which lanes an event opens. Its own action, its
 // own button and its own error redirect, for the same reason the settings
 // screen's cards stopped sharing one: the lanes and the capacity field are
 // unrelated decisions, and a rejected lane choice shouldn't cost you the
@@ -189,7 +187,7 @@ export async function updateEventLanesAction(formData: FormData) {
   redirect(`/${cycleScope}/participation?laneRulesUpdated=1`);
 }
 
-// docs/admission-flow.md §6 — somebody was approved but the event had no room,
+// docs/plans/admission-flow.md §6 — somebody was approved but the event had no room,
 // and an administrator admits them anyway. Room appearing on its own admits
 // people without anyone doing this; this is the override for when it hasn't.
 export async function admitWaitlistedAction(formData: FormData) {
@@ -208,7 +206,7 @@ export async function admitWaitlistedAction(formData: FormData) {
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside
-// exportCycleAsTaskPack — see docs/development-plan.md's Phase 55.
+// exportCycleAsTaskPack — see docs/plans/development-plan.md's Phase 55.
 // taskIds is left unset here (exports the whole cycle); the board's
 // own bulk-selection checkboxes post to a sibling action for the
 // partial-export case.
@@ -244,7 +242,7 @@ function boundaryFromForm(formData: FormData, prefix: "start" | "end"): DateBoun
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside updatePhaseBoundary
-// — same authority as Cycle settings above. See docs/development-plan.md's
+// — same authority as Cycle settings above. See docs/plans/development-plan.md's
 // Phase 39.
 export async function updatePhaseBoundaryAction(formData: FormData) {
   const actor = await requireMember();
@@ -308,7 +306,7 @@ export async function updatePhaseHighlightAction(formData: FormData) {
 }
 
 // Admin-gated inside closeCycle itself (src/lib/cycles/lifecycle.ts —
-// docs/development-plan.md's Phase 65). The page pre-computes whether
+// docs/plans/development-plan.md's Phase 65). The page pre-computes whether
 // the Budget-owner warning applies and requires a real checkbox before
 // this ever submits with overrideBudgetWarning=on, matching the
 // self-assign confirmation UX pattern elsewhere in this codebase — the

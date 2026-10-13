@@ -6,6 +6,7 @@ import { listSignInTodos } from "@/lib/sign-in/provision";
 import { db } from "@/db";
 import { eq } from "drizzle-orm";
 import { member } from "@/db/schema";
+import { getViewerClock } from "@/lib/view-clock";
 import { SelectField, SettingsGroup, SettingsPanel, ToggleField } from "./ui";
 import {
   linkSignInAction,
@@ -28,12 +29,13 @@ const JOIN_POLICY_LABEL = {
   admitted_only: "Only people admitted here — anyone else waits for an administrator",
 } as const;
 
-// docs/admission-flow.md §6a — what "admitted" means at the provider, the sign-ins Orchard
+// docs/plans/admission-flow.md §6a — what "admitted" means at the provider, the sign-ins Orchard
 // will not turn into a member by itself, and the one way an administrator can remove a member
 // who has nothing to their name. The first two are shown only when single sign-on is
 // configured (a community without it has no provider to disagree with); the last is always
 // there, because duplicates are not only an SSO problem.
 export default async function SignInAccounts({ community, viewer }: { community: Community; viewer: Member }) {
+  const clock = await getViewerClock();
   const sso = isOidcConfigured(community);
   const automationReady = sso && Boolean(zitadelConfigFor(community));
   const [todos, unmatched, linkable, everyone] = await Promise.all([
@@ -129,7 +131,7 @@ export default async function SignInAccounts({ community, viewer }: { community:
                   {u.givenName || u.nickname || u.loginEmail}{" "}
                   <span className={meta}>
                     · {u.loginEmail} · {u.emailVerified === true ? "address confirmed by the provider" : "address not confirmed"} · last tried{" "}
-                    {new Date(u.lastSeenAt).toLocaleString()}
+                    {clock.dateTime(u.lastSeenAt)}
                   </span>
                 </p>
                 {u.suggestedMemberName && (

@@ -2,7 +2,7 @@ import { boolean, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid }
 import { community } from "./community";
 import { cycle } from "./cycle";
 
-// docs/admission-flow.md §2a — a lane is a row, not a value in a fixed
+// docs/plans/admission-flow.md §2a — a lane is a row, not a value in a fixed
 // four-value enum. A community defines only the lanes it needs; what a
 // lane *is* is still decided by facts the system already has, never by
 // something an inviter or applicant picks from a menu:

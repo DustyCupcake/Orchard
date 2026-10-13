@@ -1,7 +1,8 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { member, shiftSignup } from "@/db/schema";
+import { member, shiftSignup, task } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity, listBranches } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
@@ -19,6 +20,8 @@ import {
   resolveShiftManager,
 } from "@/lib/shifts";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
+import PageHeader from "@/components/ui/PageHeader";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import {
   confirmShiftProposalAction,
   createShiftSeriesAction,
@@ -28,19 +31,16 @@ import {
   withdrawFromShiftAction,
 } from "./actions";
 import MySeriesSection from "./MySeriesSection";
+import { effectiveTimeZone, formatInstantRange } from "@/lib/dates";
 import SelectField from "@/components/ui/SelectField";
 
 export const dynamic = "force-dynamic";
-
-function formatRange(startsAt: Date | string, endsAt: Date | string) {
-  return `${new Date(startsAt).toLocaleString()} – ${new Date(endsAt).toLocaleTimeString()}`;
-}
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
-// See docs/spec.md's "Shifts / rota" and docs/development-plan.md's
+// See docs/spec.md's "Shifts / rota" and docs/plans/development-plan.md's
 // Phase 29: recurring, never-"done" work distinct from a Task's
 // one-shot claim/finish lifecycle. §2.6/§4.8 (docs/cycle-scope-
 // remediation-plan.md): series group by scope — a cycle's roster vs the
@@ -62,6 +62,12 @@ export default async function ShiftsPage({
     shiftOpened?: string;
     proposalConfirmed?: string;
     seriesReplaced?: string;
+    // Opens the "add a shift series" form in place of the page body — the
+    // header's primary action, the same `?compose=` technique /schedule
+    // uses. `fromTask` pre-fills it from a task (the task page's "Make
+    // this a recurring shift").
+    compose?: string;
+    fromTask?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
@@ -82,6 +88,8 @@ export default async function ShiftsPage({
     shiftOpened,
     proposalConfirmed,
     seriesReplaced,
+    compose,
+    fromTask,
   } = await searchParams;
 
   const communityRow = await getCommunity(viewing);
@@ -98,6 +106,12 @@ export default async function ShiftsPage({
       moduleOn ? listShiftManagerScopesForMember(viewing) : Promise.resolve([]),
       moduleOn ? listPendingShiftProposals(viewing) : Promise.resolve([]),
     ]);
+
+  // A shift happens at the venue, so each one reads on its own event's
+  // clock — its cycle's zone, else the community's — wherever the viewer is.
+  const cycleZoneById = new Map(allCycles.map((c) => [c.id, effectiveTimeZone(c, communityRow)] as const));
+  const shiftZone = (cycleId: string | null) =>
+    (cycleId && cycleZoneById.get(cycleId)) || effectiveTimeZone(null, communityRow);
 
   const mySignedUpOccurrenceIds = new Set(mySignups.map((s) => s.signup.occurrenceId));
   const now = new Date();
@@ -178,9 +192,37 @@ export default async function ShiftsPage({
     if (managedScopeSet.has(c.id)) placementOptions.push({ cycleId: c.id, label: `Event ${c.name}` });
   }
 
+  // A series can be added where there's an open event to place it in, or to
+  // the standing list by that scope's manager.
+  const canCreateSeries = moduleOn && (openCycles.length > 0 || isStandingManager);
+  const composing = compose === "1" && canCreateSeries;
+
+  // The task a series is being started from, if any — its title,
+  // description, branch and capacity become the form's starting values.
+  // Looked up in the viewer's own community only; anything that isn't a
+  // task of theirs is ignored rather than an error.
+  const sourceTask =
+    composing && fromTask && /^[0-9a-f-]{36}$/i.test(fromTask)
+      ? ((await db.select().from(task).where(and(eq(task.id, fromTask), eq(task.communityId, viewing.communityId))))[0] ?? null)
+      : null;
+
   return (
     <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Shifts</h1>
+      <PageHeader
+        title={composing ? "Add a shift series" : "Shifts"}
+        description={
+          composing
+            ? "A series is a recurring job people sign up for — like kitchen cleanup or the door."
+            : "Recurring jobs with set times, signed up for one shift at a time. Unlike a task, a series is never done."
+        }
+        actions={
+          canCreateSeries && !composing ? (
+            <Link href="/shifts?compose=1" className={BUTTON_PRIMARY}>
+              Add a shift series
+            </Link>
+          ) : undefined
+        }
+      />
 
       {!moduleOn && (
         <p className="mt-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
@@ -198,7 +240,7 @@ export default async function ShiftsPage({
           )}
           {seriesCreated && (
             <div className="mt-4">
-              <Banner tone="success">Series created.</Banner>
+              <Banner tone="success">Series added.</Banner>
             </div>
           )}
           {signedUp && (
@@ -213,7 +255,7 @@ export default async function ShiftsPage({
           )}
           {occurrencesGenerated && (
             <div className="mt-4">
-              <Banner tone="success">Occurrences generated.</Banner>
+              <Banner tone="success">Shifts added.</Banner>
             </div>
           )}
           {archived && (
@@ -248,14 +290,124 @@ export default async function ShiftsPage({
           )}
           {seriesReplaced && (
             <div className="mt-4">
-              <Banner tone="success">Series re-placed.</Banner>
+              <Banner tone="success">Series moved.</Banner>
             </div>
           )}
 
+          {composing && (
+            <section>
+              <form action={createShiftSeriesAction} className="flex max-w-[500px] flex-col gap-3">
+                {sourceTask && (
+                  <>
+                    <input type="hidden" name="sourceTaskId" value={sourceTask.id} />
+                    <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
+                      Starting from the task <span className="font-medium text-[var(--text)]">{sourceTask.title}</span> — its
+                      details are filled in below. The task itself isn&rsquo;t changed.
+                    </p>
+                  </>
+                )}
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Where does it belong?</span>
+                  <SelectField
+                    name="cycleId"
+                    defaultValue={sourceTask && isStandingManager ? "" : (openCycles[0]?.id ?? "")}
+                    className={INPUT}
+                  >
+                    {isStandingManager && <option value="">Standing — community-wide, always open</option>}
+                    {openCycles.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        Event {c.name}
+                        {c.shiftSignupsOpenedAt ? " (its manager confirms new additions)" : " (opens with the event's roster)"}
+                      </option>
+                    ))}
+                  </SelectField>
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                    Anyone can add a series to an event whose sign-ups haven&rsquo;t opened yet. After that, additions are
+                    proposals its shift manager confirms. Standing series are added by the standing shift manager.
+                  </span>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Title</span>
+                  <input type="text" name="title" required defaultValue={sourceTask?.title ?? ""} className={INPUT} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Description (optional)</span>
+                  <textarea name="description" rows={3} defaultValue={sourceTask?.description ?? ""} className={INPUT} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Branch (optional)</span>
+                  <SelectField name="branchId" defaultValue={sourceTask?.branchId ?? ""} className={INPUT}>
+                    <option value="">No branch</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </SelectField>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>How many people does each shift need?</span>
+                  <input
+                    type="number"
+                    name="defaultCapacity"
+                    min={1}
+                    required
+                    defaultValue={sourceTask?.capacity ?? 1}
+                    className={`${INPUT} w-fit`}
+                  />
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                    The default for each shift; a single shift can differ.
+                  </span>
+                </label>
+                <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                  Once it&rsquo;s added, the scope&rsquo;s shift manager sets the dates and times people can sign up for.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <SubmitButton className={BUTTON_PRIMARY} pendingLabel="Adding…">
+                    Add series
+                  </SubmitButton>
+                  <Link href="/shifts" className={BUTTON_SECONDARY}>
+                    Cancel
+                  </Link>
+                </div>
+              </form>
+            </section>
+          )}
+
+          {!composing && pendingProposals.length > 0 && (
+            <section className="mt-6">
+              <SectionHeading>Waiting for your confirmation</SectionHeading>
+              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                Series added after an event&rsquo;s sign-ups opened — confirm the ones you want on its roster.
+              </p>
+              <div className="mt-3 flex flex-col gap-2">
+                {pendingProposals.map(({ series, cycleName }) => (
+                  <div key={series.id} className={CARD}>
+                    <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{series.title}</p>
+                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                      Proposed for Event {cycleName}
+                    </p>
+                    <form action={confirmShiftProposalAction} className="mt-2">
+                      <input type="hidden" name="seriesId" value={series.id} />
+                      <input type="hidden" name="cycleScope" value={series.cycleId ?? ""} />
+                      <button type="submit" className={BUTTON_SECONDARY}>
+                        Confirm for this roster
+                      </button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {!composing && (
           <section className="mt-6">
             <SectionHeading>Upcoming shifts</SectionHeading>
             {upcoming.length === 0 && (
-              <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">None scheduled.</p>
+              <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                No shifts scheduled yet.
+                {canCreateSeries && " Add a series, then a shift manager can set its dates."}
+              </p>
             )}
 
             {orderedCycleIds.map((cycleId) => {
@@ -272,10 +424,10 @@ export default async function ShiftsPage({
                     {activeCycle?.shiftSignupsOpenedAt ? (
                       <Tag tone="success">Sign-ups open</Tag>
                     ) : (
-                      <Tag tone="neutral">Collecting — sign-ups closed</Tag>
+                      <Tag tone="neutral">Sign-ups not open yet</Tag>
                     )}
                     <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                      {manager ? `managed by ${manager.memberName}` : "no shift manager selected — this roster stays closed"}
+                      {manager ? `Managed by ${manager.memberName}` : "No shift manager yet — sign-ups stay closed until one is chosen"}
                     </span>
                   </div>
                   {!activeCycle?.shiftSignupsOpenedAt && managedScopeSet.has(cycleId) && (
@@ -283,8 +435,11 @@ export default async function ShiftsPage({
                       <input type="hidden" name="cycleId" value={cycleId} />
                       <input type="hidden" name="cycleScope" value={cycleId} />
                       <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
-                        Open sign-ups for this roster (one-way)
+                        Open sign-ups
                       </button>
+                      <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                        Until then, anyone can add series to this roster. Once opened, sign-ups can&rsquo;t be closed again.
+                      </p>
                     </form>
                   )}
                   {activeCycle?.shiftSignupsOpenedAt && !cycleRows[0]?.signupsOpen && (
@@ -296,6 +451,7 @@ export default async function ShiftsPage({
                         key={occurrence.id}
                         occurrence={occurrence}
                         series={series}
+                        timeZone={shiftZone(series.cycleId)}
                         branchNameById={branchNameById}
                         capacity={effectiveCapacity(occurrence, series)}
                         count={countByOccurrenceId.get(occurrence.id) ?? 0}
@@ -312,10 +468,10 @@ export default async function ShiftsPage({
               <div className={`mt-4 ${standingUpcoming.length > 0 ? "" : ""}`}>
                 <h3 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">Standing series</h3>
                 <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  Community-wide, always open.
+                  Community-wide and always open for sign-ups.
                   {standingManager
-                    ? ` Standing-series management is held by ${standingManager.name}.`
-                    : " No standing-series manager is selected — its management stays closed."}
+                    ? ` Managed by ${standingManager.name}.`
+                    : " No manager yet — nobody can add standing series until one is chosen."}
                 </p>
                 <div className="mt-3 flex flex-col gap-2">
                   {standingUpcoming.map(({ occurrence, series, signupsOpen }) => (
@@ -323,6 +479,7 @@ export default async function ShiftsPage({
                       key={occurrence.id}
                       occurrence={occurrence}
                       series={series}
+                      timeZone={shiftZone(series.cycleId)}
                       branchNameById={branchNameById}
                       capacity={effectiveCapacity(occurrence, series)}
                       count={countByOccurrenceId.get(occurrence.id) ?? 0}
@@ -335,7 +492,9 @@ export default async function ShiftsPage({
             )}
           </section>
 
-          {myPastPendingSignups.length > 0 && (
+          )}
+
+          {!composing && myPastPendingSignups.length > 0 && (
             <section className="mt-8">
               <SectionHeading>My past shifts</SectionHeading>
               <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
@@ -345,7 +504,7 @@ export default async function ShiftsPage({
                 {myPastPendingSignups.map(({ signup, occurrence, series }) => (
                   <div key={signup.id} className={CARD}>
                     <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{series.title}</p>
-                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{formatRange(occurrence.startsAt, occurrence.endsAt)}</p>
+                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{formatInstantRange(occurrence.startsAt, occurrence.endsAt, shiftZone(series.cycleId))}</p>
                     <form action={markShiftSignupCompletedAction} className="mt-2">
                       <input type="hidden" name="signupId" value={signup.id} />
                       <button type="submit" className={BUTTON_SECONDARY}>
@@ -358,98 +517,13 @@ export default async function ShiftsPage({
             </section>
           )}
 
-          <section className="mt-8">
-            <SectionHeading>Create a shift series</SectionHeading>
-            {(openCycles.length > 0 || isStandingManager) ? (
-              <form action={createShiftSeriesAction} className="mt-3 flex max-w-[500px] flex-col gap-2">
-                <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Where does this series belong? (optional — defaults to an event below)</span>
-                  <SelectField name="cycleId" defaultValue={openCycles[0]?.id ?? ""} className={INPUT}>
-                    {isStandingManager && <option value="">Standing — community-wide</option>}
-                    {openCycles.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        Event {c.name}
-                        {c.shiftSignupsOpenedAt ? " (slot may need the manager's confirmation)" : " (opens with the roster)"}
-                      </option>
-                    ))}
-                  </SelectField>
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Title</span>
-                  <input type="text" name="title" required className={INPUT} />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Description</span>
-                  <textarea name="description" rows={2} className={INPUT} />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Branch (optional)</span>
-                  <select name="branchId" defaultValue="" className={INPUT}>
-                    <option value="">No branch</option>
-                    {branches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Default capacity per occurrence</span>
-                  <input type="number" name="defaultCapacity" min={1} required className={`${INPUT} w-fit`} />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Rotated from an existing task? (optional)</span>
-                  <input type="text" name="sourceTaskId" placeholder="paste the task's ID from its /tasks/… URL" className={INPUT} />
-                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                    Placement into a still-collecting event is open to any member; once a roster&rsquo;s
-                    sign-ups are open, new placements land as proposals for its shift manager to
-                    confirm. Standing series can only be added by the standing scope&rsquo;s shift manager.
-                  </span>
-                </label>
-                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                  Create series
-                </button>
-              </form>
-            ) : (
-              <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                There&rsquo;s nothing to add a series to — no open events to place into, and standing
-                series can only be added by the standing scope&rsquo;s shift manager.
-              </p>
-            )}
-          </section>
-
-          {pendingProposals.length > 0 && (
-            <section className="mt-8">
-              <SectionHeading>Pending proposals</SectionHeading>
-              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                Series placed after their event&rsquo;s roster opened — confirm the ones you want on it.
-              </p>
-              <div className="mt-3 flex flex-col gap-2">
-                {pendingProposals.map(({ series, cycleName }) => (
-                  <div key={series.id} className={CARD}>
-                    <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{series.title}</p>
-                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                      Proposal for Event {cycleName}
-                    </p>
-                    <form action={confirmShiftProposalAction} className="mt-2">
-                      <input type="hidden" name="seriesId" value={series.id} />
-                      <input type="hidden" name="cycleScope" value={series.cycleId ?? ""} />
-                      <button type="submit" className={BUTTON_SECONDARY}>
-                        Confirm for this roster
-                      </button>
-                    </form>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {myCoordinatedSeriesWithOccurrences.length > 0 && (
+          {!composing && myCoordinatedSeriesWithOccurrences.length > 0 && (
             <MySeriesSection
               series={myCoordinatedSeriesWithOccurrences}
               memberNameById={memberNameById}
               cycleNameById={cycleById}
               placementOptions={placementOptions}
+              shiftZone={shiftZone}
             />
           )}
         </>
@@ -466,6 +540,7 @@ export default async function ShiftsPage({
 function OccurrenceCard({
   occurrence,
   series,
+  timeZone,
   branchNameById,
   capacity,
   count,
@@ -474,6 +549,7 @@ function OccurrenceCard({
 }: {
   occurrence: { id: string; startsAt: Date; endsAt: Date };
   series: { title: string; branchId: string | null; description: string | null };
+  timeZone: string;
   branchNameById: Map<string, string>;
   capacity: number;
   count: number;
@@ -489,10 +565,11 @@ function OccurrenceCard({
           <span className="font-normal text-[var(--text-muted)]"> · {branchNameById.get(series.branchId) ?? "—"}</span>
         )}
       </p>
-      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{formatRange(occurrence.startsAt, occurrence.endsAt)}</p>
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{formatInstantRange(occurrence.startsAt, occurrence.endsAt, timeZone)}</p>
       {series.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{series.description}</p>}
       <p className="mt-1.5 flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
         {count}/{capacity} signed up
+        {iAmSignedUp && <Tag tone="success">You&rsquo;re signed up</Tag>}
         {full && !iAmSignedUp && <Tag tone="warning">full</Tag>}
         {!signupsOpen && <Tag tone="neutral">not open yet</Tag>}
       </p>

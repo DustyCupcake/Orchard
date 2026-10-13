@@ -19,7 +19,7 @@ import {
 } from "@/lib/recruitment";
 import { NotFoundError } from "@/lib/errors";
 
-// docs/admission-flow.md §6. Doors govern *entering*, and are checked in every
+// docs/plans/admission-flow.md §6. Doors govern *entering*, and are checked in every
 // place somebody enters; a place in an event is taken at *admission*, so a
 // person approved for a full event waits for room rather than being turned
 // away or let in over it.

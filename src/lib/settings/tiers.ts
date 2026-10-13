@@ -12,7 +12,7 @@ type Member = typeof memberTable.$inferSelect;
 export const createTierInput = z.object({
   name: z.string().min(1),
   // Only "manual" and, as of Phase 40, "cycle_type_count" are
-  // functional (see docs/development-plan.md's Phase 2 scope for the
+  // functional (see docs/plans/development-plan.md's Phase 2 scope for the
   // original tenure/completion/cohort deferral — still true for those
   // three; nothing built since has picked them up). The other values
   // stay selectable so the schema doesn't have to change later, but

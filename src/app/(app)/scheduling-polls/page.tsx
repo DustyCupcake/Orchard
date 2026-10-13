@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { getViewerClock } from "@/lib/view-clock";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
@@ -16,6 +17,8 @@ export default async function SchedulingPollsPage() {
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const [polls, branches] = await Promise.all([
     listPolls(viewing),
@@ -47,7 +50,7 @@ export default async function SchedulingPollsPage() {
             <span className="flex shrink-0 items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               {branchNameById.get(p.branchId) ?? "—"}
               {p.confirmedSlotStart ? (
-                <Tag tone="success">confirmed {new Date(p.confirmedSlotStart).toLocaleDateString()}</Tag>
+                <Tag tone="success">confirmed {clock.date(p.confirmedSlotStart)}</Tag>
               ) : (
                 <Tag>not yet resolved</Tag>
               )}

@@ -57,7 +57,6 @@ import {
   type MilestoneDateInput,
 } from "@/lib/tasks";
 import { createQuestion, createQuestionInput } from "@/lib/input-rounds";
-import { rotateTaskIntoShift } from "@/lib/shifts";
 import { requireAdmins } from "@/lib/settings";
 import {
   addPermissionGrant,
@@ -316,23 +315,6 @@ export async function splitSubtaskAction(formData: FormData) {
 
   revalidatePath(`/tasks/${taskId}`);
   redirect(`/tasks/${created.id}`);
-}
-
-// The standing scope's shift manager's act, enforced inside
-// rotateTaskIntoShift (D10) — a one-click action, no form fields of its
-// own. The original Task is left untouched; this just starts a new
-// standing ShiftSeries.
-export async function rotateIntoShiftAction(formData: FormData) {
-  const actor = await requireMember();
-  const taskId = String(formData.get("taskId"));
-
-  try {
-    await rotateTaskIntoShift(actor, taskId);
-  } catch (err) {
-    redirectWithError(taskId, err);
-  }
-
-  redirect("/shifts?seriesCreated=1");
 }
 
 export async function acceptJoinRequestAction(formData: FormData) {
@@ -773,7 +755,7 @@ export async function removeDependencyAction(formData: FormData) {
 }
 
 // The task-side entry point onto the PermissionGrant rows the settings
-// panel's Access & permissions tab edits (docs/development-plan.md's
+// panel's Access & permissions tab edits (docs/plans/development-plan.md's
 // Phase 64). One underlying code path, with Budget deliberately absent:
 // its only configuration surface is Settings → Access & permissions.
 // Admin-gated here too (requireAdmins), a genuinely stricter check than

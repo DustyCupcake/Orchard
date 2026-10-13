@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { budgetCycle, community, task, taskAssignment } from "@/db/schema";
+import { community, task, taskAssignment } from "@/db/schema";
 import { closeCycle, createCycle } from "@/lib/cycles";
-import { createBudgetCycle, markBudgetCycleDone } from "@/lib/budget";
+import { getBudgetCycleForCycle, settleEventBudget } from "@/lib/budget";
 import { claimTask } from "@/lib/tasks";
 import { grantPermission, createFixtures, resetDatabase } from "./helpers";
 import { setPermissionGrant } from "@/lib/permissions";
@@ -34,11 +34,7 @@ async function insertTask(
   return row;
 }
 
-function inOneWeek() {
-  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-}
-
-// docs/development-plan.md's Phase 65 — "any current Admin can close
+// docs/plans/development-plan.md's Phase 65 — "any current Admin can close
 // an open cycle... never hard-blocks: the Admin can close anyway."
 describe("closeCycle", () => {
   beforeEach(async () => {
@@ -85,37 +81,28 @@ describe("closeCycle", () => {
     const ownerTask = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cyc.id });
     await setPermissionGrant(alice, "budget", ownerTask.id);
     await claimTask(alice, ownerTask.id);
-    const budgetCycleRow = await createBudgetCycle(alice, {
-      title: "Season budget",
-      cycleId: cyc.id,
-      proposalDeadline: inOneWeek(),
-    });
+    // The event's budget was made with it, so there is always one to wrap up.
+    const budgetCycleRow = (await getBudgetCycleForCycle(alice, cyc.id))!;
 
     await expect(closeCycle(alice, cyc.id)).rejects.toThrow(ConfirmationRequiredError);
-    await expect(closeCycle(alice, cyc.id)).rejects.toThrow(/Season budget/);
+    await expect(closeCycle(alice, cyc.id)).rejects.toThrow(/2027 Season Budget/);
 
     const closed = await closeCycle(alice, cyc.id, { overrideBudgetWarning: true });
     expect(closed.closedAt).not.toBeNull();
 
     // Once the owner's marked it done, no warning needed even without
-    // an override.
-    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, budgetCycleRow.id));
-    await markBudgetCycleDone(alice, budgetCycleRow.id);
+    // an override. (It no longer has to be taken through a vote first.)
+    await settleEventBudget(alice, budgetCycleRow.id);
     const cyc2 = await createCycle(alice, { source: "blank", name: "2028 Season" });
     const ownerTask2 = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cyc2.id });
     await setPermissionGrant(alice, "budget", ownerTask2.id);
     await claimTask(alice, ownerTask2.id);
-    const budgetCycle2 = await createBudgetCycle(alice, {
-      title: "Next season budget",
-      cycleId: cyc2.id,
-      proposalDeadline: inOneWeek(),
-    });
-    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, budgetCycle2.id));
-    await markBudgetCycleDone(alice, budgetCycle2.id);
+    const budgetCycle2 = (await getBudgetCycleForCycle(alice, cyc2.id))!;
+    await settleEventBudget(alice, budgetCycle2.id);
     await expect(closeCycle(alice, cyc2.id)).resolves.toMatchObject({ closedAt: expect.any(Date) });
   });
 
-  it("never warns when Budget is disabled, or no BudgetCycle is tied to this specific cycle", async () => {
+  it("never warns when Budget is disabled, or the event has no budget of its own", async () => {
     const { community: testCommunity, alice } = await createFixtures();
     await enableCycles(testCommunity.id);
     const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
@@ -123,16 +110,12 @@ describe("closeCycle", () => {
     // Budget disabled entirely.
     await expect(closeCycle(alice, cyc.id)).resolves.toMatchObject({ closedAt: expect.any(Date) });
 
-    // Budget enabled, but its one active cycle isn't tied to *this*
-    // real Cycle (cycleId null, or tied to a different one).
+    // Budget enabled, but this event has none: it predates the module and
+    // nobody has opened its Budget page, so there is nothing to wrap up.
     const { community: otherCommunity, alice: otherAlice } = await createFixtures();
     await enableCycles(otherCommunity.id);
+    const otherCycle = await createCycle(otherAlice, { source: "blank", name: "Early cycle" });
     await db.update(community).set({ modulesEnabled: ["budget"] }).where(eq(community.id, otherCommunity.id));
-    const otherCycle = await createCycle(otherAlice, { source: "blank", name: "Untied cycle" });
-    await createBudgetCycle(otherAlice, {
-      title: "Untied budget",
-      proposalDeadline: inOneWeek(),
-    });
 
     await expect(closeCycle(otherAlice, otherCycle.id)).resolves.toMatchObject({ closedAt: expect.any(Date) });
   });

@@ -15,7 +15,7 @@ import {
 
 type Member = typeof memberTable.$inferSelect;
 
-// docs/development-plan.md's Phase 56 — "a handful of static cards,
+// docs/plans/development-plan.md's Phase 56 — "a handful of static cards,
 // not a manual," the same hardcoded-per-use posture Forms' own MVP
 // fields already take. No CMS/authoring UI; editing these is a code
 // change, deliberately, until real use ever asks for more.

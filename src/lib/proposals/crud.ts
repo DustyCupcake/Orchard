@@ -187,7 +187,7 @@ export async function activateProposal(
     await addTaskDependency(actor, newTask.id, dependsOnTaskId);
   }
 
-  // "Permissions granted by this task" (docs/development-plan.md's
+  // "Permissions granted by this task" (docs/plans/development-plan.md's
   // Phase 64) — deliberately a follow-up write, not folded into
   // createTask above: PermissionGrant.taskId needs a real task row,
   // which doesn't exist until createTask returns. Re-checked here,
@@ -208,7 +208,7 @@ export async function activateProposal(
         await addPermissionGrant(actor, moduleKey, newTask.id);
       } else {
         // Scope comes from the new task's own placement (task.cycleId —
-        // docs/cycle-scope-remediation-plan.md §2.1), so this replaces a
+        // docs/plans/archive/cycle-scope-remediation-plan.md §2.1), so this replaces a
         // sibling grant *in that same scope* only, never a different
         // cycle's owner.
         await setPermissionGrant(actor, moduleKey, newTask.id);

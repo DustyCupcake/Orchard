@@ -9,7 +9,7 @@ import { Tag, Banner } from "@/components/ui/kit";
 
 export const dynamic = "force-dynamic";
 
-// The real Escalation page (docs/cycle-scope-remediation-plan.md
+// The real Escalation page (docs/plans/archive/cycle-scope-remediation-plan.md
 // §5.3/§5.5): it now lives under /[cycleScope] and gates on the
 // view-scope cycle when the community runs cycles, staying
 // community-wide for cycle-less ones — the same movement

@@ -13,6 +13,7 @@ import {
 } from "../cycles";
 import { recomputeBoundary, type StoredBoundary } from "../dates";
 import { isAdmin } from "../settings/admins";
+import { ensureNewEventBudget } from "../budget/cycles";
 import { copyPermissionGrants, type PermissionModuleKey } from "../permissions";
 import { getTaskPack } from "./crud";
 import { findClosestNameMatch } from "./match-name";
@@ -27,7 +28,7 @@ type PackPhaseRow = Awaited<ReturnType<typeof getTaskPack>>["phases"][number];
 // value, not by task — a 45-task/4-branch pack shows 4 rows. Each row
 // starts pre-filled with an exact, case-insensitive name match against
 // the destination's existing branches; failing that, a near-match
-// suggestion (docs/development-plan.md's Phase 59 — "Wood" vs.
+// suggestion (docs/plans/development-plan.md's Phase 59 — "Wood" vs.
 // "Woods"), clearly distinguished via matchKind so the review screen
 // can label it "similar match" rather than presenting it as if it
 // were exact; or null when nothing clears either bar (the review
@@ -75,7 +76,7 @@ export async function previewPackImportBranches(actor: Member, packId: string): 
 // pack's own PackPhase/TaskPackItem rows (names, not live ids) rather
 // than a live previous cycle, since this is the general cross-
 // community case that function was deliberately never built for (see
-// docs/development-plan.md's Phase 6 scope note). Reuses the exact
+// docs/plans/development-plan.md's Phase 6 scope note). Reuses the exact
 // same recomputeBoundary primitive, so a preview's numbers are
 // guaranteed to match what actually lands.
 function packBoundary(
@@ -204,7 +205,7 @@ export async function commitPackImport(actor: Member, input: CommitPackImportInp
     .where(eq(branch.communityId, actor.communityId));
   const existingBranchIds = new Set(existingBranches.map((b) => b.id));
 
-  return db.transaction(async (tx) => {
+  const created = await db.transaction(async (tx) => {
     const [newCycle] = await tx
       .insert(cycle)
       .values({
@@ -376,4 +377,8 @@ export async function commitPackImport(actor: Member, input: CommitPackImportInp
 
     return newCycle;
   });
+
+  // An event's budget is made with it, when Budget is on.
+  await ensureNewEventBudget(actor, created.id);
+  return created;
 }

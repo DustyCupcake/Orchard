@@ -40,7 +40,7 @@ export const callSummary = pgTable("call_summary", {
   // logCallSummaryUnreadEngagementEvents scheduled job — set once this
   // summary's read window has been checked and any non-readers logged,
   // so a published, require_read summary is only ever scanned once
-  // (see docs/development-plan.md's Phase 52), the same one-shot-
+  // (see docs/plans/development-plan.md's Phase 52), the same one-shot-
   // trigger posture Phase 48's subscriptionLapseProcessedAt already
   // established for a comparably "check once, past a window" case.
   engagementCheckedAt: timestamp("engagement_checked_at", { withTimezone: true }),

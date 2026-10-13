@@ -29,7 +29,7 @@ import {
 } from "@/lib/recruitment/pairs";
 import { ConflictError, ForbiddenError } from "@/lib/errors";
 
-// docs/admission-flow.md §2, "Pairing and a shared interview". A pair is a fact between two
+// docs/plans/admission-flow.md §2, "Pairing and a shared interview". A pair is a fact between two
 // *arrivals*; the only thing it can change is one shared interview, which is offered by a
 // holder and never applied; and the recommendation stays per person.
 

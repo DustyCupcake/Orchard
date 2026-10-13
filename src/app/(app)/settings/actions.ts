@@ -44,7 +44,7 @@ import { markSignInSetUp, retrySignInSetup } from "@/lib/sign-in/provision";
 import { removeEmptyMember } from "@/lib/sign-in/remove-member";
 import { linkSignInToMember, turnAwaySignIn } from "@/lib/sign-in/unmatched";
 import type { AdmissionLaneRule } from "@/lib/recruitment/lane-rules";
-import { checkboxGroup, checkboxOf, defined, number, optionalText, text } from "./form-values";
+import { checkboxGroup, checkboxOf, defined, number, optionalNumber, optionalText, text } from "./form-values";
 import {
   archiveProfileQuestion,
   createProfileQuestion,
@@ -75,7 +75,7 @@ import {
 import { AppError } from "@/lib/errors";
 
 // Fields arrive as a JSON blob from the real field-builder client
-// component (docs/development-plan.md's Phase 58 —
+// component (docs/plans/development-plan.md's Phase 58 —
 // src/app/(app)/settings/FormBuilder.tsx) rather than a hand-typed
 // pipe-delimited textarea — the no-code builder that phase names is
 // this JSON payload's only producer, never something an admin types
@@ -148,6 +148,7 @@ export async function updateGeneralBasicsAction(formData: FormData) {
         cyclesEnabled: checkboxOf(formData, "cyclesEnabled"),
         phasesEnabled: checkboxOf(formData, "phasesEnabled"),
         defaultDateDisplayMode: text(formData, "defaultDateDisplayMode") as "exact" | "period" | "",
+        timeZone: text(formData, "timeZone").trim() || null,
         cycleInitiationTierId: optionalText(formData, "cycleInitiationTierId"),
         onsiteModeEnabled: checkboxOf(formData, "onsiteModeEnabled"),
       }),
@@ -202,7 +203,7 @@ export async function updateSsoAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
-// General → what "admitted" means at the provider (docs/admission-flow.md §6a). All three are
+// General → what "admitted" means at the provider (docs/plans/admission-flow.md §6a). All three are
 // off (or today's behaviour) until a community turns them on.
 export async function updateSsoProvisioningAction(formData: FormData) {
   const actor = await requireMember();
@@ -380,6 +381,23 @@ export async function updateModulesSettingsAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
+// Modules → Budget: how much money each backer of a proposal stands behind.
+// Blank (or 0) clears it, which asks for no backing at all.
+export async function updateBudgetSettingsAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    await updateCommunity(
+      actor,
+      updateCommunityInput.parse({ fundSupportPerBacker: optionalNumber(formData, "fundSupportPerBacker") }),
+    );
+  } catch (err) {
+    redirectWithError(err, "modules");
+  }
+  revalidatePath("/settings");
+  revalidatePath("/budget");
+}
+
 export async function updatePostCycleFeedbackAction(formData: FormData) {
   const actor = await requireMember();
   try {
@@ -419,7 +437,7 @@ export async function updateRecruitmentApplicationAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
-// How reports decide (docs/admission-flow.md §2): four choices, one policy for
+// How reports decide (docs/plans/admission-flow.md §2): four choices, one policy for
 // the whole community. A policy a lane could never meet is refused by
 // updateCommunity with the lane named.
 export async function updateRecruitmentDecisionPolicyAction(formData: FormData) {
@@ -507,7 +525,7 @@ export async function updateRecruitmentCheckWindowAction(formData: FormData) {
   revalidatePath("/recruitment/mediation");
 }
 
-// Recruitment → the admission lanes (docs/admission-flow.md §2a, §3). The one
+// Recruitment → the admission lanes (docs/plans/admission-flow.md §2a, §3). The one
 // card on this tab that is genuinely a form about a *design*, and the one that
 // most needed to stop sharing a Save button with everything else. The whole
 // lane list arrives as one JSON field, because it is validated as a whole
@@ -555,7 +573,7 @@ const permissionGrantFields = z.object({
   taskId: z.string().uuid(),
 });
 
-// "Everyone has this permission" (docs/open-permissions-plan.md). A checkbox
+// "Everyone has this permission" (docs/plans/archive/open-permissions-plan.md). A checkbox
 // plus Save, not a toggle-on-change: this whole tab is deliberately zero-JS
 // (the grant picker is a datalist, Remove is a plain form), and a control that
 // flipped on click would be the one thing here that silently changed a
@@ -612,7 +630,7 @@ async function requireTaskInActorCommunity(taskId: string, communityId: string) 
 
 // Single-cardinality modules — makes the typed task *the* task granting
 // this module, replacing a sibling grant in the same scope (the granted
-// task's own placement, task.cycleId — docs/cycle-scope-remediation-plan.md
+// task's own placement, task.cycleId — docs/plans/archive/cycle-scope-remediation-plan.md
 // §2.1), or adding a coexisting grant when the scope is new. Budget is one
 // of these and is deliberately configurable only from this Settings action;
 // generic task/proposal surfaces omit it. Clearing a grant is the per-row
@@ -641,7 +659,7 @@ export async function setPermissionGrantAction(formData: FormData) {
 // adds one more granting task without touching any others already
 // granting the same module. Replaces the old free-text "type a tag"
 // fields (adminsTag/coordinationTag) and supportTag's previously-
-// nonexistent settings UI alike — see docs/development-plan.md's Phase
+// nonexistent settings UI alike — see docs/plans/development-plan.md's Phase
 // 63 on why a tag string could never safely stay the mechanism.
 export async function addPermissionGrantAction(formData: FormData) {
   const actor = await requireMember();

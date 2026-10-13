@@ -12,7 +12,7 @@ import {
 import { INPUT, LABEL } from "@/components/ui/kit";
 
 // "The knowing/good-fit marks are shown with their consequences" (§5.3 of the
-// earlier plan, carried into docs/admission-flow.md §2a).
+// earlier plan, carried into docs/plans/admission-flow.md §2a).
 //
 // The two checkboxes used to be bare labels with their effect explained in a
 // paragraph further down the form, about capacity holds. That is the wrong

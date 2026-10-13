@@ -628,120 +628,176 @@
     {
       "idx": 89,
       "version": "7",
-      "when": 1791477148368,
-      "tag": "0089_admission_lane",
+      "when": 1791449129999,
+      "tag": "0089_permission_holding",
       "breakpoints": true
     },
     {
       "idx": 90,
       "version": "7",
-      "when": 1791529076865,
-      "tag": "0090_standing_availability",
+      "when": 1791557289222,
+      "tag": "0090_event_time_zones",
       "breakpoints": true
     },
     {
       "idx": 91,
       "version": "7",
-      "when": 1791529201241,
-      "tag": "0091_person_plus_n_holders_mode",
+      "when": 1791557290152,
+      "tag": "0091_event_proposal_interest",
       "breakpoints": true
     },
     {
       "idx": 92,
       "version": "7",
-      "when": 1791557371279,
-      "tag": "0092_community_check",
+      "when": 1791826460579,
+      "tag": "0092_budget_event_ownership",
       "breakpoints": true
     },
     {
       "idx": 93,
       "version": "7",
-      "when": 1791557917436,
-      "tag": "0093_admission_lane_contexts",
+      "when": 1791827618414,
+      "tag": "0093_budget_backed_proposals",
       "breakpoints": true
     },
     {
       "idx": 94,
       "version": "7",
-      "when": 1791566035559,
-      "tag": "0094_admission_support",
+      "when": 1791875101258,
+      "tag": "0094_budget_ledger",
       "breakpoints": true
     },
     {
       "idx": 95,
       "version": "7",
-      "when": 1791566043746,
-      "tag": "0095_drop_nomination",
+      "when": 1791876124746,
+      "tag": "0095_budget_contribution_ask",
       "breakpoints": true
     },
     {
       "idx": 96,
       "version": "7",
-      "when": 1791568488288,
-      "tag": "0096_decision_policy",
+      "when": 1791877776013,
+      "tag": "0096_budget_allocation_settlement",
       "breakpoints": true
     },
     {
       "idx": 97,
       "version": "7",
-      "when": 1791569085453,
-      "tag": "0097_interview_poll",
+      "when": 1791881376013,
+      "tag": "0097_admission_lane",
       "breakpoints": true
     },
     {
       "idx": 98,
       "version": "7",
-      "when": 1791707468766,
-      "tag": "0098_drop_unused_check_tables",
+      "when": 1791933304510,
+      "tag": "0098_standing_availability",
       "breakpoints": true
     },
     {
       "idx": 99,
       "version": "7",
-      "when": 1791707496254,
-      "tag": "0099_one_community_check",
+      "when": 1791933428886,
+      "tag": "0099_person_plus_n_holders_mode",
       "breakpoints": true
     },
     {
       "idx": 100,
       "version": "7",
-      "when": 1791707567367,
-      "tag": "0100_drop_objection_and_consensus",
+      "when": 1791961598924,
+      "tag": "0100_community_check",
       "breakpoints": true
     },
     {
       "idx": 101,
       "version": "7",
-      "when": 1791733183534,
-      "tag": "0101_reports_keyed_on_arrival",
+      "when": 1791962145081,
+      "tag": "0101_admission_lane_contexts",
       "breakpoints": true
     },
     {
       "idx": 102,
       "version": "7",
-      "when": 1791733199602,
-      "tag": "0102_evaluation_one_per_arrival",
+      "when": 1791970263204,
+      "tag": "0102_admission_support",
       "breakpoints": true
     },
     {
       "idx": 103,
       "version": "7",
-      "when": 1791737236223,
-      "tag": "0103_sign_in_provider",
+      "when": 1791970271391,
+      "tag": "0103_drop_nomination",
       "breakpoints": true
     },
     {
       "idx": 104,
       "version": "7",
-      "when": 1791738178233,
-      "tag": "0104_pairing_on_arrivals",
+      "when": 1791972715933,
+      "tag": "0104_decision_policy",
       "breakpoints": true
     },
     {
       "idx": 105,
       "version": "7",
-      "when": 1791738783853,
-      "tag": "0105_drop_legacy_recruitment",
+      "when": 1791973313098,
+      "tag": "0105_interview_poll",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1792111696411,
+      "tag": "0106_drop_unused_check_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1792111723899,
+      "tag": "0107_one_community_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1792111795012,
+      "tag": "0108_drop_objection_and_consensus",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1792137411179,
+      "tag": "0109_reports_keyed_on_arrival",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1792137427247,
+      "tag": "0110_evaluation_one_per_arrival",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1792141463868,
+      "tag": "0111_sign_in_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1792142405878,
+      "tag": "0112_pairing_on_arrivals",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1792143011498,
+      "tag": "0113_drop_legacy_recruitment",
       "breakpoints": true
     }
   ]

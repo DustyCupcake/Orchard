@@ -11,7 +11,7 @@ import type { ComponentProps } from "react";
 // like" — shared by /apply, /feedback (real, submittable renders),
 // /questions + /profile's ProfileQuestionForm, and the settings
 // Form/ProfileQuestion builders' own live preview
-// (docs/development-plan.md's Phase 58, disabled). No "use client"
+// (docs/plans/development-plan.md's Phase 58, disabled). No "use client"
 // needed: nothing here owns state or an event handler, so it's safe to
 // render from a Server Component (the two real pages) or from inside a
 // client component (the builder's preview pane) equally — the same

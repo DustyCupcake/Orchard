@@ -1,6 +1,7 @@
 "use server";
 
 import { ZodError } from "zod";
+import { eventInstantFromLocal } from "@/lib/cycles";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
@@ -41,6 +42,10 @@ export async function createCommunityInviteAction(formData: FormData) {
   let created;
 
   try {
+    // Typed on the clock of the event the invite is for, else the
+    // community's — not the server's.
+    const inviteCycleId = String(formData.get("cycleId") ?? "").trim() || null;
+    const expiresRaw = String(formData.get("expiresAt") ?? "").trim();
     const input = createCommunityInviteInput.parse({
       label: String(formData.get("label") ?? "").trim() || null,
       inviterThinksGoodFit: formData.get("inviterThinksGoodFit") === "on",
@@ -50,9 +55,7 @@ export async function createCommunityInviteAction(formData: FormData) {
       // simply absent anywhere else.
       awarenessConfirmed: formData.get("awarenessConfirmed") === "on",
       cycleId: String(formData.get("cycleId") ?? "").trim() || null,
-      expiresAt: String(formData.get("expiresAt") ?? "").trim()
-        ? new Date(String(formData.get("expiresAt"))).toISOString()
-        : null,
+      expiresAt: expiresRaw ? await eventInstantFromLocal(actor.communityId, inviteCycleId, expiresRaw) : null,
     });
     created = await createCommunityInvite(actor, input);
   } catch (err) {
@@ -67,7 +70,7 @@ export async function createCommunityInviteAction(formData: FormData) {
 }
 
 // The inviter asks named members to look at their invitee's support link: one
-// email each, never a broadcast (docs/admission-flow.md §2). Best-effort, so the
+// email each, never a broadcast (docs/plans/admission-flow.md §2). Best-effort, so the
 // message says who was reached, and the link is on the page to hand over by hand.
 export async function askMembersToSupportAction(formData: FormData) {
   const actor = await requireMember();

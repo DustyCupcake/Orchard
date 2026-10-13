@@ -7,7 +7,7 @@ import { isModuleOpenToEveryone } from "../permissions";
 
 type Member = typeof memberTable.$inferSelect;
 
-// The shift_management module (docs/cycle-scope-remediation-plan.md
+// The shift_management module (docs/plans/archive/cycle-scope-remediation-plan.md
 // §2.6/§4.8/D10) — the holder of a shift_management-granted task in a
 // matching scope is that scope's roster manager. Scope comes from the
 // granted task's own placement, the §2.1 rule every module uses: a task
@@ -50,7 +50,7 @@ export async function resolveShiftManager(
 // needs-action) funnel through.
 //
 // An open `shift_management` module answers true for every scope
-// (docs/open-permissions-plan.md D3). Note this is checked *before*
+// (docs/plans/archive/open-permissions-plan.md D3). Note this is checked *before*
 // resolveShiftManager, and that is not a workaround: resolveShiftManager
 // picks one holder with `.limit(1)`, and the four
 // requireShiftManagerForScope call sites all discard that member — the check

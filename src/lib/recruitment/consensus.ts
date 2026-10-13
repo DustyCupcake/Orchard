@@ -2,8 +2,8 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community, recruitmentApplicationConsent } from "@/db/schema";
 
-// The consent half of the community check (docs/admission-flow.md §5, and J10 in
-// docs/joining-admission-plan.md). The window itself — opening it, raising a
+// The consent half of the community check (docs/plans/admission-flow.md §5, and J10 in
+// docs/plans/archive/joining-admission-plan.md). The window itself — opening it, raising a
 // concern in it, what happens when it ends — is community-check.ts and
 // check-outcome.ts; what is left here is the text a person reads and agrees to
 // before their arrival is announced, and the record that they did.

@@ -26,7 +26,7 @@ const STATUS_MESSAGE: Record<string, string> = {
 // standing.
 //
 // What the page does is decided by the lane the invite takes
-// (docs/admission-flow.md §2a), looked up live from what the inviter
+// (docs/plans/admission-flow.md §2a), looked up live from what the inviter
 // declared:
 //   asks for an application → straight to /apply, with the token as the vouch;
 //   community check         → here, with the disclosure and the binding consent

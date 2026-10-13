@@ -28,7 +28,7 @@ import {
 } from "@/lib/recruitment";
 import { listPairings } from "@/lib/recruitment/pairs";
 
-// The community check (docs/admission-flow.md §5), on a lane whose
+// The community check (docs/plans/admission-flow.md §5), on a lane whose
 // verification is `community_check`: the invitee's own consent, an announced
 // arrival that is *not yet a member*, the shield around whoever raises a
 // concern, standing objections that no timer can drop, and the overrule
@@ -424,7 +424,7 @@ describe("consensus: consent, shield, standing objections, and the overrule exce
 });
 
 
-describe("pairing is fact-only (docs/joining-admission-plan.md §2.8/J9)", () => {
+describe("pairing is fact-only (docs/plans/archive/joining-admission-plan.md §2.8/J9)", () => {
   beforeEach(resetDatabase);
 
   it("records who named whom, and needs a real person behind it", async () => {

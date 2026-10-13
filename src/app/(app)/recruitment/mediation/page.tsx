@@ -19,6 +19,7 @@ import {
   withdrawConsentToObjectionAction,
   withdrawObjectionAction,
 } from "./actions";
+import { getViewerClock } from "@/lib/view-clock";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,7 @@ export default async function RecruitmentMediationPage({
     withdrawn?: string;
   }>;
 }) {
+  const clock = await getViewerClock();
   const params = await searchParams;
   const ctx = await getViewingContext();
   if (!ctx.real || !ctx.viewing) redirect("/login");
@@ -254,9 +256,9 @@ export default async function RecruitmentMediationPage({
                     {RESOLUTION_LABEL[item.resolution] ?? item.resolution}
                   </Tag>
                   <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                    raised {new Date(item.raisedAt).toLocaleDateString()}
+                    raised {clock.date(item.raisedAt)}
                     {item.resolvedAt
-                      ? ` · settled ${new Date(item.resolvedAt).toLocaleDateString()}`
+                      ? ` · settled ${clock.date(item.resolvedAt)}`
                       : ""}
                   </span>
                 </div>
@@ -283,7 +285,7 @@ export default async function RecruitmentMediationPage({
   );
 }
 
-function StandingObjection({
+async function StandingObjection({
   item,
   body,
   parties,
@@ -300,6 +302,7 @@ function StandingObjection({
   bodySize: number;
   viewerId: string;
 }) {
+  const clock = await getViewerClock();
   const isObjector = item.objectorName !== null;
   // An overrule that needs more than one person is a pledge, not an act:
   // the button records this holder's agreement and the objection stays
@@ -318,11 +321,11 @@ function StandingObjection({
         </span>
         <Tag tone="warning">standing</Tag>
         <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-          raised {new Date(item.raisedAt).toLocaleDateString()}
+          raised {clock.date(item.raisedAt)}
         </span>
         {item.subject.consentAt && (
           <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-            · they consented on {new Date(item.subject.consentAt).toLocaleDateString()}
+            · they consented on {clock.date(item.subject.consentAt)}
           </span>
         )}
       </div>

@@ -4,7 +4,7 @@ import { useState } from "react";
 
 // Compact link-copy button. Clicking the main icon copies the default
 // link; the small arrow opens a dropdown with the scoped-link option.
-// docs/development-plan.md's Phase 66 — "gives sharing a way to route
+// docs/plans/development-plan.md's Phase 66 — "gives sharing a way to route
 // around" cross-cycle-boundary mismatches.
 export default function CopyLinkButton({
   path,

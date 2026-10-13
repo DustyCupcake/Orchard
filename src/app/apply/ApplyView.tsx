@@ -26,7 +26,7 @@ import { submitApplicationAction } from "./actions";
 // configured as its application, the same field-rendering shape /feedback
 // already uses for the authenticated post-cycle survey.
 //
-// The address is the lane (docs/admission-flow.md §2a): `/apply` is the first
+// The address is the lane (docs/plans/admission-flow.md §2a): `/apply` is the first
 // public lane and `/apply/<slug>` another, each a different starting point
 // with its own process. Three things ride on the query string, and all three
 // are the same idea — the link somebody was sent is the context, and the page
@@ -115,7 +115,7 @@ export default async function ApplyView({
 
   // The doors, asked of the same function that sends the application and
   // opens an invite, so this page can never promise what the action refuses
-  // (docs/admission-flow.md §6). Shut or unconfigured → say so instead of the form.
+  // (docs/plans/admission-flow.md §6). Shut or unconfigured → say so instead of the form.
   const doorRefusal = lane
     ? await entryRefusal({ communityId: community.id, cycleId: targetCycleId, lane, via: "application", withInvite: inviteUsable })
     : null;

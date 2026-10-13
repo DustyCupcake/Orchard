@@ -72,7 +72,7 @@ export const schedulingPoll = pgTable("scheduling_poll", {
 // not-yet-a-Member Recruitment applicant, tracked by their own
 // FormResponse instead ("required participant for the applicant's
 // side means their own token-linked availability submission, not a
-// memberId," docs/development-plan.md's Phase 34). Exactly one of
+// memberId," docs/plans/development-plan.md's Phase 34). Exactly one of
 // memberId/formResponseId is set per row, enforced at the application
 // layer, not a DB constraint — same posture FormResponse.submittedBy's
 // own "null only when..." invariant already takes. Existing
@@ -84,7 +84,7 @@ export const schedulingEntry = pgTable("scheduling_entry", {
     .notNull()
     .references(() => schedulingPoll.id),
   memberId: uuid("member_id").references(() => member.id),
-  // A person in the admission funnel (docs/admission-flow.md §4) — the key a new
+  // A person in the admission funnel (docs/plans/admission-flow.md §4) — the key a new
   // interview poll uses for the applicant, because an arrival always has one and
   // an interview-only arrival has no application (so no form response) to hang it
   // on. Polls made before arrivals existed keep their form response.

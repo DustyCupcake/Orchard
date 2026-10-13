@@ -14,7 +14,7 @@ import {
 } from "@/lib/recruitment/decision-policy";
 import { createFixtures, resetDatabase } from "./helpers";
 
-// docs/admission-flow.md §2, "How reports decide". The four choices and nothing
+// docs/plans/admission-flow.md §2, "How reports decide". The four choices and nothing
 // else: no list, no JSON, no inviter marks as an input. What's tested is the
 // table the settings screen promises, at the place it would break.
 

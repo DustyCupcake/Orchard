@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatInstant } from "@/lib/dates";
 import type { ContributionCategory, ContributionCategoryAverage } from "@/lib/contribution";
 import { effortSummary } from "@/lib/format";
 
@@ -88,7 +89,7 @@ export default function ContributionCategories({
                       <li key={c.id}>
                         {c.seriesTitle}{" "}
                         <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                          ({new Date(c.occurrenceStartsAt).toLocaleDateString()})
+                          ({formatInstant(c.occurrenceStartsAt, c.timeZone, "date")})
                         </span>
                       </li>
                     ))}

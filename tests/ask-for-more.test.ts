@@ -25,7 +25,7 @@ import {
 } from "@/lib/recruitment";
 import { ConflictError } from "@/lib/errors";
 
-// docs/admission-flow.md §5, "ask for more": the mediation body adds an application
+// docs/plans/admission-flow.md §5, "ask for more": the mediation body adds an application
 // and/or a conversation to an arrival's path. Nothing is invented for it — the
 // person is taken back to those steps, evaluated and decided like anyone else, and if
 // the reports then lead to a wider discussion there is a second window.

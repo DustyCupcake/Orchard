@@ -404,7 +404,7 @@ describe("carrying forward through a Cycle clone", () => {
 
 });
 
-// The Calendar view's own read layer (docs/development-plan.md's Phase
+// The Calendar view's own read layer (docs/plans/development-plan.md's Phase
 // 44 — "their own task milestones").
 describe("listMyTaskMilestones", () => {
   beforeEach(async () => {

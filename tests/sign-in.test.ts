@@ -23,7 +23,7 @@ import { describeMemberRemoval, removeEmptyMember } from "@/lib/sign-in/remove-m
 import { zitadelConfigFor } from "@/lib/zitadel";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 
-// docs/admission-flow.md §6a. Two things are tested separately because they fail separately:
+// docs/plans/admission-flow.md §6a. Two things are tested separately because they fail separately:
 // whether a sign-in at the provider becomes the right member (never a duplicate, never a
 // takeover on an unproven address), and whether admitting somebody gives them an account
 // there. The provider is a stand-in that answers as the real tenant did in the spikes.

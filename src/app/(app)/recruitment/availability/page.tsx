@@ -10,7 +10,7 @@ import { requestTime } from "@/lib/request-time";
 
 export const dynamic = "force-dynamic";
 
-// docs/admission-flow.md §2: "the recruitment holders offer their own availability".
+// docs/plans/admission-flow.md §2: "the recruitment holders offer their own availability".
 // One grid, covering the next few weeks, that a holder fills in and edits whenever
 // they like. Every incoming interview is matched against it as it stands — it is
 // read, not copied onto each one — so there is nothing to re-paint per person, and

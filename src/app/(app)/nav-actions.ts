@@ -40,7 +40,7 @@ export async function endViewAsAction() {
   revalidatePath("/", "layout");
 }
 
-// The global cycle-switcher's own write (docs/development-plan.md's
+// The global cycle-switcher's own write (docs/plans/development-plan.md's
 // Phase 65) — called directly from CycleSwitcher.tsx, same "client
 // component calls a Server Action with no <form>" pattern
 // toggleFavoriteNavItem above already uses. Deliberately the ONLY

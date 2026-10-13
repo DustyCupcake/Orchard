@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -77,6 +78,8 @@ export default async function CommunicationPage({
     redirect("/login");
   }
 
+  const clock = await getViewerClock();
+
   const { error } = await searchParams;
 
   const [feed, branchRows] = await Promise.all([
@@ -134,7 +137,7 @@ export default async function CommunicationPage({
               meta={
                 <>
                   on {q.taskTitle} · {q.branchName}
-                  {q.deadline && <> · needed by {new Date(q.deadline).toLocaleDateString()}</>}
+                  {q.deadline && <> · needed by {clock.date(q.deadline)}</>}
                 </>
               }
             />
@@ -151,7 +154,7 @@ export default async function CommunicationPage({
               title={m.subject}
               meta={
                 <>
-                  to {MESSAGE_SCOPE_LABEL[m.scope] ?? m.scope} · {new Date(m.sentAt).toLocaleString()}
+                  to {MESSAGE_SCOPE_LABEL[m.scope] ?? m.scope} · {clock.dateTime(m.sentAt)}
                 </>
               }
             />
@@ -191,7 +194,7 @@ export default async function CommunicationPage({
                 {taskTitle}
               </Link>{" "}
               <span className="text-[length:var(--text-body)] text-[var(--text-muted)]">
-                — {nominatorName} thinks this is a fit, respond by {new Date(nomination.respondByDeadline).toLocaleString()}
+                — {nominatorName} thinks this is a fit, respond by {clock.deadline(nomination.respondByDeadline)}
                 {nomination.message && <>: &ldquo;{nomination.message}&rdquo;</>}
               </span>
               <form action={respondToNominationAction} className="mt-2 flex gap-2">
@@ -233,7 +236,7 @@ export default async function CommunicationPage({
               key={i.eventId}
               href="/calendar"
               title={i.eventTitle}
-              meta={`invited by ${i.invitedByName}, ${new Date(i.invitedAt).toLocaleDateString()} — respond on the calendar`}
+              meta={`invited by ${i.invitedByName}, ${clock.date(i.invitedAt)} — respond on the calendar`}
             />
           ))}
         </Section>

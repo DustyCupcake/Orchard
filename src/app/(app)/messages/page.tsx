@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getViewerClock } from "@/lib/view-clock";
 import { getViewingContext } from "@/lib/view-as";
 import { canInitiateCycle, listCycles } from "@/lib/cycles";
 import {
@@ -48,6 +49,8 @@ export default async function MessagesPage({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { error } = await searchParams;
 
@@ -217,7 +220,7 @@ export default async function MessagesPage({
             <div key={m.id} className={CARD}>
               <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{m.subject}</p>
               <p className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                {describeScope(m.scope, m.scopeRef, cycleNameById)} — {new Date(m.sentAt).toLocaleString()}
+                {describeScope(m.scope, m.scopeRef, cycleNameById)} — {clock.dateTime(m.sentAt)}
               </p>
               <p className="mt-2 whitespace-pre-wrap text-[length:var(--text-body)] text-[var(--text)]">{m.body}</p>
             </div>

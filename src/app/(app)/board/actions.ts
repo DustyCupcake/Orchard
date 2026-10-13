@@ -172,7 +172,7 @@ export async function bulkMoveTasksAction(formData: FormData) {
 }
 
 // The board's own bulk-selection mechanism, reused for a partial
-// export rather than a claim — see docs/development-plan.md's Phase
+// export rather than a claim — see docs/plans/development-plan.md's Phase
 // 55 ("the current cycle, or a hand-picked task subset via the
 // board's existing bulk-selection mechanism").
 export async function exportSelectedTasksAsPackAction(formData: FormData) {
@@ -226,7 +226,7 @@ export async function resumeAction(formData: FormData) {
   await runAction(() => resumeTask(actor, taskId));
 }
 
-// docs/development-plan.md's Phase 56 — "a Done confirmation gains a
+// docs/plans/development-plan.md's Phase 56 — "a Done confirmation gains a
 // 'you might also like' strip." No separate confirmation screen exists
 // (finishing already just redirects back to the board, same as every
 // other lifecycle action here) — reusing that same redirect-with-query

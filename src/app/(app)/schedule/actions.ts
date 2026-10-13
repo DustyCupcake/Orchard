@@ -6,42 +6,64 @@ import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import {
+  collapseCellsToWindows,
   confirmEventProposalSlot,
   confirmEventProposalSlotInput,
   createEventProposal,
   createEventProposalInput,
   declineEventProposal,
+  getProposalTimeZone,
+  paintedCellsInput,
+  interestLevelInput,
   pingConflictHost,
+  setEventProposalInterest,
   publishEventSchedule,
   updateEventProposal,
   updateEventProposalInput,
 } from "@/lib/event-scheduling";
 import { AppError } from "@/lib/errors";
+import { instantFromZoned } from "@/lib/dates";
 
-// "startsAt|endsAt" per line — the same plain-textarea convention
-// Budget's line items and Forms' fields already use rather than a
-// dynamic add-row UI; this codebase has no client-side JS beyond
-// Scheduling polls' one deliberate exception.
-function parseSlots(raw: string) {
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [startsAt, endsAt] = line.split("|").map((p) => p?.trim() ?? "");
-      return {
-        startsAt: startsAt ? new Date(startsAt).toISOString() : "",
-        endsAt: endsAt ? new Date(endsAt).toISOString() : "",
-      };
-    });
+/**
+ * The AvailabilityGrid's painted cells -> the availability windows
+ * stored on the row.
+ *
+ * The grid posts absolute UTC instants for every painted half-hour, so
+ * nothing here depends on the event's zone — the conversion happened in
+ * the browser, where the wall clock it was painting is known. Collapsing
+ * to windows is the lib's job rather than this action's, so the "what
+ * does this shape mean" arithmetic has one home.
+ */
+function parsePaintedAvailability(formData: FormData) {
+  const raw = String(formData.get("availabilityCells") ?? "[]");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new AppError("Those times didn't come through — please paint them again.");
+  }
+  // The grid posts the bare array, so the {cells} wrapper paintedCellsInput
+  // describes is added here rather than in the component — the component
+  // only produces instants, and where they're wrapped is a parsing rule.
+  const { cells } = paintedCellsInput.parse({ cells: parsed });
+  // The old textarea was `required`; a grid can't be, so say what's missing
+  // here rather than letting the schema's "expected array to have >=1 items"
+  // reach the person.
+  if (cells.length === 0) {
+    throw new AppError("Paint at least one stretch of time you could do this in.");
+  }
+  return collapseCellsToWindows(cells);
 }
 
-function redirectWithError(err: unknown): never {
+// `compose` keeps the proposal form open behind the error, so a refused
+// submission lands back on the form and not on the list it came from.
+function redirectWithError(err: unknown, compose = false): never {
+  const base = compose ? "/schedule?compose=1&" : "/schedule?";
   if (err instanceof ZodError) {
-    redirect(`/schedule?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
+    redirect(`${base}error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
   }
   if (err instanceof AppError) {
-    redirect(`/schedule?error=${encodeURIComponent(err.message)}`);
+    redirect(`${base}error=${encodeURIComponent(err.message)}`);
   }
   throw err;
 }
@@ -71,11 +93,11 @@ export async function submitEventProposalAction(formData: FormData) {
       description: String(formData.get("description") ?? "").trim() || undefined,
       durationMinutes: Number(formData.get("durationMinutes") ?? NaN),
       spaceNeeds: String(formData.get("spaceNeeds") ?? "").trim() || null,
-      preferredSlots: parseSlots(String(formData.get("preferredSlotsRaw") ?? "")),
+      preferredSlots: parsePaintedAvailability(formData),
     });
     await createEventProposal(actor, input);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, true);
   }
 
   revalidatePath("/schedule");
@@ -94,7 +116,7 @@ export async function updateEventProposalAction(formData: FormData) {
       description: String(formData.get("description") ?? "").trim() || undefined,
       durationMinutes: Number(formData.get("durationMinutes") ?? NaN),
       spaceNeeds: String(formData.get("spaceNeeds") ?? "").trim() || null,
-      preferredSlots: parseSlots(String(formData.get("preferredSlotsRaw") ?? "")),
+      preferredSlots: parsePaintedAvailability(formData),
     });
     await updateEventProposal(actor, proposalId, input);
   } catch (err) {
@@ -105,17 +127,41 @@ export async function updateEventProposalAction(formData: FormData) {
   redirect("/schedule?updated=1");
 }
 
+// Open to any member for any open proposal that isn't their own — enforced
+// inside setEventProposalInterest. "none" withdraws.
+export async function setEventProposalInterestAction(formData: FormData) {
+  const actor = await requireMember();
+  const proposalId = String(formData.get("proposalId"));
+  const raw = String(formData.get("level") ?? "");
+
+  try {
+    await setEventProposalInterest(actor, proposalId, raw === "none" ? null : interestLevelInput.parse(raw));
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/schedule");
+  redirect("/schedule");
+}
+
 // Owner-only, enforced inside confirmEventProposalSlot.
 export async function confirmEventProposalAction(formData: FormData) {
   const actor = await requireMember();
   const proposalId = String(formData.get("proposalId"));
 
   try {
+    // The two datetime-local controls are filled in and read in the
+    // event's own wall-clock. `new Date(...)` on a bare "YYYY-MM-DDTHH:mm"
+    // would instead read it in the *server's* zone, so a confirmed slot
+    // could land hours off what the owner just clicked — instantFromZoned
+    // converts against the event's zone, which is looked up here rather
+    // than trusted from the form.
+    const timeZone = await getProposalTimeZone(actor, proposalId);
     const startsAtRaw = String(formData.get("startsAt") ?? "");
     const endsAtRaw = String(formData.get("endsAt") ?? "");
     const input = confirmEventProposalSlotInput.parse({
-      startsAt: startsAtRaw ? new Date(startsAtRaw).toISOString() : "",
-      endsAt: endsAtRaw ? new Date(endsAtRaw).toISOString() : "",
+      startsAt: startsAtRaw ? instantFromZoned(startsAtRaw, timeZone).toISOString() : "",
+      endsAt: endsAtRaw ? instantFromZoned(endsAtRaw, timeZone).toISOString() : "",
     });
     await confirmEventProposalSlot(actor, proposalId, input);
   } catch (err) {
@@ -157,7 +203,7 @@ export async function pingConflictHostAction(formData: FormData) {
 }
 
 // Owner-only, enforced inside publishEventSchedule against the given
-// cycleId (docs/development-plan.md's Phase 68) — a hidden field on
+// cycleId (docs/plans/development-plan.md's Phase 68) — a hidden field on
 // EventReviewSection.tsx's form carries the review batch's resolved
 // cycle, since publishing has no single proposal row to derive it from.
 export async function publishEventScheduleAction(formData: FormData) {

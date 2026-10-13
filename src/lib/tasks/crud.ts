@@ -17,12 +17,14 @@ import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import {
   allowsMultipleGrants,
+  listModuleKeysGrantedByTask,
   lockPermissionGrantTask,
   lockSingleCardinalityGrantScopes,
   PERMISSION_MODULE_LABELS,
   PermissionModuleKey,
   SingleCardinalityGrantScope,
 } from "../permissions";
+import { requireAdmins } from "../settings/admins";
 import { computeRequirementFitScore, getGroupCoverageStatus, getUnmetRequirements } from "./requirements";
 import { getTaskDeadline } from "./milestones";
 
@@ -61,7 +63,7 @@ export type UpdateTaskInput = z.infer<typeof updateTaskInput>;
 // switching an existing task's openness to community_endorsed without
 // also setting these in the same call fails loudly instead of creating
 // a candidacy mechanism with nothing to gate. Zero is a real, distinct
-// choice from "unset" (docs/development-plan.md's Phase 62) — meaning
+// choice from "unset" (docs/plans/development-plan.md's Phase 62) — meaning
 // "no endorsement needed, confirms as soon as Requirements are met" —
 // so only a missing or negative value is rejected here.
 function requireEndorsementFields(openness: string, browsePeriodEnd: Date | null, endorsementThreshold: number | null) {
@@ -223,7 +225,7 @@ export async function createTask(
   return created;
 }
 
-// The board's own cycle-scope filter (docs/development-plan.md's
+// The board's own cycle-scope filter (docs/plans/development-plan.md's
 // Phase 67) — a richer alternative to the plain `cycleId` exact-match
 // filter above, since the board needs to match *several* cycles at
 // once (the switcher's aggregate state) and always union in cycle-less
@@ -278,7 +280,7 @@ export async function listDistinctTags(actor: Member) {
 
 // Board-shaped: each task comes back with who currently holds it, for
 // rendering "Claimed by ..." and deciding which action buttons to show.
-// sortByFit (docs/development-plan.md's Phase 50) is opt-in — computing
+// sortByFit (docs/plans/development-plan.md's Phase 50) is opt-in — computing
 // a fit score touches every requirement's countEligibleMembers, real
 // extra cost not worth paying on every ordinary board load, so it's
 // only actually run when a member has chosen to sort by it. groupCoverage
@@ -503,6 +505,37 @@ export async function updateTask(actor: Member, taskId: string, input: UpdateTas
           taskId,
         );
       });
+    }
+  }
+
+  // Openness is an authority control, not a cosmetic field: which rung of the
+  // approval ladder a permission-granting task sits on is what decides who can
+  // take the role. The cycle move above is guarded for exactly that reason, and
+  // openness was not — so `PATCH /api/tasks/[id]` (which takes the whole
+  // updateTaskInput behind requireWriteMember, i.e. any member) could retune
+  // the ladder on someone else's task.
+  //
+  // The Admin case is not merely an authority change but a way to remove the
+  // community's access to its own settings: `requireAdmins` filters on
+  // `openness = 'community_endorsed'` and ignores placement, so moving an
+  // Admins task to any other rung silently strips Admin from every current
+  // holder — who is then refused at the very screen that would fix it, and
+  // which no task-edit form currently exposes `openness` to undo. Refused
+  // outright rather than confirmed the way removing the last Admin *grant* is
+  // (see removePermissionGrant): that removal has a legitimate purpose, this
+  // one has none. A non-endorsed task can never confer Admin, so there is
+  // nothing to be gained by it and only a mistake or an attack behind it.
+  const opennessIsChanging =
+    input.openness !== undefined && input.openness !== existing.openness;
+  if (opennessIsChanging) {
+    const grantedModules = await listModuleKeysGrantedByTask(actor.communityId, taskId);
+    if (grantedModules.size > 0) {
+      await requireAdmins(actor);
+      if (grantedModules.has("admin") && input.openness !== "community_endorsed") {
+        throw new ConflictError(
+          "This task grants Admins, and only a community-endorsed task can confer them. Changing how it can be claimed would silently remove every current admin's access, with no way to undo it from the task page — add a new Admins task and remove this one's grant instead.",
+        );
+      }
     }
   }
 

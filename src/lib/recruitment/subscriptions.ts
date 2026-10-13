@@ -17,7 +17,7 @@ type Member = typeof memberTable.$inferSelect;
 // after N applications with no availability given, which quietly cancelled a setting that
 // member had chosen on purpose — and with standing availability (a grid a holder fills in
 // once, read by every interview) the whole mechanism was moot anyway, since anyone who has
-// filled one in keeps offering it (docs/admission-flow.md §7).
+// filled one in keeps offering it (docs/plans/admission-flow.md §7).
 export async function getMyRecruitmentSubscription(actor: Member) {
   const [row] = await db
     .select()
@@ -45,7 +45,7 @@ export async function setRecruitmentSubscriptionActive(actor: Member, active: bo
 
 /**
  * The interviews still waiting for a time, for a subscribed member: the poll each person
- * with an interview gets as they enter (docs/admission-flow.md §2), until a slot is
+ * with an interview gets as they enter (docs/plans/admission-flow.md §2), until a slot is
  * confirmed. Offering your times is voluntary and never blocks the poll; what you have
  * offered *standing* counts as having offered, so there is nothing to re-paint onto each.
  */

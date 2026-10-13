@@ -26,7 +26,7 @@ import {
 } from "@/lib/recruitment";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 
-// docs/admission-flow.md §2, "The support shortcut". N members' word skips what's
+// docs/plans/admission-flow.md §2, "The support shortcut". N members' word skips what's
 // left of the path and admits — for a public applicant as well as an invitee —
 // runs alongside the path rather than in front of it, never counts the person or
 // whoever invited them, and never skips past a standing concern.

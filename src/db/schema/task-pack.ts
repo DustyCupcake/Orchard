@@ -5,7 +5,7 @@ import { dateRelativeBasisEnum } from "./phase";
 import { taskEffortEnum, taskOpennessEnum } from "./task";
 
 // A portable, importable bundle of tasks — see docs/spec.md's "Task
-// Pack" and docs/development-plan.md's Phase 55. Phase 6's own
+// Pack" and docs/plans/development-plan.md's Phase 55. Phase 6's own
 // clone-previous-cycle flow already runs this exact mechanism inline,
 // against an in-memory recipe rather than a persisted row — these
 // three tables are what finally give it (and a real cross-community

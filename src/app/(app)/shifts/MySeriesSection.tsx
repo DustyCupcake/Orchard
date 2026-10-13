@@ -1,5 +1,6 @@
 import type { shiftOccurrence as shiftOccurrenceTable, shiftSeries as shiftSeriesTable, shiftSignup as shiftSignupTable } from "@/db/schema";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
+import { formatInstantRange } from "@/lib/dates";
 import {
   archiveShiftSeriesAction,
   generateOccurrencesAction,
@@ -14,12 +15,8 @@ type ShiftSignupRow = typeof shiftSignupTable.$inferSelect;
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function formatRange(startsAt: Date | string, endsAt: Date | string) {
-  return `${new Date(startsAt).toLocaleString()} – ${new Date(endsAt).toLocaleTimeString()}`;
-}
-
 // The shift manager's own management view — see docs/spec.md's "Shifts /
-// rota" and docs/development-plan.md's Phase 29 ("a coordinator view
+// rota" and docs/plans/development-plan.md's Phase 29 ("a coordinator view
 // ... listing each occurrence's current signups"). Rendered by page.tsx
 // only for series in scopes the current member actually manages (the
 // shift_management grant, D10 — src/lib/shifts/management.ts). Each
@@ -31,15 +28,21 @@ export default function MySeriesSection({
   memberNameById,
   cycleNameById,
   placementOptions,
+  shiftZone,
 }: {
   series: { series: ShiftSeriesRow; occurrences: ShiftOccurrenceRow[]; signups: ShiftSignupRow[] }[];
   memberNameById: Map<string, string>;
   cycleNameById: Map<string, { name: string }>;
   placementOptions: { cycleId: string | null; label: string }[];
+  /** The venue clock for a series' event — what its times are typed and shown in. */
+  shiftZone: (cycleId: string | null) => string;
 }) {
   return (
     <section className="mt-8 border-t border-[var(--border)] pt-6">
-      <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">My series</h2>
+      <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Series you manage</h2>
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+        Set the dates people can sign up for, see who&rsquo;s coming, and move or archive a series.
+      </p>
       <div className="mt-3 flex flex-col gap-4">
         {series.map(({ series: s, occurrences, signups }) => {
           const signupsByOccurrence = new Map<string, ShiftSignupRow[]>();
@@ -59,7 +62,7 @@ export default function MySeriesSection({
               <div className="flex flex-wrap items-center gap-2">
                 <Tag tone={s.archivedAt ? "neutral" : "success"}>{s.archivedAt ? "Archived" : "Active"}</Tag>
                 <Tag tone="neutral">{scopeLabel}</Tag>
-                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">default capacity {s.defaultCapacity}</span>
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{s.defaultCapacity} per shift</span>
               </div>
               <p className="mt-1.5 text-[length:var(--text-body)] font-medium text-[var(--text)]">{s.title}</p>
               {s.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{s.description}</p>}
@@ -68,7 +71,7 @@ export default function MySeriesSection({
                 <form action={setShiftSeriesScopeAction} className="mt-2 flex max-w-[440px] items-end gap-2">
                   <input type="hidden" name="seriesId" value={s.id} />
                   <label className="flex flex-1 flex-col gap-1">
-                    <span className={LABEL}>Re-place into</span>
+                    <span className={LABEL}>Move to</span>
                     <select name="cycleId" defaultValue="" className={INPUT}>
                       {replacementOptions.map((o) => (
                         <option key={o.cycleId ?? "standing"} value={o.cycleId ?? ""}>
@@ -78,7 +81,7 @@ export default function MySeriesSection({
                     </select>
                   </label>
                   <button type="submit" className={BUTTON_SECONDARY}>
-                    Re-place
+                    Move
                   </button>
                 </form>
               )}
@@ -90,17 +93,17 @@ export default function MySeriesSection({
                 </button>
               </form>
 
-              <h4 className="mt-4 text-[length:var(--text-body)] font-medium text-[var(--text)]">Occurrences</h4>
-              {occurrences.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
+              <h4 className="mt-4 text-[length:var(--text-body)] font-medium text-[var(--text)]">Shifts</h4>
+              {occurrences.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">No dates yet — add some below so people can sign up.</p>}
               <div className="mt-1.5 flex flex-col gap-2">
                 {occurrences.map((o) => {
                   const roster = signupsByOccurrence.get(o.id) ?? [];
                   const ended = new Date(o.endsAt) <= new Date();
                   return (
                     <div key={o.id} className="text-[length:var(--text-body)] text-[var(--text)]">
-                      <span className="font-medium">{formatRange(o.startsAt, o.endsAt)}</span>{" "}
+                      <span className="font-medium">{formatInstantRange(o.startsAt, o.endsAt, shiftZone(s.cycleId))}</span>{" "}
                       <span className="text-[var(--text-muted)]">
-                        — capacity {o.capacity ?? s.defaultCapacity} — {roster.length} signed up
+                        — {roster.length} of {o.capacity ?? s.defaultCapacity} signed up
                       </span>
                       {roster.length > 0 && (
                         <ul className="mt-1 flex flex-col gap-0.5">
@@ -125,23 +128,23 @@ export default function MySeriesSection({
               </div>
 
               <details className="mt-3">
-                <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Generate occurrences</summary>
+                <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Add dates</summary>
 
                 <div className="mt-3 flex flex-col gap-4">
                   <div>
-                    <h5 className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Weekly pattern</h5>
+                    <h5 className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Repeat weekly</h5>
                     <form action={generateOccurrencesAction} className="mt-1.5 flex max-w-[400px] flex-col gap-2">
                       <input type="hidden" name="seriesId" value={s.id} />
                       <input type="hidden" name="mode" value="weekly" />
                       <label className="flex flex-col gap-1">
-                        <span className={LABEL}>From</span>
+                        <span className={LABEL}>First day</span>
                         <input type="date" name="startDate" required className={INPUT} />
                       </label>
                       <label className="flex flex-col gap-1">
-                        <span className={LABEL}>To</span>
+                        <span className={LABEL}>Last day</span>
                         <input type="date" name="endDate" required className={INPUT} />
                       </label>
-                      <div className="flex flex-wrap gap-3 text-[length:var(--text-body)] text-[var(--text)]">
+                      <div className="flex flex-wrap gap-3 text-[length:var(--text-body)] text-[var(--text)]" role="group" aria-label="Days of the week">
                         {DAY_LABELS.map((label, i) => (
                           <label key={i} className="flex items-center gap-1">
                             <input type="checkbox" name="daysOfWeek" value={i} /> {label}
@@ -149,26 +152,26 @@ export default function MySeriesSection({
                         ))}
                       </div>
                       <label className="flex flex-col gap-1">
-                        <span className={LABEL}>Start time</span>
+                        <span className={LABEL}>Start time ({shiftZone(s.cycleId)})</span>
                         <input type="time" name="startTime" required className={`${INPUT} w-fit`} />
                       </label>
                       <label className="flex flex-col gap-1">
-                        <span className={LABEL}>Duration (minutes)</span>
+                        <span className={LABEL}>Length of each shift (minutes)</span>
                         <input type="number" name="durationMinutes" min={1} required className={`${INPUT} w-fit`} />
                       </label>
                       <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                        Generate
+                        Add weekly shifts
                       </button>
                     </form>
                   </div>
 
                   <div>
-                    <h5 className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Explicit list</h5>
+                    <h5 className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Pick exact times</h5>
                     <form action={generateOccurrencesAction} className="mt-1.5 flex max-w-[400px] flex-col gap-2">
                       <input type="hidden" name="seriesId" value={s.id} />
                       <input type="hidden" name="mode" value="explicit" />
                       <label className="flex flex-col gap-1">
-                        <span className={LABEL}>One per line, startsAt|endsAt</span>
+                        <span className={LABEL}>One shift per line, as start|end, in {shiftZone(s.cycleId)} time</span>
                         <textarea
                           name="slotsRaw"
                           rows={3}
@@ -177,7 +180,7 @@ export default function MySeriesSection({
                         />
                       </label>
                       <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                        Generate
+                        Add these shifts
                       </button>
                     </form>
                   </div>

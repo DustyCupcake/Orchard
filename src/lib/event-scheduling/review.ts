@@ -103,7 +103,7 @@ export interface EventSchedulingNeedsAction {
   status: "conflict" | "proposed";
 }
 
-// Dashboard's own needs-action surface — see docs/development-plan.md's
+// Dashboard's own needs-action surface — see docs/plans/development-plan.md's
 // Phase 49. Gracefully returns [] for a non-owner rather than throwing
 // (unlike listEventProposalsForReview's own requireEventSchedulingOwner
 // gate), since this is read as part of every member's Dashboard, not

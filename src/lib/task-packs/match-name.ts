@@ -1,5 +1,5 @@
 // A lightweight string-similarity check for Pack import's branch
-// reconciliation — docs/development-plan.md's Phase 59: catching
+// reconciliation — docs/plans/development-plan.md's Phase 59: catching
 // "Wood" vs. "Woods" as a suggested near-match instead of forcing
 // "create new" on anything short of an exact name. Plain Levenshtein
 // edit distance, hand-rolled rather than a dependency — a small,

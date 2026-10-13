@@ -43,7 +43,7 @@ async function arrivalOfDecision(decision: RecruitmentDecisionRow) {
 // Accompaniment task, and if so, whose engagement record does its
 // holder get to see" — see docs/spec.md's Recruitment ("the
 // accompanier gets explicit... visibility into the new member's
-// engagement record") and docs/development-plan.md's Phase 52. Null
+// engagement record") and docs/plans/development-plan.md's Phase 52. Null
 // whenever this isn't an Accompaniment task at all, or the decision
 // that created it never converted a real Member (an untagged
 // application Form — see Phase 48's own maybeConvertApplicantToMember).
@@ -66,7 +66,7 @@ export async function getAccompaniedMemberId(taskId: string): Promise<string | n
 // creator. The holder of the granting task was the obvious stand-in, which
 // was fine while the module was necessarily granted — but an open module may
 // have no granting task at all, and the job still has to run. Hence the
-// fallback chain (docs/open-permissions-plan.md §4.2): the converted member's
+// fallback chain (docs/plans/archive/open-permissions-plan.md §4.2): the converted member's
 // referrer (a real person with a real stake in this applicant), then the
 // earliest-claimed evaluator, and only then give up. Never a random member —
 // the Accompaniment task is visible, and its creator is part of the record.
@@ -113,7 +113,7 @@ async function resolveAccompanimentAuthor(
 }
 
 // An accepted application becomes a member through the one admission function
-// (docs/admission-flow.md §6), the same as every other way in, so what a new
+// (docs/plans/admission-flow.md §6), the same as every other way in, so what a new
 // member starts with — an identity, a way to be reached, a place in the event,
 // the answers they already gave on the form — cannot differ by route. The
 // arrival is made here for an application that predates arrivals and is still
@@ -135,7 +135,7 @@ async function maybeConvertApplicantToMember(decision: RecruitmentDecisionRow): 
 // maybeConvertApplicantToMember above has run (spec's exact framing —
 // "the same 'carry a shadow forward as a suggested next claimant'
 // reasoning Phase 14 already established for succession, applied here
-// to a referrer instead of a shadow," docs/development-plan.md's Phase
+// to a referrer instead of a shadow," docs/plans/development-plan.md's Phase
 // 34); falls back to the linked invite's own creator directly when
 // conversion didn't happen (an untagged application Form — see
 // maybeConvertApplicantToMember's own comment) so this still degrades
@@ -229,7 +229,7 @@ export async function applyAcceptanceSideEffects(
 // arrival is accepted" or "this arrival is declined", whatever caused it — the
 // support shortcut reaching its number, a community check that ended (the clock,
 // mediation clearing a concern, mediation upholding one). Nothing here asks who is
-// calling, which is the point (docs/admission-flow.md §5): the old mediation
+// calling, which is the point (docs/plans/admission-flow.md §5): the old mediation
 // outcome went through a holder-only function and was lost when its caller wasn't
 // one, and the window's clock then applied its *default* in its place.
 //
@@ -333,7 +333,7 @@ export async function recordArrivalDecisionIfReached(actor: Member, arrivalId: s
   }
 
   // There is no call to schedule here any more. The interview comes *before* the
-  // decision (docs/admission-flow.md §2): it was made when the arrival entered, and
+  // decision (docs/plans/admission-flow.md §2): it was made when the arrival entered, and
   // the reports being decided from are the interviewers' own. A decision only
   // records what the reports lead to.
 

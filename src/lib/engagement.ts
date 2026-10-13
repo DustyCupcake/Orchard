@@ -32,7 +32,7 @@ export async function logEngagementEvent(
 }
 
 // "The pattern resets once the person responds and re-engages" — a
-// global reset, not per-kind (docs/development-plan.md's Phase 52):
+// global reset, not per-kind (docs/plans/development-plan.md's Phase 52):
 // every one of this member's still-open rows, regardless of kind,
 // resolves at once the moment they take any of the real response
 // actions this system tracks (resuming/releasing an overdue Waiting

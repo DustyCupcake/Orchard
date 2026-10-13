@@ -16,7 +16,7 @@ import type { CreateSensitiveFieldAccessRuleInput } from "@/lib/sensitive-data";
 type FixtureMember = typeof memberTable.$inferSelect;
 
 // Every access gate this codebase enforces reads from PermissionGrant
-// now (docs/development-plan.md's Phase 63) — this is the direct-DB
+// now (docs/plans/development-plan.md's Phase 63) — this is the direct-DB
 // equivalent of what used to be `db.update(community).set({
 // conflictTeamTaskId: t.id })` or `.set({ adminsTag: "x" })` plus
 // tagging a task with that string. Route through the domain function for
@@ -196,7 +196,7 @@ export async function createRestrictedQuestion(
 }
 
 // ---------------------------------------------------------------------------
-// Admission lanes (docs/admission-flow.md §2a)
+// Admission lanes (docs/plans/admission-flow.md §2a)
 // ---------------------------------------------------------------------------
 
 // Lanes are rows now, and a community that has none is given the starting two
@@ -271,7 +271,7 @@ export async function withCheckLane(communityId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// How reports decide (docs/admission-flow.md §2)
+// How reports decide (docs/plans/admission-flow.md §2)
 // ---------------------------------------------------------------------------
 
 // The policy most recruitment tests were written against, when it was an ordered
@@ -299,7 +299,7 @@ export async function setReportsNeeded(communityId: string, reports: number) {
 // The legacy lanes, but with no interview: someone arriving by anything but "knows
 // them personally" applies and is evaluated by any holder who reads it. Most of the
 // recruitment suites are about evaluation, decisions and conversion rather than the
-// interview, and an interview step before the decision (docs/admission-flow.md §2)
+// interview, and an interview step before the decision (docs/plans/admission-flow.md §2)
 // would otherwise be a scheduling ritual in front of every one of them. The
 // interview itself is tested in interviews.test.ts.
 export async function withApplicationOnlyLanes(communityId: string) {

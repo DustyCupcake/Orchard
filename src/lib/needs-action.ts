@@ -17,7 +17,7 @@ import type { PermissionModuleKey } from "./permissions";
 // So each list splits its output. `personal` is what the member is on the
 // hook for; `shared` is outstanding for the Community because the module is
 // open. The distinction is **consent, not headcount**
-// (docs/open-permissions-plan.md §3.2): a task with `capacity: 3` is a
+// (docs/plans/archive/open-permissions-plan.md §3.2): a task with `capacity: 3` is a
 // deliberate redundancy choice, so its three holders each get a *personal*
 // item, while an open-and-unheld module's members get a *shared* one.
 //

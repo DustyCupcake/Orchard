@@ -7,7 +7,7 @@ import { findOrCreateMemberByOidcSubject } from "../member";
 type Community = typeof communityTable.$inferSelect;
 type Member = typeof member.$inferSelect;
 
-// docs/admission-flow.md §6a — turning a sign-in at the provider into a member.
+// docs/plans/admission-flow.md §6a — turning a sign-in at the provider into a member.
 //
 // The provider's role is the gate to signing in at all; what this decides is *which
 // member* the person is, and whether to make one. It used to look up by `sub` and, finding

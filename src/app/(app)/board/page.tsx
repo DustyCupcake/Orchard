@@ -106,14 +106,14 @@ export default async function BoardPage({
   } = await searchParams;
   const hidingCycleless = hideCycleless === "1";
   // "A Done confirmation gains a 'you might also like' strip" — see
-  // docs/development-plan.md's Phase 56 and src/lib/onboarding.ts's
+  // docs/plans/development-plan.md's Phase 56 and src/lib/onboarding.ts's
   // listTaskFitSuggestions, the exact same tag-overlap heuristic
   // onboarding's own first-login suggestions use, just excluding the
   // task that was just finished rather than reusing it as an anchor.
   const relatedToFinished = done ? await listTaskFitSuggestions(viewing, { excludeTaskId: done, limit: 3 }) : [];
   const sortByFit = fit === "1";
 
-  // The board's own cycle scope (docs/development-plan.md's Phase 67)
+  // The board's own cycle scope (docs/plans/development-plan.md's Phase 67)
   // — the same off-URL resolution Messages/Contribution/the task
   // detail page already read, since the board isn't itself under
   // /[cycleScope]/. "active" resolves to every cycle the member is
@@ -177,7 +177,7 @@ export default async function BoardPage({
         .from(phase)
         .where(inArray(phase.cycleId, allCycles.map((c) => c.id)));
 
-  // §5.3 (docs/cycle-scope-remediation-plan.md) — resolve coordination
+  // §5.3 (docs/plans/archive/cycle-scope-remediation-plan.md) — resolve coordination
   // from both dimensions. The viewer's own coverage (branch column OR
   // cycle row OR the community_coordination grant) drives the per-task
   // markers and actions; the covering holder per scope in view feeds
@@ -350,7 +350,7 @@ export default async function BoardPage({
     (t) => t.status === "unclaimed" && t.openness !== "community_endorsed" && t.unmetRequirements.length === 0,
   );
 
-  // §5.5 (docs/cycle-scope-remediation-plan.md) backstop surfaces:
+  // §5.5 (docs/plans/archive/cycle-scope-remediation-plan.md) backstop surfaces:
   // scopes in view that have a filled backstop mark their unclaimed
   // criticals "Backstop: {name}" (still open and claimable by anyone,
   // D5), and the scope's own backstop sees their scopes' critical tasks

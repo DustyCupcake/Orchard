@@ -5,7 +5,7 @@ import { cycle } from "./cycle";
 import { formResponse } from "./form";
 import { schedulingPoll } from "./scheduling-poll";
 
-// docs/admission-flow.md §4 — one row per person in the funnel, replacing
+// docs/plans/admission-flow.md §4 — one row per person in the funnel, replacing
 // the overlapping state that used to be spread over the invite
 // (redeemedAt / revokedAt / consensusState), the nomination (state) and the
 // decision (resolution).

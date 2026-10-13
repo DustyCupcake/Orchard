@@ -31,7 +31,7 @@ import {
   type AdmissionLaneRule,
 } from "@/lib/recruitment/lane-rules";
 
-// docs/admission-flow.md §2a and §3. Lanes are rows, they are community-wide,
+// docs/plans/admission-flow.md §2a and §3. Lanes are rows, they are community-wide,
 // and an event never overrides one — it chooses which are open. Everything the
 // settings panel promises ("a configuration that can't produce a person's path
 // is refused with a sentence saying why") is tested here at the place it would
@@ -355,7 +355,7 @@ describe("saving the community's lanes", () => {
   });
 });
 
-// docs/admission-flow.md §3: whole sections of the settings screen follow from the lanes in
+// docs/plans/admission-flow.md §3: whole sections of the settings screen follow from the lanes in
 // play, so a community is never asked to configure something nothing uses.
 describe("what the lanes in play mean for the settings screen", () => {
   const lane = (over: Partial<AdmissionLaneRule> = {}): AdmissionLaneRule => ({

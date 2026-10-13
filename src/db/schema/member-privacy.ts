@@ -5,7 +5,7 @@ import { profileQuestion } from "./profile-question";
 
 // docs/spec.md's "Member contact & privacy" — core, not optional, unlike
 // Sensitive data's opt-in module (Phase 22). See
-// docs/development-plan.md's Phase 46.
+// docs/plans/development-plan.md's Phase 46.
 
 export const contactMethodVisibilityEnum = pgEnum("contact_method_visibility", [
   "everyone",

@@ -34,7 +34,7 @@ export type CrossCycleContext = {
   linkedScope: { segment: string; scope: ResolvedViewScope } | null;
 };
 
-// docs/development-plan.md's Phase 66 — an object-detail page (a
+// docs/plans/development-plan.md's Phase 66 — an object-detail page (a
 // task; "a wiki page" only in the loose sense of a task's own wiki
 // section, since the freestanding Documentation WikiPage carries no
 // cycleId of its own to reconcile against) can be reached for an

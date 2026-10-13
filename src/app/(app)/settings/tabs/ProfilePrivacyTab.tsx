@@ -5,6 +5,7 @@ import type {
   tier as tierTable,
   traitAxis as traitAxisTable,
 } from "@/db/schema";
+import { getViewerClock } from "@/lib/view-clock";
 import { PERMISSION_MODULE_KEYS, PERMISSION_MODULE_LABELS } from "@/lib/permissions";
 import {
   INDICATOR_FAMILY_LABELS,
@@ -687,7 +688,7 @@ function audienceLine(q: typeof profileQuestionTable.$inferSelect, ownRules: Rul
   return `Also readable by ${ownRules.map((r) => ruleRoute(r, maps)).join("; ")}.`;
 }
 
-function QuestionCard({
+async function QuestionCard({
   question: q,
   rules,
   maps,
@@ -700,6 +701,7 @@ function QuestionCard({
   tiers: (typeof tierTable.$inferSelect)[];
   communityTasks: { id: string; title: string }[];
 }) {
+  const clock = await getViewerClock();
   const options = (q.options ?? []) as string[];
   return (
     <details className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
@@ -788,7 +790,7 @@ function QuestionCard({
         )}
         {q.requiredBy && (
           <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-            After {new Date(q.requiredBy).toLocaleDateString()}, anyone who answered
+            After {clock.date(q.requiredBy)}, anyone who answered
             &ldquo;I don&rsquo;t know yet&rdquo; counts as still owing an answer.
           </p>
         )}

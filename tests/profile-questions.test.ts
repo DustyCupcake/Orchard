@@ -147,7 +147,7 @@ describe("ProfileQuestion CRUD", () => {
     expect(updated.responseType).toBe("text");
   });
 
-  // docs/development-plan.md's Phase 58 — responseType/options become
+  // docs/plans/development-plan.md's Phase 58 — responseType/options become
   // genuinely editable post-creation too ("editable the same as a
   // freshly-created one"), a real loosening of this table's previous
   // "structural shape doesn't change" posture. scope/phaseNameHint stay

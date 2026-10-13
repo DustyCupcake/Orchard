@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { shiftOccurrence, task } from "@/db/schema";
+import { cycle as cycleTable, shiftOccurrence, task } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { updateCommunity } from "@/lib/settings";
 import {
@@ -194,6 +194,47 @@ describe("Occurrence generation", () => {
     expect(new Date(created[0].endsAt).getTime() - new Date(created[0].startsAt).getTime()).toBe(
       60 * 60 * 1000,
     );
+  });
+
+  // A weekly shift is a wall-clock at the venue, so the same 09:00 is a
+  // different instant either side of a clock change.
+  it("weekly mode reads startTime on the venue's clock and holds it across a clock change", async () => {
+    const { alice } = await setUpModule();
+    await updateCommunity(alice, { timeZone: "Europe/Madrid" });
+    const series = await createSeries(alice);
+    // 2026-10-24 and 2026-10-31 are Saturdays either side of the clocks
+    // going back on 2026-10-25 (CEST, UTC+2, to CET, UTC+1).
+    const created = await generateShiftOccurrences(alice, series.id, {
+      mode: "weekly",
+      startDate: "2026-10-24",
+      endDate: "2026-10-31",
+      daysOfWeek: [6],
+      startTime: "09:00",
+      durationMinutes: 60,
+    });
+    expect(created.map((o) => new Date(o.startsAt).toISOString()).sort()).toEqual([
+      "2026-10-24T07:00:00.000Z", // 09:00 CEST
+      "2026-10-31T08:00:00.000Z", // 09:00 CET
+    ]);
+  });
+
+  it("weekly mode uses the event's own zone over the community's", async () => {
+    const { alice, branch: testBranch } = await setUpModule();
+    await updateCommunity(alice, { timeZone: "Europe/Madrid" });
+    const cycleRow = await createCycle(alice, { source: "blank", name: "Abroad" });
+    await db.update(cycleTable).set({ timeZone: "Asia/Tokyo" }).where(eq(cycleTable.id, cycleRow.id));
+    const series = await createSeries(alice, { cycleId: cycleRow.id });
+    await grantShiftManagementTo(alice, testBranch.id, cycleRow.id);
+    const [created] = await generateShiftOccurrences(alice, series.id, {
+      mode: "weekly",
+      startDate: "2026-10-24",
+      endDate: "2026-10-24",
+      daysOfWeek: [6],
+      startTime: "09:00",
+      durationMinutes: 60,
+    });
+    // 09:00 in Tokyo (UTC+9), not Madrid.
+    expect(new Date(created.startsAt).toISOString()).toBe("2026-10-24T00:00:00.000Z");
   });
 
   it("rejects a startDate after endDate", async () => {

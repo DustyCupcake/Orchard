@@ -150,7 +150,7 @@ export async function submitRecruitmentApplication(
 
   // Which lane is this application on? An invite's own, found from what the
   // inviter declared; otherwise the public lane the link points at
-  // (docs/admission-flow.md §2a). Resolved among the lanes open *here*, so an
+  // (docs/plans/admission-flow.md §2a). Resolved among the lanes open *here*, so an
   // event that hasn't opened a lane doesn't take people through it.
   let lane: AdmissionLane;
   if (invite) {
@@ -171,7 +171,7 @@ export async function submitRecruitmentApplication(
     lane = resolved;
   }
   // The doors, now that the lane is known: the same check creating an invite and
-  // opening one make, so the three can never disagree (docs/admission-flow.md §6).
+  // opening one make, so the three can never disagree (docs/plans/admission-flow.md §6).
   const refusal = await entryRefusal({ communityId, cycleId: targetCycleId, lane, via: "application", withInvite: Boolean(invite) });
   if (refusal) throw new AppError(refusal);
 
@@ -318,7 +318,7 @@ export async function getRecruitmentApplicationFormPublicById(communityId: strin
 }
 
 // The form somebody fills in when the mediation body has asked them for an
-// application (docs/admission-flow.md §5, "ask for more"): their event's own, else the
+// application (docs/plans/admission-flow.md §5, "ask for more"): their event's own, else the
 // community's. No door is checked — they are already in the funnel, and the doors
 // govern entering it.
 export async function getAskedApplicationForm(arrival: typeof admission.$inferSelect) {
@@ -500,7 +500,7 @@ export async function listConversationsForEvaluation(actor: Member) {
 // Holder-only — full applicant answers, filed evaluations, the
 // live-computed outcome, and (once reached) the persisted decision
 // plus any objections, one row per pending application. Scoped by the
-// holder's recruitment placement (docs/cycle-scope-remediation-plan.md
+// holder's recruitment placement (docs/plans/archive/cycle-scope-remediation-plan.md
 // §4.3): a cycle-placed holder sees only that cycle's applications
 // (formResponse.cycleId in their held scopes); a holder of the
 // cycle-less community/evergreen task sees every application — its own
@@ -540,7 +540,7 @@ export async function listApplicationsForEvaluation(actor: Member) {
       const objections = decision ? await listConcerns(actor, response.id) : [];
       const widerDiscussionWindow = await getWiderDiscussionWindow(response.id);
       // The vouches on this application, shown to everyone evaluating it whether or
-      // not the lane's support shortcut is reached (docs/admission-flow.md §2).
+      // not the lane's support shortcut is reached (docs/plans/admission-flow.md §2).
       const [arrival] = await db
         .select({ id: admission.id, supportToken: admission.supportToken, supportShortcutCount: admission.supportShortcutCount })
         .from(admission)

@@ -17,7 +17,7 @@ import {
   type InviterDeclaration,
 } from "./lane-rules";
 
-// The database half of docs/admission-flow.md §2a. Lanes are rows, they are
+// The database half of docs/plans/admission-flow.md §2a. Lanes are rows, they are
 // community-wide, and what an event decides is only *which are open there*
 // (`cycle.own_admission_lanes` + `cycle_admission_lane`). Nothing else about a
 // lane varies by event, so there is exactly one place a lane's rule lives and

@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { cycle } from "@/db/schema";
+import { budgetEntry, cycle } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ConfirmationRequiredError, NotFoundError } from "../errors";
 import { requireAdmins } from "../settings/admins";
@@ -11,7 +11,7 @@ import { getBudgetCycleForCycle } from "../budget/cycles";
 type Member = typeof memberTable.$inferSelect;
 type CycleRow = typeof cycle.$inferSelect;
 
-// Shared closed-cycle guard — docs/development-plan.md's Phase 65:
+// Shared closed-cycle guard — docs/plans/development-plan.md's Phase 65:
 // "closing locks everything about that cycle." Wired into
 // updateCycleSettings/updatePhaseBoundary/updatePhaseHighlight
 // (./crud.ts) and declareParticipation (../participation.ts), the four
@@ -54,9 +54,20 @@ export async function closeCycle(
     const communityRow = await getCommunity(actor);
     if (isModuleEnabled(communityRow, "budget")) {
       const budgetCycleRow = await getBudgetCycleForCycle(actor, cycleId);
-      if (budgetCycleRow && !budgetCycleRow.ownerMarkedDoneAt) {
+      if (budgetCycleRow && !budgetCycleRow.settledAt) {
+        // Closing an event is when its books close (D7), so an unsettled budget
+        // warns, naming what it still holds or owes. It still never blocks: the
+        // warning is overridable, as every close-time check here is. Read straight
+        // from the ledger, because importing it from here would be a cycle.
+        const balance = (
+          await db
+            .select({ amount: budgetEntry.amount })
+            .from(budgetEntry)
+            .where(and(eq(budgetEntry.cycleId, cycleId), eq(budgetEntry.status, "confirmed")))
+        ).reduce((sum, r) => sum + r.amount, 0);
+        const holds = balance > 0 ? ` and still holds ${balance}` : balance < 0 ? ` and is overspent by ${-balance}` : "";
         throw new ConfirmationRequiredError(
-          `The current Budget owner hasn't marked "${budgetCycleRow.title}" done yet — close anyway?`,
+          `"${budgetCycleRow.title}" hasn't been settled yet${holds} — close anyway?`,
         );
       }
     }

@@ -2,7 +2,7 @@ import { and, eq, gt, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { member, recruitmentStandingAvailability } from "@/db/schema";
 
-// docs/admission-flow.md §2: "the recruitment holders offer their own availability".
+// docs/plans/admission-flow.md §2: "the recruitment holders offer their own availability".
 // Standing availability is one grid a holder fills in and edits whenever they like,
 // covering a rolling window of the next few weeks. Every incoming interview is
 // matched against it *as it stands* — it is read, never copied onto a poll, so

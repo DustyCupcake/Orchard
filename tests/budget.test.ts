@@ -1,31 +1,34 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { branch, budgetCycle, task, taskAssignment } from "@/db/schema";
+import { branch, budgetCycle, cycle as cycleTable, member, task, taskAssignment } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
-import { updateCommunity } from "@/lib/settings";
+import { getCommunity, updateCommunity } from "@/lib/settings";
 import {
-  closeProposalsToVoting,
-  confirmBudgetCycle,
-  createBudgetCycle,
-  getBudgetCycle,
+  approveBudgetProposal,
+  backingFor,
+  declineBudgetProposal,
+  ensureEventBudget,
   getBudgetCycleForCycle,
   getBudgetCycleForScope,
+  getBudgetPledges,
   getBudgetProposal,
-  getBudgetVotingView,
   getCurrentBudgetCycle,
+  getEventPlan,
   isBudgetOwner,
-  listBudgetProposals,
-  markBudgetCycleDone,
-  startBudgetCycleForNewCycle,
+  listActiveBudgetCycles,
+  listBudgetProposalViews,
+  settleEventBudget,
+  setBudgetPledge,
+  setBudgetProposalSupport,
   submitBudgetProposal,
-  submitBudgetVote,
   updateBudgetCycle,
   updateBudgetProposal,
+  withdrawBudgetProposal,
 } from "@/lib/budget";
-import { createCycle } from "@/lib/cycles";
+import { closeCycle, createCycle } from "@/lib/cycles";
 import { declareParticipation } from "@/lib/participation";
-import { removePermissionGrant, setPermissionGrant } from "@/lib/permissions";
+import { removePermissionGrant, setModuleOpen, setPermissionGrant } from "@/lib/permissions";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { actorFor, createFixtures, resetDatabase } from "./helpers";
 
@@ -51,61 +54,136 @@ async function insertOwnerTask(
   return row;
 }
 
-function inOneWeek() {
-  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+async function addMember(communityId: string, name: string) {
+  const [row] = await db.insert(member).values({ communityId, name }).returning();
+  return row;
 }
 
 function inThePast() {
-  return new Date(Date.now() - 1000).toISOString();
+  return new Date(Date.now() - 1000);
 }
 
-describe("BudgetCycle creation", () => {
+function inOneWeek() {
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+}
+
+// One event with its budget, Alice holding the event's budget grant, Bob and
+// Carol as ordinary members.
+async function setUpEvent() {
+  const { alice, bob, branch: testBranch } = await createFixtures();
+  await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+  const carol = await addMember(alice.communityId, "Carol");
+  const event = await createCycle(alice, { source: "blank", name: "Reunion" });
+  const budget = (await getBudgetCycleForCycle(alice, event.id))!;
+  const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, event.id);
+  await claimTask(alice, ownerTask.id);
+  return { alice, bob, carol, branch: testBranch, event, budget };
+}
+
+// The community's own budget, Alice holding the community-wide budget grant.
+async function setUpCommunityBudget() {
+  const { alice, bob, branch: testBranch } = await createFixtures();
+  await updateCommunity(alice, { modulesEnabled: ["budget"] });
+  const carol = await addMember(alice.communityId, "Carol");
+  const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, null);
+  await claimTask(alice, ownerTask.id);
+  return { alice, bob, carol, branch: testBranch };
+}
+
+const kettle = { title: "Kettle", lineItems: [{ label: "Kettle", amount: 30 }] };
+
+describe("An event's budget is made with the event", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  it("rejects while the module is off", async () => {
+  it("exists as soon as the event does, titled after it and with no deadline", async () => {
     const { alice } = await createFixtures();
-    await expect(
-      createBudgetCycle(alice, {
-        title: "Season budget",
-        proposalDeadline: inOneWeek(),
-      }),
-    ).rejects.toThrow(AppError);
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
+
+    const budget = await getBudgetCycleForCycle(alice, event.id);
+    expect(budget?.title).toBe("Reunion Budget");
+    expect(budget?.proposalDeadline).toBeNull();
+    expect(budget?.status).toBe("proposals_open");
+    expect(budget?.createdBy).toBe(alice.id);
   });
 
-  it("creates a cycle with fixed costs once the module is on", async () => {
+  it("gives two concurrent events a budget each", async () => {
     const { alice } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const a = await createCycle(alice, { source: "blank", name: "Reunion" });
+    const b = await createCycle(alice, { source: "blank", name: "Harvest", confirmed: true });
 
-    const created = await createBudgetCycle(alice, {
-      title: "Season budget",
-      fixedCosts: [{ label: "Site fee", amount: 2000 }],
-      proposalDeadline: inOneWeek(),
-    });
-    expect(created.title).toBe("Season budget");
-    expect(created.status).toBe("proposals_open");
-    expect(created.fixedCosts).toEqual([{ label: "Site fee", amount: 2000 }]);
-
-    const current = await getCurrentBudgetCycle(alice);
-    expect(current?.id).toBe(created.id);
+    const budgetA = await getBudgetCycleForCycle(alice, a.id);
+    const budgetB = await getBudgetCycleForCycle(alice, b.id);
+    expect(budgetA?.id).not.toBe(budgetB?.id);
+    expect((await listActiveBudgetCycles(alice)).map((r) => r.id).sort()).toEqual([budgetA!.id, budgetB!.id].sort());
   });
 
-  it("rejects starting a second cycle while one is still active", async () => {
+  it("makes nothing while the module is off, and the first visit makes it once it is on", async () => {
     const { alice } = await createFixtures();
+    await updateCommunity(alice, { cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
+    expect(await getBudgetCycleForCycle(alice, event.id)).toBeNull();
+    expect(await ensureEventBudget(alice, event.id)).toBeNull();
+
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+    const made = await ensureEventBudget(alice, event.id);
+    expect(made?.cycleId).toBe(event.id);
+  });
+
+  it("creates it exactly once however many first visits race", async () => {
+    const { alice, bob } = await createFixtures();
+    await updateCommunity(alice, { cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
     await updateCommunity(alice, { modulesEnabled: ["budget"] });
 
-    await createBudgetCycle(alice, {
-      title: "First",
-      proposalDeadline: inOneWeek(),
-    });
+    const results = await Promise.all([
+      ensureEventBudget(alice, event.id),
+      ensureEventBudget(bob, event.id),
+      ensureEventBudget(alice, event.id),
+      ensureEventBudget(bob, event.id),
+      ensureEventBudget(alice, event.id),
+    ]);
+    expect(new Set(results.map((r) => r!.id)).size).toBe(1);
+    const rows = await db.select().from(budgetCycle).where(eq(budgetCycle.cycleId, event.id));
+    expect(rows).toHaveLength(1);
+  });
+
+  it("does not backfill an event that was closed before it had a budget", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
+    await db.update(cycleTable).set({ closedAt: new Date() }).where(eq(cycleTable.id, event.id));
+    await updateCommunity(alice, { modulesEnabled: ["budget"] });
+
+    expect(await ensureEventBudget(alice, event.id)).toBeNull();
+  });
+
+  it("refuses an event from another community", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
+    const { alice: otherAlice } = await createFixtures();
+    await updateCommunity(otherAlice, { modulesEnabled: ["budget"] });
+
+    await expect(ensureEventBudget(otherAlice, event.id)).rejects.toThrow(NotFoundError);
+  });
+
+  it("holds an event to one unfinished budget in the database too", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Reunion" });
 
     await expect(
-      createBudgetCycle(alice, {
-        title: "Second",
-        proposalDeadline: inOneWeek(),
+      db.insert(budgetCycle).values({
+        communityId: alice.communityId,
+        cycleId: event.id,
+        title: "Racing duplicate",
+        createdBy: alice.id,
       }),
-    ).rejects.toThrow(ConflictError);
+    ).rejects.toThrow();
   });
 
   it("getCurrentBudgetCycle is null until one exists", async () => {
@@ -114,333 +192,573 @@ describe("BudgetCycle creation", () => {
   });
 });
 
-describe("BudgetProposal submission", () => {
+describe("carrying fixed costs forward to a new event's budget", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  async function setUpOpenCycle() {
-    const fixtures = await createFixtures();
-    const { alice } = fixtures;
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
-    return { ...fixtures, cycle };
-  }
+  it("starts the first event's budget with no fixed costs", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const first = await createCycle(alice, { source: "blank", name: "First season" });
 
-  it("computes totalAmount from lineItems and lists it", async () => {
-    const { bob, cycle } = await setUpOpenCycle();
+    expect((await getBudgetCycleForCycle(alice, first.id))?.fixedCosts).toEqual([]);
+  });
 
-    const created = await submitBudgetProposal(bob, cycle.id, {
-      title: "Portable toilets",
+  it("carries the previous event's fixed costs forward but never its owner authority", async () => {
+    const { alice, branch: testBranch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const previousCycle = await createCycle(alice, { source: "blank", name: "Last season" });
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, previousCycle.id);
+    await claimTask(alice, ownerTask.id);
+    const previous = (await getBudgetCycleForCycle(alice, previousCycle.id))!;
+    await updateBudgetCycle(alice, previous.id, { fixedCosts: [{ label: "Site fee", amount: 2000 }] });
+    expect(await isBudgetOwner(alice, previous)).toBe(true);
+
+    // The previous event is still open, so starting another asks to be confirmed.
+    const newCycle = await createCycle(alice, { source: "blank", name: "Next season", confirmed: true });
+    const started = (await getBudgetCycleForCycle(alice, newCycle.id))!;
+    expect(started.cycleId).toBe(newCycle.id);
+    expect(started.title).toBe("Next season Budget");
+    expect(started.fixedCosts).toEqual([{ label: "Site fee", amount: 2000 }]);
+    expect(started.status).toBe("proposals_open");
+    expect(await isBudgetOwner(alice, started)).toBe(false);
+  });
+});
+
+describe("Finding a budget by scope", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("finds the budget tied to a specific event, ignoring other events'", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const a = await createCycle(alice, { source: "blank", name: "2027 Season", confirmed: true });
+    const b = await createCycle(alice, { source: "blank", name: "2028 Season", confirmed: true });
+
+    const found = await getBudgetCycleForCycle(alice, a.id);
+    expect(found?.cycleId).toBe(a.id);
+    expect((await getBudgetCycleForCycle(alice, b.id))?.id).not.toBe(found?.id);
+    // The community's own budget is just its proposals: it has no row.
+    expect(await getBudgetCycleForScope(alice, null)).toBeNull();
+  });
+
+  it("newest budget wins when an event has history as well", async () => {
+    // An event has one budget now, but an earlier round for the same event can
+    // exist as history, so the read path still has to pick the newest.
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const realCycle = await createCycle(alice, { source: "blank", name: "2027 Season" });
+    const older = (await getBudgetCycleForCycle(alice, realCycle.id))!;
+    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, older.id));
+    await new Promise((r) => setTimeout(r, 10));
+    const [newer] = await db
+      .insert(budgetCycle)
+      .values({ communityId: alice.communityId, cycleId: realCycle.id, title: "Newer", createdBy: alice.id })
+      .returning();
+
+    expect((await getBudgetCycleForScope(alice, realCycle.id))?.id).toBe(newer.id);
+  });
+});
+
+describe("Proposals in an event's budget", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("computes totalAmount from the line items and lists the proposal under its event", async () => {
+    const { bob, event, budget } = await setUpEvent();
+    const created = await submitBudgetProposal(bob, budget.id, {
+      title: "Marquee hire",
+      description: "Rain cover",
       lineItems: [
-        { label: "Units", amount: 450 },
-        { label: "Servicing", amount: 100 },
+        { label: "Marquee", amount: 400 },
+        { label: "Pegs", amount: 5, quantity: 10 },
       ],
     });
-    expect(created.totalAmount).toBe(550);
-    expect(created.submittedBy).toBe(bob.id);
+    expect(created.totalAmount).toBe(450);
+    expect(created.status).toBe("open");
+    expect(created.cycleId).toBe(event.id);
+    expect(created.budgetCycleId).toBe(budget.id);
 
-    const proposals = await listBudgetProposals(bob, cycle.id);
-    expect(proposals.map((p) => p.id)).toEqual([created.id]);
+    const views = await listBudgetProposalViews(bob, event.id);
+    expect(views.map((v) => v.proposal.id)).toEqual([created.id]);
   });
 
-  it("tags a proposal to a branch, validated against the actor's community", async () => {
-    const { bob, cycle, branch: testBranch } = await setUpOpenCycle();
-    const created = await submitBudgetProposal(bob, cycle.id, {
-      title: "Signage",
-      lineItems: [{ label: "Boards", amount: 120 }],
-      branchId: testBranch.id,
-    });
-    expect(created.branchId).toBe(testBranch.id);
-
-    const { alice: strangerAlice } = await createFixtures();
-    await expect(
-      submitBudgetProposal(strangerAlice, cycle.id, {
-        title: "Foreign branch",
-        lineItems: [{ label: "X", amount: 1 }],
-        branchId: testBranch.id,
-      }),
-    ).rejects.toThrow(NotFoundError);
+  it("refuses a proposal with no line items", async () => {
+    const { bob, budget } = await setUpEvent();
+    await expect(submitBudgetProposal(bob, budget.id, { title: "Nothing", lineItems: [] })).rejects.toThrow();
   });
 
-  it("rejects once the proposal deadline has passed", async () => {
-    const fixtures = await createFixtures();
-    const { alice, bob } = fixtures;
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
-    // Backdate the deadline directly — createBudgetCycle itself won't
-    // accept a past deadline as input, but a cycle can age past its own
-    // deadline in the ordinary course of things.
-    await db
-      .update(budgetCycle)
-      .set({ proposalDeadline: new Date(inThePast()) })
-      .where(eq(budgetCycle.id, cycle.id));
-
-    await expect(
-      submitBudgetProposal(bob, cycle.id, {
-        title: "Too late",
-        lineItems: [{ label: "X", amount: 1 }],
-      }),
-    ).rejects.toThrow(ConflictError);
+  it("refuses a branch from another community", async () => {
+    const { bob, budget } = await setUpEvent();
+    const { branch: strangerBranch } = await createFixtures();
+    await expect(submitBudgetProposal(bob, budget.id, { ...kettle, branchId: strangerBranch.id })).rejects.toThrow(NotFoundError);
   });
 
-  it("rejects a proposal with no line items", async () => {
-    const { bob, cycle } = await setUpOpenCycle();
-    await expect(
-      submitBudgetProposal(bob, cycle.id, { title: "Empty", lineItems: [] }),
-    ).rejects.toThrow();
+  it("stays open with no deadline, and stops new proposals after a set one passes", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    // No deadline: open.
+    await submitBudgetProposal(bob, budget.id, kettle);
+
+    await updateBudgetCycle(alice, budget.id, { proposalDeadline: inOneWeek().toISOString() });
+    await submitBudgetProposal(bob, budget.id, kettle);
+
+    await db.update(budgetCycle).set({ proposalDeadline: inThePast() }).where(eq(budgetCycle.id, budget.id));
+    await expect(submitBudgetProposal(bob, budget.id, kettle)).rejects.toThrow(ConflictError);
+  });
+
+  it("lets a passed deadline still be backed and decided, since it stops only new proposals", async () => {
+    const { alice, bob, carol, budget } = await setUpEvent();
+    const p = await submitBudgetProposal(bob, budget.id, kettle);
+    await db.update(budgetCycle).set({ proposalDeadline: inThePast() }).where(eq(budgetCycle.id, budget.id));
+
+    await setBudgetProposalSupport(carol, p.id, true);
+    expect((await approveBudgetProposal(alice, p.id)).status).toBe("approved");
+  });
+
+  it("refuses new proposals once the budget is marked done, and once the event is closed", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    await settleEventBudget(alice, budget.id);
+    await expect(submitBudgetProposal(bob, budget.id, kettle)).rejects.toThrow(ConflictError);
+
+    const other = await createCycle(alice, { source: "blank", name: "Harvest", confirmed: true });
+    const otherBudget = (await getBudgetCycleForCycle(alice, other.id))!;
+    await closeCycle(alice, other.id, { overrideBudgetWarning: true });
+    await expect(submitBudgetProposal(bob, otherBudget.id, kettle)).rejects.toThrow(ConflictError);
+  });
+
+  it("refuses while the module is off", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    await updateCommunity(alice, { modulesEnabled: [] });
+    await expect(submitBudgetProposal(bob, budget.id, kettle)).rejects.toThrow(AppError);
+  });
+
+  it("refuses a legacy community round: the community's own budget has proposals, not rounds", async () => {
+    const { alice, bob } = await setUpCommunityBudget();
+    const [legacy] = await db
+      .insert(budgetCycle)
+      .values({ communityId: alice.communityId, title: "Old round", status: "confirmed", createdBy: alice.id })
+      .returning();
+    await expect(submitBudgetProposal(bob, legacy.id, kettle)).rejects.toThrow(ConflictError);
   });
 });
 
-describe("BudgetProposal editing", () => {
+describe("Proposals in the community's own budget", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  it("lets the submitter edit and recomputes totalAmount", async () => {
-    const { alice, bob } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
-    const proposal = await submitBudgetProposal(bob, cycle.id, {
-      title: "Original",
-      lineItems: [{ label: "X", amount: 100 }],
-    });
+  it("are made without any round, and belong to no event", async () => {
+    const { bob } = await setUpCommunityBudget();
+    const created = await submitBudgetProposal(bob, null, kettle);
+    expect(created.cycleId).toBeNull();
+    expect(created.budgetCycleId).toBeNull();
+    expect(created.totalAmount).toBe(30);
 
-    const updated = await updateBudgetProposal(bob, proposal.id, {
-      title: "Renamed",
-      lineItems: [{ label: "X", amount: 100 }, { label: "Y", amount: 50 }],
-    });
-    expect(updated.title).toBe("Renamed");
-    expect(updated.totalAmount).toBe(150);
+    expect((await listBudgetProposalViews(bob, null)).map((v) => v.proposal.id)).toEqual([created.id]);
   });
 
-  it("rejects an edit from anyone but the submitter", async () => {
-    const { alice, bob } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
-    const proposal = await submitBudgetProposal(bob, cycle.id, {
-      title: "Original",
-      lineItems: [{ label: "X", amount: 100 }],
-    });
+  it("keep events' proposals out of the list, and the reverse", async () => {
+    const { alice, bob, event, budget } = await setUpEvent();
+    const inEvent = await submitBudgetProposal(bob, budget.id, kettle);
+    const inCommunity = await submitBudgetProposal(bob, null, { ...kettle, title: "Community kettle" });
 
+    expect((await listBudgetProposalViews(alice, event.id)).map((v) => v.proposal.id)).toEqual([inEvent.id]);
+    expect((await listBudgetProposalViews(alice, null)).map((v) => v.proposal.id)).toEqual([inCommunity.id]);
+  });
+
+  it("refuse a per-attendee item, which would silently count as nothing", async () => {
+    const { bob } = await setUpCommunityBudget();
     await expect(
-      updateBudgetProposal(alice, proposal.id, { title: "Hijacked" }),
-    ).rejects.toThrow(ForbiddenError);
+      submitBudgetProposal(bob, null, { title: "Meals", lineItems: [{ label: "Meal", amount: 10, perAttendee: true }] }),
+    ).rejects.toThrow(AppError);
   });
 
-  it("rejects fetching or editing a proposal from another community", async () => {
-    const { alice, bob } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
-    const proposal = await submitBudgetProposal(bob, cycle.id, {
-      title: "Original",
-      lineItems: [{ label: "X", amount: 100 }],
-    });
-
-    const { alice: strangerAlice } = await createFixtures();
-    await expect(getBudgetProposal(strangerAlice, proposal.id)).rejects.toThrow(NotFoundError);
-    await expect(getBudgetCycle(strangerAlice, cycle.id)).rejects.toThrow(NotFoundError);
+  it("refuse the module being off", async () => {
+    const { alice, bob } = await setUpCommunityBudget();
+    await updateCommunity(alice, { modulesEnabled: [] });
+    await expect(submitBudgetProposal(bob, null, kettle)).rejects.toThrow(AppError);
   });
 });
 
-async function setUpVotingCycle() {
-  const fixtures = await createFixtures();
-  const { alice, bob, branch: testBranch } = fixtures;
-  await updateCommunity(alice, { modulesEnabled: ["budget"] });
-  const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
-  await claimTask(alice, ownerTask.id);
-  const cycle = await createBudgetCycle(alice, {
-    title: "Season budget",
-    fixedCosts: [{ label: "Site fee", amount: 500 }],
-    proposalDeadline: inOneWeek(),
-  });
-  const p1 = await submitBudgetProposal(bob, cycle.id, {
-    title: "P1",
-    lineItems: [{ label: "X", amount: 100 }],
-  });
-  const p2 = await submitBudgetProposal(bob, cycle.id, {
-    title: "P2",
-    lineItems: [{ label: "Y", amount: 200 }],
-  });
-  return { ...fixtures, cycle, ownerTask, p1, p2 };
-}
-
-describe("Voting", () => {
+describe("Editing and withdrawing a proposal", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  it("only the owner-task holder can close proposals to voting", async () => {
-    const { alice, bob, cycle } = await setUpVotingCycle();
-    await expect(closeProposalsToVoting(bob, cycle.id)).rejects.toThrow(ForbiddenError);
-
-    const updated = await closeProposalsToVoting(alice, cycle.id);
-    expect(updated.status).toBe("voting");
+  it("lets the submitter edit, recomputing the total", async () => {
+    const { bob, budget } = await setUpEvent();
+    const created = await submitBudgetProposal(bob, budget.id, kettle);
+    const updated = await updateBudgetProposal(bob, created.id, {
+      title: "Two kettles",
+      lineItems: [{ label: "Kettle", amount: 30, quantity: 2 }],
+    });
+    expect(updated.title).toBe("Two kettles");
+    expect(updated.totalAmount).toBe(60);
   });
 
-  it("rejects closing proposals twice", async () => {
-    const { alice, cycle } = await setUpVotingCycle();
-    await closeProposalsToVoting(alice, cycle.id);
-    await expect(closeProposalsToVoting(alice, cycle.id)).rejects.toThrow(ConflictError);
+  it("refuses an edit from anyone but the submitter, the owner included", async () => {
+    const { alice, bob, carol, budget } = await setUpEvent();
+    const created = await submitBudgetProposal(bob, budget.id, kettle);
+    await expect(updateBudgetProposal(carol, created.id, { title: "Hijack" })).rejects.toThrow(ForbiddenError);
+    await expect(updateBudgetProposal(alice, created.id, { title: "Hijack" })).rejects.toThrow(ForbiddenError);
   });
 
-  it("rejects voting before voting opens", async () => {
-    const { bob, cycle, p1, p2 } = await setUpVotingCycle();
-    await expect(
-      submitBudgetVote(bob, cycle.id, { rankedProposalIds: [p1.id, p2.id] }),
-    ).rejects.toThrow(ConflictError);
+  it("refuses an edit once the proposal is decided", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    const created = await submitBudgetProposal(bob, budget.id, kettle);
+    await approveBudgetProposal(alice, created.id);
+    await expect(updateBudgetProposal(bob, created.id, { title: "Too late" })).rejects.toThrow(ConflictError);
   });
 
-  it("rejects a ranking that isn't a full permutation of the current proposals", async () => {
-    const { alice, bob, cycle, p1 } = await setUpVotingCycle();
-    await closeProposalsToVoting(alice, cycle.id);
-
-    await expect(submitBudgetVote(bob, cycle.id, { rankedProposalIds: [p1.id] })).rejects.toThrow(
-      AppError,
-    );
-    await expect(
-      submitBudgetVote(bob, cycle.id, { rankedProposalIds: [p1.id, p1.id] }),
-    ).rejects.toThrow(AppError);
-    await expect(
-      submitBudgetVote(bob, cycle.id, {
-        rankedProposalIds: [p1.id, "00000000-0000-0000-0000-000000000000"],
-      }),
-    ).rejects.toThrow(AppError);
+  it("refuses to fetch or change a proposal from another community", async () => {
+    const { bob, budget } = await setUpEvent();
+    const created = await submitBudgetProposal(bob, budget.id, kettle);
+    const { alice: stranger } = await createFixtures();
+    await expect(getBudgetProposal(stranger, created.id)).rejects.toThrow(NotFoundError);
+    await expect(approveBudgetProposal(stranger, created.id)).rejects.toThrow(NotFoundError);
   });
 
-  it("upserts a member's vote — resubmitting replaces the previous ranking", async () => {
-    const { alice, bob, cycle, p1, p2 } = await setUpVotingCycle();
-    await closeProposalsToVoting(alice, cycle.id);
+  it("lets the submitter withdraw while it is open, and nobody else", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    const created = await submitBudgetProposal(bob, budget.id, kettle);
+    await expect(withdrawBudgetProposal(alice, created.id)).rejects.toThrow(ForbiddenError);
 
-    await submitBudgetVote(bob, cycle.id, { rankedProposalIds: [p1.id, p2.id], contributionSignal: 50 });
-    const view1 = await getBudgetVotingView(bob, cycle.id);
-    expect(view1.myVote?.rankedProposalIds).toEqual([p1.id, p2.id]);
-    expect(view1.myVote?.contributionSignal).toBe(50);
-    expect(view1.voteCount).toBe(1);
-
-    await submitBudgetVote(bob, cycle.id, { rankedProposalIds: [p2.id, p1.id], contributionSignal: 75 });
-    const view2 = await getBudgetVotingView(bob, cycle.id);
-    expect(view2.myVote?.rankedProposalIds).toEqual([p2.id, p1.id]);
-    expect(view2.myVote?.contributionSignal).toBe(75);
-    expect(view2.voteCount).toBe(1);
-  });
-
-  it("computes the aggregate Borda ranking, cost-per-member, and running totals", async () => {
-    const { alice, bob, cycle, p1, p2 } = await setUpVotingCycle();
-    await closeProposalsToVoting(alice, cycle.id);
-
-    await submitBudgetVote(alice, cycle.id, { rankedProposalIds: [p1.id, p2.id] });
-    await submitBudgetVote(bob, cycle.id, { rankedProposalIds: [p1.id, p2.id] });
-
-    const view = await getBudgetVotingView(alice, cycle.id);
-    expect(view.memberCount).toBe(2);
-    expect(view.voteCount).toBe(2);
-    expect(view.fixedTotal).toBe(500);
-    expect(view.ranked.map((r) => r.proposal.id)).toEqual([p1.id, p2.id]);
-    expect(view.ranked[0].bordaScore).toBe(2);
-    expect(view.ranked[1].bordaScore).toBe(0);
-    expect(view.ranked[0].costPerMember).toBe(50);
-    expect(view.ranked[1].costPerMember).toBe(100);
-    expect(view.ranked[0].runningTotal).toBe(600);
-    expect(view.ranked[1].runningTotal).toBe(800);
+    expect((await withdrawBudgetProposal(bob, created.id)).status).toBe("withdrawn");
+    await expect(withdrawBudgetProposal(bob, created.id)).rejects.toThrow(ConflictError);
+    await expect(approveBudgetProposal(alice, created.id)).rejects.toThrow(ConflictError);
   });
 });
 
-describe("Confirmation", () => {
+describe("Backing", () => {
+  it("counts the proposer as the first backer, and caps what can be approved at backers times the amount", () => {
+    expect(backingFor({ totalAmount: 5 }, 0, 30)).toEqual({ backers: 1, perBacker: 30, backedUpTo: 30, approvable: 5 });
+    // 90 asked: the proposer and two supporters cover it in full…
+    expect(backingFor({ totalAmount: 90 }, 2, 30)).toMatchObject({ backers: 3, backedUpTo: 90, approvable: 90 });
+    // …and with only one supporter it is backed for 60.
+    expect(backingFor({ totalAmount: 90 }, 1, 30)).toMatchObject({ backers: 2, backedUpTo: 60, approvable: 60 });
+  });
+
+  it("asks for nothing when the setting is unset or zero", () => {
+    expect(backingFor({ totalAmount: 500 }, 0, null)).toEqual({ backers: 1, perBacker: null, backedUpTo: null, approvable: 500 });
+    expect(backingFor({ totalAmount: 500 }, 0, 0)).toMatchObject({ backedUpTo: null, approvable: 500 });
+    expect(backingFor({ totalAmount: 500 }, 0, undefined)).toMatchObject({ backedUpTo: null, approvable: 500 });
+  });
+});
+
+describe("Supporting a proposal", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  async function setUpVotedCycle() {
-    const fixtures = await createFixtures();
-    const { alice, bob, branch: testBranch } = fixtures;
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
-    await claimTask(alice, ownerTask.id);
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
+  it("is one per member, and withdrawable", async () => {
+    const { bob, carol, event, budget } = await setUpEvent();
+    const p = await submitBudgetProposal(bob, budget.id, kettle);
+
+    expect(await setBudgetProposalSupport(carol, p.id, true)).toBe(true);
+    // Doing it twice is still one.
+    await setBudgetProposalSupport(carol, p.id, true);
+    expect((await listBudgetProposalViews(carol, event.id))[0]).toMatchObject({ supporterCount: 1, iSupport: true });
+
+    expect(await setBudgetProposalSupport(carol, p.id, false)).toBe(false);
+    expect((await listBudgetProposalViews(carol, event.id))[0]).toMatchObject({ supporterCount: 0, iSupport: false });
+  });
+
+  it("refuses the proposer backing their own, who is already behind it", async () => {
+    const { bob, budget } = await setUpEvent();
+    const p = await submitBudgetProposal(bob, budget.id, kettle);
+    await expect(setBudgetProposalSupport(bob, p.id, true)).rejects.toThrow(AppError);
+  });
+
+  it("is refused once the proposal is decided or withdrawn", async () => {
+    const { alice, bob, carol, budget } = await setUpEvent();
+    const decided = await submitBudgetProposal(bob, budget.id, kettle);
+    await approveBudgetProposal(alice, decided.id);
+    await expect(setBudgetProposalSupport(carol, decided.id, true)).rejects.toThrow(ConflictError);
+
+    const withdrawn = await submitBudgetProposal(bob, budget.id, kettle);
+    await withdrawBudgetProposal(bob, withdrawn.id);
+    await expect(setBudgetProposalSupport(carol, withdrawn.id, true)).rejects.toThrow(ConflictError);
+  });
+
+  it("is refused in a finished budget", async () => {
+    const { alice, bob, carol, budget } = await setUpEvent();
+    const p = await submitBudgetProposal(bob, budget.id, kettle);
+    await settleEventBudget(alice, budget.id);
+    await expect(setBudgetProposalSupport(carol, p.id, true)).rejects.toThrow(ConflictError);
+  });
+
+  it("works in the community's own budget too", async () => {
+    const { bob, carol } = await setUpCommunityBudget();
+    const p = await submitBudgetProposal(bob, null, kettle);
+    await setBudgetProposalSupport(carol, p.id, true);
+    expect((await listBudgetProposalViews(carol, null))[0].supporterCount).toBe(1);
+  });
+});
+
+describe("Who is behind a proposal", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("is counted for everyone, and named only to the proposer and the budget's owner", async () => {
+    const { alice, bob, carol, event, budget } = await setUpEvent();
+    const dave = await addMember(alice.communityId, "Dave");
+    const p = await submitBudgetProposal(bob, budget.id, kettle);
+    await setBudgetProposalSupport(carol, p.id, true);
+
+    const seenBy = async (who: typeof alice) => (await listBudgetProposalViews(who, event.id))[0];
+    expect(await seenBy(dave)).toMatchObject({ supporterCount: 1, supporters: null });
+    // Not even another supporter sees who else is behind it.
+    expect(await seenBy(carol)).toMatchObject({ supporterCount: 1, supporters: null });
+    expect((await seenBy(bob)).supporters).toEqual(["Carol"]);
+    expect((await seenBy(alice)).supporters).toEqual(["Carol"]);
+  });
+});
+
+describe("Deciding a proposal", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("is the budget's owner's alone", async () => {
+    const { bob, carol, budget } = await setUpEvent();
+    const p = await submitBudgetProposal(bob, budget.id, kettle);
+    await expect(approveBudgetProposal(carol, p.id)).rejects.toThrow(ForbiddenError);
+    await expect(approveBudgetProposal(bob, p.id)).rejects.toThrow(ForbiddenError);
+    await expect(declineBudgetProposal(carol, p.id, { note: "No" })).rejects.toThrow(ForbiddenError);
+  });
+
+  it("needs the grant for that scope: an event's holder does not decide the community's", async () => {
+    const { alice, bob } = await setUpEvent();
+    const p = await submitBudgetProposal(bob, null, kettle);
+    await expect(approveBudgetProposal(alice, p.id)).rejects.toThrow(ForbiddenError);
+  });
+
+  it("approves for everything asked when no backing is required", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    const p = await submitBudgetProposal(bob, budget.id, { title: "Marquee", lineItems: [{ label: "Marquee", amount: 400 }] });
+    const approved = await approveBudgetProposal(alice, p.id, { note: "Go ahead" });
+    expect(approved).toMatchObject({ status: "approved", approvedAmount: 400, decisionNote: "Go ahead", decidedBy: alice.id });
+    expect(approved.decidedAt).not.toBeNull();
+  });
+
+  it("approves for less than was asked when the owner says so", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    const p = await submitBudgetProposal(bob, budget.id, { title: "Marquee", lineItems: [{ label: "Marquee", amount: 400 }] });
+    expect((await approveBudgetProposal(alice, p.id, { amount: 250 })).approvedAmount).toBe(250);
+  });
+
+  it("refuses more than was asked, and a proposal already decided", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    const p = await submitBudgetProposal(bob, budget.id, kettle);
+    await expect(approveBudgetProposal(alice, p.id, { amount: 31 })).rejects.toThrow(AppError);
+    await approveBudgetProposal(alice, p.id);
+    await expect(approveBudgetProposal(alice, p.id)).rejects.toThrow(ConflictError);
+    await expect(declineBudgetProposal(alice, p.id, { note: "Changed my mind" })).rejects.toThrow(ConflictError);
+  });
+
+  it("needs a note to decline, and keeps it", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    const p = await submitBudgetProposal(bob, budget.id, kettle);
+    await expect(declineBudgetProposal(alice, p.id, { note: "   " })).rejects.toThrow(AppError);
+
+    const declined = await declineBudgetProposal(alice, p.id, { note: "We already own one" });
+    expect(declined).toMatchObject({ status: "declined", decisionNote: "We already own one", approvedAmount: null });
+  });
+
+  it("is refused in a finished budget", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    const p = await submitBudgetProposal(bob, budget.id, kettle);
+    await settleEventBudget(alice, budget.id);
+    await expect(approveBudgetProposal(alice, p.id)).rejects.toThrow(ConflictError);
+  });
+
+  it("is held to what the backers cover, on a direct call as well as on the page", async () => {
+    const { alice, bob, carol, event, budget } = await setUpEvent();
+    await updateCommunity(alice, { fundSupportPerBacker: 30 });
+    const dave = await addMember(alice.communityId, "Dave");
+    const p = await submitBudgetProposal(bob, budget.id, { title: "Tent", lineItems: [{ label: "Tent", amount: 90 }] });
+
+    // Only the proposer is behind it: 30 is backed, so 31 is refused.
+    expect((await listBudgetProposalViews(alice, event.id))[0].backing).toMatchObject({ backers: 1, backedUpTo: 30, approvable: 30 });
+    await expect(approveBudgetProposal(alice, p.id, { amount: 31 })).rejects.toThrow(/backed/);
+    // A second backer lifts it to 60, but not to the full 90.
+    await setBudgetProposalSupport(carol, p.id, true);
+    expect((await listBudgetProposalViews(alice, event.id))[0].backing.approvable).toBe(60);
+    await expect(approveBudgetProposal(alice, p.id, { amount: 90 })).rejects.toThrow(AppError);
+
+    // A third backer covers it in full, and approving with no amount means everything backed.
+    await setBudgetProposalSupport(carol, p.id, false);
+    await setBudgetProposalSupport(carol, p.id, true);
+    await setBudgetProposalSupport(dave, p.id, true);
+    expect((await approveBudgetProposal(alice, p.id)).approvedAmount).toBe(90);
+  });
+
+  it("defaults to what is backed, not to everything, when no amount is given", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    await updateCommunity(alice, { fundSupportPerBacker: 30 });
+    const p = await submitBudgetProposal(bob, budget.id, { title: "Tent", lineItems: [{ label: "Tent", amount: 90 }] });
+    expect((await approveBudgetProposal(alice, p.id)).approvedAmount).toBe(30);
+  });
+
+  it("goes straight to the owner when the proposer alone covers it", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    await updateCommunity(alice, { fundSupportPerBacker: 30 });
+    const p = await submitBudgetProposal(bob, budget.id, { title: "Cable ties", lineItems: [{ label: "Ties", amount: 5 }] });
+    expect((await approveBudgetProposal(alice, p.id)).approvedAmount).toBe(5);
+  });
+
+  it("can approve the backed part of a bigger ask", async () => {
+    const { alice, bob, carol, budget } = await setUpEvent();
+    await updateCommunity(alice, { fundSupportPerBacker: 30 });
+    const p = await submitBudgetProposal(bob, budget.id, { title: "Tent", lineItems: [{ label: "Tent", amount: 90 }] });
+    await setBudgetProposalSupport(carol, p.id, true);
+    expect((await approveBudgetProposal(alice, p.id)).approvedAmount).toBe(60);
+  });
+
+  it("asks for no backing at all when the setting is cleared", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    await updateCommunity(alice, { fundSupportPerBacker: 30 });
+    await updateCommunity(alice, { fundSupportPerBacker: null });
+    const p = await submitBudgetProposal(bob, budget.id, { title: "Tent", lineItems: [{ label: "Tent", amount: 900 }] });
+    expect((await approveBudgetProposal(alice, p.id)).approvedAmount).toBe(900);
+  });
+
+  it("stores a setting of 0 as unset", async () => {
+    const { alice } = await createFixtures();
+    await updateCommunity(alice, { fundSupportPerBacker: 40 });
+    expect((await getCommunity(alice)).fundSupportPerBacker).toBe(40);
+    await updateCommunity(alice, { fundSupportPerBacker: 0 });
+    expect((await getCommunity(alice)).fundSupportPerBacker).toBeNull();
+  });
+
+  it("works the same way in the community's own budget", async () => {
+    const { alice, bob, carol } = await setUpCommunityBudget();
+    await updateCommunity(alice, { fundSupportPerBacker: 30 });
+    const p = await submitBudgetProposal(bob, null, { title: "Marquee", lineItems: [{ label: "Marquee", amount: 60 }] });
+    await expect(approveBudgetProposal(alice, p.id, { amount: 60 })).rejects.toThrow(AppError);
+    await setBudgetProposalSupport(carol, p.id, true);
+    expect((await approveBudgetProposal(alice, p.id)).approvedAmount).toBe(60);
+  });
+});
+
+describe("An event's plan", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("is its fixed costs plus what has been approved, at the amount approved", async () => {
+    const { alice, bob, carol, budget } = await setUpEvent();
+    await updateBudgetCycle(alice, budget.id, { fixedCosts: [{ label: "Site fee", amount: 1000 }] });
+    const marquee = await submitBudgetProposal(bob, budget.id, { title: "Marquee", lineItems: [{ label: "Marquee", amount: 400 }] });
+    const tent = await submitBudgetProposal(bob, budget.id, { title: "Tent", lineItems: [{ label: "Tent", amount: 100 }] });
+    await submitBudgetProposal(carol, budget.id, { title: "Lights", lineItems: [{ label: "Lights", amount: 50 }] });
+    await submitBudgetProposal(carol, budget.id, { title: "Dropped", lineItems: [{ label: "X", amount: 70 }] });
+
+    await approveBudgetProposal(alice, marquee.id, { amount: 300 });
+    await declineBudgetProposal(alice, tent.id, { note: "Marquee covers it" });
+
+    expect(await getEventPlan(alice, budget.id)).toMatchObject({
+      fixedTotal: 1000,
+      approvedTotal: 300,
+      planTotal: 1300,
+      pendingCount: 2,
+      pendingTotal: 120,
     });
-    const p1 = await submitBudgetProposal(bob, cycle.id, {
-      title: "P1",
-      lineItems: [{ label: "X", amount: 100 }],
+  });
+
+  it("spreads over the people coming, or every member when nobody has said", async () => {
+    const { alice, bob, event, budget } = await setUpEvent();
+    await updateBudgetCycle(alice, budget.id, { fixedCosts: [{ label: "Site fee", amount: 900 }] });
+
+    // Three members, nobody has declared: spread over all of them.
+    expect(await getEventPlan(alice, budget.id)).toMatchObject({ contributorCount: 3, perMember: 300 });
+
+    await declareParticipation(alice, event.id, { status: "coming" });
+    await declareParticipation(bob, event.id, { status: "coming" });
+    expect(await getEventPlan(alice, budget.id)).toMatchObject({ attendeeCount: 2, contributorCount: 2, perMember: 450 });
+  });
+
+  it("rounds the figure per member up", async () => {
+    const { alice, budget } = await setUpEvent();
+    await updateBudgetCycle(alice, budget.id, { fixedCosts: [{ label: "Site fee", amount: 100 }] });
+    expect((await getEventPlan(alice, budget.id)).perMember).toBe(34);
+  });
+
+  it("scales a per-attendee fixed cost off the people coming, live", async () => {
+    const { alice, bob, event, budget } = await setUpEvent();
+    await declareParticipation(alice, event.id, { status: "coming" });
+    const created = await submitBudgetProposal(bob, budget.id, {
+      title: "Catering",
+      lineItems: [{ label: "Meal", amount: 10, perAttendee: true }],
     });
-    const p2 = await submitBudgetProposal(bob, cycle.id, {
-      title: "P2",
-      lineItems: [{ label: "Y", amount: 200 }],
-    });
-    await closeProposalsToVoting(alice, cycle.id);
-    await submitBudgetVote(alice, cycle.id, { rankedProposalIds: [p1.id, p2.id] });
-    await submitBudgetVote(bob, cycle.id, { rankedProposalIds: [p1.id, p2.id] });
-    return { ...fixtures, cycle, ownerTask, p1, p2 };
-  }
+    // Only Alice has declared "coming" so far.
+    expect(created.totalAmount).toBe(10);
 
-  it("only the owner-task holder can confirm", async () => {
-    const { bob, cycle, p1 } = await setUpVotedCycle();
-    await expect(
-      confirmBudgetCycle(bob, cycle.id, { confirmedProposalIds: [p1.id] }),
-    ).rejects.toThrow(ForbiddenError);
+    await updateBudgetCycle(alice, budget.id, { fixedCosts: [{ label: "Meals", amount: 10, perAttendee: true }] });
+    await declareParticipation(bob, event.id, { status: "coming" });
+    expect((await getEventPlan(alice, budget.id)).fixedTotal).toBe(20);
   });
 
-  it("rejects confirming while still in proposals_open", async () => {
-    const { alice, cycle: votingCycle } = await setUpVotingCycle();
-    await expect(
-      confirmBudgetCycle(alice, votingCycle.id, { confirmedProposalIds: [] }),
-    ).rejects.toThrow(ConflictError);
+  it("belongs to an event's budget", async () => {
+    const { alice } = await setUpCommunityBudget();
+    const [legacy] = await db
+      .insert(budgetCycle)
+      .values({ communityId: alice.communityId, title: "Old round", status: "confirmed", createdBy: alice.id })
+      .returning();
+    await expect(getEventPlan(alice, legacy.id)).rejects.toThrow(AppError);
+  });
+});
+
+describe("Pledges", () => {
+  beforeEach(async () => {
+    await resetDatabase();
   });
 
-  it("confirms without a rationale when the funded set matches the top of the ranked order", async () => {
-    const { alice, cycle, p1 } = await setUpVotedCycle();
-    const confirmed = await confirmBudgetCycle(alice, cycle.id, { confirmedProposalIds: [p1.id] });
-    expect(confirmed.status).toBe("confirmed");
-    expect(confirmed.confirmedProposalIds).toEqual([p1.id]);
-    expect(confirmed.confirmationRationale).toBeNull();
+  it("are one replaceable figure per member, 0 included, and can be withdrawn", async () => {
+    const { bob, budget } = await setUpEvent();
+    await setBudgetPledge(bob, budget.id, { amount: 40 });
+    await setBudgetPledge(bob, budget.id, { amount: 25 });
+    expect(await getBudgetPledges(bob, budget.id)).toMatchObject({ total: 25, count: 1, mine: 25 });
+
+    await setBudgetPledge(bob, budget.id, { amount: 0 });
+    expect(await getBudgetPledges(bob, budget.id)).toMatchObject({ total: 0, count: 1, mine: 0 });
+
+    await setBudgetPledge(bob, budget.id, { amount: null });
+    expect(await getBudgetPledges(bob, budget.id)).toMatchObject({ total: 0, count: 0, mine: null });
   });
 
-  it("requires a rationale when the funded set deviates from the ranked order", async () => {
-    const { alice, cycle, p2 } = await setUpVotedCycle();
-    // p1 outranks p2 in the aggregate order (both voters ranked it
-    // first) — funding just p2 instead deviates from the top-1.
-    await expect(
-      confirmBudgetCycle(alice, cycle.id, { confirmedProposalIds: [p2.id] }),
-    ).rejects.toThrow(AppError);
+  it("show everyone the total, and only the owner and the member their own amounts", async () => {
+    const { alice, bob, carol, budget } = await setUpEvent();
+    const dave = await addMember(alice.communityId, "Dave");
+    await setBudgetPledge(bob, budget.id, { amount: 40 });
+    await setBudgetPledge(carol, budget.id, { amount: 10 });
 
-    const confirmed = await confirmBudgetCycle(alice, cycle.id, {
-      confirmedProposalIds: [p2.id],
-      confirmationRationale: "p1's vendor fell through",
-    });
-    expect(confirmed.confirmationRationale).toBe("p1's vendor fell through");
+    expect(await getBudgetPledges(dave, budget.id)).toMatchObject({ total: 50, count: 2, mine: null, entries: null });
+    expect(await getBudgetPledges(bob, budget.id)).toMatchObject({ total: 50, mine: 40, entries: null });
+    expect((await getBudgetPledges(alice, budget.id)).entries).toEqual([
+      { memberId: bob.id, name: "Bob", amount: 40 },
+      { memberId: carol.id, name: "Carol", amount: 10 },
+    ]);
   });
 
-  it("rejects confirming a proposal that isn't part of the cycle", async () => {
-    const { alice, cycle } = await setUpVotedCycle();
-    await expect(
-      confirmBudgetCycle(alice, cycle.id, {
-        confirmedProposalIds: ["00000000-0000-0000-0000-000000000000"],
-      }),
-    ).rejects.toThrow(NotFoundError);
+  it("never show amounts to a member just because the module is open to everyone", async () => {
+    const { alice, bob, carol, budget } = await setUpEvent();
+    await setBudgetPledge(bob, budget.id, { amount: 40 });
+    await setModuleOpen(alice, "budget", true);
+
+    expect(await isBudgetOwner(carol, budget)).toBe(true);
+    expect((await getBudgetPledges(carol, budget.id)).entries).toBeNull();
   });
 
-  it("rejects duplicate ids in the confirmed set", async () => {
-    const { alice, cycle, p1 } = await setUpVotedCycle();
-    await expect(
-      confirmBudgetCycle(alice, cycle.id, { confirmedProposalIds: [p1.id, p1.id] }),
-    ).rejects.toThrow(AppError);
+  it("refuse a negative figure, and a finished budget", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    await expect(setBudgetPledge(bob, budget.id, { amount: -5 })).rejects.toThrow();
+    await settleEventBudget(alice, budget.id);
+    await expect(setBudgetPledge(bob, budget.id, { amount: 10 })).rejects.toThrow(ConflictError);
   });
 });
 
@@ -451,57 +769,31 @@ describe("Budget owner authority", () => {
 
   it("requires the granted task's current non-shadow holder", async () => {
     const { alice, bob, branch: testBranch } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Season" });
+    const budget = (await getBudgetCycleForCycle(alice, event.id))!;
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, event.id);
 
-    expect(await isBudgetOwner(alice, cycle)).toBe(false);
+    expect(await isBudgetOwner(alice, budget)).toBe(false);
     await claimTask(alice, ownerTask.id);
-    expect(await isBudgetOwner(alice, cycle)).toBe(true);
+    expect(await isBudgetOwner(alice, budget)).toBe(true);
 
     // A shadow assignment is learning/observing the task, not holding
     // the authority that comes with it.
-    await db.insert(taskAssignment).values({
-      taskId: ownerTask.id,
-      memberId: bob.id,
-      isShadow: true,
-    });
-    expect(await isBudgetOwner(bob, cycle)).toBe(false);
+    await db.insert(taskAssignment).values({ taskId: ownerTask.id, memberId: bob.id, isShadow: true });
+    expect(await isBudgetOwner(bob, budget)).toBe(false);
   });
 
-  it("matches a cycle-less grant only to a cycle-less BudgetCycle", async () => {
+  it("matches a community-wide grant only to the community's own scope", async () => {
     const { alice, branch: testBranch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
     const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
     await claimTask(alice, ownerTask.id);
-
-    const untied = await createBudgetCycle(alice, {
-      title: "Untied budget",
-      proposalDeadline: inOneWeek(),
-    });
-    // Confirm untied so we can create more
-    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, untied.id));
     const cycleA = await createCycle(alice, { source: "blank", name: "Season A", confirmed: true });
-    const cycleB = await createCycle(alice, { source: "blank", name: "Season B", confirmed: true });
+    const budgetA = (await getBudgetCycleForCycle(alice, cycleA.id))!;
 
-    const tiedA = await createBudgetCycle(alice, {
-      title: "Season A budget",
-      cycleId: cycleA.id,
-      proposalDeadline: inOneWeek(),
-    });
-    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, tiedA.id));
-    const tiedB = await createBudgetCycle(alice, {
-      title: "Season B budget",
-      cycleId: cycleB.id,
-      proposalDeadline: inOneWeek(),
-    });
-
-    expect(await isBudgetOwner(alice, untied)).toBe(true);
-    expect(await isBudgetOwner(alice, tiedA)).toBe(false);
-    expect(await isBudgetOwner(alice, tiedB)).toBe(false);
+    expect(await isBudgetOwner(alice, { cycleId: null })).toBe(true);
+    expect(await isBudgetOwner(alice, budgetA)).toBe(false);
   });
 
   it("replaces one grant only within the same exact scope", async () => {
@@ -516,18 +808,8 @@ describe("Budget owner authority", () => {
     const otherScopeOwner = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, cycleB.id);
     await claimTask(alice, otherScopeOwner.id);
 
-    const budgetA = await createBudgetCycle(alice, {
-      title: "Season A budget",
-      cycleId: cycleA.id,
-      proposalDeadline: inOneWeek(),
-    });
-    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, budgetA.id));
-    const budgetB = await createBudgetCycle(alice, {
-      title: "Season B budget",
-      cycleId: cycleB.id,
-      proposalDeadline: inOneWeek(),
-    });
-
+    const budgetA = (await getBudgetCycleForCycle(alice, cycleA.id))!;
+    const budgetB = (await getBudgetCycleForCycle(alice, cycleB.id))!;
     expect(await isBudgetOwner(alice, budgetA)).toBe(false);
     expect(await isBudgetOwner(alice, budgetB)).toBe(true);
 
@@ -538,356 +820,121 @@ describe("Budget owner authority", () => {
 
   it("revokes authority when its grant is cleared", async () => {
     const { alice, branch: testBranch } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
+    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
+    const event = await createCycle(alice, { source: "blank", name: "Season" });
+    const budget = (await getBudgetCycleForCycle(alice, event.id))!;
+    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, event.id);
     await claimTask(alice, ownerTask.id);
-    expect(await isBudgetOwner(alice, cycle)).toBe(true);
+    expect(await isBudgetOwner(alice, budget)).toBe(true);
 
     await removePermissionGrant(alice, "budget", ownerTask.id);
-    expect(await isBudgetOwner(alice, cycle)).toBe(false);
+    expect(await isBudgetOwner(alice, budget)).toBe(false);
   });
 });
 
-// docs/development-plan.md's Phase 65 — the owner's own small
-// confirmation that lets closeCycle skip its warning.
-describe("markBudgetCycleDone", () => {
+describe("Settling a budget", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  async function setUpConfirmedCycle() {
-    const fixtures = await createFixtures();
-    const { alice, bob, branch: testBranch } = fixtures;
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
-    await claimTask(alice, ownerTask.id);
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
-    const p1 = await submitBudgetProposal(bob, cycle.id, {
-      title: "P1",
-      lineItems: [{ label: "X", amount: 100 }],
-    });
-    await closeProposalsToVoting(alice, cycle.id);
-    await submitBudgetVote(alice, cycle.id, { rankedProposalIds: [p1.id] });
-    await confirmBudgetCycle(alice, cycle.id, { confirmedProposalIds: [p1.id] });
-    return { ...fixtures, cycle };
-  }
-
-  it("owner-gated", async () => {
-    const { bob, cycle } = await setUpConfirmedCycle();
-    await expect(markBudgetCycleDone(bob, cycle.id)).rejects.toThrow(ForbiddenError);
+  it("is the owner's alone", async () => {
+    const { bob, budget } = await setUpEvent();
+    await expect(settleEventBudget(bob, budget.id)).rejects.toThrow(ForbiddenError);
   });
 
-  it("requires the cycle to already be confirmed", async () => {
-    const { alice, branch: testBranch } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id);
-    await claimTask(alice, ownerTask.id);
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
-    await expect(markBudgetCycleDone(alice, cycle.id)).rejects.toThrow(ConflictError);
+  it("finishes the budget and closes its books, with no vote first", async () => {
+    const { alice, budget } = await setUpEvent();
+    const { budget: done } = await settleEventBudget(alice, budget.id);
+    expect(done.settledAt).not.toBeNull();
+    expect(done.status).toBe("confirmed");
+    expect(await listActiveBudgetCycles(alice)).toEqual([]);
   });
 
-  it("sets ownerMarkedDoneAt once confirmed", async () => {
-    const { alice, cycle } = await setUpConfirmedCycle();
-    expect(cycle.ownerMarkedDoneAt).toBeNull();
+  it("cannot be done twice", async () => {
+    const { alice, budget } = await setUpEvent();
+    await settleEventBudget(alice, budget.id);
+    await expect(settleEventBudget(alice, budget.id)).rejects.toThrow(ConflictError);
+  });
 
-    const marked = await markBudgetCycleDone(alice, cycle.id);
-    expect(marked.ownerMarkedDoneAt).not.toBeNull();
-
-    const refetched = await getBudgetCycle(alice, cycle.id);
-    expect(refetched.ownerMarkedDoneAt).not.toBeNull();
+  it("can still be settled for a budget confirmed under the old rules", async () => {
+    const { alice, budget } = await setUpEvent();
+    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, budget.id));
+    expect((await settleEventBudget(alice, budget.id)).budget.settledAt).not.toBeNull();
   });
 });
 
-describe("updateBudgetCycle", () => {
+describe("Editing a budget's details", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  it("owner-gated, and only while proposals_open", async () => {
-    const { alice, bob, cycle } = await setUpVotingCycle();
+  it("is the owner's, and only while the budget is open", async () => {
+    const { alice, bob, budget } = await setUpEvent();
+    await expect(updateBudgetCycle(bob, budget.id, { title: "Hijacked" })).rejects.toThrow(ForbiddenError);
 
-    await expect(
-      updateBudgetCycle(bob, cycle.id, { title: "Hijacked" }),
-    ).rejects.toThrow(ForbiddenError);
-
-    await closeProposalsToVoting(alice, cycle.id);
-    await expect(
-      updateBudgetCycle(alice, cycle.id, { title: "Too late" }),
-    ).rejects.toThrow(ConflictError);
+    await settleEventBudget(alice, budget.id);
+    await expect(updateBudgetCycle(alice, budget.id, { title: "Too late" })).rejects.toThrow(ConflictError);
   });
 
   it("only touches fields actually sent, leaving the rest as-is", async () => {
-    const { alice, cycle } = await setUpVotingCycle();
+    const { alice, budget } = await setUpEvent();
+    await updateBudgetCycle(alice, budget.id, { fixedCosts: [{ label: "Site fee", amount: 100 }] });
 
-    const updated = await updateBudgetCycle(alice, cycle.id, { title: "Renamed budget" });
-    expect(updated.title).toBe("Renamed budget");
-    expect(updated.fixedCosts).toEqual(cycle.fixedCosts);
-    expect(new Date(updated.proposalDeadline).getTime()).toBe(new Date(cycle.proposalDeadline).getTime());
+    const renamed = await updateBudgetCycle(alice, budget.id, { title: "Renamed budget" });
+    expect(renamed.title).toBe("Renamed budget");
+    expect(renamed.fixedCosts).toEqual([{ label: "Site fee", amount: 100 }]);
 
-    const newDeadline = inOneWeek();
-    const updated2 = await updateBudgetCycle(alice, cycle.id, {
-      fixedCosts: [{ label: "Revised", amount: 999 }],
-      proposalDeadline: newDeadline,
-    });
-    expect(updated2.title).toBe("Renamed budget");
-    expect(updated2.fixedCosts).toEqual([{ label: "Revised", amount: 999 }]);
-    expect(new Date(updated2.proposalDeadline).toISOString()).toBe(newDeadline);
+    const newDeadline = inOneWeek().toISOString();
+    const dated = await updateBudgetCycle(alice, budget.id, { proposalDeadline: newDeadline });
+    expect(dated.title).toBe("Renamed budget");
+    expect(new Date(dated.proposalDeadline!).toISOString()).toBe(newDeadline);
+  });
+
+  it("clears the deadline when sent null, and leaves it alone when not sent", async () => {
+    const { alice, budget } = await setUpEvent();
+    await updateBudgetCycle(alice, budget.id, { proposalDeadline: inOneWeek().toISOString() });
+    expect((await updateBudgetCycle(alice, budget.id, { title: "Still dated" })).proposalDeadline).not.toBeNull();
+    expect((await updateBudgetCycle(alice, budget.id, { proposalDeadline: null })).proposalDeadline).toBeNull();
+  });
+
+  it("refuses a fixed cost naming a branch from another community", async () => {
+    const { alice, budget } = await setUpEvent();
+    const { branch: strangerBranch } = await createFixtures();
+    await expect(
+      updateBudgetCycle(alice, budget.id, { fixedCosts: [{ label: "X", amount: 10, branchId: strangerBranch.id }] }),
+    ).rejects.toThrow(AppError);
   });
 });
 
-describe("startBudgetCycleForNewCycle", () => {
+describe("Line items", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  it("returns null — nothing to carry an owner task forward from yet", async () => {
-    const { alice } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
-    const newCycle = await createCycle(alice, { source: "blank", name: "First season" });
-
-    expect(await startBudgetCycleForNewCycle(alice, newCycle)).toBeNull();
-    expect(await getCurrentBudgetCycle(alice)).toBeNull();
-  });
-
-  it("returns null — the community's last BudgetCycle is still active", async () => {
-    const { alice } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
-    await createBudgetCycle(alice, {
-      title: "Still open",
-      proposalDeadline: inOneWeek(),
-    });
-    const newCycle = await createCycle(alice, { source: "blank", name: "Next season" });
-
-    expect(await startBudgetCycleForNewCycle(alice, newCycle)).toBeNull();
-  });
-
-  it("carries fixed costs forward but never inherits the previous Cycle's owner authority", async () => {
-    const { alice, bob, branch: testBranch } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
-    const previousCycle = await createCycle(alice, { source: "blank", name: "Last season" });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, previousCycle.id);
-    await claimTask(alice, ownerTask.id);
-    const previous = await createBudgetCycle(alice, {
-      title: "Last season's budget",
-      cycleId: previousCycle.id,
-      fixedCosts: [{ label: "Site fee", amount: 2000 }],
-      proposalDeadline: inOneWeek(),
-    });
-    const p1 = await submitBudgetProposal(bob, previous.id, {
-      title: "P1",
-      lineItems: [{ label: "X", amount: 100 }],
-    });
-    await closeProposalsToVoting(alice, previous.id);
-    await submitBudgetVote(alice, previous.id, { rankedProposalIds: [p1.id] });
-    await confirmBudgetCycle(alice, previous.id, { confirmedProposalIds: [p1.id] });
-    expect(await isBudgetOwner(alice, previous)).toBe(true);
-
-    // Explicitly confirm starting a new cycle despite previous being open
-    const newCycle = await createCycle(alice, { source: "blank", name: "Next season", confirmed: true });
-    const started = await startBudgetCycleForNewCycle(alice, newCycle);
-    expect(started).not.toBeNull();
-    expect(started!.cycleId).toBe(newCycle.id);
-    expect(started!.title).toBe("Next season Budget");
-    expect(started).not.toHaveProperty("ownerTaskId");
-    expect(started!.fixedCosts).toEqual([{ label: "Site fee", amount: 2000 }]);
-    expect(started!.status).toBe("proposals_open");
-    expect(await isBudgetOwner(alice, started!)).toBe(false);
-
-    const linked = await getBudgetCycleForCycle(alice, newCycle.id);
-    expect(linked?.id).toBe(started!.id);
-  });
-});
-
-describe("getBudgetCycleForCycle", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("finds the BudgetCycle tied to a specific real Cycle, ignoring ones tied to another or none", async () => {
-    const { alice } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
-    const realCycle = await createCycle(alice, { source: "blank", name: "2027 Season" });
-    const untied = await createBudgetCycle(alice, {
-      title: "Untied budget",
-      proposalDeadline: inOneWeek(),
-    });
-    expect(await getBudgetCycleForCycle(alice, realCycle.id)).toBeNull();
-
-    await db.update(budgetCycle).set({ cycleId: realCycle.id }).where(eq(budgetCycle.id, untied.id));
-    const found = await getBudgetCycleForCycle(alice, realCycle.id);
-    expect(found?.id).toBe(untied.id);
-  });
-});
-
-describe("getBudgetCycleForScope exact scope resolution", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("matches null scope to cycle-less BudgetCycle, not cycle-linked ones", async () => {
-    const { alice } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
-    const realCycle = await createCycle(alice, { source: "blank", name: "2027 Season" });
-
-    const cycleBudget = await createBudgetCycle(alice, {
-      title: "Cycle budget",
-      cycleId: realCycle.id,
-      proposalDeadline: inOneWeek(),
-    });
-    // Confirm cycle budget so we can create another
-    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, cycleBudget.id));
-    const evergreenBudget = await createBudgetCycle(alice, {
-      title: "Evergreen budget",
-      proposalDeadline: inOneWeek(),
-    });
-
-    // null scope should find the evergreen (cycle-less) budget
-    const foundNull = await getBudgetCycleForScope(alice, null);
-    expect(foundNull?.id).toBe(evergreenBudget.id);
-    expect(foundNull?.id).not.toBe(cycleBudget.id);
-
-    // real cycle scope should find the cycle-linked budget
-    const foundCycle = await getBudgetCycleForScope(alice, realCycle.id);
-    expect(foundCycle?.id).toBe(cycleBudget.id);
-    expect(foundCycle?.id).not.toBe(evergreenBudget.id);
-  });
-
-  it("newest BudgetCycle wins when multiple exist for same scope", async () => {
-    const { alice } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
-    const realCycle = await createCycle(alice, { source: "blank", name: "2027 Season" });
-
-    const older = await createBudgetCycle(alice, {
-      title: "Older cycle budget",
-      cycleId: realCycle.id,
-      proposalDeadline: inOneWeek(),
-    });
-    // Confirm older so we can create newer
-    await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, older.id));
-    // Small delay to ensure different createdAt
-    await new Promise((r) => setTimeout(r, 10));
-    const newer = await createBudgetCycle(alice, {
-      title: "Newer cycle budget",
-      cycleId: realCycle.id,
-      proposalDeadline: inOneWeek(),
-    });
-
-    const found = await getBudgetCycleForScope(alice, realCycle.id);
-    expect(found?.id).toBe(newer.id);
-    expect(found?.id).not.toBe(older.id);
-  });
-});
-
-describe("Line item multipliers", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("multiplies amount by a fixed quantity", async () => {
-    const { alice, bob } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
-
-    const created = await submitBudgetProposal(bob, cycle.id, {
+  it("multiplies the amount by a fixed quantity", async () => {
+    const { bob, budget } = await setUpEvent();
+    const created = await submitBudgetProposal(bob, budget.id, {
       title: "Tables",
       lineItems: [{ label: "Table", amount: 50, quantity: 8 }],
     });
     expect(created.totalAmount).toBe(400);
   });
 
-  it("rejects a line item that's both a fixed quantity and per-attendee", async () => {
-    const { alice, bob } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
-
+  it("refuses an item that is both a fixed quantity and per-attendee", async () => {
+    const { bob, budget } = await setUpEvent();
     await expect(
-      submitBudgetProposal(bob, cycle.id, {
+      submitBudgetProposal(bob, budget.id, {
         title: "Bad item",
         lineItems: [{ label: "X", amount: 10, quantity: 3, perAttendee: true }],
       }),
     ).rejects.toThrow();
   });
 
-  it("scales a perAttendee line item off Participation `coming` for the linked Cycle, live, not just at submission time", async () => {
-    const { alice, bob, branch: testBranch } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"], cyclesEnabled: true });
-    const realCycle = await createCycle(alice, { source: "blank", name: "Reunion" });
-    await declareParticipation(alice, realCycle.id, { status: "coming" });
-    const ownerTask = await insertOwnerTask(alice.communityId, testBranch.id, alice.id, realCycle.id);
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      cycleId: realCycle.id,
-      proposalDeadline: inOneWeek(),
-    });
+  it("stores a per-item branch, independent of the proposal's own", async () => {
+    const { alice, bob, branch: fruit, budget } = await setUpEvent();
+    const [veg] = await db.insert(branch).values({ communityId: alice.communityId, name: "Vegetables" }).returning();
 
-    const created = await submitBudgetProposal(bob, cycle.id, {
-      title: "Catering",
-      lineItems: [{ label: "Meal", amount: 10, perAttendee: true }],
-    });
-    // Only Alice has declared "coming" so far.
-    expect(created.totalAmount).toBe(10);
-
-    // Bob RSVPs after the proposal was submitted — the stored
-    // totalAmount snapshot doesn't move, but the live voting view
-    // recomputes against the current headcount.
-    await declareParticipation(bob, realCycle.id, { status: "coming" });
-    await claimTask(alice, ownerTask.id);
-    await closeProposalsToVoting(alice, cycle.id);
-    const view = await getBudgetVotingView(alice, cycle.id);
-    expect(view.attendeeCount).toBe(2);
-    expect(view.ranked[0].liveTotal).toBe(20);
-  });
-
-  it("treats a perAttendee item as contributing 0 when the BudgetCycle isn't linked to a real Cycle", async () => {
-    const { alice, bob } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
-
-    const created = await submitBudgetProposal(bob, cycle.id, {
-      title: "Catering",
-      lineItems: [{ label: "Meal", amount: 10, perAttendee: true }],
-    });
-    expect(created.totalAmount).toBe(0);
-  });
-});
-
-describe("Line item branches", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("stores a per-line-item branch, independent of the proposal's own branch", async () => {
-    const { alice, bob, branch: fruit } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
-    const [veg] = await db
-      .insert(branch)
-      .values({ communityId: alice.communityId, name: "Vegetables" })
-      .returning();
-
-    const created = await submitBudgetProposal(bob, cycle.id, {
+    const created = await submitBudgetProposal(bob, budget.id, {
       title: "Shared gear",
       branchId: fruit.id,
       lineItems: [
@@ -899,60 +946,11 @@ describe("Line item branches", () => {
     expect((created.lineItems as { branchId?: string }[])[1].branchId).toBe(veg.id);
   });
 
-  it("rejects a line item naming a Branch from another community", async () => {
-    const { alice, bob } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const cycle = await createBudgetCycle(alice, {
-      title: "Season budget",
-      proposalDeadline: inOneWeek(),
-    });
+  it("refuses an item naming a branch from another community", async () => {
+    const { bob, budget } = await setUpEvent();
     const { branch: strangerBranch } = await createFixtures();
-
     await expect(
-      submitBudgetProposal(bob, cycle.id, {
-        title: "Bad item",
-        lineItems: [{ label: "X", amount: 10, branchId: strangerBranch.id }],
-      }),
+      submitBudgetProposal(bob, budget.id, { title: "Bad", lineItems: [{ label: "X", amount: 10, branchId: strangerBranch.id }] }),
     ).rejects.toThrow(AppError);
-  });
-
-  it("rejects a fixed cost naming a Branch from another community", async () => {
-    const { alice } = await createFixtures();
-    await updateCommunity(alice, { modulesEnabled: ["budget"] });
-    const { branch: strangerBranch } = await createFixtures();
-
-    await expect(
-      createBudgetCycle(alice, {
-        title: "Season budget",
-        fixedCosts: [{ label: "X", amount: 10, branchId: strangerBranch.id }],
-        proposalDeadline: inOneWeek(),
-        }),
-    ).rejects.toThrow(AppError);
-  });
-});
-
-describe("Contribution balance", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("sums non-null contributionSignal votes into totalPledged, and computes confirmedTotal/confirmedBalance once confirmed", async () => {
-    const { alice, bob, cycle, p1, p2 } = await setUpVotingCycle();
-    await closeProposalsToVoting(alice, cycle.id);
-
-    await submitBudgetVote(alice, cycle.id, { rankedProposalIds: [p1.id, p2.id], contributionSignal: 300 });
-    await submitBudgetVote(bob, cycle.id, { rankedProposalIds: [p1.id, p2.id], contributionSignal: null });
-
-    const beforeConfirm = await getBudgetVotingView(alice, cycle.id);
-    expect(beforeConfirm.totalPledged).toBe(300);
-    expect(beforeConfirm.pledgeCount).toBe(1);
-    expect(beforeConfirm.confirmedTotal).toBeNull();
-    expect(beforeConfirm.confirmedBalance).toBeNull();
-
-    // Fixed costs (500) + p1 (100) = 600 confirmed; p2 (200) left unfunded.
-    await confirmBudgetCycle(alice, cycle.id, { confirmedProposalIds: [p1.id] });
-    const afterConfirm = await getBudgetVotingView(alice, cycle.id);
-    expect(afterConfirm.confirmedTotal).toBe(600);
-    expect(afterConfirm.confirmedBalance).toBe(300 - 600);
   });
 });

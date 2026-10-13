@@ -37,7 +37,7 @@ import type { AdmissionLane, AdmissionLaneSnapshot } from "./admission-lanes";
 import { computeAdmissionStage, describeAdmissionStage } from "./admission-stage";
 import { declarationFromInvite, laneSnapshot, resolveInviteLane, resolvePublicLane } from "./admission-lanes";
 
-// docs/admission-flow.md §4 and §6. The arrival row is created here and
+// docs/plans/admission-flow.md §4 and §6. The arrival row is created here and
 // nowhere else, and a person becomes a Member here and nowhere else. Every
 // route into the community — a direct invite, a decided application, the
 // end of a community check, the support shortcut — ends in `admitArrival`,
@@ -380,7 +380,7 @@ export async function admitArrival(arrivalId: string, opts: AdmitOptions = {}): 
       console.error("[admission] could not seed answers from the application", err);
     }
   }
-  // The provider (docs/admission-flow.md §6a): if the community asked for it, the person is
+  // The provider (docs/plans/admission-flow.md §6a): if the community asked for it, the person is
   // given an account there and the role to use it, and the provider emails them to set up
   // their own sign-in. Never waits on, and never undoes, the admission — what happened is
   // recorded for the administrators' to-do, and a retry is always safe.

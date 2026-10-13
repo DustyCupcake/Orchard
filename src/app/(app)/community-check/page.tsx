@@ -6,6 +6,7 @@ import { getCommunityRow, listOpenChecksForMember } from "@/lib/recruitment";
 import PageHeader from "@/components/ui/PageHeader";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import { raiseConcernAction, withdrawConcernAction } from "./actions";
+import { getViewerClock } from "@/lib/view-clock";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ const KIND_LABEL = {
   evaluation: "Read by the people who met them; now open to the whole community",
 } as const;
 
-// docs/admission-flow.md §5 — the one place a member raises a concern about
+// docs/plans/admission-flow.md §5 — the one place a member raises a concern about
 // someone who is arriving. Every arrival whose community check is open is listed
 // here, whichever way the window opened, and the form is the same for all of them.
 //
@@ -26,6 +27,7 @@ export default async function CommunityCheckPage({
 }: {
   searchParams: Promise<{ error?: string; raised?: string; withdrawn?: string }>;
 }) {
+  const clock = await getViewerClock();
   const { error, raised, withdrawn } = await searchParams;
   const ctx = await getViewingContext();
   if (!ctx.real || !ctx.viewing) redirect("/login");
@@ -89,7 +91,7 @@ export default async function CommunityCheckPage({
                 <Tag tone="neutral">{item.route === "invite" ? "invited" : "applied"}</Tag>
               </div>
               <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                {KIND_LABEL[item.kind]} · open until {new Date(item.deadline).toLocaleString()}
+                {KIND_LABEL[item.kind]} · open until {clock.dateTime(item.deadline)}
               </p>
               {item.mayRaise.ok ? (
                 <form action={raiseConcernAction} className="mt-3 flex flex-col gap-2">

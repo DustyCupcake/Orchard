@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 // The Community's own saved-pack library — see docs/spec.md's Task
 // Pack ("packs round-trip as a plain file... not a hosted registry")
-// and docs/development-plan.md's Phase 55. Exporting happens from
+// and docs/plans/development-plan.md's Phase 55. Exporting happens from
 // /participation (against a specific cycle); this page is where a
 // saved pack gets managed afterward — downloaded to hand to another
 // deployment, uploaded from one handed to you, archived, or picked up

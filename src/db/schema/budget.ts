@@ -1,76 +1,136 @@
-import { integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { date, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { branch } from "./branch";
 import { community } from "./community";
 import { cycle } from "./cycle";
 import { member } from "./member";
 import { phase } from "./phase";
 
+// `voting` is retired: rounds, ranked voting and confirmation were replaced by
+// always-open proposals that members back (docs/plans/archive/budget-funds-plan.md
+// Phase 2). The value stays in the enum because Postgres cannot drop one; the
+// migration moved every row off it, and nothing writes it. What remains is
+// `proposals_open` (an event's budget is open) and `confirmed` (it is finished:
+// the owner marked it done, or it was confirmed under the old rules).
 export const budgetCycleStatusEnum = pgEnum("budget_cycle_status", [
   "proposals_open",
   "voting",
   "confirmed",
 ]);
 
+// What a proposal is for. `spending` is a member's own proposal in an event's
+// budget or the community's. The other two are the community budget's
+// proposals *about an event*, listed with the community's and decided by its
+// holder, and are the only way an event ever draws on the community's money
+// (docs/plans/archive/budget-funds-plan.md D9, D14): `event_allocation` asks for the
+// shortfall an event's plan leaves, and `event_deficit` asks the community to
+// cover an overspend an event settled with.
+export const budgetProposalKindEnum = pgEnum("budget_proposal_kind", ["spending", "event_allocation", "event_deficit"]);
+
+export const budgetProposalStatusEnum = pgEnum("budget_proposal_status", [
+  "open",
+  "approved",
+  "declined",
+  "withdrawn",
+  "closed",
+]);
+
 // Collecting what's on the table before deciding what gets funded — see
-// docs/spec.md's "Budget" and docs/development-plan.md's Phase 26/27.
-// Only one active (non-`confirmed`) cycle per Community at a time for
-// v1 — see src/lib/budget/cycles.ts's getCurrentBudgetCycle/
-// createBudgetCycle.
-export const budgetCycle = pgTable("budget_cycle", {
+// docs/spec.md's "Budget" and docs/plans/development-plan.md's Phase 26/27.
+// An event's budget is the event's own: one is made with the event
+// (src/lib/budget/cycles.ts's ensureEventBudget), and at most one
+// unfinished row can exist per event. Rows with no `cycle_id` are the
+// community's own, and are held to one unfinished row per community by
+// createBudgetCycle. See docs/plans/archive/budget-funds-plan.md.
+export const budgetCycle = pgTable(
+  "budget_cycle",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => community.id),
+    // Ties to a real Cycle when cycles are on — the same optional-
+    // association pattern Task itself already uses.
+    cycleId: uuid("cycle_id").references(() => cycle.id),
+    title: text("title").notNull(),
+    // Array of {label, amount} — the non-negotiable floor, entered by the
+    // owner before proposals open. Amounts are whole-currency-unit
+    // integers, no cents modeling — the same minimal-precision posture
+    // Task.capacity/Effort magnitude already take elsewhere in this
+    // codebase; a resolved interpretation, since spec names no currency
+    // or precision requirement and this module never moves real money
+    // itself (see Phase 27's Contributions: "still just a number shown
+    // to that member, not a payment integration").
+    fixedCosts: jsonb("fixed_costs").notNull().default([]),
+    // Optional: blank means proposals stay open until the owner closes them. An event's
+    // budget is made with the event, and there is no honest date to invent for it. See
+    // docs/plans/archive/budget-funds-plan.md D2.
+    proposalDeadline: timestamp("proposal_deadline", { withTimezone: true }),
+    status: budgetCycleStatusEnum("status").notNull().default("proposals_open"),
+    // Budget authority is not stored on this row. A single-cardinality
+    // `budget` PermissionGrant is configured under Settings → Access &
+    // permissions, and its task's placement must match this row's
+    // `cycleId` (including null === null) for its current holder to own
+    // this budget cycle.
+    // Set only on confirming (status -> `confirmed`) — see
+    // src/lib/budget/voting.ts's confirmBudgetCycle. "A human selection
+    // informed by, not bound to, the ranked order" (docs/spec.md's
+    // Budget: Confirmation) — a plain jsonb array of proposal ids rather
+    // than a join table, matching lineItems/fixedCosts' own "opaque list,
+    // read only by whoever's looking" posture elsewhere in this schema.
+    confirmedProposalIds: jsonb("confirmed_proposal_ids"),
+    // Required whenever confirmedProposalIds deviates from the aggregate
+    // ranked order for the same funded count — see
+    // src/lib/budget/voting.ts's requiresConfirmationRationale.
+    confirmationRationale: text("confirmation_rationale"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => member.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // Whether the event's budget has been wrapped up, which lets closeCycle
+    // (src/lib/cycles/lifecycle.ts) skip its warning. Separate from `status`
+    // reaching `confirmed` (finished): a budget finishes when settlement begins,
+    // and is settled once its books are closed.
+    //
+    // Settlement replaced "mark done" (docs/plans/archive/budget-funds-plan.md D7): the
+    // moment an event's books close. The column keeps its original name rather
+    // than being renamed, because a rename is a destructive-looking migration for
+    // no behavioural gain; the property is `settledAt`. Set when a budget with
+    // nothing owed is settled, or, when it overspent, once the community has
+    // decided whether to cover the overspend.
+    settledAt: timestamp("owner_marked_done_at", { withTimezone: true }),
+    // The ask the owner settles on: what each person is asked to contribute to
+    // this event, in whole currency units. An average, not a bill: members pay
+    // what they can, which is the point of the sliding scale, and it need not
+    // equal what the plan implies. Null until the owner sets one. Per event only;
+    // the community's own budget has no ask. docs/plans/archive/budget-funds-plan.md 3b.
+    contributionPerMember: integer("contribution_per_member"),
+  },
+  (t) => [
+    // One unfinished budget per event. A finished one stays as history, so an event's
+    // earlier rounds are not a conflict; only a second *open* one is.
+    uniqueIndex("budget_cycle_one_unfinished_per_event")
+      .on(t.cycleId)
+      .where(sql`${t.cycleId} is not null and ${t.status} <> 'confirmed'`),
+  ],
+);
+
+// An itemized funding request — any member, at any time, in an event's budget
+// or in the community's own (`cycle_id` null). Other members back it
+// (budget_proposal_support) and the holder of its scope approves it, up to
+// what its backers cover (docs/plans/archive/budget-funds-plan.md D12). There are no
+// rounds: `budget_cycle_id` names the event's budget row, or the old round a
+// community proposal came from, and is null for a proposal made since.
+export const budgetProposal = pgTable("budget_proposal", {
   id: uuid("id").primaryKey().defaultRandom(),
   communityId: uuid("community_id")
     .notNull()
     .references(() => community.id),
-  // Ties to a real Cycle when cycles are on — the same optional-
-  // association pattern Task itself already uses.
+  // The scope: an event, or null for the community's own budget. Kept here
+  // rather than read through the budget row because a community proposal has
+  // no budget row any more.
   cycleId: uuid("cycle_id").references(() => cycle.id),
-  title: text("title").notNull(),
-  // Array of {label, amount} — the non-negotiable floor, entered by the
-  // owner before proposals open. Amounts are whole-currency-unit
-  // integers, no cents modeling — the same minimal-precision posture
-  // Task.capacity/Effort magnitude already take elsewhere in this
-  // codebase; a resolved interpretation, since spec names no currency
-  // or precision requirement and this module never moves real money
-  // itself (see Phase 27's Contributions: "still just a number shown
-  // to that member, not a payment integration").
-  fixedCosts: jsonb("fixed_costs").notNull().default([]),
-  proposalDeadline: timestamp("proposal_deadline", { withTimezone: true }).notNull(),
-  status: budgetCycleStatusEnum("status").notNull().default("proposals_open"),
-  // Budget authority is not stored on this row. A single-cardinality
-  // `budget` PermissionGrant is configured under Settings → Access &
-  // permissions, and its task's placement must match this row's
-  // `cycleId` (including null === null) for its current holder to own
-  // this budget cycle.
-  // Set only on confirming (status -> `confirmed`) — see
-  // src/lib/budget/voting.ts's confirmBudgetCycle. "A human selection
-  // informed by, not bound to, the ranked order" (docs/spec.md's
-  // Budget: Confirmation) — a plain jsonb array of proposal ids rather
-  // than a join table, matching lineItems/fixedCosts' own "opaque list,
-  // read only by whoever's looking" posture elsewhere in this schema.
-  confirmedProposalIds: jsonb("confirmed_proposal_ids"),
-  // Required whenever confirmedProposalIds deviates from the aggregate
-  // ranked order for the same funded count — see
-  // src/lib/budget/voting.ts's requiresConfirmationRationale.
-  confirmationRationale: text("confirmation_rationale"),
-  createdBy: uuid("created_by")
-    .notNull()
-    .references(() => member.id),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  // A small, deliberate confirmation from the current owner (Phase
-  // 65) — separate from `status` reaching `confirmed` above, since a
-  // cycle can be closed even after the funded set is decided. Lets
-  // closeCycle (src/lib/cycles/lifecycle.ts) skip its own warning. Set
-  // only by src/lib/budget/voting.ts's markBudgetCycleDone.
-  ownerMarkedDoneAt: timestamp("owner_marked_done_at", { withTimezone: true }),
-});
-
-// An itemized funding request against a BudgetCycle — any member,
-// before its deadline; editable by the submitter until then.
-export const budgetProposal = pgTable("budget_proposal", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  budgetCycleId: uuid("budget_cycle_id")
-    .notNull()
-    .references(() => budgetCycle.id),
+  budgetCycleId: uuid("budget_cycle_id").references(() => budgetCycle.id),
   submittedBy: uuid("submitted_by")
     .notNull()
     .references(() => member.id),
@@ -84,9 +144,77 @@ export const budgetProposal = pgTable("budget_proposal", {
   totalAmount: integer("total_amount").notNull(),
   branchId: uuid("branch_id").references(() => branch.id),
   phaseId: uuid("phase_id").references(() => phase.id),
+  kind: budgetProposalKindEnum("kind").notNull().default("spending"),
+  // The event an `event_allocation` or `event_deficit` is about. The proposal's own
+  // `cycle_id` stays null: it sits in the community's list and is decided by the
+  // community budget's holder.
+  eventCycleId: uuid("event_cycle_id").references(() => cycle.id),
+  // The event's plan as it stood when the request was made, so what is approved
+  // is what was shown: fixed costs, each approved proposal, the ask, who it was
+  // spread across, income recorded, and what had already been allocated.
+  planSnapshot: jsonb("plan_snapshot"),
+  requestedContributionPerMember: integer("requested_contribution_per_member"),
+  expectedContributors: integer("expected_contributors"),
+  status: budgetProposalStatusEnum("status").notNull().default("open"),
+  // Set when the scope's holder approves or declines it.
+  decidedBy: uuid("decided_by").references(() => member.id),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  // The holder's reasoning. Required on a decline; this is what replaced the
+  // confirmation rationale a funded set used to need.
+  decisionNote: text("decision_note"),
+  // What was approved: at most the amount asked, and at most what the backers
+  // cover. Null until approved.
+  approvedAmount: integer("approved_amount"),
   submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// "I support this", one per member per proposal, withdrawable — the same shape
+// as interest in a programme proposal. The proposer is the first backer
+// without a row of their own and cannot support their own proposal. Counts are
+// public; who is behind them only to the proposer and the scope's holder (see
+// src/lib/budget/proposals.ts).
+export const budgetProposalSupport = pgTable(
+  "budget_proposal_support",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    proposalId: uuid("proposal_id")
+      .notNull()
+      .references(() => budgetProposal.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => member.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("budget_proposal_support_member_unique").on(t.proposalId, t.memberId)],
+);
+
+// "How much would you contribute?" — it used to be a field on the ranking
+// ballot, which is gone. One replaceable figure per member per event budget,
+// private to the member and the owner, with its total open to everyone
+// (docs/plans/archive/budget-funds-plan.md D16). It informs the plan as a whole and is
+// not part of any one proposal.
+export const budgetPledge = pgTable(
+  "budget_pledge",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    budgetCycleId: uuid("budget_cycle_id")
+      .notNull()
+      .references(() => budgetCycle.id),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => member.id),
+    // Whole currency units, like every amount in the module.
+    amount: integer("amount").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("budget_pledge_member_unique").on(t.budgetCycleId, t.memberId)],
+);
+
+// RETIRED, kept readable as history: nothing writes this any more (ranked voting
+// was replaced by backed proposals — see budgetProposalSupport). Its
+// contribution signals were copied into budgetPledge by the migration.
+//
 // A member's full ranking of the cycle's proposals, plus an optional
 // "how much would you contribute this year?" signal — one row per
 // member per cycle, replaceable until voting closes (no DB-level
@@ -114,3 +242,85 @@ export const budgetVote = pgTable("budget_vote", {
   contributionSignal: integer("contribution_signal"),
   submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// The ledger (docs/plans/archive/budget-funds-plan.md Phase 3, D5)
+// ---------------------------------------------------------------------------
+//
+// Plans stay plans until someone enters what really happened. The ledger is one
+// table of entries scoped to an event or to the community's own budget; a
+// scope's balance is the sum of its *confirmed* entries. No double-entry
+// accounting, no currencies or cents (whole units, as everywhere in the
+// module), no payment integration: the app records what people say happened.
+// `contribution`, `allocation` and `settlement` are in the enum for the later
+// steps of the plan (member contributions, transfers between scopes, closing an
+// event's books); nothing writes them yet.
+
+export const budgetEntryKindEnum = pgEnum("budget_entry_kind", [
+  "opening_balance",
+  "expense",
+  "income",
+  "contribution",
+  "allocation",
+  "settlement",
+  "adjustment",
+]);
+
+export const budgetEntryStatusEnum = pgEnum("budget_entry_status", ["pending", "confirmed", "rejected"]);
+
+export const budgetEntry = pgTable(
+  "budget_entry",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => community.id),
+    // The scope: an event, or null for the community's own budget.
+    cycleId: uuid("cycle_id").references(() => cycle.id),
+    kind: budgetEntryKindEnum("kind").notNull(),
+    // Signed whole currency units: positive is money into this scope, negative
+    // is money out of it. An expense is stored negative.
+    amount: integer("amount").notNull(),
+    // Owner-recorded entries are born `confirmed`; a member's claim is born
+    // `pending` and waits for the scope's real holder (D13). A rejected entry
+    // keeps its row, so there is a trail.
+    status: budgetEntryStatusEnum("status").notNull().default("pending"),
+    // The member a contribution or expense concerns: whoever paid an expense
+    // out of their own pocket, or whoever paid money in.
+    memberId: uuid("member_id").references(() => member.id),
+    submittedBy: uuid("submitted_by")
+      .notNull()
+      .references(() => member.id),
+    confirmedBy: uuid("confirmed_by").references(() => member.id),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    // Why it was rejected, or what a reversal corrects.
+    decisionNote: text("decision_note"),
+    description: text("description").notNull(),
+    occurredOn: date("occurred_on").notNull(),
+    // Free text: a reference, a seller, an invoice number. No upload for now;
+    // this is where an attachment id goes later.
+    receiptNote: text("receipt_note"),
+    // The approved proposal an expense spends against, so the page can show
+    // planned against actual. A reversal carries the same one, so it nets out.
+    proposalId: uuid("proposal_id").references(() => budgetProposal.id),
+    // Set by the owner on an expense a member paid out of pocket, so the list
+    // can say who is still owed.
+    reimbursedAt: timestamp("reimbursed_at", { withTimezone: true }),
+    // Shared by the two halves of a transfer between scopes.
+    transferId: uuid("transfer_id"),
+    // Entries are never edited or deleted. A correction is an `adjustment`
+    // pointing at the entry it undoes.
+    reversesEntryId: uuid("reverses_entry_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // The community's own budget has exactly one opening balance, entered once.
+    uniqueIndex("budget_entry_one_opening_balance")
+      .on(t.communityId)
+      .where(sql`${t.kind} = 'opening_balance' and ${t.cycleId} is null and ${t.status} <> 'rejected'`),
+    // An entry is reversed at most once.
+    uniqueIndex("budget_entry_reversed_once")
+      .on(t.reversesEntryId)
+      .where(sql`${t.reversesEntryId} is not null`),
+  ],
+);

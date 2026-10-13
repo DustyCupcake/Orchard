@@ -34,7 +34,7 @@ import { createFixtures, grantPermission, insertTask, resetDatabase } from "./he
 // worth pinning: every query here resolves "the actor's coordination
 // coverage, narrowed to the view-scope cycle" and a leak across that
 // boundary would show one coordinator another's event's tasks, which is
-// the exact thing docs/cycle-scope-remediation-plan.md §2.1 forbids.
+// the exact thing docs/plans/archive/cycle-scope-remediation-plan.md §2.1 forbids.
 
 // A branch column for `coordinator`, the same three steps the existing
 // coordination tests use: create a task, grant the module on it, claim

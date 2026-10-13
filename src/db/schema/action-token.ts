@@ -1,7 +1,7 @@
 import { jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 // Generic one-time, short-lived, click-to-act token — the shared
-// infrastructure docs/development-plan.md's Phase 51 explicitly builds
+// infrastructure docs/plans/development-plan.md's Phase 51 explicitly builds
 // once for reuse rather than per-consumer: "meant to be reused as-is
 // by Phase 52, not rebuilt per consumer." Mirrors magicLinkToken (see
 // src/db/schema/auth.ts) exactly — tokenHash is HMAC(SESSION_SECRET,

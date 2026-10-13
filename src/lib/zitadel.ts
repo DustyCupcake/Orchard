@@ -2,7 +2,7 @@ import type { community as communityTable } from "@/db/schema";
 
 type Community = typeof communityTable.$inferSelect;
 
-// docs/admission-flow.md §6a — the calls admission makes to the community's own
+// docs/plans/admission-flow.md §6a — the calls admission makes to the community's own
 // Zitadel so that "admitted" means the person can sign in there too. Every call, body
 // and status code below was run against a real tenant (Zitadel v4.13.0) by
 // scripts/zitadel-spike.mjs and scripts/zitadel-spike2.mjs, not read from the docs:

@@ -30,6 +30,7 @@ import {
   supportApplicationAction,
 } from "./actions";
 import SelectField from "@/components/ui/SelectField";
+import { getViewerClock } from "@/lib/view-clock";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ const OBJECTION_STATE_LABEL: Record<string, string> = {
 
 // See docs/spec.md's Recruitment ("Evaluation + decision logic",
 // "Recruitment-mode subscription", "Wider discussion window",
-// "Accompaniment", "Rejection templates") and docs/development-plan.md's
+// "Accompaniment", "Rejection templates") and docs/plans/development-plan.md's
 // Phases 33-34.
 export default async function ApplicationsPage({
   searchParams,
@@ -77,6 +78,7 @@ export default async function ApplicationsPage({
     interviewHeld?: string;
   }>;
 }) {
+  const clock = await getViewerClock();
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
@@ -212,7 +214,7 @@ export default async function ApplicationsPage({
                   style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.6rem", marginBottom: "0.5rem" }}
                 >
                   <p style={{ margin: 0, fontSize: "0.85rem" }}>
-                    Submitted {new Date(a.submittedAt).toLocaleString()} — {a.evaluationsFiled}/
+                    Submitted {clock.dateTime(a.submittedAt)} — {a.evaluationsFiled}/
                     {a.evaluatorsNeeded} evaluations filed
                     {a.outcome && (
                       <>
@@ -258,7 +260,7 @@ export default async function ApplicationsPage({
                     >
                       <p style={{ margin: 0, fontSize: "0.85rem" }}>
                         <strong>{r.label || "(unlabeled)"}</strong> — for {r.cycleName}, created{" "}
-                        {new Date(r.createdAt).toLocaleDateString()}
+                        {clock.date(r.createdAt)}
                       </p>
                     </div>
                   ))}
@@ -275,7 +277,7 @@ export default async function ApplicationsPage({
                     style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.75rem", marginBottom: "0.75rem" }}
                   >
                     <p style={{ margin: "0 0 0.4rem", fontSize: "0.8rem", color: "#666" }}>
-                      Submitted {new Date(response.submittedAt).toLocaleString()}
+                      Submitted {clock.dateTime(response.submittedAt)}
                       {response.cycleId
                         ? ` — for ${cycleNameById.get(response.cycleId) ?? "that event"}`
                         : " — not tied to an event"}
@@ -406,7 +408,7 @@ export default async function ApplicationsPage({
                             <p style={{ margin: "0 0 0.3rem", fontSize: "0.85rem" }}>
                               Wider-discussion window: <strong>{widerDiscussionStatus}</strong>
                               {widerDiscussionDeadline &&
-                                ` (${widerDiscussionStatus === "open" ? "closes" : "closed"} ${new Date(widerDiscussionDeadline).toLocaleString()})`}
+                                ` (${widerDiscussionStatus === "open" ? "closes" : "closed"} ${clock.dateTime(widerDiscussionDeadline)})`}
                               . It belongs to the community, not to the holders: it ends when nobody has raised a
                               concern by its deadline, or when the mediation body has settled the ones that were.
                             </p>
@@ -416,7 +418,7 @@ export default async function ApplicationsPage({
                                   <li key={o.id}>
                                     {o.note}{" "}
                                     <span style={{ color: "#666" }}>
-                                      ({new Date(o.raisedAt).toLocaleDateString()} ·{" "}
+                                      ({clock.date(o.raisedAt)} ·{" "}
                                       {OBJECTION_STATE_LABEL[o.resolution] ?? o.resolution}
                                       {o.resolutionNote ? ` — ${o.resolutionNote}` : ""})
                                     </span>
@@ -503,7 +505,7 @@ export default async function ApplicationsPage({
 // whether it's waiting on the person, on holders, or ready to book — and the two things a
 // holder does with it. Shared by the applications and by the arrivals that sent none.
 type InterviewState = NonNullable<Awaited<ReturnType<typeof listApplicationsForEvaluation>>[number]["interview"]>;
-function InterviewBlock({
+async function InterviewBlock({
   interview,
   arrivalId,
   interviewerIds,
@@ -514,12 +516,13 @@ function InterviewBlock({
   interviewerIds: string[];
   viewingId: string;
 }) {
+  const clock = await getViewerClock();
   return (
     <div style={{ margin: "0 0 0.6rem", fontSize: "0.85rem" }}>
         <p style={{ margin: "0 0 0.3rem" }}>
           <strong>Interview:</strong>{" "}
           {interview.confirmed
-            ? `booked for ${new Date(interview.confirmed.start).toLocaleString()}${interview.held ? " — it has happened; the people who took part file the reports" : ""}`
+            ? `booked for ${clock.dateTime(interview.confirmed.start)}${interview.held ? " — it has happened; the people who took part file the reports" : ""}`
             : !interview.poll
               ? "not made yet — conversations are closed, or no recruitment task has been created to file it under"
               : !interview.personHasOffered
@@ -540,7 +543,7 @@ function InterviewBlock({
             <input type="hidden" name="arrivalId" value={arrivalId} />
             <SelectField name="slot" defaultValue={interview.qualifyingSlots[0]} style={{ padding: "0.3rem" }}>
               {interview.qualifyingSlots.map((slot) => (
-                <option key={slot} value={slot}>{new Date(slot).toLocaleString()}</option>
+                <option key={slot} value={slot}>{clock.dateTime(slot)}</option>
               ))}
             </SelectField>
             <button type="submit" style={{ padding: "0.2rem 0.6rem" }}>Book this time</button>
@@ -559,13 +562,14 @@ function InterviewBlock({
 // An arrival whose lane asks only for a conversation has no application to read, so what
 // a holder is shown is the person, where their conversation is, and the reports on it.
 type Conversation = Awaited<ReturnType<typeof listConversationsForEvaluation>>[number];
-function ConversationCard({ item, viewingId, cycleName }: { item: Conversation; viewingId: string; cycleName: string | null }) {
+async function ConversationCard({ item, viewingId, cycleName }: { item: Conversation; viewingId: string; cycleName: string | null }) {
+  const clock = await getViewerClock();
   const { arrival, evaluations, outcome, evaluationsFiled, evaluatorsNeeded, decision, supports, interview, interviewerIds, concerns, windowDeadline } = item;
   const mine = evaluations.find((e) => e.evaluatorId === viewingId);
   return (
     <div style={{ border: "1px solid #ccc", borderRadius: 6, padding: "0.75rem", marginBottom: "0.75rem" }}>
       <p style={{ margin: "0 0 0.4rem", fontSize: "0.8rem", color: "#666" }}>
-        Arrived {new Date(arrival.createdAt).toLocaleString()}
+        Arrived {clock.dateTime(arrival.createdAt)}
         {cycleName ? ` — for ${cycleName}` : " — not tied to an event"} — no application: their lane asks for a conversation
       </p>
       <p style={{ margin: "0 0 0.4rem" }}>
@@ -627,7 +631,7 @@ function ConversationCard({ item, viewingId, cycleName }: { item: Conversation; 
       )}
       {windowDeadline && (
         <p style={{ margin: "0.4rem 0 0", fontSize: "0.85rem" }}>
-          Community check open until {new Date(windowDeadline).toLocaleString()}.{" "}
+          Community check open until {clock.dateTime(windowDeadline)}.{" "}
           {concerns.some((c) => c.resolution === "standing") ? (
             <>
               A concern stands until the{" "}

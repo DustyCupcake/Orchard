@@ -16,7 +16,7 @@ const STATUS_TONE: Record<string, Exclude<Tone, "neutral" | "accent" | "accent2"
 
 // Public, no login — where a one-click nomination-response email link
 // lands. Same shell-free, unauthenticated posture as /login, /apply,
-// /invite/[token] — see docs/development-plan.md's Phase 43 note on
+// /invite/[token] — see docs/plans/development-plan.md's Phase 43 note on
 // which routes stay outside the (app) group.
 export default async function NominationResponsePage({
   searchParams,

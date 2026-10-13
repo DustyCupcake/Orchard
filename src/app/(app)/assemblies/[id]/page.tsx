@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getViewerClock } from "@/lib/view-clock";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { member } from "@/db/schema";
@@ -55,6 +56,8 @@ export default async function AssemblyDetailPage({
   if (!real || !viewing) {
     redirect("/login");
   }
+
+  const clock = await getViewerClock();
 
   const { id } = await params;
   const { error } = await searchParams;
@@ -249,24 +252,24 @@ export default async function AssemblyDetailPage({
         <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
           You can add to the agenda for another{" "}
           <strong>{relativeTime(a.agendaEndsAt, now)}</strong> — it closes{" "}
-          {a.agendaEndsAt.toLocaleString()}.
+          {clock.deadline(a.agendaEndsAt)}.
         </p>
       )}
       {a.phase === "notice" && (
         <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
           Voting opens <strong>{relativeTime(a.noticeEndsAt, now)}</strong> — at{" "}
-          {a.noticeEndsAt.toLocaleString()}. The agenda is locked but fully readable below.
+          {clock.deadline(a.noticeEndsAt)}. The agenda is locked but fully readable below.
         </p>
       )}
       {a.phase === "voting" && (
         <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
           Voting closes <strong>{relativeTime(a.votingEndsAt, now)}</strong> —{" "}
-          {a.votingEndsAt.toLocaleString()}.
+          {clock.deadline(a.votingEndsAt)}.
         </p>
       )}
       {a.phase === "closed" && (
         <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-          Closed {a.votingEndsAt.toLocaleString()}. Results below are final — turning any of this
+          Closed {clock.deadline(a.votingEndsAt)}. Results below are final — turning any of this
           into an actual change is a separate, deliberate step someone takes by hand.
         </p>
       )}

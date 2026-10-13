@@ -13,7 +13,7 @@ export * from "./joining";
 // (`admission-stage`) is kept out for the same reason.
 export * from "./admission-lanes";
 export * from "./admission";
-// Standing availability (docs/admission-flow.md §4) — pure DB writes, safe to export.
+// Standing availability (docs/plans/admission-flow.md §4) — pure DB writes, safe to export.
 export * from "./standing-availability";
 export * from "./subscriptions";
 export * from "./support";

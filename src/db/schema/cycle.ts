@@ -30,7 +30,7 @@ export const cycle = pgTable("cycle", {
   sourceType: cycleSourceTypeEnum("source_type").notNull().default("blank"),
   capacity: integer("capacity"),
   returningWindowClosesAt: timestamp("returning_window_closes_at", { withTimezone: true }),
-  // Per-cycle joining configuration (docs/cycle-scope-remediation-plan.md
+  // Per-cycle joining configuration (docs/plans/archive/cycle-scope-remediation-plan.md
   // §4.3/D13, work-plan step 8c) — how and when this cycle admits new
   // members. The application-form pointer is a plain uuid, the same
   // non-FK pattern as community.recruitmentApplicationFormId (form.ts
@@ -42,7 +42,7 @@ export const cycle = pgTable("cycle", {
   // cycle closes). Both doors are shut outside that period and once
   // capacity is reached — see src/lib/recruitment/joining.ts.
   //
-  // Which lanes are open for this event (docs/admission-flow.md §2a): lanes
+  // Which lanes are open for this event (docs/plans/admission-flow.md §2a): lanes
   // are community-wide and an event never overrides one, it only chooses
   // which are open. False = "the same as the community's" (the default),
   // true = the event's own set, kept in `cycle_admission_lane`. The form
@@ -51,7 +51,7 @@ export const cycle = pgTable("cycle", {
   recruitmentApplicationFormId: uuid("recruitment_application_form_id"),
   applicationsOpen: boolean("applications_open").notNull().default(true),
   invitesOpen: boolean("invites_open").notNull().default(true),
-  // The third door (docs/joining-admission-plan.md §2.3/J3), sitting
+  // The third door (docs/plans/archive/joining-admission-plan.md §2.3/J3), sitting
   // beside the other two rather than inside a lane: whether an intro
   // call can be scheduled against this event at all. Distinct from a
   // lane's `interviewRequired` — that says "an arrival on this lane is
@@ -68,10 +68,18 @@ export const cycle = pgTable("cycle", {
   // is required to start a cycle; missing one just means Phase
   // auto-placement, relative Task milestones/CalendarEvents, and the
   // Pack import date preview have nothing to resolve against yet. See
-  // docs/spec.md's "Event window" and docs/development-plan.md's
+  // docs/spec.md's "Event window" and docs/plans/development-plan.md's
   // Phase 39.
   startDate: date("start_date"),
   endDate: date("end_date"),
+  // The wall-clock this event runs in, overriding the Community's own
+  // default — see src/lib/dates/timezone.ts. Kept beside start_date/
+  // end_date rather than in the Event scheduling module's own schema
+  // because it describes the event, not its programme: anything that
+  // says what time it is here — shift occurrences, input-round
+  // cutoffs, published slots — resolves through the same pair. Null
+  // inherits Community.timeZone.
+  timeZone: text("time_zone"),
   // Plain uuid, no `.references()` — task_pack.ts already has to
   // import task.ts (for TaskPackItem's effort/openness enums), and
   // task.ts already imports cycle.ts for its own cycleId, so cycle.ts

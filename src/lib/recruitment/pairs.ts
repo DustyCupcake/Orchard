@@ -12,7 +12,7 @@ type Member = typeof memberTable.$inferSelect;
 type Arrival = typeof admission.$inferSelect;
 type PairRow = typeof recruitmentPairTable.$inferSelect;
 
-// docs/admission-flow.md §2, "Pairing and a shared interview" (J9). A pair is a
+// docs/plans/admission-flow.md §2, "Pairing and a shared interview" (J9). A pair is a
 // *fact*, recorded and shown to humans: two people are arriving together, or one named
 // the other, and the platform decides nothing from it. No lane reads a pairing, no
 // capacity count changes, no decision can name it. The one thing a pair changes is the

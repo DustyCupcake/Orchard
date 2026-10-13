@@ -33,7 +33,7 @@ export async function withdrawAction(formData: FormData) {
   redirect(`/admission/${encodeURIComponent(token)}?withdrawn=1`);
 }
 
-// The application the mediation body asked for (docs/admission-flow.md §5). The token
+// The application the mediation body asked for (docs/plans/admission-flow.md §5). The token
 // is the credential; what the form asks for is read from the form, never from what the
 // request says it is.
 export async function sendAskedApplicationAction(formData: FormData) {
@@ -52,7 +52,7 @@ export async function sendAskedApplicationAction(formData: FormData) {
   redirect(`${back}?applied=1`);
 }
 
-// docs/admission-flow.md §2, "Pairing": the link the person sends to whoever they are applying
+// docs/plans/admission-flow.md §2, "Pairing": the link the person sends to whoever they are applying
 // with, made from their own page. The token is the credential.
 export async function makeApplyTogetherLinkAction(formData: FormData) {
   const token = String(formData.get("token") ?? "");

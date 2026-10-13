@@ -22,7 +22,7 @@ import { requireRecruitmentTaskHolder } from "./access";
 type Member = typeof memberTable.$inferSelect;
 type Arrival = typeof admission.$inferSelect;
 
-// docs/admission-flow.md §2, "The support shortcut". N supports from members
+// docs/plans/admission-flow.md §2, "The support shortcut". N supports from members
 // skip whatever is left of a lane's path and admit. It runs *alongside* the
 // path — the person starts the lane's normal path at once, and if support never
 // reaches N nothing happens to them: there is no window, no wait, no skip button

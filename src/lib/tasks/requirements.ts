@@ -247,7 +247,7 @@ async function countEligibleMembers(
 
 // The "requirements that fit you" sort dimension — docs/spec.md's
 // Requirement section and Views' "what fits me": a resolved, narrow
-// reading per docs/development-plan.md's Phase 50, deliberately NOT
+// reading per docs/plans/development-plan.md's Phase 50, deliberately NOT
 // the full automated tag→task matching MVP scope still permanently
 // defers. Purely a number a member can choose to sort by; never a
 // default ordering, never touches claim eligibility.

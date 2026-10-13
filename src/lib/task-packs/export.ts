@@ -114,7 +114,7 @@ export async function exportCycleAsTaskPack(actor: Member, cycleId: string, inpu
   }
 
   // Which ordinary modules each exported task granted — carried so pack
-  // import can re-grant the imported task (docs/cycle-scope-remediation-plan.md
+  // import can re-grant the imported task (docs/plans/archive/cycle-scope-remediation-plan.md
   // §4.4: a pack is a cycle "in a box"). Budget is excluded because its
   // owner is designated explicitly in Settings → Access & permissions, not
   // inherited through cloning or a pack. Only the module key travels, never

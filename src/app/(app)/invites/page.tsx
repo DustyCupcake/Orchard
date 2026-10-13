@@ -28,6 +28,7 @@ import {
   resolveInquiryAction,
   revokeCommunityInviteAction,
 } from "./actions";
+import { getViewerClock } from "@/lib/view-clock";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ const STATUS_TONE: Record<string, Tone> = {
 };
 
 // See docs/spec.md's Recruitment "Invite links" and "A public inquiry
-// inbox, not a CRM," and docs/development-plan.md's Phase 32 — the two
+// inbox, not a CRM," and docs/plans/development-plan.md's Phase 32 — the two
 // low-structure public entry points, plus the authenticated surfaces that
 // manage them.
 //
@@ -71,6 +72,7 @@ export default async function InvitesPage({
     invite?: string;
   }>;
 }) {
+  const clock = await getViewerClock();
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
@@ -244,8 +246,8 @@ export default async function InvitesPage({
                       {invite.cycleId && cycleNames.has(invite.cycleId) && (
                         <span className="font-medium text-[var(--text)]">{cycleNames.get(invite.cycleId)} · </span>
                       )}
-                      {laneRule ? (laneNames.get(laneRule.id ?? "") ?? laneRule.name) : "no open lane takes this — held"} · created {new Date(invite.createdAt).toLocaleDateString()}
-                      {invite.expiresAt && ` · expires ${new Date(invite.expiresAt).toLocaleDateString()}`}
+                      {laneRule ? (laneNames.get(laneRule.id ?? "") ?? laneRule.name) : "no open lane takes this — held"} · created {clock.date(invite.createdAt)}
+                      {invite.expiresAt && ` · expires ${clock.date(invite.expiresAt)}`}
                     </p>
                     {status === "valid" && (
                       <form action={revokeCommunityInviteAction} className="mt-2">
@@ -276,14 +278,14 @@ export default async function InvitesPage({
                   <div key={inq.id} className={CARD}>
                     <p className="text-[length:var(--text-body)] text-[var(--text)]">{inq.message}</p>
                     <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                      Contact: {inq.contactInfo} · submitted {new Date(inq.submittedAt).toLocaleString()}
+                      Contact: {inq.contactInfo} · submitted {clock.dateTime(inq.submittedAt)}
                     </p>
                     <p className="mt-1">
                       <Tag tone={inq.resolvedAt ? "success" : inq.claimedBy ? "accent" : "warning"}>
                         {inq.resolvedAt
                           ? "Resolved"
                           : inq.claimedBy
-                            ? `Claimed ${new Date(inq.claimedAt!).toLocaleString()}`
+                            ? `Claimed ${clock.dateTime(inq.claimedAt!)}`
                             : "Unclaimed"}
                       </Tag>
                     </p>

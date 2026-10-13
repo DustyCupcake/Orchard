@@ -46,7 +46,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
-// See docs/spec.md's "Spatial planning" and docs/development-plan.md's
+// See docs/spec.md's "Spatial planning" and docs/plans/development-plan.md's
 // Phase 36-38 — the base site (Plot), its organizational regions
 // (Zone), the things drawn on it (Placement, PlacementTemplate), the
 // profile data that informs planning them (SpacePreference), and the
@@ -67,7 +67,7 @@ export default async function SpatialPlanningPage({
   const moduleOn = isModuleEnabled(communityRow, "spatial_planning");
 
   // Which cycle's Plot to show — the same off-URL resolution the board
-  // and task detail page already read (docs/development-plan.md's
+  // and task detail page already read (docs/plans/development-plan.md's
   // Phase 68), replacing the old community-wide getCurrentCycle()
   // heuristic. "ambiguous" (the switcher's aggregate state genuinely
   // covers 2+ open cycles this member is coming to) renders a real

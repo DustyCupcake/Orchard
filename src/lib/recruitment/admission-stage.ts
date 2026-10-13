@@ -1,6 +1,6 @@
 import type { AdmissionOrigin, AdmissionVerification } from "@/db/schema";
 
-// docs/admission-flow.md §4 — "The stage is a pure function of the facts
+// docs/plans/admission-flow.md §4 — "The stage is a pure function of the facts
 // and the path."
 //
 // This file is the whole of that. It imports no database, no drizzle, and

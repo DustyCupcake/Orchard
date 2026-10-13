@@ -9,7 +9,7 @@ import { arrivalIsFinished, listChecksFor, listOpenChecks, openCheck } from "./c
 import { settleArrivalDecision } from "./decisions";
 import { DEFAULT_REPORTS_NEEDED } from "./lane-rules";
 
-// docs/admission-flow.md §5 — what happens when a community check *ends*.
+// docs/plans/admission-flow.md §5 — what happens when a community check *ends*.
 //
 // One function decides it, and it decides it from what is on the record, never
 // from who happened to call it. That is the fix for the old design's lost

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { getViewerClock } from "@/lib/view-clock";
+import TimeZoneInput from "@/components/TimeZoneInput";
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import {
@@ -10,7 +12,7 @@ import {
   resolveViewScopeFromSegment,
   startBoundaryOf,
 } from "@/lib/cycles";
-import { getBudgetCycleForCycle, getCurrentBudgetCycle } from "@/lib/budget";
+import { getBudgetCycleForCycle } from "@/lib/budget";
 import {
   getCycleParticipationSummary,
   getMyParticipation,
@@ -28,7 +30,8 @@ import {
 import { getCommunity, isAdmin, listCycleTypes } from "@/lib/settings";
 import { listOutstandingQuestions } from "@/lib/profile-questions";
 import { isModuleEnabled } from "@/lib/modules";
-import { describeBoundaryWindow, formatDateRange } from "@/lib/dates";
+import { describeBoundaryWindow, formatDateRange, formatInstant, localInputFromInstant } from "@/lib/dates";
+import { getEventTimeZone } from "@/lib/cycles";
 import { listTaskPacks } from "@/lib/task-packs";
 import { HIGHLIGHTABLE_MODULES } from "@/lib/nav";
 import { ClonePreviewGrid, ClonePreviewList } from "@/components/ClonePreview";
@@ -64,12 +67,11 @@ const STATUS_LABEL: Record<string, string> = {
   not_coming: "Not coming",
 };
 
-// datetime-local wants "YYYY-MM-DDTHH:mm" in local time, not a full
-// ISO string with a timezone offset — same helper src/app/schedule's
-// EventReviewSection.tsx already uses.
-function toDatetimeLocal(date: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+// datetime-local wants "YYYY-MM-DDTHH:mm" with no offset. These windows
+// are typed on the event's clock, so the field is filled in on that clock
+// too — not the server's.
+function toDatetimeLocal(date: Date, timeZone: string) {
+  return localInputFromInstant(date.toISOString(), timeZone);
 }
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
@@ -78,7 +80,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 
 // "Who's actually planning to be there, and how much room is left" —
 // see docs/spec.md's "Participation & capacity" under Cycle and
-// docs/development-plan.md's Phase 31. Core, not gated behind
+// docs/plans/development-plan.md's Phase 31. Core, not gated behind
 // Recruitment — a Community with cycles on always has this page,
 // whether or not Recruitment ever gets turned on. Moved under
 // /[cycleScope]/ in Phase 65 — see ../layout.tsx for how the segment
@@ -99,7 +101,6 @@ export default async function ParticipationPage({
     phaseAdded?: string;
     highlightUpdated?: string;
     cycleCreated?: string;
-    budgetNotStarted?: string;
     cycleClosed?: string;
     shiftOpened?: string;
     proposalConfirmed?: string;
@@ -122,7 +123,6 @@ export default async function ParticipationPage({
     phaseAdded,
     highlightUpdated,
     cycleCreated,
-    budgetNotStarted,
     cycleClosed,
     shiftOpened,
     proposalConfirmed,
@@ -181,13 +181,6 @@ export default async function ParticipationPage({
       {cycleCreated && (
         <div className="mt-4">
           <Banner tone="success">Event created — set its dates below, if you know them yet.</Banner>
-        </div>
-      )}
-      {budgetNotStarted && (
-        <div className="mt-4">
-          <Banner tone="warning">
-            Couldn&rsquo;t auto-start this event&rsquo;s Budget — start one by hand from /budget.
-          </Banner>
         </div>
       )}
       {cycleClosed && (
@@ -346,7 +339,7 @@ const PARTICIPATION_LABEL = {
 } as const;
 
 // "The Pack import review screen gains the date preview" —
-// docs/development-plan.md's Phase 44. This is that screen's minimal
+// docs/plans/development-plan.md's Phase 44. This is that screen's minimal
 // real form: preview a hypothetical clone (calendar or list, toggled
 // by the reviewer) before committing to anything, then create for real
 // below. `openCycleName` (Phase 65) drives the already-open-cycle
@@ -370,25 +363,16 @@ async function StartNewCycleSection({
   previewEnd?: string;
   previewView: "grid" | "list";
 }) {
-  const [cycleTypes, packs, preview, communityRow, previousBudgetCycle] = await Promise.all([
+  const [cycleTypes, packs, preview] = await Promise.all([
     listCycleTypes(viewing),
     listTaskPacks(viewing),
     hasPreviousCycle && (previewStart || previewEnd)
       ? previewClonePreviousCycle(viewing, previewStart || null, previewEnd || null)
       : Promise.resolve(null),
-    getCommunity(viewing),
-    getCurrentBudgetCycle(viewing),
   ]);
   const packNameById = new Map(packs.map((p) => [p.id, p.name]));
-  // Only offer the auto-start checkbox when startBudgetCycleForNewCycle
-  // (src/lib/budget/cycles.ts) would actually succeed — Budget on, and a
-  // previous BudgetCycle whose fixed costs can be carried forward isn't
-  // itself still active. Otherwise this Community's very first Budget
-  // cycle still has to be started by hand from /budget.
-  const canAutoStartBudget =
-    isModuleEnabled(communityRow, "budget") && previousBudgetCycle?.status === "confirmed";
   // "Correctly pre-selects that pack when starting a new Cycle of that
-  // type" — see docs/development-plan.md's Phase 55 Done-when. No
+  // type" — see docs/plans/development-plan.md's Phase 55 Done-when. No
   // client JS to pre-fill one <select> from another's chosen value, so
   // this is a plain, static link straight into the real import review
   // screen instead — already carrying the right pack and cycle type.
@@ -498,13 +482,6 @@ async function StartNewCycleSection({
           roster&rsquo;s occurrence timestamps immediately; a clone started without them defers the
           shift occurrences until you set dates in the event settings form above.
         </p>
-        {canAutoStartBudget && (
-          <CheckField
-            label={`Also start a budget period for this event (fixed costs carried forward from "${previousBudgetCycle!.title}")`}
-            name="startBudget"
-            defaultChecked
-          />
-        )}
         {openCycleName && <CheckField label="I understand — start anyway" name="confirmed" />}
         <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
           Create
@@ -529,6 +506,7 @@ async function ParticipationForCycle({
   closed: boolean;
   isAdminNow: boolean;
 }) {
+  const clock = await getViewerClock();
   const [summary, mine, canConfigure, communityRow] = await Promise.all([
     getCycleParticipationSummary(viewing, cycleId),
     getMyParticipation(viewing, cycleId),
@@ -542,11 +520,13 @@ async function ParticipationForCycle({
   // Only needed for the cycle-settings/phase-dates sections below —
   // skip the extra query entirely for anyone who can't see them.
   const withPhases = canConfigure ? await getCycle(viewing, cycleId) : null;
+  // The clock these windows are typed on — see lib/dates/timezone.ts.
+  const eventClock = await getEventTimeZone(viewing.communityId, cycleId);
   // Forms pickable as the cycle's own application form (blank = fall
   // back to the community's standing form) — only for the same
   // audience, same reason.
   const forms = canConfigure ? await listForms(viewing) : [];
-  // docs/admission-flow.md §2a — lanes are community-wide and an event never
+  // docs/plans/admission-flow.md §2a — lanes are community-wide and an event never
   // overrides one; it chooses which are open for it. The lanes the community
   // has, the ones open here, and whether this event follows the community's
   // own set or has chosen its own. None of this is gated on `canConfigure`:
@@ -568,7 +548,7 @@ async function ParticipationForCycle({
     isAdminNow && !closed && isModuleEnabled(communityRow, "budget")
       ? await getBudgetCycleForCycle(viewing, cycleId)
       : null;
-  const needsBudgetDoneWarning = Boolean(budgetCycleRow && !budgetCycleRow.ownerMarkedDoneAt);
+  const needsBudgetDoneWarning = Boolean(budgetCycleRow && !budgetCycleRow.settledAt);
   // The same "questions for this event" the Dashboard's and Community's
   // declare-joining controls route to on submit — linked from here too so
   // the full form's submitter isn't left wondering where to answer them.
@@ -598,7 +578,7 @@ async function ParticipationForCycle({
         {summary.returningWindowClosesAt && (
           <p className={`mt-1 text-[length:var(--text-body)] ${summary.returningWindowOpen ? "text-[var(--success)]" : "text-[var(--text-muted)]"}`}>
             Returning-priority window {summary.returningWindowOpen ? "open" : "closed"} — closes{" "}
-            {new Date(summary.returningWindowClosesAt).toLocaleString()}.
+            {clock.deadline(summary.returningWindowClosesAt)}.
           </p>
         )}
       </section>
@@ -653,7 +633,7 @@ async function ParticipationForCycle({
                     <ul className="mt-2 flex flex-col gap-0.5">
                       {occurrences.map(({ occurrence, capacity, signupCount }) => (
                         <li key={occurrence.id} className="text-[length:var(--text-body)] text-[var(--text)]">
-                          {new Date(occurrence.startsAt).toLocaleString()} — {signupCount}/{capacity} signed up
+                          {formatInstant(occurrence.startsAt, eventClock)} — {signupCount}/{capacity} signed up
                         </li>
                       ))}
                     </ul>
@@ -738,12 +718,20 @@ async function ParticipationForCycle({
               <input type="date" name="endDate" defaultValue={withPhases?.endDate ?? ""} className={`${INPUT} w-fit`} />
             </label>
             <label className="flex flex-col gap-1">
-              <span className={LABEL}>Returning-priority window closes at (optional)</span>
+              <span className={LABEL}>Time zone (optional)</span>
+              <TimeZoneInput defaultValue={withPhases?.timeZone} placeholder={communityRow.timeZone ?? "UTC"} className={`${INPUT} w-fit`} />
+              <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                What clock this event&apos;s times are read in. Leave blank to use the community&apos;s
+                {communityRow.timeZone ? ` (${communityRow.timeZone})` : " default, UTC"}.
+              </span>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={LABEL}>Returning-priority window closes at, {eventClock} (optional)</span>
               <input
                 type="datetime-local"
                 name="returningWindowClosesAt"
                 defaultValue={
-                  summary.returningWindowClosesAt ? toDatetimeLocal(new Date(summary.returningWindowClosesAt)) : ""
+                  summary.returningWindowClosesAt ? toDatetimeLocal(new Date(summary.returningWindowClosesAt), eventClock) : ""
                 }
                 className={`${INPUT} w-fit`}
               />
@@ -788,13 +776,13 @@ async function ParticipationForCycle({
               defaultChecked={withPhases?.interviewsOpen ?? true}
             />
             <label className="flex flex-col gap-1">
-              <span className={LABEL}>Joining window closes at (optional — blank = until the event closes)</span>
+              <span className={LABEL}>Joining window closes at, {eventClock} (optional — blank = until the event closes)</span>
               <input
                 type="datetime-local"
                 name="joiningWindowClosesAt"
                 defaultValue={
                   withPhases?.joiningWindowClosesAt
-                    ? toDatetimeLocal(new Date(withPhases.joiningWindowClosesAt))
+                    ? toDatetimeLocal(new Date(withPhases.joiningWindowClosesAt), eventClock)
                     : ""
                 }
                 className={`${INPUT} w-fit`}
@@ -807,7 +795,7 @@ async function ParticipationForCycle({
         </section>
       )}
 
-      {/* Which lanes this event opens (docs/admission-flow.md §2a). Not part of
+      {/* Which lanes this event opens (docs/plans/admission-flow.md §2a). Not part of
           the Admin-gated "Event settings" above, because it is not an
           administrative fact about the event: a member arriving by one of
           these lanes is being measured against it, so the lanes are stated to
@@ -897,7 +885,7 @@ async function ParticipationForCycle({
                 <span className="text-[length:var(--text-body)] text-[var(--text)]">
                   {w.name}
                   <span className="ml-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                    waiting since {w.waitlistedAt ? new Date(w.waitlistedAt).toLocaleDateString() : "—"}
+                    waiting since {w.waitlistedAt ? clock.date(w.waitlistedAt) : "—"}
                   </span>
                 </span>
                 <form action={admitWaitlistedAction}>
@@ -962,7 +950,7 @@ async function ParticipationForCycle({
           {needsBudgetDoneWarning && (
             <div className="mt-3">
               <Banner tone="warning">
-                The current Budget owner hasn&rsquo;t marked &ldquo;{budgetCycleRow!.title}&rdquo; done yet.
+                &ldquo;{budgetCycleRow!.title}&rdquo; hasn&rsquo;t been settled yet — settling it closes its books and returns any surplus to the community&rsquo;s budget.
               </Banner>
             </div>
           )}
@@ -983,7 +971,7 @@ async function ParticipationForCycle({
 type CycleWithPhases = Awaited<ReturnType<typeof getCycle>>;
 type PhaseRow = CycleWithPhases["phases"][number];
 
-// See docs/development-plan.md's Phase 39 — a phase spine an existing
+// See docs/plans/development-plan.md's Phase 39 — a phase spine an existing
 // Cycle's own dates resolve against. No rename/reorder here (phases,
 // once added, keep whatever name/order they were given) — this is for
 // editing an existing phase's dates plus (below) adding a new one.

@@ -57,7 +57,7 @@ async function holdsAnyGrantingTask(actor: Member, grantingTaskIds: string[]): P
 // those; a task placed in cycle C gates sends to cycle C's roster
 // (§4.5/D3) and never community-wide. The two authorities never cross —
 // with one deliberate exception. An **open** module opens both halves
-// together (docs/open-permissions-plan.md D8): opening only one would give
+// together (docs/plans/archive/open-permissions-plan.md D8): opening only one would give
 // a Community that can post to its own event roster but not to everyone
 // (or the reverse), which is a surprising half-state this module's whole
 // two-authority shape exists to prevent. Open is checked in both
@@ -277,7 +277,7 @@ async function resolveScopeForSend(
   if (input.scope === "arrival_window") {
     await requireCycleInitiationEligibility(actor);
     // "Composing that message is naturally done from the view of the
-    // cycle it's about" — docs/development-plan.md's Phase 65. Reads
+    // cycle it's about" — docs/plans/development-plan.md's Phase 65. Reads
     // the sender's own current view-scope cycle (Member.lastViewedCycleId,
     // falling back to the aggregate) rather than a bare community-wide
     // heuristic.
@@ -357,7 +357,7 @@ async function deliverToRecipients(recipientIds: string[], senderName: string, s
 
 // "Every send resolves its recipient set live at send time... and
 // logs itself, per spec's 'all outbound messages get logged either
-// way'" — see docs/development-plan.md's Phase 53.
+// way'" — see docs/plans/development-plan.md's Phase 53.
 export async function sendOutboundMessage(actor: Member, rawInput: SendMessageInput) {
   const input = sendMessageInput.parse(rawInput);
   const { scopeRef, recipientIds } = await resolveScopeForSend(actor, input);

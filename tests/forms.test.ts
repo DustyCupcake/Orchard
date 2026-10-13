@@ -95,7 +95,7 @@ describe("Form CRUD", () => {
     expect(updated.fields).toEqual(surveyFields);
   });
 
-  // docs/development-plan.md's Phase 58 — fields become genuinely
+  // docs/plans/development-plan.md's Phase 58 — fields become genuinely
   // editable post-creation, the input path a real field-builder client
   // component now produces instead of the old pipe-delimited textarea.
   describe("Phase 58: editing fields post-creation", () => {
@@ -287,7 +287,7 @@ describe("Form submissions validate against their fields", () => {
 // mapsToProfileQuestionId: a Form field can name which once-ever
 // ProfileQuestion its own answer should seed at applicant→Member
 // conversion (src/lib/recruitment/decisions.ts's
-// maybeConvertApplicantToMember) — see docs/development-plan.md's own
+// maybeConvertApplicantToMember) — see docs/plans/development-plan.md's own
 // generalization of isNameField/isEmailField past just name/email.
 describe("Form fields: mapsToProfileQuestionId", () => {
   beforeEach(async () => {
@@ -539,7 +539,7 @@ describe("post-cycle feedback consumer", () => {
   });
 });
 
-// docs/cycle-scope-remediation-plan.md §4.3 (the feedback_review half)
+// docs/plans/archive/cycle-scope-remediation-plan.md §4.3 (the feedback_review half)
 // — formResponse.cycle_id lands, so a feedback_review task placed in a
 // cycle reviews that cycle's responses while a cycle-less one reviews
 // everything. The reviewer resolves scope from their own task's

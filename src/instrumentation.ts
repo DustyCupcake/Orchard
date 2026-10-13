@@ -26,7 +26,7 @@ export async function register() {
   // Cuts a new Input round whenever a Community's cadence clock comes
   // due — see src/lib/input-rounds/scheduler.ts.
   registerJob("input-round-cutoff", "*/5 * * * *", resolveInputRounds);
-  // The one community check (docs/admission-flow.md §5): looks at every open
+  // The one community check (docs/plans/admission-flow.md §5): looks at every open
   // window and does what its record says is due — passes one whose deadline went
   // by with no concern, and finishes any outcome whose last step failed. A concern
   // is never dropped by a clock: a standing one holds its window and stays a duty
