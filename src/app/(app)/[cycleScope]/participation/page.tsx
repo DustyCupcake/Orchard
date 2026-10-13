@@ -571,7 +571,7 @@ async function ParticipationForCycle({
     isAdminNow && !closed && isModuleEnabled(communityRow, "budget")
       ? await getBudgetCycleForCycle(viewing, cycleId)
       : null;
-  const needsBudgetDoneWarning = Boolean(budgetCycleRow && !budgetCycleRow.ownerMarkedDoneAt);
+  const needsBudgetDoneWarning = Boolean(budgetCycleRow && !budgetCycleRow.settledAt);
   // The same "questions for this event" the Dashboard's and Community's
   // declare-joining controls route to on submit — linked from here too so
   // the full form's submitter isn't left wondering where to answer them.
@@ -1021,7 +1021,7 @@ async function ParticipationForCycle({
           {needsBudgetDoneWarning && (
             <div className="mt-3">
               <Banner tone="warning">
-                The current Budget owner hasn&rsquo;t marked &ldquo;{budgetCycleRow!.title}&rdquo; done yet.
+                &ldquo;{budgetCycleRow!.title}&rdquo; hasn&rsquo;t been settled yet — settling it closes its books and returns any surplus to the community&rsquo;s budget.
               </Banner>
             </div>
           )}

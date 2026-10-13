@@ -7,7 +7,7 @@ import { member } from "./member";
 import { phase } from "./phase";
 
 // `voting` is retired: rounds, ranked voting and confirmation were replaced by
-// always-open proposals that members back (docs/plans/budget-funds-plan.md
+// always-open proposals that members back (docs/plans/archive/budget-funds-plan.md
 // Phase 2). The value stays in the enum because Postgres cannot drop one; the
 // migration moved every row off it, and nothing writes it. What remains is
 // `proposals_open` (an event's budget is open) and `confirmed` (it is finished:
@@ -17,6 +17,15 @@ export const budgetCycleStatusEnum = pgEnum("budget_cycle_status", [
   "voting",
   "confirmed",
 ]);
+
+// What a proposal is for. `spending` is a member's own proposal in an event's
+// budget or the community's. The other two are the community budget's
+// proposals *about an event*, listed with the community's and decided by its
+// holder, and are the only way an event ever draws on the community's money
+// (docs/plans/archive/budget-funds-plan.md D9, D14): `event_allocation` asks for the
+// shortfall an event's plan leaves, and `event_deficit` asks the community to
+// cover an overspend an event settled with.
+export const budgetProposalKindEnum = pgEnum("budget_proposal_kind", ["spending", "event_allocation", "event_deficit"]);
 
 export const budgetProposalStatusEnum = pgEnum("budget_proposal_status", [
   "open",
@@ -32,7 +41,7 @@ export const budgetProposalStatusEnum = pgEnum("budget_proposal_status", [
 // (src/lib/budget/cycles.ts's ensureEventBudget), and at most one
 // unfinished row can exist per event. Rows with no `cycle_id` are the
 // community's own, and are held to one unfinished row per community by
-// createBudgetCycle. See docs/plans/budget-funds-plan.md.
+// createBudgetCycle. See docs/plans/archive/budget-funds-plan.md.
 export const budgetCycle = pgTable(
   "budget_cycle",
   {
@@ -55,7 +64,7 @@ export const budgetCycle = pgTable(
     fixedCosts: jsonb("fixed_costs").notNull().default([]),
     // Optional: blank means proposals stay open until the owner closes them. An event's
     // budget is made with the event, and there is no honest date to invent for it. See
-    // docs/plans/budget-funds-plan.md D2.
+    // docs/plans/archive/budget-funds-plan.md D2.
     proposalDeadline: timestamp("proposal_deadline", { withTimezone: true }),
     status: budgetCycleStatusEnum("status").notNull().default("proposals_open"),
     // Budget authority is not stored on this row. A single-cardinality
@@ -78,17 +87,23 @@ export const budgetCycle = pgTable(
       .notNull()
       .references(() => member.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    // A small, deliberate confirmation from the current owner (Phase
-    // 65) — separate from `status` reaching `confirmed` above, since a
-    // cycle can be closed even after the funded set is decided. Lets
-    // closeCycle (src/lib/cycles/lifecycle.ts) skip its own warning. Set
-    // only by src/lib/budget/voting.ts's markBudgetCycleDone.
-    ownerMarkedDoneAt: timestamp("owner_marked_done_at", { withTimezone: true }),
+    // Whether the event's budget has been wrapped up, which lets closeCycle
+    // (src/lib/cycles/lifecycle.ts) skip its warning. Separate from `status`
+    // reaching `confirmed` (finished): a budget finishes when settlement begins,
+    // and is settled once its books are closed.
+    //
+    // Settlement replaced "mark done" (docs/plans/archive/budget-funds-plan.md D7): the
+    // moment an event's books close. The column keeps its original name rather
+    // than being renamed, because a rename is a destructive-looking migration for
+    // no behavioural gain; the property is `settledAt`. Set when a budget with
+    // nothing owed is settled, or, when it overspent, once the community has
+    // decided whether to cover the overspend.
+    settledAt: timestamp("owner_marked_done_at", { withTimezone: true }),
     // The ask the owner settles on: what each person is asked to contribute to
     // this event, in whole currency units. An average, not a bill: members pay
     // what they can, which is the point of the sliding scale, and it need not
     // equal what the plan implies. Null until the owner sets one. Per event only;
-    // the community's own budget has no ask. docs/plans/budget-funds-plan.md 3b.
+    // the community's own budget has no ask. docs/plans/archive/budget-funds-plan.md 3b.
     contributionPerMember: integer("contribution_per_member"),
   },
   (t) => [
@@ -103,7 +118,7 @@ export const budgetCycle = pgTable(
 // An itemized funding request — any member, at any time, in an event's budget
 // or in the community's own (`cycle_id` null). Other members back it
 // (budget_proposal_support) and the holder of its scope approves it, up to
-// what its backers cover (docs/plans/budget-funds-plan.md D12). There are no
+// what its backers cover (docs/plans/archive/budget-funds-plan.md D12). There are no
 // rounds: `budget_cycle_id` names the event's budget row, or the old round a
 // community proposal came from, and is null for a proposal made since.
 export const budgetProposal = pgTable("budget_proposal", {
@@ -129,6 +144,17 @@ export const budgetProposal = pgTable("budget_proposal", {
   totalAmount: integer("total_amount").notNull(),
   branchId: uuid("branch_id").references(() => branch.id),
   phaseId: uuid("phase_id").references(() => phase.id),
+  kind: budgetProposalKindEnum("kind").notNull().default("spending"),
+  // The event an `event_allocation` or `event_deficit` is about. The proposal's own
+  // `cycle_id` stays null: it sits in the community's list and is decided by the
+  // community budget's holder.
+  eventCycleId: uuid("event_cycle_id").references(() => cycle.id),
+  // The event's plan as it stood when the request was made, so what is approved
+  // is what was shown: fixed costs, each approved proposal, the ask, who it was
+  // spread across, income recorded, and what had already been allocated.
+  planSnapshot: jsonb("plan_snapshot"),
+  requestedContributionPerMember: integer("requested_contribution_per_member"),
+  expectedContributors: integer("expected_contributors"),
   status: budgetProposalStatusEnum("status").notNull().default("open"),
   // Set when the scope's holder approves or declines it.
   decidedBy: uuid("decided_by").references(() => member.id),
@@ -165,7 +191,7 @@ export const budgetProposalSupport = pgTable(
 // "How much would you contribute?" — it used to be a field on the ranking
 // ballot, which is gone. One replaceable figure per member per event budget,
 // private to the member and the owner, with its total open to everyone
-// (docs/plans/budget-funds-plan.md D16). It informs the plan as a whole and is
+// (docs/plans/archive/budget-funds-plan.md D16). It informs the plan as a whole and is
 // not part of any one proposal.
 export const budgetPledge = pgTable(
   "budget_pledge",
@@ -218,7 +244,7 @@ export const budgetVote = pgTable("budget_vote", {
 });
 
 // ---------------------------------------------------------------------------
-// The ledger (docs/plans/budget-funds-plan.md Phase 3, D5)
+// The ledger (docs/plans/archive/budget-funds-plan.md Phase 3, D5)
 // ---------------------------------------------------------------------------
 //
 // Plans stay plans until someone enters what really happened. The ledger is one

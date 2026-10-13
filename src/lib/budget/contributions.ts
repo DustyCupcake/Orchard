@@ -12,7 +12,7 @@ import { getEventPlan } from "./plan";
 type Member = typeof memberTable.$inferSelect;
 type EntryRow = typeof budgetEntry.$inferSelect;
 
-// Contributions (docs/plans/budget-funds-plan.md 3b, D8, D11). The plan sets the
+// Contributions (docs/plans/archive/budget-funds-plan.md 3b, D8, D11). The plan sets the
 // ask and recorded payments track it.
 //
 // A contribution is a ledger entry like any other (see ledger.ts) and belongs to

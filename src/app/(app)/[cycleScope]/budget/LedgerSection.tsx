@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { BudgetEntryView, BudgetMoney, ContributionSummary } from "@/lib/budget";
+import type { AllocationOutlook, BudgetEntryView, BudgetMoney, ContributionSummary, SettlementState } from "@/lib/budget";
 import { BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import SelectField from "@/components/ui/SelectField";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -8,8 +8,10 @@ import {
   recordEntryAction,
   reimburseEntryAction,
   rejectEntryAction,
+  requestEventAllocationAction,
   reverseEntryAction,
   setContributionAskAction,
+  settleEventBudgetAction,
 } from "./actions";
 import { formatAmount } from "./format";
 
@@ -55,6 +57,17 @@ export function MoneyCard({ money, isCommunityBudget }: { money: BudgetMoney; is
             <dd className="font-semibold text-[var(--text)]">{signed(money.balance)}</dd>
           </div>
         </dl>
+      )}
+      {money.transfers !== 0 && (
+        <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+          {isCommunityBudget
+            ? money.transfers < 0
+              ? `${formatAmount(-money.transfers)} has gone to events from this budget, net of any surplus they returned.`
+              : `${formatAmount(money.transfers)} has come back from events, net of what was allocated to them.`
+            : money.transfers > 0
+              ? `${formatAmount(money.transfers)} of the balance came from the community's budget.`
+              : `${formatAmount(-money.transfers)} was returned to the community's budget.`}
+        </p>
       )}
       {money.pendingCount !== null && money.pendingCount > 0 && (
         <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
@@ -307,7 +320,7 @@ export function EntryList({
 }
 
 // What an event asked of people and has had paid in, or what has been given to
-// the community's own budget (docs/plans/budget-funds-plan.md 3b). The totals are
+// the community's own budget (docs/plans/archive/budget-funds-plan.md 3b). The totals are
 // open to every member; who paid what is the owner's, and each person's own.
 export function ContributionsCard({
   summary,
@@ -416,6 +429,153 @@ export function ContributionsCard({
             ))}
           </ul>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Asking the community's budget for what an event's own ask and income don't
+// cover (docs/plans/archive/budget-funds-plan.md D9). The request is a proposal the
+// community backs, and the people coming to the event count as behind it, so a
+// request a well-attended event can cover on its own reaches the community
+// budget's holder without anyone having to be asked.
+export function FundingCard({
+  outlook,
+  isHolder,
+  cycleScope,
+  budgetCycleId,
+}: {
+  outlook: AllocationOutlook;
+  isHolder: boolean;
+  cycleScope: string;
+  budgetCycleId: string;
+}) {
+  if (!isHolder && !outlook.open && !outlook.latest) return null;
+  const people = (n: number) => `${n} ${n === 1 ? "person" : "people"}`;
+  return (
+    <div className={`mt-4 ${CARD}`}>
+      <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Funding from the community&rsquo;s budget</h3>
+
+      {isHolder && (
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+          Whatever the ask and the income don&rsquo;t cover can be requested from the community&rsquo;s budget. It&rsquo;s a proposal the community backs, and
+          everyone coming to the event counts as behind it.
+        </p>
+      )}
+
+      {outlook.open && (
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
+          A request for <span className="font-semibold">{formatAmount(outlook.open.proposal.totalAmount)}</span> is waiting for backing and a decision:{" "}
+          {people(outlook.open.backing.backers)} behind it
+          {outlook.open.comingCount > 0 && <> ({outlook.open.comingCount} coming, {outlook.open.supporterCount} supporting)</>}
+          {outlook.open.backing.backedUpTo !== null && <>, backed up to {formatAmount(Math.min(outlook.open.backing.backedUpTo, outlook.open.proposal.totalAmount))}</>}.{" "}
+          <Link href="/budget/fund" className="text-[var(--accent-1)] underline">
+            See it in the community&rsquo;s budget
+          </Link>
+          .
+        </p>
+      )}
+
+      {outlook.latest && !outlook.open && (
+        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
+          {outlook.latest.status === "approved" ? (
+            <>
+              The last request was approved for <span className="font-semibold">{formatAmount(outlook.latest.approved ?? 0)}</span>
+              {(outlook.latest.approved ?? 0) < outlook.latest.requested && <> of {formatAmount(outlook.latest.requested)} asked, so the rest has to come from the ask or elsewhere</>}.
+            </>
+          ) : (
+            <>The last request for {formatAmount(outlook.latest.requested)} was declined{outlook.latest.note && <>: “{outlook.latest.note}”</>}.</>
+          )}
+        </p>
+      )}
+
+      {isHolder && (
+        <>
+          <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+            Plan {formatAmount(outlook.planTotal)}
+            {outlook.askedInTotal !== null && <> − asked of members {formatAmount(outlook.askedInTotal)}</>} − income {formatAmount(outlook.income)}
+            {outlook.allocated > 0 && <> − already allocated {formatAmount(outlook.allocated)}</>} ={" "}
+            <span className="font-semibold text-[var(--text)]">{formatAmount(outlook.shortfall)}</span> still uncovered.
+          </p>
+          {outlook.canRequest ? (
+            <form action={requestEventAllocationAction} className="mt-2">
+              <input type="hidden" name="budgetCycleId" value={budgetCycleId} />
+              <input type="hidden" name="cycleScope" value={cycleScope} />
+              <SubmitButton className={BUTTON_PRIMARY} pendingLabel="Requesting…">
+                Request {formatAmount(outlook.shortfall)} from the community&rsquo;s budget
+              </SubmitButton>
+            </form>
+          ) : (
+            !outlook.open && outlook.reason && <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">{outlook.reason}</p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// Closing an event's books (D7, D14). A surplus returns to the community's budget;
+// an overspend is never absorbed, and becomes a proposal the community decides.
+export function SettlementCard({
+  state,
+  cycleScope,
+  budgetCycleId,
+}: {
+  state: SettlementState;
+  cycleScope: string;
+  budgetCycleId: string;
+}) {
+  return (
+    <div className={`mt-6 ${CARD}`}>
+      <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Settling this budget</h3>
+
+      {state.settled && (
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--success)]">
+          Settled — this budget&rsquo;s books are closed
+          {state.unrecovered > 0 ? (
+            <span className="text-[var(--text)]">
+              , with an overspend of {formatAmount(state.unrecovered)} that the community&rsquo;s budget did not cover. It stays on the books as unrecovered.
+            </span>
+          ) : (
+            "."
+          )}{" "}
+          <span className="text-[var(--text-muted)]">Closing the event won&rsquo;t warn about it.</span>
+        </p>
+      )}
+
+      {!state.settled && state.awaiting && (
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
+          This event overspent by <span className="font-semibold">{formatAmount(state.awaiting.amount)}</span>. The community&rsquo;s budget has been asked to cover
+          it, and the books stay open until it decides.{" "}
+          <Link href="/budget/fund" className="text-[var(--accent-1)] underline">
+            See the request
+          </Link>
+          .
+        </p>
+      )}
+
+      {!state.settled && !state.awaiting && state.canSettle && (
+        <form action={settleEventBudgetAction} className="mt-1">
+          <input type="hidden" name="budgetCycleId" value={budgetCycleId} />
+          <input type="hidden" name="cycleScope" value={cycleScope} />
+          <p className="mb-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
+            Settling closes this budget&rsquo;s books: it stops taking proposals and entries, and closing the event won&rsquo;t warn about it.{" "}
+            {state.balance > 0
+              ? `It holds ${formatAmount(state.balance)}, which returns to the community's budget.`
+              : state.balance < 0
+                ? `It is overspent by ${formatAmount(-state.balance)}, so the community will be asked whether to cover it — the books stay open until it decides.`
+                : "Nothing is left over."}
+          </p>
+          <SubmitButton className={BUTTON_SECONDARY} pendingLabel="Settling…">
+            Settle this budget
+          </SubmitButton>
+        </form>
+      )}
+
+      {!state.settled && !state.awaiting && !state.canSettle && (
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+          Not settled yet. The budget&rsquo;s owner settles it, or, once the event has closed, the community budget&rsquo;s owner can.
+        </p>
       )}
     </div>
   );

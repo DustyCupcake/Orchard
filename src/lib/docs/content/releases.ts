@@ -30,6 +30,19 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-13",
+    title: "Events are funded by the community's budget, and settled when they close",
+    summary: "An event can ask the community's budget for what it is short, and closing an event settles its money.",
+    points: [
+      "If an event's plan costs more than members are asked for, its budget's owner can ask the community's budget for the difference. It's a proposal like any other, and the people coming to the event count as backing it, so a small gap needs no one else.",
+      "When it's approved the money moves at once. If it is approved for less than was asked, only that much moves, and the owner sees what is still left to cover.",
+      "When an event closes, its budget is settled. Whatever is left goes back to the community's budget.",
+      "If an event spent more than it had, nothing is quietly absorbed. A proposal asks the community whether to cover the overspend, and whatever isn't covered stays visible on the event's books with nothing more asked of anyone.",
+      "Closing an event whose budget isn't settled now warns you, and tells you what it still holds or owes.",
+    ],
+    source: "Budget funds events from the community's budget, and settling an event closes its books",
+  },
+  {
+    date: "2026-10-13",
     title: "Asking for and recording contributions",
     summary: "An event can say what each person is asked to give, and anyone can record what they have paid in.",
     points: [

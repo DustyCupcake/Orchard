@@ -1,17 +1,26 @@
 # Budget: events own their budgets, proposals replace rounds, and a community fund keeps the money between events
 
-**Status (2026-10-13):** **Phases 1 and 2, and steps 3a and 3b of Phase 3, are built** (events own
-their budgets; proposals replace rounds, ranking and confirmation; each budget keeps a ledger; events
-ask for and record contributions). See the dated notes under *Phase 1*, *Phase 2*, *3a* and *3b* for
-where they differ from the text below, and `CHANGELOG.md` for how each was verified. Step 3c
-(allocations, settlement and closing) is not started. This was a proposal agreed with the product owner and written up for
+**Status (2026-10-13): built, and archived.** All three phases shipped: events own their budgets
+(Phase 1); proposals replace rounds, ranking and confirmation (Phase 2); each budget keeps a ledger
+(3a), events ask for and record contributions (3b), and events are funded from the community's
+budget and settled when they close (3c). `CHANGELOG.md` records what shipped and how it was
+verified; the dated notes under each phase say where it differs from the text below. Three things
+in this document were **not** built: **D17** (tagging a line item to a task, so its holder informs
+the figure, with its needs-action row and edit right) has moved to `docs/roadmap.md`; the
+profile-aggregates idea was already parked there; and 3c's *After close* paragraph (a late receipt
+entered on the community's budget naming the event) is covered by the existing rule that an entry
+needs an open budget, with the community's holder recording it by hand. Departures in 3c: `settledAt`
+maps onto the existing `owner_marked_done_at` column rather than renaming it; the community's
+holder settling an event with no owner left rejects its pending entries with a note rather than
+refusing; and an open Budget module (no real holder) can settle only a budget that never recorded
+anything. The rest of this was a proposal agreed with the product owner and written up for
 them to edit before any code. Three phases, each shippable on its own: **Phase 1** makes an
 event's budget belong to the event (fixing the mismatch that prompted this); **Phase 2** replaces
 rounds, ranked voting and confirmation with always-open proposals that members back, for events and
 for the fund alike; **Phase 3** adds actual money: a ledger, expenses, contributions, allocations and
 settlement. Every question has been answered (2026-10-11 and 2026-10-12) and is folded into the text.
 
-**Supersedes** parts of [`../spec.md`](../spec.md):
+**Supersedes** parts of [`../spec.md`](../../spec.md):
 
 - the Budget section's *Starting one alongside a Cycle* paragraph, and the matching sentences under
   *Concurrent cycles & view scope*, which say a new Cycle starts with no Budget process and offers an

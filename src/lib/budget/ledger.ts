@@ -15,7 +15,7 @@ type EntryRow = typeof budgetEntry.$inferSelect;
 type BudgetCycleRow = Awaited<ReturnType<typeof getBudgetCycle>>;
 
 // The ledger: what actually happened, as opposed to what was planned
-// (docs/plans/budget-funds-plan.md D5). One table of entries per scope, an event
+// (docs/plans/archive/budget-funds-plan.md D5). One table of entries per scope, an event
 // or the community's own budget; a scope's balance is the sum of its *confirmed*
 // entries. Entries are never edited or deleted: a correction is an adjustment
 // that reverses the entry it undoes, so the original stays visible.
@@ -174,6 +174,9 @@ export async function recordEntry(actor: Member, budgetCycleId: string | null, i
     if (!proposal) throw new NotFoundError("Proposal not found");
     if (proposal.status !== "approved") {
       throw new ConflictError("An expense can only be tied to an approved proposal");
+    }
+    if (proposal.kind !== "spending") {
+      throw new AppError("An expense can only be tied to a spending proposal — a funding request has already moved its money");
     }
     if (proposal.cycleId !== scope.cycleId) {
       throw new AppError("That proposal belongs to a different budget");
@@ -379,6 +382,12 @@ export interface BudgetMoney {
   income: number;
   /** Money members paid in as contributions, net of anything reversed. */
   contributed: number;
+  /**
+   * Net money moved between this budget and the other scope: for an event, what the
+   * community's budget allocated to it (positive) less any surplus it returned
+   * (negative); for the community's own budget, the reverse.
+   */
+  transfers: number;
   /** Money recorded as spent, net of anything reversed. */
   spent: number;
   /** Entries waiting for the holder, or null for anyone who isn't one. */
@@ -402,6 +411,7 @@ export async function getBudgetMoney(actor: Member, budgetCycleId: string | null
   const balance = confirmed.reduce((sum, r) => sum + r.amount, 0);
   const income = confirmed.filter((r) => effectiveKind(r, byId) === "income").reduce((sum, r) => sum + r.amount, 0);
   const contributed = confirmed.filter((r) => effectiveKind(r, byId) === "contribution").reduce((sum, r) => sum + r.amount, 0);
+  const transfers = confirmed.filter((r) => r.kind === "allocation" || r.kind === "settlement").reduce((sum, r) => sum + r.amount, 0);
   // `0 -` rather than a leading minus: negating a sum of zero gives -0, which
   // reads as "-0" on the page.
   const spent = 0 - confirmed.filter((r) => effectiveKind(r, byId) === "expense").reduce((sum, r) => sum + r.amount, 0);
@@ -413,6 +423,9 @@ export async function getBudgetMoney(actor: Member, budgetCycleId: string | null
       and(
         eq(budgetProposal.communityId, actor.communityId),
         eq(budgetProposal.status, "approved"),
+        // Only spending proposals set money aside. A funding request moves its
+        // money the moment it is approved, so it is never a commitment.
+        eq(budgetProposal.kind, "spending"),
         scope.cycleId === null ? isNull(budgetProposal.cycleId) : eq(budgetProposal.cycleId, scope.cycleId),
       ),
     );
@@ -429,6 +442,7 @@ export async function getBudgetMoney(actor: Member, budgetCycleId: string | null
     balance,
     income,
     contributed,
+    transfers,
     spent,
     pendingCount: holder ? rows.filter((r) => r.status === "pending").length : null,
     proposals,

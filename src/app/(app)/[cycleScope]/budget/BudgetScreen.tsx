@@ -9,10 +9,12 @@ import { getCommunity, listBranches } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import {
   ensureEventBudget,
+  getAllocationOutlook,
   getBudgetMoney,
   getContributionSummary,
   getBudgetPledges,
   getEventPlan,
+  getSettlementState,
   isBudgetOwner,
   listBudgetEntries,
   listBudgetProposalViews,
@@ -25,13 +27,12 @@ import PageHeader from "@/components/ui/PageHeader";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import SelectField from "@/components/ui/SelectField";
 import {
-  markBudgetCycleDoneAction,
   setBudgetPledgeAction,
   submitBudgetProposalAction,
   updateBudgetCycleAction,
 } from "./actions";
 import { budgetByBranch, formatAmount, formatLineItemDetail } from "./format";
-import { ContributionsCard, EntryForm, EntryList, MoneyCard } from "./LedgerSection";
+import { ContributionsCard, EntryForm, EntryList, FundingCard, MoneyCard, SettlementCard } from "./LedgerSection";
 import LineItemsEditor from "./LineItemsEditor";
 import { budgetPath, COMMUNITY_BUDGET_SCOPE } from "./paths";
 import ProposalCard from "./ProposalCard";
@@ -62,7 +63,6 @@ export type BudgetSearchParams = {
   declined?: string;
   pledged?: string;
   cycleUpdated?: string;
-  markedDone?: string;
   recorded?: string;
   entryConfirmed?: string;
   entryRejected?: string;
@@ -70,6 +70,9 @@ export type BudgetSearchParams = {
   reimbursed?: string;
   proposalClosed?: string;
   askSet?: string;
+  requested?: string;
+  settled?: string;
+  settling?: string;
   // Opens a form in place of the page body — the header's primary action, the
   // same `?compose=` technique /schedule and /calendar use. "proposal" is
   // anyone's; "entry" is an expense (a member's) or an entry (the holder's).
@@ -84,7 +87,9 @@ const NOTICES: [keyof BudgetSearchParams, string][] = [
   ["declined", "Proposal declined."],
   ["pledged", "Your pledge was saved."],
   ["cycleUpdated", "Budget updated."],
-  ["markedDone", "Marked done — closing this event won’t warn about Budget."],
+  ["requested", "Request made — it's listed in the community's budget for people to back."],
+  ["settled", "Settled — this budget's books are closed."],
+  ["settling", "Settling has begun: this event overspent, so the community's budget has been asked to cover it. The books stay open until it decides."],
   ["recorded", "Entry saved."],
   ["entryConfirmed", "Entry confirmed — it counts now."],
   ["entryRejected", "Entry rejected."],
@@ -94,7 +99,7 @@ const NOTICES: [keyof BudgetSearchParams, string][] = [
   ["askSet", "The ask was saved."],
 ];
 
-// See docs/spec.md's Budget and docs/plans/budget-funds-plan.md: proposals are
+// See docs/spec.md's Budget and docs/plans/archive/budget-funds-plan.md: proposals are
 // always open, in an event's budget and in the community's own; members back
 // them, and the holder of the budget approves up to what the backers cover. An
 // event's plan is its fixed costs plus what has been approved.
@@ -169,7 +174,7 @@ export default async function BudgetScreen({
   const eventClosed = resolution.kind === "resolved" && Boolean(resolution.cycle.closedAt);
   const takingPart = hasBudget && !finished && !eventClosed;
 
-  const [branches, proposalViews, plan, pledges, isHolder, allMembers, money, ledger, contributions] = await Promise.all([
+  const [branches, proposalViews, plan, pledges, isHolder, allMembers, money, ledger, contributions, outlook, settlement] = await Promise.all([
     moduleOn ? listBranches(viewing) : Promise.resolve([]),
     hasBudget ? listBudgetProposalViews(viewing, resolvedCycleId) : Promise.resolve([]),
     currentCycle ? getEventPlan(viewing, currentCycle.id) : Promise.resolve(null),
@@ -179,6 +184,8 @@ export default async function BudgetScreen({
     hasBudget ? getBudgetMoney(viewing, currentCycle?.id ?? null) : Promise.resolve(null),
     hasBudget ? listBudgetEntries(viewing, currentCycle?.id ?? null) : Promise.resolve(null),
     hasBudget ? getContributionSummary(viewing, currentCycle?.id ?? null) : Promise.resolve(null),
+    currentCycle ? getAllocationOutlook(viewing, currentCycle.id) : Promise.resolve(null),
+    currentCycle ? getSettlementState(viewing, currentCycle.id) : Promise.resolve(null),
   ]);
   // Money is the grant's holder's and nobody else's: `isHolder` above says who
   // may decide proposals (an open Budget module makes that everyone), while
@@ -195,7 +202,12 @@ export default async function BudgetScreen({
   // closed one was approved and still counts toward the plan: closing only
   // releases what was not spent.
   const settled = proposalViews.filter((v) => ["closed", "declined", "withdrawn"].includes(v.proposal.status));
-  const decidedInFavour = proposalViews.filter((v) => v.proposal.status === "approved" || v.proposal.status === "closed");
+  // Spending decided in favour. A funding request or overspend about an event
+  // moved money rather than planning spending, so it is not part of "approved so
+  // far" or the plan by branch.
+  const decidedInFavour = proposalViews.filter(
+    (v) => v.proposal.kind === "spending" && (v.proposal.status === "approved" || v.proposal.status === "closed"),
+  );
   const approvedTotal = decidedInFavour.reduce((sum, v) => sum + (v.proposal.approvedAmount ?? 0), 0);
 
   const fixedCosts = (currentCycle?.fixedCosts as BudgetLineItem[] | undefined) ?? [];
@@ -295,6 +307,7 @@ export default async function BudgetScreen({
       proposerName={memberNameById.get(v.proposal.submittedBy) ?? "—"}
       fromEarlierRound={isCommunityBudget && v.proposal.budgetCycleId !== null}
       spent={v.proposal.status === "approved" || v.proposal.status === "closed" ? spentFor(v.proposal.id) : undefined}
+      fundAvailable={isCommunityBudget ? money?.available : undefined}
       {...cardProps}
     />
   );
@@ -518,6 +531,10 @@ export default async function BudgetScreen({
 
               {money && <MoneyCard money={money} isCommunityBudget={isCommunityBudget} />}
 
+              {currentCycle && outlook && (
+                <FundingCard outlook={outlook} isHolder={ledgerHolder && !finished} cycleScope={cycleScope} budgetCycleId={currentCycle.id} />
+              )}
+
               {currentCycle && isHolder && !finished && (
                 <details className="mt-3">
                   <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
@@ -646,23 +663,8 @@ export default async function BudgetScreen({
                 </>
               )}
 
-              {currentCycle && isHolder && !currentCycle.ownerMarkedDoneAt && (
-                <form action={markBudgetCycleDoneAction} className="mt-6 border-t border-[var(--border)] pt-4">
-                  <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
-                  <input type="hidden" name="cycleScope" value={cycleScope} />
-                  <p className="mb-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                    When the plan is settled, mark the budget done.{finished ? "" : " It stops taking proposals and can’t be edited any more, and"}{" "}
-                    closing the event won&rsquo;t warn about it.
-                  </p>
-                  <button type="submit" className={BUTTON_SECONDARY}>
-                    Mark this budget done
-                  </button>
-                </form>
-              )}
-              {currentCycle?.ownerMarkedDoneAt && (
-                <p className="mt-6 text-[length:var(--text-body)] text-[var(--success)]">
-                  Marked done — closing this event won&rsquo;t warn about its Budget.
-                </p>
+              {currentCycle && settlement && (
+                <SettlementCard state={settlement} cycleScope={cycleScope} budgetCycleId={currentCycle.id} />
               )}
             </section>
           )}

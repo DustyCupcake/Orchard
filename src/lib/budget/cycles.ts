@@ -180,7 +180,7 @@ export async function listActiveBudgetCycles(actor: Member) {
     .orderBy(desc(budgetCycle.createdAt));
 }
 
-// An event's budget, made with the event (docs/plans/budget-funds-plan.md D1).
+// An event's budget, made with the event (docs/plans/archive/budget-funds-plan.md D1).
 // Idempotent: it returns the event's budget if it has one, creates it if the
 // event is open and the module is on, and otherwise returns null — a closed
 // event with no budget is not backfilled, and a community with Budget off has

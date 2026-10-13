@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { BudgetLineItem, BudgetProposalView } from "@/lib/budget";
 import { BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import SelectField from "@/components/ui/SelectField";
@@ -30,6 +31,7 @@ export default function ProposalCard({
   inEvent,
   fromEarlierRound,
   spent,
+  fundAvailable,
 }: {
   view: BudgetProposalView;
   cycleScope: string;
@@ -47,8 +49,11 @@ export default function ProposalCard({
   fromEarlierRound: boolean;
   /** What has been spent against it, once it is approved. */
   spent?: number;
+  /** What the community's budget has free, for the holder deciding a request that moves money out of it. */
+  fundAvailable?: number;
 }) {
-  const { proposal, backing, supporterCount, iSupport, supporters } = view;
+  const { proposal, backing, supporterCount, iSupport, supporters, comingCount, eventName } = view;
+  const isEventKind = proposal.kind !== "spending";
   const items = proposal.lineItems as BudgetLineItem[];
   const mine = proposal.submittedBy === viewerId;
   const isOpen = proposal.status === "open";
@@ -63,12 +68,24 @@ export default function ProposalCard({
           {branchName && <> · {branchName}</>} · {formatAmount(proposal.totalAmount)} asked
           {fromEarlierRound && <> · from an earlier round</>}
         </p>
+        {proposal.kind === "event_allocation" && <Tag tone="accent">Funding request</Tag>}
+        {proposal.kind === "event_deficit" && <Tag tone="warning">Overspend</Tag>}
         {proposal.status === "approved" && <Tag tone="success">Approved</Tag>}
         {proposal.status === "declined" && <Tag tone="danger">Declined</Tag>}
         {proposal.status === "closed" && <Tag tone="neutral">Closed</Tag>}
         {proposal.status === "withdrawn" && <Tag tone="neutral">Withdrawn</Tag>}
       </div>
-      <p className="mt-1 text-[length:var(--text-body)] font-medium text-[var(--text)]">{proposal.title}</p>
+      <p className="mt-1 text-[length:var(--text-body)] font-medium text-[var(--text)]">
+        {proposal.title}
+        {isEventKind && proposal.eventCycleId && (
+          <>
+            {" "}
+            <Link href={`/${proposal.eventCycleId}/budget`} className="text-[length:var(--text-meta)] font-normal text-[var(--accent-1)] hover:underline">
+              {eventName ?? "the event"}&rsquo;s budget
+            </Link>
+          </>
+        )}
+      </p>
       {proposal.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{proposal.description}</p>}
       <ul className="mt-1.5 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
         {items.map((it, i) => (
@@ -81,12 +98,13 @@ export default function ProposalCard({
 
       {proposal.status === "approved" && (
         <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
-          Approved for {formatAmount(proposal.approvedAmount ?? 0)}
+          {isEventKind ? "Approved and moved into the event's budget: " : "Approved for "}
+          {formatAmount(proposal.approvedAmount ?? 0)}
           {proposal.approvedAmount !== null && proposal.approvedAmount < proposal.totalAmount && <> of {formatAmount(proposal.totalAmount)} asked</>}.
           {proposal.decisionNote && <span className="text-[var(--text-muted)]"> “{proposal.decisionNote}”</span>}
         </p>
       )}
-      {(proposal.status === "approved" || proposal.status === "closed") && spent !== undefined && (
+      {(proposal.status === "approved" || proposal.status === "closed") && spent !== undefined && !isEventKind && (
         <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
           Spent {formatAmount(spent)} of {formatAmount(proposal.approvedAmount ?? 0)} approved
           {proposal.status === "closed" && <span className="text-[var(--text-muted)]"> — closed, so what was left is free again</span>}
@@ -95,7 +113,7 @@ export default function ProposalCard({
           )}
         </p>
       )}
-      {proposal.status === "approved" && isHolder && (
+      {proposal.status === "approved" && isHolder && !isEventKind && (
         <form action={closeBudgetProposalAction} className="mt-2">
           <input type="hidden" name="proposalId" value={proposal.id} />
           <input type="hidden" name="cycleScope" value={cycleScope} />
@@ -112,6 +130,13 @@ export default function ProposalCard({
         <div className="mt-2 border-t border-[var(--border)] pt-2">
           <p className="text-[length:var(--text-body)] text-[var(--text)]">
             {people(backing.backers)} behind this
+            {isEventKind && (
+              <span className="text-[var(--text-muted)]">
+                {" "}
+                (the proposer{comingCount > 0 ? `, ${comingCount} coming to the event` : ""}
+                {supporterCount > 0 ? `, ${supporterCount} supporting` : ""})
+              </span>
+            )}
             {backing.backedUpTo !== null ? (
               <>
                 {" "}
@@ -161,7 +186,8 @@ export default function ProposalCard({
                 <input type="hidden" name="cycleScope" value={cycleScope} />
                 <label className="flex flex-col gap-1">
                   <span className={LABEL}>
-                    Approve for{backing.backedUpTo !== null && backing.backedUpTo < proposal.totalAmount ? " (the most that is backed so far)" : ""}
+                    {isEventKind ? "Approve and move the money for" : "Approve for"}
+                    {backing.backedUpTo !== null && backing.backedUpTo < proposal.totalAmount ? " (the most that is backed so far)" : ""}
                   </span>
                   <input
                     type="number"
@@ -176,8 +202,14 @@ export default function ProposalCard({
                   <span className={LABEL}>Note (optional)</span>
                   <input type="text" name="note" className={INPUT} />
                 </label>
+                {isEventKind && fundAvailable !== undefined && (
+                  <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                    This moves the money out of the community&rsquo;s budget now. It has {formatAmount(fundAvailable)} free
+                    {backing.approvable > fundAvailable && " — approving more than that is allowed, but leaves it overdrawn"}.
+                  </p>
+                )}
                 <SubmitButton className={`${BUTTON_PRIMARY} w-fit`} pendingLabel="Approving…">
-                  Approve
+                  {isEventKind ? "Approve and move the money" : "Approve"}
                 </SubmitButton>
               </form>
               <form action={declineBudgetProposalAction} className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
@@ -194,7 +226,7 @@ export default function ProposalCard({
             </div>
           )}
 
-          {takingPart && mine && (
+          {takingPart && mine && !isEventKind && (
             <details className="mt-2">
               <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Edit</summary>
               <form action={updateBudgetProposalAction} className="mt-2 flex flex-col gap-2">

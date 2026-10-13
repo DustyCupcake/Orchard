@@ -6,7 +6,7 @@ import { INPUT, LABEL } from "@/components/ui/kit";
 // What each backer of a budget proposal stands behind, with the figure's
 // meaning worked out as it is typed: the right number depends on a community's
 // currency and scale, which the app does not know, so a bare input would be a
-// number chosen blind. See docs/plans/budget-funds-plan.md D12.
+// number chosen blind. See docs/plans/archive/budget-funds-plan.md D12.
 export default function PerBackerField({ defaultValue }: { defaultValue: number | null }) {
   const [raw, setRaw] = useState(defaultValue ? String(defaultValue) : "");
   const per = Number(raw);

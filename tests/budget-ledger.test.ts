@@ -14,7 +14,7 @@ import {
   getScopeBalance,
   listBudgetEntries,
   listBudgetNeedsAction,
-  markBudgetCycleDone,
+  settleEventBudget,
   markEntryReimbursed,
   recordEntry,
   rejectEntry,
@@ -175,7 +175,7 @@ describe("Recording an entry", () => {
 
   it("refuses once the budget is finished or the event is closed", async () => {
     const { alice, bob, event, budget } = await setUp();
-    await markBudgetCycleDone(alice, budget.id);
+    await settleEventBudget(alice, budget.id);
     await expect(recordEntry(bob, budget.id, expense(10))).rejects.toThrow(ConflictError);
 
     const other = await createCycle(alice, { source: "blank", name: "Harvest", confirmed: true });
@@ -320,9 +320,9 @@ describe("Deciding a claim", () => {
   it("will not let a budget be marked done while money is waiting", async () => {
     const { alice, bob, budget } = await setUp();
     const claim = await recordEntry(bob, budget.id, expense(10));
-    await expect(markBudgetCycleDone(alice, budget.id)).rejects.toThrow(/waiting/);
+    await expect(settleEventBudget(alice, budget.id)).rejects.toThrow(/waiting/);
     await rejectEntry(alice, claim.id);
-    expect((await markBudgetCycleDone(alice, budget.id)).status).toBe("confirmed");
+    expect((await settleEventBudget(alice, budget.id)).budget.status).toBe("confirmed");
   });
 });
 

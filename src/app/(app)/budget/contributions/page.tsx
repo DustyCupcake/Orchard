@@ -16,7 +16,7 @@ const STATUS_LABEL = { pending: "Waiting", confirmed: "Counted", rejected: "Reje
 
 // Everything the viewer has paid in, across events and the community's own
 // budget, grouped by what it was for — the one place those meet for a member
-// (docs/plans/budget-funds-plan.md 3b, D8). It is their own data and nobody
+// (docs/plans/archive/budget-funds-plan.md 3b, D8). It is their own data and nobody
 // else's: listMyContributions asks for entries about the viewer and cannot be
 // widened, so nothing on this page can show another member's payment.
 export default async function MyContributionsPage() {

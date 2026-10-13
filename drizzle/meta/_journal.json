@@ -673,6 +673,13 @@
       "when": 1791876124746,
       "tag": "0095_budget_contribution_ask",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1791877776013,
+      "tag": "0096_budget_allocation_settlement",
+      "breakpoints": true
     }
   ]
 }

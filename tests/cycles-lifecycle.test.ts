@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community, task, taskAssignment } from "@/db/schema";
 import { closeCycle, createCycle } from "@/lib/cycles";
-import { getBudgetCycleForCycle, markBudgetCycleDone } from "@/lib/budget";
+import { getBudgetCycleForCycle, settleEventBudget } from "@/lib/budget";
 import { claimTask } from "@/lib/tasks";
 import { grantPermission, createFixtures, resetDatabase } from "./helpers";
 import { setPermissionGrant } from "@/lib/permissions";
@@ -92,13 +92,13 @@ describe("closeCycle", () => {
 
     // Once the owner's marked it done, no warning needed even without
     // an override. (It no longer has to be taken through a vote first.)
-    await markBudgetCycleDone(alice, budgetCycleRow.id);
+    await settleEventBudget(alice, budgetCycleRow.id);
     const cyc2 = await createCycle(alice, { source: "blank", name: "2028 Season" });
     const ownerTask2 = await insertTask(testCommunity.id, branch.id, alice.id, { cycleId: cyc2.id });
     await setPermissionGrant(alice, "budget", ownerTask2.id);
     await claimTask(alice, ownerTask2.id);
     const budgetCycle2 = (await getBudgetCycleForCycle(alice, cyc2.id))!;
-    await markBudgetCycleDone(alice, budgetCycle2.id);
+    await settleEventBudget(alice, budgetCycle2.id);
     await expect(closeCycle(alice, cyc2.id)).resolves.toMatchObject({ closedAt: expect.any(Date) });
   });
 

@@ -18,7 +18,7 @@ import {
   isBudgetOwner,
   listActiveBudgetCycles,
   listBudgetProposalViews,
-  markBudgetCycleDone,
+  settleEventBudget,
   setBudgetPledge,
   setBudgetProposalSupport,
   submitBudgetProposal,
@@ -320,7 +320,7 @@ describe("Proposals in an event's budget", () => {
 
   it("refuses new proposals once the budget is marked done, and once the event is closed", async () => {
     const { alice, bob, budget } = await setUpEvent();
-    await markBudgetCycleDone(alice, budget.id);
+    await settleEventBudget(alice, budget.id);
     await expect(submitBudgetProposal(bob, budget.id, kettle)).rejects.toThrow(ConflictError);
 
     const other = await createCycle(alice, { source: "blank", name: "Harvest", confirmed: true });
@@ -486,7 +486,7 @@ describe("Supporting a proposal", () => {
   it("is refused in a finished budget", async () => {
     const { alice, bob, carol, budget } = await setUpEvent();
     const p = await submitBudgetProposal(bob, budget.id, kettle);
-    await markBudgetCycleDone(alice, budget.id);
+    await settleEventBudget(alice, budget.id);
     await expect(setBudgetProposalSupport(carol, p.id, true)).rejects.toThrow(ConflictError);
   });
 
@@ -572,7 +572,7 @@ describe("Deciding a proposal", () => {
   it("is refused in a finished budget", async () => {
     const { alice, bob, budget } = await setUpEvent();
     const p = await submitBudgetProposal(bob, budget.id, kettle);
-    await markBudgetCycleDone(alice, budget.id);
+    await settleEventBudget(alice, budget.id);
     await expect(approveBudgetProposal(alice, p.id)).rejects.toThrow(ConflictError);
   });
 
@@ -757,7 +757,7 @@ describe("Pledges", () => {
   it("refuse a negative figure, and a finished budget", async () => {
     const { alice, bob, budget } = await setUpEvent();
     await expect(setBudgetPledge(bob, budget.id, { amount: -5 })).rejects.toThrow();
-    await markBudgetCycleDone(alice, budget.id);
+    await settleEventBudget(alice, budget.id);
     await expect(setBudgetPledge(bob, budget.id, { amount: 10 })).rejects.toThrow(ConflictError);
   });
 });
@@ -832,34 +832,34 @@ describe("Budget owner authority", () => {
   });
 });
 
-describe("Marking a budget done", () => {
+describe("Settling a budget", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
   it("is the owner's alone", async () => {
     const { bob, budget } = await setUpEvent();
-    await expect(markBudgetCycleDone(bob, budget.id)).rejects.toThrow(ForbiddenError);
+    await expect(settleEventBudget(bob, budget.id)).rejects.toThrow(ForbiddenError);
   });
 
-  it("needs no vote first, and finishes the budget", async () => {
+  it("finishes the budget and closes its books, with no vote first", async () => {
     const { alice, budget } = await setUpEvent();
-    const done = await markBudgetCycleDone(alice, budget.id);
-    expect(done.ownerMarkedDoneAt).not.toBeNull();
+    const { budget: done } = await settleEventBudget(alice, budget.id);
+    expect(done.settledAt).not.toBeNull();
     expect(done.status).toBe("confirmed");
     expect(await listActiveBudgetCycles(alice)).toEqual([]);
   });
 
   it("cannot be done twice", async () => {
     const { alice, budget } = await setUpEvent();
-    await markBudgetCycleDone(alice, budget.id);
-    await expect(markBudgetCycleDone(alice, budget.id)).rejects.toThrow(ConflictError);
+    await settleEventBudget(alice, budget.id);
+    await expect(settleEventBudget(alice, budget.id)).rejects.toThrow(ConflictError);
   });
 
-  it("can still be done for a budget confirmed under the old rules", async () => {
+  it("can still be settled for a budget confirmed under the old rules", async () => {
     const { alice, budget } = await setUpEvent();
     await db.update(budgetCycle).set({ status: "confirmed" }).where(eq(budgetCycle.id, budget.id));
-    expect((await markBudgetCycleDone(alice, budget.id)).ownerMarkedDoneAt).not.toBeNull();
+    expect((await settleEventBudget(alice, budget.id)).budget.settledAt).not.toBeNull();
   });
 });
 
@@ -872,7 +872,7 @@ describe("Editing a budget's details", () => {
     const { alice, bob, budget } = await setUpEvent();
     await expect(updateBudgetCycle(bob, budget.id, { title: "Hijacked" })).rejects.toThrow(ForbiddenError);
 
-    await markBudgetCycleDone(alice, budget.id);
+    await settleEventBudget(alice, budget.id);
     await expect(updateBudgetCycle(alice, budget.id, { title: "Too late" })).rejects.toThrow(ConflictError);
   });
 

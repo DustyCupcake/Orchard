@@ -1,7 +1,7 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { budgetCycle, budgetEntry, budgetProposal, permissionGrant, task, taskAssignment } from "@/db/schema";
+import { budgetCycle, budgetEntry, budgetProposal, cycle, permissionGrant, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError } from "../errors";
 import { isModuleOpenToEveryone } from "../permissions";
@@ -76,7 +76,7 @@ export const updateBudgetCycleInput = z.object({
   proposalDeadline: z.string().datetime().nullable().optional(),
   // The ask: what each person is asked to contribute to this event, whole units.
   // null clears it. An average, not a bill, and it need not match what the plan
-  // implies (docs/plans/budget-funds-plan.md 3b).
+  // implies (docs/plans/archive/budget-funds-plan.md 3b).
   contributionPerMember: z.number().int().nonnegative().nullable().optional(),
 });
 export type UpdateBudgetCycleInput = z.infer<typeof updateBudgetCycleInput>;
@@ -119,40 +119,8 @@ export async function updateBudgetCycle(actor: Member, budgetCycleId: string, in
   return updated;
 }
 
-// The owner's small, deliberate "this budget is wrapped up" (Phase 65), which
-// lets closeCycle (src/lib/cycles/lifecycle.ts) skip its warning. It also
-// finishes the budget: no new proposals, no further edits. It used to require
-// the budget to have been confirmed through a vote first, which meant an event
-// that never used its budget had to be taken through one just to clear a
-// warning; with no ranking and no confirmation there is nothing to wait for,
-// so the owner can say it whenever it is true. Owner-gated, same authority as
-// everything else in this file. Phase 3 of docs/plans/budget-funds-plan.md
-// replaces this with settlement.
-export async function markBudgetCycleDone(actor: Member, budgetCycleId: string) {
-  const cycleRow = await getBudgetCycle(actor, budgetCycleId);
-  await requireBudgetOwner(actor, cycleRow);
-  if (cycleRow.ownerMarkedDoneAt) {
-    throw new ConflictError("This budget is already marked done");
-  }
-  // Money still waiting for a decision would be left unaccounted for: resolve it
-  // first, so what is recorded is what the budget finished with.
-  const waiting = await countPendingEntries(actor.communityId, cycleRow.cycleId);
-  if (waiting > 0) {
-    throw new ConflictError(
-      `${waiting} ${waiting === 1 ? "entry is" : "entries are"} still waiting for you to confirm or reject — resolve ${waiting === 1 ? "it" : "them"} first`,
-    );
-  }
-
-  const [updated] = await db
-    .update(budgetCycle)
-    .set({ ownerMarkedDoneAt: new Date(), status: "confirmed" })
-    .where(eq(budgetCycle.id, budgetCycleId))
-    .returning();
-  return updated;
-}
-
 // Entries waiting for the scope's holder, in one scope.
-async function countPendingEntries(communityId: string, cycleId: string | null) {
+export async function countPendingEntries(communityId: string, cycleId: string | null) {
   const rows = await db
     .select({ id: budgetEntry.id })
     .from(budgetEntry)
@@ -170,7 +138,7 @@ async function countPendingEntries(communityId: string, cycleId: string | null) 
 // open": an open module makes every member an owner for deciding proposals, but
 // money is confirmed only by a real holder (D13), so this is the question that
 // says whether money that is waiting has anyone to confirm it.
-async function scopeHasHolder(communityId: string, cycleId: string | null) {
+export async function scopeHasHolder(communityId: string, cycleId: string | null) {
   const [row] = await db
     .select({ id: permissionGrant.id })
     .from(permissionGrant)
@@ -199,8 +167,9 @@ export interface BudgetNeedsAction {
    * confirm_entries  — expenses and payments waiting for the owner to confirm.
    * no_holder        — money is waiting and nobody holds the budget to confirm it; shown to Admins, because
    *                    filling the task is platform work, and it gives them no sight of an amount.
+   * settle_budget    — an event has closed and its budget hasn't been settled.
    */
-  kind: "decide_proposals" | "confirm_entries" | "no_holder";
+  kind: "decide_proposals" | "confirm_entries" | "no_holder" | "settle_budget";
   /** How many are waiting. */
   count: number;
 }
@@ -258,6 +227,35 @@ export async function listBudgetNeedsAction(actor: Member): Promise<NeedsAction<
         }
       }
     }
+  }
+
+  // A closed event whose budget hasn't been settled: its books are open and
+  // nothing else will close them. Asked of the event's holder, or, when the
+  // event has none, of the community budget's holder, who can settle it then.
+  // An overspend already waiting on the community's decision is settling, not
+  // forgotten, so it isn't asked again.
+  const unsettled = await db
+    .select({ cycleId: budgetCycle.cycleId, title: budgetCycle.title })
+    .from(budgetCycle)
+    .innerJoin(cycle, eq(cycle.id, budgetCycle.cycleId))
+    .where(and(eq(budgetCycle.communityId, actor.communityId), isNull(budgetCycle.settledAt), isNotNull(cycle.closedAt)));
+  for (const row of unsettled) {
+    const waiting = await db
+      .select({ id: budgetProposal.id })
+      .from(budgetProposal)
+      .where(
+        and(
+          eq(budgetProposal.communityId, actor.communityId),
+          eq(budgetProposal.kind, "event_deficit"),
+          eq(budgetProposal.status, "open"),
+          eq(budgetProposal.eventCycleId, row.cycleId!),
+        ),
+      );
+    if (waiting.length > 0) continue;
+    const mine =
+      (await holdsBudgetGrant(actor, { cycleId: row.cycleId })) ||
+      ((await holdsBudgetGrant(actor, { cycleId: null })) && !(await scopeHasHolder(actor.communityId, row.cycleId)));
+    if (mine) personal.push({ scopeCycleId: row.cycleId, title: row.title, kind: "settle_budget", count: 1 });
   }
 
   return { personal, shared };

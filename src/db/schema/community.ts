@@ -228,7 +228,7 @@ export const community = pgTable("community", {
   // it) times this, and its scope's holder can approve it only up to that.
   // Null or 0 means no backing is required and the holder decides alone — the
   // default, because the right figure depends on a community's currency and
-  // scale, which the app doesn't know. docs/plans/budget-funds-plan.md D12.
+  // scale, which the app doesn't know. docs/plans/archive/budget-funds-plan.md D12.
   fundSupportPerBacker: integer("fund_support_per_backer"),
   engagementSoftFlagThreshold: integer("engagement_soft_flag_threshold").notNull().default(2),
   engagementPatternThreshold: integer("engagement_pattern_threshold").notNull().default(3),

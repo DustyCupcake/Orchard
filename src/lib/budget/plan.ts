@@ -14,7 +14,7 @@ import { requireEventTakingPart } from "./proposals";
 type Member = typeof memberTable.$inferSelect;
 
 // An event's plan is its fixed costs plus whatever has been approved
-// (docs/plans/budget-funds-plan.md D15). There is no ranking and no funded set:
+// (docs/plans/archive/budget-funds-plan.md D15). There is no ranking and no funded set:
 // what the event will cost is what has been decided, and the ask per member
 // follows from that total.
 

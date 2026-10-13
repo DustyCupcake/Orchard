@@ -13,7 +13,7 @@ import {
   listBudgetEntries,
   listBudgetNeedsAction,
   listMyContributions,
-  markBudgetCycleDone,
+  settleEventBudget,
   recordEntry,
   rejectEntry,
   reverseEntry,
@@ -141,7 +141,7 @@ describe("Recording a contribution", () => {
     await db.update(cycleTable).set({ closedAt: new Date() }).where(eq(cycleTable.id, other.id));
     await expect(recordEntry(bob, otherBudget.id, contribution(10))).rejects.toThrow(ConflictError);
 
-    await markBudgetCycleDone(alice, budget.id);
+    await settleEventBudget(alice, budget.id);
     await expect(recordEntry(bob, budget.id, contribution(10))).rejects.toThrow(ConflictError);
 
     await updateCommunity(alice, { modulesEnabled: [] });
@@ -223,7 +223,7 @@ describe("The ask", () => {
     const { alice, bob, budget } = await setUp();
     await expect(updateBudgetCycle(bob, budget.id, { contributionPerMember: 40 })).rejects.toThrow(ForbiddenError);
     await expect(updateBudgetCycle(alice, budget.id, { contributionPerMember: 40.5 } as never)).rejects.toThrow();
-    await markBudgetCycleDone(alice, budget.id);
+    await settleEventBudget(alice, budget.id);
     await expect(updateBudgetCycle(alice, budget.id, { contributionPerMember: 40 })).rejects.toThrow(ConflictError);
   });
 

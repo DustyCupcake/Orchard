@@ -12,13 +12,14 @@ import {
   confirmEntry,
   declineBudgetProposal,
   getBudgetCycle,
-  markBudgetCycleDone,
   markEntryReimbursed,
   recordEntry,
   recordEntryInput,
   rejectEntry,
+  requestEventAllocation,
   reverseEntry,
   setBudgetPledge,
+  settleEventBudget,
   setBudgetProposalSupport,
   submitBudgetProposal,
   submitBudgetProposalInput,
@@ -29,7 +30,7 @@ import {
   withdrawBudgetProposal,
 } from "@/lib/budget";
 import { AppError } from "@/lib/errors";
-import { budgetPath } from "./paths";
+import { budgetPath, COMMUNITY_BUDGET_SCOPE } from "./paths";
 
 // LineItemsEditor.tsx mirrors its row state into one hidden JSON
 // input — same "real <form>, client component only produces the
@@ -261,23 +262,45 @@ export async function setBudgetPledgeAction(formData: FormData) {
   redirect(`${budgetPath(cycleScope)}?pledged=1`);
 }
 
-// The owner's own small confirmation (docs/plans/development-plan.md's Phase
-// 65) — lets an Admin close this budget's event without the closeCycle
-// warning, and finishes the budget. Owner-gated, enforced inside
-// markBudgetCycleDone.
-export async function markBudgetCycleDoneAction(formData: FormData) {
+// Settling an event's budget closes its books: a surplus returns to the community's
+// budget, and an overspend opens a proposal the community decides (D7, D14). The
+// owner's, or once the event has closed the community budget's holder's,
+// enforced inside settleEventBudget.
+export async function settleEventBudgetAction(formData: FormData) {
   const actor = await requireMember();
   const budgetCycleId = String(formData.get("budgetCycleId"));
   const cycleScope = String(formData.get("cycleScope") ?? "active");
 
+  let outcome = "settled=1";
   try {
-    await markBudgetCycleDone(actor, budgetCycleId);
+    const result = await settleEventBudget(actor, budgetCycleId);
+    if (result.deficitProposal) outcome = "settling=1";
   } catch (err) {
     redirectWithError(cycleScope, err);
   }
 
   revalidatePath(budgetPath(cycleScope));
-  redirect(`${budgetPath(cycleScope)}?markedDone=1`);
+  revalidatePath(budgetPath(COMMUNITY_BUDGET_SCOPE));
+  redirect(`${budgetPath(cycleScope)}?${outcome}`);
+}
+
+// The event's owner asks the community's budget for the plan's shortfall, as a
+// proposal the community backs (D9). Owner-only, enforced inside
+// requestEventAllocation.
+export async function requestEventAllocationAction(formData: FormData) {
+  const actor = await requireMember();
+  const budgetCycleId = String(formData.get("budgetCycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+
+  try {
+    await requestEventAllocation(actor, budgetCycleId);
+  } catch (err) {
+    redirectWithError(cycleScope, err);
+  }
+
+  revalidatePath(budgetPath(cycleScope));
+  revalidatePath(budgetPath(COMMUNITY_BUDGET_SCOPE));
+  redirect(`${budgetPath(cycleScope)}?requested=1`);
 }
 
 // ---------------------------------------------------------------------------
