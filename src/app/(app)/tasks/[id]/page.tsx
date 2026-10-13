@@ -62,7 +62,7 @@ import { BranchChip, CapacityChip, CycleChip, EffortChip } from "@/components/ta
 import { listTaskQuestions } from "@/lib/input-rounds";
 import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
 import { resolveBackstopHolder } from "@/lib/backstop";
-import { getAccompaniedMemberId } from "@/lib/recruitment";
+import { getAccompaniedMemberId } from "@/lib/accompaniment";
 import { computeEngagementPattern } from "@/lib/engagement";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import { FlagIcon, QuestionIcon } from "@phosphor-icons/react/dist/ssr";

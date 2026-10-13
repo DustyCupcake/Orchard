@@ -629,4 +629,47 @@ describe("migrating a database that already has data", () => {
          or (table_name = 'member' and column_name = 'joined_via_invite_id')`;
     expect(cols).toHaveLength(0);
   });
+
+  // 0114 gives every accompaniment that already exists a row of its own. Until then the only
+  // record was the decision that made the task, so a row is made for each decision that has both
+  // a task and the member it is for; a finished task is an accompaniment already over, and a
+  // current holder is recorded as already announced so long-standing pairs are not emailed.
+  it("0114 carries existing accompaniments onto rows, and leaves the rest alone", async () => {
+    db = await createScratchDatabase();
+    await db.migrateBefore("0114_accompaniment");
+    const sql = db.sql;
+    const [communityId, alice, bob, dana, erin, frank, branchId, open, finished, unconverted, formId, r1, r2, r3] = Array.from({ length: 14 }, uuid);
+    await sql`insert into community (id, name) values (${communityId}, 'C')`;
+    await sql`insert into member (id, community_id, name) values (${alice}, ${communityId}, 'Alice'), (${bob}, ${communityId}, 'Bob'), (${dana}, ${communityId}, 'Dana'), (${erin}, ${communityId}, 'Erin'), (${frank}, ${communityId}, 'Frank')`;
+    await sql`insert into branch (id, community_id, name) values (${branchId}, ${communityId}, 'Seed')`;
+    await sql`insert into task (id, community_id, branch_id, title, effort, effort_magnitude, created_by, status) values
+      (${open}, ${communityId}, ${branchId}, 'Accompany new member', 'owns_a_thing', '{}'::jsonb, ${alice}, 'claimed'),
+      (${finished}, ${communityId}, ${branchId}, 'Accompany new member', 'owns_a_thing', '{}'::jsonb, ${alice}, 'done'),
+      (${unconverted}, ${communityId}, ${branchId}, 'Accompany new member', 'owns_a_thing', '{}'::jsonb, ${alice}, 'unclaimed')`;
+    await sql`insert into task_assignment (task_id, member_id) values (${open}, ${bob})`;
+    await sql`insert into form (id, community_id, title, created_by, fields) values (${formId}, ${communityId}, 'A', ${alice}, '[]'::jsonb)`;
+    await sql`insert into form_response (id, form_id, values) values (${r1}, ${formId}, '{}'::jsonb), (${r2}, ${formId}, '{}'::jsonb), (${r3}, ${formId}, '{}'::jsonb)`;
+    await sql`insert into recruitment_decision (form_response_id, rule_outcome, resolution, accompaniment_task_id, converted_member_id) values
+      (${r1}, 'proceed', 'accepted', ${open}, ${dana}),
+      (${r2}, 'proceed', 'accepted', ${finished}, ${erin}),
+      (${r3}, 'proceed', 'accepted', ${unconverted}, null)`;
+
+    await db.migrateRemaining();
+
+    const rows = await sql`select member_id, task_id, ended_at, announced_holder_id, ends_on - started_at as span from accompaniment order by member_id`;
+    // Frank has no decision, and the third decision never made a member: nothing is invented for either.
+    expect(rows).toHaveLength(2);
+    const of = (m: string) => rows.find((r) => r.member_id === m)!;
+    expect(of(dana)).toMatchObject({ task_id: open, ended_at: null, announced_holder_id: bob });
+    expect(of(erin)).toMatchObject({ task_id: finished, announced_holder_id: null });
+    expect(of(erin).ended_at).not.toBeNull();
+    expect(of(dana).span).toBe("90 days");
+    // A community that did nothing keeps what it always had.
+    const [c] = await sql`select accompaniment_enabled, accompaniment_tier_id, accompaniment_ends_after_days from community`;
+    expect(c).toMatchObject({ accompaniment_enabled: true, accompaniment_tier_id: null, accompaniment_ends_after_days: 90 });
+    // One open accompaniment per member, enforced.
+    await expect(
+      sql`insert into accompaniment (community_id, member_id, task_id, ends_on) values (${communityId}, ${dana}, ${open}, now())`,
+    ).rejects.toThrow();
+  });
 });

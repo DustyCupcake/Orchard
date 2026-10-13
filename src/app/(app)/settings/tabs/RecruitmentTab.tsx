@@ -1,7 +1,7 @@
 import { laneRuleOf, listEventLaneSets, listLanes } from "@/lib/recruitment/admission-lanes";
 import { describeLaneConsequence, laneRelevance } from "@/lib/recruitment/lane-rules";
 import { listMediationMembers } from "@/lib/recruitment/mediation";
-import type { community as communityTable, form as formTable } from "@/db/schema";
+import type { community as communityTable, form as formTable, tier as tierTable } from "@/db/schema";
 import { policyOf } from "@/lib/recruitment/evaluations";
 import { describeDecisionPolicy } from "@/lib/recruitment/decision-policy";
 import { SelectField, SettingsGroup, SettingsPanel, SettingsSection, TextAreaField, TextField, ToggleField } from "../ui";
@@ -11,6 +11,7 @@ import {
   updateRecruitmentDecisionPolicyAction,
   updateRecruitmentDoorsAction,
   updateRecruitmentCheckWindowAction,
+  updateAccompanimentSettingsAction,
 } from "../actions";
 import AdmissionLaneEditor from "../AdmissionLaneEditor";
 import DecisionPolicyEditor from "../DecisionPolicyEditor";
@@ -48,10 +49,12 @@ import DecisionPolicyEditor from "../DecisionPolicyEditor";
 export default async function RecruitmentTab({
   community,
   forms,
+  tiers,
   authorized,
 }: {
   community: typeof communityTable.$inferSelect;
   forms: (typeof formTable.$inferSelect)[];
+  tiers: (typeof tierTable.$inferSelect)[];
   authorized: boolean;
 }) {
   const laneRules = (await listLanes(community.id)).map(laneRuleOf);
@@ -298,6 +301,55 @@ export default async function RecruitmentTab({
               hint="Whether an interview can be scheduled."
             />
           )}
+        </SettingsGroup>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Accompaniment"
+        description="Someone who is there for a new member from the start: a person to ask questions of and to check in with. It is a task like any other, made when someone is admitted, and the new member is always told about it."
+      >
+        <SettingsGroup
+          action={updateAccompanimentSettingsAction}
+          submitLabel="Save accompaniment"
+          title="Does a new member get someone?"
+          stateLabel="Whether new members are accompanied, by whom, and for how long"
+          state={
+            community.accompanimentEnabled ? (
+              <>
+                New members are accompanied for {community.accompanimentEndsAfterDays} days.{" "}
+                {community.accompanimentTierId
+                  ? `Only ${tiers.find((t) => t.id === community.accompanimentTierId)?.name ?? "a tier that no longer exists"} can take it on.`
+                  : "Any member can take it on."}
+              </>
+            ) : (
+              "New members are not given someone to accompany them."
+            )
+          }
+          description="Changing this never touches an accompaniment already running; each one's end was fixed when it began."
+        >
+          <ToggleField
+            label="Accompany new members"
+            name="accompanimentEnabled"
+            defaultChecked={community.accompanimentEnabled}
+            hint="When someone is admitted, a task is made for a member to accompany them. People who were already members, and people added directly by an administrator, are not accompanied."
+          />
+          <SelectField
+            label="Who may accompany"
+            name="accompanimentTierId"
+            defaultValue={community.accompanimentTierId ?? ""}
+            options={[
+              { value: "", label: "— any member —" },
+              ...tiers.map((t) => ({ value: t.id, label: t.name })),
+            ]}
+            hint="Only members of this tier can take the task on."
+          />
+          <TextField
+            label="Lasts (days)"
+            name="accompanimentEndsAfterDays"
+            type="number"
+            defaultValue={community.accompanimentEndsAfterDays}
+            hint="Counted from when the person is admitted. It also ends sooner if the accompanier marks the task done."
+          />
         </SettingsGroup>
       </SettingsSection>
     </div>

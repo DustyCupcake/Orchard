@@ -8,6 +8,28 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## accompaniment is a thing of its own: made when a member is, told to the member, and theirs to say isn't working
+
+Migration **0114**. [`docs/plans/accompaniment-plan.md`](docs/plans/accompaniment-plan.md) §3 and §4.1, step 1 of §8. Written after comparing the original recruitment section of the v0.5 spec with what the funnel built: accompaniment existed, but only as a side effect of a decision, and **the new member was never told**.
+
+**A row of its own** (`accompaniment`: the member, the task, `started_at`, `ends_on`, `ended_at`, plus when the member asked for someone else and whom they were last told). It used to be readable only through `recruitment_decision.accompaniment_task_id`, which meant it said nothing when a member was admitted by a route with no decision and returned nothing when no member had been converted. Who is accompanying is not stored: it is whoever holds the task, read live, so a release or a hand-over cannot leave the row disagreeing with the task. One open row per member, enforced by a partial unique index. The decision keeps its pointer to the task, for the pages that still read it.
+
+**Made where a member is made.** `admitArrival` creates it (`ensureAccompaniment`), after commit and without ever undoing the admission, so the support shortcut, a community check that ran its course, an invite that admits at once and a decision all behave alike. The task is **"Accompany <name>"** and carries no application id. Only for a member the admission actually *created*: someone who turns out to be a member already is linked, not accompanied. **A person accepted but waiting for a place in a full event is accompanied once they are admitted**, not before: the task used to be made while they were still not a member, with a description saying so; that case is gone, and the one test that pinned it now pins the opposite. The task needs a creator, so the author is whoever holds recruitment, then the person who invited them, then the first who reported on them; nobody to be is reported (the hub already says so), not guessed.
+
+**Settings** (Recruitment → Accompaniment): whether new members are accompanied (on by default, which is what the platform always did), which tier may take it (the task is made with the ordinary tier requirement, no rule of its own; a tier from another community is refused), and how long it lasts (90 days). Changing any of them never touches one already running, because each one's end was computed when it began.
+
+**The new member always knows.** The acceptance email says that someone will be named and what that means; the first-login screen says the same; and the dashboard has a card, *Your accompanier*, that says someone will be named soon and then names them, with the end date and **Ask for someone else**. Asking releases the task with a plain note ("it is nobody's fault, it is just about the fit"), keeps the accompaniment open, and logs nothing against anyone; it is refused with a sentence if nobody has taken it on yet, because there is nobody to change. When someone takes the task on, the job emails the member once, saying who, and again only if it changes hands. A finished accompaniment leaves a thank-you for two weeks and then no card at all.
+
+**Ending.** At `ends_on`, or when the accompanier marks the task done (either is enough, so the two never disagree), the accompaniment is over: the task is closed and the accompanier's visibility into the member's engagement record stops. A scheduled job (`accompaniment`, every five minutes) closes what has run out, notices a task finished by hand, and sends the "who" email; it looks at what is true now rather than at what happened since last time, so it is safe to run as often as you like. `getAccompaniedMemberId` moved with it and reads the table.
+
+**Migration.** Every accompaniment that already exists gets a row (one per decision that has both a task and the member it is for), over the default ninety days from the task's own start; a task already done is an accompaniment already over, and a current holder is recorded as already announced so long-standing pairs are not emailed. Populated-database test in `tests/migrations.test.ts`.
+
+**Also fixed here.** The branch's migration journal times, after the merge with main, kept their original spacing on top of main's last and ran about two days ahead of the clock, so a migration generated today would have been skipped by any database that had already run them (drizzle's migrator only runs entries newer than the last it applied). They now follow main's last one minute apart. The new populated-database test is what caught it.
+
+**Not yet, by plan:** suggestions from everyone with a reason (§3.4), check-ins as milestones (§5), what the member chooses to share with their accompanier (§4.2 to §4.4), and the inviter's seat at the interview (§6).
+
+Tests: `accompaniment.test.ts` (new, 12) and a populated-database case for 0114; whole suite 2,328 passing against a real Postgres.
+
 ## the clean-up: the legacy intro call, the lapsing subscription and the old columns are gone
 
 Migration **0113**. [`docs/plans/admission-flow.md`](docs/plans/admission-flow.md) §7 and §8 step 8 (second half). Nothing here changes what a person or a community sees; it removes what the funnel replaced, so there is one way to do each thing.

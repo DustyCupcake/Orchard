@@ -7,6 +7,7 @@ import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import { respondToNomination, respondToNominationInput } from "@/lib/tasks";
 import { completeOnboarding } from "@/lib/onboarding";
+import { askForSomeoneElse } from "@/lib/accompaniment";
 import { answerProfileQuestion, getProfileQuestion, listProfileQuestionsByIds } from "@/lib/profile-questions";
 import { fieldValueFromFormData, toFieldShape } from "@/lib/field-shape";
 import { listOutstandingQuestions } from "@/lib/profile-questions/answers";
@@ -211,6 +212,19 @@ export async function decideTierRequestAction(formData: FormData) {
   const decision = String(formData.get("decision") ?? "") === "approved" ? "approved" : "declined";
   try {
     await decideTierRequest(actor, String(formData.get("requestId") ?? ""), decision);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/dashboard");
+}
+
+// "Ask for someone else" on the new member's own card (docs/plans/accompaniment-plan.md §3.6): the
+// task goes back to unclaimed and nothing is held against anyone.
+export async function askForSomeoneElseAction() {
+  await assertNotViewingAs();
+  const actor = await requireRealMember();
+  try {
+    await askForSomeoneElse(actor);
   } catch (err) {
     redirectWithError(err);
   }
