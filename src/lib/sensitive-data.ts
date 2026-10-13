@@ -15,6 +15,7 @@ import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, NotFoundError } from "./errors";
 import { getGatingPurposesForQuestions, listMembersWithActiveConsent } from "./consent";
 import { recordSettingChanges } from "./settings/history";
+import { accompanierMaySee, listAccompaniedBy } from "./accompaniment-access";
 import {
   listGrantingTaskIds,
   PERMISSION_MODULE_KEYS,
@@ -62,6 +63,8 @@ export const createSensitiveFieldAccessRuleInput = z.object({
   unlockedByTaskId: z.string().uuid().nullable().optional(),
   unlockedByTierId: z.string().uuid().nullable().optional(),
   unlockedByGrantModuleKey: z.enum(PERMISSION_MODULE_KEYS).nullable().optional(),
+  // The fourth route (docs/plans/accompaniment-plan.md §4.4): whoever is accompanying the member who answered.
+  unlockedByAccompaniment: z.boolean().nullable().optional(),
 });
 export type CreateSensitiveFieldAccessRuleInput = z.infer<typeof createSensitiveFieldAccessRuleInput>;
 
@@ -74,11 +77,14 @@ export async function createSensitiveFieldAccessRule(
   // exist or none do.
   executor: DbOrTx = db,
 ) {
-  const chosen = [input.unlockedByTaskId, input.unlockedByTierId, input.unlockedByGrantModuleKey].filter(
-    Boolean,
-  ).length;
+  const chosen = [
+    input.unlockedByTaskId,
+    input.unlockedByTierId,
+    input.unlockedByGrantModuleKey,
+    input.unlockedByAccompaniment,
+  ].filter(Boolean).length;
   if (chosen !== 1) {
-    throw new AppError("Pick exactly one of a task, a tier, or a grant module to unlock this for");
+    throw new AppError("Pick exactly one of a task, a tier, a grant module, or a member's accompanier to unlock this for");
   }
 
   const [target] = await executor
@@ -136,6 +142,7 @@ export async function createSensitiveFieldAccessRule(
         unlockedByTaskId: input.unlockedByTaskId ?? null,
         unlockedByTierId: input.unlockedByTierId ?? null,
         unlockedByGrantModuleKey: input.unlockedByGrantModuleKey ?? null,
+        unlockedByAccompaniment: input.unlockedByAccompaniment ?? false,
       })
       .returning();
 
@@ -161,6 +168,9 @@ export async function createSensitiveFieldAccessRule(
         unlockedByTaskId: row.unlockedByTaskId,
         unlockedByTierId: row.unlockedByTierId,
         unlockedByGrantModuleKey: row.unlockedByGrantModuleKey,
+        // Only logged when it is the route, like the others: a rule that says "unlocked by accompaniment: no"
+        // would read as if something were off.
+        unlockedByAccompaniment: row.unlockedByAccompaniment || null,
       },
     });
     return row;
@@ -214,9 +224,13 @@ export function describeAudience(
     unlockedByGrantModuleKey: PermissionModuleKey | null;
     unlockedByTierId: string | null;
     unlockedByTaskId: string | null;
+    unlockedByAccompaniment?: boolean;
   },
   names: { tierName?: string | null; taskName?: string | null } = {},
 ): string {
+  // Said in a member's own terms, because the person agreeing to it is the one it is about: not a
+  // group they could look up, but whoever is there for them.
+  if (rule.unlockedByAccompaniment) return "whoever is accompanying you, while they are";
   if (rule.unlockedByGrantModuleKey) {
     const label = PERMISSION_MODULE_LABELS[rule.unlockedByGrantModuleKey];
     return `anyone holding a ${label ?? "permission"} grant`;
@@ -611,6 +625,7 @@ export async function deleteSensitiveFieldAccessRule(actor: Member, ruleId: stri
         unlockedByTaskId: null,
         unlockedByTierId: null,
         unlockedByGrantModuleKey: null,
+        unlockedByAccompaniment: null,
       },
     });
   });
@@ -727,9 +742,13 @@ export async function listReadableSensitiveQuestionIds(viewer: Member) {
       ),
     );
   const satisfied = await satisfiedRuleIds(viewer, rules);
+  // An accompaniment rule is about a relation, so what the viewer is in the audience *of* is a person,
+  // and the column exists for them as soon as they accompany anyone. Whose answers it shows is the
+  // per-owner test below, not this one.
+  const accompanies = rules.some((r) => r.unlockedByAccompaniment) ? (await listAccompaniedBy(viewer.id)).size > 0 : false;
   const readable = new Set<string>();
   for (const rule of rules) {
-    if (satisfied.has(rule.id)) readable.add(rule.questionId);
+    if (satisfied.has(rule.id) || (rule.unlockedByAccompaniment && accompanies)) readable.add(rule.questionId);
   }
   return readable;
 }
@@ -797,12 +816,16 @@ export async function resolveReadableQuestions(
       ),
     );
   const satisfied = await satisfiedRuleIds(viewer, rules);
+  // The relational route can only be answered knowing the owner: is this viewer who is accompanying
+  // *this* person, and has this person chosen to share their answers with them?
+  const asAccompanier = rules.some((r) => r.unlockedByAccompaniment) ? await accompanierMaySee(viewer.id, ownerId, "answers") : false;
   const candidateSet = new Set(candidateIds);
   const ownerAnswers = await answersByMemberForQuestions(ownerId, candidateSet);
   const gated = await consentedMemberIds(viewer.communityId, candidateIds);
 
   for (const rule of rules) {
-    if (!satisfied.has(rule.id) || !candidateSet.has(rule.questionId)) continue;
+    const reaches = satisfied.has(rule.id) || (rule.unlockedByAccompaniment && asAccompanier);
+    if (!reaches || !candidateSet.has(rule.questionId)) continue;
     const granted = gated.get(rule.questionId);
     if (granted && !granted.has(ownerId)) continue;
     const consented = await consentedAnswerIds(rule.id);
@@ -856,6 +879,10 @@ export async function resolveReadableAnswersForCommunity(viewer: Member): Promis
   // The audience, as ruleId -> the answers it has been agreed to read.
   const consentedByRule = new Map<string, Set<string>>();
   const satisfiedRules: (typeof sensitiveFieldAccessRule.$inferSelect)[] = [];
+  // The accompaniment rules, which no viewer satisfies on their own: they reach only the answers of the
+  // people this viewer accompanies and who have chosen to share answers with them.
+  const accompanimentRules: (typeof sensitiveFieldAccessRule.$inferSelect)[] = [];
+  const accompaniedWithAnswers = await listAccompaniedBy(viewer.id, { withAnswers: true });
   if (sensitiveIds.length > 0) {
     const rules = await db
       .select()
@@ -868,6 +895,11 @@ export async function resolveReadableAnswersForCommunity(viewer: Member): Promis
       );
     const satisfied = await satisfiedRuleIds(viewer, rules);
     for (const rule of rules) {
+      if (rule.unlockedByAccompaniment && accompaniedWithAnswers.size > 0) {
+        accompanimentRules.push(rule);
+        consentedByRule.set(rule.id, await consentedAnswerIds(rule.id));
+        continue;
+      }
       if (!satisfied.has(rule.id)) continue;
       satisfiedRules.push(rule);
       consentedByRule.set(rule.id, await consentedAnswerIds(rule.id));
@@ -905,7 +937,9 @@ export async function resolveReadableAnswersForCommunity(viewer: Member): Promis
     } else {
       permitted =
         answer.shareWithAudience &&
-        satisfiedRules.some((rule) => rule.questionId === answer.questionId && ruleReaches(rule, answer.id));
+        (satisfiedRules.some((rule) => rule.questionId === answer.questionId && ruleReaches(rule, answer.id)) ||
+          (accompaniedWithAnswers.has(answer.memberId) &&
+            accompanimentRules.some((rule) => rule.questionId === answer.questionId && ruleReaches(rule, answer.id))));
       if (permitted) {
         const granted = gated.get(answer.questionId);
         if (granted) permitted = granted.has(answer.memberId);

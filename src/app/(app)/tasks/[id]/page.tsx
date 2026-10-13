@@ -63,7 +63,7 @@ import { BranchChip, CapacityChip, CycleChip, EffortChip } from "@/components/ta
 import { listTaskQuestions } from "@/lib/input-rounds";
 import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
 import { resolveBackstopHolder } from "@/lib/backstop";
-import { getAccompaniedMemberId } from "@/lib/accompaniment";
+import { getAccompaniedMemberId, getAccompaniedView } from "@/lib/accompaniment";
 import { computeEngagementPattern } from "@/lib/engagement";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import { FlagIcon, QuestionIcon } from "@phosphor-icons/react/dist/ssr";
@@ -333,6 +333,7 @@ export default async function TaskDetailPage({
   // holds it — access follows the task, same as every other
   // coordination-facing surface here.
   const accompaniedMemberId = holdsTask ? await getAccompaniedMemberId(taskRow.id) : null;
+  const accompaniedView = holdsTask ? await getAccompaniedView(viewing, taskRow.id) : null;
   const accompanimentEngagement = accompaniedMemberId
     ? await computeEngagementPattern(accompaniedMemberId, viewing.communityId)
     : null;
@@ -1772,6 +1773,74 @@ export default async function TaskDetailPage({
               </Tag>
             )}
           </p>
+        </section>
+      )}
+
+      {accompaniedView && (
+        <section className="mt-8">
+          <SectionHeading>What {accompaniedView.name} has chosen to share</SectionHeading>
+          <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+            You always see how they&rsquo;re getting on with what they&rsquo;ve taken on (above). Anything more is theirs to
+            choose, only for you, and starts again from nothing if someone else takes over.
+          </p>
+          <dl className="mt-3 flex flex-col gap-3">
+            <div>
+              <dt className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Working style</dt>
+              <dd className="text-[length:var(--text-body)] text-[var(--text)]">
+                {accompaniedView.axes === null ? (
+                  <span className="text-[var(--text-muted)]">Not shared.</span>
+                ) : accompaniedView.axes.length === 0 ? (
+                  <span className="text-[var(--text-muted)]">Shared, but they haven&rsquo;t placed themselves on any scale yet.</span>
+                ) : (
+                  <ul className="mt-1 flex flex-col gap-0.5">
+                    {accompaniedView.axes.map((a) => (
+                      <li key={a.axis}>
+                        {a.axis}: <span className="text-[var(--text-muted)]">{a.position}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Contribution overview</dt>
+              <dd className="text-[length:var(--text-body)] text-[var(--text)]">
+                {accompaniedView.contribution === null ? (
+                  <span className="text-[var(--text-muted)]">Not shared.</span>
+                ) : accompaniedView.contribution.length === 0 ? (
+                  <span className="text-[var(--text-muted)]">Shared, and there is nothing yet.</span>
+                ) : (
+                  <ul className="mt-1 flex flex-col gap-0.5">
+                    {accompaniedView.contribution.map((c) => (
+                      <li key={c.category}>
+                        {c.category}: <span className="text-[var(--text-muted)]">{c.done} done, {c.inHand} in hand
+                        {c.ahead > 0 && `, ${c.ahead} ahead`}
+                        {c.shifts > 0 && `, ${c.shifts} shift${c.shifts === 1 ? "" : "s"} completed`}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </dd>
+            </div>
+            {accompaniedView.answers !== null && (
+              <div>
+                <dt className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Answers shared with you</dt>
+                <dd className="text-[length:var(--text-body)] text-[var(--text)]">
+                  {accompaniedView.answers.length === 0 ? (
+                    <span className="text-[var(--text-muted)]">Shared, and there is nothing they have said yes to yet.</span>
+                  ) : (
+                    <ul className="mt-1 flex flex-col gap-0.5">
+                      {accompaniedView.answers.map((a) => (
+                        <li key={a.question}>
+                          {a.question}: <span className="text-[var(--text-muted)]">{a.value}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </dd>
+              </div>
+            )}
+          </dl>
         </section>
       )}
 

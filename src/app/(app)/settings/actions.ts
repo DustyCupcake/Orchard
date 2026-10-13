@@ -1049,6 +1049,7 @@ function readAudienceFields(formData: FormData) {
   const taskId = String(formData.get("unlockedByTaskId") ?? "").trim();
   const moduleKey = String(formData.get("unlockedByGrantModuleKey") ?? "").trim();
   return {
+    unlockedByAccompaniment: formData.get("unlockedByAccompaniment") === "on" ? true : undefined,
     unlockedByTierId: tierId || undefined,
     unlockedByTaskId: taskId || undefined,
     unlockedByGrantModuleKey: (moduleKey || undefined) as CreateSensitiveFieldAccessRuleInput["unlockedByGrantModuleKey"],
@@ -1228,6 +1229,7 @@ export async function createSensitiveFieldAccessRuleAction(formData: FormData) {
       unlockedByTaskId: String(formData.get("unlockedByTaskId") ?? "").trim() || null,
       unlockedByTierId: String(formData.get("unlockedByTierId") ?? "").trim() || null,
       unlockedByGrantModuleKey: String(formData.get("unlockedByGrantModuleKey") ?? "").trim() || null,
+      unlockedByAccompaniment: formData.get("unlockedByAccompaniment") === "on" ? true : null,
     });
     await createSensitiveFieldAccessRule(actor, input);
   } catch (err) {

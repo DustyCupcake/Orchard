@@ -1,4 +1,4 @@
-import { pgTable, uuid } from "drizzle-orm/pg-core";
+import { boolean, pgTable, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
 import { profileQuestion } from "./profile-question";
 import { task } from "./task";
@@ -35,4 +35,9 @@ export const sensitiveFieldAccessRule = pgTable("sensitive_field_access_rule", {
   unlockedByTaskId: uuid("unlocked_by_task_id").references(() => task.id),
   unlockedByTierId: uuid("unlocked_by_tier_id").references(() => tier.id),
   unlockedByGrantModuleKey: permissionGrantModuleEnum("unlocked_by_grant_module_key"),
+  // The fourth route (docs/plans/accompaniment-plan.md §4.4): not a group but a *relation*. Whoever is
+  // accompanying the member who answered, and only while their accompaniment is open, only if that
+  // member has chosen to share with that person, and only for answers they agreed to under this
+  // rule. It can't be answered per viewer like the others, so the resolver asks it per owner.
+  unlockedByAccompaniment: boolean("unlocked_by_accompaniment").notNull().default(false),
 });

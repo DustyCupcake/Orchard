@@ -332,6 +332,7 @@ function requireValidShape(
     input.audience?.unlockedByTaskId,
     input.audience?.unlockedByTierId,
     input.audience?.unlockedByGrantModuleKey,
+    input.audience?.unlockedByAccompaniment,
   ].filter(Boolean).length;
   if (input.sensitive && routes === 0) {
     throw new AppError(

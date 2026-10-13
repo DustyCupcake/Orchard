@@ -179,7 +179,7 @@ export function validateDefaultQuestionTable(
 }
 
 function chosenRoute(audience: SeededQuestionAudience) {
-  return [audience.unlockedByTaskId, audience.unlockedByTierId, audience.unlockedByGrantModuleKey].filter(
+  return [audience.unlockedByTaskId, audience.unlockedByTierId, audience.unlockedByGrantModuleKey, audience.unlockedByAccompaniment].filter(
     Boolean,
   ).length;
 }
