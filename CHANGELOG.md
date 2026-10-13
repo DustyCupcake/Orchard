@@ -193,6 +193,16 @@ Migrations **0100** (rewritten) and **0101**. [`docs/plans/admission-flow.md`](d
 Tests: the consensus and pairing tests moved to `community-check.test.ts` and were rewritten for arrivals (a check arrival is not a member until the check ends); new `admission-lanes.test.ts` and `admission.test.ts`; the 0101 carry on a populated database. The suite is 1,933 tests green; lint, `tsc` and `next build` clean. Checked by hand against a scratch database in `next dev`: an application through `/apply` lands on its private page; the lane editor edits, validates live and saves; the invite form's consequence follows the marks; redeeming a direct invite signs the new member in and lands on `/welcome`. **Not checked in a browser:** the event page's lane chooser (type-checked and built, not rendered), email delivery (the console fallback only), and the community-check page for a person mid-check.
 
 **Left for the next steps:** doors and capacity at redemption and a waitlist (step 2); the support shortcut and the unified check body (3, 5); interview availability and the report quorum (4); the sign-in provider (7); dropping `joining_lane`, `joining_nomination`, `joining_support` and the nomination window setting (8).
+## CI runs the test suite in parallel, alongside the build, and does not repeat it when a passed PR merges
+
+A pull request's run took ~12 minutes (9 of them the suite on one runner, then lint, type-check and the build in series after it), and merging it ran all of that again on `main`.
+
+- **Sharded tests.** `.github/workflows/docker-build.yml`'s `test` job is a six-way matrix; each shard takes every sixth file of the sorted list and runs it through `scripts/test.sh` against its own Postgres (the suite truncates between files, so shards cannot share one). A new test file joins a shard with no workflow edit. `fail-fast` is off so one shard's failure doesn't hide another's.
+- **Build in parallel.** Lint, type-check and the image build (`build`) no longer wait for the tests; only publishing does. `publish` is a separate job, run for `main`, tags and manual runs, once the tests have passed and `build` has written the layer cache it then reads.
+- **No second run on merge.** When every shard passes on a pull request, `record` posts a commit status `tests-passed-for-tree` on its head whose description is the tree that was tested (the run checks out the PR merged into `main`). On a push to `main`, `verified` looks up the pull request(s) for the commit and skips the suite only if one carries that status for the commit's own tree. A squash merge of an up-to-date branch has exactly that tree; if `main` moved first, or the merge was not a squash, the trees differ and the suite runs. Tags and manual runs never skip. The status is best-effort: a fork's or Dependabot's token can't write it, and then the merge just runs the suite as before. Lint, type-check and the build still run on `main` regardless.
+- No branch protection names the old job names, so renaming `test` and `build` broke nothing.
+
+Not measured yet: shard balance (files are dealt round-robin, not by cost). The first runs' timings will say whether to deal them by duration instead.
 
 ## Budget funds events from the community's budget, and settling an event closes its books
 
