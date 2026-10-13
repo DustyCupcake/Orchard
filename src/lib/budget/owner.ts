@@ -1,10 +1,11 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { budgetCycle, budgetProposal, permissionGrant, task, taskAssignment } from "@/db/schema";
+import { budgetCycle, budgetEntry, budgetProposal, permissionGrant, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError } from "../errors";
 import { isModuleOpenToEveryone } from "../permissions";
+import { isAdmin } from "../settings/admins";
 import type { NeedsAction } from "../needs-action";
 import {
   getBudgetCycle,
@@ -119,6 +120,14 @@ export async function markBudgetCycleDone(actor: Member, budgetCycleId: string) 
   if (cycleRow.ownerMarkedDoneAt) {
     throw new ConflictError("This budget is already marked done");
   }
+  // Money still waiting for a decision would be left unaccounted for: resolve it
+  // first, so what is recorded is what the budget finished with.
+  const waiting = await countPendingEntries(actor.communityId, cycleRow.cycleId);
+  if (waiting > 0) {
+    throw new ConflictError(
+      `${waiting} ${waiting === 1 ? "entry is" : "entries are"} still waiting for you to confirm or reject — resolve ${waiting === 1 ? "it" : "them"} first`,
+    );
+  }
 
   const [updated] = await db
     .update(budgetCycle)
@@ -128,30 +137,76 @@ export async function markBudgetCycleDone(actor: Member, budgetCycleId: string) 
   return updated;
 }
 
+// Entries waiting for the scope's holder, in one scope.
+async function countPendingEntries(communityId: string, cycleId: string | null) {
+  const rows = await db
+    .select({ id: budgetEntry.id })
+    .from(budgetEntry)
+    .where(
+      and(
+        eq(budgetEntry.communityId, communityId),
+        eq(budgetEntry.status, "pending"),
+        cycleId === null ? isNull(budgetEntry.cycleId) : eq(budgetEntry.cycleId, cycleId),
+      ),
+    );
+  return rows.length;
+}
+
+// Whether anyone really holds this scope's budget grant. Not "is the module
+// open": an open module makes every member an owner for deciding proposals, but
+// money is confirmed only by a real holder (D13), so this is the question that
+// says whether money that is waiting has anyone to confirm it.
+async function scopeHasHolder(communityId: string, cycleId: string | null) {
+  const [row] = await db
+    .select({ id: permissionGrant.id })
+    .from(permissionGrant)
+    .innerJoin(task, eq(task.id, permissionGrant.taskId))
+    .innerJoin(taskAssignment, eq(taskAssignment.taskId, task.id))
+    .where(
+      and(
+        eq(permissionGrant.communityId, communityId),
+        eq(permissionGrant.moduleKey, "budget"),
+        eq(task.communityId, communityId),
+        eq(taskAssignment.isShadow, false),
+        cycleId === null ? isNull(task.cycleId) : eq(task.cycleId, cycleId),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
 export interface BudgetNeedsAction {
   /** The event this budget belongs to; null for the community's own. Where its link goes. */
   scopeCycleId: string | null;
   /** The budget's name, shown on the dashboard row. */
   title: string;
-  kind: "decide_proposals";
-  /** How many open proposals are waiting for a decision. */
+  /**
+   * decide_proposals — proposals for the owner to approve or decline.
+   * confirm_entries  — expenses and payments waiting for the owner to confirm.
+   * no_holder        — money is waiting and nobody holds the budget to confirm it; shown to Admins, because
+   *                    filling the task is platform work, and it gives them no sight of an amount.
+   */
+  kind: "decide_proposals" | "confirm_entries" | "no_holder";
+  /** How many are waiting. */
   count: number;
 }
 
 // Dashboard's own needs-action surface — see docs/plans/development-plan.md's
-// Phase 49. Who holds a budget has proposals to decide: every unfinished
-// event budget, and the community's own. Nothing for an ordinary member now
-// that "cast your vote" has gone with the ballot. Gracefully returns [] rather
-// than throwing for a non-owner, unlike requireBudgetOwner's own gate — this
-// is read for every member's Dashboard.
+// Phase 49. Who holds a budget has proposals to decide and money to confirm:
+// every unfinished event budget, and the community's own. Nothing for an
+// ordinary member now that "cast your vote" has gone with the ballot. Gracefully
+// returns [] rather than throwing for a non-owner, unlike requireBudgetOwner's
+// own gate — this is read for every member's Dashboard.
 //
 // Split the way every needs-action list is (D12 of
 // docs/plans/archive/open-permissions-plan.md): a real holder's items are
-// personal, and with Budget open every member qualifies without anyone being on
-// the hook, so those are shared.
+// personal, and with Budget open every member qualifies to decide proposals
+// without anyone being on the hook, so those are shared. Money is never shared:
+// only a real holder confirms it.
 export async function listBudgetNeedsAction(actor: Member): Promise<NeedsAction<BudgetNeedsAction>> {
   const personal: BudgetNeedsAction[] = [];
   const shared: BudgetNeedsAction[] = [];
+  const admin = await isAdmin(actor);
 
   const scopes: { scopeCycleId: string | null; title: string }[] = (await listActiveBudgetCycles(actor))
     .filter((row) => row.cycleId !== null)
@@ -159,27 +214,36 @@ export async function listBudgetNeedsAction(actor: Member): Promise<NeedsAction<
   scopes.push({ scopeCycleId: null, title: "Community budget" });
 
   for (const scope of scopes) {
-    if (!(await isBudgetOwner(actor, { cycleId: scope.scopeCycleId }))) continue;
-    const open = await db
-      .select({ id: budgetProposal.id })
-      .from(budgetProposal)
-      .where(
-        and(
-          eq(budgetProposal.communityId, actor.communityId),
-          eq(budgetProposal.status, "open"),
-          scope.scopeCycleId === null ? isNull(budgetProposal.cycleId) : eq(budgetProposal.cycleId, scope.scopeCycleId),
-        ),
-      );
-    if (open.length === 0) continue;
-    const item: BudgetNeedsAction = {
-      scopeCycleId: scope.scopeCycleId,
-      title: scope.title,
-      kind: "decide_proposals",
-      count: open.length,
-    };
-    // The distinction the open flag makes invisible from outside: being an
-    // owner by openness is not the same as holding the task.
-    (await holdsBudgetGrant(actor, { cycleId: scope.scopeCycleId }) ? personal : shared).push(item);
+    const holds = await holdsBudgetGrant(actor, { cycleId: scope.scopeCycleId });
+
+    if (holds || (await isBudgetOwner(actor, { cycleId: scope.scopeCycleId }))) {
+      const open = await db
+        .select({ id: budgetProposal.id })
+        .from(budgetProposal)
+        .where(
+          and(
+            eq(budgetProposal.communityId, actor.communityId),
+            eq(budgetProposal.status, "open"),
+            scope.scopeCycleId === null ? isNull(budgetProposal.cycleId) : eq(budgetProposal.cycleId, scope.scopeCycleId),
+          ),
+        );
+      if (open.length > 0) {
+        // The distinction the open flag makes invisible from outside: being an
+        // owner by openness is not the same as holding the task.
+        (holds ? personal : shared).push({ scopeCycleId: scope.scopeCycleId, title: scope.title, kind: "decide_proposals", count: open.length });
+      }
+    }
+
+    if (holds || admin) {
+      const waiting = await countPendingEntries(actor.communityId, scope.scopeCycleId);
+      if (waiting > 0) {
+        if (holds) {
+          personal.push({ scopeCycleId: scope.scopeCycleId, title: scope.title, kind: "confirm_entries", count: waiting });
+        } else if (!(await scopeHasHolder(actor.communityId, scope.scopeCycleId))) {
+          personal.push({ scopeCycleId: scope.scopeCycleId, title: scope.title, kind: "no_holder", count: waiting });
+        }
+      }
+    }
   }
 
   return { personal, shared };

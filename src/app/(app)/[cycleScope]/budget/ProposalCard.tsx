@@ -4,6 +4,7 @@ import SelectField from "@/components/ui/SelectField";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import {
   approveBudgetProposalAction,
+  closeBudgetProposalAction,
   declineBudgetProposalAction,
   supportBudgetProposalAction,
   updateBudgetProposalAction,
@@ -28,6 +29,7 @@ export default function ProposalCard({
   takingPart,
   inEvent,
   fromEarlierRound,
+  spent,
 }: {
   view: BudgetProposalView;
   cycleScope: string;
@@ -43,6 +45,8 @@ export default function ProposalCard({
   inEvent: boolean;
   /** A community proposal carried over from before there were no rounds. */
   fromEarlierRound: boolean;
+  /** What has been spent against it, once it is approved. */
+  spent?: number;
 }) {
   const { proposal, backing, supporterCount, iSupport, supporters } = view;
   const items = proposal.lineItems as BudgetLineItem[];
@@ -61,6 +65,7 @@ export default function ProposalCard({
         </p>
         {proposal.status === "approved" && <Tag tone="success">Approved</Tag>}
         {proposal.status === "declined" && <Tag tone="danger">Declined</Tag>}
+        {proposal.status === "closed" && <Tag tone="neutral">Closed</Tag>}
         {proposal.status === "withdrawn" && <Tag tone="neutral">Withdrawn</Tag>}
       </div>
       <p className="mt-1 text-[length:var(--text-body)] font-medium text-[var(--text)]">{proposal.title}</p>
@@ -80,6 +85,24 @@ export default function ProposalCard({
           {proposal.approvedAmount !== null && proposal.approvedAmount < proposal.totalAmount && <> of {formatAmount(proposal.totalAmount)} asked</>}.
           {proposal.decisionNote && <span className="text-[var(--text-muted)]"> “{proposal.decisionNote}”</span>}
         </p>
+      )}
+      {(proposal.status === "approved" || proposal.status === "closed") && spent !== undefined && (
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
+          Spent {formatAmount(spent)} of {formatAmount(proposal.approvedAmount ?? 0)} approved
+          {proposal.status === "closed" && <span className="text-[var(--text-muted)]"> — closed, so what was left is free again</span>}
+          {proposal.status === "approved" && spent > (proposal.approvedAmount ?? 0) && (
+            <span className="text-[var(--danger)]"> — over what was approved</span>
+          )}
+        </p>
+      )}
+      {proposal.status === "approved" && isHolder && (
+        <form action={closeBudgetProposalAction} className="mt-2">
+          <input type="hidden" name="proposalId" value={proposal.id} />
+          <input type="hidden" name="cycleScope" value={cycleScope} />
+          <button type="submit" className={BUTTON_SECONDARY}>
+            Close this proposal — it has been spent, or won&rsquo;t be
+          </button>
+        </form>
       )}
       {proposal.status === "declined" && proposal.decisionNote && (
         <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">Reason given: “{proposal.decisionNote}”</p>

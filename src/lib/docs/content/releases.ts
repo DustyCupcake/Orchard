@@ -29,6 +29,19 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-10-13",
+    title: "Record what was actually spent",
+    summary: "Budgets now keep track of money that really came in and went out, not just the plan.",
+    points: [
+      "If you paid for something out of your own pocket for an event, add it as an expense with a note about the receipt. The budget's owner confirms it before it counts, and marks it paid back once you've been reimbursed.",
+      "Everyone can see an event's totals: what came in, what was spent, the balance, and for each approved proposal how much of it has been spent. Only the owner and the person concerned can see an individual expense.",
+      "The community's own budget shows its balance, how much is set aside for spending that has been approved, and how much is free. Only its owner can record entries in it.",
+      "Entries are never changed or deleted. A mistake is corrected with an opposite entry, and the original stays in the list marked as reversed.",
+      "When an approved proposal has been spent, or won't be, its owner can close it, and whatever was left of it is free again.",
+    ],
+    source: "Budget keeps a ledger: expenses with receipt notes, the community's balance, and what approved spending still holds back",
+  },
+  {
     date: "2026-10-12",
     title: "Back the spending you want funded",
     summary: "Budgets no longer run in rounds or ask everyone to rank. Anyone proposes spending whenever they like, other members back it, and the budget's owner approves what has been backed.",

@@ -114,10 +114,17 @@ const NEEDS_ACTION_LABEL: Record<string, string> = {
   decision_pending: "call happened, decision still pending",
 };
 
-// A budget has one thing to wait on: proposals for its owner to decide. The row
-// says how many.
-function budgetLabel(count: number) {
-  return `${count} proposal${count === 1 ? "" : "s"} waiting for a decision`;
+// What a budget row says it is waiting on, and how many of them.
+function budgetLabel(kind: string, count: number) {
+  const n = (singular: string, plural: string) => `${count} ${count === 1 ? singular : plural}`;
+  switch (kind) {
+    case "confirm_entries":
+      return `${n("expense or payment", "expenses and payments")} waiting for you to confirm`;
+    case "no_holder":
+      return `${n("entry", "entries")} waiting, and nobody holds this budget to confirm ${count === 1 ? "it" : "them"}`;
+    default:
+      return `${n("proposal", "proposals")} waiting for a decision`;
+  }
 }
 
 const EVENT_STATUS_LABEL: Record<string, string> = {
@@ -183,7 +190,7 @@ async function ModuleNeedsActionSections({
               key={`${b.scopeCycleId ?? "community"}-${b.kind}-${i}`}
               href={b.scopeCycleId ? `/${b.scopeCycleId}/budget` : "/budget/fund"}
               title={b.title}
-              tag={<Tag tone="warning">{budgetLabel(b.count)}</Tag>}
+              tag={<Tag tone="warning">{budgetLabel(b.kind, b.count)}</Tag>}
             />
           ))}
         </FeedSection>

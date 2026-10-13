@@ -9,9 +9,11 @@ import { getCommunity, listBranches } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import {
   ensureEventBudget,
+  getBudgetMoney,
   getBudgetPledges,
   getEventPlan,
   isBudgetOwner,
+  listBudgetEntries,
   listBudgetProposalViews,
 } from "@/lib/budget";
 import type { BudgetLineItem } from "@/lib/budget";
@@ -28,6 +30,7 @@ import {
   updateBudgetCycleAction,
 } from "./actions";
 import { budgetByBranch, formatAmount, formatLineItemDetail } from "./format";
+import { EntryForm, EntryList, MoneyCard } from "./LedgerSection";
 import LineItemsEditor from "./LineItemsEditor";
 import { budgetPath, COMMUNITY_BUDGET_SCOPE } from "./paths";
 import ProposalCard from "./ProposalCard";
@@ -59,8 +62,15 @@ export type BudgetSearchParams = {
   pledged?: string;
   cycleUpdated?: string;
   markedDone?: string;
-  // Opens the proposal form in place of the page body — the header's primary
-  // action, the same `?compose=` technique /schedule and /calendar use.
+  recorded?: string;
+  entryConfirmed?: string;
+  entryRejected?: string;
+  entryReversed?: string;
+  reimbursed?: string;
+  proposalClosed?: string;
+  // Opens a form in place of the page body — the header's primary action, the
+  // same `?compose=` technique /schedule and /calendar use. "proposal" is
+  // anyone's; "entry" is an expense (a member's) or an entry (the holder's).
   compose?: string;
 };
 
@@ -73,6 +83,12 @@ const NOTICES: [keyof BudgetSearchParams, string][] = [
   ["pledged", "Your pledge was saved."],
   ["cycleUpdated", "Budget updated."],
   ["markedDone", "Marked done — closing this event won’t warn about Budget."],
+  ["recorded", "Entry saved."],
+  ["entryConfirmed", "Entry confirmed — it counts now."],
+  ["entryRejected", "Entry rejected."],
+  ["entryReversed", "Entry reversed — an opposite entry cancels it, and the original stays visible."],
+  ["reimbursed", "Marked as paid back."],
+  ["proposalClosed", "Proposal closed — what was left of it is free again."],
 ];
 
 // See docs/spec.md's Budget and docs/plans/budget-funds-plan.md: proposals are
@@ -150,27 +166,38 @@ export default async function BudgetScreen({
   const eventClosed = resolution.kind === "resolved" && Boolean(resolution.cycle.closedAt);
   const takingPart = hasBudget && !finished && !eventClosed;
 
-  const [branches, proposalViews, plan, pledges, isHolder, allMembers] = await Promise.all([
+  const [branches, proposalViews, plan, pledges, isHolder, allMembers, money, ledger] = await Promise.all([
     moduleOn ? listBranches(viewing) : Promise.resolve([]),
     hasBudget ? listBudgetProposalViews(viewing, resolvedCycleId) : Promise.resolve([]),
     currentCycle ? getEventPlan(viewing, currentCycle.id) : Promise.resolve(null),
     currentCycle ? getBudgetPledges(viewing, currentCycle.id) : Promise.resolve(null),
     hasBudget ? isBudgetOwner(viewing, { cycleId: resolvedCycleId }) : Promise.resolve(false),
     hasBudget ? db.select().from(member).where(eq(member.communityId, viewing.communityId)) : Promise.resolve([]),
+    hasBudget ? getBudgetMoney(viewing, currentCycle?.id ?? null) : Promise.resolve(null),
+    hasBudget ? listBudgetEntries(viewing, currentCycle?.id ?? null) : Promise.resolve(null),
   ]);
+  // Money is the grant's holder's and nobody else's: `isHolder` above says who
+  // may decide proposals (an open Budget module makes that everyone), while
+  // `ledgerHolder` says who actually holds the grant and so confirms, and sees,
+  // everyone's entries.
+  const ledgerHolder = ledger?.asHolder ?? false;
   const memberNameById = new Map(allMembers.map((m) => [m.id, m.name] as const));
   const branchNameById = new Map(branches.map((b) => [b.id, b.name] as const));
   const attendeeCount = plan?.attendeeCount ?? null;
 
   const open = proposalViews.filter((v) => v.proposal.status === "open");
   const approved = proposalViews.filter((v) => v.proposal.status === "approved");
-  const settled = proposalViews.filter((v) => v.proposal.status === "declined" || v.proposal.status === "withdrawn");
-  const approvedTotal = approved.reduce((sum, v) => sum + (v.proposal.approvedAmount ?? 0), 0);
+  // Closed, declined and withdrawn proposals stay on the page, folded away. A
+  // closed one was approved and still counts toward the plan: closing only
+  // releases what was not spent.
+  const settled = proposalViews.filter((v) => ["closed", "declined", "withdrawn"].includes(v.proposal.status));
+  const decidedInFavour = proposalViews.filter((v) => v.proposal.status === "approved" || v.proposal.status === "closed");
+  const approvedTotal = decidedInFavour.reduce((sum, v) => sum + (v.proposal.approvedAmount ?? 0), 0);
 
   const fixedCosts = (currentCycle?.fixedCosts as BudgetLineItem[] | undefined) ?? [];
   const branchTotals = budgetByBranch(
     fixedCosts,
-    approved.map((v) => ({
+    decidedInFavour.map((v) => ({
       branchId: v.proposal.branchId,
       lineItems: v.proposal.lineItems as BudgetLineItem[],
       totalAmount: v.proposal.totalAmount,
@@ -183,7 +210,20 @@ export default async function BudgetScreen({
   // and the owner still decide what is there.
   const deadlinePassed = Boolean(currentCycle?.proposalDeadline && new Date() > new Date(currentCycle.proposalDeadline));
   const canPropose = takingPart && !deadlinePassed;
-  const composing = compose === "proposal" && canPropose ? ("proposal" as const) : null;
+  // An event takes an expense from any member; the community's own budget takes
+  // entries only from its holder.
+  const canRecord = takingPart && (!isCommunityBudget || ledgerHolder);
+  const composing =
+    compose === "proposal" && canPropose
+      ? ("proposal" as const)
+      : compose === "entry" && canRecord
+        ? ("entry" as const)
+        : null;
+  const entryLabel = ledgerHolder ? "Record an entry" : "Add an expense";
+  const approvedProposals = approved.map((v) => ({ id: v.proposal.id, title: v.proposal.title }));
+  const proposalTitleById = new Map(approvedProposals.map((p) => [p.id, p.title] as const));
+  const hasOpeningBalance = (ledger?.entries ?? []).some((e) => e.entry.kind === "opening_balance");
+  const spentByProposal = new Map((money?.proposals ?? []).map((p) => [p.proposalId, p.spent] as const));
 
   const headerAction = composing ? undefined : (
     <>
@@ -197,6 +237,11 @@ export default async function BudgetScreen({
           Community budget
         </Link>
       )}
+      {canRecord && (
+        <Link href={`${backHref}?compose=entry`} className={BUTTON_SECONDARY}>
+          {entryLabel}
+        </Link>
+      )}
       {canPropose && (
         <Link href={`${backHref}?compose=proposal`} className={BUTTON_PRIMARY}>
           Propose spending
@@ -207,6 +252,12 @@ export default async function BudgetScreen({
 
   const headerDescription = !moduleOn
     ? undefined
+    : composing === "entry"
+      ? isCommunityBudget
+        ? "Money that has actually come in or gone out of the community's own budget"
+        : ledgerHolder
+          ? `Money that has actually come in or gone out of ${currentCycle?.title}`
+          : `An expense you paid for, for ${currentCycle?.title}`
     : composing
       ? isCommunityBudget
         ? "Proposing spending from the community's own budget"
@@ -226,12 +277,14 @@ export default async function BudgetScreen({
     takingPart,
     inEvent: !isCommunityBudget,
   };
+  const spentFor = (id: string) => spentByProposal.get(id) ?? 0;
   const renderCard = (v: (typeof proposalViews)[number]) => (
     <ProposalCard
       key={v.proposal.id}
       view={v}
       proposerName={memberNameById.get(v.proposal.submittedBy) ?? "—"}
       fromEarlierRound={isCommunityBudget && v.proposal.budgetCycleId !== null}
+      spent={v.proposal.status === "approved" || v.proposal.status === "closed" ? spentFor(v.proposal.id) : undefined}
       {...cardProps}
     />
   );
@@ -239,7 +292,7 @@ export default async function BudgetScreen({
   return (
     <main className="mx-auto max-w-[720px] px-6 py-10 md:px-12 md:py-14">
       <PageHeader
-        title={composing ? "Propose spending" : isCommunityBudget ? "Community budget" : "Budget"}
+        title={composing === "entry" ? entryLabel : composing ? "Propose spending" : isCommunityBudget ? "Community budget" : "Budget"}
         description={headerDescription}
         actions={headerAction}
       />
@@ -273,7 +326,28 @@ export default async function BudgetScreen({
             </p>
           )}
 
-          {composing && (
+          {composing === "entry" && (
+            <section>
+              <div className="flex items-center justify-end">
+                <Link href={backHref} className={BUTTON_GHOST}>
+                  Cancel
+                </Link>
+              </div>
+              <EntryForm
+                cycleScope={cycleScope}
+                budgetCycleId={currentCycle?.id ?? null}
+                isHolder={ledgerHolder}
+                isCommunityBudget={isCommunityBudget}
+                canEnterOpeningBalance={!hasOpeningBalance}
+                approvedProposals={approvedProposals}
+                members={allMembers.map((m) => ({ id: m.id, name: m.name }))}
+                today={new Date().toISOString().slice(0, 10)}
+                backHref={backHref}
+              />
+            </section>
+          )}
+
+          {composing === "proposal" && (
             <section>
               <div className="flex items-center justify-between">
                 <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
@@ -418,6 +492,8 @@ export default async function BudgetScreen({
                 </div>
               )}
 
+              {money && <MoneyCard money={money} isCommunityBudget={isCommunityBudget} />}
+
               {currentCycle && isHolder && !finished && (
                 <details className="mt-3">
                   <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
@@ -480,7 +556,7 @@ export default async function BudgetScreen({
                 </>
               )}
 
-              {branchTotals.size > 0 && approved.length + fixedCosts.length > 0 && (
+              {branchTotals.size > 0 && decidedInFavour.length + fixedCosts.length > 0 && (
                 <>
                   <SubHeading>Planned, by branch</SubHeading>
                   <ul className="mt-1 flex flex-col gap-0.5 text-[length:var(--text-body)] text-[var(--text)]">
@@ -495,7 +571,7 @@ export default async function BudgetScreen({
                 </>
               )}
 
-              {isCommunityBudget && approved.length > 0 && (
+              {isCommunityBudget && decidedInFavour.length > 0 && (
                 <p className="mt-4 text-[length:var(--text-body)] text-[var(--text)]">
                   Approved so far: <span className="font-semibold">{formatAmount(approvedTotal)}</span>
                 </p>
@@ -528,10 +604,22 @@ export default async function BudgetScreen({
               {settled.length > 0 && (
                 <details className="mt-6">
                   <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
-                    Declined and withdrawn ({settled.length})
+                    Closed, declined and withdrawn ({settled.length})
                   </summary>
                   <div className="mt-2 flex flex-col gap-2">{settled.map(renderCard)}</div>
                 </details>
+              )}
+
+              {ledger && (ledgerHolder || ledger.entries.length > 0 || (!isCommunityBudget && takingPart)) && (
+                <>
+                  <SubHeading>{ledgerHolder ? "Money in and out" : "Your expenses"}</SubHeading>
+                  <EntryList
+                    entries={ledger.entries}
+                    asHolder={ledgerHolder}
+                    cycleScope={cycleScope}
+                    proposalTitleById={proposalTitleById}
+                  />
+                </>
               )}
 
               {currentCycle && isHolder && !currentCycle.ownerMarkedDoneAt && (

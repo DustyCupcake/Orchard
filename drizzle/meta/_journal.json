@@ -659,6 +659,13 @@
       "when": 1791827618414,
       "tag": "0093_budget_backed_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1791875101258,
+      "tag": "0094_budget_ledger",
+      "breakpoints": true
     }
   ]
 }

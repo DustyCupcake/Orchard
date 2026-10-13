@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { date, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { branch } from "./branch";
 import { community } from "./community";
 import { cycle } from "./cycle";
@@ -210,3 +210,85 @@ export const budgetVote = pgTable("budget_vote", {
   contributionSignal: integer("contribution_signal"),
   submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// The ledger (docs/plans/budget-funds-plan.md Phase 3, D5)
+// ---------------------------------------------------------------------------
+//
+// Plans stay plans until someone enters what really happened. The ledger is one
+// table of entries scoped to an event or to the community's own budget; a
+// scope's balance is the sum of its *confirmed* entries. No double-entry
+// accounting, no currencies or cents (whole units, as everywhere in the
+// module), no payment integration: the app records what people say happened.
+// `contribution`, `allocation` and `settlement` are in the enum for the later
+// steps of the plan (member contributions, transfers between scopes, closing an
+// event's books); nothing writes them yet.
+
+export const budgetEntryKindEnum = pgEnum("budget_entry_kind", [
+  "opening_balance",
+  "expense",
+  "income",
+  "contribution",
+  "allocation",
+  "settlement",
+  "adjustment",
+]);
+
+export const budgetEntryStatusEnum = pgEnum("budget_entry_status", ["pending", "confirmed", "rejected"]);
+
+export const budgetEntry = pgTable(
+  "budget_entry",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => community.id),
+    // The scope: an event, or null for the community's own budget.
+    cycleId: uuid("cycle_id").references(() => cycle.id),
+    kind: budgetEntryKindEnum("kind").notNull(),
+    // Signed whole currency units: positive is money into this scope, negative
+    // is money out of it. An expense is stored negative.
+    amount: integer("amount").notNull(),
+    // Owner-recorded entries are born `confirmed`; a member's claim is born
+    // `pending` and waits for the scope's real holder (D13). A rejected entry
+    // keeps its row, so there is a trail.
+    status: budgetEntryStatusEnum("status").notNull().default("pending"),
+    // The member a contribution or expense concerns: whoever paid an expense
+    // out of their own pocket, or whoever paid money in.
+    memberId: uuid("member_id").references(() => member.id),
+    submittedBy: uuid("submitted_by")
+      .notNull()
+      .references(() => member.id),
+    confirmedBy: uuid("confirmed_by").references(() => member.id),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    // Why it was rejected, or what a reversal corrects.
+    decisionNote: text("decision_note"),
+    description: text("description").notNull(),
+    occurredOn: date("occurred_on").notNull(),
+    // Free text: a reference, a seller, an invoice number. No upload for now;
+    // this is where an attachment id goes later.
+    receiptNote: text("receipt_note"),
+    // The approved proposal an expense spends against, so the page can show
+    // planned against actual. A reversal carries the same one, so it nets out.
+    proposalId: uuid("proposal_id").references(() => budgetProposal.id),
+    // Set by the owner on an expense a member paid out of pocket, so the list
+    // can say who is still owed.
+    reimbursedAt: timestamp("reimbursed_at", { withTimezone: true }),
+    // Shared by the two halves of a transfer between scopes.
+    transferId: uuid("transfer_id"),
+    // Entries are never edited or deleted. A correction is an `adjustment`
+    // pointing at the entry it undoes.
+    reversesEntryId: uuid("reverses_entry_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // The community's own budget has exactly one opening balance, entered once.
+    uniqueIndex("budget_entry_one_opening_balance")
+      .on(t.communityId)
+      .where(sql`${t.kind} = 'opening_balance' and ${t.cycleId} is null and ${t.status} <> 'rejected'`),
+    // An entry is reversed at most once.
+    uniqueIndex("budget_entry_reversed_once")
+      .on(t.reversesEntryId)
+      .where(sql`${t.reversesEntryId} is not null`),
+  ],
+);

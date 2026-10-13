@@ -47,7 +47,9 @@ export async function getEventPlan(actor: Member, budgetCycleId: string): Promis
 
   const [totals] = await db
     .select({
-      approved: sql<number>`coalesce(sum(case when ${budgetProposal.status} = 'approved' then ${budgetProposal.approvedAmount} end), 0)::int`,
+      // A closed proposal was approved and is still part of the plan: closing it
+      // only releases what was not spent.
+      approved: sql<number>`coalesce(sum(case when ${budgetProposal.status} in ('approved', 'closed') then ${budgetProposal.approvedAmount} end), 0)::int`,
       pendingCount: sql<number>`count(*) filter (where ${budgetProposal.status} = 'open')::int`,
       pendingTotal: sql<number>`coalesce(sum(case when ${budgetProposal.status} = 'open' then ${budgetProposal.totalAmount} end), 0)::int`,
     })

@@ -1,9 +1,10 @@
 # Budget: events own their budgets, proposals replace rounds, and a community fund keeps the money between events
 
-**Status (2026-10-12):** **Phases 1 and 2 are built** (events own their budgets; proposals replace
-rounds, ranking and confirmation, for events and the community alike). See the dated notes under
-*Phase 1* and *Phase 2* for where they differ from the text below, and `CHANGELOG.md` for how each
-was verified. Phase 3 (the ledger, contributions, allocations and settlement) is not started. This was a proposal agreed with the product owner and written up for
+**Status (2026-10-13):** **Phases 1 and 2, and step 3a of Phase 3, are built** (events own their
+budgets; proposals replace rounds, ranking and confirmation; each budget keeps a ledger of expenses
+and income). See the dated notes under *Phase 1*, *Phase 2* and *3a* for where they differ from the
+text below, and `CHANGELOG.md` for how each was verified. Steps 3b (contributions) and 3c
+(allocations, settlement and closing) are not started. This was a proposal agreed with the product owner and written up for
 them to edit before any code. Three phases, each shippable on its own: **Phase 1** makes an
 event's budget belong to the event (fixing the mismatch that prompted this); **Phase 2** replaces
 rounds, ranked voting and confirmation with always-open proposals that members back, for events and
@@ -454,6 +455,22 @@ Three steps; each leaves the app consistent.
   became of them; the owner marks a member's out-of-pocket expense reimbursed.
 - The header action on an event's Budget page stays "Propose spending", with "Add an expense" beside
   it for members.
+
+**Built 2026-10-13, with these differences from the text above:**
+
+- *`decision_note` was added* to `budget_entry` (a rejection's reason, and what a reversal
+  corrects). The column list above did not have it and a bare rejection was unhelpful.
+- *The opening balance is entered once, but not necessarily first.* A unique index and a check enforce
+  "once"; making it first would have stranded a holder who recorded income before remembering.
+- *Mark done refuses while entries are pending.* The plan put this in settlement (3c); it came forward
+  because nothing else stopped a budget finishing with money nobody had decided. 3c's settlement
+  still needs the same rule and will reuse it.
+- *Closed proposals still count toward an event's plan.* Closing releases what was unspent; it does
+  not withdraw the approval. They fold away on the page with the declined and withdrawn ones.
+- *The reserved kinds* (`contribution`, `allocation`, `settlement`) are in the enum and written by
+  nothing yet.
+- *The "money waiting, nobody to confirm it" notice* (D13) is built here: the Admins are told how many
+  entries are waiting on a budget with no holder, and nothing else.
 
 ### 3b. Contributions
 

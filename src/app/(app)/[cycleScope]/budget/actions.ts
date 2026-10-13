@@ -8,9 +8,16 @@ import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import {
   approveBudgetProposal,
+  closeBudgetProposal,
+  confirmEntry,
   declineBudgetProposal,
   getBudgetCycle,
   markBudgetCycleDone,
+  markEntryReimbursed,
+  recordEntry,
+  recordEntryInput,
+  rejectEntry,
+  reverseEntry,
   setBudgetPledge,
   setBudgetProposalSupport,
   submitBudgetProposal,
@@ -271,4 +278,100 @@ export async function markBudgetCycleDoneAction(formData: FormData) {
 
   revalidatePath(budgetPath(cycleScope));
   redirect(`${budgetPath(cycleScope)}?markedDone=1`);
+}
+
+// ---------------------------------------------------------------------------
+// The ledger
+// ---------------------------------------------------------------------------
+
+// Records an entry: the holder's expense, income or (for the community's own
+// budget, once) opening balance, born confirmed; or a member's own expense,
+// born pending. An empty `budgetCycleId` is the community's own budget. A
+// refused submission lands back on the open form.
+export async function recordEntryAction(formData: FormData) {
+  const actor = await requireMember();
+  const budgetCycleId = String(formData.get("budgetCycleId") ?? "").trim() || null;
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+
+  try {
+    const amountRaw = String(formData.get("amount") ?? "").trim();
+    const input = recordEntryInput.parse({
+      kind: String(formData.get("kind") ?? "expense"),
+      amount: amountRaw === "" ? Number.NaN : Number(amountRaw),
+      description: String(formData.get("description") ?? ""),
+      occurredOn: String(formData.get("occurredOn") ?? ""),
+      receiptNote: String(formData.get("receiptNote") ?? "").trim() || null,
+      proposalId: String(formData.get("proposalId") ?? "").trim() || null,
+      memberId: String(formData.get("memberId") ?? "").trim() || null,
+    });
+    await recordEntry(actor, budgetCycleId, input);
+  } catch (err) {
+    redirectWithError(cycleScope, err, "entry");
+  }
+
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?recorded=1`);
+}
+
+// The budget's holder only, enforced inside each of these.
+export async function confirmEntryAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+  try {
+    await confirmEntry(actor, String(formData.get("entryId")));
+  } catch (err) {
+    redirectWithError(cycleScope, err);
+  }
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?entryConfirmed=1`);
+}
+
+export async function rejectEntryAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+  try {
+    await rejectEntry(actor, String(formData.get("entryId")), { note: String(formData.get("note") ?? "").trim() || null });
+  } catch (err) {
+    redirectWithError(cycleScope, err);
+  }
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?entryRejected=1`);
+}
+
+export async function reverseEntryAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+  try {
+    await reverseEntry(actor, String(formData.get("entryId")), { note: String(formData.get("note") ?? "") });
+  } catch (err) {
+    redirectWithError(cycleScope, err);
+  }
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?entryReversed=1`);
+}
+
+export async function reimburseEntryAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+  try {
+    await markEntryReimbursed(actor, String(formData.get("entryId")));
+  } catch (err) {
+    redirectWithError(cycleScope, err);
+  }
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?reimbursed=1`);
+}
+
+// An approved proposal has been spent or abandoned: close it, releasing what is
+// left. The budget's holder only, enforced inside closeBudgetProposal.
+export async function closeBudgetProposalAction(formData: FormData) {
+  const actor = await requireMember();
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+  try {
+    await closeBudgetProposal(actor, String(formData.get("proposalId")));
+  } catch (err) {
+    redirectWithError(cycleScope, err);
+  }
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?proposalClosed=1`);
 }

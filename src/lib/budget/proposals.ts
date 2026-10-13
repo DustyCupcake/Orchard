@@ -382,6 +382,31 @@ export async function declineBudgetProposal(actor: Member, proposalId: string, i
   return updated;
 }
 
+// The holder marks an approved proposal closed once it has been spent or
+// abandoned. What was approved and not spent is then no longer committed, so the
+// balance it was holding back is released. A closed proposal takes no more
+// expenses.
+export async function closeBudgetProposal(actor: Member, proposalId: string) {
+  const proposalRow = await getBudgetProposal(actor, proposalId);
+  await requireHolder(actor, proposalRow);
+  if (proposalRow.status !== "approved") {
+    throw new ConflictError("Only an approved proposal can be closed");
+  }
+  if (proposalRow.cycleId !== null) {
+    // An event's budget can be finished already; closing is still the owner's call.
+    await getBudgetCycle(actor, proposalRow.budgetCycleId!);
+  } else {
+    requireModuleEnabled(await getCommunity(actor), "budget");
+  }
+
+  const [updated] = await db
+    .update(budgetProposal)
+    .set({ status: "closed" })
+    .where(eq(budgetProposal.id, proposalId))
+    .returning();
+  return updated;
+}
+
 // ---------------------------------------------------------------------------
 // Reading
 // ---------------------------------------------------------------------------
