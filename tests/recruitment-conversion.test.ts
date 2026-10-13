@@ -33,6 +33,7 @@ import {
 import { findOrCreateMemberByEmail } from "@/lib/member";
 import { confirmSlot, submitAvailability } from "@/lib/scheduling-polls";
 import { createFixtures, grantPermission, resetDatabase, setLanes, withApplicationOnlyLanes, POLICY_TWO_OF_TWO } from "./helpers";
+import { listSuggestionsForTasks } from "@/lib/tasks/suggestions";
 
 // Phase 48's own resolved shape: a form whose fields are tagged as
 // the applicant's name/email, per src/lib/forms.ts's
@@ -439,7 +440,8 @@ describe("Recruitment: applicant→Member conversion", () => {
     expect(newMember.referredByMemberId).toBe(setupResult.alice.id);
 
     const [accompanimentTask] = await db.select().from(task).where(eq(task.id, decision!.accompanimentTaskId!));
-    expect(accompanimentTask.suggestedMemberId).toBe(setupResult.alice.id);
+    const suggested = (await listSuggestionsForTasks([accompanimentTask.id])).get(accompanimentTask.id) ?? [];
+    expect(suggested.find((p) => p.memberId === setupResult.alice.id)?.reasons).toContain("invited");
   });
 
   it("refuses an application to a form that can't identify a person, before storing anything", async () => {

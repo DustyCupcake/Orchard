@@ -672,4 +672,34 @@ describe("migrating a database that already has data", () => {
       sql`insert into accompaniment (community_id, member_id, task_id, ends_on) values (${communityId}, ${dana}, ${open}, now())`,
     ).rejects.toThrow();
   });
+
+  // 0115 replaces the single suggested-member column with a table that says why. What was there
+  // is carried with the nearest honest reason: an accompaniment task's suggestion was always the
+  // newcomer's inviter, and anything else is simply "suggested".
+  it("0115 carries each suggested member into the suggestion table with a reason, and drops the column", async () => {
+    db = await createScratchDatabase();
+    await db.migrateBefore("0115_task_suggestions");
+    const sql = db.sql;
+    const [communityId, alice, bob, dana, branchId, accompany, plain, bare] = Array.from({ length: 8 }, uuid);
+    await sql`insert into community (id, name) values (${communityId}, 'C')`;
+    await sql`insert into member (id, community_id, name) values (${alice}, ${communityId}, 'Alice'), (${bob}, ${communityId}, 'Bob'), (${dana}, ${communityId}, 'Dana')`;
+    await sql`insert into branch (id, community_id, name) values (${branchId}, ${communityId}, 'Seed')`;
+    await sql`insert into task (id, community_id, branch_id, title, effort, effort_magnitude, created_by, suggested_member_id) values
+      (${accompany}, ${communityId}, ${branchId}, 'Accompany Dana', 'owns_a_thing', '{}'::jsonb, ${alice}, ${alice}),
+      (${plain}, ${communityId}, ${branchId}, 'Water the trees', 'one_off', '{}'::jsonb, ${alice}, ${bob}),
+      (${bare}, ${communityId}, ${branchId}, 'Nobody suggested', 'one_off', '{}'::jsonb, ${alice}, null)`;
+    await sql`insert into accompaniment (community_id, member_id, task_id, ends_on) values (${communityId}, ${dana}, ${accompany}, now() + interval '90 days')`;
+
+    await db.migrateRemaining();
+
+    const rows = await sql`select task_id, member_id, reason from task_suggestion order by reason`;
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.task_id === accompany)).toMatchObject({ member_id: alice, reason: "invited" });
+    expect(rows.find((r) => r.task_id === plain)).toMatchObject({ member_id: bob, reason: "suggested" });
+    const cols = await sql`select column_name from information_schema.columns where table_name = 'task' and column_name = 'suggested_member_id'`;
+    expect(cols).toHaveLength(0);
+    // Deleting a task takes its suggestions with it.
+    await sql`delete from task where id = ${plain}`;
+    expect(await sql`select 1 from task_suggestion where task_id = ${plain}`).toHaveLength(0);
+  });
 });

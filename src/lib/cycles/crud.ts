@@ -24,6 +24,7 @@ import { AppError, ConflictError, ConfirmationRequiredError, ForbiddenError, Not
 import { memberHasTier } from "../eligibility";
 import { requireNotOnsiteLockedForCommunity } from "../onsite-mode";
 import { cloneSpatialPlanIntoNewCycle } from "../spatial-planning";
+import { addSuggestions } from "../tasks/suggestions";
 import { recomputeCalendarEventDatesForCycle } from "../calendar-events";
 import { normalizeTaskMilestonesForCycle, normalizeTaskMilestonesForPhase } from "../tasks/milestones";
 import { copyPermissionGrants, logPermissionClaim, type PermissionModuleKey } from "../permissions";
@@ -552,15 +553,18 @@ async function clonePhases(
 
 // A shadow doesn't have to be the one to remember to raise their hand
 // first next cycle — see docs/spec.md's "Carrying forward" (Shadow
-// slots & succession): a filled shadow slot on the source task
-// pre-fills the clone's suggested_member_id, reusing the exact field
-// the proposal flow already has for "I'd suggest this person," not a
-// new mechanism. A suggestion, not an assignment — the cloned task
-// still opens through the ordinary claim process. Only applies to this
-// clone-previous-cycle path, per spec, since a shadow's relevance
-// doesn't travel into a generic Task Pack.
+// slots & succession): everyone who shadowed the source task is
+// suggested for the clone, reusing the suggestion mechanism the proposal
+// flow already has for "I'd suggest this person," not a new one. A
+// suggestion, not an assignment — the cloned task still opens through
+// the ordinary claim process. Only applies to this clone-previous-cycle
+// path, per spec, since a shadow's relevance doesn't travel into a
+// generic Task Pack. Every shadow is carried, earliest first: a task can
+// have several (shadowing doesn't count toward capacity), and the
+// suggestion table has room for all of them where the old single column
+// had to pick one.
 async function shadowSuggestionsByTask(tx: Tx, taskIds: string[]) {
-  if (taskIds.length === 0) return new Map<string, string>();
+  if (taskIds.length === 0) return new Map<string, string[]>();
 
   const shadows = await tx
     .select({ taskId: taskAssignment.taskId, memberId: taskAssignment.memberId })
@@ -568,15 +572,9 @@ async function shadowSuggestionsByTask(tx: Tx, taskIds: string[]) {
     .where(and(inArray(taskAssignment.taskId, taskIds), eq(taskAssignment.isShadow, true)))
     .orderBy(taskAssignment.claimedAt);
 
-  const suggestionByTask = new Map<string, string>();
+  const suggestionByTask = new Map<string, string[]>();
   for (const s of shadows) {
-    // Multiple shadows on one task is possible (shadowing doesn't
-    // count toward capacity, so nothing caps it at one) — the earliest
-    // claimed wins, arbitrary but deterministic, since this is a single
-    // nullable field.
-    if (!suggestionByTask.has(s.taskId)) {
-      suggestionByTask.set(s.taskId, s.memberId);
-    }
+    suggestionByTask.set(s.taskId, [...(suggestionByTask.get(s.taskId) ?? []), s.memberId]);
   }
   return suggestionByTask;
 }
@@ -614,10 +612,11 @@ async function cloneTasks(
         endorsementThreshold: t.endorsementThreshold,
         critical: t.critical,
         createdBy: actor.id,
-        suggestedMemberId: shadowSuggestions.get(t.id) ?? null,
       })
       .returning();
     idMap.set(t.id, newTask.id);
+    const shadows = shadowSuggestions.get(t.id) ?? [];
+    await addSuggestions(tx, shadows.map((memberId) => ({ taskId: newTask.id, memberId, reason: "shadowed" as const })));
   }
   return idMap;
 }

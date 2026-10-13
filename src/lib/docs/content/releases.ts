@@ -30,6 +30,17 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-13",
+    title: "You might be asked to accompany someone new",
+    summary: "If you invited, vouched for or interviewed a new member, you may see a note asking if you'd like to accompany them.",
+    points: [
+      "When a new member joins and nobody is accompanying them yet, the people with a reason to be asked each see a note on their own dashboard that says why: you invited them, you vouched for them, or you said yes after their interview.",
+      "\"I'll accompany them\" takes the task on. \"Not me\" just hides the note for you: nobody is told, and nothing is held against you.",
+      "People coordinating can see everyone who was thought of, and why, when they're finding someone, and the person asking can start with them.",
+    ],
+    source: "suggestions say why: everyone with a reason is suggested for a new member's accompaniment, and a suggested person can say it isn't for them",
+  },
+  {
+    date: "2026-10-13",
     title: "New members always know who is accompanying them",
     summary: "Someone is named to accompany each new member, the new member is told, and they can ask for someone else.",
     points: [

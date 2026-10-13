@@ -1,6 +1,6 @@
 # Accompaniment, the inviter's seat at the interview, and the community's public face
 
-**Status:** step 1 of §8 is built (2026-10-13): the relation as a row, made at admission, the settings, the new member's card, the welcome text and the two emails, "ask for someone else", and the ending. Steps 2 to 8 are proposed, not built. Written 2026-10-11 after comparing the original recruitment section
+**Status:** steps 1 and 2 of §8 are built (2026-10-13). Step 2: the suggestion table with a reason per person, the dashboard prompt, and the coordination and task views. Step 1: the relation as a row, made at admission, the settings, the new member's card, the welcome text and the two emails, "ask for someone else", and the ending. Steps 3 to 8 are proposed, not built. Written 2026-10-11 after comparing the original recruitment section
 (the v0.5 platform spec) with what the admission funnel built. That spec is an early draft written for
 one community, so this plan keeps what it was *for* and drops what only made sense for that camp.
 
@@ -103,8 +103,8 @@ In Recruitment settings, one section, **Accompaniment**, shown only when some la
 Today `task.suggested_member_id` holds one person. Several people can have a reason, and the reason is
 the useful part. A new table replaces the column:
 
-`task_suggestion (task_id, member_id, reason, created_at)`, unique on (task, member), where `reason` is
-one of:
+`task_suggestion (task_id, member_id, reason, created_at, dismissed_at)`, unique on (task, member, reason) — one row per reason, so
+the inviter who also said yes is one person shown with both — where `reason` is one of:
 
 | Reason | Shown as | From |
 |---|---|---|
@@ -112,7 +112,8 @@ one of:
 | `invited` | "Invited them" | `inviterOf(arrival)` (also covers the old referrer) |
 | `supported` | "Vouched for them" | each `admission_support` row |
 | `proposed` | "Suggested when the task was proposed" | the existing proposal field |
-| `previous_holder` | "Held this last time" | the existing cycle-clone carry-forward |
+| `shadowed` | "Shadowed this last time" | the existing cycle-clone carry-forward (it was always a *shadow* that was carried, not the holder; built as such, and every shadow is carried now, not only the earliest) |
+| `suggested` | "Suggested" | a coordinator naming someone, and the carried-over value of an old suggestion with no known reason |
 
 Everything that writes or reads `suggested_member_id` moves over: task proposals and activation, cycle
 cloning, `tasks/crud.ts`'s narrow mutation, the task page, `coordination-dashboard.ts` and the
