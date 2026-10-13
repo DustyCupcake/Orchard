@@ -375,3 +375,22 @@ export async function closeBudgetProposalAction(formData: FormData) {
   revalidatePath(budgetPath(cycleScope));
   redirect(`${budgetPath(cycleScope)}?proposalClosed=1`);
 }
+
+// The owner sets what each person is asked to contribute to this event: a whole
+// number, or empty to clear it. An average, not a bill. Owner-only and only
+// while the budget is open, enforced inside updateBudgetCycle.
+export async function setContributionAskAction(formData: FormData) {
+  const actor = await requireMember();
+  const budgetCycleId = String(formData.get("budgetCycleId"));
+  const cycleScope = String(formData.get("cycleScope") ?? "active");
+
+  try {
+    const raw = String(formData.get("contributionPerMember") ?? "").trim();
+    await updateBudgetCycle(actor, budgetCycleId, { contributionPerMember: raw === "" ? null : Number(raw) });
+  } catch (err) {
+    redirectWithError(cycleScope, err);
+  }
+
+  revalidatePath(budgetPath(cycleScope));
+  redirect(`${budgetPath(cycleScope)}?askSet=1`);
+}

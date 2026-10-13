@@ -41,18 +41,22 @@ const isoDate = z
   .refine((d) => new Date(`${d}T00:00:00Z`).toISOString().startsWith(d), "That isn't a real date");
 
 export const recordEntryInput = z.object({
-  kind: z.enum(["opening_balance", "expense", "income"]),
-  // An expense or income is entered as a positive amount: the kind says which way
-  // the money went. An opening balance is whatever the balance was, which is
-  // normally positive and is allowed to be anything.
+  // `contribution` is money a *member* paid in, for the scope it is recorded in
+  // (an event, or the community's own budget); `income` is money from anywhere
+  // else (D11).
+  kind: z.enum(["opening_balance", "expense", "income", "contribution"]),
+  // An expense, income or contribution is entered as a positive amount: the kind
+  // says which way the money went. An opening balance is whatever the balance
+  // was, which is normally positive and is allowed to be anything.
   amount: z.number().int(),
-  description: z.string().trim().min(1, "Say what it was for").max(300),
+  // Required for everything but a contribution, which defaults to "Contribution".
+  description: z.string().trim().max(300),
   occurredOn: isoDate,
   receiptNote: z.string().trim().max(500).nullable().optional(),
   // The approved proposal an expense spends against.
   proposalId: z.string().uuid().nullable().optional(),
-  // Who paid an expense out of their own pocket. Only the owner can set it; a
-  // member's own claim is always about themselves.
+  // Who paid an expense out of their own pocket, or who paid a contribution in.
+  // Only the owner can set it; a member's own claim is always about themselves.
   memberId: z.string().uuid().nullable().optional(),
 });
 export type RecordEntryInput = z.infer<typeof recordEntryInput>;
@@ -91,11 +95,14 @@ function scopeCondition(communityId: string, cycleId: string | null) {
 // Who may record what:
 //
 //   the scope's holder   an opening balance (the community's own budget, once),
-//                        income, or an expense — born confirmed, since the person
-//                        who confirms is the person recording it.
-//   any other member     an expense on an open event's budget, about themselves:
-//                        they paid something out of pocket and are asking for it
-//                        to be counted and paid back. Born pending.
+//                        income, an expense, or a contribution a member paid in
+//                        — born confirmed, since the person who confirms is the
+//                        person recording it.
+//   any other member     an expense on an open event's budget, or a contribution
+//                        to an event or to the community's own budget, always
+//                        about themselves: they paid something out of pocket and
+//                        are asking for it to be counted and paid back, or they
+//                        paid money in and want it recorded. Born pending.
 //
 // With no holder, a member's claim waits: nobody can confirm it, and the Admins
 // are told it is waiting (see listBudgetNeedsAction). That is the plan's answer
@@ -110,12 +117,15 @@ export async function recordEntry(actor: Member, budgetCycleId: string | null, i
   const holder = await holdsBudgetGrant(actor, { cycleId: scope.cycleId });
 
   if (!holder) {
-    if (scope.cycleId === null) {
-      throw new ForbiddenError("Only the community budget's owner records entries in it");
+    if (scope.cycleId === null && parsed.kind !== "contribution") {
+      throw new ForbiddenError("Anyone can record a contribution they made to the community's budget; its other entries are the owner's");
     }
-    if (parsed.kind !== "expense") {
-      throw new ForbiddenError("You can add an expense you paid for; income and opening balances are recorded by the budget's owner");
+    if (scope.cycleId !== null && parsed.kind !== "expense" && parsed.kind !== "contribution") {
+      throw new ForbiddenError("You can add an expense you paid for, or a contribution you made; income and opening balances are recorded by the budget's owner");
     }
+  }
+  if (parsed.kind !== "contribution" && !parsed.description) {
+    throw new AppError("Say what it was for");
   }
 
   if (parsed.kind === "opening_balance") {
@@ -133,11 +143,14 @@ export async function recordEntry(actor: Member, budgetCycleId: string | null, i
     throw new AppError("Enter the amount as a positive number — whether it was spent or received is the kind of entry");
   }
 
-  // Whose pocket an expense came out of. A member's own claim is about them;
-  // the owner may name someone, or leave it as paid from the budget.
+  // Whose pocket an expense came out of, or who paid a contribution in. A
+  // member's own claim is about them; the owner may name someone, and must for a
+  // contribution, since a contribution is always somebody's.
   let memberId: string | null = null;
   if (!holder) {
     memberId = actor.id;
+  } else if (parsed.kind === "contribution" && !parsed.memberId) {
+    throw new AppError("Say who paid it");
   } else if (parsed.memberId) {
     const [m] = await db
       .select({ id: member.id })
@@ -146,8 +159,8 @@ export async function recordEntry(actor: Member, budgetCycleId: string | null, i
     if (!m) throw new NotFoundError("Member not found in your community");
     memberId = m.id;
   }
-  if (parsed.kind !== "expense" && memberId !== null) {
-    throw new AppError("Only an expense is paid out of a member's pocket");
+  if (parsed.kind !== "expense" && parsed.kind !== "contribution" && memberId !== null) {
+    throw new AppError("Only an expense or a contribution is about a member");
   }
 
   if (parsed.proposalId) {
@@ -180,7 +193,7 @@ export async function recordEntry(actor: Member, budgetCycleId: string | null, i
       submittedBy: actor.id,
       confirmedBy: holder ? actor.id : null,
       confirmedAt: holder ? new Date() : null,
-      description: parsed.description,
+      description: parsed.description || "Contribution",
       occurredOn: parsed.occurredOn,
       receiptNote: parsed.receiptNote || null,
       proposalId: parsed.proposalId ?? null,
@@ -362,8 +375,10 @@ function effectiveKind(row: EntryRow, byId: Map<string, EntryRow>) {
 export interface BudgetMoney {
   /** The sum of confirmed entries. */
   balance: number;
-  /** Money recorded as income. */
+  /** Money recorded as income: from anywhere but a member's contribution. */
   income: number;
+  /** Money members paid in as contributions, net of anything reversed. */
+  contributed: number;
   /** Money recorded as spent, net of anything reversed. */
   spent: number;
   /** Entries waiting for the holder, or null for anyone who isn't one. */
@@ -386,6 +401,7 @@ export async function getBudgetMoney(actor: Member, budgetCycleId: string | null
 
   const balance = confirmed.reduce((sum, r) => sum + r.amount, 0);
   const income = confirmed.filter((r) => effectiveKind(r, byId) === "income").reduce((sum, r) => sum + r.amount, 0);
+  const contributed = confirmed.filter((r) => effectiveKind(r, byId) === "contribution").reduce((sum, r) => sum + r.amount, 0);
   // `0 -` rather than a leading minus: negating a sum of zero gives -0, which
   // reads as "-0" on the page.
   const spent = 0 - confirmed.filter((r) => effectiveKind(r, byId) === "expense").reduce((sum, r) => sum + r.amount, 0);
@@ -412,6 +428,7 @@ export async function getBudgetMoney(actor: Member, budgetCycleId: string | null
   return {
     balance,
     income,
+    contributed,
     spent,
     pendingCount: holder ? rows.filter((r) => r.status === "pending").length : null,
     proposals,

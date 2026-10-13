@@ -10,6 +10,7 @@ import { isModuleEnabled } from "@/lib/modules";
 import {
   ensureEventBudget,
   getBudgetMoney,
+  getContributionSummary,
   getBudgetPledges,
   getEventPlan,
   isBudgetOwner,
@@ -30,7 +31,7 @@ import {
   updateBudgetCycleAction,
 } from "./actions";
 import { budgetByBranch, formatAmount, formatLineItemDetail } from "./format";
-import { EntryForm, EntryList, MoneyCard } from "./LedgerSection";
+import { ContributionsCard, EntryForm, EntryList, MoneyCard } from "./LedgerSection";
 import LineItemsEditor from "./LineItemsEditor";
 import { budgetPath, COMMUNITY_BUDGET_SCOPE } from "./paths";
 import ProposalCard from "./ProposalCard";
@@ -68,6 +69,7 @@ export type BudgetSearchParams = {
   entryReversed?: string;
   reimbursed?: string;
   proposalClosed?: string;
+  askSet?: string;
   // Opens a form in place of the page body — the header's primary action, the
   // same `?compose=` technique /schedule and /calendar use. "proposal" is
   // anyone's; "entry" is an expense (a member's) or an entry (the holder's).
@@ -89,6 +91,7 @@ const NOTICES: [keyof BudgetSearchParams, string][] = [
   ["entryReversed", "Entry reversed — an opposite entry cancels it, and the original stays visible."],
   ["reimbursed", "Marked as paid back."],
   ["proposalClosed", "Proposal closed — what was left of it is free again."],
+  ["askSet", "The ask was saved."],
 ];
 
 // See docs/spec.md's Budget and docs/plans/budget-funds-plan.md: proposals are
@@ -166,7 +169,7 @@ export default async function BudgetScreen({
   const eventClosed = resolution.kind === "resolved" && Boolean(resolution.cycle.closedAt);
   const takingPart = hasBudget && !finished && !eventClosed;
 
-  const [branches, proposalViews, plan, pledges, isHolder, allMembers, money, ledger] = await Promise.all([
+  const [branches, proposalViews, plan, pledges, isHolder, allMembers, money, ledger, contributions] = await Promise.all([
     moduleOn ? listBranches(viewing) : Promise.resolve([]),
     hasBudget ? listBudgetProposalViews(viewing, resolvedCycleId) : Promise.resolve([]),
     currentCycle ? getEventPlan(viewing, currentCycle.id) : Promise.resolve(null),
@@ -175,6 +178,7 @@ export default async function BudgetScreen({
     hasBudget ? db.select().from(member).where(eq(member.communityId, viewing.communityId)) : Promise.resolve([]),
     hasBudget ? getBudgetMoney(viewing, currentCycle?.id ?? null) : Promise.resolve(null),
     hasBudget ? listBudgetEntries(viewing, currentCycle?.id ?? null) : Promise.resolve(null),
+    hasBudget ? getContributionSummary(viewing, currentCycle?.id ?? null) : Promise.resolve(null),
   ]);
   // Money is the grant's holder's and nobody else's: `isHolder` above says who
   // may decide proposals (an open Budget module makes that everyone), while
@@ -210,16 +214,17 @@ export default async function BudgetScreen({
   // and the owner still decide what is there.
   const deadlinePassed = Boolean(currentCycle?.proposalDeadline && new Date() > new Date(currentCycle.proposalDeadline));
   const canPropose = takingPart && !deadlinePassed;
-  // An event takes an expense from any member; the community's own budget takes
-  // entries only from its holder.
-  const canRecord = takingPart && (!isCommunityBudget || ledgerHolder);
+  // Any member can record an expense on an event's budget or a contribution to
+  // either budget; everything else in the community's own budget is its holder's.
+  // The form offers each person only what they may record.
+  const canRecord = takingPart;
   const composing =
     compose === "proposal" && canPropose
       ? ("proposal" as const)
       : compose === "entry" && canRecord
         ? ("entry" as const)
         : null;
-  const entryLabel = ledgerHolder ? "Record an entry" : "Add an expense";
+  const entryLabel = ledgerHolder ? "Record an entry" : isCommunityBudget ? "Record a contribution" : "Add an expense or payment";
   const approvedProposals = approved.map((v) => ({ id: v.proposal.id, title: v.proposal.title }));
   const proposalTitleById = new Map(approvedProposals.map((p) => [p.id, p.title] as const));
   const hasOpeningBalance = (ledger?.entries ?? []).some((e) => e.entry.kind === "opening_balance");
@@ -227,6 +232,11 @@ export default async function BudgetScreen({
 
   const headerAction = composing ? undefined : (
     <>
+      {moduleOn && (
+        <Link href="/budget/contributions" className={BUTTON_GHOST}>
+          My contributions
+        </Link>
+      )}
       {moduleOn && isCommunityBudget && (
         <Link href="/budget" className={BUTTON_GHOST}>
           Event budgets
@@ -257,7 +267,7 @@ export default async function BudgetScreen({
         ? "Money that has actually come in or gone out of the community's own budget"
         : ledgerHolder
           ? `Money that has actually come in or gone out of ${currentCycle?.title}`
-          : `An expense you paid for, for ${currentCycle?.title}`
+          : `An expense you paid for, or money you paid in, for ${currentCycle?.title}`
     : composing
       ? isCommunityBudget
         ? "Proposing spending from the community's own budget"
@@ -492,6 +502,20 @@ export default async function BudgetScreen({
                 </div>
               )}
 
+              {contributions && (
+                <ContributionsCard
+                  summary={contributions}
+                  isCommunityBudget={isCommunityBudget}
+                  ledgerHolder={ledgerHolder}
+                  canSetAsk={Boolean(currentCycle) && ledgerHolder && !finished}
+                  canRecord={canRecord}
+                  cycleScope={cycleScope}
+                  budgetCycleId={currentCycle?.id ?? null}
+                  recordHref={`${backHref}?compose=entry`}
+                  pledgedTotal={pledges?.total ?? null}
+                />
+              )}
+
               {money && <MoneyCard money={money} isCommunityBudget={isCommunityBudget} />}
 
               {currentCycle && isHolder && !finished && (
@@ -612,7 +636,7 @@ export default async function BudgetScreen({
 
               {ledger && (ledgerHolder || ledger.entries.length > 0 || (!isCommunityBudget && takingPart)) && (
                 <>
-                  <SubHeading>{ledgerHolder ? "Money in and out" : "Your expenses"}</SubHeading>
+                  <SubHeading>{ledgerHolder ? "Money in and out" : "Your payments and expenses"}</SubHeading>
                   <EntryList
                     entries={ledger.entries}
                     asHolder={ledgerHolder}

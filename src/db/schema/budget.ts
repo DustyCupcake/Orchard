@@ -84,6 +84,12 @@ export const budgetCycle = pgTable(
     // closeCycle (src/lib/cycles/lifecycle.ts) skip its own warning. Set
     // only by src/lib/budget/voting.ts's markBudgetCycleDone.
     ownerMarkedDoneAt: timestamp("owner_marked_done_at", { withTimezone: true }),
+    // The ask the owner settles on: what each person is asked to contribute to
+    // this event, in whole currency units. An average, not a bill: members pay
+    // what they can, which is the point of the sliding scale, and it need not
+    // equal what the plan implies. Null until the owner sets one. Per event only;
+    // the community's own budget has no ask. docs/plans/budget-funds-plan.md 3b.
+    contributionPerMember: integer("contribution_per_member"),
   },
   (t) => [
     // One unfinished budget per event. A finished one stays as history, so an event's

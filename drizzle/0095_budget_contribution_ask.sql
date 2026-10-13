@@ -1,0 +1,1 @@
+ALTER TABLE "budget_cycle" ADD COLUMN "contribution_per_member" integer;

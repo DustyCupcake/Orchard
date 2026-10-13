@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { BudgetEntryView, BudgetMoney } from "@/lib/budget";
+import type { BudgetEntryView, BudgetMoney, ContributionSummary } from "@/lib/budget";
 import { BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import SelectField from "@/components/ui/SelectField";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -9,6 +9,7 @@ import {
   reimburseEntryAction,
   rejectEntryAction,
   reverseEntryAction,
+  setContributionAskAction,
 } from "./actions";
 import { formatAmount } from "./format";
 
@@ -43,7 +44,7 @@ export function MoneyCard({ money, isCommunityBudget }: { money: BudgetMoney; is
         <dl className="mt-2 grid grid-cols-3 gap-3 text-[length:var(--text-body)]">
           <div>
             <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">Came in</dt>
-            <dd className="font-semibold text-[var(--text)]">{formatAmount(money.income)}</dd>
+            <dd className="font-semibold text-[var(--text)]">{formatAmount(money.income + money.contributed)}</dd>
           </div>
           <div>
             <dt className="text-[length:var(--text-meta)] text-[var(--text-muted)]">Spent</dt>
@@ -89,26 +90,49 @@ export function EntryForm({
   today: string;
   backHref: string;
 }) {
+  // What can be recorded depends on who is recording and where: the owner can
+  // record anything; a member an expense on an event's budget, or a contribution
+  // to either budget.
+  const kindOptions = [
+    ...(isHolder || !isCommunityBudget
+      ? [{ value: "expense", label: isHolder ? "An expense — money spent" : "An expense — something I paid for" }]
+      : []),
+    ...(isHolder ? [{ value: "income", label: "Income — money received" }] : []),
+    { value: "contribution", label: isHolder ? "A contribution — a member paid money in" : "A contribution — money I paid in" },
+    ...(isHolder && isCommunityBudget && canEnterOpeningBalance
+      ? [{ value: "opening_balance", label: "The opening balance — what there was to start with" }]
+      : []),
+  ];
+
+  // A member on the community's budget can only record a contribution, so
+  // nothing about expenses (a proposal to tie one to) applies to their form.
+  const onlyContribution = kindOptions.length === 1 && kindOptions[0].value === "contribution";
+
   return (
     <form action={recordEntryAction} className="mt-4 flex max-w-[640px] flex-col gap-3">
       <input type="hidden" name="budgetCycleId" value={budgetCycleId ?? ""} />
       <input type="hidden" name="cycleScope" value={cycleScope} />
-      {isHolder ? (
+      {kindOptions.length > 1 ? (
         <label className="flex flex-col gap-1">
           <span className={LABEL}>What kind of entry is it?</span>
-          <SelectField name="kind" defaultValue="expense" className={INPUT}>
-            <option value="expense">An expense — money spent</option>
-            <option value="income">Income — money received</option>
-            {isCommunityBudget && canEnterOpeningBalance && <option value="opening_balance">The opening balance — what there was to start with</option>}
+          <SelectField name="kind" defaultValue={kindOptions[0].value} className={INPUT}>
+            {kindOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
           </SelectField>
         </label>
       ) : (
-        <>
-          <input type="hidden" name="kind" value="expense" />
-          <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
-            Something you paid for out of your own pocket. The budget&rsquo;s owner confirms it before it counts, and marks it reimbursed once you&rsquo;ve been paid back.
-          </p>
-        </>
+        <input type="hidden" name="kind" value={kindOptions[0].value} />
+      )}
+      {!isHolder && (
+        <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
+          {isCommunityBudget
+            ? "Money you've given to the community's budget."
+            : "Something you paid for out of your own pocket, or money you've paid in."}{" "}
+          The budget&rsquo;s owner confirms it before it counts{isCommunityBudget ? "" : ", and marks an expense paid back once you've been reimbursed"}.
+        </p>
       )}
       <label className="flex flex-col gap-1">
         <span className={LABEL}>Amount</span>
@@ -118,8 +142,9 @@ export function EntryForm({
         </span>
       </label>
       <label className="flex flex-col gap-1">
-        <span className={LABEL}>What was it for?</span>
-        <input type="text" name="description" required className={INPUT} />
+        <span className={LABEL}>What was it for? (optional for a contribution)</span>
+        {/* Not `required`: a contribution may leave it blank (it becomes "Contribution"); the server asks for it for everything else. */}
+        <input type="text" name="description" className={INPUT} />
       </label>
       <label className="flex flex-col gap-1">
         <span className={LABEL}>Date</span>
@@ -132,7 +157,7 @@ export function EntryForm({
           Just a note for now — there&rsquo;s no upload. Keep the receipt itself somewhere you can find it.
         </span>
       </label>
-      {approvedProposals.length > 0 && (
+      {approvedProposals.length > 0 && !onlyContribution && (
         <label className="flex flex-col gap-1">
           <span className={LABEL}>Is it part of an approved proposal? (expenses only)</span>
           <SelectField name="proposalId" defaultValue="" className={INPUT}>
@@ -147,7 +172,7 @@ export function EntryForm({
       )}
       {isHolder && (
         <label className="flex flex-col gap-1">
-          <span className={LABEL}>Who paid it out of their own pocket? (expenses only)</span>
+          <span className={LABEL}>Who paid it? (an expense paid out of pocket, or a contribution)</span>
           <SelectField name="memberId" defaultValue="" className={INPUT}>
             <option value="">Nobody — it was paid from the budget</option>
             {members.map((m) => (
@@ -160,7 +185,7 @@ export function EntryForm({
       )}
       <div className="flex flex-wrap items-center gap-2">
         <SubmitButton className={BUTTON_PRIMARY} pendingLabel="Saving…">
-          {isHolder ? "Record entry" : "Submit expense"}
+          {isHolder ? "Record entry" : onlyContribution ? "Submit contribution" : "Submit"}
         </SubmitButton>
         <Link href={backHref} className={BUTTON_SECONDARY}>
           Cancel
@@ -211,7 +236,7 @@ export function EntryList({
             <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
               {entry.occurredOn}
               {entry.kind === "opening_balance" && <> · opening balance</>}
-              {entry.memberId !== null && memberName && <> · paid by {memberName}</>}
+              {entry.memberId !== null && memberName && <> · {entry.kind === "contribution" ? "paid in by" : "paid by"} {memberName}</>}
               {entry.submittedBy !== entry.memberId && <> · entered by {submitterName}</>}
               {entry.proposalId && proposalTitleById.get(entry.proposalId) && <> · for “{proposalTitleById.get(entry.proposalId)}”</>}
               {entry.receiptNote && <> · {entry.receiptNote}</>}
@@ -278,5 +303,120 @@ export function EntryList({
         );
       })}
     </ul>
+  );
+}
+
+// What an event asked of people and has had paid in, or what has been given to
+// the community's own budget (docs/plans/budget-funds-plan.md 3b). The totals are
+// open to every member; who paid what is the owner's, and each person's own.
+export function ContributionsCard({
+  summary,
+  isCommunityBudget,
+  ledgerHolder,
+  canSetAsk,
+  canRecord,
+  cycleScope,
+  budgetCycleId,
+  recordHref,
+  pledgedTotal,
+}: {
+  summary: ContributionSummary;
+  isCommunityBudget: boolean;
+  ledgerHolder: boolean;
+  /** The owner, while the budget is open. */
+  canSetAsk: boolean;
+  canRecord: boolean;
+  cycleScope: string;
+  budgetCycleId: string | null;
+  recordHref: string;
+  pledgedTotal: number | null;
+}) {
+  const people = (n: number) => `${n} ${n === 1 ? "person" : "people"}`;
+  return (
+    <div className={`mt-4 ${CARD}`}>
+      <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Contributions</h3>
+
+      {!isCommunityBudget && (
+        <div className="mt-1">
+          {summary.ask !== null ? (
+            <p className="text-[length:var(--text-body)] text-[var(--text)]">
+              Everyone is asked for about <span className="font-semibold">{formatAmount(summary.ask)}</span> — an average, not a bill: give what you can.
+            </p>
+          ) : (
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">No ask has been set for this event yet.</p>
+          )}
+          {canSetAsk && (
+            <form action={setContributionAskAction} className="mt-2 flex flex-wrap items-end gap-2">
+              <input type="hidden" name="budgetCycleId" value={budgetCycleId ?? ""} />
+              <input type="hidden" name="cycleScope" value={cycleScope} />
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>The ask, per person</span>
+                <input
+                  type="number"
+                  name="contributionPerMember"
+                  min={0}
+                  step={1}
+                  defaultValue={summary.ask ?? ""}
+                  placeholder={summary.suggestedAsk !== null ? String(summary.suggestedAsk) : "Not set"}
+                  className={`${INPUT} w-36`}
+                />
+              </label>
+              <button type="submit" className={BUTTON_SECONDARY}>
+                Save the ask
+              </button>
+              {summary.suggestedAsk !== null && summary.expectedContributors !== null && (
+                <span className="basis-full text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                  {summary.suggestedAsk === 0
+                    ? "Income already recorded covers the plan, so nothing more is needed from members — you can still ask for something."
+                    : `What is left to cover comes to about ${formatAmount(summary.suggestedAsk)} each over ${summary.expectedContributors} ${summary.expectedContributors === 1 ? "person" : "people"}.`}
+                  {pledgedTotal !== null && pledgedTotal > 0 && <> {formatAmount(pledgedTotal)} has been pledged.</>} You can ask for more or less. Empty it to clear it.
+                </span>
+              )}
+            </form>
+          )}
+        </div>
+      )}
+
+      <p className="mt-3 text-[length:var(--text-body)] text-[var(--text)]">
+        {summary.paidIn === 0
+          ? isCommunityBudget
+            ? "Nothing has been given to the community's budget yet."
+            : "Nothing has been paid in yet."
+          : `${formatAmount(summary.paidIn)} ${isCommunityBudget ? "has been given by" : "paid in so far by"} ${people(summary.contributorCount)}.`}
+        {!isCommunityBudget && summary.askedInTotal !== null && summary.askedInTotal > 0 && (
+          <span className="text-[var(--text-muted)]"> If everyone paid the ask it would come to {formatAmount(summary.askedInTotal)}.</span>
+        )}
+      </p>
+
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
+        {summary.mine.paid === 0 && summary.mine.waiting === 0
+          ? "You haven't paid anything in."
+          : `You've paid ${formatAmount(summary.mine.paid)}${summary.mine.waiting > 0 ? `, and ${formatAmount(summary.mine.waiting)} is waiting for the owner to confirm` : ""}.`}
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {canRecord && (
+          <Link href={recordHref} className={BUTTON_SECONDARY}>
+            {ledgerHolder ? "Record a contribution" : "I've paid something in"}
+          </Link>
+        )}
+        <Link href="/budget/contributions" className={BUTTON_GHOST}>
+          All my contributions
+        </Link>
+      </div>
+
+      {ledgerHolder && summary.members && summary.members.length > 0 && (
+        <div className="mt-3 border-t border-[var(--border)] pt-3">
+          <p className={LABEL}>Who has paid</p>
+          <ul className="mt-1 flex flex-col gap-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+            {summary.members.map((m) => (
+              <li key={m.memberId}>
+                {m.name}: {formatAmount(m.paid)}
+                {m.waiting > 0 && <> ({formatAmount(m.waiting)} waiting)</>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }

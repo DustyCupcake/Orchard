@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { budgetCycle, budgetEntry, budgetProposal, permissionGrant, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { ConflictError, ForbiddenError } from "../errors";
+import { AppError, ConflictError, ForbiddenError } from "../errors";
 import { isModuleOpenToEveryone } from "../permissions";
 import { isAdmin } from "../settings/admins";
 import type { NeedsAction } from "../needs-action";
@@ -74,6 +74,10 @@ export const updateBudgetCycleInput = z.object({
   fixedCosts: z.array(lineItemInput).optional(),
   // null clears the deadline: proposals then stay open until the owner closes them.
   proposalDeadline: z.string().datetime().nullable().optional(),
+  // The ask: what each person is asked to contribute to this event, whole units.
+  // null clears it. An average, not a bill, and it need not match what the plan
+  // implies (docs/plans/budget-funds-plan.md 3b).
+  contributionPerMember: z.number().int().nonnegative().nullable().optional(),
 });
 export type UpdateBudgetCycleInput = z.infer<typeof updateBudgetCycleInput>;
 
@@ -90,6 +94,15 @@ export async function updateBudgetCycle(actor: Member, budgetCycleId: string, in
   if (input.fixedCosts !== undefined) {
     await requireValidLineItems(actor.communityId, input.fixedCosts);
   }
+  // Re-checked here, not just in the schema, so a direct lib caller is held to
+  // it too.
+  if (
+    input.contributionPerMember !== undefined &&
+    input.contributionPerMember !== null &&
+    (!Number.isInteger(input.contributionPerMember) || input.contributionPerMember < 0)
+  ) {
+    throw new AppError("The ask is a whole number, zero or more");
+  }
 
   const [updated] = await db
     .update(budgetCycle)
@@ -99,6 +112,7 @@ export async function updateBudgetCycle(actor: Member, budgetCycleId: string, in
       ...(input.proposalDeadline !== undefined && {
         proposalDeadline: input.proposalDeadline === null ? null : new Date(input.proposalDeadline),
       }),
+      ...(input.contributionPerMember !== undefined && { contributionPerMember: input.contributionPerMember }),
     })
     .where(eq(budgetCycle.id, budgetCycleId))
     .returning();

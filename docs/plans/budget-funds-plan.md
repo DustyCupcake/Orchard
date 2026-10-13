@@ -1,10 +1,10 @@
 # Budget: events own their budgets, proposals replace rounds, and a community fund keeps the money between events
 
-**Status (2026-10-13):** **Phases 1 and 2, and step 3a of Phase 3, are built** (events own their
-budgets; proposals replace rounds, ranking and confirmation; each budget keeps a ledger of expenses
-and income). See the dated notes under *Phase 1*, *Phase 2* and *3a* for where they differ from the
-text below, and `CHANGELOG.md` for how each was verified. Steps 3b (contributions) and 3c
-(allocations, settlement and closing) are not started. This was a proposal agreed with the product owner and written up for
+**Status (2026-10-13):** **Phases 1 and 2, and steps 3a and 3b of Phase 3, are built** (events own
+their budgets; proposals replace rounds, ranking and confirmation; each budget keeps a ledger; events
+ask for and record contributions). See the dated notes under *Phase 1*, *Phase 2*, *3a* and *3b* for
+where they differ from the text below, and `CHANGELOG.md` for how each was verified. Step 3c
+(allocations, settlement and closing) is not started. This was a proposal agreed with the product owner and written up for
 them to edit before any code. Three phases, each shippable on its own: **Phase 1** makes an
 event's budget belong to the event (fixing the mismatch that prompted this); **Phase 2** replaces
 rounds, ranked voting and confirmation with always-open proposals that members back, for events and
@@ -504,6 +504,22 @@ The plan sets the ask; recorded payments track it.
   member.
 - **The ask is per event.** The fund has no ask in this plan; a fund-level suggested contribution (a
   yearly figure, say) is a later addition.
+
+**Built 2026-10-13, with these differences from the text above:**
+
+- *"Planned income" is income already recorded.* The suggested ask is
+  `max(0, ceil((plan − income recorded) / contributors))`. There is no planned-income line to read,
+  and inventing one was not asked for; what is sought from the fund joins the sum in 3c, when
+  allocation exists to seek it from.
+- *The ask is set through `updateBudgetCycle`,* the owner's existing edit, so it is owner-only and
+  only while the budget is open without any new rule to keep in step.
+- *A member may contribute to the community's own budget* as well as to an event, which the plan
+  allowed ("from the fund's page it is a general contribution") but did not spell out for who may
+  record it. Anyone may; everything else in the community's ledger stays its holder's.
+- *A contribution's description is optional* and becomes "Contribution", since "what was it for?" has
+  no good answer for money someone paid in.
+- *"My contributions" is a page of its own* (`/budget/contributions`) rather than a section of a
+  budget's page, because it is the one place the scopes meet.
 
 ### 3c. Allocation, settlement and closing
 

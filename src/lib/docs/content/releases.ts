@@ -30,6 +30,19 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-10-13",
+    title: "Asking for and recording contributions",
+    summary: "An event can say what each person is asked to give, and anyone can record what they have paid in.",
+    points: [
+      "The owner of an event's budget can set what each person is asked to contribute. It's an average, not a bill: give what you can. The page shows roughly what the plan works out to per person to help them choose.",
+      "If you've paid something in, record it from that budget's page, with a note of how or where. The owner confirms it before it counts. You can also give to the community's own budget the same way.",
+      "Everyone can see how much has been paid in and by how many people. Only the owner can see who paid what, and you can always see your own.",
+      "There is now a page of everything you've contributed, across events and the community's budget, with what became of each payment. Nobody else can see it.",
+      "You can contribute to an event you're not going to. The ask is worked out from the people who are coming, but it isn't enforced on anyone.",
+    ],
+    source: "Budget asks for contributions: the owner sets the ask, members record what they paid in, and each sees everything they've given",
+  },
+  {
+    date: "2026-10-13",
     title: "Record what was actually spent",
     summary: "Budgets now keep track of money that really came in and went out, not just the plan.",
     points: [
