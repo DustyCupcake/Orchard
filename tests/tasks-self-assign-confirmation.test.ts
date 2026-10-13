@@ -5,6 +5,7 @@ import { task } from "@/db/schema";
 import { claimOrRequestToJoin, claimTask, suggestMemberForTask } from "@/lib/tasks";
 import { ConfirmationRequiredError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { listSuggestionsForTasks } from "@/lib/tasks/suggestions";
 
 async function insertTask(
   communityId: string,
@@ -125,12 +126,15 @@ describe("suggestMemberForTask", () => {
     await resetDatabase();
   });
 
-  it("sets suggestedMemberId on the task", async () => {
+  it("records the person as suggested for the task, once however often it is asked", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     const t = await insertTask(testCommunity.id, branch.id, alice.id);
 
     const updated = await suggestMemberForTask(alice, t.id, bob.id);
-    expect(updated.suggestedMemberId).toBe(bob.id);
+    await suggestMemberForTask(alice, t.id, bob.id);
+    expect(updated.id).toBe(t.id);
+    const people = (await listSuggestionsForTasks([t.id])).get(t.id);
+    expect(people).toMatchObject([{ memberId: bob.id, reasons: ["suggested"] }]);
   });
 
   it("rejects a suggested member from another community", async () => {

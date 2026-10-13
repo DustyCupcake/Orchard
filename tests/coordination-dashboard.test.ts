@@ -213,7 +213,7 @@ describe("listPendingSuggestions", () => {
     await resetDatabase();
   });
 
-  it("surfaces an unowned task someone was suggested for, with their name", async () => {
+  it("surfaces an unowned task someone was suggested for, with their name and why", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     await makeBranchCoordinator(testCommunity.id, branch.id, alice.id, alice);
 
@@ -223,7 +223,7 @@ describe("listPendingSuggestions", () => {
     const suggestions = await listPendingSuggestions(alice, []);
     expect(suggestions).toHaveLength(1);
     expect(suggestions[0].id).toBe(t.id);
-    expect(suggestions[0].suggestedMemberName).toBe(bob.name);
+    expect(suggestions[0].suggested).toMatchObject([{ memberId: bob.id, name: bob.name, reasons: ["suggested"] }]);
   });
 
   it("drops the suggestion once the task has a holder, or once a nomination went out", async () => {

@@ -8,6 +8,22 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## suggestions say why: everyone with a reason is suggested for a new member's accompaniment, and a suggested person can say it isn't for them
+
+Migration **0115**. [`docs/plans/accompaniment-plan.md`](docs/plans/accompaniment-plan.md) §3.4 and §3.5, step 2 of §8.
+
+**A table of suggestions, with the reason** (`task_suggestion`), replacing `task.suggested_member_id`. The column held one person and no reason, so it could say "Sam" and not "Sam, who invited them and said yes after the interview", which is the half that makes asking easy. One row per person *per reason* (unique on task, person and reason), so the inviter who also said yes is one person with two reasons rather than a choice between them. The reasons are `said_yes`, `invited`, `supported`, `proposed`, `shadowed` and `suggested`; deleting a task takes its suggestions with it. The plan's table named `previous_holder`, but what the cycle clone has always carried is a *shadow*, so it is built as `shadowed`, and **every** shadow is carried now: the old column had to pick the earliest, and the table doesn't.
+
+**Writers moved over.** A new member's accompaniment suggests everyone who reported *yes* on them (an *unsure* report is not a reason), whoever invited them, and everyone who vouched for them, never the newcomer themselves. Proposal activation records the proposer's pick as `proposed`; cycle cloning records each shadow as `shadowed`; `suggestMemberForTask` records `suggested` and is safe to call twice. **Readers moved over:** the coordination dashboard's "someone suggested a person" list now has each task once, with everyone suggested and why; the task page's *Nominate someone* section says who was suggested and offers them first in the list, labelled with the reason, and not as a ranking: everyone else is still below them, in the same order as before.
+
+**The prompt on a suggested person's own dashboard**: *"Dana has joined and doesn't have anyone to accompany them yet. You were thought of because you invited them and said yes after their interview."* with **I'll accompany them**, which is the ordinary claim, so a requirement the task carries (a tier, say) is checked exactly as anywhere else, and **Not me**. Not me hides the prompt for that person alone: it is not logged against their engagement, nobody is told, and coordination still sees the suggestion, because it is still a reasonable person to ask. It is a pull on their own dashboard rather than an email, in the codebase's usual posture. **Only accompaniment tasks are offered this way**: a cycle clone suggests hundreds of people for hundreds of tasks, and telling every one of them would be noise; for any other task a suggestion is for coordination to act on.
+
+**Migration.** Every existing suggestion is carried before the column goes: an accompaniment task's was always the newcomer's inviter, so it becomes `invited`; anything else becomes `suggested`, the nearest honest word for a reason nobody recorded. Populated-database test in `tests/migrations.test.ts`.
+
+**Not yet, by plan:** check-ins as milestones (§5), and what the member chooses to share (§4.2 to §4.4).
+
+Tests: `task-suggestions.test.ts` (new, 10) and a populated-database case for 0115; the tests that read the old column now read the table; whole suite 2,339 passing against a real Postgres.
+
 ## accompaniment is a thing of its own: made when a member is, told to the member, and theirs to say isn't working
 
 Migration **0114**. [`docs/plans/accompaniment-plan.md`](docs/plans/accompaniment-plan.md) §3 and §4.1, step 1 of §8. Written after comparing the original recruitment section of the v0.5 spec with what the funnel built: accompaniment existed, but only as a side effect of a decision, and **the new member was never told**.

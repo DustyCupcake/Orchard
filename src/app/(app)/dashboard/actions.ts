@@ -8,6 +8,8 @@ import { assertNotViewingAs } from "@/lib/view-as";
 import { respondToNomination, respondToNominationInput } from "@/lib/tasks";
 import { completeOnboarding } from "@/lib/onboarding";
 import { askForSomeoneElse } from "@/lib/accompaniment";
+import { dismissMySuggestion } from "@/lib/tasks/suggestions";
+import { claimTask } from "@/lib/tasks";
 import { answerProfileQuestion, getProfileQuestion, listProfileQuestionsByIds } from "@/lib/profile-questions";
 import { fieldValueFromFormData, toFieldShape } from "@/lib/field-shape";
 import { listOutstandingQuestions } from "@/lib/profile-questions/answers";
@@ -225,6 +227,31 @@ export async function askForSomeoneElseAction() {
   const actor = await requireRealMember();
   try {
     await askForSomeoneElse(actor);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/dashboard");
+}
+
+// "I'll accompany them" on a suggestion (docs/plans/accompaniment-plan.md §3.5): the ordinary claim,
+// so a requirement the task carries (a tier, say) is checked exactly as it is anywhere else.
+export async function claimAccompanimentAction(formData: FormData) {
+  await assertNotViewingAs();
+  const actor = await requireRealMember();
+  try {
+    await claimTask(actor, String(formData.get("taskId") ?? ""));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/dashboard");
+}
+
+// "Not me": hides the prompt from this member's dashboard and does nothing else.
+export async function dismissAccompanimentSuggestionAction(formData: FormData) {
+  await assertNotViewingAs();
+  const actor = await requireRealMember();
+  try {
+    await dismissMySuggestion(actor, String(formData.get("taskId") ?? ""));
   } catch (err) {
     redirectWithError(err);
   }

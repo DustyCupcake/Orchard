@@ -16,3 +16,4 @@ export * from "./escalation";
 export * from "./board-views";
 export * from "./fit";
 export * from "./coordination-dashboard";
+export * from "./suggestions";

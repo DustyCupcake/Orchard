@@ -1,12 +1,13 @@
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { member, task, taskProposal } from "@/db/schema";
+import { member, taskProposal } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, NotFoundError } from "../errors";
 import { createTask, createTaskInput } from "../tasks/crud";
 import { addTaskDependency } from "../tasks/dependencies";
 import { claimTask } from "../tasks/lifecycle";
+import { addSuggestions } from "../tasks/suggestions";
 import { createTaskMilestone } from "../tasks/milestones";
 import { createRequirement, createRequirementInput } from "../tasks/requirements";
 import { setTaskAxisValues } from "../trait-axes";
@@ -167,12 +168,7 @@ export async function activateProposal(
   );
 
   if (proposalRow.suggestedMemberId) {
-    const [updated] = await db
-      .update(task)
-      .set({ suggestedMemberId: proposalRow.suggestedMemberId })
-      .where(eq(task.id, newTask.id))
-      .returning();
-    newTask = updated;
+    await addSuggestions(db, [{ taskId: newTask.id, memberId: proposalRow.suggestedMemberId, reason: "proposed" }]);
   }
 
   if (input.axisValues && Object.keys(input.axisValues).length > 0) {

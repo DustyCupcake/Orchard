@@ -36,6 +36,7 @@ import {
   isSelfAssignWorthAskingAbout,
   rankByTagFit,
 } from "@/lib/tasks";
+import { SUGGESTION_REASON_LABEL, joinReasons, listSuggestionsForTasks } from "@/lib/tasks/suggestions";
 import { getCommunity, isAdmin, listBranches } from "@/lib/settings";
 import {
   allowsMultipleGrants,
@@ -428,12 +429,24 @@ export default async function TaskDetailPage({
   // surfaced)"). Ranked, never filtered — a member sharing no tags is
   // still offerable, just further down, because matching is deferred as
   // real automation (src/lib/tasks/fit.ts).
-  const askCandidates = rankByTagFit(
+  const ranked = rankByTagFit(
     communityMembers
       .filter((m) => m.id !== viewing.id && !realAssignments.some((a) => a.memberId === m.id))
       .map((m) => ({ id: m.id, name: m.name, tags: m.tags })),
     taskRow.tags,
   );
+  // People who were suggested for this task, with the reason, come first: they are the people
+  // with a reason to be asked, and the reason is what makes asking easy to say. Not a ranking
+  // of who is best, and everyone else is still offered below them.
+  const suggestedForTask = (await listSuggestionsForTasks([taskRow.id])).get(taskRow.id) ?? [];
+  const suggestedById = new Map(suggestedForTask.map((p) => [p.memberId, p]));
+  const askCandidates = [
+    ...ranked.filter((m) => suggestedById.has(m.id)),
+    ...ranked.filter((m) => !suggestedById.has(m.id)),
+  ].map((m) => {
+    const suggested = suggestedById.get(m.id);
+    return { ...m, label: suggested ? `${m.name} — ${joinReasons(suggested.reasons, SUGGESTION_REASON_LABEL)}` : m.name };
+  });
 
   // ── Task UI grammar: one primary action in the header ────────────
   // When a contextual nudge panel is showing (attention-flagged claimed,
@@ -468,7 +481,7 @@ export default async function TaskDetailPage({
                     </option>
                     {askCandidates.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.name}
+                        {m.label}
                       </option>
                     ))}
                   </select>
@@ -1556,15 +1569,19 @@ export default async function TaskDetailPage({
             Claims it for them right away — they get a yes/no/not-now window to confirm or
             release it, no action required if it&rsquo;s a genuine fit.
           </p>
-          {/* A proposer named someone for this task (activation copies
-              task_proposal.suggested_member_id across) — the coordinator
-              asked, and this is the door that acts on it. */}
-          {taskRow.suggestedMemberId && taskRow.status === "unclaimed" && (
+          {/* People suggested for this task, and why (src/lib/tasks/suggestions.ts): a proposer's
+              pick, a newcomer's inviter and the people who met them. The coordinator is the one
+              deciding whom to ask, and this is the door that acts on it. */}
+          {suggestedForTask.length > 0 && taskRow.status === "unclaimed" && (
             <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
-              Suggested for{" "}
-              <span className="font-medium">
-                {memberNameById.get(taskRow.suggestedMemberId) ?? "a member"}
-              </span>
+              Suggested:{" "}
+              {suggestedForTask.map((p, i) => (
+                <span key={p.memberId}>
+                  {i > 0 && "; "}
+                  <span className="font-medium">{p.name}</span>{" "}
+                  <span className="text-[var(--text-muted)]">({joinReasons(p.reasons, SUGGESTION_REASON_LABEL)})</span>
+                </span>
+              ))}
               .
             </p>
           )}
@@ -1576,7 +1593,7 @@ export default async function TaskDetailPage({
               </option>
               {askCandidates.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name}
+                  {m.label}
                 </option>
               ))}
             </select>

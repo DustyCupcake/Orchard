@@ -34,6 +34,7 @@ import {
 } from "@/lib/recruitment";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase, withApplicationOnlyLanes, POLICY_TWO_OF_TWO } from "./helpers";
+import { listSuggestionsForTasks } from "@/lib/tasks/suggestions";
 
 const applicationFields: CreateFormInput["fields"] = [
   { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
@@ -175,24 +176,28 @@ describe("recordDecisionIfReached", () => {
     expect((await getOpenCheck(arrival.id))!.kind).toBe("evaluation");
   });
 
-  it("pre-fills the Accompaniment task's suggestedMemberId from a linked invite's creator", async () => {
+  it("suggests the linked invite's creator for the Accompaniment task", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
     const invite = await createCommunityInvite(setupResult.alice, {});
     const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"], invite.token);
 
     const [accompanimentTask] = await db.select().from(task).where(eq(task.id, decision!.accompanimentTaskId!));
-    expect(accompanimentTask.suggestedMemberId).toBe(setupResult.alice.id);
+    const suggested = (await listSuggestionsForTasks([accompanimentTask.id])).get(accompanimentTask.id) ?? [];
+    // Alice invited Dana, and also reported yes: one person, both reasons.
+    expect(suggested.find((p) => p.memberId === setupResult.alice.id)?.reasons).toContain("invited");
     expect(accompanimentTask.title).toBe("Accompany Dana");
   });
 
-  it("leaves suggestedMemberId null when the application had no linked invite", async () => {
+  it("suggests nobody as the inviter when the application had no linked invite", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
     const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
 
     const [accompanimentTask] = await db.select().from(task).where(eq(task.id, decision!.accompanimentTaskId!));
-    expect(accompanimentTask.suggestedMemberId).toBeNull();
+    const suggested = (await listSuggestionsForTasks([accompanimentTask.id])).get(accompanimentTask.id) ?? [];
+    // Nobody invited Dana, so the only people with a reason are those who said yes.
+    expect(suggested.flatMap((p) => p.reasons)).not.toContain("invited");
   });
 
   it("is idempotent — never creates a second decision or task", async () => {

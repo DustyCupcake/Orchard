@@ -27,6 +27,7 @@ import {
 import { requireAdmins } from "../settings/admins";
 import { computeRequirementFitScore, getGroupCoverageStatus, getUnmetRequirements } from "./requirements";
 import { getTaskDeadline } from "./milestones";
+import { addSuggestions } from "./suggestions";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -606,7 +607,7 @@ export async function deleteTask(actor: Member, taskId: string) {
   await db.delete(task).where(eq(task.id, taskId));
 }
 
-// A narrow, standalone mutation for suggested_member_id — the same field
+// A narrow, standalone mutation for a task's suggestions — the same table
 // proposal activation, cycle cloning and recruitment already populate.
 //
 // It was originally here for the self-assign check's "suggest a person
@@ -637,10 +638,7 @@ export async function suggestMemberForTask(actor: Member, taskId: string, member
     throw new NotFoundError("Member not found in your community");
   }
 
-  const [updated] = await db
-    .update(task)
-    .set({ suggestedMemberId: memberId })
-    .where(eq(task.id, taskId))
-    .returning();
+  await addSuggestions(db, [{ taskId, memberId, reason: "suggested" }]);
+  const [updated] = await db.select().from(task).where(eq(task.id, taskId));
   return updated;
 }

@@ -1,10 +1,11 @@
 import { and, asc, desc, eq, inArray, isNull, lte, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { accompaniment, admission, community, evaluation, member, recruitmentDecision, task, taskAssignment } from "@/db/schema";
+import { accompaniment, admission, admissionSupport, community, evaluation, member, recruitmentDecision, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, NotFoundError } from "./errors";
 import { createRequirement, createTask } from "./tasks";
 import { addComment } from "./tasks/notes";
+import { addSuggestions } from "./tasks/suggestions";
 import { releaseAssignmentInTx } from "./tasks/lifecycle";
 import { listGrantingTaskIds } from "./permissions";
 import { inviterOf } from "./recruitment/community-check";
@@ -115,10 +116,23 @@ export async function ensureAccompaniment(arrival: Arrival, memberId: string, op
     await createRequirement(author, created.id, { type: "tier", value: { tierId: communityRow.accompanimentTierId } });
   }
 
-  // The newcomer's inviter is the natural first suggestion. (Step 2 of the plan widens this
-  // to everyone who has a reason, with the reason shown.)
-  const suggestedId = await inviterOf(arrival);
-  if (suggestedId) await db.update(task).set({ suggestedMemberId: suggestedId }).where(eq(task.id, created.id));
+  // Everyone with a reason to be asked, with the reason (docs/plans/accompaniment-plan.md §3.4):
+  // those who said yes after the interview, whoever invited them, and whoever vouched for them.
+  // Nobody is assigned and nobody is ranked; the people who might say yes are put where they
+  // can see it, and where coordination can see them if nobody does.
+  const [yes, supporters, inviterId] = await Promise.all([
+    db
+      .select({ memberId: evaluation.evaluatorId })
+      .from(evaluation)
+      .where(and(eq(evaluation.arrivalId, arrival.id), eq(evaluation.recommendation, "proceed"))),
+    db.select({ memberId: admissionSupport.supporterId }).from(admissionSupport).where(eq(admissionSupport.arrivalId, arrival.id)),
+    inviterOf(arrival),
+  ]);
+  await addSuggestions(db, [
+    ...yes.map((r) => ({ taskId: created.id, memberId: r.memberId, reason: "said_yes" as const })),
+    ...(inviterId ? [{ taskId: created.id, memberId: inviterId, reason: "invited" as const }] : []),
+    ...supporters.map((r) => ({ taskId: created.id, memberId: r.memberId, reason: "supported" as const })),
+  ].filter((e) => e.memberId !== memberId));
 
   const now = new Date();
   const [row] = await db
