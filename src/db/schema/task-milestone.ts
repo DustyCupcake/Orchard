@@ -58,5 +58,12 @@ export const taskMilestone = pgTable("task_milestone", {
   createdBy: uuid("created_by")
     .notNull()
     .references(() => member.id),
+  // A check-in is a milestone someone is meant to *do*, not only a date to know about
+  // (docs/plans/accompaniment-plan.md §5). The flag lets the dashboard say "due" for these and
+  // not for a deposit date; `completedAt` is the first time any milestone has had a done state,
+  // and is available on all of them.
+  checkIn: boolean("check_in").notNull().default(false),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  completedBy: uuid("completed_by").references(() => member.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

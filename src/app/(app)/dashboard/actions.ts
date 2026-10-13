@@ -10,6 +10,7 @@ import { completeOnboarding } from "@/lib/onboarding";
 import { askForSomeoneElse } from "@/lib/accompaniment";
 import { dismissMySuggestion } from "@/lib/tasks/suggestions";
 import { claimTask } from "@/lib/tasks";
+import { setTaskMilestoneDone } from "@/lib/tasks/milestones";
 import { answerProfileQuestion, getProfileQuestion, listProfileQuestionsByIds } from "@/lib/profile-questions";
 import { fieldValueFromFormData, toFieldShape } from "@/lib/field-shape";
 import { listOutstandingQuestions } from "@/lib/profile-questions/answers";
@@ -252,6 +253,18 @@ export async function dismissAccompanimentSuggestionAction(formData: FormData) {
   const actor = await requireRealMember();
   try {
     await dismissMySuggestion(actor, String(formData.get("taskId") ?? ""));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/dashboard");
+}
+
+// "Done" on a check-in that is due (docs/plans/accompaniment-plan.md §5).
+export async function completeCheckInAction(formData: FormData) {
+  await assertNotViewingAs();
+  const actor = await requireRealMember();
+  try {
+    await setTaskMilestoneDone(actor, String(formData.get("milestoneId") ?? ""), true);
   } catch (err) {
     redirectWithError(err);
   }

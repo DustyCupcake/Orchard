@@ -18,6 +18,7 @@ import {
   claimAsShadow,
   claimOrRequestToJoin,
   confirmTaskMilestone,
+  setTaskMilestoneDone,
   createRequirement,
   createRequirementInput,
   createSignal,
@@ -280,6 +281,23 @@ export async function confirmMilestoneAction(formData: FormData) {
   }
 
   revalidatePath(`/tasks/${taskId}`);
+}
+
+// A holder says a milestone is done, or puts it back. For a check-in that is what stops it being due.
+export async function setMilestoneDoneAction(formData: FormData) {
+  const actor = await requireMember();
+  const taskId = String(formData.get("taskId"));
+  const milestoneId = String(formData.get("milestoneId"));
+  const done = String(formData.get("done")) === "true";
+
+  try {
+    await setTaskMilestoneDone(actor, milestoneId, done);
+  } catch (err) {
+    redirectWithError(taskId, err);
+  }
+
+  revalidatePath(`/tasks/${taskId}`);
+  revalidatePath("/dashboard");
 }
 
 export async function splitSubtaskAction(formData: FormData) {

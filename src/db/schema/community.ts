@@ -1,6 +1,7 @@
 import {
   boolean,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -176,6 +177,20 @@ export const community = pgTable("community", {
   // requirement, through the ordinary requirement mechanism rather than a rule of its own.
   accompanimentTierId: uuid("accompaniment_tier_id").references(() => tier.id),
   accompanimentEndsAfterDays: integer("accompaniment_ends_after_days").notNull().default(90),
+  // The check-ins an accompaniment starts with (docs/plans/accompaniment-plan.md §5), each made a
+  // milestone on the task when it is created, its date fixed then. A row is a label and a number
+  // of days from one of two anchors: after the person joined, or before the event they are
+  // joining starts (left out when there is no such event or its date has gone). Empty means none.
+  // Edited as a short list in settings; the defaults are what most communities would want to be
+  // asked about and nothing more.
+  accompanimentCheckIns: jsonb("accompaniment_check_ins")
+    .$type<{ label: string; anchor: "after_joining" | "before_event"; days: number }[]>()
+    .notNull()
+    .default([
+      { label: "Say hello", anchor: "after_joining", days: 3 },
+      { label: "How is it going?", anchor: "after_joining", days: 30 },
+      { label: "Before the event", anchor: "before_event", days: 14 },
+    ]),
   // §2.6/J7 — the overrule threshold. An objection is never thrown out
   // by a timer; mediation either clears it or it stands, and admitting
   // *anyway* is the documented exception. The community chooses how

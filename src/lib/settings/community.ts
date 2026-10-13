@@ -7,6 +7,7 @@ import { AppError, NotFoundError } from "../errors";
 import { ANY_NO_MEANS, DISCUSSION_ENDS, IN_WHEN, validateDecisionPolicy } from "../recruitment/decision-policy";
 import { policyOf } from "../recruitment/evaluations";
 import { isValidTimeZone } from "../dates/timezone";
+import { checkInsSchema } from "../accompaniment-check-ins";
 import { requireNotOnsiteLocked } from "../onsite-mode";
 import { recordSettingChanges } from "./history";
 
@@ -103,6 +104,7 @@ export const updateCommunityInput = z.object({
   accompanimentEnabled: z.boolean().optional(),
   accompanimentTierId: z.string().uuid().nullable().optional(),
   accompanimentEndsAfterDays: z.number().int().positive().max(730).optional(),
+  accompanimentCheckIns: checkInsSchema.optional(),
   // Null clears it — "surfaced to whoever's about to send an actual
   // decline, never sent automatically."
   recruitmentRejectionTemplate: z.string().nullable().optional(),
@@ -289,6 +291,7 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         ...(input.accompanimentEnabled !== undefined && { accompanimentEnabled: input.accompanimentEnabled }),
         ...(input.accompanimentTierId !== undefined && { accompanimentTierId: input.accompanimentTierId }),
         ...(input.accompanimentEndsAfterDays !== undefined && { accompanimentEndsAfterDays: input.accompanimentEndsAfterDays }),
+        ...(input.accompanimentCheckIns !== undefined && { accompanimentCheckIns: input.accompanimentCheckIns }),
         ...(input.recruitmentWiderDiscussionHours !== undefined && {
           recruitmentWiderDiscussionHours: input.recruitmentWiderDiscussionHours,
         }),

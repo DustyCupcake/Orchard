@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, inArray, isNull, lte, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { accompaniment, admission, admissionSupport, community, evaluation, member, recruitmentDecision, task, taskAssignment } from "@/db/schema";
+import { accompaniment, admission, admissionSupport, community, cycle, evaluation, member, recruitmentDecision, task, taskAssignment, taskMilestone } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, NotFoundError } from "./errors";
 import { createRequirement, createTask } from "./tasks";
@@ -12,6 +12,8 @@ import { inviterOf } from "./recruitment/community-check";
 import { resolvePrimaryEmail } from "./contact-methods";
 import { sendAccompanierNamedEmail } from "./mailer";
 import { publicAppUrl } from "./public-url";
+import { effectiveTimeZone, localDateInZone } from "./dates";
+import { planCheckIns } from "./accompaniment-check-ins";
 
 type Member = typeof memberTable.$inferSelect;
 type Arrival = typeof admission.$inferSelect;
@@ -147,6 +149,8 @@ export async function ensureAccompaniment(arrival: Arrival, memberId: string, op
     })
     .returning({ id: accompaniment.id });
 
+  await createCheckIns({ taskId: created.id, authorId: author.id, arrival, communityRow, now });
+
   // The decision that led here keeps pointing at the task, for the pages that still read it.
   await db
     .update(recruitmentDecision)
@@ -154,6 +158,101 @@ export async function ensureAccompaniment(arrival: Arrival, memberId: string, op
     .where(and(eq(recruitmentDecision.arrivalId, arrival.id), isNull(recruitmentDecision.accompanimentTaskId)));
 
   return { status: "created", accompanimentId: row.id, taskId: created.id };
+}
+
+// The event a "before the event" check-in counts back from: the one this person was admitted
+// for, else the next open one that has a start date still ahead. None is fine; those rows are
+// simply left out.
+async function eventStartFor(arrival: Arrival, today: string): Promise<string | null> {
+  if (arrival.cycleId) {
+    const [own] = await db.select({ startDate: cycle.startDate }).from(cycle).where(eq(cycle.id, arrival.cycleId));
+    return own?.startDate ?? null;
+  }
+  const [next] = await db
+    .select({ startDate: cycle.startDate })
+    .from(cycle)
+    .where(and(eq(cycle.communityId, arrival.communityId), isNull(cycle.closedAt), isNotNull(cycle.startDate), gte(cycle.startDate, today)))
+    .orderBy(asc(cycle.startDate))
+    .limit(1);
+  return next?.startDate ?? null;
+}
+
+// docs/plans/accompaniment-plan.md §5. The community's check-in list becomes milestones on the
+// task, each an ordinary absolute date fixed now. They are not moved if someone takes the task on
+// late: a "say hello" that is already due is simply due, and says so.
+async function createCheckIns(input: {
+  taskId: string;
+  authorId: string;
+  arrival: Arrival;
+  communityRow: typeof community.$inferSelect;
+  now: Date;
+}) {
+  const today = localDateInZone(input.now.toISOString(), effectiveTimeZone(null, input.communityRow));
+  const planned = planCheckIns(input.communityRow.accompanimentCheckIns, {
+    today,
+    eventStart: await eventStartFor(input.arrival, today),
+  });
+  if (planned.length === 0) return;
+  await db.insert(taskMilestone).values(
+    planned.map((p) => ({
+      taskId: input.taskId,
+      label: p.label,
+      dateType: "absolute" as const,
+      absoluteDate: p.date,
+      status: "confirmed" as const,
+      checkIn: true,
+      proposedBy: input.authorId,
+      createdBy: input.authorId,
+    })),
+  );
+}
+
+export type CheckInDue = {
+  milestoneId: string;
+  taskId: string;
+  label: string;
+  /** YYYY-MM-DD */
+  date: string;
+  newcomerName: string;
+  /** The date has gone by, not merely arrived. */
+  overdue: boolean;
+};
+
+/**
+ * The check-ins this member is due to make: on an open accompaniment they hold, the date has
+ * come, and nobody has marked it done. Read live from the milestones, so there is nothing to
+ * keep in step, and nothing is sent: it sits on their own dashboard until they have done it.
+ * Soonest first.
+ */
+export async function listMyCheckInsDue(actor: Member): Promise<CheckInDue[]> {
+  const [communityRow] = await db.select().from(community).where(eq(community.id, actor.communityId));
+  const today = localDateInZone(new Date().toISOString(), effectiveTimeZone(actor, communityRow ?? {}));
+  const rows = await db
+    .select({
+      milestoneId: taskMilestone.id,
+      taskId: taskMilestone.taskId,
+      label: taskMilestone.label,
+      date: taskMilestone.absoluteDate,
+      newcomerName: member.name,
+    })
+    .from(taskMilestone)
+    .innerJoin(accompaniment, eq(accompaniment.taskId, taskMilestone.taskId))
+    .innerJoin(task, eq(task.id, taskMilestone.taskId))
+    .innerJoin(taskAssignment, and(eq(taskAssignment.taskId, taskMilestone.taskId), eq(taskAssignment.memberId, actor.id), eq(taskAssignment.isShadow, false)))
+    .innerJoin(member, eq(member.id, accompaniment.memberId))
+    .where(
+      and(
+        eq(taskMilestone.checkIn, true),
+        eq(taskMilestone.status, "confirmed"),
+        isNull(taskMilestone.completedAt),
+        isNull(accompaniment.endedAt),
+        ne(task.status, "done"),
+        isNotNull(taskMilestone.absoluteDate),
+        lte(taskMilestone.absoluteDate, today),
+      ),
+    )
+    .orderBy(asc(taskMilestone.absoluteDate), asc(taskMilestone.createdAt));
+  return rows.map((r) => ({ ...r, date: r.date!, overdue: r.date! < today }));
 }
 
 export type MyAccompaniment = {

@@ -80,6 +80,7 @@ import {
   claimAsShadowAction,
   confirmClaimAction,
   confirmMilestoneAction,
+  setMilestoneDoneAction,
   createQuestionAction,
   createSignalAction,
   deescalateTaskAction,
@@ -1451,6 +1452,8 @@ export default async function TaskDetailPage({
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{m.label}</span>
                 {m.isDeadline && <Tag tone="accent">deadline</Tag>}
+                {m.checkIn && <Tag tone="neutral">check-in</Tag>}
+                {m.completedAt && <Tag tone="success">done {clock.date(m.completedAt)}</Tag>}
                 {m.status === "pending" && (
                   <Tag tone="warning">pending — proposed by {memberNameById.get(m.proposedBy) ?? "—"}</Tag>
                 )}
@@ -1461,6 +1464,14 @@ export default async function TaskDetailPage({
 
               {holdsTask && (
                 <>
+                  <form action={setMilestoneDoneAction} className="mt-2">
+                    <input type="hidden" name="taskId" value={taskRow.id} />
+                    <input type="hidden" name="milestoneId" value={m.id} />
+                    <input type="hidden" name="done" value={m.completedAt ? "false" : "true"} />
+                    <button type="submit" className={BUTTON_SECONDARY}>
+                      {m.completedAt ? "Not done after all" : "Mark done"}
+                    </button>
+                  </form>
                   <form action={updateMilestoneAction} className="mt-2 flex flex-col gap-2">
                     <input type="hidden" name="taskId" value={taskRow.id} />
                     <input type="hidden" name="milestoneId" value={m.id} />

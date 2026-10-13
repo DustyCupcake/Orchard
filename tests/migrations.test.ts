@@ -702,4 +702,30 @@ describe("migrating a database that already has data", () => {
     await sql`delete from task where id = ${plain}`;
     expect(await sql`select 1 from task_suggestion where task_id = ${plain}`).toHaveLength(0);
   });
+
+  // 0116 gives milestones a done state and a check-in flag, and gives every community the
+  // default check-in list. Existing milestones are none of the things it adds: not check-ins, not
+  // done, and exactly as they were.
+  it("0116 leaves every existing milestone as it was, and gives each community the default check-ins", async () => {
+    db = await createScratchDatabase();
+    await db.migrateBefore("0116_check_ins");
+    const sql = db.sql;
+    const [communityId, alice, branchId, t, m1] = Array.from({ length: 5 }, uuid);
+    await sql`insert into community (id, name) values (${communityId}, 'C')`;
+    await sql`insert into member (id, community_id, name) values (${alice}, ${communityId}, 'Alice')`;
+    await sql`insert into branch (id, community_id, name) values (${branchId}, ${communityId}, 'Seed')`;
+    await sql`insert into task (id, community_id, branch_id, title, effort, effort_magnitude, created_by) values (${t}, ${communityId}, ${branchId}, 'T', 'one_off', '{}'::jsonb, ${alice})`;
+    await sql`insert into task_milestone (id, task_id, label, date_type, absolute_date, proposed_by, created_by) values (${m1}, ${t}, 'Deposit due', 'absolute', '2026-12-01', ${alice}, ${alice})`;
+
+    await db.migrateRemaining();
+
+    const [m] = await sql`select label, check_in, completed_at, completed_by, absolute_date::text as absolute_date from task_milestone`;
+    expect(m).toMatchObject({ label: "Deposit due", check_in: false, completed_at: null, completed_by: null, absolute_date: "2026-12-01" });
+    const [c] = await sql`select accompaniment_check_ins as list from community`;
+    expect(c.list).toEqual([
+      { label: "Say hello", anchor: "after_joining", days: 3 },
+      { label: "How is it going?", anchor: "after_joining", days: 30 },
+      { label: "Before the event", anchor: "before_event", days: 14 },
+    ]);
+  });
 });
