@@ -1,10 +1,10 @@
-import { boolean, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { admission } from "./admission";
 import { community } from "./community";
 import { communityInvite } from "./community-invite";
 import { cycle } from "./cycle";
 import { formResponse } from "./form";
 import { member } from "./member";
-import { schedulingPoll } from "./scheduling-poll";
 import { task } from "./task";
 
 export const recruitmentRecommendationEnum = pgEnum("recruitment_recommendation", [
@@ -17,11 +17,8 @@ export const recruitmentRecommendationEnum = pgEnum("recruitment_recommendation"
 // activate for application alerts and the availability tool Phase
 // 34's scheduling needs" — see docs/spec.md's Recruitment. One row per
 // member, created on first activation and toggled in place afterward
-// rather than deleted on deactivation, so
-// consecutiveNoAvailabilityCount survives an activate/deactivate
-// cycle. That counter is Phase 34's own to increment — its scheduling
-// flow is what actually knows whether a subscriber gave availability;
-// this phase only ever reads it back at 0.
+// rather than deleted on deactivation. It is the person's own
+// setting and never lapses by itself (docs/plans/admission-flow.md §7).
 export const recruitmentSubscription = pgTable("recruitment_subscription", {
   id: uuid("id").primaryKey().defaultRandom(),
   memberId: uuid("member_id")
@@ -29,7 +26,6 @@ export const recruitmentSubscription = pgTable("recruitment_subscription", {
     .references(() => member.id)
     .unique(),
   active: boolean("active").notNull().default(false),
-  consecutiveNoAvailabilityCount: integer("consecutive_no_availability_count").notNull().default(0),
 });
 
 // One row per evaluator, against the application FormResponse — "the
@@ -41,18 +37,21 @@ export const recruitmentSubscription = pgTable("recruitment_subscription", {
 // no DB-level unique constraint), the same posture Assemblies'
 // responses / Budget's votes already use — an evaluator changing
 // their mind before a decision is reached is a real, low-stakes case.
+//
+// Keyed on the *arrival* (docs/plans/admission-flow.md §4): a report is about a person in the
+// funnel, and a lane that asks only for a conversation has nobody's application to
+// hang it on. `formResponseId` is the application when there is one.
 export const evaluation = pgTable("evaluation", {
   id: uuid("id").primaryKey().defaultRandom(),
-  formResponseId: uuid("form_response_id")
-    .notNull()
-    .references(() => formResponse.id),
+  formResponseId: uuid("form_response_id").references(() => formResponse.id),
+  arrivalId: uuid("arrival_id").references(() => admission.id),
   evaluatorId: uuid("evaluator_id")
     .notNull()
     .references(() => member.id),
   recommendation: recruitmentRecommendationEnum("recommendation").notNull(),
   notes: text("notes"),
   filedAt: timestamp("filed_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [uniqueIndex("evaluation_arrival_evaluator_unique").on(t.arrivalId, t.evaluatorId)]);
 
 // A resolved interpretation this phase needs to build for spec's own
 // "when the applicant came through an invite link, its
@@ -79,70 +78,6 @@ export const recruitmentApplicationInvite = pgTable("recruitment_application_inv
   communityInviteId: uuid("community_invite_id")
     .notNull()
     .references(() => communityInvite.id),
-});
-
-// The lifecycle of an objection under docs/plans/archive/joining-admission-plan.md
-// §2.6. `standing` is where every objection starts and where an
-// objection *lives*: it is never thrown out by the window's timer, and
-// inaction never admits or excludes. The three terminal states are the
-// three things that can actually happen to it — mediation cleared it,
-// mediation let it stand (which refuses the admission), or the body
-// exercised the overrule (the exception, and the only one that needs a
-// threshold).
-export const objectionResolutionEnum = pgEnum("objection_resolution", [
-  "standing",
-  "cleared",
-  "upheld",
-  "overruled",
-  "withdrawn",
-]);
-
-// "Subscribed members can raise an anonymous-to-the-community... but
-// visible-to-the-evaluators objection" — see docs/spec.md's
-// Recruitment. raisedBy is stored (never deleted, a real audit trail
-// same as e.g. Conflict management keeps underneath its own visibility
-// filtering) but deliberately never surfaced back out — see
-// src/lib/recruitment/objections.ts's listObjections, which strips it
-// before returning to evaluators. "Anonymous" reads as unqualified
-// here, not just "hidden from the wider community" — the same posture
-// the Anonymous task signal already takes ("a signal that can be
-// traced back defeats its own purpose").
-//
-// docs/plans/archive/joining-admission-plan.md §2.6/§4.3 tightens that from
-// "anonymous to the community, visible to the evaluators" into a
-// *shield at rest*: raisedBy is now readable only by the mediation
-// body (holders of a task granted `recruitment_mediation`), never by
-// the evaluators, and never by the person being objected to or the
-// inviter. See src/lib/recruitment/mediation.ts for the resolver and
-// objection_party_exclusion / objection_party_consent for the two ways
-// the objector adjusts what the body may see.
-//
-// formResponseId became nullable so the *same* objection machinery
-// covers both windows the plan unifies ("one discipline, applied to
-// both consensus-lane arrivals and the existing evaluated-path wider-
-// discussion", §2.6): inviteId is set for a consensus-lane arrival,
-// which has no application behind it, and formResponseId for the
-// evaluated path. Exactly one is set, enforced at the application
-// layer — the same posture schedulingEntry's memberId/formResponseId
-// pair takes in this schema. communityId is denormalized onto the row
-// so the mediation queue can scope by community without a join through
-// either subject.
-export const objection = pgTable("objection", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  communityId: uuid("community_id")
-    .notNull()
-    .references(() => community.id),
-  formResponseId: uuid("form_response_id").references(() => formResponse.id),
-  inviteId: uuid("invite_id").references(() => communityInvite.id),
-  raisedBy: uuid("raised_by")
-    .notNull()
-    .references(() => member.id),
-  note: text("note").notNull(),
-  raisedAt: timestamp("raised_at", { withTimezone: true }).notNull().defaultNow(),
-  resolution: objectionResolutionEnum("resolution").notNull().default("standing"),
-  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
-  resolvedById: uuid("resolved_by_id").references(() => member.id),
-  resolutionNote: text("resolution_note"),
 });
 
 // "Who are you sticking with" (docs/plans/archive/joining-admission-plan.md
@@ -177,14 +112,24 @@ export const recruitmentPair = pgTable("recruitment_pair", {
   // The person who named the other. Always a Member — even for a manual
   // link, where that member is the one who did the linking, because
   // there is no version of a pairing with nobody behind it.
-  requestedById: uuid("requested_by_id")
-    .notNull()
-    .references(() => member.id),
+  //
+  // Nullable since pairing moved onto arrivals (docs/plans/admission-flow.md §2): a person
+  // applying with somebody who made the link from their own page has no member behind
+  // them, so the namer is `firstArrivalId`; this is the member who named or linked them
+  // (an inviter naming members, or the team linking two arrivals by hand).
+  requestedById: uuid("requested_by_id").references(() => member.id),
   // The namer's own side, when the namer is an applicant too (the
   // public-application lane's "who are you sticking with" answer).
-  firstResponseId: uuid("first_response_id").references(() => formResponse.id),
+  // The pair is between *arrivals* (§4): the first is the person who made the link, or
+  // was named; the second is whoever arrived through it. An arrival needn't have an
+  // application (a lane that asks only for a conversation), which is why this is no
+  // longer keyed on form responses (kept below only until they are dropped).
+  firstArrivalId: uuid("first_arrival_id").references(() => admission.id),
+  secondArrivalId: uuid("second_arrival_id").references(() => admission.id),
+  // Linked by hand by the recruitment/mediation team, so either of the two people may
+  // confirm it; otherwise only the namer (the first arrival) can.
+  linkedByTeam: boolean("linked_by_team").notNull().default(false),
   secondMemberId: uuid("second_member_id").references(() => member.id),
-  secondResponseId: uuid("second_response_id").references(() => formResponse.id),
   status: recruitmentPairStatusEnum("status").notNull().default("awaiting_applicant"),
   // §2.8 — the joint interview is opt-in, so "offered", "said yes" and
   // "said no" are three separate recorded facts rather than one
@@ -256,35 +201,26 @@ export const recruitmentDecisionResolutionEnum = pgEnum("recruitment_decision_re
 // without naming a mechanism for what that call actually does).
 // defaultResolution/widerDiscussionDeadline are only ever set when
 // ruleOutcome is wider_discussion — see
-// src/lib/recruitment/evaluations.ts's requireValidDecisionRules for
-// where a rule's own defaultResolution is validated.
-// introCallPollId/accompanimentTaskId are idempotency markers — each
+// the decision form (decision-policy.ts), which is where the
+// defaultResolution comes from.
+// accompanimentTaskId and convertedMemberId are idempotency markers — each
 // side effect fires at most once per decision.
 export const recruitmentDecision = pgTable("recruitment_decision", {
   id: uuid("id").primaryKey().defaultRandom(),
+  // One decision per arrival; `formResponseId` is the application when there is one
+  // (a lane that asks only for a conversation decides without it).
   formResponseId: uuid("form_response_id")
-    .notNull()
     .references(() => formResponse.id)
+    .unique(),
+  arrivalId: uuid("arrival_id")
+    .references(() => admission.id)
     .unique(),
   ruleOutcome: recruitmentDecisionOutcomeEnum("rule_outcome").notNull(),
   defaultResolution: recruitmentDecisionLeaningEnum("default_resolution"),
   resolution: recruitmentDecisionResolutionEnum("resolution"),
   widerDiscussionDeadline: timestamp("wider_discussion_deadline", { withTimezone: true }),
   decidedAt: timestamp("decided_at", { withTimezone: true }).notNull().defaultNow(),
-  // Real FKs — neither scheduling-poll.ts nor task.ts has any reason
-  // to import this file back.
-  introCallPollId: uuid("intro_call_poll_id").references(() => schedulingPoll.id),
-  // Plaintext, not hashed like magic-link/session tokens — corrected
-  // from an initial "hash it like a login token" instinct: this app
-  // has no outbound-email layer to deliver it automatically (unlike a
-  // magic link, which the mailer sends directly), and a Form's fields
-  // are opaque to the platform, so there's no reliable way to extract
-  // the applicant's contact info to send it either. The only real
-  // delivery path is a human (the evaluator) copying the link from
-  // /applications and sending it themselves — the same "shareable,
-  // resendable, human-relayed link" shape CommunityInvite's own token
-  // already established, for the identical reason.
-  introCallToken: text("intro_call_token").unique(),
+  // Real FK — task.ts has no reason to import this file back.
   accompanimentTaskId: uuid("accompaniment_task_id").references(() => task.id),
   // docs/plans/development-plan.md's Phase 48: the real conversion step
   // Phases 32-34 deliberately left un-mechanized (see this file's own
@@ -298,10 +234,4 @@ export const recruitmentDecision = pgTable("recruitment_decision", {
   // gets this set, a real, visible limitation rather than a silent
   // failure (surfaced on the Accompaniment task's own description).
   convertedMemberId: uuid("converted_member_id").references(() => member.id),
-  // Idempotency marker for src/lib/recruitment/subscriptions.ts's
-  // updateRecruitmentSubscriptionLapses scheduled job — set once this
-  // decision's intro-call poll has confirmed a slot and every
-  // currently-active subscriber's consecutiveNoAvailabilityCount has
-  // been updated for it, so a decision is never processed twice.
-  subscriptionLapseProcessedAt: timestamp("subscription_lapse_processed_at", { withTimezone: true }),
 });

@@ -91,7 +91,7 @@ File content (292.5KB) exceeds maximum allowed size (256KB). Use offset and limi
 8	  modified: 2026-09-13T08:41:45.164Z
 9	---
 10	
-11	Do not label new Orchard work "Phase 70," "Phase 71," etc., anywhere — not in code comments, `docs/development-plan.md` headings, `CHANGELOG.md` entries, commit messages, or conversation. Every phase originally scoped in the development plan (0-69) is built and done; the numbered-phase scheme ends there.
+11	Do not label new Orchard work "Phase 70," "Phase 71," etc., anywhere — not in code comments, `docs/plans/development-plan.md` headings, `CHANGELOG.md` entries, commit messages, or conversation. Every phase originally scoped in the development plan (0-69) is built and done; the numbered-phase scheme ends there.
 12	
 13	**Why:** the user said this explicitly at least twice now (once in an earlier session that didn't get written down, and again in this one, visibly annoyed that it hadn't stuck: "I've said this before but i guess you didnt properly note it"). The project itself already had a working precedent for this before either correction: `CHANGELOG.md` has several `## Title` entries for post-Phase-69 work (Member competences, Assembly bug fixes, Budget improvements, Forms→ProfileQuestion mapping) each opening with "Standalone, not a phase." That convention should have been followed by default without needing to be told.
 14	
@@ -151,7 +151,7 @@ I'll start by mapping out the docs and codebase structure, then do a systematic 
 **Input:**
 ```json
 {
-  "command": "echo \"=== docs/ ===\" && ls -la docs/ && echo \"=== root files ===\" && ls -la *.md 2>/dev/null && echo \"=== wc spec ===\" && wc -l docs/spec.md docs/roadmap.md docs/development-plan.md CHANGELOG.md README.md CONTRIBUTING.md 2>/dev/null && echo \"=== search for UI notes ===\" && find . -iname \"*ui-note*\" -o -iname \"*ui_note*\" -o -iname \"*notes*\" 2>/dev/null | grep -v node_modules | grep -v .git"
+  "command": "echo \"=== docs/ ===\" && ls -la docs/ && echo \"=== root files ===\" && ls -la *.md 2>/dev/null && echo \"=== wc spec ===\" && wc -l docs/spec.md docs/roadmap.md docs/plans/development-plan.md CHANGELOG.md README.md CONTRIBUTING.md 2>/dev/null && echo \"=== search for UI notes ===\" && find . -iname \"*ui-note*\" -o -iname \"*ui_note*\" -o -iname \"*notes*\" 2>/dev/null | grep -v node_modules | grep -v .git"
 }
 ```
 
@@ -176,7 +176,7 @@ drwxr-xr-x@  4 toby  staff     128 Sep  7 19:12 design_handoff_conventions
 === wc spec ===
     1496 docs/spec.md
       33 docs/roadmap.md
-      45 docs/development-plan.md
+      45 docs/plans/development-plan.md
      341 CHANGELOG.md
      107 README.md
       77 CONTRIBUTING.md
@@ -203,7 +203,7 @@ drwxr-xr-x@  4 toby  staff     128 Sep  7 19:12 design_handoff_conventions
 
 **Result:**
 ```
-docs/development-plan.md:19:## Board views: by-phase layout and deadline milestones — shipped
+docs/plans/development-plan.md:19:## Board views: by-phase layout and deadline milestones — shipped
 CHANGELOG.md:325:## Board views: a view switcher, a by-phase layout, and deadline milestones
 ```
 
@@ -1342,7 +1342,7 @@ Do NOT Read or tail this file via the shell tool — it is the full subagent JSO
   "description": "Audit views/task-notes/recruitment/budget/events vs spec",
   "subagent_type": "general-purpose",
   "run_in_background": true,
-  "prompt": "You are auditing the Orchard codebase (/Users/toby/Local/Orchard, a Next.js + Postgres + Drizzle app) against its own spec (docs/spec.md) to find gaps between what was specced and what was actually built. This is a READ-ONLY investigation — do NOT write or edit any code.\n\nIMPORTANT KNOWN FACT, already confirmed, do not waste time re-discovering it — just verify/cite it briefly: the spec's Views section calls for \"group by branch → coordinator coverage\" (a branch-coverage board view) plus advanced filters (needs-attention, duration bucket, has-open-slots, assigned-to-me, due-within-N-days). This was drafted in docs/development-plan.md under \"Branch coverage view + advanced filters\" and per that file it is NOT YET BUILT — only a `view=kanban|phase` switcher and by-phase layout exist (src/lib/tasks/board-views.ts, PhaseCard.tsx). Please confirm this current state precisely by reading src/app/(app)/board/page.tsx and src/lib/tasks/board-views.ts, and report exactly what view modes exist today vs. what's listed as still-to-b
+  "prompt": "You are auditing the Orchard codebase (/Users/toby/Local/Orchard, a Next.js + Postgres + Drizzle app) against its own spec (docs/spec.md) to find gaps between what was specced and what was actually built. This is a READ-ONLY investigation — do NOT write or edit any code.\n\nIMPORTANT KNOWN FACT, already confirmed, do not waste time re-discovering it — just verify/cite it briefly: the spec's Views section calls for \"group by branch → coordinator coverage\" (a branch-coverage board view) plus advanced filters (needs-attention, duration bucket, has-open-slots, assigned-to-me, due-within-N-days). This was drafted in docs/plans/development-plan.md under \"Branch coverage view + advanced filters\" and per that file it is NOT YET BUILT — only a `view=kanban|phase` switcher and by-phase layout exist (src/lib/tasks/board-views.ts, PhaseCard.tsx). Please confirm this current state precisely by reading src/app/(app)/board/page.tsx and src/lib/tasks/board-views.ts, and report exactly what view modes exist today vs. what's listed as still-to-b
 
 ... [truncated — 8791 chars total]
 ```
@@ -1916,7 +1916,7 @@ Third report in (this is the corrected re-run) — found the spatial-plan clone-
 - `src/lib/tasks/board-views.ts` (66 lines total) exports only `groupTasksByPhase`; no `getBranchCoverage`/coverage grouping function exists.
 - `src/app/(app)/board/page.tsx:29` — `const VIEWS = ["kanban", "phase"] as const;` — no `"coverage"` mode.
 - No `BranchCoverageCard` component, no `view=coverage` handling anywhere in `src` (grep confirmed zero matches).
-- `src/lib/dashboard.ts:199` `deriveBranchHealthStatus` remains module-private (not exported), exactly as `docs/development-plan.md:32` says it still needs to be for reuse. Matches the known-gap note precisely: only `view=kanban|phase` exists today; branch-coverage + advanced filters are drafted but unbuilt in `docs/development-plan.md:25-41`.
+- `src/lib/dashboard.ts:199` `deriveBranchHealthStatus` remains module-private (not exported), exactly as `docs/plans/development-plan.md:32` says it still needs to be for reuse. Matches the known-gap note precisely: only `view=kanban|phase` exists today; branch-coverage + advanced filters are drafted but unbuilt in `docs/plans/development-plan.md:25-41`.
 
 **#4 — "What fits me" surfacing: BUILT**
 - UI: `src/app/(app)/board/page.tsx:236-240` — "Sort by what fits me" toggle (`sortByFit` query param), not a separate view but a real, working feature.

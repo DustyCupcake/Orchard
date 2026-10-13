@@ -69,6 +69,70 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   },
   {
     date: "2026-10-12",
+    title: "Joining: people arriving together, and a tidier back end",
+    summary: "If you're applying with someone you can now say so from your own page, and the old intro-call machinery is gone.",
+    points: [
+      "On your own page, \"Applying with someone?\" makes a link for the person you're applying with. When they use it, you're asked whether it's who you meant. If both of you are waiting for an interview, the people looking after joining can offer you one interview between you — you each still get your own recommendation.",
+      "The team can also link two people they know are coming together, from the Recruitment page; one of the two confirms it on their own page.",
+      "Your recruitment subscription is yours alone now: it no longer switches itself off after a few interviews you didn't offer times for.",
+      "The old intro-call link is retired — the interview is arranged from the person's own page before anyone decides.",
+    ],
+    source: "the clean-up: the legacy intro call, the lapsing subscription and the old columns are gone",
+  },
+  {
+    date: "2026-10-12",
+    title: "Signing in with your community's account system",
+    summary: "If your community signs in through its own provider (Zitadel), being admitted can now set that account up for you — and signing in no longer makes a second copy of you.",
+    points: [
+      "An administrator can turn on creating a sign-in account when someone is admitted: the provider emails them to set up how they sign in, and Orchard gives them the role. If the provider is down, they're admitted anyway and an administrator sees what's left, with a button to try again.",
+      "Signing in at the provider no longer creates a duplicate member when you already have one. If you were admitted here and the provider has confirmed your email, you're connected automatically. Otherwise an administrator is asked to connect you — you're told so when you try.",
+      "Optionally, only people admitted here can join through the provider, and leaving takes the role back.",
+      "Administrators can remove an empty member — a duplicate or a test account — as long as nothing is attached to them. If something is, it tells you exactly what.",
+    ],
+    source: "the sign-in provider: admitted means they can sign in, and a sign-in is never a duplicate",
+  },
+  {
+    date: "2026-10-12",
+    title: "Settings: only what your lanes need",
+    summary: "The recruitment settings stop asking about things none of your lanes uses.",
+    points: [
+      "If none of your lanes asks for an application or an interview, the application and evaluation settings are replaced by one line saying so — and come back the moment you add a lane that needs them.",
+      "The application form, the interviewers' availability threshold and the interviews door only appear when a lane asks for an application or an interview.",
+      "The Community check settings — how long a window stays open, who settles a concern, and what it takes to overrule one — only appear when a lane announces arrivals to the community or your decision rules can open a wider discussion.",
+      "A conversation-only lane now works end to end: the people who took part in the call report on the person, and a decision follows, without an application to read.",
+    ],
+    source: "the recruitment settings show only what the lanes in play need",
+  },
+  {
+    date: "2026-10-12",
+    title: "Joining: one community check, and one way to raise a concern",
+    summary: "When the community has a say in someone's arrival, it's the same window and the same page whichever way they came.",
+    points: [
+      "Anyone in the community can raise a concern about an arrival that is open to one — from the new Community check page, under Recruitment. You don't need to be subscribed to anything. The only person who can't is whoever invited them.",
+      "A concern holds their arrival until the mediation team has talked it through. A clock never ends it, nobody is refused by a timer, and nothing admits someone over a concern that stands.",
+      "Who raised it stays hidden from the person, from whoever invited them and from the people who read their application. You can withdraw your concern at any time.",
+      "The mediation team can now also ask for more: an application, and a conversation if they want one. The person is emailed what's being asked (never why), fills in the application on their own page, and then goes through the ordinary steps — read, interviewed, decided.",
+      "The recruitment holders no longer have a button to close a wider discussion. It ends by itself when nobody has raised a concern by the deadline, or when the mediation team has settled the ones that were raised.",
+      "If something goes wrong while an outcome is being applied, the next look at the window finishes it, rather than the outcome being lost.",
+    ],
+    source: "one community check, one way to raise a concern, and the body can ask for more",
+  },
+  {
+    date: "2026-10-12",
+    title: "Joining: the conversation comes before the decision",
+    summary: "People who are interviewed are interviewed first, and the decision is made from the reports of the people who met them.",
+    points: [
+      "A lane with an interview now sets one up as the person arrives, on their own page — they paint when they're free, and nobody sees anyone else's times until one is booked.",
+      "Recruitment holders offer their own times once, under Recruitment → Your interview availability: a grid for the next two weeks that counts for every interview automatically. A time is only offered for booking when the person and enough of you offered the same one.",
+      "A holder books it — any holder, not only whoever started the poll — and the person is emailed the time. The people who offered that time are the ones on the call, and they write the reports afterwards.",
+      "Without an interview, any holder who reads an application can report on it, as before.",
+      "How reports decide is four choices in settings instead of a list of rules; how many reports a lane needs is on the lane.",
+      "While conversations are paused, people wait at that step rather than skipping it, and the recruitment page says who is waiting on whom.",
+    ],
+    source: "the interview comes before the decision, and the holders offer their own times",
+  },
+  {
+    date: "2026-10-12",
     title: "Back the spending you want funded",
     summary: "Budgets no longer run in rounds or ask everyone to rank. Anyone proposes spending whenever they like, other members back it, and the budget's owner approves what has been backed.",
     points: [
@@ -96,6 +160,19 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   },
   {
     date: "2026-10-11",
+    title: "Joining: members' word can skip the rest",
+    summary: "A lane can say that a few members vouching for someone is enough, and nobody has to wait for it.",
+    points: [
+      "Under Settings → Recruitment, a lane with an application or an interview can add \"let members' support skip the rest\" and a number. When that many members have said they know the person — or think they'd fit — the rest of the process is skipped and they're admitted.",
+      "It never makes anyone wait. The person goes through the lane as normal, and if nobody vouches, nothing changes. It replaces the old \"one more member's word\" option, which did make people wait.",
+      "Everyone going through an application or interview gets a link to send to members who know them, on their own page. A member who opens it says how they know the person, once. The person who invited them can't be counted again.",
+      "People reading an application see who has vouched for them, and can add their own word from the applications list without needing the link. You can also ask members by name to look — they each get their own email, and no deadline.",
+      "It never skips past a concern someone has raised. That is always settled by the mediation team first.",
+    ],
+    source: "the support shortcut: members' word skips the rest, alongside the path and never past a concern",
+  },
+  {
+    date: "2026-10-11",
     title: "Budget and Shifts: propose from the top of the page",
     summary: "Both pages have a main button at the top that opens the form on its own, and Shifts says what things mean in plainer words.",
     points: [
@@ -106,6 +183,31 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Opening the app's address while you're logged in takes you straight to your dashboard.",
     ],
     source: "Budget and Shifts: proposing from the header, plain wording on Shifts, and the front door skips for logged-in members",
+  },
+  {
+    date: "2026-10-10",
+    title: "Joining: a full event waits instead of turning people away",
+    summary: "An invitation now respects the same doors as an application, and someone approved for an event that has filled up waits for room.",
+    points: [
+      "Opening an invitation link used to check no door. It now says so, in a sentence, when invites are closed, an event's joining period is over or the event is full — and the link is kept, so it works again when the door reopens.",
+      "A closed interviews door no longer turns anyone away at the entrance. People wait at the interview step until interviews reopen.",
+      "If someone is approved for an event that has since filled up, they're told they're in as soon as there's room, and they become a member then. Room appearing — a higher capacity, someone no longer coming, an invitation revoked — admits whoever waited longest.",
+      "On an event's page, whoever can run the event sees who is waiting and can admit someone anyway.",
+    ],
+    source: "doors checked everywhere somebody enters, and a place in an event taken at admission with a waitlist",
+  },
+  {
+    date: "2026-10-09",
+    title: "Joining: lanes you define, and a page for the person joining",
+    summary: "A community now defines only the ways of arriving that it needs, and everyone who is on their way in has a private page showing where they are.",
+    points: [
+      "Settings → Recruitment has lanes instead of four fixed rules. An invite lane takes invitations from members who said they know the person, think they'd fit, or neither; a public lane has its own application address. Each says in a sentence what it does, and a set that would leave some invitation with nowhere to go can't be saved.",
+      "An event chooses which lanes it opens (on its own page) instead of changing a lane's rules, so a different process for one event is a different lane. An invitation the event has no lane for is refused when it's sent, and says why.",
+      "Nobody is a member until they're admitted. Someone who applies, or is invited into a community check or an interview, gets a private page and an email with its link, showing where they are in plain words and letting them stop at any time. Being accepted emails them again.",
+      "An application form needs a question marked as the applicant's name and one as their email, or it can't take applications. An address that is already a member, or already in the process, is told so before anything is stored.",
+      "Nominations (one more member's word) are gone from lanes for now; the support shortcut that replaces them is coming.",
+    ],
+    source: "the admission funnel's foundations, finished: one source of lanes, one admission function, a page for the person",
   },
   {
     date: "2026-10-09",

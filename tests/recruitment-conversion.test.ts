@@ -3,38 +3,36 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   community,
+  admission,
+  communityCheck,
   communityInvite,
+  formResponse,
   member,
   memberIdentity,
   memberLanguage,
   participation,
-  recruitmentDecision,
-  recruitmentSubscription,
   task,
   profileAnswer,
   profileQuestion,
 } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
-import { createCycle } from "@/lib/cycles";
+import { createCycle, updateCycleSettings } from "@/lib/cycles";
+import { declareParticipation } from "@/lib/participation";
 import { claimTask } from "@/lib/tasks";
 import { createForm } from "@/lib/forms";
 import type { CreateFormInput } from "@/lib/forms";
 import { createProfileQuestion, listOnceEverAnswers, listOutstandingQuestions } from "@/lib/profile-questions";
 import {
   getRecruitmentDecision,
-  listOpenIntroCallsForSubscriber,
   recordDecisionIfReached,
-  resolveWiderDiscussionManually,
-  resolveWiderDiscussionWindows,
-  setRecruitmentSubscriptionActive,
+  closeDueChecks,
   submitEvaluation,
+  submitInterviewAvailability,
   submitRecruitmentApplication,
-  updateRecruitmentSubscriptionLapses,
 } from "@/lib/recruitment";
-import type { RecruitmentDecisionRule } from "@/lib/recruitment";
 import { findOrCreateMemberByEmail } from "@/lib/member";
-import { confirmSlot, submitAvailability, submitAvailabilityAsApplicant } from "@/lib/scheduling-polls";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { confirmSlot, submitAvailability } from "@/lib/scheduling-polls";
+import { createFixtures, grantPermission, resetDatabase, setLanes, withApplicationOnlyLanes, POLICY_TWO_OF_TWO } from "./helpers";
 
 // Phase 48's own resolved shape: a form whose fields are tagged as
 // the applicant's name/email, per src/lib/forms.ts's
@@ -48,18 +46,13 @@ const untaggedFields: CreateFormInput["fields"] = [
   { key: "name", label: "Name", responseType: "text", required: true },
 ];
 
-const PROCEED_RULES: RecruitmentDecisionRule[] = [
-  { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-  { conditions: { minCounts: { decline: 2 } }, outcome: "decline" },
-  { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-];
-
 async function enableRecruitment(communityId: string) {
   const [row] = await db.select().from(community).where(eq(community.id, communityId));
   await db
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
+  await withApplicationOnlyLanes(communityId);
 }
 
 async function insertTask(communityId: string, branchId: string, createdBy: string) {
@@ -81,7 +74,7 @@ async function insertTask(communityId: string, branchId: string, createdBy: stri
 async function setUp(
   fixtures: Awaited<ReturnType<typeof createFixtures>>,
   fields: CreateFormInput["fields"],
-  overrides: Partial<{ decisionRules: RecruitmentDecisionRule[]; lapseThreshold: number }> = {},
+  overrides: Partial<{ policy: Record<string, unknown>; lapseThreshold: number }> = {},
 ) {
   const { community: testCommunity, alice, bob, branch } = fixtures;
   await enableRecruitment(testCommunity.id);
@@ -89,8 +82,7 @@ async function setUp(
   const recruitmentTask = await insertTask(testCommunity.id, branch.id, alice.id);
   await updateCommunity(alice, {
     recruitmentApplicationFormId: form.id,
-    recruitmentEvaluatorCount: 2,
-    recruitmentDecisionRules: overrides.decisionRules ?? PROCEED_RULES,
+    ...((overrides.policy ?? POLICY_TWO_OF_TWO) as object),
     ...(overrides.lapseThreshold !== undefined && { recruitmentSubscriptionLapseThreshold: overrides.lapseThreshold }),
   });
   await grantPermission(testCommunity.id, "recruitment", recruitmentTask.id);
@@ -178,9 +170,9 @@ describe("Recruitment: applicant→Member conversion", () => {
     const application = await submitRecruitmentApplication(setupResult.communityId, {
       values: { name: "Dana Applicant", email: "dana@example.com" },
     });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
 
     expect(decision!.resolution).toBe("accepted");
     expect(decision!.convertedMemberId).not.toBeNull();
@@ -219,9 +211,9 @@ describe("Recruitment: applicant→Member conversion", () => {
     const application = await submitRecruitmentApplication(setupResult.communityId, {
       values: { name: "Ines Applicant", email: "ines@example.com", languages: "Spanish, Portuguese" },
     });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
 
     const rows = await db
       .select()
@@ -244,9 +236,9 @@ describe("Recruitment: applicant→Member conversion", () => {
     const application = await submitRecruitmentApplication(setupResult.communityId, {
       values: { name: "Jan Applicant", email: "jan@example.com", languages: "Dutch,\n\n  Polish  ,\n" },
     });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
 
     const rows = await db
       .select()
@@ -265,11 +257,15 @@ describe("Recruitment: applicant→Member conversion", () => {
     ];
     const setupResult = await setUp(fixtures, fieldsWithLanguages);
 
-    // The member has to exist *before* the decision, since that is the
-    // only window where the dedupe is reachable: a Member who applied
-    // earlier, already logged in, and set their own languages. Reusing the
-    // existing-member-by-email path is what puts conversion on an account
-    // that already has a row.
+    const application = await submitRecruitmentApplication(setupResult.communityId, {
+      values: { name: "Kim", email: "kim@example.com", languages: "English, Welsh" },
+    });
+
+    // The member has to exist *before* the decision, since that is the only
+    // window where the dedupe is reachable: somebody who applied, then got an
+    // account some other way, logged in and set their own languages. Linking to
+    // the existing member by email is what puts conversion on an account that
+    // already has rows.
     const [existingMember] = await db
       .insert(member)
       .values({ communityId: setupResult.communityId, name: "Kim" })
@@ -285,12 +281,9 @@ describe("Recruitment: applicant→Member conversion", () => {
       level: "native",
     });
 
-    const application = await submitRecruitmentApplication(setupResult.communityId, {
-      values: { name: "Kim", email: "kim@example.com", languages: "English, Welsh" },
-    });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
     expect(decision!.convertedMemberId).toBe(existingMember.id);
 
     const rows = await db
@@ -311,9 +304,9 @@ describe("Recruitment: applicant→Member conversion", () => {
     const application = await submitRecruitmentApplication(setupResult.communityId, {
       values: { name: "Lee Applicant", email: "lee@example.com" },
     });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
 
     expect(decision!.convertedMemberId).not.toBeNull();
     const rows = await db
@@ -340,9 +333,9 @@ describe("Recruitment: applicant→Member conversion", () => {
     const application = await submitRecruitmentApplication(setupResult.communityId, {
       values: { name: "Frankie Applicant", email: "frankie@example.com", pronouns: "they/them" },
     });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
 
     const [newMember] = await db.select().from(member).where(eq(member.id, decision!.convertedMemberId!));
 
@@ -380,9 +373,9 @@ describe("Recruitment: applicant→Member conversion", () => {
     const application = await submitRecruitmentApplication(setupResult.communityId, {
       values: { name: "Harlow Applicant", email: "harlow@example.com", medical: "a private thing" },
     });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
 
     expect(decision!.convertedMemberId).not.toBeNull();
     const saved = await db
@@ -409,9 +402,9 @@ describe("Recruitment: applicant→Member conversion", () => {
     const application = await submitRecruitmentApplication(setupResult.communityId, {
       values: { name: "Gale Applicant", email: "gale@example.com", vibe: "not one of the real options" },
     });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
 
     expect(decision!.resolution).toBe("accepted");
     expect(decision!.convertedMemberId).not.toBeNull();
@@ -438,9 +431,9 @@ describe("Recruitment: applicant→Member conversion", () => {
       values: { name: "Erin Applicant", email: "erin@example.com" },
       inviteToken: invite.token,
     });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
 
     const [newMember] = await db.select().from(member).where(eq(member.id, decision!.convertedMemberId!));
     expect(newMember.referredByMemberId).toBe(setupResult.alice.id);
@@ -449,42 +442,55 @@ describe("Recruitment: applicant→Member conversion", () => {
     expect(accompanimentTask.suggestedMemberId).toBe(setupResult.alice.id);
   });
 
-  it("leaves convertedMemberId null, without erroring, when the application form isn't tagged", async () => {
+  it("refuses an application to a form that can't identify a person, before storing anything", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures, untaggedFields);
 
-    const application = await submitRecruitmentApplication(setupResult.communityId, { values: { name: "Frank" } });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
-
-    expect(decision!.resolution).toBe("accepted");
-    expect(decision!.convertedMemberId).toBeNull();
-
-    const [accompanimentTask] = await db.select().from(task).where(eq(task.id, decision!.accompanimentTaskId!));
-    expect(accompanimentTask.description).toMatch(/isn't tagged/);
+    // A form with no question marked as the applicant's name and email could
+    // take applications and never admit anyone — the decision would be made and
+    // nobody would arrive. It's refused at the door instead, saying why.
+    await expect(
+      submitRecruitmentApplication(setupResult.communityId, { values: { name: "Frank", email: "frank@example.com" } }),
+    ).rejects.toThrow(/marked as the applicant's name/);
+    expect(await db.select().from(formResponse)).toHaveLength(0);
   });
 
-  it("links to an existing member by email instead of creating a duplicate", async () => {
+  it("refuses an application from an address that already belongs to a member", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures, taggedFields);
-
     const [existingMember] = await db
       .insert(member)
       .values({ communityId: setupResult.communityId, name: "Already Here" })
       .returning();
-    await db.insert(memberIdentity).values({
-      memberId: existingMember.id,
-      provider: "magic_link",
-      loginEmail: "already-here@example.com",
-    });
+    await db.insert(memberIdentity).values({ memberId: existingMember.id, provider: "magic_link", loginEmail: "already-here@example.com" });
 
+    await expect(
+      submitRecruitmentApplication(setupResult.communityId, {
+        values: { name: "Already Here (reapplying)", email: "already-here@example.com" },
+      }),
+    ).rejects.toThrow(/already belongs to a member/);
+    expect(await db.select().from(formResponse)).toHaveLength(0);
+  });
+
+  it("links to an existing member by email instead of creating a duplicate, when they became one while applying", async () => {
+    const fixtures = await createFixtures();
+    const setupResult = await setUp(fixtures, taggedFields);
+
+    // They applied as a stranger, and while it was being decided they got an
+    // account some other way (an invite, an import). Accepting the
+    // application must link to that account rather than crash or duplicate.
     const application = await submitRecruitmentApplication(setupResult.communityId, {
       values: { name: "Already Here (reapplying)", email: "already-here@example.com" },
     });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    const [existingMember] = await db
+      .insert(member)
+      .values({ communityId: setupResult.communityId, name: "Already Here" })
+      .returning();
+    await db.insert(memberIdentity).values({ memberId: existingMember.id, provider: "magic_link", loginEmail: "already-here@example.com" });
+
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
 
     expect(decision!.convertedMemberId).toBe(existingMember.id);
     const identities = await db
@@ -494,53 +500,26 @@ describe("Recruitment: applicant→Member conversion", () => {
     expect(identities).toHaveLength(1);
   });
 
-  it("converts on a manually-resolved wider_discussion outcome", async () => {
-    const fixtures = await createFixtures();
-    const rules: RecruitmentDecisionRule[] = [
-      { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-    ];
-    const setupResult = await setUp(fixtures, taggedFields, { decisionRules: rules });
-
-    const application = await submitRecruitmentApplication(setupResult.communityId, {
-      values: { name: "Gale Applicant", email: "gale@example.com" },
-    });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "unsure" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "unsure" });
-    await recordDecisionIfReached(setupResult.alice, application.id);
-
-    const resolved = await resolveWiderDiscussionManually(setupResult.alice, application.id, {
-      resolution: "accepted",
-    });
-    expect(resolved.convertedMemberId).not.toBeNull();
-    const [newMember] = await db.select().from(member).where(eq(member.id, resolved.convertedMemberId!));
-    expect(newMember.name).toBe("Gale Applicant");
-  });
-
   it("converts on the scheduled wider_discussion auto-resolution job", async () => {
     const fixtures = await createFixtures();
-    const rules: RecruitmentDecisionRule[] = [
-      { conditions: {}, outcome: "wider_discussion", defaultResolution: "proceed" },
-    ];
-    const setupResult = await setUp(fixtures, taggedFields, { decisionRules: rules });
+    const setupResult = await setUp(fixtures, taggedFields, { policy: { recruitmentDiscussionEnds: "admit" } });
 
     const application = await submitRecruitmentApplication(setupResult.communityId, {
       values: { name: "Hana Applicant", email: "hana@example.com" },
     });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "unsure" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "unsure" });
-    await recordDecisionIfReached(setupResult.alice, application.id);
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "unsure" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "unsure" });
+    await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
 
     // Backdate the deadline, same technique the rest of this suite
     // already uses to exercise a scheduled job without a real wait.
-    await db
-      .update(recruitmentDecision)
-      .set({ widerDiscussionDeadline: new Date(Date.now() - 1000) })
-      .where(eq(recruitmentDecision.formResponseId, application.id));
+    const [arrival] = await db.select().from(admission).where(eq(admission.formResponseId, application.formResponse.id));
+    await db.update(communityCheck).set({ deadline: new Date(Date.now() - 1000) }).where(eq(communityCheck.arrivalId, arrival.id));
 
-    const result = await resolveWiderDiscussionWindows();
-    expect(result.resolved).toBe(1);
+    const result = await closeDueChecks();
+    expect(result.ended).toBe(1);
 
-    const decision = await getRecruitmentDecision(application.id);
+    const decision = await getRecruitmentDecision(application.formResponse.id);
     expect(decision!.resolution).toBe("accepted");
     expect(decision!.convertedMemberId).not.toBeNull();
   });
@@ -555,10 +534,10 @@ describe("Recruitment: applicant→Member conversion", () => {
       values: { name: "Dana Applicant", email: "dana@example.com" },
       cycleId: cycleRow.id,
     });
-    expect(application.cycleId).toBe(cycleRow.id);
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    expect(application.formResponse.cycleId).toBe(cycleRow.id);
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
 
     expect(decision!.resolution).toBe("accepted");
     const [newMember] = await db.select().from(member).where(eq(member.id, decision!.convertedMemberId!));
@@ -568,107 +547,48 @@ describe("Recruitment: applicant→Member conversion", () => {
       .where(and(eq(participation.cycleId, cycleRow.id), eq(participation.memberId, newMember.id)));
     expect(row?.status).toBe("coming");
   });
-});
 
-describe("Recruitment: subscription auto-lapse", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  async function driveToConfirmedIntroCall(
-    setupResult: Awaited<ReturnType<typeof setUp>>,
-    applicantValues: Record<string, string>,
-  ) {
-    const application = await submitRecruitmentApplication(setupResult.communityId, { values: applicantValues });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(setupResult.bob, application.id, { recommendation: "proceed" });
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
-    const pollId = decision!.introCallPollId!;
-
-    const slot = "2027-06-01T10:00:00.000Z";
-    await submitAvailability(setupResult.alice, pollId, { slots: [slot] });
-    await submitAvailability(setupResult.bob, pollId, { slots: [slot] });
-    await submitAvailabilityAsApplicant(pollId, application.id, { slots: [slot] });
-
-    return { application, decision, pollId, slot };
-  }
-
-  it("increments an active subscriber's count when they give no availability, and lapses at the threshold", async () => {
+  it("an accepted application into a full event is waitlisted, not made a member, and admitted when room appears (§6)", async () => {
     const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures, untaggedFields, { lapseThreshold: 2 });
+    const setupResult = await setUp(fixtures, taggedFields);
+    await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, setupResult.communityId));
+    const cycleRow = await createCycle(setupResult.alice, { source: "blank", name: "Season A" });
+    // Dana applies while there is room; by the time she is approved, the event
+    // has exactly one place and Alice is using it. (Applying to an event that is
+    // already full is refused at the door, not waitlisted — the waitlist is for
+    // the people it filled up *around*.)
+    const application = await submitRecruitmentApplication(setupResult.communityId, {
+      values: { name: "Dana Applicant", email: "dana@example.com" },
+      cycleId: cycleRow.id,
+    });
+    await declareParticipation(setupResult.alice, cycleRow.id, { status: "coming" });
+    await updateCycleSettings(setupResult.alice, cycleRow.id, { capacity: 1 });
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(setupResult.bob, application.formResponse.id, { recommendation: "proceed" });
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
 
-    const [carol] = await db
-      .insert(member)
-      .values({ communityId: setupResult.communityId, name: "Carol" })
-      .returning();
-    await setRecruitmentSubscriptionActive(carol, true);
+    // Accepted, and waiting: the decision is made, nobody is a member yet, and
+    // the accompaniment task says why rather than blaming the form.
+    expect(decision!.resolution).toBe("accepted");
+    expect(decision!.convertedMemberId).toBeNull();
+    const [waiting] = await db.select().from(admission).where(eq(admission.id, application.arrivalId));
+    expect(waiting.waitlistedAt).not.toBeNull();
+    expect(await db.select().from(member).where(eq(member.name, "Dana Applicant"))).toHaveLength(0);
+    const [accompaniment] = await db.select().from(task).where(eq(task.id, decision!.accompanimentTaskId!));
+    expect(accompaniment.description).toMatch(/waiting for a place/);
+    expect(accompaniment.description).not.toMatch(/isn't tagged/);
 
-    // Round 1: carol doesn't submit anything for this intro call.
-    const { pollId: pollId1 } = await driveToConfirmedIntroCall(setupResult, { name: "One" });
-    await confirmSlot(setupResult.alice, pollId1, { slot: "2027-06-01T10:00:00.000Z" });
-    let result = await updateRecruitmentSubscriptionLapses();
-    expect(result.processed).toBe(1);
-    expect(result.lapsed).toBe(0);
-
-    let [sub] = await db.select().from(recruitmentSubscription).where(eq(recruitmentSubscription.memberId, carol.id));
-    expect(sub.consecutiveNoAvailabilityCount).toBe(1);
-    expect(sub.active).toBe(true);
-
-    // Round 2: still nothing from carol — hits the threshold of 2.
-    const { pollId: pollId2 } = await driveToConfirmedIntroCall(setupResult, { name: "Two" });
-    await confirmSlot(setupResult.alice, pollId2, { slot: "2027-06-01T10:00:00.000Z" });
-    result = await updateRecruitmentSubscriptionLapses();
-    expect(result.lapsed).toBe(1);
-
-    [sub] = await db.select().from(recruitmentSubscription).where(eq(recruitmentSubscription.memberId, carol.id));
-    expect(sub.consecutiveNoAvailabilityCount).toBe(2);
-    expect(sub.active).toBe(false);
-  });
-
-  it("resets an active subscriber's count to 0 once they submit availability for an intro call", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures, untaggedFields, { lapseThreshold: 5 });
-
-    const [carol] = await db
-      .insert(member)
-      .values({ communityId: setupResult.communityId, name: "Carol" })
-      .returning();
-    await setRecruitmentSubscriptionActive(carol, true);
-    await db
-      .update(recruitmentSubscription)
-      .set({ consecutiveNoAvailabilityCount: 3 })
-      .where(eq(recruitmentSubscription.memberId, carol.id));
-
-    const { pollId, slot } = await driveToConfirmedIntroCall(setupResult, { name: "Three" });
-
-    const openBefore = await listOpenIntroCallsForSubscriber(carol);
-    expect(openBefore).toHaveLength(1);
-    expect(openBefore[0].submittedByMe).toBe(false);
-
-    await submitAvailability(carol, pollId, { slots: [slot] });
-
-    const openAfter = await listOpenIntroCallsForSubscriber(carol);
-    expect(openAfter[0].submittedByMe).toBe(true);
-
-    await confirmSlot(setupResult.alice, pollId, { slot });
-    await updateRecruitmentSubscriptionLapses();
-
-    const [sub] = await db.select().from(recruitmentSubscription).where(eq(recruitmentSubscription.memberId, carol.id));
-    expect(sub.consecutiveNoAvailabilityCount).toBe(0);
-  });
-
-  it("never touches a decision whose intro call hasn't confirmed a slot yet, and is a no-op for a non-subscriber", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures, untaggedFields);
-
-    const [carol] = await db
-      .insert(member)
-      .values({ communityId: setupResult.communityId, name: "Carol" })
-      .returning();
-    expect(await listOpenIntroCallsForSubscriber(carol)).toEqual([]);
-
-    await driveToConfirmedIntroCall(setupResult, { name: "Four" });
-    const result = await updateRecruitmentSubscriptionLapses();
-    expect(result.processed).toBe(0);
+    // Alice stops coming; that frees the place and admits the person waiting.
+    await declareParticipation(setupResult.alice, cycleRow.id, { status: "not_coming" });
+    const [admitted] = await db.select().from(admission).where(eq(admission.id, application.arrivalId));
+    expect(admitted.admittedMemberId).not.toBeNull();
+    expect(admitted.waitlistedAt).toBeNull();
+    const after = await getRecruitmentDecision(application.formResponse.id);
+    expect(after!.convertedMemberId).toBe(admitted.admittedMemberId);
+    const [place] = await db
+      .select()
+      .from(participation)
+      .where(and(eq(participation.cycleId, cycleRow.id), eq(participation.memberId, admitted.admittedMemberId!)));
+    expect(place?.status).toBe("coming");
   });
 });

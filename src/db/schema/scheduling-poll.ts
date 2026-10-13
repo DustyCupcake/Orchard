@@ -1,12 +1,18 @@
 import { boolean, date, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { branch } from "./branch";
 import { community } from "./community";
-import { formResponse } from "./form";
 import { member } from "./member";
 
 export const pollResolutionModeEnum = pgEnum("poll_resolution_mode", [
   "must_overlap",
   "max_attendance",
+  // "person_plus_n_holders": the applicant must overlap AND at least N holders
+  // (where N is stored in minAttendance). This is the admission-flow §4 model:
+  // the person must be available, AND at least minAttendance holders must also
+  // be available for the same slot. This replaces the either/or of the two
+  // existing modes with a conjunction that matches the plan's "person overlaps
+  // AND at least N holders" rule.
+  "person_plus_n_holders",
 ]);
 
 // "When can enough of the right people actually meet" — see
@@ -78,7 +84,11 @@ export const schedulingEntry = pgTable("scheduling_entry", {
     .notNull()
     .references(() => schedulingPoll.id),
   memberId: uuid("member_id").references(() => member.id),
-  formResponseId: uuid("form_response_id").references(() => formResponse.id),
+  // A person in the admission funnel (docs/plans/admission-flow.md §4) — the key a new
+  // interview poll uses for the applicant, because an arrival always has one and
+  // an interview-only arrival has no application (so no form response) to hang it
+  // on. Polls made before arrivals existed keep their form response.
+  arrivalId: uuid("arrival_id"),
   availableSlots: jsonb("available_slots").notNull().default([]),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

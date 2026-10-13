@@ -39,13 +39,11 @@ import {
   updateTier,
   updateTierInput,
 } from "@/lib/settings";
-import {
-  joiningLaneRuleInputSchema,
-  setCommunityJoiningLaneRules,
-  type JoiningLaneRuleInput,
-} from "@/lib/recruitment/joining-lanes";
-import { JOINING_LANE_ORDER } from "@/lib/recruitment/lanes";
-import type { JoinLaneKind } from "@/db/schema";
+import { saveCommunityLanes } from "@/lib/recruitment/admission-lanes";
+import { markSignInSetUp, retrySignInSetup } from "@/lib/sign-in/provision";
+import { removeEmptyMember } from "@/lib/sign-in/remove-member";
+import { linkSignInToMember, turnAwaySignIn } from "@/lib/sign-in/unmatched";
+import type { AdmissionLaneRule } from "@/lib/recruitment/lane-rules";
 import { checkboxGroup, checkboxOf, defined, number, optionalNumber, optionalText, text } from "./form-values";
 import {
   archiveProfileQuestion,
@@ -87,20 +85,6 @@ function parseFieldsJson(raw: string): unknown {
     return JSON.parse(raw);
   } catch {
     throw new AppError("Invalid fields payload");
-  }
-}
-
-// Raw JSON, not a dynamic rule-builder UI — same "plain text config,
-// no client-side JS" posture parseFormFields already takes, but the
-// nested {conditions, outcome}[] shape doesn't fit a flat pipe-
-// delimited line the way Form fields do.
-function parseDecisionRules(raw: string): unknown {
-  const trimmed = raw.trim();
-  if (!trimmed) return [];
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    throw new AppError("Decision rules must be valid JSON");
   }
 }
 
@@ -213,6 +197,84 @@ export async function updateSsoAction(formData: FormData) {
         }),
       ),
     );
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+// General → what "admitted" means at the provider (docs/plans/admission-flow.md §6a). All three are
+// off (or today's behaviour) until a community turns them on.
+export async function updateSsoProvisioningAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    await updateCommunity(
+      actor,
+      updateCommunityInput.parse(
+        defined({
+          ssoCreateOnAdmit: checkboxOf(formData, "ssoCreateOnAdmit"),
+          ssoRevokeOnLeave: checkboxOf(formData, "ssoRevokeOnLeave"),
+          ssoJoinPolicy: (text(formData, "ssoJoinPolicy") || undefined) as "anyone_with_role" | "admitted_only" | undefined,
+        }),
+      ),
+    );
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+export async function retrySignInSetupAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await retrySignInSetup(actor, text(formData, "memberId"));
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+export async function markSignInSetUpAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await markSignInSetUp(actor, text(formData, "memberId"));
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+export async function linkSignInAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    const memberId = text(formData, "memberId");
+    if (!memberId) throw new AppError("Choose which member they are");
+    await linkSignInToMember(actor, text(formData, "unmatchedId"), memberId);
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+export async function turnAwaySignInAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await turnAwaySignIn(actor, text(formData, "unmatchedId"));
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+}
+
+// An administrator removing a member who has nothing to their name (a duplicate left by a
+// sign-in, a test account). Refuses, naming what is attached, otherwise.
+export async function removeEmptyMemberAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    const memberId = text(formData, "memberId");
+    if (!memberId) throw new AppError("Choose which member to remove");
+    await removeEmptyMember(actor, memberId);
   } catch (err) {
     redirectWithError(err, "general");
   }
@@ -350,29 +412,22 @@ export async function updatePostCycleFeedbackAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
-// Recruitment → the application funnel itself: which form, how many
-// evaluators, how their recommendations turn into an outcome, and the
-// words a decline starts from.
-//
-// The decision rules get their own card rather than sharing one with the
-// other four, and that is the whole reason this tab stopped being one
-// form: those rules are the single most error-prone field on the settings
-// screen (a hand-written JSON array with a required fallback rule), and
-// while they shared a Save with the doors and the windows, a rejected
-// rule set silently reverted every door and window on the tab.
+// Recruitment → the application funnel itself: which form, when a
+// subscription lapses, and the words a decline starts from. How many reports an
+// arrival needs is on its lane, and how reports decide is its own card below, so
+// a rejected policy can't silently revert the form and the words.
 export async function updateRecruitmentApplicationAction(formData: FormData) {
   const actor = await requireMember();
   try {
     await requireAdmins(actor);
     const input = updateCommunityInput.parse(
       defined({
-        recruitmentApplicationFormId: optionalText(formData, "recruitmentApplicationFormId"),
-        recruitmentEvaluatorCount: number(formData, "recruitmentEvaluatorCount"),
-        recruitmentSubscriptionLapseThreshold: number(formData, "recruitmentSubscriptionLapseThreshold"),
+        // Fields the screen doesn't show (no lane asks for a form, or for an interview) are
+        // absent from the post, and absent means untouched — never cleared.
+        recruitmentApplicationFormId: formData.has("recruitmentApplicationFormId")
+          ? optionalText(formData, "recruitmentApplicationFormId")
+          : undefined,
         recruitmentRejectionTemplate: optionalText(formData, "recruitmentRejectionTemplate"),
-        ...(formData.has("recruitmentDecisionRulesRaw")
-          ? { recruitmentDecisionRules: parseDecisionRules(String(formData.get("recruitmentDecisionRulesRaw") ?? "")) }
-          : {}),
       }),
     );
     await updateCommunity(actor, input);
@@ -382,19 +437,31 @@ export async function updateRecruitmentApplicationAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
-export async function updateRecruitmentDecisionRulesAction(formData: FormData) {
+// How reports decide (docs/plans/admission-flow.md §2): four choices, one policy for
+// the whole community. A policy a lane could never meet is refused by
+// updateCommunity with the lane named.
+export async function updateRecruitmentDecisionPolicyAction(formData: FormData) {
   const actor = await requireMember();
   try {
     await requireAdmins(actor);
-    await updateCommunity(actor, {
-      recruitmentDecisionRules: parseDecisionRules(String(formData.get("recruitmentDecisionRulesRaw") ?? "")) as
-        | []
-        | { conditions: Record<string, unknown>; outcome: "proceed" | "decline" | "wider_discussion"; defaultResolution?: "proceed" | "decline" }[],
-    });
+    const input = updateCommunityInput.parse(
+      defined({
+        recruitmentInWhen: text(formData, "recruitmentInWhen") || undefined,
+        recruitmentCustomMinYes: number(formData, "recruitmentCustomMinYes"),
+        recruitmentCustomMaxNo: number(formData, "recruitmentCustomMaxNo"),
+        recruitmentAnyNoMeans: text(formData, "recruitmentAnyNoMeans") || undefined,
+        recruitmentDiscussionEnds: text(formData, "recruitmentDiscussionEnds") || undefined,
+        recruitmentDeclineOutrightAt: formData.has("recruitmentDeclineOutrightAt")
+          ? (number(formData, "recruitmentDeclineOutrightAt") ?? null)
+          : undefined,
+      }),
+    );
+    await updateCommunity(actor, input);
   } catch (err) {
     redirectWithError(err, "recruitment");
   }
   revalidatePath("/settings");
+  revalidatePath("/recruitment");
 }
 
 // Recruitment → the three doors (§2.3). One card, one save, because the
@@ -436,20 +503,6 @@ export async function updateRecruitmentDoorsAction(formData: FormData) {
 // /recruitment/mediation: nothing on the mediation page depends on how long
 // a nomination waits, and the check window's does because that page renders
 // the overrule threshold.
-export async function updateRecruitmentSupportWindowAction(formData: FormData) {
-  const actor = await requireMember();
-  try {
-    await requireAdmins(actor);
-    const input = updateCommunityInput.parse(
-      defined({ recruitmentNominationWindowHours: number(formData, "recruitmentNominationWindowHours") }),
-    );
-    await updateCommunity(actor, input);
-  } catch (err) {
-    redirectWithError(err, "recruitment");
-  }
-  revalidatePath("/settings");
-}
-
 export async function updateRecruitmentCheckWindowAction(formData: FormData) {
   const actor = await requireMember();
   try {
@@ -472,31 +525,40 @@ export async function updateRecruitmentCheckWindowAction(formData: FormData) {
   revalidatePath("/recruitment/mediation");
 }
 
-// Recruitment → the four admission lanes (§2.1/§2.2, §5.1). The one card
-// on this tab that is genuinely a form about a *design*, and the one that
-// most needed to stop sharing a Save button with everything else.
-export async function updateAdmissionRulesAction(formData: FormData) {
+// Recruitment → the admission lanes (docs/plans/admission-flow.md §2a, §3). The one
+// card on this tab that is genuinely a form about a *design*, and the one that
+// most needed to stop sharing a Save button with everything else. The whole
+// lane list arrives as one JSON field, because it is validated as a whole
+// (every kind of invite must belong to exactly one lane) and a lane removed
+// from it is archived, not deleted.
+const laneInput = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().max(120),
+  kind: z.enum(["invite", "public"]),
+  handlesKnowsPersonally: z.boolean(),
+  handlesGoodFitOnly: z.boolean(),
+  handlesNeither: z.boolean(),
+  publicSlug: z.string().max(60).nullable(),
+  applicationRequired: z.boolean(),
+  interviewRequired: z.boolean(),
+  verification: z.enum(["none", "community_check"]),
+  reportsNeeded: z.number().int().min(1).max(50).nullable(),
+  supportShortcutCount: z.number().int().min(1).max(50).nullable(),
+  openInCommunity: z.boolean(),
+});
+
+export async function saveAdmissionLanesAction(formData: FormData) {
   const actor = await requireMember();
   try {
     await requireAdmins(actor);
-    const rules: Partial<Record<JoinLaneKind, JoiningLaneRuleInput>> = {};
-    for (const lane of JOINING_LANE_ORDER) {
-      // A lane the client didn't render a card for is left alone rather
-      // than written as a default — the preset select and the four cards
-      // both post through the same fields, and "absent" has to be able to
-      // mean "untouched" so a per-lane tweak survives a preset change
-      // that didn't include it.
-      if (formData.get(`lane.${lane}.verificationMode`) === null) continue;
-      const parsed = joiningLaneRuleInputSchema.parse({
-        verificationMode: formData.get(`lane.${lane}.verificationMode`),
-        supportCount: Number(formData.get(`lane.${lane}.supportCount`) ?? 1),
-        applicationRequired: checkboxOf(formData, `lane.${lane}.applicationRequired`) ?? false,
-        interviewRequired: checkboxOf(formData, `lane.${lane}.interviewRequired`) ?? false,
-        applyInsteadAvailable: checkboxOf(formData, `lane.${lane}.applyInsteadAvailable`) ?? true,
-      });
-      rules[lane] = parsed;
+    let raw: unknown;
+    try {
+      raw = JSON.parse(String(formData.get("lanes") ?? "[]"));
+    } catch {
+      throw new AppError("The lanes couldn't be read — reload the page and try again");
     }
-    await setCommunityJoiningLaneRules(actor.communityId, rules);
+    const lanes: AdmissionLaneRule[] = z.array(laneInput).max(40).parse(raw);
+    await saveCommunityLanes(actor, lanes);
   } catch (err) {
     redirectWithError(err, "recruitment");
   }

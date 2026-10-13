@@ -1,7 +1,6 @@
 import {
   boolean,
   integer,
-  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -23,10 +22,20 @@ export const branchMembershipModelEnum = pgEnum("branch_membership_model", ["eme
 // (membershipModelEnum, dateDisplayModeEnum) it is a *configuration*
 // choice, and a db/schema file importing another module's file for it
 // would be a dependency direction this schema has never taken.
+// docs/plans/admission-flow.md §2, "How reports decide": the small fixed form that
+// replaced the ordered rules list. The values mirror decision-policy.ts, which a
+// client component can import and this file cannot.
+export const recruitmentInWhenEnum = pgEnum("recruitment_in_when", ["no_no_one_yes", "more_yes_than_no", "all_yes", "custom"]);
+export const recruitmentAnyNoMeansEnum = pgEnum("recruitment_any_no_means", ["wider_discussion", "decline"]);
+export const recruitmentDiscussionEndsEnum = pgEnum("recruitment_discussion_ends", ["admit", "decline"]);
+
 export const objectionOverruleModeEnum = pgEnum("objection_overrule_mode", ["majority", "quorum"]);
 
 // A single Community row per deployment. Everything else in the schema
 // belongs to one — see docs/spec.md's "Community" section.
+export const ssoJoinPolicyEnum = pgEnum("sso_join_policy", ["anyone_with_role", "admitted_only"]);
+export const SSO_JOIN_POLICIES = ["anyone_with_role", "admitted_only"] as const;
+
 export const community = pgTable("community", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -145,57 +154,20 @@ export const community = pgTable("community", {
   // interviews everywhere. Default true: the stage exists today on the
   // evaluated path, so a community that touches nothing keeps it.
   recruitmentInterviewsOpen: boolean("recruitment_interviews_open").notNull().default(true),
-  // "However many evaluators the Community assigns (two, in the
-  // reference case)" — see docs/spec.md's Recruitment. "The
-  // evaluators" are resolved as whoever currently holds a task granting
-  // the `recruitment` module (src/lib/recruitment/access.ts,
-  // `PermissionGrant`), not a separate assignment mechanism — this is
-  // just how many distinct evaluators have to file before a decision is
-  // considered reached.
-  recruitmentEvaluatorCount: integer("recruitment_evaluator_count").notNull().default(2),
-  // The recommendation→outcome mapping, community-configured per spec
-  // ("Peach Please's specific matrix becomes one configuration of
-  // this, not the only shape it can take"). Resolved shape (spec names
-  // none): RecruitmentDecisionRule[] — {conditions, outcome}, evaluated
-  // top-to-bottom, first match wins. See
-  // src/lib/recruitment/evaluations.ts for the concrete type and
-  // src/lib/settings/community.ts's requireValidDecisionRules for the
-  // "must end in an unconditional fallback rule, if non-empty"
-  // invariant. Empty array = not configured yet — no decision can be
-  // computed until a Community sets at least a fallback rule.
-  recruitmentDecisionRules: jsonb("recruitment_decision_rules").notNull().default([]),
-  // Phase 34's own counter to maintain (its scheduling flow is what
-  // actually knows whether a subscriber gave availability) — this
-  // phase only defines the threshold field and the subscription
-  // structure it lapses against, per spec's "auto-lapses after N
-  // consecutive applications with no availability given."
-  recruitmentSubscriptionLapseThreshold: integer("recruitment_subscription_lapse_threshold")
-    .notNull()
-    .default(3),
-  // How long a wider-discussion window stays open before auto-
-  // resolving with no objection — see docs/spec.md's Recruitment
-  // ("Wider discussion window") and docs/plans/development-plan.md's Phase
-  // 34. Purely time-computed against RecruitmentDecision.
-  // widerDiscussionDeadline, the same no-scheduler-job-for-the-status-
-  // itself pattern Phase 31's returning-priority window and Assemblies'
-  // computeAssemblyPhase already establish; a real scheduled job still
-  // performs the actual auto-resolution once due (creating an
-  // Accompaniment task is a real side effect, not just a status read)
-  // — see src/lib/recruitment/decisions.ts's resolveWiderDiscussionWindows.
+  // How reports decide — one small policy for the whole community
+  // (docs/plans/admission-flow.md §2). How *many* reports a lane needs is the lane's
+  // own; this says what a full set of them means.
+  recruitmentInWhen: recruitmentInWhenEnum("recruitment_in_when").notNull().default("no_no_one_yes"),
+  recruitmentCustomMinYes: integer("recruitment_custom_min_yes").notNull().default(1),
+  recruitmentCustomMaxNo: integer("recruitment_custom_max_no").notNull().default(0),
+  recruitmentAnyNoMeans: recruitmentAnyNoMeansEnum("recruitment_any_no_means").notNull().default("wider_discussion"),
+  recruitmentDiscussionEnds: recruitmentDiscussionEndsEnum("recruitment_discussion_ends").notNull().default("decline"),
+  recruitmentDeclineOutrightAt: integer("recruitment_decline_outright_at"),
+  // How long every community-check window stays open (docs/plans/admission-flow.md §5): a lane
+  // that announces arrivals, and a decision that opens a wider discussion, are one
+  // mechanism and share this. Stored with each window's deadline when it opens
+  // (community_check.window_hours), so changing it never moves one already running.
   recruitmentWiderDiscussionHours: integer("recruitment_wider_discussion_hours").notNull().default(48),
-  // The second of the two time-boxed verification windows
-  // (docs/plans/archive/joining-admission-plan.md §2.2/J2). J2 settled that periods
-  // are community-wide per *mechanism* rather than per lane — stacking
-  // nomination and consensus per lane was explicitly ruled out — so
-  // there are exactly two knobs: recruitmentWiderDiscussionHours above,
-  // reused as the consensus window, and this one for the nomination's
-  // support window. Default 48h, deliberately the same shape of number
-  // as the wider-discussion window so a community reading both knobs
-  // sees one consistent idea: "long enough that a person who was told
-  // on Monday has a real chance before Friday".
-  recruitmentNominationWindowHours: integer("recruitment_nomination_window_hours")
-    .notNull()
-    .default(48),
   // §2.6/J7 — the overrule threshold. An objection is never thrown out
   // by a timer; mediation either clears it or it stands, and admitting
   // *anyway* is the documented exception. The community chooses how
@@ -273,6 +245,20 @@ export const community = pgTable("community", {
   // that's the behavior a Community configuring OIDC at all most likely
   // wants — flip it off for a softer transition.
   oidcPrimary: boolean("oidc_primary").notNull().default(true),
+  // docs/plans/admission-flow.md §6a — what "admitted" means to the provider. All three are
+  // off (or today's behaviour) until a community turns them on, and meaningless while
+  // single sign-on is unconfigured. The service token that makes the first two work is
+  // an environment credential (ZITADEL_TOKEN), never a column.
+  //   create on admit: admission creates the person at the provider (or finds them),
+  //     sends their invite and grants the role, so "admitted" means they can sign in.
+  //   revoke on leave: leaving or being removed takes the role back, so the provider
+  //     and Orchard cannot disagree about who belongs.
+  //   join policy: whether anyone carrying the role gets an account on first sign-in
+  //     (today's behaviour) or only people admitted here — anyone else is held for an
+  //     administrator instead.
+  ssoCreateOnAdmit: boolean("sso_create_on_admit").notNull().default(false),
+  ssoRevokeOnLeave: boolean("sso_revoke_on_leave").notNull().default(false),
+  ssoJoinPolicy: ssoJoinPolicyEnum("sso_join_policy").notNull().default("anyone_with_role"),
   // When the /settings nudge offering to decide the community's settings
   // together through an Assembly was first shown. This is the nudge's own
   // clock anchor, not a community setting: the prompt is offered while

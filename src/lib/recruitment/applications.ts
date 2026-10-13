@@ -1,8 +1,10 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
+  admission,
   communityInvite,
+  cycle,
   form,
   formResponse,
   member,
@@ -13,16 +15,18 @@ import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
 import { getForm, submitPublicFormResponse } from "../forms";
-import { computeRecruitmentOutcome } from "./evaluations";
-import { getCycleJoiningState, type CycleJoiningState } from "./joining";
-import { getInviteRedemptionPath, getJoinLaneRule, joiningLaneForInvite } from "./joining-lanes";
+import { computeArrivalOutcome, computeRecruitmentOutcome } from "./evaluations";
+import { entryRefusal, getCycleJoiningState, type CycleJoiningState } from "./joining";
 import { getCommunityRow, isRecruitmentTaskHolder, listHeldRecruitmentScopes, requireRecruitmentTaskHolder } from "./access";
-import { computeWiderDiscussionStatus, getRecruitmentDecision } from "./decisions";
-import { listObjections } from "./objections";
+import { getArrivalDecision, getRecruitmentDecision } from "./decisions";
+import { getOpenCheck, getWiderDiscussionWindow, listConcerns, listConcernsForArrival } from "./community-check";
 import { consensusDisclosure, consensusWindowFor, recordApplicationConsent } from "./consensus";
-import { openNominationForApplication } from "./support";
-import { attachApplicantToPairing, createPairings, resolvePairingForApplication } from "./pairs";
-import type { JoinLaneKind } from "@/db/schema";
+import { listSupports } from "./support";
+import { getInterviewers, getInterviewState } from "./interviews";
+import { attachArrivalToPairing, createPairings, resolvePairingForApplication } from "./pairs";
+import { assertEmailFreeToArrive, createAdmissionArrival, personFromApplication } from "./admission";
+import { declarationFromInvite, resolveInviteLane, resolvePublicLane, type AdmissionLane } from "./admission-lanes";
+import type { FormField } from "../forms";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -58,6 +62,9 @@ export const submitRecruitmentApplicationInput = z.object({
   // general, cycle-less door. When set, the cycle's own joining config
   // gates the submission and the response is tagged with the cycle.
   cycleId: z.string().uuid().nullable().optional(),
+  // §2a — which public lane this is for (`/apply` or `/apply/<slug>`).
+  // Null = the default public lane at `/apply`.
+  publicSlug: z.string().min(1).nullable().optional(),
   // §2.8 — "who are you sticking with", for an applicant naming another
   // applicant. The link that carries this is the pairing link, and the
   // pair is recorded at the funnel: the platform never decides anything
@@ -68,7 +75,7 @@ export const submitRecruitmentApplicationInput = z.object({
   // gets a pairing link; a member who opens it sees the support view.
   pairingMemberIds: z.array(z.string().uuid()).max(20).default([]),
   // J10's binding consent, for a public lane the community set to
-  // consensus. Read and ticked on /apply itself (there is no
+  // community_check. Read and ticked on /apply itself (there is no
   // redemption step for somebody who applied on their own), and stored
   // with the exact disclosure that was shown.
   consentAccepted: z.boolean().optional(),
@@ -108,6 +115,12 @@ export async function submitRecruitmentApplication(
     if (invite.revokedAt) {
       throw new ConflictError("This invite link has been revoked");
     }
+    if (invite.redeemedAt) {
+      throw new ConflictError("This invite link has already been used");
+    }
+    if (invite.expiresAt && invite.expiresAt < new Date()) {
+      throw new ConflictError("This invite link has expired");
+    }
   }
   const pairing = input.pairingToken
     ? await resolvePairingForApplication(input.pairingToken)
@@ -122,13 +135,7 @@ export async function submitRecruitmentApplication(
   // Which door does this submission knock on (§4.3/8c)? A cycle-targeted
   // application gates on the cycle's own joining state (period + door +
   // capacity room); the general application gates on the community-wide
-  // door toggles. An invite's *lane* — fixed at creation by the
-  // inviter's marks, docs/plans/archive/joining-admission-plan.md §2 — decides whether
-  // its token belongs here at all: a direct lane redeems on
-  // /invite/[token] and is rejected on /apply, while nomination and
-  // consensus are *this* page with the lane's own window around it, and
-  // a basic process lane is the plain evaluated funnel the token has
-  // always been (§4.3/8d).
+  // door toggles. An invite's own event, when it has one, decides the event.
   let targetCycleId = input.cycleId ?? null;
   if (invite?.cycleId) {
     if (input.cycleId && input.cycleId !== invite.cycleId) {
@@ -139,45 +146,47 @@ export async function submitRecruitmentApplication(
   if (pairing?.cycleId && !targetCycleId) {
     targetCycleId = pairing.cycleId;
   }
-  if (invite) {
-    const path = await getInviteRedemptionPath(communityId, invite);
-    if (path === "direct") {
-      // A direct-lane invite skips the funnel entirely — it redeems on
-      // /invite/[token], not through the evaluated application.
-      throw new AppError("This invite redeems directly — open its join link instead of applying");
-    }
-  }
   const joining = targetCycleId ? await getCycleJoiningState(communityId, targetCycleId) : null;
-  if (joining) {
-    if (joining.atCapacity) {
-      throw new AppError("This event is full — no capacity left for new applications");
-    }
-    if (!joining.periodOpen) {
-      throw new AppError("Applications for this event aren't open right now");
-    }
-    if (!joining.cycle.applicationsOpen) {
-      throw new AppError("Applications for this event are closed");
-    }
-  } else if (!communityRow.recruitmentApplicationsOpen) {
-    throw new AppError("This community isn't accepting applications right now");
-  }
 
-  // Which lane is this application on? An invite answers for itself; a
-  // public applicant's is the public lane by definition, and its rule is
-  // the one that decides whether they are asked for support, for a
-  // community-check consent, or for nothing at all.
-  const lane: JoinLaneKind = invite ? joiningLaneForInvite(invite) : "public_application";
-  const rule = await getJoinLaneRule(communityId, targetCycleId, lane);
-
-  // J10 — a consensus lane's consent is the applicant's own, read here
-  // and stored with the text they read. Refusing it is not a refusal to
-  // apply (nothing is created); it just isn't this community's door.
-  if (rule.verificationMode === "consensus") {
-    if (!input.consentAccepted) {
-      throw new AppError(
-        "Applying through this door means your arrival is announced to the community — read the disclosure and tick the box to go on",
+  // Which lane is this application on? An invite's own, found from what the
+  // inviter declared; otherwise the public lane the link points at
+  // (docs/plans/admission-flow.md §2a). Resolved among the lanes open *here*, so an
+  // event that hasn't opened a lane doesn't take people through it.
+  let lane: AdmissionLane;
+  if (invite) {
+    const resolved = await resolveInviteLane(communityId, targetCycleId, declarationFromInvite(invite));
+    if (!resolved) {
+      throw new ConflictError(
+        "This invitation can't be used right now — the community isn't taking this kind of invitation at the moment. Your link is kept, so try again later.",
       );
     }
+    lane = resolved;
+  } else {
+    const resolved = await resolvePublicLane(communityId, targetCycleId, input.publicSlug ?? null);
+    if (!resolved) {
+      throw new AppError(
+        targetCycleId ? "This event isn't taking public applications" : "This community isn't taking public applications right now",
+      );
+    }
+    lane = resolved;
+  }
+  // The doors, now that the lane is known: the same check creating an invite and
+  // opening one make, so the three can never disagree (docs/plans/admission-flow.md §6).
+  const refusal = await entryRefusal({ communityId, cycleId: targetCycleId, lane, via: "application", withInvite: Boolean(invite) });
+  if (refusal) throw new AppError(refusal);
+
+  if (!lane.applicationRequired) {
+    // A lane without an application is entered another way: an invite's own
+    // join page, which asks for just an email.
+    throw new AppError("This lane doesn't ask for an application — use the invite's own join link instead");
+  }
+
+  // A community-check lane requires the applicant's own consent before
+  // anything is created (§5: the arrival is announced once consent is given).
+  if (lane.verification === "community_check" && !input.consentAccepted) {
+    throw new AppError(
+      "Applying through this door means your arrival is announced to the community — read the disclosure and tick the box to go on",
+    );
   }
 
   const formId = joining?.cycle.recruitmentApplicationFormId ?? communityRow.recruitmentApplicationFormId;
@@ -185,48 +194,75 @@ export async function submitRecruitmentApplication(
     throw new AppError("No application form is configured for this Community yet");
   }
 
-  const created = await submitPublicFormResponse(formId, { values: input.values });
+  // The arrival holds the applicant's name and email (§4) — the Member they
+  // become does not exist yet — and they come from the form, so a form that
+  // can't produce them could take an application and never admit anyone. It
+  // is refused here, before anything is stored, rather than after.
+  const [formRow] = await db.select().from(form).where(and(eq(form.id, formId), eq(form.communityId, communityId)));
+  const fields = (formRow?.fields ?? []) as FormField[];
+  if (!fields.some((f) => f.isNameField) || !fields.some((f) => f.isEmailField)) {
+    throw new AppError(
+      "This community's application form needs a question marked as the applicant's name and one marked as their email before it can take applications",
+    );
+  }
+  const person = personFromApplication(fields, input.values);
+  if (!person) {
+    throw new AppError("Please give your name and a valid email address");
+  }
+  await assertEmailFreeToArrive(communityId, person.email);
 
-  if (rule.verificationMode === "consensus") {
+  // The FormResponse is the artifact the arrival carries; the arrival is the
+  // thing that moves through the funnel.
+  const formResponseCreated = await submitPublicFormResponse(formId, { values: input.values });
+
+  // Record consent if this is a community-check lane (§5: consent is
+  // recorded with the exact disclosure the person read).
+  if (lane.verification === "community_check") {
     const { communityName, windowHours } = await consensusWindowFor(communityId);
     await recordApplicationConsent(
-      created.id,
+      formResponseCreated.id,
       input.disclosure?.trim() || consensusDisclosure(communityName, windowHours),
     );
   }
 
-  // Linked whether or not the response is cycle-tagged — the invite's
-  // checkboxes feed outcome matching either way (the referral half of
-  // §4.3/8d routes the token through this same path).
-  if (invite) {
-    await db
-      .insert(recruitmentApplicationInvite)
-      .values({ formResponseId: created.id, communityInviteId: invite.id });
-  }
-
-  // §2.2/J6 — a nomination lane opens its support window here, for the
-  // same reason an invite opens one at send: the applicant is about to
-  // be handed a link, and the whole point is that they have it early
-  // enough to actually ask somebody.
-  if (rule.verificationMode === "nomination") {
-    await openNominationForApplication(created.id, communityId);
-  }
-
-  let tagged = created;
+  let tagged = formResponseCreated;
   if (joining) {
     const [updated] = await db
       .update(formResponse)
       .set({ cycleId: joining.cycle.id })
-      .where(eq(formResponse.id, created.id))
+      .where(eq(formResponse.id, formResponseCreated.id))
       .returning();
     tagged = updated;
   }
+
+  // The invite is the vouch behind this application. It is spent now — an
+  // application is what redeeming an invite on an application lane *is* —
+  // and linked, so the inviter's marks feed the outcome either way.
+  if (invite) {
+    await db
+      .insert(recruitmentApplicationInvite)
+      .values({ formResponseId: formResponseCreated.id, communityInviteId: invite.id });
+    await db.update(communityInvite).set({ redeemedAt: new Date() }).where(eq(communityInvite.id, invite.id));
+  }
+
+  const { arrival, token } = await createAdmissionArrival({
+    communityId,
+    cycleId: targetCycleId,
+    email: person.email,
+    name: person.name,
+    lane,
+    route: invite ? "invite" : "application",
+    inviteId: invite?.id ?? null,
+    formResponseId: formResponseCreated.id,
+    applicationSubmitted: true,
+    consentGiven: lane.verification === "community_check",
+  });
 
   // §2.8 — the pair is a fact recorded at the funnel. Nothing reads it
   // to make a decision; it exists so two humans can be shown each other's
   // name and offered one interview between them.
   if (pairing) {
-    await attachApplicantToPairing(pairing.token, created.id, targetCycleId);
+    await attachArrivalToPairing(pairing.token, arrival.id);
   }
   const pairingMemberIds = input.pairingMemberIds ?? [];
   if (invite && pairingMemberIds.length > 0) {
@@ -240,12 +276,12 @@ export async function submitRecruitmentApplication(
     // than the platform inventing a "who is this from?" record.
     await createPairings(
       { communityId, memberId: invite.createdBy },
-      { nomineeMemberIds: pairingMemberIds, pokeMemberIds: [], cycleId: targetCycleId, firstResponseId: created.id },
+      { nomineeMemberIds: pairingMemberIds, pokeMemberIds: [], cycleId: targetCycleId, firstArrivalId: arrival.id },
       { requireMember: false },
     );
   }
 
-  return tagged;
+  return { arrivalId: arrival.id, token, formResponse: tagged, invite };
 }
 
 // The form a public join lands on — the cycle's own pointer falling
@@ -279,6 +315,62 @@ export async function getRecruitmentApplicationFormPublicById(communityId: strin
     .from(form)
     .where(and(eq(form.id, formId), eq(form.communityId, communityId)));
   return formRow ?? null;
+}
+
+// The form somebody fills in when the mediation body has asked them for an
+// application (docs/plans/admission-flow.md §5, "ask for more"): their event's own, else the
+// community's. No door is checked — they are already in the funnel, and the doors
+// govern entering it.
+export async function getAskedApplicationForm(arrival: typeof admission.$inferSelect) {
+  const communityRow = await getCommunityRow(arrival.communityId);
+  let formId = communityRow.recruitmentApplicationFormId;
+  if (arrival.cycleId) {
+    const [cycleRow] = await db.select({ formId: cycle.recruitmentApplicationFormId }).from(cycle).where(eq(cycle.id, arrival.cycleId));
+    formId = cycleRow?.formId ?? formId;
+  }
+  return formId ? getRecruitmentApplicationFormPublicById(arrival.communityId, formId) : null;
+}
+
+/**
+ * The application somebody was asked for. It is attached to the arrival they already
+ * are — name and email stay what they were admitted to the funnel with — and from
+ * here the funnel is the ordinary one: a conversation if one was asked for, then
+ * reports, then a decision.
+ */
+export async function submitAskedApplication(token: string, values: Record<string, unknown>) {
+  const [arrival] = await db.select().from(admission).where(eq(admission.token, token));
+  if (!arrival) throw new NotFoundError("This page isn't valid any more");
+  if (arrival.admittedMemberId || arrival.declinedAt || arrival.withdrawnAt) {
+    throw new ConflictError("This request to join has already finished");
+  }
+  if (!arrival.requiredApplication || arrival.applicationSubmittedAt) {
+    throw new ConflictError("There's no application waiting to be sent");
+  }
+  const formRow = await getAskedApplicationForm(arrival);
+  if (!formRow) throw new AppError("No application form is configured for this community yet");
+  const created = await submitPublicFormResponse(formRow.id, { values });
+  if (arrival.cycleId) {
+    await db.update(formResponse).set({ cycleId: arrival.cycleId }).where(eq(formResponse.id, created.id));
+  }
+  const [claimed] = await db
+    .update(admission)
+    .set({ formResponseId: created.id, applicationSubmittedAt: new Date() })
+    .where(and(eq(admission.id, arrival.id), isNull(admission.formResponseId)))
+    .returning();
+  if (!claimed) throw new ConflictError("An application has already been sent");
+  // A conversation asked for with it can be arranged now there is an application to
+  // be about; best-effort like every place the poll is made.
+  if (claimed.requiredInterview) {
+    try {
+      const { ensureInterviewPoll } = await import("./interviews");
+      await ensureInterviewPoll(claimed.id);
+    } catch (err) {
+      console.error("[admission] could not make the interview poll", err);
+    }
+    const [withPoll] = await db.select().from(admission).where(eq(admission.id, claimed.id));
+    return withPoll ?? claimed;
+  }
+  return claimed;
 }
 
 // Human-readable door enforcement for a resolved application surface —
@@ -351,7 +443,55 @@ export async function listApplicationAlerts(actor: Member) {
         evaluatorsNeeded,
         outcome,
         resolution: decision?.resolution ?? null,
-        widerDiscussionStatus: decision ? computeWiderDiscussionStatus(decision) : null,
+        widerDiscussionStatus: (await getWiderDiscussionWindow(r.id))?.status ?? null,
+      };
+    }),
+  );
+}
+
+// Holder-only — the arrivals a lane brought in *without* an application (it asks only
+// for a conversation), which are evaluated like any other: the interview, the reports
+// from the people who took part, the decision. They have no form answers to show, so
+// what is listed is the person, how they came and where they are. Scoped like the
+// applications are.
+export async function listConversationsForEvaluation(actor: Member) {
+  await requireRecruitmentTaskHolder(actor);
+  const communityRow = await getCommunityRow(actor.communityId);
+  const heldScopes = await listHeldRecruitmentScopes(actor);
+  const arrivals = await db
+    .select()
+    .from(admission)
+    .where(
+      and(
+        eq(admission.communityId, actor.communityId),
+        eq(admission.requiredEvaluation, true),
+        isNull(admission.formResponseId),
+        isNull(admission.admittedMemberId),
+        isNull(admission.declinedAt),
+        isNull(admission.withdrawnAt),
+      ),
+    )
+    .orderBy(desc(admission.createdAt));
+  const covered = arrivals.filter((a) => heldScopes.has(null) || (a.cycleId !== null && heldScopes.has(a.cycleId)));
+  return Promise.all(
+    covered.map(async (arrival) => {
+      const { outcome, evaluationsFiled, evaluatorsNeeded, evaluations } = await computeArrivalOutcome(communityRow, arrival.id);
+      const decision = await getArrivalDecision(arrival.id);
+      const interview = arrival.requiredInterview ? await getInterviewState(arrival) : null;
+      const interviewers = arrival.requiredInterview && interview?.confirmed ? await getInterviewers(arrival) : [];
+      const window = await getOpenCheck(arrival.id);
+      return {
+        arrival,
+        evaluations,
+        outcome,
+        evaluationsFiled,
+        evaluatorsNeeded,
+        decision,
+        supports: await listSupports(arrival.id),
+        interview,
+        interviewerIds: interviewers.map((m) => m.id),
+        concerns: await listConcernsForArrival(actor, arrival.id),
+        windowDeadline: window?.deadline ?? null,
       };
     }),
   );
@@ -397,7 +537,20 @@ export async function listApplicationsForEvaluation(actor: Member) {
         response.id,
       );
       const decision = await getRecruitmentDecision(response.id);
-      const objections = decision ? await listObjections(actor, response.id) : [];
+      const objections = decision ? await listConcerns(actor, response.id) : [];
+      const widerDiscussionWindow = await getWiderDiscussionWindow(response.id);
+      // The vouches on this application, shown to everyone evaluating it whether or
+      // not the lane's support shortcut is reached (docs/plans/admission-flow.md §2).
+      const [arrival] = await db
+        .select({ id: admission.id, supportToken: admission.supportToken, supportShortcutCount: admission.supportShortcutCount })
+        .from(admission)
+        .where(eq(admission.formResponseId, response.id));
+      const supports = arrival ? await listSupports(arrival.id) : [];
+      // Where this application's interview is, read live — so a holder looking at the
+      // list can see whether it's waiting on the person, on holders, or ready to book.
+      const [fullArrival] = arrival ? await db.select().from(admission).where(eq(admission.id, arrival.id)) : [];
+      const interview = fullArrival?.requiredInterview ? await getInterviewState(fullArrival) : null;
+      const interviewers = fullArrival?.requiredInterview && interview?.confirmed ? await getInterviewers(fullArrival) : [];
       const convertedMember = decision?.convertedMemberId
         ? await db.select().from(member).where(eq(member.id, decision.convertedMemberId)).then((rows) => rows[0] ?? null)
         : null;
@@ -408,9 +561,14 @@ export async function listApplicationsForEvaluation(actor: Member) {
         evaluationsFiled,
         evaluatorsNeeded,
         decision,
-        widerDiscussionStatus: decision ? computeWiderDiscussionStatus(decision) : null,
+        widerDiscussionStatus: widerDiscussionWindow?.status ?? null,
+        widerDiscussionDeadline: widerDiscussionWindow?.deadline ?? null,
         objections,
         convertedMember,
+        arrival: arrival ?? null,
+        supports,
+        interview,
+        interviewerIds: interviewers.map((m) => m.id),
       };
     }),
   );

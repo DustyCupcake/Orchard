@@ -20,8 +20,9 @@ import {
 } from "@/lib/participation";
 import { getCycleShiftRoster } from "@/lib/shifts";
 import { listForms } from "@/lib/forms";
-import { getJoinLaneRulesForContext, listOverriddenLanes } from "@/lib/recruitment/joining-lanes";
-import { JOINING_LANE_COPY, JOINING_LANE_DEFAULTS, JOINING_LANE_ORDER, type JoiningLaneRule } from "@/lib/recruitment/lanes";
+import { laneRuleOf, listLanes, listOpenLanes } from "@/lib/recruitment/admission-lanes";
+import { describeLaneConsequence } from "@/lib/recruitment/lane-rules";
+import { listWaitlisted } from "@/lib/recruitment/admission";
 import {
   confirmShiftProposalAction,
   openCycleShiftSignupsAction,
@@ -34,7 +35,10 @@ import { getEventTimeZone } from "@/lib/cycles";
 import { listTaskPacks } from "@/lib/task-packs";
 import { HIGHLIGHTABLE_MODULES } from "@/lib/nav";
 import { ClonePreviewGrid, ClonePreviewList } from "@/components/ClonePreview";
+import { cycle as cycleTable } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
+import { db } from "@/db";
+import { eq } from "drizzle-orm";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import DateModeField, { type DateFieldBase } from "@/components/DateModeField";
 import {
@@ -46,26 +50,10 @@ import {
   updateCycleSettingsAction,
   updatePhaseBoundaryAction,
   updatePhaseHighlightAction,
-  updateCycleLaneRulesAction,
+  updateEventLanesAction,
+  admitWaitlistedAction,
 } from "./actions";
 import SelectField from "@/components/ui/SelectField";
-
-// The one-line "what does this lane do" a per-event override card needs
-// next to its inherit checkbox. Deliberately the short form rather than
-// the full consequence sentence: this is a summary of the *current*
-// state, and the person editing an override is comparing two of them.
-function laneSummary(rule: JoiningLaneRule) {
-  const proof = {
-    basic: "one member’s word is enough",
-    nomination: `needs ${rule.supportCount} more member${rule.supportCount === 1 ? "" : "s"}`,
-    consensus: "announced to the community before admission",
-  }[rule.verificationMode];
-  const process = [
-    rule.applicationRequired ? "an application" : null,
-    rule.interviewRequired ? "an interview" : null,
-  ].filter(Boolean);
-  return `${proof}${process.length ? `, plus ${process.join(" and ")}` : ""}.`;
-}
 
 type Member = typeof memberTable.$inferSelect;
 type Cycle = Awaited<ReturnType<typeof listCycles>>[number];
@@ -526,10 +514,6 @@ async function ParticipationForCycle({
     getCommunity(viewing),
   ]);
   const shiftsOn = isModuleEnabled(communityRow, "shifts");
-  // The community-wide lanes, which is what the per-event overrides fall
-  // back to. Read here rather than inside the override loop because it
-  // doesn't depend on the event.
-  const communityLaneRules = await getJoinLaneRulesForContext(communityRow.id, null);
   // The cycle's shift roster (§5.6) — visible to any member of the
   // community, management actions only for the cycle's manager.
   const roster = shiftsOn ? await getCycleShiftRoster(viewing, cycleId) : null;
@@ -542,29 +526,22 @@ async function ParticipationForCycle({
   // back to the community's standing form) — only for the same
   // audience, same reason.
   const forms = canConfigure ? await listForms(viewing) : [];
-  // §5.2 — the community-wide lane rules this event inherits, the ones it
-  // has overridden, and which of those it has overridden. Two reads
-  // because they answer different questions: the first is what a lane
-  // *does* here if nothing is overridden, the second is what has *been*
-  // overridden. Reading only the second and defaulting the rest would
-  // quietly re-introduce the "never snapshotted" bug the lane model was
-  // built to avoid.
-  //
-  // **None of this is gated on `canConfigure` any more.** Which rule
-  // applies to the lane somebody would arrive by is not an administrative
-  // question — it is the admission design of their own community, and they
-  // have a say in it. Only the *controls* below are Admin-only, which is
-  // the same split the settings screen uses: the state is everyone's, the
-  // editing is an Admin's.
-  const cycleLaneRules = await getJoinLaneRulesForContext(communityRow.id, cycleId);
-  const overriddenLanes = new Set(await listOverriddenLanes(communityRow.id, cycleId));
-  const laneRows = JOINING_LANE_ORDER.map((key) => ({
-    key,
-    title: JOINING_LANE_COPY[key].title,
-    effective: cycleLaneRules.get(key) ?? communityLaneRules.get(key) ?? JOINING_LANE_DEFAULTS[key],
-    isCustom: overriddenLanes.has(key),
-  }));
-  const customLaneCount = laneRows.filter((l) => l.isCustom).length;
+  // docs/plans/admission-flow.md §2a — lanes are community-wide and an event never
+  // overrides one; it chooses which are open for it. The lanes the community
+  // has, the ones open here, and whether this event follows the community's
+  // own set or has chosen its own. None of this is gated on `canConfigure`:
+  // which lanes someone could arrive by is the admission design of their own
+  // community, not an administrative secret, so only the *controls* are
+  // restricted — the same split the settings screen uses.
+  const allLanes = (await listLanes(communityRow.id)).map(laneRuleOf);
+  const openLaneIds = new Set((await listOpenLanes(communityRow.id, cycleId)).map((l) => l.id));
+  const [{ own: ownLaneSet }] = await db
+    .select({ own: cycleTable.ownAdmissionLanes })
+    .from(cycleTable)
+    .where(eq(cycleTable.id, cycleId));
+  // People approved for a place the event didn't have room for (§6), in the
+  // order they started waiting. Only those who can configure the event see them.
+  const waitlisted = canConfigure ? await listWaitlisted(cycleId) : [];
   // Admin-only, and only meaningful for a still-open cycle — see
   // closeCycle's own budget-owner warning (src/lib/cycles/lifecycle.ts).
   const budgetCycleRow =
@@ -818,157 +795,109 @@ async function ParticipationForCycle({
         </section>
       )}
 
-      {/* §5.2 — moved OUT of the "Event settings" section above, which is
-          Admin-gated, because these four rules are not an administrative
-          fact about the event. They are this community's admission design,
-          and a member arriving by one of these lanes is being measured
-          against it — so the rules are stated to everyone and only the
-          controls that change them are Admin-only. The same split the
-          community settings screen uses: the state is everyone's, the
-          editing is an Admin's. */}
+      {/* Which lanes this event opens (docs/plans/admission-flow.md §2a). Not part of
+          the Admin-gated "Event settings" above, because it is not an
+          administrative fact about the event: a member arriving by one of
+          these lanes is being measured against it, so the lanes are stated to
+          everyone and only the controls that change them are restricted. */}
       {!closed && (
         <section className="mt-6">
-          {/* The same four lane cards the community-wide settings
-              have, as per-event overrides. A lane this event doesn't
-              override inherits the community's rule, and that inheritance
-              is the default state rather than a sentinel: an absent row
-              is an absent row, so unticking "this event has its own rule
-              for…" genuinely hands the lane back rather than freezing
-              whatever it happened to be set to. */}
-          <div className="mt-6 flex max-w-[600px] flex-col gap-3">
+          <div className="flex max-w-[640px] flex-col gap-3">
             <div>
-              <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">This event&rsquo;s own admission rules</h3>
+              <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">How people can join this event</h3>
               <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                {customLaneCount === 0 ? (
-                  <>
-                    Every lane works exactly as the community has set it — this event doesn&rsquo;t
-                    change any of them.
-                  </>
-                ) : (
-                  <>
-                    {customLaneCount} of {laneRows.length} lanes work differently here. The rest are
-                    the community&rsquo;s, and follow it if the community changes them later.
-                  </>
-                )}
+                {ownLaneSet
+                  ? "This event has chosen its own lanes. Everything else about a lane is the community's, and its application form is this event's."
+                  : "This event opens the same lanes as the community does, and follows the community if it changes them."}
               </p>
             </div>
             {!canConfigure ? (
-              /* The same four lanes, stated rather than editable. A member
-                 arriving by one of these is being measured against it, and
-                 "one member's word is enough" is the kind of fact they are
-                 entitled to read — the same reasoning that opened the
-                 community settings screen to every member. */
-              <div className="flex flex-col gap-2">
-                {laneRows.map((lane) => (
-                  <div
-                    key={lane.key}
-                    className="rounded-[var(--radius-md)] border border-[var(--border)] p-3"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{lane.title}</span>
-                      <Tag tone={lane.isCustom ? "warning" : undefined}>
-                        {lane.isCustom ? "this event's own rule" : "the community's rule"}
-                      </Tag>
-                    </div>
-                    <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                      {laneSummary(lane.effective)}
-                    </p>
-                  </div>
-                ))}
-              </div>
+              <ul className="flex flex-col gap-2">
+                {allLanes
+                  .filter((l) => l.id && openLaneIds.has(l.id))
+                  .map((lane) => (
+                    <li key={lane.id} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+                      <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{lane.name}</span>
+                      <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">{describeLaneConsequence(lane)}</p>
+                    </li>
+                  ))}
+                {openLaneIds.size === 0 && (
+                  <li className="text-[length:var(--text-body)] text-[var(--text-muted)]">No lane is open for this event.</li>
+                )}
+              </ul>
             ) : (
-            <form action={updateCycleLaneRulesAction} className="flex flex-col gap-3">
-              <input type="hidden" name="cycleId" value={cycleId} />
-              <input type="hidden" name="cycleScope" value={cycleScope} />
-              <div className="flex flex-col gap-2">
-                {laneRows.map((lane) => {
-                  const override = cycleLaneRules.get(lane.key);
-                  return (
-                    <div key={lane.key} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+              <form action={updateEventLanesAction} className="flex flex-col gap-3">
+                <input type="hidden" name="cycleId" value={cycleId} />
+                <input type="hidden" name="cycleScope" value={cycleScope} />
+                <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
+                  <input type="radio" name="laneMode" value="community" defaultChecked={!ownLaneSet} className="mt-1" />
+                  <span>The same lanes as the community</span>
+                </label>
+                <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
+                  <input type="radio" name="laneMode" value="own" defaultChecked={ownLaneSet} className="mt-1" />
+                  <span>Choose which lanes this event opens</span>
+                </label>
+                <ul className="flex flex-col gap-2 pl-6">
+                  {allLanes.map((lane) => (
+                    <li key={lane.id} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
                       <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
                         <input
                           type="checkbox"
-                          name={`lane.${lane.key}.override`}
-                          value="on"
-                          defaultChecked={lane.isCustom}
-                          className="mt-0.5"
+                          name="laneId"
+                          value={lane.id}
+                          defaultChecked={Boolean(lane.id && openLaneIds.has(lane.id))}
+                          className="mt-1"
                         />
                         <span>
-                          This event has its own rule for <strong>{lane.title}</strong>
+                          <strong>{lane.name}</strong>
                           <span className="block text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                            Right now: {laneSummary(lane.effective)}
+                            {describeLaneConsequence(lane)}
                           </span>
                         </span>
                       </label>
-                      {override && (
-                        <div className="mt-2 flex flex-col gap-2 border-l-2 border-[var(--border)] pl-3">
-                          <label className="flex max-w-[320px] flex-col gap-1">
-                            <span className={LABEL}>How much proof</span>
-                            <select name={`lane.${lane.key}.verificationMode`} defaultValue={override.verificationMode} className={INPUT}>
-                              <option value="basic">One member&rsquo;s word</option>
-                              <option value="nomination">One more member&rsquo;s word</option>
-                              <option value="consensus">The whole community sees them arrive</option>
-                            </select>
-                          </label>
-                          {override.verificationMode === "nomination" && (
-                            <label className="flex max-w-[160px] flex-col gap-1">
-                              <span className={LABEL}>How many people</span>
-                              <input
-                                type="number"
-                                name={`lane.${lane.key}.supportCount`}
-                                min={1}
-                                max={50}
-                                defaultValue={override.supportCount}
-                                className={INPUT}
-                              />
-                            </label>
-                          )}
-                          <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-                            <input
-                              type="hidden"
-                              name={`lane.${lane.key}.applicationRequired`}
-                              value="off"
-                            />
-                            <input
-                              type="checkbox"
-                              name={`lane.${lane.key}.applicationRequired`}
-                              value="on"
-                              defaultChecked={override.applicationRequired}
-                            />
-                            They fill in the application form
-                          </label>
-                          <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-                            <input type="hidden" name={`lane.${lane.key}.interviewRequired`} value="off" />
-                            <input
-                              type="checkbox"
-                              name={`lane.${lane.key}.interviewRequired`}
-                              value="on"
-                              defaultChecked={override.interviewRequired}
-                            />
-                            They have an interview
-                          </label>
-                          <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-                            <input type="hidden" name={`lane.${lane.key}.applyInsteadAvailable`} value="off" />
-                            <input
-                              type="checkbox"
-                              name={`lane.${lane.key}.applyInsteadAvailable`}
-                              value="on"
-                              defaultChecked={override.applyInsteadAvailable}
-                            />
-                            They can skip the wait and apply instead
-                          </label>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                Save this event&rsquo;s rules
-              </button>
-            </form>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                  Each kind of invitation has to belong to exactly one of the lanes you open. A different process for
+                  just this event is a different lane — add one under Settings → Recruitment, and open it only here.
+                </p>
+                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                  Save this event&rsquo;s lanes
+                </button>
+              </form>
             )}
           </div>
+        </section>
+      )}
+
+      {canConfigure && waitlisted.length > 0 && (
+        <section className="mt-6">
+          <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Waiting for a place</h3>
+          <p className="mt-1 max-w-[640px] text-[length:var(--text-body)] text-[var(--text-muted)]">
+            These people have been approved, but the event is full, so they aren&rsquo;t members yet. They&rsquo;re admitted,
+            oldest first, as soon as room appears — someone no longer coming, an invite revoked, the capacity raised. You can also
+            admit one now, over the capacity.
+          </p>
+          <ul className="mt-3 flex max-w-[640px] flex-col gap-2">
+            {waitlisted.map((w) => (
+              <li key={w.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+                <span className="text-[length:var(--text-body)] text-[var(--text)]">
+                  {w.name}
+                  <span className="ml-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                    waiting since {w.waitlistedAt ? clock.date(w.waitlistedAt) : "—"}
+                  </span>
+                </span>
+                <form action={admitWaitlistedAction}>
+                  <input type="hidden" name="arrivalId" value={w.id} />
+                  <input type="hidden" name="cycleScope" value={cycleScope} />
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Admit now
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

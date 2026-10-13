@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // scripts/zitadel-spike.mjs — a throwaway probe of the Zitadel API calls that
-// docs/admission-flow.md §6a wants admission to make, run against a real
+// docs/plans/admission-flow.md §6a wants admission to make, run against a real
 // tenant BEFORE any of it is built.
 //
 // What it answers (the docs describe the calls; they do not say which exact

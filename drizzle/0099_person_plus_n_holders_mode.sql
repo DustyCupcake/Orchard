@@ -1,0 +1,1 @@
+ALTER TYPE "public"."poll_resolution_mode" ADD VALUE 'person_plus_n_holders';

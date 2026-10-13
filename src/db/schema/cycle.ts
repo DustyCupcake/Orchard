@@ -42,13 +42,12 @@ export const cycle = pgTable("cycle", {
   // cycle closes). Both doors are shut outside that period and once
   // capacity is reached — see src/lib/recruitment/joining.ts.
   //
-  // Invites-only: an invite's *lane* (fixed by the inviter's marks at
-  // creation) decides how it behaves — the community's per-lane rules
-  // live on `joining_lane` (docs/plans/archive/joining-admission-plan.md §2/§4.1),
-  // with per-cycle overrides falling back to the community-wide rows.
-  // The retired `joiningInviteMode` (direct | referral) that used to
-  // sit here was replaced by lanes × verification in the same migration
-  // that introduced the lane table.
+  // Which lanes are open for this event (docs/plans/admission-flow.md §2a): lanes
+  // are community-wide and an event never overrides one, it only chooses
+  // which are open. False = "the same as the community's" (the default),
+  // true = the event's own set, kept in `cycle_admission_lane`. The form
+  // below applies to every lane's application in this event.
+  ownAdmissionLanes: boolean("own_admission_lanes").notNull().default(false),
   recruitmentApplicationFormId: uuid("recruitment_application_form_id"),
   applicationsOpen: boolean("applications_open").notNull().default(true),
   invitesOpen: boolean("invites_open").notNull().default(true),

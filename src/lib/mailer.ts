@@ -185,32 +185,129 @@ export async function sendBackstopHardFlagEmail(
   await sendPlainTextEmail(email, subject, text, `backstop hard flag ("${input.taskTitle}"):\n${input.taskUrl}`);
 }
 
-// docs/plans/archive/joining-admission-plan.md §2.4's "poke": the inviter of a
-// nomination names the members they think also know the invitee, and
-// those members each get one email carrying the support link. No action
-// token and no per-person state here, unlike the task-nomination email
-// above — because "you've been asked to support {name}" has exactly one
-// action (open the link, say how you know them) and supporting is
-// idempotent by construction (src/lib/recruitment/support.ts's
-// recordSupport upserts in place). A token would buy nothing and would
-// expire a link the invitee is still relying on.
-//
-// Deliberately one email per named person rather than one broadcast: the
-// plan is explicit that "nothing broadcasts the nominee's existence
-// beyond who the inviter chose", and a BCC would break that.
-export async function sendNominationSupportRequestEmail(
+// Sent when somebody asks a named member to look at a support link
+// (docs/plans/admission-flow.md §2): one email each, never a broadcast, because
+// nothing should announce a person's existence beyond who was asked. No action
+// token and no per-person state — the link has exactly one action (open it, say
+// how you know them) and recording a support is idempotent by construction. It
+// promises nothing about a deadline, because there isn't one: support is a
+// shortcut alongside the person's own path, not something they wait on.
+export async function sendSupportRequestEmail(
   email: string,
-  input: { askerName: string; nomineeLabel: string | null; supportUrl: string; windowHours: number; onBehalfOfCommunity: boolean },
+  input: { askerName: string; communityName: string; supportUrl: string },
 ) {
-  const subject = `${input.askerName} asked you to vouch for someone${input.nomineeLabel ? ` (${input.nomineeLabel})` : ""}`;
+  const subject = `${input.askerName} asked you to vouch for someone joining ${input.communityName}`;
   const text = [
-    `${input.askerName} has asked you to support someone's join${input.nomineeLabel ? `: ${input.nomineeLabel}` : ""}.`,
+    `${input.askerName} has asked you to support someone's request to join ${input.communityName}.`,
     ``,
     `If you know them, or you'd expect them to fit, this link is all it takes:`,
     `${input.supportUrl}`,
     ``,
-    `You'll be asked to say how you know them. Nothing about this is broadcast, and nobody is told who you supported unless they support it themselves.`,
-    `If nobody gets round to it within ${input.windowHours} hours, nothing happens to them — the request just lapses and they carry on.${input.onBehalfOfCommunity ? " They're also waiting on the community's own application process, so this is a bonus, not a gate." : ""}`,
+    `You'll be asked to say how you know them. Nothing about this is broadcast. If you don't know them, you can ignore this — nothing happens to them either way, they just carry on with the process they're already in.`,
   ].join("\n");
-  await sendPlainTextEmail(email, subject, text, `nomination support request for ${email}:\n${input.supportUrl}`);
+  await sendPlainTextEmail(email, subject, text, `support request for ${email}:\n${input.supportUrl}`);
+}
+
+// The two emails a person in the admission funnel always gets
+// (docs/plans/admission-flow.md §6): that we have them, with the private link to
+// follow where they are, and that they are in. Nothing else is sent to
+// someone who is not yet a member, so these are deliberately plain and each
+// carries only what that moment needs. The link is the arrival's own token
+// (§4) — the one place they can see where they are, and nobody else can.
+export async function sendAdmissionReceivedEmail(
+  email: string,
+  input: { name: string; communityName: string; statusUrl: string },
+) {
+  const subject = `We have your application to ${input.communityName}`;
+  const text = [
+    `Hello ${input.name},`,
+    ``,
+    `${input.communityName} has your request to join. You don't need to do anything now unless the page below says so.`,
+    ``,
+    `This link is yours — it shows where things are, and what happens next:`,
+    `${input.statusUrl}`,
+    ``,
+    `Please keep it to yourself; anyone who has it can see your progress.`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `admission received for ${email}:\n${input.statusUrl}`);
+}
+
+export async function sendAdmissionAcceptedEmail(
+  email: string,
+  input: { name: string; communityName: string; statusUrl: string; loginUrl: string; signInInvited?: boolean },
+) {
+  const subject = `You're in — welcome to ${input.communityName}`;
+  const text = [
+    `Hello ${input.name},`,
+    ``,
+    `You've been accepted into ${input.communityName}.`,
+    ``,
+    ...(input.signInInvited
+      ? [
+          `You'll get a separate email from the community's sign-in service, asking you to set up how you sign in. Do that first, then come back here:`,
+          `${input.loginUrl}`,
+        ]
+      : [`To sign in, request a login link here with this email address:`, `${input.loginUrl}`]),
+    ``,
+    `Your progress page, if you want to look back at it:`,
+    `${input.statusUrl}`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `admission accepted for ${email}:\n${input.statusUrl}`);
+}
+
+// The interview emails (docs/plans/admission-flow.md §6): the link to choose times, and
+// the confirmed time. Both carry the person's own page, which is where they pick
+// availability and where the confirmed time is shown.
+export async function sendInterviewInviteEmail(
+  email: string,
+  input: { name: string; communityName: string; statusUrl: string },
+) {
+  const subject = `Choose times for your conversation with ${input.communityName}`;
+  const text = [
+    `Hello ${input.name},`,
+    ``,
+    `${input.communityName} would like to talk with you. Please paint the times you're free on your page — nobody sees anyone else's times until one is confirmed:`,
+    `${input.statusUrl}`,
+    ``,
+    `Once a time suits you and the people who'll be on the call, we'll confirm it and tell you.`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `interview invitation for ${email}:\n${input.statusUrl}`);
+}
+
+export async function sendInterviewConfirmedEmail(
+  email: string,
+  input: { name: string; communityName: string; whenText: string; statusUrl: string },
+) {
+  const subject = `Your conversation with ${input.communityName} is booked`;
+  const text = [
+    `Hello ${input.name},`,
+    ``,
+    `Your conversation with ${input.communityName} is booked for ${input.whenText}.`,
+    ``,
+    `Your page, in case you need it:`,
+    `${input.statusUrl}`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `interview confirmed for ${email}:\n${input.statusUrl}`);
+}
+
+// The community would like a little more before it goes on (docs/plans/admission-flow.md
+// §5, "ask for more"). Says what is being asked for and nothing about why: a person
+// is never told that someone raised a concern, who it was, or what it said.
+export async function sendAskedForMoreEmail(
+  email: string,
+  input: { name: string; communityName: string; statusUrl: string; application: boolean; interview: boolean },
+) {
+  const wanted = [input.application && "an application", input.interview && "a conversation"].filter(Boolean).join(" and ");
+  const subject = `${input.communityName} would like to know a little more`;
+  const text = [
+    `Hello ${input.name},`,
+    ``,
+    `Before ${input.communityName} goes any further, it would like ${wanted} from you.`,
+    ``,
+    `Your page says what to do, and lets you do it:`,
+    `${input.statusUrl}`,
+    ``,
+    `You can stop at any time, without giving a reason.`,
+  ].join("\n");
+  await sendPlainTextEmail(email, subject, text, `asked for more for ${email}:\n${input.statusUrl}`);
 }

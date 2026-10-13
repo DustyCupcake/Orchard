@@ -25,7 +25,6 @@ export const member = pgTable("member", {
   // earlier file. Validated at the application layer — see
   // src/lib/recruitment/invites.ts's redeemCommunityInvite, the only
   // place this is ever set.
-  joinedViaInviteId: uuid("joined_via_invite_id"),
   // The fixed sensitive-field set from docs/spec.md's "Sensitive data"
   // — GDPR Art. 9-flavored fields, off by default (see
   // src/lib/modules.ts). Always visible/editable by the member

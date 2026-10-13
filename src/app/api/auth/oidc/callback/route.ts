@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { getOrCreateCommunity } from "@/lib/community";
-import { findOrCreateMemberByOidcSubject } from "@/lib/member";
+import { resolveOidcSignIn } from "@/lib/sign-in/resolve";
 import { handleOidcCallback, OIDC_FLOW_COOKIE } from "@/lib/oidc";
 import { createSession } from "@/lib/session";
 import { firstLoginDestination } from "@/lib/first-login";
@@ -69,13 +69,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/login?error=oidc_not_authorized", appUrl));
   }
 
-  const memberRow = await findOrCreateMemberByOidcSubject(community, {
+  // Which member is this person — or, if Orchard won't decide that by itself, nobody yet
+  // (docs/plans/admission-flow.md §6a): a sign-in that matches an existing member only by address,
+  // or that isn't admitted here when the community only lets admitted people in, is held for
+  // an administrator rather than creating an account.
+  const resolution = await resolveOidcSignIn(community, {
     sub: result.sub,
     email: result.email,
     emailVerified: result.emailVerified,
     nickname: result.nickname,
     givenName: result.givenName,
   });
+  if (resolution.kind === "held") return NextResponse.redirect(new URL("/login?error=oidc_held", appUrl));
+  if (resolution.kind === "turned_away") return NextResponse.redirect(new URL("/login?error=oidc_not_authorized", appUrl));
+  const memberRow = resolution.member;
   await createSession(memberRow.id);
 
   return NextResponse.redirect(new URL(firstLoginDestination(memberRow), appUrl));

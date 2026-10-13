@@ -13,7 +13,7 @@ import {
   listOpenEventParticipationCards,
 } from "@/lib/participation";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, resetDatabase } from "./helpers";
+import { createFixtures, resetDatabase, withLegacyLanes } from "./helpers";
 
 async function enableCycles(communityId: string, cycleInitiationTierId?: string) {
   await db
@@ -239,6 +239,9 @@ describe("getCycleParticipationSummary", () => {
       .update(community)
       .set({ modulesEnabled: [...communityRow.modulesEnabled, "recruitment"] })
       .where(eq(community.id, testCommunity.id));
+    // The lanes this was written against: knowing someone personally admits
+    // them at once, so that invite is a direct one; every other is evaluated.
+    await withLegacyLanes(testCommunity.id);
     const cyc = await createCycle(alice, { source: "blank", name: "2027 Season" });
     await updateCycleSettings(alice, cyc.id, { capacity: 3 });
 
