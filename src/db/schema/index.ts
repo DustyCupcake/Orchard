@@ -59,6 +59,7 @@ export * from "./open-permission-grant";
 export * from "./settings-change";
 export * from "./sign-in";
 export * from "./accompaniment";
+export * from "./interview-companion";
 export * from "./task-suggestion";
 export * from "./trait-axis";
 export * from "./member-axis-value";

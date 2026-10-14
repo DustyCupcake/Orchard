@@ -8,6 +8,26 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## the person who invited an applicant can be at their interview, if the applicant asks and they would like to
+
+Migration **0119**. [`docs/plans/accompaniment-plan.md`](docs/plans/accompaniment-plan.md) §6, step 5 of §8. A courtesy to the applicant, built so that it can never cost anybody an interview.
+
+**The applicant asks, once.** On their own private page, at the interview step, an applicant who came through an invitation sees *Would you like Carol to be there?* (the inviter's first name) with **Ask Carol**. Nobody on the team does it for them, and it isn't asked twice: an answer is respected, and asking again is not a way round a no. It needs an interview to be at, one that hasn't happened. A community can switch the offer off (`community.interview_offer_inviter`, on by default, under Recruitment → The interview, shown only when some lane has an interview); a person who was already asked still sees where it stands.
+
+**The inviter answers on their own dashboard** (`interview_companion`: the arrival, the member, requested / accepted / declined): *dana, whom you invited, would like you to be at their interview, for company. It changes nothing about how anyone decides*, with **I'd like to come** and **Not this time**. A pull, as the plan says, not an email. Either answer can be changed until the interview has happened; a no needs no reason and tells nobody, and the applicant's page says only *Carol can't make it this time. The conversation goes ahead just the same.* A yes becomes a line on their dashboard with a link to say when they're free. Keyed on the arrival, so a shared interview between two paired people has each person's inviter asked separately and one poll with both people's companions on it.
+
+**A companion is not an interviewer.** They never count toward the holders a time needs (`computeAggregate` leaves them out unless they really are a holder as well, which includes where the recruitment module is open to everyone, where everyone would otherwise count), and `getInterviewers` leaves them out, so they file no report and aren't on the decision, even having offered the very time. A recruitment holder who is also the inviter is both, as they would be anyway.
+
+**Their availability is preferred, never required.** A time stays qualifying or not on the person and the holders alone. What the companion adds is a note on each qualifying time, shown to whoever books it (*Carol Smith can't make this one*, or *hasn't said when they're free*) and the order they are offered in: the ones nobody is known to miss first, then the rest as they were. Nothing is ever removed, and an inviter who never answers never holds up an interview. The holders' interview block also says who has been asked or said yes, and that they are company.
+
+**Naming who is coming.** Once a time is booked, the applicant's page and the confirmation email name the companions who said yes *and* offered that very time ("Carol Smith will be there too, as you asked"), so the line says only what is true. The `.ics` file carries no attendee names today (it is a title and a time), so there was nothing to add there; a companion who offered the booked time can already download it, like any member who did.
+
+**Not built, by plan:** an email to the inviter. The plan has it as a dashboard item; if it is seen to be missed it is a small addition.
+
+**Checked in `next dev` on a scratch database:** the offer on the applicant's page and its confirmation, the prompt on Carol's dashboard and her yes, the holders' block and the setting.
+
+Tests: `interview-companions.test.ts` (new, 15) and a populated-database case for 0119; whole suite 2,398 passing against a real Postgres.
+
 ## what a new member lets their accompanier see is theirs to choose, to one person at a time, and a question can name the accompanier as its audience
 
 Migrations **0117** and **0118**. [`docs/plans/accompaniment-plan.md`](docs/plans/accompaniment-plan.md) §4.2 to §4.4, step 4 of §8. The plan began this step with a read of the sensitive-answer resolver, to find out whether a *relation* could be one of its routes; it can, at the cost of asking the question per owner rather than per viewer in two places.

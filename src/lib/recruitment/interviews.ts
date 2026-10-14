@@ -14,6 +14,7 @@ import { getOpenCheck } from "./community-check";
 import { describeRecruitmentAuthority, requireRecruitmentScopeForCycle } from "./access";
 import { canScheduleInterview } from "./joining";
 import { loadStandingSlots } from "./standing-availability";
+import { listAcceptedCompanionIds, listCompanionsOfArrival, type CompanionOfArrival } from "./interview-companions";
 
 type Member = typeof memberTable.$inferSelect;
 type Arrival = typeof admission.$inferSelect;
@@ -39,11 +40,12 @@ const SLOT_MS = 30 * 60_000;
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
 
 /** Who is a holder right now, and what each has offered standing (docs §2: read live, never copied). */
-export async function loadHolderContext(communityId: string): Promise<HolderContext> {
+export async function loadHolderContext(communityId: string, pollId?: string): Promise<HolderContext> {
   const authority = await describeRecruitmentAuthority(communityId);
   const holderIds = new Set(authority.holders.map((h) => h.memberId));
   const standing = await loadStandingSlots(communityId, authority.open ? undefined : [...holderIds]);
-  return { everyone: authority.open, holderIds, standing };
+  const companionIds = pollId ? await listAcceptedCompanionIds(pollId) : new Set<string>();
+  return { everyone: authority.open, holderIds, standing, companionIds };
 }
 
 async function loadArrival(arrivalId: string): Promise<Arrival> {
@@ -203,22 +205,53 @@ export type InterviewState = {
   confirmed: { start: Date; end: Date } | null;
   /** Held once its slot has passed, or once an interviewer has said it happened. */
   held: boolean;
+  /** Whoever the person asked to be there, and what they said. Never a requirement. */
+  companions: CompanionOfArrival[];
+  /** For a qualifying slot, a plain note about a companion who can't make it or hasn't said: shown, never a bar. */
+  slotNotes: Record<string, string>;
+  /** Once it is booked: the companions who said yes and offered that very time, so are expected. */
+  companionsAttending: string[];
 };
 
 /** Everything a holder or a list needs to know about an arrival's interview, read live. */
 export async function getInterviewState(arrival: Arrival): Promise<InterviewState> {
   const poll = await getInterviewPoll(arrival);
-  if (!poll) return { poll: null, personHasOffered: false, qualifyingSlots: [], confirmed: null, held: Boolean(arrival.interviewHeldAt) };
+  if (!poll) {
+    return { poll: null, personHasOffered: false, qualifyingSlots: [], confirmed: null, held: Boolean(arrival.interviewHeldAt), companions: [], slotNotes: {}, companionsAttending: [] };
+  }
   const entries = await db.select().from(schedulingEntry).where(eq(schedulingEntry.pollId, poll.id));
-  const aggregate = computeAggregate(poll, entries, await loadHolderContext(arrival.communityId));
+  const aggregate = computeAggregate(poll, entries, await loadHolderContext(arrival.communityId, poll.id));
   const confirmed =
     poll.confirmedSlotStart && poll.confirmedSlotEnd ? { start: poll.confirmedSlotStart, end: poll.confirmedSlotEnd } : null;
+
+  // The companions are a preference, never a requirement: a slot is qualifying or not on the person and the
+  // holders alone. What they add is a note on each qualifying slot, and the order the slots are offered in
+  // (the ones nobody is known to miss first, otherwise as they were), so a holder can choose kindly.
+  const companions = await listCompanionsOfArrival(arrival.id);
+  const accepted = companions.filter((c) => c.status === "accepted");
+  const slotsOf = (memberId: string) => entries.find((e) => e.memberId === memberId)?.availableSlots as string[] | undefined;
+  const qualifying = confirmed ? [] : aggregate.slots.filter((s) => s.qualifies).map((s) => s.slot);
+  const slotNotes: Record<string, string> = {};
+  for (const slot of qualifying) {
+    const cannot = accepted.filter((c) => (slotsOf(c.memberId) ?? []).length > 0 && !slotsOf(c.memberId)!.includes(slot)).map((c) => c.name);
+    const unsaid = accepted.filter((c) => (slotsOf(c.memberId) ?? []).length === 0).map((c) => c.name);
+    if (cannot.length > 0) slotNotes[slot] = `${cannot.join(" and ")} can't make this one`;
+    else if (unsaid.length > 0) slotNotes[slot] = `${unsaid.join(" and ")} hasn't said when they're free`;
+  }
+  const ordered = [...qualifying.filter((s) => !slotNotes[s]), ...qualifying.filter((s) => slotNotes[s])];
+  const companionsAttending = confirmed
+    ? accepted.filter((c) => slotsOf(c.memberId)?.includes(poll.confirmedSlotStart!.toISOString())).map((c) => c.name)
+    : [];
+
   return {
     poll,
     personHasOffered: entries.some((e) => e.arrivalId === arrival.id && (e.availableSlots as string[]).length > 0),
-    qualifyingSlots: confirmed ? [] : aggregate.slots.filter((s) => s.qualifies).map((s) => s.slot),
+    qualifyingSlots: ordered,
     confirmed,
     held: Boolean(arrival.interviewHeldAt) || Boolean(confirmed && confirmed.end.getTime() <= Date.now()),
+    companions,
+    slotNotes,
+    companionsAttending,
   };
 }
 
@@ -231,12 +264,14 @@ export async function getInterviewers(arrival: Arrival): Promise<Member[]> {
   const poll = await getInterviewPoll(arrival);
   if (!poll?.confirmedSlotStart) return [];
   const slot = poll.confirmedSlotStart.toISOString();
-  const ctx = await loadHolderContext(arrival.communityId);
+  const ctx = await loadHolderContext(arrival.communityId, poll.id);
   const entries = await db.select().from(schedulingEntry).where(eq(schedulingEntry.pollId, poll.id));
   const ids = new Set<string>();
   for (const e of entries) if (e.memberId && (e.availableSlots as string[]).includes(slot)) ids.add(e.memberId);
   for (const [memberId, slots] of ctx.standing) if (slots.has(slot)) ids.add(memberId);
-  const holders = [...ids].filter((id) => ctx.everyone || ctx.holderIds.has(id));
+  // A companion is at the call but is not an interviewer: they file no report, whatever the module's openness.
+  const companionOnly = (id: string) => Boolean(ctx.companionIds?.has(id)) && !ctx.holderIds.has(id);
+  const holders = [...ids].filter((id) => (ctx.everyone || ctx.holderIds.has(id)) && !companionOnly(id));
   if (holders.length === 0) return [];
   return db.select().from(member).where(and(inArray(member.id, holders), eq(member.communityId, arrival.communityId)));
 }
@@ -312,6 +347,7 @@ export async function onInterviewConfirmed(pollId: string): Promise<Arrival> {
             // email has no viewer, and "UTC" read as the server's was only right by accident.
             whenText: formatInstant(poll.confirmedSlotStart, await getEventTimeZone(arrival.communityId, arrival.cycleId), "datetime", { zoneName: true }),
             statusUrl: admissionLink(arrival.token),
+            companions: (await getInterviewState(arrival)).companionsAttending,
           });
         } catch (err) {
           console.error("[interview] could not send the confirmation email", err);

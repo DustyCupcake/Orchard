@@ -177,6 +177,10 @@ export const community = pgTable("community", {
   // requirement, through the ordinary requirement mechanism rather than a rule of its own.
   accompanimentTierId: uuid("accompaniment_tier_id").references(() => tier.id),
   accompanimentEndsAfterDays: integer("accompaniment_ends_after_days").notNull().default(90),
+  // Whether an applicant who came through an invitation is offered the chance to have the person who
+  // invited them at their interview (docs/plans/accompaniment-plan.md §6). On by default: it is a
+  // courtesy to the applicant, and the applicant is the one who chooses.
+  interviewOfferInviter: boolean("interview_offer_inviter").notNull().default(true),
   // The check-ins an accompaniment starts with (docs/plans/accompaniment-plan.md §5), each made a
   // milestone on the task when it is created, its date fixed then. A row is a label and a number
   // of days from one of two anchors: after the person joined, or before the event they are

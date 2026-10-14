@@ -15,6 +15,7 @@ import {
   updateRecruitmentCheckWindowAction,
   updateAccompanimentSettingsAction,
   updateAccompanimentCheckInsAction,
+  updateInterviewSettingsAction,
 } from "../actions";
 import AdmissionLaneEditor from "../AdmissionLaneEditor";
 import DecisionPolicyEditor from "../DecisionPolicyEditor";
@@ -306,6 +307,33 @@ export default async function RecruitmentTab({
           )}
         </SettingsGroup>
       </SettingsSection>
+
+      {relevance.anyInterview && (
+        <SettingsSection
+          title="The interview"
+          description="What an applicant is offered around their conversation with the people looking after joining."
+        >
+          <SettingsGroup
+            action={updateInterviewSettingsAction}
+            submitLabel="Save"
+            title="The person who invited them"
+            stateLabel="Whether an applicant who was invited can ask their inviter to be at the interview"
+            state={
+              community.interviewOfferInviter
+                ? "An applicant who was invited can ask whoever invited them to be at their interview."
+                : "Applicants aren't offered their inviter's company at the interview."
+            }
+            description="It's only company. The inviter isn't an interviewer, files nothing and doesn't count toward the people a time needs; their availability is preferred and never required. The applicant is the one who asks, and the inviter can say no without saying why."
+          >
+            <ToggleField
+              label="Offer the inviter a place"
+              name="interviewOfferInviter"
+              defaultChecked={community.interviewOfferInviter}
+              hint="Shown on the applicant's own page once their interview exists."
+            />
+          </SettingsGroup>
+        </SettingsSection>
+      )}
 
       <SettingsSection
         title="Accompaniment"

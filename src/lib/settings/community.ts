@@ -105,6 +105,8 @@ export const updateCommunityInput = z.object({
   accompanimentTierId: z.string().uuid().nullable().optional(),
   accompanimentEndsAfterDays: z.number().int().positive().max(730).optional(),
   accompanimentCheckIns: checkInsSchema.optional(),
+  // Whether an applicant invited by a member is offered the inviter's company at their interview (accompaniment plan §6).
+  interviewOfferInviter: z.boolean().optional(),
   // Null clears it — "surfaced to whoever's about to send an actual
   // decline, never sent automatically."
   recruitmentRejectionTemplate: z.string().nullable().optional(),
@@ -292,6 +294,7 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         ...(input.accompanimentTierId !== undefined && { accompanimentTierId: input.accompanimentTierId }),
         ...(input.accompanimentEndsAfterDays !== undefined && { accompanimentEndsAfterDays: input.accompanimentEndsAfterDays }),
         ...(input.accompanimentCheckIns !== undefined && { accompanimentCheckIns: input.accompanimentCheckIns }),
+        ...(input.interviewOfferInviter !== undefined && { interviewOfferInviter: input.interviewOfferInviter }),
         ...(input.recruitmentWiderDiscussionHours !== undefined && {
           recruitmentWiderDiscussionHours: input.recruitmentWiderDiscussionHours,
         }),
