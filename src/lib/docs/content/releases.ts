@@ -29,6 +29,17 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-10-14",
+    title: "Having the person who invited you at your interview",
+    summary: "If someone invited you, you can ask them to be at your interview for company, and they can say yes or no.",
+    points: [
+      "If a member invited you, your page offers to ask them to be there. It's your choice, and only for company: it changes nothing about how anyone decides.",
+      "They're asked on their own dashboard, can say no without giving a reason, and aren't told off for it. If they say yes they can say when they're free; the people booking the interview see it, but it never stops a time being booked.",
+      "Once a time is booked, your page and the email say who will be there. Administrators can switch the offer off under Settings → Recruitment.",
+    ],
+    source: "the person who invited an applicant can be at their interview, if the applicant asks and they would like to",
+  },
+  {
     date: "2026-10-13",
     title: "You choose what your accompanier can see about you",
     summary: "A new member decides whether their accompanier can see more than the basics, and it's only ever for that one person.",

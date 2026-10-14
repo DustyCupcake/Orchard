@@ -64,6 +64,13 @@ export type HolderContext = {
   /** An open module makes every member a holder. */
   everyone: boolean;
   holderIds: Set<string>;
+  /**
+   * People who have said they'll be at this interview as the applicant's companion (docs/plans/
+   * accompaniment-plan.md §6). They may offer times like anybody, but a companion is not an interviewer:
+   * unless they are *also* a real holder they never count toward the holders a slot needs, not even
+   * where the module is open to everyone.
+   */
+  companionIds?: Set<string>;
   /** Each holder's standing availability — one grid the holder fills in and edits, read as it stands rather than copied onto the poll. */
   standing: Map<string, Set<string>>;
 };
@@ -118,7 +125,8 @@ export function computeAggregate(
         // opted into a shared interview (§2, pairing) — and every one of them has to be
         // free; the holders are everyone else who offered the slot and is one now.
         const people = new Set(poll.requiredParticipantIds);
-        const isHolder = (id: string) => (holders ? holders.everyone || holders.holderIds.has(id) : true);
+        const isCompanionOnly = (id: string) => Boolean(holders?.companionIds?.has(id)) && !holders!.holderIds.has(id);
+        const isHolder = (id: string) => (holders ? (holders.everyone || holders.holderIds.has(id)) && !isCompanionOnly(id) : true);
         const overlappingHolders = [...participantIds].filter((id) => !people.has(id) && isHolder(id));
         qualifies = [...people].every((id) => participantIds.has(id)) && overlappingHolders.length >= (poll.minAttendance ?? 1);
       } else {
@@ -139,7 +147,7 @@ export async function getPollAggregate(
   const entries = await db.select().from(schedulingEntry).where(eq(schedulingEntry.pollId, pollId));
   const holders =
     poll.resolutionMode === "person_plus_n_holders"
-      ? await (await import("../recruitment/interviews")).loadHolderContext(poll.communityId)
+      ? await (await import("../recruitment/interviews")).loadHolderContext(poll.communityId, poll.id)
       : null;
   return computeAggregate(poll, entries, holders);
 }

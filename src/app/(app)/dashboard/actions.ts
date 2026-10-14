@@ -11,6 +11,7 @@ import { askForSomeoneElse, setMyShares } from "@/lib/accompaniment";
 import { dismissMySuggestion } from "@/lib/tasks/suggestions";
 import { claimTask } from "@/lib/tasks";
 import { setTaskMilestoneDone } from "@/lib/tasks/milestones";
+import { answerCompanionRequest } from "@/lib/recruitment/interview-companions";
 import { answerProfileQuestion, getProfileQuestion, listProfileQuestionsByIds } from "@/lib/profile-questions";
 import { fieldValueFromFormData, toFieldShape } from "@/lib/field-shape";
 import { listOutstandingQuestions } from "@/lib/profile-questions/answers";
@@ -282,6 +283,19 @@ export async function setMySharesAction(formData: FormData) {
       contribution: formData.get("contribution") === "on",
       answers: formData.get("answers") === "on",
     });
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/dashboard");
+}
+
+// "I'd like to come" / "Not this time" on a request to be at an interview as company (docs/plans/
+// accompaniment-plan.md §6). A no needs no reason and tells nobody.
+export async function answerCompanionRequestAction(formData: FormData) {
+  await assertNotViewingAs();
+  const actor = await requireRealMember();
+  try {
+    await answerCompanionRequest(actor, String(formData.get("arrivalId") ?? ""), formData.get("accept") === "1");
   } catch (err) {
     redirectWithError(err);
   }

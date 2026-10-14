@@ -548,6 +548,20 @@ export async function updateAccompanimentSettingsAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
+// Recruitment → the interview (docs/plans/accompaniment-plan.md §6): whether an applicant who was invited
+// is offered their inviter's company at the interview. The applicant is the one who chooses; this only says
+// whether the offer exists.
+export async function updateInterviewSettingsAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    await updateCommunity(actor, updateCommunityInput.parse(defined({ interviewOfferInviter: checkboxOf(formData, "interviewOfferInviter") })));
+  } catch (err) {
+    redirectWithError(err, "recruitment");
+  }
+  revalidatePath("/settings");
+}
+
 // Recruitment → Accompaniment → check-ins (docs/plans/accompaniment-plan.md §5): the short list of
 // moments an accompaniment starts with. Its own card and its own Save, so a mistyped row can't
 // revert the settings beside it. Zero-JS like the rest of this tab: the rows are plain fields, a row

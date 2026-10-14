@@ -531,6 +531,16 @@ async function InterviewBlock({
                   ? "waiting for enough of you to offer a time they're free"
                   : `${interview.qualifyingSlots.length} time${interview.qualifyingSlots.length === 1 ? "" : "s"} suit them and enough of you — pick one to book`}
         </p>
+        {interview.companions.some((c) => c.status !== "declined") && (
+          <p style={{ margin: "0 0 0.3rem", color: "#666" }}>
+            {interview.companions
+              .filter((c) => c.status !== "declined")
+              .map((c) => (c.status === "accepted" ? `${c.name}, who invited them, would like to be there` : `${c.name}, who invited them, has been asked to be there`))
+              .join("; ")}
+            . They are company, not an interviewer, and never stop a time being booked.
+            {interview.confirmed && interview.companionsAttending.length > 0 && ` ${interview.companionsAttending.join(" and ")} will be at this one.`}
+          </p>
+        )}
         {interview.poll && !interview.confirmed && (
           <p style={{ margin: "0 0 0.3rem", color: "#666" }}>
             <Link href="/recruitment/availability" style={{ textDecoration: "underline" }}>Your standing availability</Link> counts here
@@ -543,7 +553,7 @@ async function InterviewBlock({
             <input type="hidden" name="arrivalId" value={arrivalId} />
             <SelectField name="slot" defaultValue={interview.qualifyingSlots[0]} style={{ padding: "0.3rem" }}>
               {interview.qualifyingSlots.map((slot) => (
-                <option key={slot} value={slot}>{clock.dateTime(slot)}</option>
+                <option key={slot} value={slot}>{clock.dateTime(slot)}{interview.slotNotes[slot] ? ` — ${interview.slotNotes[slot]}` : ""}</option>
               ))}
             </SelectField>
             <button type="submit" style={{ padding: "0.2rem 0.6rem" }}>Book this time</button>

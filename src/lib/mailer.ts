@@ -300,13 +300,16 @@ export async function sendInterviewInviteEmail(
 
 export async function sendInterviewConfirmedEmail(
   email: string,
-  input: { name: string; communityName: string; whenText: string; statusUrl: string },
+  input: { name: string; communityName: string; whenText: string; statusUrl: string; companions?: string[] },
 ) {
   const subject = `Your conversation with ${input.communityName} is booked`;
   const text = [
     `Hello ${input.name},`,
     ``,
     `Your conversation with ${input.communityName} is booked for ${input.whenText}.`,
+    ...(input.companions && input.companions.length > 0
+      ? [``, `${input.companions.join(" and ")} will be there too, as you asked.`]
+      : []),
     ``,
     `Your page, in case you need it:`,
     `${input.statusUrl}`,

@@ -753,4 +753,21 @@ describe("migrating a database that already has data", () => {
     const [r] = await sql`select unlocked_by_accompaniment, unlocked_by_tier_id from sensitive_field_access_rule`;
     expect(r).toMatchObject({ unlocked_by_accompaniment: false, unlocked_by_tier_id: tierId });
   });
+
+  // 0119 adds the inviter's place at the interview. Nothing that exists has been asked: every
+  // community starts with the offer on, and there are no companions until an applicant asks.
+  it("0119 turns the inviter offer on for every community and starts with nobody asked", async () => {
+    db = await createScratchDatabase();
+    await db.migrateBefore("0119_interview_companion");
+    const sql = db.sql;
+    const [communityId, other] = [uuid(), uuid()];
+    await sql`insert into community (id, name) values (${communityId}, 'C'), (${other}, 'D')`;
+
+    await db.migrateRemaining();
+
+    const rows = await sql`select interview_offer_inviter from community`;
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.interview_offer_inviter === true)).toBe(true);
+    expect(await sql`select 1 from interview_companion`).toHaveLength(0);
+  });
 });

@@ -7,6 +7,7 @@ import { getArrivalByToken, getAskedApplicationForm, submitAskedApplication, wit
 import { formValuesFromFormData, type FormField } from "@/lib/forms";
 import { AppError } from "@/lib/errors";
 import { answerPairing, createApplyTogetherLink } from "@/lib/recruitment/pairs";
+import { askInviterToJoin } from "@/lib/recruitment/interview-companions";
 
 // Only for the address the arrival itself was admitted with, and only once it
 // has been: this is the person's route from "you're in" to being signed in,
@@ -77,4 +78,20 @@ export async function answerPairingAction(formData: FormData) {
     throw err;
   }
   redirect(`${back}?paired=1`);
+}
+
+// "Would you like [first name] to be at your interview?" (docs/plans/accompaniment-plan.md §6). The person's
+// own choice, made with the credential they hold, and asked once.
+export async function askInviterAction(formData: FormData) {
+  const token = String(formData.get("token") ?? "");
+  const back = `/admission/${encodeURIComponent(token)}`;
+  try {
+    const arrival = await getArrivalByToken(token);
+    if (!arrival) throw new AppError("That link doesn't lead anywhere");
+    await askInviterToJoin(arrival.id);
+  } catch (err) {
+    if (err instanceof AppError) redirect(`${back}?error=${encodeURIComponent(err.message)}`);
+    throw err;
+  }
+  redirect(`${back}?asked=1`);
 }

@@ -3,6 +3,7 @@ import { getViewerClock } from "@/lib/view-clock";
 import AccompanimentCard from "./AccompanimentCard";
 import AccompanyInvitations from "./AccompanyInvitations";
 import CheckInsDue from "./CheckInsDue";
+import CompanionRequests from "./CompanionRequests";
 import { formatInstant } from "@/lib/dates";
 import { redirect } from "next/navigation";
 import { CheckCircle, Tree, Users, ChartLineUp, Warning } from "@phosphor-icons/react/dist/ssr";
@@ -496,6 +497,8 @@ export default async function DashboardPage({
       ) : (
         <EventParticipationCards viewing={viewing} action={declareEventStatusAction} />
       )}
+
+      <CompanionRequests viewing={viewing} />
 
       <CheckInsDue viewing={viewing} />
 
