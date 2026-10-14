@@ -19,16 +19,16 @@
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "@tailwindcss/postcss": "^4.3.3",
-    "drizzle-orm": "^0.45.3",
+    "drizzle-orm": "^0.45.4",
     "next": "^16.4.0",
     "node-cron": "^4.6.0",
-    "nodemailer": "^10.0.15",
+    "nodemailer": "^10.1.0",
     "openid-client": "^6.8.8",
     "postgres": "^3.4.5",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
