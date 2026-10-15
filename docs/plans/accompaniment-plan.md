@@ -1,6 +1,6 @@
 # Accompaniment, the inviter's seat at the interview, and the community's public face
 
-**Status:** steps 1 to 5 of §8 are built (2026-10-13 and 2026-10-14). Step 5: the inviter at the interview, as company. Step 4: the three switches and consent to a person, the accompanier's view, and the accompanier as an audience for a profile question. Step 3: check-ins as milestones, the settings list, the done state and the accompanier's "time to check in". Step 2: the suggestion table with a reason per person, the dashboard prompt, and the coordination and task views. Step 1: the relation as a row, made at admission, the settings, the new member's card, the welcome text and the two emails, "ask for someone else", and the ending. Steps 6 to 8 are proposed, not built. Written 2026-10-11 after comparing the original recruitment section
+**Status:** steps 1 to 5 of §8 are built (2026-10-13 and 2026-10-14). Step 5: the inviter at the interview, as company. Step 4: the three switches and consent to a person, the accompanier's view, and the accompanier as an audience for a profile question. Step 3: check-ins as milestones, the settings list, the done state and the accompanier's "time to check in". Step 2: the suggestion table with a reason per person, the dashboard prompt, and the coordination and task views. Step 1: the relation as a row, made at admission, the settings, the new member's card, the welcome text and the two emails, "ask for someone else", and the ending. Step 6 is folded into the email plan; steps 7 and 8 are proposed, not built. Written 2026-10-11 after comparing the original recruitment section
 (the v0.5 platform spec) with what the admission funnel built. That spec is an early draft written for
 one community, so this plan keeps what it was *for* and drops what only made sense for that camp.
 
@@ -281,7 +281,7 @@ visit** and is shown to anyone. Orchard serves **one community per deployment**
    page by itself, so nobody has to remember to edit it.
 4. **Text only, for now.** No images beyond the community's existing logo.
 
-### 7.3 Stage one: a link in the message (proposed; ships with the interview work)
+### 7.3 Stage one: a link in the message (proposed; now part of [`email-plan.md`](email-plan.md), E1)
 
 A community setting, *Before your interview, read this*: a URL and an optional one-line note. It is
 shown in the interview invite email and on the person's own page at the interview step. It also covers
@@ -354,7 +354,7 @@ funnel steps were. Each starts when asked for.
    view of what is shared; then the profile-answer route if the resolver allows it. *Depends on 1.*
 5. **The inviter at the interview.** `interview_companion`, the applicant's offer, the inviter's
    dashboard item, the preferred-availability read in the aggregate, the setting. *Independent.*
-6. **The information link.** The setting, the invite email, the person's page. *Independent.*
+6. **The information link.** *Folded into [`email-plan.md`](email-plan.md), step E1* (2026-10-15): looking at it showed that a specific fix for one email was worth less than a look at how all twelve are written. The link becomes an optional *before your interview* section on the interview invitation, fed by the setting, and the person's page shows it too. Not built separately.
 7. **Public pages.** `published_revision_id`, the `public_pages` module, `/p/<slug>`, the Library's
    publish and behind-by views, the public page chrome (sign-in button, navigation list), the picker in
    step 6's setting, the formatting the renderer lacks. *After 6.*
