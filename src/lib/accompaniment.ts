@@ -554,8 +554,13 @@ export async function runAccompaniments(now: Date = new Date()) {
         .where(eq(accompaniment.id, a.id));
     }
     try {
-      const email = await resolvePrimaryEmail(a.memberId);
-      const [newcomer] = await db.select({ name: member.name }).from(member).where(eq(member.id, a.memberId));
+      const [newcomer] = await db
+        .select({ name: member.name, wantsEmail: member.emailNotificationsEnabled })
+        .from(member)
+        .where(eq(member.id, a.memberId));
+      // A notification, not a transaction: it tells a member something that is also on their dashboard, so
+      // it respects their "email me" setting as an announcement does. (The first version forgot.)
+      const email = newcomer?.wantsEmail ? await resolvePrimaryEmail(a.memberId) : null;
       const [communityRow] = await db.select({ name: community.name }).from(community).where(eq(community.id, a.communityId));
       if (email) {
         await sendAccompanierNamedEmail(email, {
@@ -568,8 +573,8 @@ export async function runAccompaniments(now: Date = new Date()) {
     } catch (err) {
       console.error("[accompaniment] could not tell the member who is accompanying them", err);
     }
-    // Recorded whether or not an address was found: the card on their dashboard says it
-    // either way, and a member with no verified address would otherwise be retried for ever.
+    // Recorded whether or not an email was sent (no address, or they asked not to be emailed): the card
+    // on their dashboard says it either way, and they would otherwise be retried for ever.
     await db.update(accompaniment).set({ announcedHolderId: holder.id }).where(eq(accompaniment.id, a.id));
   }
 }
