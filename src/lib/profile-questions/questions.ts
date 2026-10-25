@@ -1,9 +1,9 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/db";
-import { profileAnswer, profileQuestion } from "@/db/schema";
+import { db, type DbOrTx } from "@/db";
+import { KITCHEN_SIGNALS, profileAnswer, profileQuestion, type KitchenSignal } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { AppError, NotFoundError } from "../errors";
+import { AppError, ConflictError, NotFoundError } from "../errors";
 import {
   createSensitiveFieldAccessRule,
   createSensitiveFieldAccessRuleInput,
@@ -26,6 +26,74 @@ import {
 import { recordSettingChanges } from "../settings/history";
 
 type Member = typeof memberTable.$inferSelect;
+
+export const KITCHEN_SIGNAL_LABELS: Record<KitchenSignal, string> = {
+  allergy: "allergies",
+  intolerance: "intolerances",
+  dislike: "dislikes",
+};
+
+/**
+ * Why a question can't feed this kitchen signal, or null when it can.
+ *
+ * Both rules are about what the kitchen is going to do with the answers, not
+ * about tidiness. Allergies and intolerances are health information, so the
+ * question has to be restricted: a public one is readable by the whole
+ * community, and wiring it to the kitchen would imply a protection it doesn't
+ * have. And `sensitive` is fixed at creation, so the remedy is the standard
+ * one — archive and add again — which the message names. Dislikes are
+ * counted, not read, so they need a closed list of options to count; free
+ * text can be shown but never tallied.
+ */
+export function kitchenSignalBlocker(
+  signal: KitchenSignal,
+  question: { responseType: string; sensitive: boolean; scope: string },
+): string | null {
+  // Standing facts only: Kitchen reads the member's once-ever answer, and a
+  // per-event answer would be one the kitchen can never find.
+  if (question.scope !== "once_ever") {
+    return "A question that feeds the kitchen has to be asked once, not per event, because a person's allergies don't change from one event to the next.";
+  }
+  if (signal === "dislike") {
+    return question.responseType === "multi_choice"
+      ? null
+      : "A dislikes question has to be a “pick any” list, because the kitchen counts the ticks and cannot count prose.";
+  }
+  if (!question.sensitive) {
+    return `An ${signal} question has to be restricted, because the answers are health information and a public question is readable by the whole community. Restriction is fixed when a question is created, so add a restricted one and archive this one.`;
+  }
+  if (question.responseType !== "multi_choice" && question.responseType !== "text") {
+    return `An ${signal} question has to be a “pick any” list or a written answer.`;
+  }
+  return null;
+}
+
+// At most one live question per signal. The partial unique index is the
+// guarantee; this is the sentence an Admin reads instead of a constraint
+// name.
+async function assertKitchenSignalFree(
+  tx: DbOrTx,
+  communityId: string,
+  signal: KitchenSignal,
+  exceptQuestionId?: string,
+) {
+  const [taken] = await tx
+    .select({ id: profileQuestion.id, label: profileQuestion.label })
+    .from(profileQuestion)
+    .where(
+      and(
+        eq(profileQuestion.communityId, communityId),
+        eq(profileQuestion.kitchenSignal, signal),
+        isNull(profileQuestion.archivedAt),
+        ...(exceptQuestionId ? [ne(profileQuestion.id, exceptQuestionId)] : []),
+      ),
+    );
+  if (taken) {
+    throw new ConflictError(
+      `“${taken.label}” already tells the kitchen about ${KITCHEN_SIGNAL_LABELS[signal]}. Move it to another question or archive it first.`,
+    );
+  }
+}
 
 // Both lists come from src/lib/field-shape.ts rather than being declared
 // here, so a ProfileQuestion and a Form field can never drift into
@@ -99,8 +167,22 @@ export const createProfileQuestionInput = z
       .optional(),
     emergencyAccess: z.boolean().optional(),
     surfaces: z.array(z.string().min(1)).optional(),
+    // Which Kitchen dietary signal this question feeds, if any — see
+    // KITCHEN_SIGNALS. The rules for what may carry one are in
+    // kitchenSignalBlocker.
+    kitchenSignal: z.enum(KITCHEN_SIGNALS).nullable().optional(),
   })
   .superRefine((input, ctx) => {
+    if (input.kitchenSignal) {
+      const reason = kitchenSignalBlocker(input.kitchenSignal, {
+        responseType: input.responseType,
+        sensitive: Boolean(input.sensitive),
+        scope: input.scope,
+      });
+      if (reason) {
+        ctx.addIssue({ code: "custom", message: reason, path: ["kitchenSignal"] });
+      }
+    }
     if (input.scope === "phase" && !input.phaseNameHint) {
       ctx.addIssue({
         code: "custom",
@@ -202,6 +284,11 @@ export const updateProfileQuestionInput = z
     // reinterpreting them.
     emergencyAccess: z.boolean().optional(),
     surfaces: z.array(z.string().min(1)).optional(),
+    // null clears it, undefined leaves it. Almost nothing sends this: the
+    // settings card form doesn't, and the Kitchen questions panel goes
+    // through setKitchenSignalQuestion, which moves a signal between
+    // questions in one transaction.
+    kitchenSignal: z.enum(KITCHEN_SIGNALS).nullable().optional(),
   });
 // No cross-field check on update, unlike create, and deliberately so: the
 // settings form submits `required` and `allowDeferral` on every save, so
@@ -365,6 +452,18 @@ function shapeFrom(input: {
 
 export async function createProfileQuestion(actor: Member, input: CreateProfileQuestionInput) {
   requireValidShape(input);
+  if (input.kitchenSignal) {
+    // The zod refinement says the same thing for a form submission; this is
+    // for the caller that builds an input object and never parses it, which
+    // is the seeder and a test as much as a script.
+    const reason = kitchenSignalBlocker(input.kitchenSignal, {
+      responseType: input.responseType,
+      sensitive: Boolean(input.sensitive),
+      scope: input.scope,
+    });
+    if (reason) throw new AppError(reason);
+    await assertKitchenSignalFree(db, actor.communityId, input.kitchenSignal);
+  }
 
   // A sensitive question is created in the only order that works: the row
   // first, because a rule can only name a question that exists, then the
@@ -408,6 +507,7 @@ export async function createProfileQuestion(actor: Member, input: CreateProfileQ
         sensitive: false,
         emergencyAccess: false,
         surfaces: input.surfaces ?? [],
+        kitchenSignal: input.kitchenSignal ?? null,
       })
       .returning();
 
@@ -436,6 +536,7 @@ export async function createProfileQuestion(actor: Member, input: CreateProfileQ
         sensitive: input.sensitive ?? false,
         emergencyAccess: input.emergencyAccess ?? false,
         options: row.options,
+        kitchenSignal: row.kitchenSignal,
       },
     });
 
@@ -476,6 +577,24 @@ export async function updateProfileQuestion(
   const effectiveResponseType = input.responseType ?? current.responseType;
   if (isChoiceType(effectiveResponseType) && (input.options ?? current.options).length === 0) {
     throw new AppError("options are required for a choice-based response type");
+  }
+
+  // A tagged question has to stay a question the kitchen can read: editing
+  // its type out from under the tag would leave Kitchen interpreting an
+  // answer shape it can't. Checked against the effective state, for the
+  // same reason as the choice-options check above.
+  const effectiveKitchenSignal =
+    input.kitchenSignal !== undefined ? input.kitchenSignal : current.kitchenSignal;
+  if (effectiveKitchenSignal) {
+    const reason = kitchenSignalBlocker(effectiveKitchenSignal, {
+      responseType: effectiveResponseType,
+      sensitive: current.sensitive,
+      scope: current.scope,
+    });
+    if (reason) throw new AppError(reason);
+    if (input.kitchenSignal) {
+      await assertKitchenSignalFree(db, actor.communityId, input.kitchenSignal, questionId);
+    }
   }
 
   // Publishing, and *staying* published, are checked against the
@@ -610,6 +729,7 @@ export async function updateProfileQuestion(
           feedsCapacitySignal: input.feedsCapacitySignal,
         }),
         ...(input.surfaces !== undefined && { surfaces: input.surfaces }),
+        ...(input.kitchenSignal !== undefined && { kitchenSignal: input.kitchenSignal }),
       })
       .where(and(eq(profileQuestion.id, questionId), eq(profileQuestion.communityId, actor.communityId)))
       .returning();
@@ -640,6 +760,7 @@ export async function updateProfileQuestion(
         emergencyAccess: input.emergencyAccess,
         feedsCapacitySignal: input.feedsCapacitySignal,
         surfaces: input.surfaces,
+        kitchenSignal: input.kitchenSignal,
         options: input.options,
         multiline: input.multiline,
         validation: input.validation,
@@ -690,6 +811,83 @@ export async function updateProfileQuestion(
   }
 
   return updated;
+}
+
+/**
+ * Point a kitchen signal at a question, or clear it.
+ *
+ * What the Kitchen questions panel calls. A signal belongs to one question at
+ * a time, so choosing a new one has to release the old one first — done in
+ * the same transaction so the unique index never sees two, and so a refusal
+ * (the new question can't carry the signal) leaves the old wiring in place
+ * rather than a signal pointing at nothing.
+ *
+ * Setting this grants no access and widens nobody's audience: it chooses
+ * which answers Kitchen interprets, and Kitchen still reads them only
+ * through the audience rules and each answer's consent. So there is no
+ * consent prompt, and the change is logged like any other setting.
+ */
+export async function setKitchenSignalQuestion(
+  actor: Member,
+  signal: KitchenSignal,
+  questionId: string | null,
+) {
+  return db.transaction(async (tx) => {
+    const [target] = questionId
+      ? await tx
+          .select()
+          .from(profileQuestion)
+          .where(and(eq(profileQuestion.id, questionId), eq(profileQuestion.communityId, actor.communityId)))
+      : [];
+    if (questionId) {
+      if (!target || target.archivedAt) throw new NotFoundError("Profile question not found");
+      const reason = kitchenSignalBlocker(signal, target);
+      if (reason) throw new AppError(reason);
+    }
+
+    const holders = await tx
+      .select()
+      .from(profileQuestion)
+      .where(
+        and(
+          eq(profileQuestion.communityId, actor.communityId),
+          eq(profileQuestion.kitchenSignal, signal),
+          isNull(profileQuestion.archivedAt),
+        ),
+      );
+    for (const holder of holders) {
+      if (holder.id === questionId) continue;
+      await tx.update(profileQuestion).set({ kitchenSignal: null }).where(eq(profileQuestion.id, holder.id));
+      await recordSettingChanges(tx, {
+        actor,
+        entity: "profile_question",
+        action: "updated",
+        entityId: holder.id,
+        entityLabel: holder.label,
+        current: holder,
+        changes: { kitchenSignal: null },
+      });
+    }
+
+    if (!target || target.kitchenSignal === signal) return target ?? null;
+    // A question carries one signal. Moving it to another releases the one
+    // it had, which the update below overwrites in place.
+    const [updated] = await tx
+      .update(profileQuestion)
+      .set({ kitchenSignal: signal })
+      .where(eq(profileQuestion.id, target.id))
+      .returning();
+    await recordSettingChanges(tx, {
+      actor,
+      entity: "profile_question",
+      action: "updated",
+      entityId: target.id,
+      entityLabel: target.label,
+      current: target,
+      changes: { kitchenSignal: signal },
+    });
+    return updated;
+  });
 }
 
 // Archive, not delete — "an archived_at so a retired question's past

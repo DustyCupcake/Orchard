@@ -1,331 +1,78 @@
 import { redirect } from "next/navigation";
-import { formatInstant } from "@/lib/dates";
-import { getViewerClock } from "@/lib/view-clock";
 import Link from "next/link";
 import { inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { member } from "@/db/schema";
+import { getViewerClock } from "@/lib/view-clock";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import {
-  getMealConstraintPanel,
+  attendanceForMeal,
+  compareMealToOverview,
+  effectiveHeadCount,
+  getDietaryOverview,
   getMenuPlanOverview,
   isKitchenOwner,
+  listIdeasForMenuPlan,
+  listMyFoodIdeas,
   listOpenIdeasForReview,
   listSupplyTasks,
+  loadAttendanceContext,
+  NO_ATTENDANCE,
   purchaseList,
   resolveActiveMenuPlan,
+  resolveMealTimes,
   resolvePublishedMenuPlan,
   scaledIngredients,
+  type FoodIdeaWithIngredients,
+  type MealAttendance,
+  type MealConstraintPanel,
+  type MealWithDishes,
+  type MenuPlanRow,
+  type PurchaseListRow,
+  type ScaledIngredient,
 } from "@/lib/kitchen";
-import { ALLERGEN_FLAGS, ALLERGEN_FLAG_LABELS, type AllergenFlag } from "@/lib/kitchen/dietary";
 import { resolveDefaultScopeSegment, resolveSingleCycleScope } from "@/lib/cycles";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
-import { Banner, BUTTON_DESTRUCTIVE, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL, SELECT, Tag } from "@/components/ui/kit";
+import Modal from "@/components/ui/Modal";
+import PageHeader from "@/components/ui/PageHeader";
+import Tabs from "@/components/ui/Tabs";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, Tag } from "@/components/ui/kit";
 import {
-  adoptIdeaAction,
-  createDishAction,
-  createDishIngredientAction,
   createMealAction,
   createMenuPlanAction,
-  declineIdeaAction,
-  deleteDishAction,
-  deleteDishIngredientAction,
-  deleteMealAction,
   fileFoodIdeaAction,
   publishMenuPlanAction,
-  updateDishAction,
-  updateDishIngredientAction,
-  updateMealAction,
+  updateMealTimesAction,
 } from "./actions";
-import type { MealWithDishes, PurchaseListRow, ScaledIngredient, MealConstraintPanel } from "@/lib/kitchen";
+import { MealForm } from "./MealForm";
+import MenuTab from "./MenuTab";
+import SuggestionsTab from "./SuggestionsTab";
+import DietaryTab from "./DietaryTab";
+import ShoppingTab from "./ShoppingTab";
+import { LightIdeaForm, RecipeForm, SectionHeading, TextField } from "./parts";
+import { INPUT, LABEL } from "@/components/ui/kit";
 
 export const dynamic = "force-dynamic";
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
-}
+type TabKey = "menu" | "suggestions" | "dietary" | "shopping";
+type ComposeKind = "recipe" | "request" | "preference";
 
-function TextField({
-  label,
-  name,
-  defaultValue,
-  placeholder,
-  type = "text",
-  rows,
-  required,
-  min,
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  placeholder?: string;
-  type?: string;
-  rows?: number;
-  required?: boolean;
-  min?: number;
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className={LABEL}>{label}</span>
-      {rows ? (
-        <textarea
-          name={name}
-          defaultValue={defaultValue}
-          placeholder={placeholder}
-          rows={rows}
-          className={INPUT}
-        />
-      ) : (
-        <input
-          type={type}
-          name={name}
-          defaultValue={defaultValue}
-          placeholder={placeholder}
-          required={required}
-          min={min}
-          className={INPUT}
-        />
-      )}
-    </label>
-  );
-}
+const COMPOSE_KINDS: { key: ComposeKind; label: string }[] = [
+  { key: "recipe", label: "A recipe" },
+  { key: "request", label: "A dish request" },
+  { key: "preference", label: "A preference" },
+];
 
-// The bounded flag vocabulary rendered as checkboxes sharing one name —
-// unchecked boxes simply don't submit (see actions.ts's allergenFlags).
-function FlagPicker({
-  defaultValue,
-  excludeNone = false,
-}: {
-  defaultValue: string[];
-  excludeNone?: boolean;
-}) {
-  const flags = excludeNone ? ALLERGEN_FLAGS.filter((f) => f !== "none_known") : ALLERGEN_FLAGS;
-  return (
-    <div className="flex flex-wrap gap-x-4 gap-y-1">
-      {flags.map((flag) => (
-        <CheckField
-          key={flag}
-          name="allergenFlags"
-          value={flag}
-          label={ALLERGEN_FLAG_LABELS[flag]}
-          defaultChecked={defaultValue.includes(flag)}
-        />
-      ))}
-    </div>
-  );
-}
-
-function FlagTags({ flags }: { flags: string[] }) {
-  const visible = flags.filter((f) => f !== "none_known");
-  if (visible.length === 0) return null;
-  return (
-    <div className="mt-1 flex flex-wrap gap-1">
-      {visible.map((f) => (
-        <Tag key={f} tone={f === "milk" || f === "peanuts" || f === "shellfish" || f === "tree_nuts" ? "warning" : "neutral"}>
-          {ALLERGEN_FLAG_LABELS[f as AllergenFlag] ?? f}
-        </Tag>
-      ))}
-    </div>
-  );
-}
-
-function MealBlock({
-  meal,
-  isOwner,
-  panels,
-  purchases,
-  scaled,
-}: {
-  meal: MealWithDishes;
-  isOwner: boolean;
-  panels: Map<string, MealConstraintPanel>;
-  purchases: Map<string, PurchaseListRow[]>;
-  scaled: Map<string, ScaledIngredient[]>;
-}) {
-  return (
-    <div className={CARD}>
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <span className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">{meal.label}</span>
-          <span className="ml-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-            {new Date(`${meal.date}T12:00:00Z`).toLocaleDateString("en-US", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              timeZone: "UTC",
-            })}
-          </span>
-        </div>
-        <Tag tone={meal.headCount ? "accent" : "neutral"}>{meal.headCount ? `${meal.headCount} eaters` : "no headcount"}</Tag>
-      </div>
-      {meal.notes && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{meal.notes}</p>}
-
-      {meal.dishes.map((dishRow) => (
-        <div key={dishRow.id} className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{dishRow.name}</span>
-              {dishRow.serves && <span className="ml-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">serves {dishRow.serves}</span>}
-              {dishRow.dietaryNote && (
-                <span className="ml-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">— {dishRow.dietaryNote}</span>
-              )}
-            </div>
-            {dishRow.source === "from_idea" && <Tag tone="accent2">from a suggestion</Tag>}
-          </div>
-          {dishRow.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{dishRow.description}</p>}
-          <FlagTags flags={dishRow.allergenFlags} />
-
-          {dishRow.ingredients.length > 0 && (
-            <ul className="mt-2 space-y-0.5 text-[length:var(--text-body)] text-[var(--text)]">
-              {dishRow.ingredients.map((ing) => (
-                <li key={ing.id} className="flex items-center justify-between gap-2">
-                  <span>
-                    {ing.amount} {ing.unit} {ing.name}
-                  </span>
-                  {isOwner && (
-                    <span className="flex items-center gap-1">
-                      <details className="text-[length:var(--text-meta)]">
-                        <summary className="cursor-pointer text-[var(--text-muted)]">edit</summary>
-                        <form
-                          action={updateDishIngredientAction}
-                          className="mt-1 flex max-w-[420px] flex-col gap-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-2"
-                        >
-                          <input type="hidden" name="ingredientId" value={ing.id} />
-                          <div className="flex gap-1">
-                            <input type="number" name="amount" defaultValue={ing.amount} step="any" min={0} required className={`${INPUT} w-24`} />
-                            <input type="text" name="unit" defaultValue={ing.unit ?? ""} placeholder="unit" className={`${INPUT} w-24`} />
-                            <input type="text" name="name" defaultValue={ing.name} required className={`${INPUT} flex-1`} />
-                            <button type="submit" className={BUTTON_SECONDARY}>
-                              Save
-                            </button>
-                          </div>
-                        </form>
-                      </details>
-                      {isOwner && (
-                        <form action={deleteDishIngredientAction}>
-                          <input type="hidden" name="ingredientId" value={ing.id} />
-                          <button type="submit" className={BUTTON_DESTRUCTIVE}>
-                            ×
-                          </button>
-                        </form>
-                      )}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {isOwner && (
-            <>
-              <form action={createDishIngredientAction} className="mt-2 flex max-w-[520px] items-end gap-1">
-                <input type="hidden" name="dishId" value={dishRow.id} />
-                <label className="flex flex-col gap-1">
-                  <span className={LABEL}>Add ingredient</span>
-                  <div className="flex gap-1">
-                    <input type="number" name="amount" step="any" min={0} required placeholder="amount" className={`${INPUT} w-24`} />
-                    <input type="text" name="unit" placeholder="unit" className={`${INPUT} w-24`} />
-                    <input type="text" name="name" required placeholder="name" className={`${INPUT} flex-1`} />
-                  </div>
-                </label>
-                <button type="submit" className={BUTTON_SECONDARY}>
-                  Add
-                </button>
-              </form>
-
-              {scaled.get(meal.id)?.some((s) => s.dishId === dishRow.id && s.scaled) && (
-                <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  {scaled
-                    .get(meal.id)!
-                    .filter((s) => s.dishId === dishRow.id)
-                    .map((s) => `${s.name} → ${s.scaledAmount} ${s.unit ?? ""} (×${s.factor})`)
-                    .join(" · ")}
-                </p>
-              )}
-
-              <details className="mt-2 text-[length:var(--text-meta)]">
-                <summary className="cursor-pointer text-[var(--text-muted)]">edit dish</summary>
-                <form action={updateDishAction} className="mt-1 flex max-w-[560px] flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-                  <input type="hidden" name="dishId" value={dishRow.id} />
-                  <TextField label="Name" name="name" defaultValue={dishRow.name} required />
-                  <TextField label="Description (optional)" name="description" defaultValue={dishRow.description ?? ""} rows={2} />
-                  <TextField label="Serves (optional — the scaling base)" name="serves" type="number" defaultValue={dishRow.serves ? String(dishRow.serves) : ""} min={1} />
-                  <span className={LABEL}>Allergen flags</span>
-                  <FlagPicker defaultValue={dishRow.allergenFlags} excludeNone />
-                  <TextField label="Dietary note (optional)" name="dietaryNote" defaultValue={dishRow.dietaryNote ?? ""} />
-                  <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                    Save dish
-                  </button>
-                </form>
-              </details>
-
-              <form action={deleteDishAction} className="mt-1">
-                <input type="hidden" name="dishId" value={dishRow.id} />
-                <button type="submit" className={BUTTON_DESTRUCTIVE}>
-                  Remove dish
-                </button>
-              </form>
-            </>
-          )}
-        </div>
-      ))}
-
-      {isOwner && (
-        <details className="mt-3 text-[length:var(--text-meta)]">
-          <summary className="cursor-pointer text-[var(--text-muted)]">add a dish</summary>
-          <form action={createDishAction} className="mt-1 flex max-w-[560px] flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-            <input type="hidden" name="mealId" value={meal.id} />
-            <TextField label="Name" name="name" required />
-            <TextField label="Description (optional)" name="description" rows={2} />
-            <TextField label="Serves (optional — the scaling base)" name="serves" type="number" min={1} />
-            <span className={LABEL}>Allergen flags</span>
-            <FlagPicker defaultValue={[]} excludeNone />
-            <TextField label="Dietary note (optional)" name="dietaryNote" />
-            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-              Add dish
-            </button>
-          </form>
-        </details>
-      )}
-
-      {isOwner && meal.headCount !== null && (purchases.get(meal.id) ?? []).length > 0 && (
-        <div className="mt-3 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] p-3">
-          <span className={LABEL}>Purchasing list ({meal.headCount} eaters)</span>
-          <ul className="mt-1 space-y-0.5 text-[length:var(--text-body)] text-[var(--text)]">
-            {(purchases.get(meal.id) ?? []).map((row) => (
-              <li key={row.name}>
-                {row.amount} {row.unit} {row.name}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {isOwner && panels.has(meal.id) && panels.get(meal.id)!.dishes.length > 0 && (
-        <div className="mt-3 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] p-3">
-          <span className={LABEL}>Constraint check ({panels.get(meal.id)!.disclosedEaters} eaters with disclosed allergies)</span>
-          <ul className="mt-1 space-y-1 text-[length:var(--text-body)] text-[var(--text)]">
-            {panels.get(meal.id)!.dishes.map((d) => (
-              <li key={d.dishId}>
-                <Tag tone="warning">{d.dishName}</Tag> may conflict with{" "}
-                {d.conflicts.map((c) => (
-                  <span key={c.memberId}>
-                    {c.name}
-                    {c.matchedFlags.length > 0 ? ` (${c.matchedFlags.map((f) => ALLERGEN_FLAG_LABELS[f]).join(", ")})` : ""}
-                    {", "}
-                  </span>
-                ))}
-                — verify before serving
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
+const FLASH = {
+  created: "Saved",
+  published: "Menu published",
+  saved: "Saved",
+  suggested: "Thanks — the kitchen will see your suggestion",
+  adopted: "Added to the menu",
+} as const;
 
 export default async function KitchenPage({
   searchParams,
@@ -337,6 +84,10 @@ export default async function KitchenPage({
     saved?: string;
     suggested?: string;
     adopted?: string;
+    tab?: string;
+    // Opens a suggestion form in place of the page — the header's "Suggest a
+    // recipe" action, the same `?compose=` technique /calendar and /schedule use.
+    compose?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
@@ -345,7 +96,9 @@ export default async function KitchenPage({
     redirect("/login");
   }
 
-  const { error, created, published, saved, suggested, adopted } = await searchParams;
+  const params = await searchParams;
+  const { error, tab, compose } = params;
+  const flashKey = (Object.keys(FLASH) as (keyof typeof FLASH)[]).find((key) => params[key]);
 
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "kitchen");
@@ -355,12 +108,9 @@ export default async function KitchenPage({
 
   if (moduleOn && resolution.kind === "ambiguous") {
     return (
-      <main className="mx-auto max-w-[760px] px-6 py-10 md:px-12 md:py-14">
-        <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Kitchen</h1>
-        <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-          Scoped to multiple active events — pick one to see its menu:
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
+      <main className="mx-auto max-w-[860px] px-6 py-10 md:px-12 md:py-14">
+        <PageHeader title="Kitchen" description="Scoped to multiple active events — pick one to see its menu:" />
+        <div className="flex flex-wrap gap-2">
           {resolution.candidates.map((c) => (
             <form key={c.id} action={switchToLinkedScopeAction}>
               <input type="hidden" name="scope" value={c.id} />
@@ -378,296 +128,333 @@ export default async function KitchenPage({
 
   const isOwner = moduleOn ? await isKitchenOwner(viewing, cycleId) : false;
 
-  const [visiblePlan, ideasTarget, supplyTasks] = await Promise.all([
+  const [visiblePlan, ideasTarget] = await Promise.all([
     moduleOn
       ? isOwner
         ? resolveActiveMenuPlan(viewing, cycleId)
         : resolvePublishedMenuPlan(viewing, cycleId)
       : Promise.resolve(null),
     moduleOn ? resolveActiveMenuPlan(viewing, cycleId) : Promise.resolve(null),
-    moduleOn ? listSupplyTasks(viewing, cycleId) : Promise.resolve([]),
   ]);
 
   const overview = visiblePlan ? await getMenuPlanOverview(viewing, visiblePlan.id) : null;
-  const openIdeas = isOwner && visiblePlan && !visiblePlan.publishedAt ? await listOpenIdeasForReview(viewing, visiblePlan.id) : [];
+  const meals: MealWithDishes[] = overview?.meals ?? [];
+  const draft = Boolean(visiblePlan && !visiblePlan.publishedAt);
 
-  const ideaMemberIds = [...new Set(openIdeas.map((i) => i.suggestedBy))];
-  const ideaMembers =
-    ideaMemberIds.length > 0
-      ? await db
-          .select({ id: member.id, name: member.name })
-          .from(member)
-          .where(inArray(member.id, ideaMemberIds))
-      : [];
-  const memberNameById = new Map(ideaMembers.map((m) => [m.id, m.name]));
+  // Who is eating which meal, from the event's arrivals and departures. Read
+  // for every viewer — it yields counts, not names — and null for a standing
+  // menu, which has no event. The menu's own breakfast/lunch/dinner times are
+  // only used to place someone who arrives or leaves part-way through a day.
+  const attendanceCtx = visiblePlan ? await loadAttendanceContext(viewing, visiblePlan) : null;
+  const times = resolveMealTimes(visiblePlan?.mealTimes);
+  const attendance = new Map<string, MealAttendance>(
+    meals.map((m) => [m.id, attendanceCtx ? attendanceForMeal(m, attendanceCtx) : NO_ATTENDANCE]),
+  );
+  const headCounts = new Map<string, number | null>(
+    meals.map((m) => [m.id, effectiveHeadCount(m, attendance.get(m.id)!)]),
+  );
 
-  const panels = new Map<string, NonNullable<Awaited<ReturnType<typeof getMealConstraintPanel>>>>();
-  const purchases = new Map<string, Awaited<ReturnType<typeof purchaseList>>>();
-  const scaled = new Map<string, Awaited<ReturnType<typeof scaledIngredients>>>();
-  if (isOwner && overview) {
-    for (const mealRow of overview.meals) {
-      panels.set(mealRow.id, (await getMealConstraintPanel(viewing, mealRow.id)) ?? { mealId: mealRow.id, disclosedEaters: 0, totalFlags: 0, dishes: [] });
-      purchases.set(mealRow.id, await purchaseList(viewing, mealRow.id));
-      scaled.set(mealRow.id, await scaledIngredients(viewing, mealRow.id));
+  const visibleTabs: { key: TabKey; label: string }[] = [
+    { key: "menu", label: "Menu" },
+    { key: "suggestions", label: "Suggestions" },
+    ...(isOwner
+      ? ([
+          { key: "dietary", label: "Dietary" },
+          { key: "shopping", label: "Shopping" },
+        ] as { key: TabKey; label: string }[])
+      : []),
+  ];
+
+  // The holder's inbox is needed for the tab's count as well as its body, so
+  // it is read whichever tab is showing.
+  const inbox: FoodIdeaWithIngredients[] =
+    isOwner && visiblePlan && draft ? await listOpenIdeasForReview(viewing, visiblePlan.id) : [];
+  const tabs = visibleTabs.map((t) =>
+    t.key === "suggestions" && inbox.length > 0 ? { ...t, label: `Suggestions (${inbox.length})` } : t,
+  );
+
+  const activeTab: TabKey = visibleTabs.find((t) => t.key === tab)?.key ?? "menu";
+  const composeKind: ComposeKind | null =
+    moduleOn && ideasTarget ? (COMPOSE_KINDS.find((c) => c.key === compose)?.key ?? null) : null;
+
+  // ---- per-tab data, read only for the tab that shows it --------------------
+  const dietary =
+    isOwner && (activeTab === "menu" || activeTab === "dietary") ? await getDietaryOverview(viewing, cycleId) : null;
+  const panels = new Map<string, MealConstraintPanel>();
+  if (dietary) {
+    for (const meal of meals) {
+      // Only narrows, and only when there is an event to narrow by.
+      const possible = attendanceCtx ? new Set(attendance.get(meal.id)!.possibleMemberIds) : null;
+      panels.set(meal.id, compareMealToOverview(dietary, meal.id, meal.dishes, possible));
     }
   }
 
+  let mine: FoodIdeaWithIngredients[] = [];
+  let decided: FoodIdeaWithIngredients[] = [];
+  const nameById = new Map<string, string>();
+  if (activeTab === "suggestions" && ideasTarget) {
+    if (isOwner) {
+      decided = visiblePlan
+        ? (await listIdeasForMenuPlan(viewing, visiblePlan.id)).filter((i) => i.status !== "open")
+        : [];
+    } else {
+      mine = await listMyFoodIdeas(viewing, ideasTarget.id);
+    }
+    const ids = [...new Set([...inbox, ...decided].map((i) => i.suggestedBy))];
+    if (ids.length > 0) {
+      const rows = await db.select({ id: member.id, name: member.name }).from(member).where(inArray(member.id, ids));
+      for (const row of rows) nameById.set(row.id, row.name);
+    }
+  }
+
+  const purchases = new Map<string, PurchaseListRow[]>();
+  const scaled = new Map<string, ScaledIngredient[]>();
+  const shopping = isOwner && activeTab === "shopping";
+  const supplyTasks = shopping ? await listSupplyTasks(viewing, cycleId) : [];
+  if (shopping) {
+    for (const meal of meals) {
+      purchases.set(meal.id, await purchaseList(viewing, meal.id));
+      scaled.set(meal.id, await scaledIngredients(viewing, meal.id));
+    }
+  }
+
+  // ---- header ---------------------------------------------------------------
+  const composing = composeKind !== null;
+  const actions =
+    moduleOn && !composing ? (
+      <>
+        {isOwner && !visiblePlan && <StartMenu cycleId={cycleId} primary />}
+        {isOwner && draft && visiblePlan && (
+          <Modal
+            trigger="Add a meal"
+            triggerClassName={BUTTON_SECONDARY}
+            title="Add a meal"
+            description="One dated meal on the menu. Dishes go on it afterwards."
+            wide
+          >
+            <MealForm
+              action={createMealAction}
+              hidden={{ menuPlanId: visiblePlan.id, tab: "menu" }}
+              canUseArrivals={Boolean(visiblePlan.cycleId)}
+              times={times}
+              submitLabel="Add meal"
+            />
+          </Modal>
+        )}
+        {ideasTarget && (
+          <Link href="/kitchen?compose=recipe" className={BUTTON_PRIMARY}>
+            Suggest a recipe
+          </Link>
+        )}
+      </>
+    ) : undefined;
+
+  const cancel = (
+    <Link href="/kitchen" className={BUTTON_GHOST}>
+      Cancel
+    </Link>
+  );
+
   return (
     <main className="mx-auto max-w-[860px] px-6 py-10 md:px-12 md:py-14">
-      <h1 className="text-[length:var(--text-display)] font-semibold leading-tight text-[var(--text)]">Kitchen</h1>
-      <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-        The community&rsquo;s food schedule — menus, recipes scaled to the eaters, and food ideas anyone can suggest. See
-        docs/spec.md&rsquo;s &ldquo;Food &amp; drinks&rdquo; and docs/plans/archive/food-drinks-module-plan.md.
-      </p>
+      <PageHeader
+        title="Kitchen"
+        description="Menus, recipes scaled to the people eating, and anything you'd like to see cooked."
+        actions={actions}
+      />
 
-      {error && <div className="mt-4"><Banner tone="danger">{error}</Banner></div>}
-      {(created || published || saved || suggested || adopted) && (
-        <div className="mt-4">
-          <Banner tone="success">
-            {created ? "Saved" : published ? "Menu plan published" : saved ? "Saved" : suggested ? "Suggestion filed" : "Adopted"}
-          </Banner>
-        </div>
-      )}
+      {error && <Banner tone="danger">{error}</Banner>}
+      {flashKey && !error && <Banner tone="success">{FLASH[flashKey]}</Banner>}
 
       {!moduleOn && (
-        <div className="mt-4">
-          <Banner tone="warning">
-            The Kitchen module isn&rsquo;t enabled for this Community — turn it on under Settings → Modules.
-          </Banner>
-        </div>
+        <Banner tone="warning">
+          The Kitchen module isn&rsquo;t enabled for this Community — turn it on under Settings → Modules.
+        </Banner>
       )}
 
-      {moduleOn && (
-        <section className="mt-6">
-          <SectionHeading>{isOwner ? "Menu workspace" : "The menu"}</SectionHeading>
-
-          {isOwner && (
-            <div className="mt-3 flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-              {visiblePlan ? (
-                <>
-                  <span className="flex-1 text-[length:var(--text-heading)] font-medium text-[var(--text)]">{visiblePlan.title}</span>
-                  {visiblePlan.publishedAt ? (
-                    <Tag tone="accent">published</Tag>
-                  ) : (
-                    <>
-                      <Tag tone="warning">draft</Tag>
-                      <form action={publishMenuPlanAction}>
-                        <input type="hidden" name="menuPlanId" value={visiblePlan.id} />
-                        <button type="submit" className={BUTTON_PRIMARY}>
-                          Publish menu
-                        </button>
-                      </form>
-                    </>
-                  )}
-                </>
-              ) : (
-                <span className="flex-1 text-[length:var(--text-body)] text-[var(--text-muted)]">No menu plan here yet.</span>
-              )}
-              <details className="text-[length:var(--text-meta)]">
-                <summary className="cursor-pointer text-[var(--text-muted)]">start a new menu plan</summary>
-                <form action={createMenuPlanAction} className="mt-2 flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-                  <input type="hidden" name="cycleId" value={cycleId ?? ""} />
-                  <TextField label="Title" name="title" placeholder="e.g. This week's dinners" required />
-                  <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
-                    Create menu plan
-                  </button>
-                </form>
-              </details>
-            </div>
+      {moduleOn && composeKind && ideasTarget && (
+        <section className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-3">
+            <SectionHeading>
+              {composeKind === "recipe"
+                ? "Suggest a recipe"
+                : composeKind === "request"
+                  ? "Ask for a dish"
+                  : "Share a preference"}
+            </SectionHeading>
+            {cancel}
+          </div>
+          <Tabs tabs={COMPOSE_KINDS} active={composeKind} hrefFor={(key) => `/kitchen?compose=${key}`} />
+          <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
+            You&rsquo;re suggesting this as {viewing.name}. Suggestions are attributed — the kitchen may want to ask you
+            about it — and you can change or withdraw it until they decide.
+          </p>
+          {composeKind === "recipe" ? (
+            <RecipeForm
+              action={fileFoodIdeaAction}
+              hidden={{ menuPlanId: ideasTarget.id, kind: "recipe_suggestion", compose: "recipe" }}
+              submitLabel="Send suggestion"
+              cancel={cancel}
+            />
+          ) : (
+            <LightIdeaForm
+              action={fileFoodIdeaAction}
+              hidden={{ menuPlanId: ideasTarget.id, compose: composeKind }}
+              kind={composeKind === "request" ? "dish_request" : "preference"}
+              submitLabel="Send suggestion"
+              cancel={cancel}
+            />
           )}
+        </section>
+      )}
 
-          {visiblePlan && visiblePlan.publishedAt && !isOwner && (
-            <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
+      {moduleOn && !composeKind && (
+        <>
+          {isOwner && <PlanStrip plan={visiblePlan} cycleId={cycleId} times={times} />}
+          {!isOwner && visiblePlan?.publishedAt && (
+            <p className="mb-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
               {visiblePlan.title} — published {clock.date(visiblePlan.publishedAt)}.
             </p>
           )}
-          {visiblePlan && isOwner && visiblePlan.publishedAt && (
-            <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-              Published menus lock further edits — start a new draft above for the next menu.
-            </p>
-          )}
 
-          {overview && overview.meals.length > 0 ? (
-            <div className="mt-3 flex flex-col gap-3">
-              {overview.meals.map((mealRow) => (
-                <MealBlock key={mealRow.id} meal={mealRow} isOwner={isOwner} panels={panels} purchases={purchases} scaled={scaled} />
-              ))}
-            </div>
-          ) : (
-            <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">
-              No meals on this menu yet.
-            </p>
-          )}
+          <Tabs tabs={tabs} active={activeTab} hrefFor={(key) => (key === "menu" ? "/kitchen" : `/kitchen?tab=${key}`)} />
 
-          {isOwner && visiblePlan && !visiblePlan.publishedAt && (
-            <details className="mt-4 text-[length:var(--text-meta)]">
-              <summary className="cursor-pointer text-[var(--text-muted)]">add a meal</summary>
-              <form action={createMealAction} className="mt-2 flex max-w-[560px] flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-                <input type="hidden" name="menuPlanId" value={visiblePlan.id} />
-                <TextField label="Label" name="label" placeholder="e.g. Friday dinner" required />
-                <TextField label="Date" name="date" type="date" required />
-                <TextField label="Headcount (optional — scales recipes into a purchasing list)" name="headCount" type="number" min={1} />
-                <TextField label="Notes (optional)" name="notes" rows={2} />
-                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                  Add meal
-                </button>
-              </form>
-            </details>
-          )}
-
-          {isOwner && visiblePlan && !visiblePlan.publishedAt && overview && (
-            <div className="mt-4 flex flex-col gap-1">
-              {overview.meals.map((m) => (
-                <details key={`edit-${m.id}`} className="text-[length:var(--text-meta)]">
-                  <summary className="cursor-pointer text-[var(--text-muted)]">edit/remove {m.label}</summary>
-                  <form action={updateMealAction} className="mt-1 flex max-w-[560px] flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-                    <input type="hidden" name="mealId" value={m.id} />
-                    <TextField label="Label" name="label" defaultValue={m.label} required />
-                    <TextField label="Date" name="date" type="date" defaultValue={m.date} required />
-                    <TextField label="Headcount (optional)" name="headCount" type="number" min={1} defaultValue={m.headCount ? String(m.headCount) : ""} />
-                    <TextField label="Notes (optional)" name="notes" defaultValue={m.notes ?? ""} rows={2} />
-                    <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                      Save meal
-                    </button>
-                  </form>
-                  <form action={deleteMealAction} className="mt-1">
-                    <input type="hidden" name="mealId" value={m.id} />
-                    <button type="submit" className={BUTTON_DESTRUCTIVE}>
-                      Remove meal
-                    </button>
-                  </form>
-                </details>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {moduleOn && ideasTarget && (
-        <section className="mt-8">
-          <SectionHeading>Suggest something</SectionHeading>
-          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-            Open-ended and attributed — recipes, requests, or preferences for the menu. No login-gated anonymity; a cook
-            may need to ask about your suggestion.
-          </p>
-          <form action={fileFoodIdeaAction} className="mt-2 flex max-w-[560px] flex-col gap-2">
-            <input type="hidden" name="menuPlanId" value={ideasTarget.id} />
-            <label className="flex flex-col gap-1">
-              <span className={LABEL}>Kind</span>
-              <select name="kind" className={SELECT}>
-                <option value="recipe_suggestion">Recipe suggestion</option>
-                <option value="dish_request">Dish request</option>
-                <option value="preference">Preference</option>
-              </select>
-            </label>
-            <TextField label="What" name="title" placeholder="e.g. that chickpea traybake we had at the picnic (if you have the recipe…)" required />
-            <TextField label="Details (optional)" name="body" rows={2} placeholder="recipe link, occasion, who it serves…" />
-            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-              File suggestion
-            </button>
-          </form>
-        </section>
-      )}
-
-      {moduleOn && isOwner && openIdeas.length > 0 && (
-        <section className="mt-8">
-          <SectionHeading>Ideas inbox</SectionHeading>
-          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-            On {visiblePlan!.title}. Adopting creates the dish on a meal of this draft; declining closes it with an
-            optional reason.
-          </p>
-          <div className="mt-3 flex flex-col gap-2">
-            {openIdeas.map((idea) => (
-              <div key={idea.id} className={CARD}>
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{idea.title}</span>
-                    <Tag tone="accent2">{idea.kind.replace("_", " ")}</Tag>
-                    <span className="ml-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                      from {memberNameById.get(idea.suggestedBy) ?? "a member"}
-                    </span>
-                  </div>
-                </div>
-                {idea.body && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{idea.body}</p>}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <details className="text-[length:var(--text-meta)]">
-                    <summary className="cursor-pointer text-[var(--text-muted)]">adopt into a meal</summary>
-                    <form action={adoptIdeaAction} className="mt-1 flex items-end gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-2">
-                      <input type="hidden" name="ideaId" value={idea.id} />
-                      <label className="flex flex-col gap-1">
-                        <span className={LABEL}>Dish name (default: the suggestion)</span>
-                        <input type="text" name="name" defaultValue={idea.title} className={INPUT} />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        <span className={LABEL}>Meal</span>
-                        <select name="mealId" className={SELECT}>
-                          {overview!.meals.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.label} — {formatInstant(`${m.date}T12:00:00Z`, "UTC", "date")}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <button type="submit" className={BUTTON_PRIMARY}>
-                        Adopt
-                      </button>
-                    </form>
-                  </details>
-                  <details className="text-[length:var(--text-meta)]">
-                    <summary className="cursor-pointer text-[var(--text-muted)]">decline</summary>
-                    <form action={declineIdeaAction} className="mt-1 flex items-end gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-2">
-                      <input type="hidden" name="ideaId" value={idea.id} />
-                      <input type="text" name="declinedReason" placeholder="reason (optional)" className={INPUT} />
-                      <button type="submit" className={BUTTON_SECONDARY}>
-                        Decline
-                      </button>
-                    </form>
-                  </details>
-                </div>
-              </div>
-            ))}
+          <div className="mt-6">
+            {activeTab === "menu" && (
+              <MenuTab
+                plan={visiblePlan}
+                meals={meals}
+                isOwner={isOwner}
+                panels={isOwner ? panels : null}
+                headCounts={headCounts}
+                attendance={attendance}
+                times={times}
+              />
+            )}
+            {activeTab === "suggestions" && (
+              <SuggestionsTab
+                plan={ideasTarget}
+                isOwner={isOwner}
+                viewerId={viewing.id}
+                mine={mine}
+                inbox={inbox}
+                decided={decided}
+                inboxLocked={isOwner && Boolean(visiblePlan?.publishedAt)}
+                meals={meals}
+                nameById={nameById}
+              />
+            )}
+            {activeTab === "dietary" && dietary && <DietaryTab overview={dietary} meals={meals} panels={panels} />}
+            {activeTab === "shopping" && (
+              <ShoppingTab
+                meals={meals}
+                purchases={purchases}
+                scaled={scaled}
+                supplyTasks={supplyTasks}
+                headCounts={headCounts}
+                attendance={attendance}
+              />
+            )}
           </div>
-        </section>
-      )}
-
-      {moduleOn && isOwner && supplyTasks.length > 0 && (
-        <section className="mt-8">
-          <SectionHeading>Ordering &amp; equipment</SectionHeading>
-          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-            Open tasks in this scope tagged as supply work (ordering/equipment/supply), with their resources.
-          </p>
-          <div className="mt-3 flex flex-col gap-2">
-            {supplyTasks.map((t) => (
-              <div key={t.id} className={CARD}>
-                <div className="flex items-center justify-between gap-2">
-                  <Link
-                    href={`/tasks/${t.id}`}
-                    className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]"
-                  >
-                    {t.title}
-                  </Link>
-                  <div className="flex gap-1">
-                    {t.tags.map((tag) => (
-                      <Tag key={tag}>{tag}</Tag>
-                    ))}
-                  </div>
-                </div>
-                {t.resources.length > 0 && (
-                  <ul className="mt-1 space-y-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                    {t.resources.map((r) => (
-                      <li key={r.id}>
-                        <a href={r.url} className="text-[var(--accent-1)] hover:underline" target="_blank" rel="noreferrer">
-                          {r.label}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
+        </>
       )}
     </main>
+  );
+}
+
+function StartMenu({ cycleId, primary = false }: { cycleId: string | null; primary?: boolean }) {
+  return (
+    <Modal
+      trigger="Start a menu"
+      triggerClassName={primary ? BUTTON_PRIMARY : BUTTON_GHOST}
+      title="Start a menu"
+      description="A menu is a draft until you publish it. Only the kitchen sees it until then."
+    >
+      <form action={createMenuPlanAction} className="flex flex-col gap-3">
+        <input type="hidden" name="cycleId" value={cycleId ?? ""} />
+        <input type="hidden" name="tab" value="menu" />
+        <TextField label="Name" name="title" placeholder="e.g. This week's dinners" required />
+        <div>
+          <SubmitButton className={BUTTON_PRIMARY} pendingLabel="Creating…">
+            Create menu
+          </SubmitButton>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// The holder's one-line state of the plan: what it's called, whether it is
+// still a draft, and the two things they can do to it as a whole.
+function PlanStrip({
+  plan,
+  cycleId,
+  times,
+}: {
+  plan: MenuPlanRow | null;
+  cycleId: string | null;
+  times: Record<"breakfast" | "lunch" | "dinner", string>;
+}) {
+  if (!plan) {
+    return (
+      <p className="mb-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
+        No menu here yet. Start one to add meals and take suggestions.
+      </p>
+    );
+  }
+  return (
+    <div className="mb-5 flex flex-wrap items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5">
+      <span className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">{plan.title}</span>
+      {plan.publishedAt ? <Tag tone="accent">published</Tag> : <Tag tone="warning">draft</Tag>}
+      <span className="ml-auto flex items-center gap-1">
+        {!plan.publishedAt && plan.cycleId && (
+          <Modal
+            trigger="Meal times"
+            triggerClassName={BUTTON_GHOST}
+            title="Meal times"
+            description="When breakfast, lunch and dinner usually are on this menu. They're only used to tell whether someone who arrives or leaves part-way through a day is there for a meal. Leave one blank to use the usual time."
+          >
+            <form action={updateMealTimesAction} className="flex flex-col gap-3">
+              <input type="hidden" name="menuPlanId" value={plan.id} />
+              <input type="hidden" name="tab" value="menu" />
+              {(["breakfast", "lunch", "dinner"] as const).map((slot) => (
+                <label key={slot} className="flex flex-col gap-1">
+                  <span className={LABEL}>{slot[0].toUpperCase() + slot.slice(1)}</span>
+                  <input
+                    type="time"
+                    name={slot}
+                    defaultValue={plan.mealTimes?.[slot] ?? ""}
+                    className={`${INPUT} w-fit`}
+                  />
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">Usual time: {times[slot]}</span>
+                </label>
+              ))}
+              <div>
+                <SubmitButton className={BUTTON_PRIMARY} pendingLabel="Saving…">
+                  Save times
+                </SubmitButton>
+              </div>
+            </form>
+          </Modal>
+        )}
+        {!plan.publishedAt && (
+          <Modal
+            trigger="Publish"
+            triggerClassName={BUTTON_PRIMARY}
+            title={`Publish “${plan.title}”`}
+            description="Everyone in the community will be able to read this menu. Publishing locks it — meals, dishes and ingredients can't be edited afterwards, so start a new menu for changes."
+          >
+            <form action={publishMenuPlanAction}>
+              <input type="hidden" name="menuPlanId" value={plan.id} />
+              <input type="hidden" name="tab" value="menu" />
+              <SubmitButton className={BUTTON_PRIMARY} pendingLabel="Publishing…">
+                Publish menu
+              </SubmitButton>
+            </form>
+          </Modal>
+        )}
+        <StartMenu cycleId={cycleId} />
+      </span>
+    </div>
   );
 }

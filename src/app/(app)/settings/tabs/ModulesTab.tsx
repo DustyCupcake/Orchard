@@ -1,4 +1,6 @@
-import type { community as communityTable, form as formTable } from "@/db/schema";
+import Link from "next/link";
+import type { community as communityTable, form as formTable, KitchenSignal } from "@/db/schema";
+import { Banner } from "@/components/ui/kit";
 import { MODULE_DEFINITIONS } from "@/lib/modules";
 import { SelectField, SettingsGroup, SettingsSection, ToggleField } from "../ui";
 import { updateBudgetSettingsAction, updateModulesSettingsAction, updatePostCycleFeedbackAction } from "../actions";
@@ -21,12 +23,27 @@ const MODULE_CONSEQUENCE: Record<string, string> = {
 export default function ModulesTab({
   community,
   forms,
+  unwiredKitchenSignals,
 }: {
   community: typeof communityTable.$inferSelect;
   forms: (typeof formTable.$inferSelect)[];
+  // The Kitchen signals with no question behind them — empty when Kitchen is
+  // off, or when all three are set up. Non-empty is the prompt below.
+  unwiredKitchenSignals: KitchenSignal[];
 }) {
   return (
     <div className="flex flex-col gap-8">
+      {unwiredKitchenSignals.length > 0 && (
+        <Banner tone="warning">
+          The Kitchen is on, but {unwiredKitchenSignals.length === 3 ? "none" : `${3 - unwiredKitchenSignals.length} of 3`}{" "}
+          of its dietary questions are set up, so the kitchen can&rsquo;t see anyone&rsquo;s allergies, intolerances or
+          dislikes yet.{" "}
+          <Link href="/settings?tab=profile-privacy#kitchen-questions" className="font-medium underline">
+            Set them up
+          </Link>
+        </Banner>
+      )}
+
       <SettingsSection
         title="What's switched on"
         description="Each of these is a whole area of the app. Nothing here is on by default except what you see ticked — a community that turns everything on is opting into maintaining all of it."

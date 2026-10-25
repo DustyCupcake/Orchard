@@ -551,7 +551,7 @@ export const howItWorks: DocSection = {
         },
         {
           kind: "para",
-          text: "Menu planning, where each meal is a dated set of dishes, and every dish is a recipe that scales to however many people are expected. Amounts and the shopping list are worked out from the recipes rather than typed in twice. Anyone can suggest a dish; the kitchen holder adopts or declines it with a reason. Allergies reach the planner through the same access rules as everything else, never by being broadly readable.",
+          text: "Menu planning, where each meal is a dated set of dishes, and every dish is a recipe that scales to however many people are expected. Amounts and the shopping list are worked out from the recipes rather than typed in twice. Anyone can suggest a recipe, with its ingredients and what it contains; the kitchen holder adopts it as a dish or declines it with a reason, and you can see what happened to yours. Allergies, intolerances and dislikes are asked as separate questions. Allergies and intolerances reach the cook through the same access rules as everything else, never by being broadly readable, and are checked against a dish by what you ticked, not by guessing at what you wrote. Dislikes only ever show up as a count. If you say when you arrive and leave, the kitchen can work out how many are eating each meal, and check only the people who could be there.",
         },
         {
           kind: "heading",

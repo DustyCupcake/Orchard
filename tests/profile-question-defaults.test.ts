@@ -120,7 +120,8 @@ describe("seeding a community's default questions", () => {
     const byLabel = new Map(rows.map((r) => [r.label, r]));
 
     for (const label of [
-      "Allergies",
+      "Allergies (could be serious)",
+      "Intolerances (unwell, not dangerous)",
       "Anything that would affect what you can take on",
       "Home city or town",
       "Full legal name",
@@ -303,7 +304,7 @@ describe("seeding a community's default questions", () => {
     }
     // And the restricted ones are never published, since sensitive and
     // published contradict each other.
-    const allergies = rows.find((r) => r.label === "Allergies");
+    const allergies = rows.find((r) => r.label === "Allergies (could be serious)");
     expect(allergies?.published).toBe(false);
   });
 
@@ -335,7 +336,7 @@ describe("seeding a community's default questions", () => {
     // she can always read her own; the questions are what a third party
     // can reach.
     const { alice, c, created } = await seeded();
-    const allergies = created.find((q) => q.label === "Allergies")!;
+    const allergies = created.find((q) => q.label === "Allergies (could be serious)")!;
     const bob = await addMember(c.id, "Bob");
 
     // Nobody in this community holds the kitchen grant, so nothing reads.
@@ -364,7 +365,7 @@ describe("seeding a community's default questions", () => {
     const labels = DEFAULT_PROFILE_QUESTION_GROUPS.flatMap((g) => g.questions.map((q) => q.label));
     // The two that used to be columns and are now questions — the
     // resolution the whole collapse was for.
-    expect(labels).toContain("Allergies");
+    expect(labels).toContain("Allergies (could be serious)");
     expect(labels).toContain("Emergency contact");
     // `orientation` was never a question and never will be; there is no
     // mechanism behind the word any more.
@@ -655,14 +656,44 @@ describe("reviewing the starter set before adding it", () => {
       .select({ label: profileQuestion.label })
       .from(profileQuestion)
       .where(eq(profileQuestion.communityId, alice.communityId));
-    expect(rows.map((r) => r.label).sort()).toEqual(["Allergies", "Your pronouns"]);
+    expect(rows.map((r) => r.label).sort()).toEqual(["Allergies (could be serious)", "Your pronouns"]);
   });
 
   it("adds the whole table when the admin keeps everything", async () => {
+    // Everything public, except the two health questions the kitchen reads,
+    // which have to stay restricted (see the next test).
+    const restrictedKitchen = { include: true, restricted: true, audience: { unlockedByGrantModuleKey: "kitchen" as const } };
     const { created } = await seededWith(
-      Object.fromEntries(everyKey.map((k) => [k, { include: true, restricted: false, audience: null }])),
+      Object.fromEntries(
+        everyKey.map((k) => [
+          k,
+          k === "allergies" || k === "intolerances"
+            ? restrictedKitchen
+            : { include: true, restricted: false, audience: null },
+        ]),
+      ),
     );
     expect(created).toHaveLength(everyKey.length);
+  });
+
+  it("refuses, before writing anything, to make a kitchen health question public", async () => {
+    // The seeder isn't transactional, so this has to be caught up front: a
+    // refusal from deep inside would leave part of the set written and the
+    // review step closed. Dislikes may be public; allergies and
+    // intolerances are health information.
+    const { alice } = await createFixtures();
+    await expect(
+      seedDefaultProfileQuestions(alice, {
+        pronouns: { include: true, restricted: false, audience: null },
+        allergies: { include: true, restricted: false, audience: null },
+      }),
+    ).rejects.toThrow(/has to stay restricted/);
+    expect(await hasProfileQuestions(alice.communityId)).toBe(false);
+
+    const { created } = await seededWith({
+      dislikes: { include: true, restricted: false, audience: null },
+    });
+    expect(created.map((c) => c.key)).toEqual(["dislikes"]);
   });
 
   it("adds nothing at all when the admin unticks everything", async () => {

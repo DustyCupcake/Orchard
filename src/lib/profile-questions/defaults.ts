@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { profileQuestion } from "@/db/schema";
+import { profileQuestion, type KitchenSignal } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { createProfileQuestion } from "./questions";
 import { PERMISSION_MODULE_KEYS, type PermissionModuleKey } from "../permissions";
@@ -247,6 +247,17 @@ function preflight(
           `“${seed.label}” is restricted to everyone except the audience you picked, so it needs exactly one of a Tier, a permission grant, or a Task — pick one, or untick “restricted” to leave it readable by the whole Community`,
         );
       }
+      // A health question wired to the kitchen has to stay restricted, and
+      // this is where that is caught — up front, because the seeder is not
+      // transactional and a refusal raised from createProfileQuestion
+      // partway through would leave a prefix of the set written and the
+      // review step closed for good. Dislikes are counted, not read, and
+      // may be public.
+      if (seed.kitchenSignal && seed.kitchenSignal !== "dislike" && !choice.restricted) {
+        problems.push(
+          `“${seed.label}” tells the kitchen about ${seed.kitchenSignal === "allergy" ? "allergies" : "intolerances"}, which is health information, so it has to stay restricted — a public question is readable by the whole Community. Untick it instead if you don't want it`,
+        );
+      }
       if (choice.emergencyAccess && !choice.restricted) {
         problems.push(
           `“${seed.label}” is marked for emergency access but isn't restricted, so there's nothing for an emergency to override — either restrict it or turn emergency access off`,
@@ -374,6 +385,7 @@ export async function seedDefaultProfileQuestions(
         sensitive: restricted && Boolean(audience),
         audience: audience ?? undefined,
         emergencyAccess: emergency,
+        kitchenSignal: seed.kitchenSignal,
       });
 
       created.push({
@@ -429,4 +441,48 @@ export async function hasProfileQuestions(communityId: string) {
     .where(eq(profileQuestion.communityId, communityId))
     .limit(1);
   return Boolean(row);
+}
+
+
+/**
+ * Add one of the Kitchen's starter questions to a community that already has
+ * questions.
+ *
+ * The starter set is a one-time review that closes as soon as a community has
+ * any question (`hasProfileQuestions`), which is right for the full set and
+ * wrong here: a community adds the Kitchen module long after set-up, and the
+ * three dietary questions arrived in the table after many communities had
+ * already been created. So this takes one seed by the signal it feeds and
+ * creates it the same way the review step would, with the table's own
+ * suggested audience, and refuses if that signal is already wired — the
+ * unique index would refuse anyway, but with a constraint name instead of a
+ * sentence.
+ *
+ * Reads the table rather than restating the options, so the Settings button
+ * and the seeded set cannot drift apart.
+ */
+export async function addKitchenStarterQuestion(actor: Member, signal: KitchenSignal) {
+  validateDefaultQuestionTable();
+  const seed = DEFAULT_PROFILE_QUESTION_GROUPS.flatMap((g) => g.questions).find(
+    (q) => q.kitchenSignal === signal,
+  );
+  if (!seed) {
+    throw new AppError(`The starter set has no question for ${signal}.`);
+  }
+  const audience: SeededQuestionAudience | null = seed.accessRuleModuleKey
+    ? { unlockedByGrantModuleKey: seed.accessRuleModuleKey }
+    : null;
+  return createProfileQuestion(actor, {
+    label: seed.label,
+    responseType: seed.responseType,
+    options: seed.options,
+    multiline: seed.multiline ?? false,
+    allowOther: seed.allowOther ?? false,
+    scope: "once_ever",
+    allowDeferral: true,
+    allowPreferNotToSay: seed.allowPreferNotToSay,
+    sensitive: Boolean(audience),
+    audience: audience ?? undefined,
+    kitchenSignal: signal,
+  });
 }

@@ -684,6 +684,44 @@ async function ParticipationForCycle({
               <span className={LABEL}>Departure date (optional)</span>
               <input type="date" name="departureDate" defaultValue={mine.departureDate ?? ""} className={`${INPUT} w-fit`} />
             </label>
+            <fieldset className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+              <legend className="px-1 text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">
+                For the kitchen (all optional)
+              </legend>
+              <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                If the kitchen is working out how many are eating each meal, these let it count you in for the right ones on
+                the day you arrive and the day you leave. Skip them and it counts you for both days.
+              </p>
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Arrival time</span>
+                <input type="time" name="arrivalTime" defaultValue={mine.arrivalTime?.slice(0, 5) ?? ""} className={`${INPUT} w-fit`} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Or: the first meal you&rsquo;ll eat there</span>
+                <SelectField name="firstMeal" defaultValue={mine.firstMeal ?? ""} className={INPUT}>
+                  <option value="">Not sure</option>
+                  <option value="breakfast">Breakfast</option>
+                  <option value="lunch">Lunch</option>
+                  <option value="dinner">Dinner</option>
+                </SelectField>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Departure time</span>
+                <input type="time" name="departureTime" defaultValue={mine.departureTime?.slice(0, 5) ?? ""} className={`${INPUT} w-fit`} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className={LABEL}>Or: the last meal you&rsquo;ll eat there</span>
+                <SelectField name="lastMeal" defaultValue={mine.lastMeal ?? ""} className={INPUT}>
+                  <option value="">Not sure</option>
+                  <option value="breakfast">Breakfast</option>
+                  <option value="lunch">Lunch</option>
+                  <option value="dinner">Dinner</option>
+                </SelectField>
+              </label>
+              <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                A first or last meal wins over a time if you give both.
+              </p>
+            </fieldset>
             <label className="flex flex-col gap-1">
               <span className={LABEL}>Note (optional)</span>
               <textarea name="note" rows={2} defaultValue={mine.note ?? ""} className={INPUT} />

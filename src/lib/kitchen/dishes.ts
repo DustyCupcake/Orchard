@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, type DbOrTx } from "@/db";
-import { dish, dishIngredient, foodIdea } from "@/db/schema";
+import { dish, dishIngredient, foodIdea, foodIdeaIngredient } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, NotFoundError } from "../errors";
 import { requireEditableMenuPlan, requireKitchenModuleOn } from "./menu";
@@ -22,12 +22,19 @@ export function getDish(actor: Member, dishId: string) {
 }
 
 const allergenFlagsInput = z.array(z.enum(ALLERGEN_FLAGS));
-function parseAllergenFlags(raw: string[] | undefined): AllergenFlag[] {
+export function parseAllergenFlags(raw: string[] | undefined): AllergenFlag[] {
   const parsed = allergenFlagsInput.safeParse(raw ?? []);
   if (!parsed.success) {
     throw new AppError(`Unknown allergen flag — must be one of: ${ALLERGEN_FLAGS.join(", ")}`);
   }
-  return [...new Set(parsed.data)];
+  const flags = [...new Set(parsed.data)];
+  // "None known" is a statement that the list is complete and empty, so it
+  // can't stand beside an allergen — a dish tagged both would be telling the
+  // cook two opposite things.
+  if (flags.includes("none_known") && flags.length > 1) {
+    throw new AppError("“None known” can't be combined with an allergen — either the dish contains one or it doesn't");
+  }
+  return flags;
 }
 
 export const createDishInput = z.object({
@@ -116,10 +123,17 @@ export const adoptFromIdeaInput = z.object({
 export type AdoptFromIdeaInput = z.infer<typeof adoptFromIdeaInput>;
 
 // D5's adopt action — one transaction: the dish is created as
-// source='from_idea' back-linked to the idea, and the idea flips to
-// adopted with adoptedDishId set. The idea must be open and on the same
-// menu plan as the meal it's adopted into, and the plan must still be
-// an editable draft.
+// source='from_idea' back-linked to the idea, the idea's ingredient rows are
+// copied onto it, and the idea flips to adopted with adoptedDishId set. The
+// idea must be open and on the same menu plan as the meal it's adopted
+// into, and the plan must still be an editable draft.
+//
+// A field the caller leaves out (`undefined`) falls back to what the
+// suggester wrote; an explicit `null` or an empty list is the holder
+// clearing it. The allergen flags are the part that matters: they are the
+// suggester's claim, so the adopt form shows them pre-filled and editable
+// and the dish records whatever set the holder submits — never a flag the
+// holder didn't see.
 export async function adoptFromIdea(actor: Member, input: AdoptFromIdeaInput) {
   await requireKitchenModuleOn(actor);
 
@@ -141,15 +155,33 @@ export async function adoptFromIdea(actor: Member, input: AdoptFromIdeaInput) {
       .values({
         mealId: input.mealId,
         name: input.name ?? ideaRow.title,
-        description: input.description ?? ideaRow.body,
-        serves: input.serves ?? null,
-        allergenFlags: parseAllergenFlags(input.allergenFlags),
-        dietaryNote: input.dietaryNote ?? null,
+        description: input.description !== undefined ? input.description : ideaRow.body,
+        serves: input.serves !== undefined ? input.serves : ideaRow.serves,
+        allergenFlags: parseAllergenFlags(input.allergenFlags ?? ideaRow.allergenFlags),
+        dietaryNote: input.dietaryNote !== undefined ? input.dietaryNote : ideaRow.dietaryNote,
         source: "from_idea",
         sourceIdeaId: ideaRow.id,
         addedBy: actor.id,
       })
       .returning();
+
+    const ingredients = await tx
+      .select()
+      .from(foodIdeaIngredient)
+      .where(eq(foodIdeaIngredient.ideaId, ideaRow.id))
+      .orderBy(asc(foodIdeaIngredient.sortOrder), asc(foodIdeaIngredient.createdAt));
+    if (ingredients.length > 0) {
+      await tx.insert(dishIngredient).values(
+        ingredients.map((ing, i) => ({
+          dishId: dishRow.id,
+          name: ing.name,
+          amount: ing.amount,
+          unit: ing.unit,
+          sortOrder: ing.sortOrder ?? i,
+        })),
+      );
+    }
+
     await tx
       .update(foodIdea)
       .set({ status: "adopted", adoptedDishId: dishRow.id })

@@ -1,7 +1,8 @@
-import { date, integer, numeric, pgEnum, pgTable, text, timestamp, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { date, integer, jsonb, numeric, pgEnum, pgTable, text, time, timestamp, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { community } from "./community";
 import { cycle } from "./cycle";
 import { member } from "./member";
+import { mealSlotEnum, type MealSlot } from "./participation";
 import { phase } from "./phase";
 import { shiftSeries } from "./shift";
 
@@ -23,6 +24,10 @@ export const foodIdeaKindEnum = pgEnum("food_idea_kind", [
   "preference",
 ]);
 export const foodIdeaStatusEnum = pgEnum("food_idea_status", ["open", "adopted", "declined"]);
+// Where a meal's headcount comes from: typed by the holder, or worked out from
+// the event's Participation (arrival and departure) when the plan belongs to
+// an event. Derived on read in both cases — nothing is written back.
+export const mealHeadCountSourceEnum = pgEnum("meal_head_count_source", ["manual", "participation"]);
 
 // One per scope (cycle-placed, or the cycle-less standing menu), the
 // module's named container and its only publish gate — D1. A single
@@ -43,6 +48,11 @@ export const menuPlan = pgTable("menu_plan", {
   cycleId: uuid("cycle_id").references(() => cycle.id),
   title: text("title").notNull(),
   publishedAt: timestamp("published_at", { withTimezone: true }),
+  // This menu's default clock times for breakfast, lunch and dinner, as
+  // "HH:MM" strings; a slot left out falls back to the built-in default
+  // (src/lib/kitchen/attendance.ts). Used only to decide whether someone who
+  // arrives or leaves part-way through a day is there for a meal.
+  mealTimes: jsonb("meal_times").$type<Partial<Record<MealSlot, string>>>(),
   createdBy: uuid("created_by")
     .notNull()
     .references(() => member.id),
@@ -63,6 +73,19 @@ export const meal = pgTable("meal", {
   date: date("date").notNull(),
   phaseId: uuid("phase_id").references(() => phase.id),
   headCount: integer("head_count"),
+  // Optional: which of the day's meals this is, and a clock time that
+  // overrides the menu's default for that slot. Both exist only to tell
+  // whether a part-day arrival or departure is there for the meal; a meal
+  // with neither is still a perfectly good meal, and its arrival and
+  // departure days are counted and flagged as uncertain.
+  slot: mealSlotEnum("slot"),
+  time: time("time"),
+  // "participation" works the headcount out from the event's arrivals and
+  // departures, plus `guests`; "manual" uses `headCount` as typed.
+  headCountSource: mealHeadCountSourceEnum("head_count_source").notNull().default("manual"),
+  // People who eat but aren't members with a Participation row — visitors,
+  // day helpers. Added to the worked-out number; ignored for a manual count.
+  guests: integer("guests").notNull().default(0),
   // D7: optional link to a ShiftSeries (the shifts module) so the cooking
   // roster for "Friday dinner" is one click from the meal. Meaningless
   // when the shifts module is off — the field stays null and the meal
@@ -112,7 +135,10 @@ export const dishIngredient = pgTable("dish_ingredient", {
     .notNull()
     .references(() => dish.id),
   name: text("name").notNull(),
-  amount: numeric("amount").notNull(),
+  // Nullable for "salt, to taste": a line with no amount is listed as written
+  // and left out of scaling, and a purchase list shows it without a number.
+  // Member-written recipes hit this immediately.
+  amount: numeric("amount"),
   unit: text("unit"),
   sortOrder: integer("sort_order"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -138,5 +164,32 @@ export const foodIdea = pgTable("food_idea", {
   status: foodIdeaStatusEnum("status").notNull().default("open"),
   declinedReason: text("declined_reason"),
   adoptedDishId: uuid("adopted_dish_id").references((): AnyPgColumn => dish.id),
+  // A recipe suggestion carries a recipe's shape — serves, allergen flags, a
+  // note, and ingredient rows (foodIdeaIngredient) — so adopting it creates a
+  // pre-filled dish rather than an empty one. Only `recipe_suggestion` uses
+  // these; a dish request or a preference stays a title and a body. The
+  // flags are the suggester's claim, not a fact: the holder sees them
+  // pre-filled and editable at adoption, and the dish records the holder's
+  // final set. `body` keeps its job as method and notes.
+  serves: integer("serves"),
+  allergenFlags: text("allergen_flags").array().notNull().default([]),
+  dietaryNote: text("dietary_note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// An ingredient on a recipe suggestion, mirroring dishIngredient so adoption
+// is a copy. Recorded at the recipe's own scale (against `foodIdea.serves`);
+// amount is nullable for "to taste". Deleted with its idea — an open idea
+// is withdrawn by its author, and an adopted one keeps these rows as the
+// record of what was suggested (the dish gets its own copies).
+export const foodIdeaIngredient = pgTable("food_idea_ingredient", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ideaId: uuid("idea_id")
+    .notNull()
+    .references(() => foodIdea.id),
+  name: text("name").notNull(),
+  amount: numeric("amount"),
+  unit: text("unit"),
+  sortOrder: integer("sort_order"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

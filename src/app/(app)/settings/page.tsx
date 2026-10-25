@@ -30,6 +30,8 @@ import GeneralTab from "./tabs/GeneralTab";
 import PermissionsTab from "./tabs/PermissionsTab";
 import CoordinationTab from "./tabs/CoordinationTab";
 import ModulesTab from "./tabs/ModulesTab";
+import { unwiredKitchenSignals } from "./KitchenQuestionsPanel";
+import { isModuleEnabled } from "@/lib/modules";
 import RecruitmentTab from "./tabs/RecruitmentTab";
 import BranchesTab from "./tabs/BranchesTab";
 import CyclesTiersTab from "./tabs/CyclesTiersTab";
@@ -350,7 +352,13 @@ export default async function SettingsPage({
 
         {activeTab === "coordination" && <CoordinationTab community={communityRow} />}
 
-        {activeTab === "modules" && <ModulesTab community={communityRow} forms={forms} />}
+        {activeTab === "modules" && (
+          <ModulesTab
+            community={communityRow}
+            forms={forms}
+            unwiredKitchenSignals={isModuleEnabled(communityRow, "kitchen") ? unwiredKitchenSignals(profileQuestions) : []}
+          />
+        )}
 
         {activeTab === "recruitment" && (
           <RecruitmentTab
@@ -383,6 +391,7 @@ export default async function SettingsPage({
             tiers={tiers}
             communityTasks={communityTasks.map((t) => ({ id: t.id, title: t.title }))}
             currentPhases={currentPhases}
+            kitchenEnabled={isModuleEnabled(communityRow, "kitchen")}
             sensitiveQuestionOptions={sensitiveQuestionOptions}
             questionLabelById={questionLabelById}
             ruleTaskNameById={ruleTaskNameById}

@@ -14,6 +14,7 @@ import {
   indicatorFamilyFor,
 } from "@/lib/profile-questions/indicators";
 import { toEditableFieldShape } from "@/lib/field-shape";
+import { KITCHEN_SIGNAL_LABELS } from "@/lib/profile-questions/questions";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, CheckField, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import { SelectField, SettingsCard, SettingsPanel, SettingsSection, TextField, ToggleField } from "../ui";
 import {
@@ -33,6 +34,7 @@ import {
 } from "../actions";
 import ProfileQuestionEditor from "../ProfileQuestionEditor";
 import StarterQuestionPicker from "../StarterQuestionPicker";
+import KitchenQuestionsPanel from "../KitchenQuestionsPanel";
 
 type Option = { id: string; label: string };
 
@@ -62,6 +64,7 @@ export default function ProfilePrivacyTab({
   tiers,
   communityTasks,
   currentPhases,
+  kitchenEnabled,
   sensitiveQuestionOptions,
   questionLabelById,
   ruleTaskNameById,
@@ -81,6 +84,9 @@ export default function ProfilePrivacyTab({
   // a phase-scoped question for a phase this event doesn't have can say
   // so instead of sitting in the list looking broken.
   currentPhases: Set<string>;
+  // Whether the Kitchen module is on, which is when its three dietary
+  // questions are worth setting up.
+  kitchenEnabled: boolean;
   sensitiveQuestionOptions: Option[];
   questionLabelById: Map<string, string>;
   ruleTaskNameById: Map<string, string>;
@@ -89,6 +95,7 @@ export default function ProfilePrivacyTab({
   const maps: NameMaps = { ruleTaskNameById, tierNameById };
   return (
     <div className="flex flex-col gap-10">
+      {kitchenEnabled && <KitchenQuestionsPanel questions={profileQuestions} />}
       <ProfileQuestionsSection
         profileQuestions={profileQuestions}
         rules={rules}
@@ -719,6 +726,7 @@ async function QuestionCard({
         {q.sensitive && <Fact>restricted</Fact>}
         {q.emergencyAccess && <Fact>emergency access</Fact>}
         {q.publishedAsIndicator && <Fact>published</Fact>}
+        {q.kitchenSignal && <Fact>tells the kitchen about {KITCHEN_SIGNAL_LABELS[q.kitchenSignal]}</Fact>}
         {q.required && <Fact>required</Fact>}
         {q.archivedAt && <Fact>archived</Fact>}
         <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">

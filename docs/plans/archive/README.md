@@ -18,6 +18,7 @@ For what Orchard currently does, read [`../../spec.md`](../../spec.md) — not t
 | [`open-permissions-plan.md`](open-permissions-plan.md) | the per-module "open to everyone" Community setting, checked ahead of task-gating in every resolver. Superseded `recruitment-access-plan.md` §4 |
 | [`joining-admission-plan.md`](joining-admission-plan.md) | the joining surface: lanes, the third door, the mediation grant, support and nomination, consensus, pairing (J1–J12). Flow half superseded by [`../admission-flow.md`](../admission-flow.md) |
 | [`food-drinks-module-plan.md`](food-drinks-module-plan.md) | the Kitchen module — menu planning, meals, scaled ingredients, purchase lists, participatory input |
+| [`kitchen-redesign-plan.md`](kitchen-redesign-plan.md) | the Kitchen's second pass — recipes from members, dietary signals read by ticked options, a tabbed page, and meal headcounts from arrivals and departures |
 | [`development-plan.full-archive.md`](development-plan.full-archive.md) | the original Phase 0–69 build plan, pre-trim, not edited since |
 | [`task-board-views-spec-audit.md`](task-board-views-spec-audit.md) | the raw spec-vs-code audit session, kept as the source for [`../spec-audit-remediation-plan.md`](../spec-audit-remediation-plan.md). A transcript, including the prompts — read the remediation plan instead |
 

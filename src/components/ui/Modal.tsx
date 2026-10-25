@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
 import { XIcon } from "@phosphor-icons/react";
 
 /**
@@ -38,6 +38,10 @@ export default function Modal({
   wide?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  // One id per dialog. A page with a dozen of these (the Kitchen has an edit
+  // dialog per dish) shares one document, and a fixed id would point every
+  // dialog's aria-labelledby at the first heading on the page.
+  const titleId = useId();
 
   return (
     <>
@@ -50,12 +54,12 @@ export default function Modal({
       </button>
       <dialog
         ref={ref}
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
         className={`m-auto w-[calc(100vw-2rem)] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-5 text-[var(--text)] shadow-[var(--shadow-md,0_4px_14px_rgba(0,0,0,0.08))] backdrop:bg-black/40 ${wide ? "max-w-2xl" : "max-w-lg"}`}
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 id="modal-title" className="text-[length:var(--text-heading)] font-medium">
+            <h2 id={titleId} className="text-[length:var(--text-heading)] font-medium">
               {title}
             </h2>
             {description && (

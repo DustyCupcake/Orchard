@@ -7,6 +7,7 @@ import { NotFoundError } from "../errors";
 import { requireEditableMenuPlan, requireKitchenModuleOn } from "./menu";
 import { getMeal } from "./meals";
 import { getDish } from "./dishes";
+import { resolveMealHeadCount } from "./attendance";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -15,8 +16,9 @@ export const createDishIngredientInput = z.object({
   name: z.string().min(1),
   // Stored as recipe-as-written scale — amounts read back as strings
   // from the numeric column and only scale on read (D8), never written
-  // back.
-  amount: z.number().positive(),
+  // back. Null or absent is "to taste": the line is listed as written and
+  // left out of scaling.
+  amount: z.number().positive().nullable().optional(),
   unit: z.string().nullable().optional(),
   sortOrder: z.number().int().nullable().optional(),
 });
@@ -46,7 +48,7 @@ export async function createDishIngredient(actor: Member, input: CreateDishIngre
     .values({
       dishId: input.dishId,
       name: input.name,
-      amount: String(input.amount),
+      amount: input.amount == null ? null : String(input.amount),
       unit: input.unit ?? null,
       sortOrder: input.sortOrder ?? null,
     })
@@ -63,7 +65,7 @@ export async function updateDishIngredient(actor: Member, ingredientId: string, 
     .update(dishIngredient)
     .set({
       ...(input.name !== undefined && { name: input.name }),
-      ...(input.amount !== undefined && { amount: String(input.amount) }),
+      ...(input.amount !== undefined && { amount: input.amount === null ? null : String(input.amount) }),
       ...(input.unit !== undefined && { unit: input.unit }),
       ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
     })
@@ -84,9 +86,10 @@ export type ScaledIngredient = {
   dishName: string;
   name: string;
   unit: string | null;
-  // What the recipe lists — the numeric column's raw string.
-  storedAmount: string;
-  scaledAmount: number;
+  // What the recipe lists — the numeric column's raw string, or null for a
+  // line with no amount ("to taste").
+  storedAmount: string | null;
+  scaledAmount: number | null;
   // headCount / serves; 1 when either side is unset (recipe scale).
   factor: number;
   scaled: boolean;
@@ -102,6 +105,8 @@ function roundAmount(n: number): number {
 // back; this is a pure read transform.
 export async function scaledIngredients(actor: Member, mealId: string): Promise<ScaledIngredient[]> {
   const mealRow = await getMeal(actor, mealId);
+  // The meal's effective headcount: typed, or worked out from arrivals.
+  const headCount = await resolveMealHeadCount(actor, mealRow);
   const dishes = await db.select().from(dish).where(eq(dish.mealId, mealId)).orderBy(dish.createdAt);
   if (dishes.length === 0) return [];
 
@@ -115,8 +120,8 @@ export async function scaledIngredients(actor: Member, mealId: string): Promise<
   return ingredients.map((ing) => {
     const dishRow = dishById.get(ing.dishId)!;
     const factor =
-      mealRow.headCount && dishRow.serves && mealRow.headCount > 0 && dishRow.serves > 0
-        ? mealRow.headCount / dishRow.serves
+      headCount && dishRow.serves && headCount > 0 && dishRow.serves > 0
+        ? headCount / dishRow.serves
         : 1;
     return {
       dishId: ing.dishId,
@@ -124,14 +129,22 @@ export async function scaledIngredients(actor: Member, mealId: string): Promise<
       name: ing.name,
       unit: ing.unit,
       storedAmount: ing.amount,
-      scaledAmount: roundAmount(Number(ing.amount) * factor),
+      scaledAmount: ing.amount === null ? null : roundAmount(Number(ing.amount) * factor),
       factor: roundAmount(factor),
-      scaled: factor !== 1,
+      scaled: factor !== 1 && ing.amount !== null,
     };
   });
 }
 
-export type PurchaseListRow = { name: string; unit: string | null; amount: number };
+export type PurchaseListRow = {
+  name: string;
+  unit: string | null;
+  // The sum of the lines that have an amount; null when none of them do.
+  amount: number | null;
+  // At least one contributing line had no amount ("to taste"), so the
+  // number is a floor, not the whole need.
+  unmeasured: boolean;
+};
 
 // The purchasing list — scaled amounts grouped by exact ingredient
 // name across every dish on the meal (D8): "flour" and "plain flour"
@@ -140,16 +153,25 @@ export type PurchaseListRow = { name: string; unit: string | null; amount: numbe
 // scale and computes no purchase list at all.
 export async function purchaseList(actor: Member, mealId: string): Promise<PurchaseListRow[]> {
   const mealRow = await getMeal(actor, mealId);
-  if (!mealRow.headCount) return [];
+  if (!(await resolveMealHeadCount(actor, mealRow))) return [];
 
-  const byName = new Map<string, { name: string; unit: string | null; amount: number }>();
+  const byName = new Map<string, PurchaseListRow>();
   for (const item of await scaledIngredients(actor, mealId)) {
     const existing = byName.get(item.name);
     if (existing) {
-      existing.amount = roundAmount(existing.amount + item.scaledAmount);
+      if (item.scaledAmount === null) {
+        existing.unmeasured = true;
+      } else {
+        existing.amount = roundAmount((existing.amount ?? 0) + item.scaledAmount);
+      }
       if (existing.unit === null && item.unit) existing.unit = item.unit;
     } else {
-      byName.set(item.name, { name: item.name, unit: item.unit, amount: item.scaledAmount });
+      byName.set(item.name, {
+        name: item.name,
+        unit: item.unit,
+        amount: item.scaledAmount,
+        unmeasured: item.scaledAmount === null,
+      });
     }
   }
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));

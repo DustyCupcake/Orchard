@@ -3,6 +3,8 @@
 // yourself wanting PERMISSION_MODULE_KEYS here to check a row, that check
 // belongs in defaults.ts's validateDefaultQuestionTable instead.
 import type { PermissionModuleKey } from "../permissions";
+import type { KitchenSignal } from "@/db/schema/profile-question";
+import { ALLERGY_OPTIONS, DISLIKE_OPTIONS, INTOLERANCE_OPTIONS } from "../kitchen/allergens";
 
 /**
  * The starter question set, as data, with no database anywhere in it.
@@ -63,6 +65,10 @@ export type DefaultQuestionSeed = {
   // which is the one intentional difference between the two entry points,
   // and it is a difference of omission rather than of guesswork.
   needsChosenAudience?: boolean;
+  // Which Kitchen dietary signal this question feeds — see KITCHEN_SIGNALS.
+  // Seeded with the question, so a community that adds the starter set gets
+  // the kitchen wired without a second step.
+  kitchenSignal?: KitchenSignal;
   // Whether emergency access can reveal this answer. Requires `sensitive`,
   // because an emergency override with no restriction to override is a
   // claim about reading public data, and logging it as though it had been
@@ -216,6 +222,16 @@ export const DEFAULT_PROFILE_QUESTION_GROUPS: DefaultQuestionGroup[] = [
         why: "Who someone is, and what an interpreter needs — both at once, which is why it isn't filed as either. Make it a pick-any and add your own languages if you want it countable.",
       },
       {
+        key: "dislikes",
+        label: "Foods you'd rather avoid",
+        responseType: "multi_choice",
+        options: DISLIKE_OPTIONS,
+        allowOther: true,
+        allowPreferNotToSay: true,
+        kitchenSignal: "dislike",
+        why: "Menu input, not a safety check — the kitchen sees a count, never a name. Public and declinable: 'I don't like cilantro' is not sensitive, and a refusal is allowed.",
+      },
+      {
         key: "age_range",
         label: "Age range",
         responseType: "single_choice",
@@ -269,12 +285,30 @@ export const DEFAULT_PROFILE_QUESTION_GROUPS: DefaultQuestionGroup[] = [
     questions: [
       {
         key: "allergies",
-        label: "Allergies",
-        responseType: "text",
-        multiline: true,
+        // The definition rides in the label because a question has no help
+        // text, and "allergy" and "intolerance" are routinely confused by
+        // the people answering. Ticks, not prose: the kitchen compares a
+        // tick to a dish's allergen flag and never reads meaning into
+        // text. "Other" is shown to the cook as written.
+        label: "Allergies (could be serious)",
+        responseType: "multi_choice",
+        options: ALLERGY_OPTIONS,
+        allowOther: true,
         allowPreferNotToSay: true,
         accessRuleModuleKey: "kitchen",
-        why: "Kitchen coordinators genuinely need it; nobody else does. Declinable, so a refusal stays available rather than becoming a blank the kitchen has to chase.",
+        kitchenSignal: "allergy",
+        why: "Kitchen coordinators genuinely need it; nobody else does. Ticks rather than prose, so it can be checked against a menu without guessing. Declinable, so a refusal stays available rather than becoming a blank the kitchen has to chase.",
+      },
+      {
+        key: "intolerances",
+        label: "Intolerances (unwell, not dangerous)",
+        responseType: "multi_choice",
+        options: INTOLERANCE_OPTIONS.map((o) => o.label),
+        allowOther: true,
+        allowPreferNotToSay: true,
+        accessRuleModuleKey: "kitchen",
+        kitchenSignal: "intolerance",
+        why: "Asked apart from allergies because a cook does something different with it: offer an alternative rather than guarantee safety. Health information, so it is restricted to the kitchen like allergies.",
       },
       {
         key: "access_needs",
