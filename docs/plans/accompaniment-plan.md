@@ -1,6 +1,6 @@
-# Accompaniment, the inviter's seat at the interview, and the community's public face
+# Accompaniment, and the inviter's seat at the interview
 
-**Status:** steps 1 to 5 of §8 are built (2026-10-13 and 2026-10-14). Step 5: the inviter at the interview, as company. Step 4: the three switches and consent to a person, the accompanier's view, and the accompanier as an audience for a profile question. Step 3: check-ins as milestones, the settings list, the done state and the accompanier's "time to check in". Step 2: the suggestion table with a reason per person, the dashboard prompt, and the coordination and task views. Step 1: the relation as a row, made at admission, the settings, the new member's card, the welcome text and the two emails, "ask for someone else", and the ending. Step 6 is folded into the email plan; steps 7 and 8 are proposed, not built. Written 2026-10-11 after comparing the original recruitment section
+**Status:** steps 1 to 5 of §8 are built (2026-10-13 and 2026-10-14). Step 5: the inviter at the interview, as company. Step 4: the three switches and consent to a person, the accompanier's view, and the accompanier as an audience for a profile question. Step 3: check-ins as milestones, the settings list, the done state and the accompanier's "time to check in". Step 2: the suggestion table with a reason per person, the dashboard prompt, and the coordination and task views. Step 1: the relation as a row, made at admission, the settings, the new member's card, the welcome text and the two emails, "ask for someone else", and the ending. Steps 6 to 8 (the information link, public pages, the front page) are folded into [`community-voice-plan.md`](community-voice-plan.md) and are not built. Written 2026-10-11 after comparing the original recruitment section
 (the v0.5 platform spec) with what the admission funnel built. That spec is an early draft written for
 one community, so this plan keeps what it was *for* and drops what only made sense for that camp.
 
@@ -256,83 +256,13 @@ paired people, each person's inviter is asked separately.
 
 ---
 
-## 7. The community's public face
+## 7. The community's public face: moved
 
-### 7.1 Where this stands
-
-The v0.5 spec's "Public site" ("who we are, contact, get involved") was only ever realised as the
-application and inquiry forms. Nothing a community writes in Orchard can be read by a non-member, and
-the Library is three members-only sections: the tool's own documentation, community pages (the
-open-edit wiki), and an index over task wikis.
-
-The root page `/` is a hardcoded landing screen: the community's name and logo, sign-in and apply
-buttons, and below them a database diagnostic. That diagnostic **writes a `health_check` row on every
-visit** and is shown to anyone. Orchard serves **one community per deployment**
-(`getOrCreateCommunity()`), so there is no question of which community a public address belongs to.
-
-### 7.2 What was decided (2026-10-13)
-
-1. **The community presents itself with a public page, and that page is `/`.** One published page is
-   designated the front page. With none designated, today's landing shows (without the diagnostic).
-2. **Not signed in:** a **sign-in button at the top** of every public page. **Signed in:** `/` goes
-   straight to the dashboard, as it does today, and never shows the page.
-3. **The doors are read live, not written.** When a public lane is open for an event, the page shows
-   **the event and its dates**, with that lane's apply button. A door that closes disappears from the
-   page by itself, so nobody has to remember to edit it.
-4. **Text only, for now.** No images beyond the community's existing logo.
-
-### 7.3 Stage one: a link in the message (proposed; now part of [`email-plan.md`](email-plan.md), E1)
-
-A community setting, *Before your interview, read this*: a URL and an optional one-line note. It is
-shown in the interview invite email and on the person's own page at the interview step. It also covers
-the v0.5 "info packet" for any community that already has a document somewhere. It does not wait for
-the public pages, and becomes a picker (a public page, or a pasted URL) once they exist.
-
-### 7.4 Stage two: pages the Library can publish (proposed)
-
-A community page can be made public.
-
-- **Members keep editing the live page, as now.** What the public sees is a **published revision**
-  (`wiki_page.published_revision_id`, null for members-only), not the latest edit. Someone with the
-  right can **publish the latest**; the page shows *"The public version is 3 edits behind"* with the
-  changes. This keeps the Library open to every member while making sure no member's edit reaches the
-  internet without someone deciding it should.
-- **Who may publish:** a new permission module, `public_pages`, granted like the others (to a "Website"
-  or "Comms" task), with admins always able. I recommend a new module over reusing `announcements`
-  because an *open* module makes every member a holder, and "anyone can publish to the whole internet"
-  is not a default I would ship. See §9, question 3.
-- **Address:** `/p/<slug>`, the slug unique and editable, derived from the title.
-- **What a public page shows:** the title, the published text, the community's name and logo, the
-  sign-in button and the navigation (§7.5). No author, no edit history, no member names. Cross-links to
-  other pages, tasks and branches render as plain text unless they point at another **public** page.
-- **Not indexed unless asked:** `robots: noindex` by default, as the admission page already is, with a
-  per-page *let search engines find this* switch. The front page is the exception in spirit: the
-  community will usually want it found, so its switch is offered at the moment it is designated.
-- **A warning at publish:** "Anyone on the internet can read this. Don't include anything about a
-  member." The Library marks public pages with a tag in its list.
-- **Formatting:** whatever the Library's page content already supports. I have not read how it renders,
-  and a presenting page needs at least paragraphs, headings and links; if the renderer cannot give
-  those, that is the first thing step 7 adds.
-
-### 7.5 Stage three: the front page (proposed, on the decisions above)
-
-- **Designation:** a Settings choice, *Front page*: one of the public pages, or none. Admins and
-  `public_pages` holders can set it.
-- **Fixed furniture around the page's own words**, not editable by page authors: the community's name
-  and logo; the sign-in button at the top when nobody is signed in; the contact box (`/inquiry`, which
-  already exists); the live doors below.
-- **The live doors:** for each public lane that is open, an apply button at its own address
-  (`/apply/<slug>`); for each **event** that has a public lane open for it and whose applications are
-  open, the event's name, its dates (`start_date` to `end_date`, when set), and its time zone when it
-  has one, with that lane's apply button. An event whose dates are not set shows without them. Nothing
-  is listed about an event whose door is shut.
-- **Navigation:** a short ordered list of public pages, chosen in Settings, shown at the top of every
-  public page after the sign-in button. Not automatic: a page is in it because someone put it there.
-- **The diagnostic goes.** The `health_check` write and its readout move to an admin-only status route
-  before `/` becomes a page people share. A public page that writes to the database on every view is a
-  fault whether or not anybody visits.
-- **Nothing private on it, ever:** no member, task, branch or board data. The only live data are the
-  open doors and the events they belong to.
+The public pages, the front page and the information link, with what they share with emails (a way to write, a
+look, the community's own words), are in [`community-voice-plan.md`](community-voice-plan.md), where they are
+planned together with the emails. What was decided here on 2026-10-13 is recorded there too (§5.1): the front page
+replaces `/`; a sign-in button for visitors and members straight to the dashboard; the open doors, and the events
+they belong to with their dates, shown live; text only for now.
 
 ---
 
@@ -354,26 +284,20 @@ funnel steps were. Each starts when asked for.
    view of what is shared; then the profile-answer route if the resolver allows it. *Depends on 1.*
 5. **The inviter at the interview.** `interview_companion`, the applicant's offer, the inviter's
    dashboard item, the preferred-availability read in the aggregate, the setting. *Independent.*
-6. **The information link.** *Folded into [`email-plan.md`](email-plan.md), step E1* (2026-10-15): looking at it showed that a specific fix for one email was worth less than a look at how all twelve are written. The link becomes an optional *before your interview* section on the interview invitation, fed by the setting, and the person's page shows it too. Not built separately.
-7. **Public pages.** `published_revision_id`, the `public_pages` module, `/p/<slug>`, the Library's
-   publish and behind-by views, the public page chrome (sign-in button, navigation list), the picker in
-   step 6's setting, the formatting the renderer lacks. *After 6.*
-8. **The front page.** The designation setting, `/` rendering the designated page, the live doors and
-   events, the contact box, the diagnostic moved to an admin status route, today's landing as the
-   fallback. *After 7.*
-
-Steps 5 and 6 can go before 2 to 4 if the interview is the pressing part.
+6. **The information link.** *Folded into [`community-voice-plan.md`](community-voice-plan.md)* (2026-10-15, widened
+   2026-10-25): a specific fix for one email was worth less than a look at how all twelve are written. It becomes an
+   optional *before your interview* section on the interview invitation (step E1 there).
+7. **Public pages.** *Folded into the same plan* (P1 there): they need the same writing format, look and vocabulary
+   that emails do, so they are built on one foundation.
+8. **The front page.** *Folded into the same plan* (P2 there).
 
 ### Tests to write
 
-The front page shows an event only while a public lane is open for it and its applications are open,
-and a closed door vanishes; a signed-in member never sees it; no private data reaches `/` or `/p/…`;
-the suggestions come from the right people and never twice; a suggested member dismissing logs no
+The suggestions come from the right people and never twice; a suggested member dismissing logs no
 non-response; the accompanier reads shares only while the accompaniment is open and the choices reset on
 a change of accompanier; the baseline needs no consent and the opt-ins fail closed; a check-in is due
 from its date until done; an accompaniment with the setting off creates nothing; the inviter's absence
-never disqualifies a slot; a public page serves only its published revision, strips internal links and
-author data, and 404s when unpublished; the migrations back-fill and drop what they say on a populated
+never disqualifies a slot; the migrations back-fill and drop what they say on a populated
 database.
 
 ---
@@ -382,8 +306,8 @@ database.
 
 1. **Reset the shares when the accompanier changes** (§4.3)? I'd say yes.
 2. **Inviter as companion: preferred availability, not required** (§6), and the offer on by default?
-3. **Who may publish a public page:** a new `public_pages` module (my recommendation), or the existing
-   `announcements` module?
+3. **Who may publish a public page:** *moved to the voice plan*, where it is a grant of its own, `public_pages`,
+   separate from the one for rewriting email wording (decided 2026-10-25).
 4. **Create the accompaniment in `admitArrival`, for every funnel route** (§3.2), with the roster door
    excluded? Or keep it to decisions only, as now?
 5. **Replace `task.suggested_member_id` with a table** (§3.4) at the cost of about eight files, rather
@@ -392,16 +316,11 @@ database.
    right starting points for a community that is not yours?
 7. **Can an inviter also file a report** if they hold the recruitment task? I assumed yes, as an
    interviewer; the community check already stops them raising a concern about their own invitee.
+8. **An event on the front page without a per-event switch:** *moved to the voice plan* (its Q8).
 
-8. **An event shows on the front page whenever its public door is open**, with no per-event switch
-   (§7.5)? The door being open is what puts it there, but an event's name and dates become public with
-   it, and a community might want to open a door without announcing the event.
-
-**Not verified, and each is a step's first job:** the sensitive-answer resolver (§4.4); how the
-Library renders a page's text (§7.4); the staleness thresholds for an unclaimed task (§3.5); that the
+**Not verified, and each is a step's first job:** the sensitive-answer resolver (§4.4, done in step 4); the staleness thresholds for an unclaimed task (§3.5); that the
 milestone UI copes with a completion state; that every route into `admitArrival` has the actor and
 branch an accompaniment task needs (today the decision paths are the ones that have a recruitment task
 to borrow a branch from).
 
-**Not in this plan:** an email nudge for check-ins, images in public pages, a public listing or search
-of pages, the on-site check-in as a default, and any measure of whether accompaniment is "working".
+**Not in this plan:** an email nudge for check-ins, the on-site check-in as a default, and any measure of whether accompaniment is "working".
