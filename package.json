@@ -23,7 +23,7 @@
     "drizzle-orm": "^0.45.4",
     "next": "^16.4.2",
     "node-cron": "^4.6.0",
-    "nodemailer": "^10.1.6",
+    "nodemailer": "^10.2.0",
     "openid-client": "^6.8.8",
     "postgres": "^3.4.5",
     "react": "^19.3.1",
@@ -39,7 +39,7 @@
     "drizzle-kit": "^0.31.11",
     "eslint": "^9.17.0",
     "eslint-config-next": "^16.4.2",
-    "jose": "^6.2.10",
+    "jose": "^6.2.13",
     "tsx": "^4.23.15",
     "typescript": "^5.7.2",
     "vitest": "^5.0.5"
