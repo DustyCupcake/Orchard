@@ -1,6 +1,7 @@
 import {
   boolean,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -168,6 +169,32 @@ export const community = pgTable("community", {
   // mechanism and share this. Stored with each window's deadline when it opens
   // (community_check.window_hours), so changing it never moves one already running.
   recruitmentWiderDiscussionHours: integer("recruitment_wider_discussion_hours").notNull().default(48),
+  // Accompaniment (docs/plans/accompaniment-plan.md §3.3): whether a new member gets
+  // someone to accompany them, who may, and for how long. On by default because that is
+  // what the platform has always done; a community that doesn't want it turns it off.
+  accompanimentEnabled: boolean("accompaniment_enabled").notNull().default(true),
+  // Null = any member may accompany. Otherwise the task is made with this tier as its
+  // requirement, through the ordinary requirement mechanism rather than a rule of its own.
+  accompanimentTierId: uuid("accompaniment_tier_id").references(() => tier.id),
+  accompanimentEndsAfterDays: integer("accompaniment_ends_after_days").notNull().default(90),
+  // Whether an applicant who came through an invitation is offered the chance to have the person who
+  // invited them at their interview (docs/plans/accompaniment-plan.md §6). On by default: it is a
+  // courtesy to the applicant, and the applicant is the one who chooses.
+  interviewOfferInviter: boolean("interview_offer_inviter").notNull().default(true),
+  // The check-ins an accompaniment starts with (docs/plans/accompaniment-plan.md §5), each made a
+  // milestone on the task when it is created, its date fixed then. A row is a label and a number
+  // of days from one of two anchors: after the person joined, or before the event they are
+  // joining starts (left out when there is no such event or its date has gone). Empty means none.
+  // Edited as a short list in settings; the defaults are what most communities would want to be
+  // asked about and nothing more.
+  accompanimentCheckIns: jsonb("accompaniment_check_ins")
+    .$type<{ label: string; anchor: "after_joining" | "before_event"; days: number }[]>()
+    .notNull()
+    .default([
+      { label: "Say hello", anchor: "after_joining", days: 3 },
+      { label: "How is it going?", anchor: "after_joining", days: 30 },
+      { label: "Before the event", anchor: "before_event", days: 14 },
+    ]),
   // §2.6/J7 — the overrule threshold. An objection is never thrown out
   // by a timer; mediation either clears it or it stands, and admitting
   // *anyway* is the documented exception. The community chooses how

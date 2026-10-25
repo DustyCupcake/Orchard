@@ -2,13 +2,14 @@ import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community, signInSetup } from "@/db/schema";
-import { getArrivalByToken, getAskedApplicationForm, getInterviewAvailability, getInterviewPoll, listSupports, loadArrivalReadout, supportLink, syncInterviewFacts } from "@/lib/recruitment";
+import { getArrivalByToken, getAskedApplicationForm, getInterviewAvailability, getInterviewPoll, getInterviewState, listSupports, loadArrivalReadout, supportLink, syncInterviewFacts } from "@/lib/recruitment";
 import type { FormField } from "@/lib/forms";
 import FieldPreview, { toPreviewShape } from "@/components/FieldPreview";
 import AvailabilityGrid from "@/app/(app)/scheduling-polls/AvailabilityGrid";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY } from "@/components/ui/kit";
-import { answerPairingAction, makeApplyTogetherLinkAction, sendAskedApplicationAction, sendSignInLinkAction, withdrawAction } from "./actions";
+import { answerPairingAction, askInviterAction, makeApplyTogetherLinkAction, sendAskedApplicationAction, sendSignInLinkAction, withdrawAction } from "./actions";
 import { listPairingsForArrival } from "@/lib/recruitment/pairs";
+import { getInviterOffer } from "@/lib/recruitment/interview-companions";
 import { publicAppUrl } from "@/lib/public-url";
 import { getEventTimeZone } from "@/lib/cycles/time-zone";
 import { formatInstant } from "@/lib/dates";
@@ -35,10 +36,10 @@ export default async function AdmissionPage({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ sent?: string; withdrawn?: string; error?: string; applied?: string; paired?: string }>;
+  searchParams: Promise<{ sent?: string; withdrawn?: string; error?: string; applied?: string; paired?: string; asked?: string }>;
 }) {
   const { token } = await params;
-  const { sent, withdrawn, error, applied, paired } = await searchParams;
+  const { sent, withdrawn, error, applied, paired, asked } = await searchParams;
 
   const found = await getArrivalByToken(token);
   if (!found) notFound();
@@ -68,6 +69,11 @@ export default async function AdmissionPage({
   const interviewPoll = await getInterviewPoll(arrival);
   const myAvailability = interviewPoll ? await getInterviewAvailability(arrival) : [];
   const interviewOpen = arrival.requiredInterview && !arrival.admittedMemberId && !arrival.declinedAt && !arrival.withdrawnAt;
+  // The person who invited them, if they would like them at the interview (docs/plans/accompaniment-plan.md
+  // §6): offered once there is an interview to be at, and until it has happened. And, once it's booked,
+  // whoever said yes and offered that very time, so the line about who will be there is only what's true.
+  const interviewState = interviewPoll ? await getInterviewState(arrival) : null;
+  const inviterOffer = interviewPoll && !arrival.interviewHeldAt ? await getInviterOffer(arrival) : null;
   const supports = await listSupports(arrival.id);
   // Shown while there is something to vouch for: a lane with an application or an
   // interview. (A community check has its own way for the community to speak.)
@@ -174,6 +180,9 @@ export default async function AdmissionPage({
               <Banner tone="success">
                 Booked for {formatInstant(interviewPoll.confirmedSlotStart, interviewZone, "datetime", { zoneName: true })} –{" "}
                 {formatInstant(interviewPoll.confirmedSlotEnd, interviewZone, "time")}
+                {interviewState && interviewState.companionsAttending.length > 0 && (
+                  <> {interviewState.companionsAttending.join(" and ")} will be there too, as you asked.</>
+                )}
               </Banner>
             </div>
           ) : interviewPoll ? (
@@ -197,6 +206,46 @@ export default async function AdmissionPage({
             <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
               We&rsquo;ll ask you to choose times as soon as conversations are open — nothing for you to do until then.
             </p>
+          )}
+
+          {inviterOffer && (
+            <div className="mt-6 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+              <h3 className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
+                Would you like {inviterOffer.firstName} to be there?
+              </h3>
+              {asked && (
+                <div className="mt-2">
+                  <Banner tone="success">Thanks. {inviterOffer.firstName} has been asked.</Banner>
+                </div>
+              )}
+              {inviterOffer.status === null ? (
+                <>
+                  <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                    {inviterOffer.firstName} invited you. If it would make the conversation a nicer one, you can ask them to join. It&rsquo;s
+                    only for company: it changes nothing about how anyone decides, and it&rsquo;s fine to say no thanks.
+                  </p>
+                  <form action={askInviterAction} className="mt-2">
+                    <input type="hidden" name="token" value={token} />
+                    <button type="submit" className={BUTTON_SECONDARY}>
+                      Ask {inviterOffer.firstName}
+                    </button>
+                  </form>
+                </>
+              ) : inviterOffer.status === "requested" ? (
+                <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                  You&rsquo;ve asked {inviterOffer.firstName}. They&rsquo;ll see it the next time they&rsquo;re here, and nothing waits on their answer.
+                </p>
+              ) : inviterOffer.status === "accepted" ? (
+                <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                  {inviterOffer.firstName} would like to be there. They&rsquo;ll say when they&rsquo;re free, and when a time is booked you&rsquo;ll see
+                  whether they can make it.
+                </p>
+              ) : (
+                <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                  {inviterOffer.firstName} can&rsquo;t make it this time. The conversation goes ahead just the same.
+                </p>
+              )}
+            </div>
           )}
         </section>
       )}

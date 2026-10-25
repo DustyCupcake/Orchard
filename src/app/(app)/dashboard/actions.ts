@@ -7,6 +7,11 @@ import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import { respondToNomination, respondToNominationInput } from "@/lib/tasks";
 import { completeOnboarding } from "@/lib/onboarding";
+import { askForSomeoneElse, setMyShares } from "@/lib/accompaniment";
+import { dismissMySuggestion } from "@/lib/tasks/suggestions";
+import { claimTask } from "@/lib/tasks";
+import { setTaskMilestoneDone } from "@/lib/tasks/milestones";
+import { answerCompanionRequest } from "@/lib/recruitment/interview-companions";
 import { answerProfileQuestion, getProfileQuestion, listProfileQuestionsByIds } from "@/lib/profile-questions";
 import { fieldValueFromFormData, toFieldShape } from "@/lib/field-shape";
 import { listOutstandingQuestions } from "@/lib/profile-questions/answers";
@@ -211,6 +216,86 @@ export async function decideTierRequestAction(formData: FormData) {
   const decision = String(formData.get("decision") ?? "") === "approved" ? "approved" : "declined";
   try {
     await decideTierRequest(actor, String(formData.get("requestId") ?? ""), decision);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/dashboard");
+}
+
+// "Ask for someone else" on the new member's own card (docs/plans/accompaniment-plan.md §3.6): the
+// task goes back to unclaimed and nothing is held against anyone.
+export async function askForSomeoneElseAction() {
+  await assertNotViewingAs();
+  const actor = await requireRealMember();
+  try {
+    await askForSomeoneElse(actor);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/dashboard");
+}
+
+// "I'll accompany them" on a suggestion (docs/plans/accompaniment-plan.md §3.5): the ordinary claim,
+// so a requirement the task carries (a tier, say) is checked exactly as it is anywhere else.
+export async function claimAccompanimentAction(formData: FormData) {
+  await assertNotViewingAs();
+  const actor = await requireRealMember();
+  try {
+    await claimTask(actor, String(formData.get("taskId") ?? ""));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/dashboard");
+}
+
+// "Not me": hides the prompt from this member's dashboard and does nothing else.
+export async function dismissAccompanimentSuggestionAction(formData: FormData) {
+  await assertNotViewingAs();
+  const actor = await requireRealMember();
+  try {
+    await dismissMySuggestion(actor, String(formData.get("taskId") ?? ""));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/dashboard");
+}
+
+// "Done" on a check-in that is due (docs/plans/accompaniment-plan.md §5).
+export async function completeCheckInAction(formData: FormData) {
+  await assertNotViewingAs();
+  const actor = await requireRealMember();
+  try {
+    await setTaskMilestoneDone(actor, String(formData.get("milestoneId") ?? ""), true);
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/dashboard");
+}
+
+// What the new member lets their accompanier see beyond the basics (docs/plans/accompaniment-plan.md §4.2):
+// a plain form of checkboxes, so an unticked one is "no". Made for whoever is accompanying them now.
+export async function setMySharesAction(formData: FormData) {
+  await assertNotViewingAs();
+  const actor = await requireRealMember();
+  try {
+    await setMyShares(actor, {
+      axes: formData.get("axes") === "on",
+      contribution: formData.get("contribution") === "on",
+      answers: formData.get("answers") === "on",
+    });
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/dashboard");
+}
+
+// "I'd like to come" / "Not this time" on a request to be at an interview as company (docs/plans/
+// accompaniment-plan.md §6). A no needs no reason and tells nobody.
+export async function answerCompanionRequestAction(formData: FormData) {
+  await assertNotViewingAs();
+  const actor = await requireRealMember();
+  try {
+    await answerCompanionRequest(actor, String(formData.get("arrivalId") ?? ""), formData.get("accept") === "1");
   } catch (err) {
     redirectWithError(err);
   }

@@ -29,6 +29,61 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-10-14",
+    title: "Having the person who invited you at your interview",
+    summary: "If someone invited you, you can ask them to be at your interview for company, and they can say yes or no.",
+    points: [
+      "If a member invited you, your page offers to ask them to be there. It's your choice, and only for company: it changes nothing about how anyone decides.",
+      "They're asked on their own dashboard, can say no without giving a reason, and aren't told off for it. If they say yes they can say when they're free; the people booking the interview see it, but it never stops a time being booked.",
+      "Once a time is booked, your page and the email say who will be there. Administrators can switch the offer off under Settings → Recruitment.",
+    ],
+    source: "the person who invited an applicant can be at their interview, if the applicant asks and they would like to",
+  },
+  {
+    date: "2026-10-13",
+    title: "You choose what your accompanier can see about you",
+    summary: "A new member decides whether their accompanier can see more than the basics, and it's only ever for that one person.",
+    points: [
+      "Your accompanier always sees how you're getting on with what you've taken on. Anything more is yours to choose, on the Your accompanier card on your dashboard: your working style, your contribution overview, and any answers you've said you're happy to share with them.",
+      "It's for the person accompanying you now. If someone else takes over, or you ask for someone else, nothing carries over and you're asked again.",
+      "Administrators can ask a profile question that only your accompanier can read, such as how you like to be supported. You'd still be asked before anything is shared.",
+    ],
+    source: "what a new member lets their accompanier see is theirs to choose, to one person at a time, and a question can name the accompanier as its audience",
+  },
+  {
+    date: "2026-10-13",
+    title: "Reminders to check in with someone you accompany",
+    summary: "When you accompany a new member, your dashboard reminds you when it's a good time to check in.",
+    points: [
+      "Each accompaniment comes with a few check-ins (by default a hello after three days and a catch-up after a month, plus one before the event if there's one coming). When one's date comes, it shows on your dashboard until you mark it done. Nothing is emailed.",
+      "If you take the task on late, the ones already past just say they were due. Nothing is held against you if one sits.",
+      "Administrators can change the list, or empty it, under Settings → Recruitment → Accompaniment.",
+    ],
+    source: "check-ins are milestones on the accompaniment task, from a short list the community edits, due on the accompanier's dashboard until they say they're done",
+  },
+  {
+    date: "2026-10-13",
+    title: "You might be asked to accompany someone new",
+    summary: "If you invited, vouched for or interviewed a new member, you may see a note asking if you'd like to accompany them.",
+    points: [
+      "When a new member joins and nobody is accompanying them yet, the people with a reason to be asked each see a note on their own dashboard that says why: you invited them, you vouched for them, or you said yes after their interview.",
+      "\"I'll accompany them\" takes the task on. \"Not me\" just hides the note for you: nobody is told, and nothing is held against you.",
+      "People coordinating can see everyone who was thought of, and why, when they're finding someone, and the person asking can start with them.",
+    ],
+    source: "suggestions say why: everyone with a reason is suggested for a new member's accompaniment, and a suggested person can say it isn't for them",
+  },
+  {
+    date: "2026-10-13",
+    title: "New members always know who is accompanying them",
+    summary: "Someone is named to accompany each new member, the new member is told, and they can ask for someone else.",
+    points: [
+      "When you join, someone from the community is named to accompany you: a person to ask questions of and check in with while you find your feet. You're told in your welcome email, on your first screen and on a card on your dashboard, and you get an email as soon as somebody has taken it on.",
+      "If it isn't a good fit, press \"Ask for someone else\" on that card. It goes back to being open, with a plain note that it's about the fit, and nobody is marked down for it.",
+      "It lasts for a set time (90 days unless your community says otherwise), or until your accompanier marks it done. Administrators can switch it off, say who may do it, and change how long it lasts, under Settings → Recruitment → Accompaniment.",
+    ],
+    source: "accompaniment is a thing of its own: made when a member is, told to the member, and theirs to say isn't working",
+  },
+  {
     date: "2026-10-13",
     title: "Events are funded by the community's budget, and settled when they close",
     summary: "An event can ask the community's budget for what it is short, and closing an event settles its money.",

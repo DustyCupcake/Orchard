@@ -15,6 +15,7 @@ import {
 import { claimAsShadow, claimTask, createRequirement } from "@/lib/tasks";
 import { ConflictError, ConfirmationRequiredError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { listSuggestionsForTasks } from "@/lib/tasks/suggestions";
 
 async function enableCycles(communityId: string, cycleInitiationTierId?: string) {
   await db
@@ -42,6 +43,11 @@ async function insertTask(
     })
     .returning();
   return row;
+}
+
+async function suggestedFor(taskId: string) {
+  const people = (await listSuggestionsForTasks([taskId])).get(taskId) ?? [];
+  return people.map((p) => ({ memberId: p.memberId, reasons: p.reasons }));
 }
 
 describe("cycle creation", () => {
@@ -281,7 +287,7 @@ describe("cloning the previous cycle", () => {
     expect(all.map((c) => c.name)).toEqual(["2027 Season", "2026 Season", "2025 Season"]);
   });
 
-  it("pre-fills suggestedMemberId from a filled shadow slot on the source task", async () => {
+  it("suggests a shadow of the source task for the cloned one, and only that", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     await enableCycles(testCommunity.id);
 
@@ -302,13 +308,13 @@ describe("cloning the previous cycle", () => {
     const clonedTasks = await db.select().from(task).where(eq(task.cycleId, cloned.id));
 
     const clonedShadowed = clonedTasks.find((t) => t.title === "Water the trees")!;
-    expect(clonedShadowed.suggestedMemberId).toBe(bob.id);
+    expect(await suggestedFor(clonedShadowed.id)).toEqual([{ memberId: bob.id, reasons: ["shadowed"] }]);
 
     const clonedUnshadowed = clonedTasks.find((t) => t.title === "Prune the hedges")!;
-    expect(clonedUnshadowed.suggestedMemberId).toBeNull();
+    expect(await suggestedFor(clonedUnshadowed.id)).toEqual([]);
   });
 
-  it("picks the earliest shadow when a task had more than one", async () => {
+  it("suggests every shadow when a task had more than one, earliest first", async () => {
     const { community: testCommunity, branch, alice, bob } = await createFixtures();
     const [carol] = await db
       .insert(member)
@@ -330,7 +336,10 @@ describe("cloning the previous cycle", () => {
       .select()
       .from(task)
       .where(and(eq(task.cycleId, cloned.id), eq(task.clonedFromTaskId, t.id)));
-    expect(clonedTask.suggestedMemberId).toBe(bob.id);
+    expect(await suggestedFor(clonedTask.id)).toEqual([
+      { memberId: bob.id, reasons: ["shadowed"] },
+      { memberId: carol.id, reasons: ["shadowed"] },
+    ]);
   });
 
   it("copies permission grants from cloned tasks", async () => {

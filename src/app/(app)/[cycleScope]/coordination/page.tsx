@@ -17,10 +17,17 @@ import {
   needsAnOwner,
   type CoordinationScopeTask,
 } from "@/lib/tasks/coordination-dashboard";
+import { SUGGESTION_REASON_LABEL, joinReasons, type SuggestedPerson } from "@/lib/tasks/suggestions";
 import { Tag, type Tone, Banner } from "@/components/ui/kit";
 import PageHeader from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
+
+// "Sam (invited them, said yes after the interview); Bo (vouched for them)": who, and why,
+// so whoever asks can start with the people who have a reason and say it kindly.
+function describeSuggested(people: SuggestedPerson[]): string {
+  return people.map((p) => `${p.name} (${joinReasons(p.reasons, SUGGESTION_REASON_LABEL)})`).join("; ");
+}
 
 // Local, like conflict-reports/page.tsx and documentation/page.tsx —
 // two call sites of an identical four-line h2 isn't a third.
@@ -188,7 +195,8 @@ export default async function CycleScopeCoordinationPage({
         <section className="mt-8" id="suggestions">
           <SectionHeading>Someone suggested a person</SectionHeading>
           <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-            A proposer named someone for these. Open the task to ask them, if it looks right.
+            People with a reason to be asked: someone who proposed the task, invited a newcomer, vouched for them or met
+            them. Open the task to ask them, if it looks right.
           </p>
           <ul className="mt-3">
             {suggestions.map((s) => (
@@ -196,8 +204,8 @@ export default async function CycleScopeCoordinationPage({
                 <Link href={`/tasks/${s.id}`} className="text-[length:var(--text-body)] font-medium text-[var(--text)] hover:text-[var(--accent-1)]">
                   {s.title}
                 </Link>
-                <span className="shrink-0 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  suggested {s.suggestedMemberName} · {s.branchName}
+                <span className="max-w-[28rem] text-right text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                  {describeSuggested(s.suggested)} · {s.branchName}
                 </span>
               </li>
             ))}
@@ -414,7 +422,7 @@ function TaskRows({ tasks }: { tasks: CoordinationScopeTask[] }) {
             {t.critical && <Tag tone="danger">critical</Tag>}
             {t.branchName}
             {t.holderNames.length > 0 && ` · ${t.holderNames.join(", ")}`}
-            {t.status === "unclaimed" && t.suggestedMemberName && ` · suggested ${t.suggestedMemberName}`}
+            {t.status === "unclaimed" && t.suggested.length > 0 && ` · suggested ${describeSuggested(t.suggested)}`}
           </span>
         </li>
       ))}

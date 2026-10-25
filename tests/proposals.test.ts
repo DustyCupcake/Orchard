@@ -14,6 +14,7 @@ import { listGrantingTaskIds } from "@/lib/permissions";
 import { createTraitAxis, listTaskAxisValues } from "@/lib/trait-axes";
 import { ConflictError, NotFoundError } from "@/lib/errors";
 import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { listSuggestionsForTasks } from "@/lib/tasks/suggestions";
 
 describe("creating and listing proposals", () => {
   beforeEach(async () => {
@@ -108,7 +109,7 @@ describe("activating a proposal", () => {
     expect(created.description).toBe("Polished by coordination");
   });
 
-  it("carries suggestedMemberId through onto the new task", async () => {
+  it("carries the suggested member through as a suggestion on the new task", async () => {
     const { branch, alice, bob } = await createFixtures();
     const proposal = await createProposal(alice, {
       title: "Fix the gate latch",
@@ -122,7 +123,8 @@ describe("activating a proposal", () => {
       effortMagnitude: { duration: "few_hours" },
     });
 
-    expect(created.suggestedMemberId).toBe(bob.id);
+    const people = (await listSuggestionsForTasks([created.id])).get(created.id);
+    expect(people).toMatchObject([{ memberId: bob.id, reasons: ["proposed"] }]);
   });
 
   it("attaches Requirements passed at activation time", async () => {

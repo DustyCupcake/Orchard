@@ -1,9 +1,11 @@
 import { laneRuleOf, listEventLaneSets, listLanes } from "@/lib/recruitment/admission-lanes";
 import { describeLaneConsequence, laneRelevance } from "@/lib/recruitment/lane-rules";
 import { listMediationMembers } from "@/lib/recruitment/mediation";
-import type { community as communityTable, form as formTable } from "@/db/schema";
+import type { community as communityTable, form as formTable, tier as tierTable } from "@/db/schema";
 import { policyOf } from "@/lib/recruitment/evaluations";
 import { describeDecisionPolicy } from "@/lib/recruitment/decision-policy";
+import { CHECK_IN_ANCHOR_LABEL, CHECK_IN_ANCHORS } from "@/lib/accompaniment-check-ins";
+import { INPUT } from "@/components/ui/kit";
 import { SelectField, SettingsGroup, SettingsPanel, SettingsSection, TextAreaField, TextField, ToggleField } from "../ui";
 import {
   saveAdmissionLanesAction,
@@ -11,6 +13,9 @@ import {
   updateRecruitmentDecisionPolicyAction,
   updateRecruitmentDoorsAction,
   updateRecruitmentCheckWindowAction,
+  updateAccompanimentSettingsAction,
+  updateAccompanimentCheckInsAction,
+  updateInterviewSettingsAction,
 } from "../actions";
 import AdmissionLaneEditor from "../AdmissionLaneEditor";
 import DecisionPolicyEditor from "../DecisionPolicyEditor";
@@ -48,10 +53,12 @@ import DecisionPolicyEditor from "../DecisionPolicyEditor";
 export default async function RecruitmentTab({
   community,
   forms,
+  tiers,
   authorized,
 }: {
   community: typeof communityTable.$inferSelect;
   forms: (typeof formTable.$inferSelect)[];
+  tiers: (typeof tierTable.$inferSelect)[];
   authorized: boolean;
 }) {
   const laneRules = (await listLanes(community.id)).map(laneRuleOf);
@@ -298,6 +305,113 @@ export default async function RecruitmentTab({
               hint="Whether an interview can be scheduled."
             />
           )}
+        </SettingsGroup>
+      </SettingsSection>
+
+      {relevance.anyInterview && (
+        <SettingsSection
+          title="The interview"
+          description="What an applicant is offered around their conversation with the people looking after joining."
+        >
+          <SettingsGroup
+            action={updateInterviewSettingsAction}
+            submitLabel="Save"
+            title="The person who invited them"
+            stateLabel="Whether an applicant who was invited can ask their inviter to be at the interview"
+            state={
+              community.interviewOfferInviter
+                ? "An applicant who was invited can ask whoever invited them to be at their interview."
+                : "Applicants aren't offered their inviter's company at the interview."
+            }
+            description="It's only company. The inviter isn't an interviewer, files nothing and doesn't count toward the people a time needs; their availability is preferred and never required. The applicant is the one who asks, and the inviter can say no without saying why."
+          >
+            <ToggleField
+              label="Offer the inviter a place"
+              name="interviewOfferInviter"
+              defaultChecked={community.interviewOfferInviter}
+              hint="Shown on the applicant's own page once their interview exists."
+            />
+          </SettingsGroup>
+        </SettingsSection>
+      )}
+
+      <SettingsSection
+        title="Accompaniment"
+        description="Someone who is there for a new member from the start: a person to ask questions of and to check in with. It is a task like any other, made when someone is admitted, and the new member is always told about it."
+      >
+        <SettingsGroup
+          action={updateAccompanimentSettingsAction}
+          submitLabel="Save accompaniment"
+          title="Does a new member get someone?"
+          stateLabel="Whether new members are accompanied, by whom, and for how long"
+          state={
+            community.accompanimentEnabled ? (
+              <>
+                New members are accompanied for {community.accompanimentEndsAfterDays} days.{" "}
+                {community.accompanimentTierId
+                  ? `Only ${tiers.find((t) => t.id === community.accompanimentTierId)?.name ?? "a tier that no longer exists"} can take it on.`
+                  : "Any member can take it on."}
+              </>
+            ) : (
+              "New members are not given someone to accompany them."
+            )
+          }
+          description="Changing this never touches an accompaniment already running; each one's end was fixed when it began."
+        >
+          <ToggleField
+            label="Accompany new members"
+            name="accompanimentEnabled"
+            defaultChecked={community.accompanimentEnabled}
+            hint="When someone is admitted, a task is made for a member to accompany them. People who were already members, and people added directly by an administrator, are not accompanied."
+          />
+          <SelectField
+            label="Who may accompany"
+            name="accompanimentTierId"
+            defaultValue={community.accompanimentTierId ?? ""}
+            options={[
+              { value: "", label: "— any member —" },
+              ...tiers.map((t) => ({ value: t.id, label: t.name })),
+            ]}
+            hint="Only members of this tier can take the task on."
+          />
+          <TextField
+            label="Lasts (days)"
+            name="accompanimentEndsAfterDays"
+            type="number"
+            defaultValue={community.accompanimentEndsAfterDays}
+            hint="Counted from when the person is admitted. It also ends sooner if the accompanier marks the task done."
+          />
+        </SettingsGroup>
+
+        <SettingsGroup
+          action={updateAccompanimentCheckInsAction}
+          submitLabel="Save check-ins"
+          title="Check-ins"
+          stateLabel="The moments the accompanier is reminded to check in"
+          state={
+            community.accompanimentCheckIns.length === 0
+              ? "No check-ins: the accompanier is only there if the new member asks."
+              : community.accompanimentCheckIns
+                  .map((c) => `${c.label} (${c.days} ${CHECK_IN_ANCHOR_LABEL[c.anchor]})`)
+                  .join(" · ")
+          }
+          description="Each one becomes a milestone on the accompaniment task when it is made, and shows on the accompanier's dashboard once its date comes, until they mark it done. A check-in before the event is left out when there is no event with a start date, or when its date has already passed. Clear a name to remove a check-in."
+        >
+          <div className="flex flex-col gap-2">
+            {[...community.accompanimentCheckIns, null, null].map((c, i) => (
+              <div key={i} className="flex flex-wrap items-center gap-2">
+                <input name="checkInLabel" defaultValue={c?.label ?? ""} placeholder="A name, like “Say hello”" aria-label="Check-in name" className={`${INPUT} w-56`} />
+                <input name="checkInDays" type="number" min={0} max={365} defaultValue={c?.days ?? ""} placeholder="days" aria-label="Days" className={`${INPUT} w-24`} />
+                <select name="checkInAnchor" defaultValue={c?.anchor ?? "after_joining"} aria-label="From" className={INPUT}>
+                  {CHECK_IN_ANCHORS.map((a) => (
+                    <option key={a} value={a}>
+                      {CHECK_IN_ANCHOR_LABEL[a]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
         </SettingsGroup>
       </SettingsSection>
     </div>

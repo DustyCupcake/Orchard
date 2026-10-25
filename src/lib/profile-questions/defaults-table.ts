@@ -85,6 +85,7 @@ export type SeededQuestionAudience = {
   unlockedByTaskId?: string | null;
   unlockedByTierId?: string | null;
   unlockedByGrantModuleKey?: PermissionModuleKey | null;
+  unlockedByAccompaniment?: boolean | null;
 };
 
 /** What the review step decided about one proposed question.

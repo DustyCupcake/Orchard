@@ -65,7 +65,6 @@ export const task = pgTable("task", {
   createdBy: uuid("created_by")
     .notNull()
     .references(() => member.id),
-  suggestedMemberId: uuid("suggested_member_id").references(() => member.id),
   // Set only on the two tasks a SchedulingPoll auto-creates — see
   // docs/spec.md's "Facilitation and summary are auto-created tasks,
   // not a manual step."

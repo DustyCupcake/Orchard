@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   branch,
@@ -9,10 +9,12 @@ import {
   taskAssignment,
   taskJoinRequest,
   taskNomination,
+  taskSuggestion,
   taskSignal,
 } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { listCoordinationScopeIds } from "../coordination";
+import { listSuggestionsForTasks, type SuggestedPerson } from "./suggestions";
 import type { taskAttentionLevelEnum, taskStatusEnum } from "@/db/schema/task";
 
 type Member = typeof memberTable.$inferSelect;
@@ -77,8 +79,8 @@ export interface CoordinationScopeTask {
   nextCheckinAt: Date | null;
   waitingNote: string | null;
   statusChangedAt: Date;
-  suggestedMemberId: string | null;
-  suggestedMemberName: string | null;
+  /** People with a reason to be asked about this task, each with their reasons (docs/plans/accompaniment-plan.md §3.4). */
+  suggested: SuggestedPerson[];
 }
 
 export interface CoordinationTaskCounts {
@@ -120,7 +122,6 @@ export async function listCoordinationScopeTasks(actor: Member, viewCycleIds: st
       nextCheckinAt: task.nextCheckinAt,
       waitingNote: task.waitingNote,
       statusChangedAt: task.statusChangedAt,
-      suggestedMemberId: task.suggestedMemberId,
     })
     .from(task)
     .innerJoin(branch, eq(task.branchId, branch.id))
@@ -138,11 +139,10 @@ export async function listCoordinationScopeTasks(actor: Member, viewCycleIds: st
 // times and be counted three times in the summary. Generic over the
 // caller's row shape so the two extra fields can be added to whatever the
 // select() returned, rather than requiring it to be a full task row.
-async function withHoldersAndSuggestions<Row extends { id: string; suggestedMemberId: string | null }>(
+async function withHoldersAndSuggestions<Row extends { id: string }>(
   rows: Row[],
-): Promise<(Row & { holderCount: number; holderNames: string[]; suggestedMemberName: string | null })[]> {
-  const suggestedIds = rows.map((r) => r.suggestedMemberId).filter((id): id is string => id !== null);
-  const [assignments, suggestedMembers] = await Promise.all([
+): Promise<(Row & { holderCount: number; holderNames: string[]; suggested: SuggestedPerson[] })[]> {
+  const [assignments, suggestions] = await Promise.all([
     db
       .select({
         taskId: taskAssignment.taskId,
@@ -161,9 +161,7 @@ async function withHoldersAndSuggestions<Row extends { id: string; suggestedMemb
           ),
         ),
       ),
-    suggestedIds.length > 0
-      ? db.select({ id: member.id, name: member.name }).from(member).where(inArray(member.id, suggestedIds))
-      : Promise.resolve([]),
+    listSuggestionsForTasks(rows.map((r) => r.id)),
   ]);
 
   const byTask = new Map<string, string[]>();
@@ -172,13 +170,12 @@ async function withHoldersAndSuggestions<Row extends { id: string; suggestedMemb
     list.push(a.memberName);
     byTask.set(a.taskId, list);
   }
-  const nameById = new Map(suggestedMembers.map((s) => [s.id, s.name]));
 
   return rows.map((r) => ({
     ...r,
     holderCount: (byTask.get(r.id) ?? []).length,
     holderNames: byTask.get(r.id) ?? [],
-    suggestedMemberName: r.suggestedMemberId ? (nameById.get(r.suggestedMemberId) ?? null) : null,
+    suggested: suggestions.get(r.id) ?? [],
   }));
 }
 
@@ -282,22 +279,20 @@ export interface PendingSuggestion {
   id: string;
   title: string;
   branchName: string;
-  suggestedMemberId: string | null;
-  suggestedMemberName: string;
+  suggested: SuggestedPerson[];
 }
 
 /**
  * Suggestions awaiting a coordinator's judgment — the bridge from "a
- * proposer named someone for this idea" to "does that look right, and
- * should I ask them?"
+ * proposer named someone for this idea", or "these people met or vouched
+ * for the newcomer", to "does that look right, and should I ask them?"
  *
  * A suggestion is only actionable while the task is genuinely open, so
  * this filters on exactly that: nobody holding it (a real, non-shadow
  * holder means the suggestion was acted on or overtaken) and no live
- * nomination against it (the ask has already been made). `task
- * .suggested_member_id` is written by proposal activation, cycle cloning
- * and recruitment, but read nowhere else in the app — this is the module
- * that makes it a signal rather than a column.
+ * nomination against it (the ask has already been made). Each task comes
+ * back once with everyone suggested for it and why, so the person asking
+ * can start with the people who have a reason and say it kindly.
  */
 export async function listPendingSuggestions(actor: Member, viewCycleIds: string[]): Promise<PendingSuggestion[]> {
   const { condition, reachesAnything } = await scopedTaskCondition(actor, viewCycleIds);
@@ -308,15 +303,14 @@ export async function listPendingSuggestions(actor: Member, viewCycleIds: string
       id: task.id,
       title: task.title,
       branchName: branch.name,
-      suggestedMemberId: task.suggestedMemberId,
     })
     .from(task)
     .innerJoin(branch, eq(task.branchId, branch.id))
     .where(
       and(
         eq(task.communityId, actor.communityId),
-        isNotNull(task.suggestedMemberId),
         eq(task.status, "unclaimed"),
+        sql`exists (select 1 from ${taskSuggestion} where ${taskSuggestion.taskId} = ${task.id})`,
         condition,
       ),
     )
@@ -325,7 +319,7 @@ export async function listPendingSuggestions(actor: Member, viewCycleIds: string
   if (rows.length === 0) return [];
   const taskIds = rows.map((r) => r.id);
 
-  const [nominated, held, suggestedMembers] = await Promise.all([
+  const [nominated, held, suggestions] = await Promise.all([
     db
       .selectDistinct({ taskId: taskNomination.taskId })
       .from(taskNomination)
@@ -339,30 +333,15 @@ export async function listPendingSuggestions(actor: Member, viewCycleIds: string
       .selectDistinct({ taskId: taskAssignment.taskId })
       .from(taskAssignment)
       .where(and(inArray(taskAssignment.taskId, taskIds), eq(taskAssignment.isShadow, false))),
-    db
-      .select({ id: member.id, name: member.name })
-      .from(member)
-      .where(
-        inArray(
-          member.id,
-          rows.map((r) => r.suggestedMemberId).filter((id): id is string => id !== null),
-        ),
-      ),
+    listSuggestionsForTasks(taskIds),
   ]);
 
   const alreadyAsked = new Set(nominated.map((n) => n.taskId));
   const hasHolder = new Set(held.map((h) => h.taskId));
-  const nameById = new Map(suggestedMembers.map((s) => [s.id, s.name]));
 
   return rows
     .filter((r) => !alreadyAsked.has(r.id) && !hasHolder.has(r.id))
-    .map((r) => ({
-      id: r.id,
-      title: r.title,
-      branchName: r.branchName,
-      suggestedMemberId: r.suggestedMemberId,
-      suggestedMemberName: (r.suggestedMemberId ? nameById.get(r.suggestedMemberId) : null) ?? "a member",
-    }));
+    .map((r) => ({ id: r.id, title: r.title, branchName: r.branchName, suggested: suggestions.get(r.id) ?? [] }));
 }
 
 export interface CoordinationResponseItem {

@@ -7,6 +7,7 @@ import { AppError, NotFoundError } from "../errors";
 import { ANY_NO_MEANS, DISCUSSION_ENDS, IN_WHEN, validateDecisionPolicy } from "../recruitment/decision-policy";
 import { policyOf } from "../recruitment/evaluations";
 import { isValidTimeZone } from "../dates/timezone";
+import { checkInsSchema } from "../accompaniment-check-ins";
 import { requireNotOnsiteLocked } from "../onsite-mode";
 import { recordSettingChanges } from "./history";
 
@@ -99,6 +100,13 @@ export const updateCommunityInput = z.object({
   recruitmentDiscussionEnds: z.enum(DISCUSSION_ENDS).optional(),
   recruitmentDeclineOutrightAt: z.number().int().min(1).max(50).nullable().optional(),
   recruitmentWiderDiscussionHours: z.number().int().positive().optional(),
+  // Accompaniment (docs/plans/accompaniment-plan.md §3.3).
+  accompanimentEnabled: z.boolean().optional(),
+  accompanimentTierId: z.string().uuid().nullable().optional(),
+  accompanimentEndsAfterDays: z.number().int().positive().max(730).optional(),
+  accompanimentCheckIns: checkInsSchema.optional(),
+  // Whether an applicant invited by a member is offered the inviter's company at their interview (accompaniment plan §6).
+  interviewOfferInviter: z.boolean().optional(),
   // Null clears it — "surfaced to whoever's about to send an actual
   // decline, never sent automatically."
   recruitmentRejectionTemplate: z.string().nullable().optional(),
@@ -167,6 +175,16 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
       .from(tier)
       .where(eq(tier.id, input.cycleInitiationTierId));
     if (!tierRow || tierRow.communityId !== actor.communityId) {
+      throw new NotFoundError("Tier not found in your community");
+    }
+  }
+
+  if (input.accompanimentTierId) {
+    const [tierRow] = await db
+      .select({ id: tier.id })
+      .from(tier)
+      .where(and(eq(tier.id, input.accompanimentTierId), eq(tier.communityId, actor.communityId)));
+    if (!tierRow) {
       throw new NotFoundError("Tier not found in your community");
     }
   }
@@ -272,6 +290,11 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         ...(input.recruitmentAnyNoMeans !== undefined && { recruitmentAnyNoMeans: input.recruitmentAnyNoMeans }),
         ...(input.recruitmentDiscussionEnds !== undefined && { recruitmentDiscussionEnds: input.recruitmentDiscussionEnds }),
         ...(input.recruitmentDeclineOutrightAt !== undefined && { recruitmentDeclineOutrightAt: input.recruitmentDeclineOutrightAt }),
+        ...(input.accompanimentEnabled !== undefined && { accompanimentEnabled: input.accompanimentEnabled }),
+        ...(input.accompanimentTierId !== undefined && { accompanimentTierId: input.accompanimentTierId }),
+        ...(input.accompanimentEndsAfterDays !== undefined && { accompanimentEndsAfterDays: input.accompanimentEndsAfterDays }),
+        ...(input.accompanimentCheckIns !== undefined && { accompanimentCheckIns: input.accompanimentCheckIns }),
+        ...(input.interviewOfferInviter !== undefined && { interviewOfferInviter: input.interviewOfferInviter }),
         ...(input.recruitmentWiderDiscussionHours !== undefined && {
           recruitmentWiderDiscussionHours: input.recruitmentWiderDiscussionHours,
         }),

@@ -36,6 +36,7 @@ import {
   isSelfAssignWorthAskingAbout,
   rankByTagFit,
 } from "@/lib/tasks";
+import { SUGGESTION_REASON_LABEL, joinReasons, listSuggestionsForTasks } from "@/lib/tasks/suggestions";
 import { getCommunity, isAdmin, listBranches } from "@/lib/settings";
 import {
   allowsMultipleGrants,
@@ -62,7 +63,7 @@ import { BranchChip, CapacityChip, CycleChip, EffortChip } from "@/components/ta
 import { listTaskQuestions } from "@/lib/input-rounds";
 import { isAuthorizedToWaive, isCoordinationHolder } from "@/lib/coordination";
 import { resolveBackstopHolder } from "@/lib/backstop";
-import { getAccompaniedMemberId } from "@/lib/recruitment";
+import { getAccompaniedMemberId, getAccompaniedView } from "@/lib/accompaniment";
 import { computeEngagementPattern } from "@/lib/engagement";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import { FlagIcon, QuestionIcon } from "@phosphor-icons/react/dist/ssr";
@@ -79,6 +80,7 @@ import {
   claimAsShadowAction,
   confirmClaimAction,
   confirmMilestoneAction,
+  setMilestoneDoneAction,
   createQuestionAction,
   createSignalAction,
   deescalateTaskAction,
@@ -331,6 +333,7 @@ export default async function TaskDetailPage({
   // holds it — access follows the task, same as every other
   // coordination-facing surface here.
   const accompaniedMemberId = holdsTask ? await getAccompaniedMemberId(taskRow.id) : null;
+  const accompaniedView = holdsTask ? await getAccompaniedView(viewing, taskRow.id) : null;
   const accompanimentEngagement = accompaniedMemberId
     ? await computeEngagementPattern(accompaniedMemberId, viewing.communityId)
     : null;
@@ -428,12 +431,24 @@ export default async function TaskDetailPage({
   // surfaced)"). Ranked, never filtered — a member sharing no tags is
   // still offerable, just further down, because matching is deferred as
   // real automation (src/lib/tasks/fit.ts).
-  const askCandidates = rankByTagFit(
+  const ranked = rankByTagFit(
     communityMembers
       .filter((m) => m.id !== viewing.id && !realAssignments.some((a) => a.memberId === m.id))
       .map((m) => ({ id: m.id, name: m.name, tags: m.tags })),
     taskRow.tags,
   );
+  // People who were suggested for this task, with the reason, come first: they are the people
+  // with a reason to be asked, and the reason is what makes asking easy to say. Not a ranking
+  // of who is best, and everyone else is still offered below them.
+  const suggestedForTask = (await listSuggestionsForTasks([taskRow.id])).get(taskRow.id) ?? [];
+  const suggestedById = new Map(suggestedForTask.map((p) => [p.memberId, p]));
+  const askCandidates = [
+    ...ranked.filter((m) => suggestedById.has(m.id)),
+    ...ranked.filter((m) => !suggestedById.has(m.id)),
+  ].map((m) => {
+    const suggested = suggestedById.get(m.id);
+    return { ...m, label: suggested ? `${m.name} — ${joinReasons(suggested.reasons, SUGGESTION_REASON_LABEL)}` : m.name };
+  });
 
   // ── Task UI grammar: one primary action in the header ────────────
   // When a contextual nudge panel is showing (attention-flagged claimed,
@@ -468,7 +483,7 @@ export default async function TaskDetailPage({
                     </option>
                     {askCandidates.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.name}
+                        {m.label}
                       </option>
                     ))}
                   </select>
@@ -1438,6 +1453,8 @@ export default async function TaskDetailPage({
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{m.label}</span>
                 {m.isDeadline && <Tag tone="accent">deadline</Tag>}
+                {m.checkIn && <Tag tone="neutral">check-in</Tag>}
+                {m.completedAt && <Tag tone="success">done {clock.date(m.completedAt)}</Tag>}
                 {m.status === "pending" && (
                   <Tag tone="warning">pending — proposed by {memberNameById.get(m.proposedBy) ?? "—"}</Tag>
                 )}
@@ -1448,6 +1465,14 @@ export default async function TaskDetailPage({
 
               {holdsTask && (
                 <>
+                  <form action={setMilestoneDoneAction} className="mt-2">
+                    <input type="hidden" name="taskId" value={taskRow.id} />
+                    <input type="hidden" name="milestoneId" value={m.id} />
+                    <input type="hidden" name="done" value={m.completedAt ? "false" : "true"} />
+                    <button type="submit" className={BUTTON_SECONDARY}>
+                      {m.completedAt ? "Not done after all" : "Mark done"}
+                    </button>
+                  </form>
                   <form action={updateMilestoneAction} className="mt-2 flex flex-col gap-2">
                     <input type="hidden" name="taskId" value={taskRow.id} />
                     <input type="hidden" name="milestoneId" value={m.id} />
@@ -1556,15 +1581,19 @@ export default async function TaskDetailPage({
             Claims it for them right away — they get a yes/no/not-now window to confirm or
             release it, no action required if it&rsquo;s a genuine fit.
           </p>
-          {/* A proposer named someone for this task (activation copies
-              task_proposal.suggested_member_id across) — the coordinator
-              asked, and this is the door that acts on it. */}
-          {taskRow.suggestedMemberId && taskRow.status === "unclaimed" && (
+          {/* People suggested for this task, and why (src/lib/tasks/suggestions.ts): a proposer's
+              pick, a newcomer's inviter and the people who met them. The coordinator is the one
+              deciding whom to ask, and this is the door that acts on it. */}
+          {suggestedForTask.length > 0 && taskRow.status === "unclaimed" && (
             <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
-              Suggested for{" "}
-              <span className="font-medium">
-                {memberNameById.get(taskRow.suggestedMemberId) ?? "a member"}
-              </span>
+              Suggested:{" "}
+              {suggestedForTask.map((p, i) => (
+                <span key={p.memberId}>
+                  {i > 0 && "; "}
+                  <span className="font-medium">{p.name}</span>{" "}
+                  <span className="text-[var(--text-muted)]">({joinReasons(p.reasons, SUGGESTION_REASON_LABEL)})</span>
+                </span>
+              ))}
               .
             </p>
           )}
@@ -1576,7 +1605,7 @@ export default async function TaskDetailPage({
               </option>
               {askCandidates.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name}
+                  {m.label}
                 </option>
               ))}
             </select>
@@ -1744,6 +1773,74 @@ export default async function TaskDetailPage({
               </Tag>
             )}
           </p>
+        </section>
+      )}
+
+      {accompaniedView && (
+        <section className="mt-8">
+          <SectionHeading>What {accompaniedView.name} has chosen to share</SectionHeading>
+          <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+            You always see how they&rsquo;re getting on with what they&rsquo;ve taken on (above). Anything more is theirs to
+            choose, only for you, and starts again from nothing if someone else takes over.
+          </p>
+          <dl className="mt-3 flex flex-col gap-3">
+            <div>
+              <dt className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Working style</dt>
+              <dd className="text-[length:var(--text-body)] text-[var(--text)]">
+                {accompaniedView.axes === null ? (
+                  <span className="text-[var(--text-muted)]">Not shared.</span>
+                ) : accompaniedView.axes.length === 0 ? (
+                  <span className="text-[var(--text-muted)]">Shared, but they haven&rsquo;t placed themselves on any scale yet.</span>
+                ) : (
+                  <ul className="mt-1 flex flex-col gap-0.5">
+                    {accompaniedView.axes.map((a) => (
+                      <li key={a.axis}>
+                        {a.axis}: <span className="text-[var(--text-muted)]">{a.position}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Contribution overview</dt>
+              <dd className="text-[length:var(--text-body)] text-[var(--text)]">
+                {accompaniedView.contribution === null ? (
+                  <span className="text-[var(--text-muted)]">Not shared.</span>
+                ) : accompaniedView.contribution.length === 0 ? (
+                  <span className="text-[var(--text-muted)]">Shared, and there is nothing yet.</span>
+                ) : (
+                  <ul className="mt-1 flex flex-col gap-0.5">
+                    {accompaniedView.contribution.map((c) => (
+                      <li key={c.category}>
+                        {c.category}: <span className="text-[var(--text-muted)]">{c.done} done, {c.inHand} in hand
+                        {c.ahead > 0 && `, ${c.ahead} ahead`}
+                        {c.shifts > 0 && `, ${c.shifts} shift${c.shifts === 1 ? "" : "s"} completed`}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </dd>
+            </div>
+            {accompaniedView.answers !== null && (
+              <div>
+                <dt className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Answers shared with you</dt>
+                <dd className="text-[length:var(--text-body)] text-[var(--text)]">
+                  {accompaniedView.answers.length === 0 ? (
+                    <span className="text-[var(--text-muted)]">Shared, and there is nothing they have said yes to yet.</span>
+                  ) : (
+                    <ul className="mt-1 flex flex-col gap-0.5">
+                      {accompaniedView.answers.map((a) => (
+                        <li key={a.question}>
+                          {a.question}: <span className="text-[var(--text-muted)]">{a.value}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </dd>
+              </div>
+            )}
+          </dl>
         </section>
       )}
 

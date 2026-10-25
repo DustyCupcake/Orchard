@@ -325,6 +325,25 @@ export async function confirmTaskMilestone(actor: Member, milestoneId: string) {
   return { ...updated, ...(await resolveMilestone(taskRow, updated)) };
 }
 
+/**
+ * Mark a milestone done, or put it back. Only a current holder of the task does either, the
+ * same people who may edit it. A milestone has no done state of its own meaning anywhere else,
+ * so this changes nothing about attention levels or deadlines: it is for the person doing the
+ * thing to say so, and for a check-in to stop being "due".
+ */
+export async function setTaskMilestoneDone(actor: Member, milestoneId: string, done: boolean) {
+  const [existing] = await db.select().from(taskMilestone).where(eq(taskMilestone.id, milestoneId));
+  if (!existing) throw new NotFoundError("Milestone not found");
+  const taskRow = await getTask(actor, existing.taskId);
+  if (!currentlyHolds(taskRow, actor.id)) throw new ForbiddenError("Only a current holder of this task can mark a milestone done");
+  const [updated] = await db
+    .update(taskMilestone)
+    .set(done ? { completedAt: new Date(), completedBy: actor.id } : { completedAt: null, completedBy: null })
+    .where(eq(taskMilestone.id, milestoneId))
+    .returning();
+  return { ...updated, ...(await resolveMilestone(taskRow, updated)) };
+}
+
 export async function getTaskDeadline(
   taskRow: { cycleId: string | null; phaseId: string | null },
   deadlineMilestone: MilestoneRow | null,

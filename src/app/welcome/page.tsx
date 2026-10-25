@@ -3,6 +3,7 @@ import { getCurrentMember } from "@/lib/session";
 import { listOwnContactMethods, isEmailContactMethod, CONTACT_METHOD_VISIBILITIES } from "@/lib/contact-methods";
 import { listOwnMemberLanguages, MEMBER_LANGUAGE_LEVELS } from "@/lib/member-languages";
 import { getCommunityRow } from "@/lib/recruitment";
+import { getMyAccompaniment } from "@/lib/accompaniment";
 import SelectField from "@/components/ui/SelectField";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT, LABEL } from "@/components/ui/kit";
 import { completeProfileSetupAction, skipProfileSetupAction } from "./actions";
@@ -49,9 +50,10 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
   const { error } = await searchParams;
   const community = await getCommunityRow(current.communityId);
 
-  const [contactMethods, languages] = await Promise.all([
+  const [contactMethods, languages, accompaniment] = await Promise.all([
     listOwnContactMethods(current),
     listOwnMemberLanguages(current),
+    getMyAccompaniment(current.id),
   ]);
 
   const emailMethods = contactMethods.filter(isEmailContactMethod);
@@ -70,6 +72,17 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
         A few things the rest of {community.name} assumes are true about you. Nothing here is required
         except a name, and you can change all of it later in your profile.
       </p>
+
+      {accompaniment && !accompaniment.endedAt && (
+        <div className="mt-4">
+          <Banner tone="success">
+            {accompaniment.accompanier
+              ? `${accompaniment.accompanier.name} will accompany you: someone you can ask questions of and check in with while you find your feet.`
+              : `Someone from ${community.name} will be named to accompany you: a person you can ask questions of and check in with while you find your feet.`}{" "}
+            You&rsquo;ll see who on your dashboard, and you can ask for someone else there if it isn&rsquo;t a good fit.
+          </Banner>
+        </div>
+      )}
 
       {error && (
         <div className="mt-4">

@@ -525,6 +525,65 @@ export async function updateRecruitmentCheckWindowAction(formData: FormData) {
   revalidatePath("/recruitment/mediation");
 }
 
+// Recruitment → Accompaniment (docs/plans/accompaniment-plan.md §3.3): whether a new member
+// gets someone to accompany them, who may, and how long it lasts. Changing it never touches an
+// accompaniment already running — each one's end was fixed when it began.
+export async function updateAccompanimentSettingsAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    await updateCommunity(
+      actor,
+      updateCommunityInput.parse(
+        defined({
+          accompanimentEnabled: checkboxOf(formData, "accompanimentEnabled"),
+          accompanimentTierId: optionalText(formData, "accompanimentTierId"),
+          accompanimentEndsAfterDays: number(formData, "accompanimentEndsAfterDays"),
+        }),
+      ),
+    );
+  } catch (err) {
+    redirectWithError(err, "recruitment");
+  }
+  revalidatePath("/settings");
+}
+
+// Recruitment → the interview (docs/plans/accompaniment-plan.md §6): whether an applicant who was invited
+// is offered their inviter's company at the interview. The applicant is the one who chooses; this only says
+// whether the offer exists.
+export async function updateInterviewSettingsAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    await updateCommunity(actor, updateCommunityInput.parse(defined({ interviewOfferInviter: checkboxOf(formData, "interviewOfferInviter") })));
+  } catch (err) {
+    redirectWithError(err, "recruitment");
+  }
+  revalidatePath("/settings");
+}
+
+// Recruitment → Accompaniment → check-ins (docs/plans/accompaniment-plan.md §5): the short list of
+// moments an accompaniment starts with. Its own card and its own Save, so a mistyped row can't
+// revert the settings beside it. Zero-JS like the rest of this tab: the rows are plain fields, a row
+// whose name is cleared is removed, and there are always two blank ones to add to. Changing the list
+// never touches an accompaniment already running — each one's check-ins were made when it began.
+export async function updateAccompanimentCheckInsAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    const labels = formData.getAll("checkInLabel").map((v) => String(v).trim());
+    const days = formData.getAll("checkInDays").map((v) => String(v).trim());
+    const anchors = formData.getAll("checkInAnchor").map((v) => String(v));
+    const rows = labels
+      .map((label, i) => ({ label, anchor: anchors[i], days: days[i] === "" || days[i] === undefined ? Number.NaN : Number(days[i]) }))
+      .filter((r) => r.label !== "");
+    await updateCommunity(actor, updateCommunityInput.parse({ accompanimentCheckIns: rows }));
+  } catch (err) {
+    redirectWithError(err, "recruitment");
+  }
+  revalidatePath("/settings");
+}
+
 // Recruitment → the admission lanes (docs/plans/admission-flow.md §2a, §3). The one
 // card on this tab that is genuinely a form about a *design*, and the one that
 // most needed to stop sharing a Save button with everything else. The whole
@@ -1004,6 +1063,7 @@ function readAudienceFields(formData: FormData) {
   const taskId = String(formData.get("unlockedByTaskId") ?? "").trim();
   const moduleKey = String(formData.get("unlockedByGrantModuleKey") ?? "").trim();
   return {
+    unlockedByAccompaniment: formData.get("unlockedByAccompaniment") === "on" ? true : undefined,
     unlockedByTierId: tierId || undefined,
     unlockedByTaskId: taskId || undefined,
     unlockedByGrantModuleKey: (moduleKey || undefined) as CreateSensitiveFieldAccessRuleInput["unlockedByGrantModuleKey"],
@@ -1183,6 +1243,7 @@ export async function createSensitiveFieldAccessRuleAction(formData: FormData) {
       unlockedByTaskId: String(formData.get("unlockedByTaskId") ?? "").trim() || null,
       unlockedByTierId: String(formData.get("unlockedByTierId") ?? "").trim() || null,
       unlockedByGrantModuleKey: String(formData.get("unlockedByGrantModuleKey") ?? "").trim() || null,
+      unlockedByAccompaniment: formData.get("unlockedByAccompaniment") === "on" ? true : null,
     });
     await createSensitiveFieldAccessRule(actor, input);
   } catch (err) {
