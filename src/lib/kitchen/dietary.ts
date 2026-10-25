@@ -1,6 +1,6 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { dish, member, profileAnswer, profileQuestion } from "@/db/schema";
+import { dish, member, profileAnswer, profileQuestion, type KitchenSignal } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import {
   listReadableSensitiveQuestionIds,
@@ -9,112 +9,129 @@ import {
 } from "../sensitive-data";
 import { requireKitchenOwner } from "./access";
 import { getMenuPlan } from "./menu";
+import { attendanceForMeal, loadAttendanceContext } from "./attendance";
 import { getMeal } from "./meals";
+import {
+  flagForAllergyOption,
+  flagForIntoleranceOption,
+  type ConcreteAllergenFlag,
+} from "./allergens";
+
+// The vocabularies live in ./allergens (db-free, so the starter question set
+// can use them from a client bundle). Re-exported so every existing import
+// of `@/lib/kitchen/dietary` keeps working.
+export * from "./allergens";
 
 type Member = typeof memberTable.$inferSelect;
 
-// The schema's bounded flag vocabulary (docs/plans/archive/food-drinks-module-plan.md
-// D4) — a text[] column with application-layer validation, deliberately
-// NOT a DB enum so future flags are a one-line change here rather than
-// a migration.
-export const ALLERGEN_FLAGS = [
-  "milk",
-  "eggs",
-  "fish",
-  "shellfish",
-  "tree_nuts",
-  "peanuts",
-  "soy",
-  "wheat_gluten",
-  "sesame",
-  "none_known",
-] as const;
-export type AllergenFlag = (typeof ALLERGEN_FLAGS)[number];
+// The Kitchen's dietary surface — docs/plans/archive/kitchen-redesign-plan.md D1–D4.
+//
+// The rule that shapes everything below: **a ticked option is compared for
+// equality; free text is shown, never interpreted.** The previous version
+// keyword-matched every readable sensitive answer against a dish's flags,
+// which meant a write-in of "no fish sauce please" matched the fish flag,
+// a write-in of "celery" matched nothing, and a multi-choice answer was
+// skipped altogether (it only read strings). Now an admin points a question
+// at a signal (`profile_question.kitchen_signal`) and the answers are read
+// by their shape.
+//
+// Access is unchanged and still the only access: the audience rules, the
+// member's share switch and each answer's consent all decide what a holder
+// may read, through the same resolver `/members/data` uses. Tagging a
+// question grants nothing; it only says which answers to interpret.
 
-export const ALLERGEN_FLAG_LABELS: Record<AllergenFlag, string> = {
-  milk: "Milk",
-  eggs: "Eggs",
-  fish: "Fish",
-  shellfish: "Shellfish",
-  tree_nuts: "Tree nuts",
-  peanuts: "Peanuts",
-  soy: "Soy",
-  wheat_gluten: "Wheat / gluten",
-  sesame: "Sesame",
-  none_known: "None known",
+export type SignalMember = {
+  memberId: string;
+  name: string;
+  /** Every option they ticked, in their words, each with the dish flag it
+   *  stands for (null when a dish can't declare it — "Fructose"). What the
+   *  cook is shown: an intolerance of "Lactose" reads as Lactose, not as the
+   *  Milk flag it is checked against. */
+  ticks: { label: string; flag: ConcreteAllergenFlag | null }[];
+  /** The flags those ticks stand for — the only part that can be checked
+   *  against a menu. */
+  flags: ConcreteAllergenFlag[];
+  /** Ticked options with no dish flag ("Fructose"). Shown to the cook,
+   *  matched against nothing. */
+  listed: string[];
+  /** "Other" write-ins and, for a legacy written-answer question, the
+   *  whole answer. Verbatim. */
+  writeIns: string[];
 };
 
-// What a dish flag is checked against in a member's free-text answer —
-// plain case-insensitive containment ("may conflict, verify"), the D4-D3
-// posture: the flag set is bounded, the member text is free.
-const FLAG_KEYWORDS: Record<Exclude<AllergenFlag, "none_known">, string[]> = {
-  milk: ["milk", "dairy", "lactose", "casein"],
-  eggs: ["egg", "eggs"],
-  fish: ["fish"],
-  shellfish: ["shellfish", "shrimp", "prawn", "crab", "lobster", "mollusc", "mollusk", "squid", "oyster"],
-  tree_nuts: ["tree nut", "almond", "cashew", "walnut", "pecan", "hazelnut", "pistachio", "macadamia"],
-  peanuts: ["peanut", "groundnut"],
-  soy: ["soy", "soya", "tofu", "edamame"],
-  wheat_gluten: ["wheat", "gluten", "barley", "rye", "spelt", "couscous"],
-  sesame: ["sesame", "tahini"],
+export type SignalSummary = {
+  signal: KitchenSignal;
+  /** The question wired to this signal, or null when none is. */
+  question: { id: string; label: string; responseType: string } | null;
+  /** Whether this holder is in the question's audience. A wired question the
+   *  holder can't read is a different message from an unwired one: the first
+   *  is for the Admin to fix, the second is for the holder to ask about. */
+  readable: boolean;
+  population: number;
+  /** Answered, and readable by this holder. An answer of "nothing" is still
+   *  an answer, so this can exceed `members.length`. */
+  answered: number;
+  /** Answered, but not readable by this holder — the member un-ticked
+   *  sharing, or hasn't agreed to this audience. Reported rather than
+   *  hidden, because "0 disclosed" and "3 withheld" are not the same. */
+  withheld: number;
+  declined: number;
+  deferred: number;
+  notAnswered: number;
+  /** allergy and intolerance only. */
+  members: SignalMember[];
+  /** dislike only: a count per option, never a name. */
+  tally: { option: string; count: number }[];
+  /** Write-ins. Named for allergy/intolerance, where a cook must be able to
+   *  ask; nameless for dislikes, which are only ever a count. */
+  writeIns: { name: string | null; text: string }[];
 };
 
-function matchesFlag(text: string, flag: Exclude<AllergenFlag, "none_known">): boolean {
-  const haystack = text.toLowerCase();
-  return FLAG_KEYWORDS[flag].some((kw) => haystack.includes(kw));
+export type DietaryOverview = {
+  signals: Record<KitchenSignal, SignalSummary>;
+  /** How many of the three signals have a question wired to them. */
+  wired: number;
+};
+
+const SIGNALS: KitchenSignal[] = ["allergy", "intolerance", "dislike"];
+
+function emptySummary(signal: KitchenSignal, population: number): SignalSummary {
+  return {
+    signal,
+    question: null,
+    readable: false,
+    population,
+    answered: 0,
+    withheld: 0,
+    declined: 0,
+    deferred: 0,
+    notAnswered: population,
+    members: [],
+    tally: [],
+    writeIns: [],
+  };
 }
 
-export type MealConstraintPanel = {
-  mealId: string;
-  // Members who have actually disclosed something readable to this
-  // holder, so a "0 eaters flagged" can be told apart from "nobody has
-  // disclosed anything you may read."
-  disclosedEaters: number;
-  totalFlags: number;
-  dishes: {
-    dishId: string;
-    dishName: string;
-    flags: AllergenFlag[];
-    conflicts: { memberId: string; name: string; matchedFlags: AllergenFlag[] }[];
-  }[];
-};
+function stringsOf(value: unknown): string[] {
+  const list = Array.isArray(value) ? value : [value];
+  return list
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim())
+    .filter((v) => v !== "");
+}
 
-// The Kitchen's dietary-constraint surface — D3/D4.
-//
-// This used to read `member.allergies`, one of the four fixed sensitive
-// columns, behind two gates: a SensitiveFieldAccessRule linking
-// `allergies` to the `kitchen` grant, and a live per-read consent
-// re-check. Those columns are gone, so it reads sensitive *questions*
-// instead, through the same two gates — and deliberately without asking
-// which question is "the allergies one".
-//
-// That last part matters. There is no stable identifier on a question to
-// mean "the allergies question": the starter set's `key` is a form-field
-// name and is not stored, so a lookup by it would be a guess. Instead
-// the panel takes *every* sensitive answer this holder's audience covers
-// and keyword-matches them. A community that restricted "Allergies" to the
-// kitchen gets it checked; so does one that restricted "Dietary needs",
-// or "Anything that would affect what you can take on" — which is
-// strictly better than before, where a member who recorded a nut allergy
-// in the answer form was invisible to the kitchen and one who used the
-// text box was not. Non-sensitive questions are excluded on purpose:
-// they are readable by everyone, so matching against them would turn
-// "languages you speak: soy?" into a food-safety conflict.
-export async function getMealConstraintPanel(actor: Member, mealId: string): Promise<MealConstraintPanel | null> {
-  const mealRow = await getMeal(actor, mealId);
-  const plan = await getMenuPlan(actor, mealRow.menuPlanId);
-  await requireKitchenOwner(actor, plan.cycleId);
-
-  // Which sensitive questions this holder is in the audience for. Empty
-  // means the panel simply doesn't render and the caller falls back to
-  // plain dish flag notes.
-  const unlockedQuestionIds = await listReadableSensitiveQuestionIds(actor);
-  if (unlockedQuestionIds.size === 0) return null;
-
-  // The full readability resolution, which applies the audience, each
-  // member's share switch and each consent gate. Fetched once for the
-  // community rather than per member.
-  const readable = await resolveReadableAnswersForCommunity(actor);
+/**
+ * Everything the kitchen has been told, for one holder, in one read.
+ *
+ * Always returns something to render — never null — because a dietary view
+ * that goes silent when there is nothing to show is how a cook mistakes
+ * "nobody has an allergy" for "nobody has told us". Each signal says which of
+ * those it is: not wired, wired but not readable by you, or readable with
+ * counts for who answered, declined, deferred, withheld and hasn't been
+ * asked.
+ */
+export async function getDietaryOverview(actor: Member, cycleId?: string | null): Promise<DietaryOverview> {
+  await requireKitchenOwner(actor, cycleId);
 
   const members = await db
     .select({ id: member.id, name: member.name })
@@ -122,71 +139,213 @@ export async function getMealConstraintPanel(actor: Member, mealId: string): Pro
     .where(eq(member.communityId, actor.communityId));
   const nameById = new Map(members.map((m) => [m.id, m.name]));
 
-  const answers = await db
-    .select({
-      memberId: profileAnswer.memberId,
-      questionId: profileAnswer.questionId,
-      value: profileAnswer.value,
-      // A deferred or declined row stores a null value, so the value check
-      // below would skip it anyway — but a status of "answered" is the
-      // explicit statement of intent, and costs one projected column.
-      status: profileAnswer.status,
-    })
-    .from(profileAnswer)
-    .innerJoin(profileQuestion, eq(profileAnswer.questionId, profileQuestion.id))
+  const signals = Object.fromEntries(SIGNALS.map((s) => [s, emptySummary(s, members.length)])) as Record<
+    KitchenSignal,
+    SignalSummary
+  >;
+
+  const tagged = await db
+    .select()
+    .from(profileQuestion)
     .where(
       and(
         eq(profileQuestion.communityId, actor.communityId),
+        isNotNull(profileQuestion.kitchenSignal),
         isNull(profileQuestion.archivedAt),
+      ),
+    );
+  if (tagged.length === 0) return { signals, wired: 0 };
+
+  // Which wired questions this holder is in the audience for. A public
+  // question is everyone's; a sensitive one is the audience's.
+  const sensitiveReadable = await listReadableSensitiveQuestionIds(actor);
+  const readable = await resolveReadableAnswersForCommunity(actor);
+
+  const rows = await db
+    .select({
+      memberId: profileAnswer.memberId,
+      questionId: profileAnswer.questionId,
+      status: profileAnswer.status,
+      value: profileAnswer.value,
+    })
+    .from(profileAnswer)
+    .where(
+      and(
+        inArray(profileAnswer.questionId, tagged.map((q) => q.id)),
         isNull(profileAnswer.cycleId),
-        inArray(profileAnswer.questionId, [...unlockedQuestionIds]),
       ),
     );
 
-  // memberId → the text this holder may read for them. A member with two
-  // disclosed answers gets both, joined, because either could be the one
-  // naming the allergen.
-  const disclosed = new Map<string, string>();
-  for (const answer of answers) {
-    if (answer.status !== "answered") continue;
-    if (typeof answer.value !== "string" || answer.value.trim() === "") continue;
-    if (!questionsReadableBy(readable, answer.memberId).has(answer.questionId)) continue;
-    disclosed.set(answer.memberId, `${disclosed.get(answer.memberId) ?? ""} ${answer.value}`.trim());
+  for (const question of tagged) {
+    const signal = question.kitchenSignal!;
+    const summary = signals[signal];
+    summary.question = { id: question.id, label: question.label, responseType: question.responseType };
+    summary.readable = !question.sensitive || sensitiveReadable.has(question.id);
+    // Nothing further is computed for a question the holder can't read:
+    // even a count of who declined is information from outside their
+    // audience, and the holder needs only to know it isn't theirs.
+    if (!summary.readable) continue;
+
+    const own = rows.filter((r) => r.questionId === question.id && nameById.has(r.memberId));
+    summary.declined = own.filter((r) => r.status === "declined").length;
+    summary.deferred = own.filter((r) => r.status === "deferred").length;
+
+    const tally = new Map<string, number>(question.options.map((o) => [o, 0]));
+    for (const row of own) {
+      if (row.status !== "answered") continue;
+      if (!questionsReadableBy(readable, row.memberId).has(question.id)) {
+        summary.withheld++;
+        continue;
+      }
+      summary.answered++;
+
+      const name = nameById.get(row.memberId) ?? "—";
+      const entry: SignalMember = { memberId: row.memberId, name, ticks: [], flags: [], listed: [], writeIns: [] };
+
+      if (question.responseType === "text") {
+        // A legacy written answer. Shown whole, matched against nothing.
+        entry.writeIns = stringsOf(row.value);
+      } else {
+        for (const v of stringsOf(row.value)) {
+          const isOption = question.options.includes(v);
+          if (!isOption) {
+            entry.writeIns.push(v);
+            continue;
+          }
+          if (signal === "dislike") {
+            tally.set(v, (tally.get(v) ?? 0) + 1);
+            continue;
+          }
+          const flag = signal === "allergy" ? flagForAllergyOption(v) : flagForIntoleranceOption(v);
+          entry.ticks.push({ label: v, flag });
+          if (flag) {
+            if (!entry.flags.includes(flag)) entry.flags.push(flag);
+          } else {
+            entry.listed.push(v);
+          }
+        }
+      }
+
+      if (signal === "dislike") {
+        // Counts only, so write-ins lose their names too.
+        for (const text of entry.writeIns) summary.writeIns.push({ name: null, text });
+      } else {
+        for (const text of entry.writeIns) summary.writeIns.push({ name, text });
+        if (entry.flags.length + entry.listed.length + entry.writeIns.length > 0) {
+          summary.members.push(entry);
+        }
+      }
+    }
+
+    summary.members.sort((a, b) => a.name.localeCompare(b.name));
+    summary.writeIns.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "") || a.text.localeCompare(b.text));
+    summary.tally = [...tally.entries()]
+      .map(([option, count]) => ({ option, count }))
+      .filter((t) => t.count > 0)
+      .sort((a, b) => b.count - a.count || a.option.localeCompare(b.option));
+    summary.notAnswered =
+      summary.population - (summary.answered + summary.withheld + summary.declined + summary.deferred);
   }
 
-  const flaggedDishes = (
-    await db.select().from(dish).where(eq(dish.mealId, mealId))
-  )
-    .map((d) => ({
-      dishId: d.id,
-      dishName: d.name,
-      flags: (d.allergenFlags as AllergenFlag[]).filter((f) => f !== "none_known"),
-    }))
-    .filter((d) => d.flags.length > 0);
+  return { signals, wired: tagged.length };
+}
 
-  const disclosedEntries = [...disclosed.entries()]
-    .map(([memberId, text]) => ({ memberId, name: nameById.get(memberId) ?? "—", text }))
-    .filter((e) => nameById.has(e.memberId));
+export type DishConflict = {
+  memberId: string;
+  name: string;
+  matchedFlags: ConcreteAllergenFlag[];
+  /** What the member ticked that matched, in their words. */
+  matchedLabels: string[];
+};
 
-  const dishes = flaggedDishes
-    .map((d) => ({
-      ...d,
-      conflicts: disclosedEntries
-        .filter((e) =>
-          d.flags.some((f) => matchesFlag(e.text, f as Exclude<AllergenFlag, "none_known">)),
-        )
-        .map((e) => ({
-          memberId: e.memberId,
-          name: e.name,
-          matchedFlags: d.flags.filter((f) => matchesFlag(e.text, f as Exclude<AllergenFlag, "none_known">)),
-        })),
-    }))
-    .filter((d) => d.conflicts.length > 0);
+export type MealConstraintPanel = {
+  mealId: string;
+  /** Dishes whose declared flags equal something a member ticked. Only
+   *  dishes with at least one conflict appear. */
+  dishes: {
+    dishId: string;
+    dishName: string;
+    flags: ConcreteAllergenFlag[];
+    allergy: DishConflict[];
+    intolerance: DishConflict[];
+  }[];
+  /** Who the check covered. Null when the menu has no event to take
+   *  arrivals from, in which case every member who shared an answer is
+   *  considered, as before. */
+  coverage: { considered: number; of: number } | null;
+  /** Dishes that declare nothing — not "safe", just unchecked. A dish marked
+   *  `none_known` is a statement; an empty list is an absence, and the cook
+   *  should be able to tell the two apart. */
+  unflaggedDishes: { dishId: string; dishName: string }[];
+};
 
-  return {
+function concreteFlags(flags: string[]): ConcreteAllergenFlag[] {
+  return flags.filter((f): f is ConcreteAllergenFlag => f !== "none_known") as ConcreteAllergenFlag[];
+}
+
+/**
+ * Compare a meal's dishes against the overview. Pure, so the page can read
+ * the overview once and test every meal against it rather than re-reading
+ * the community's answers per meal.
+ *
+ * Exact set intersection between a dish's declared flags and a member's
+ * ticked flags, nothing more. A dish nobody conflicts with is absent from
+ * the result, which is the point of the separate `unflaggedDishes` list: the
+ * absence of a conflict only means something for a dish that declared its
+ * contents.
+ */
+export function compareMealToOverview(
+  overview: DietaryOverview,
+  mealId: string,
+  dishes: { id: string; name: string; allergenFlags: string[] }[],
+  // Who could be at this meal (attendance.ts's `possibleMemberIds`), or null
+  // to consider everyone. Only ever narrows: it removes people who said they
+  // aren't coming or whose dates rule them out, and keeps everyone else —
+  // including people who haven't said, and maybes — because a missed allergy
+  // costs more than an extra name.
+  possible: ReadonlySet<string> | null = null,
+): MealConstraintPanel {
+  const considered = (members: SignalMember[]) =>
+    possible ? members.filter((m) => possible.has(m.memberId)) : members;
+  const conflictsFor = (signal: "allergy" | "intolerance", flags: ConcreteAllergenFlag[]): DishConflict[] =>
+    considered(overview.signals[signal].members)
+      .map((m) => ({
+        memberId: m.memberId,
+        name: m.name,
+        matchedFlags: flags.filter((f) => m.flags.includes(f)),
+        matchedLabels: m.ticks.filter((t) => t.flag !== null && flags.includes(t.flag)).map((t) => t.label),
+      }))
+      .filter((c) => c.matchedFlags.length > 0);
+
+  const panel: MealConstraintPanel = {
     mealId,
-    disclosedEaters: disclosedEntries.length,
-    totalFlags: flaggedDishes.reduce((sum, d) => sum + d.flags.length, 0),
-    dishes,
+    dishes: [],
+    unflaggedDishes: [],
+    coverage: possible ? { considered: possible.size, of: overview.signals.allergy.population } : null,
   };
+  for (const d of dishes) {
+    if (d.allergenFlags.length === 0) {
+      panel.unflaggedDishes.push({ dishId: d.id, dishName: d.name });
+      continue;
+    }
+    const flags = concreteFlags(d.allergenFlags);
+    if (flags.length === 0) continue; // explicitly "none known"
+    const allergy = conflictsFor("allergy", flags);
+    const intolerance = conflictsFor("intolerance", flags);
+    if (allergy.length + intolerance.length > 0) {
+      panel.dishes.push({ dishId: d.id, dishName: d.name, flags, allergy, intolerance });
+    }
+  }
+  return panel;
+}
+
+/** One meal's panel, for a caller that has no overview yet. */
+export async function getMealConstraintPanel(actor: Member, mealId: string): Promise<MealConstraintPanel> {
+  const mealRow = await getMeal(actor, mealId);
+  const plan = await getMenuPlan(actor, mealRow.menuPlanId);
+  const overview = await getDietaryOverview(actor, plan.cycleId);
+  const dishes = await db.select().from(dish).where(eq(dish.mealId, mealId));
+  const ctx = await loadAttendanceContext(actor, plan);
+  const possible = ctx ? new Set(attendanceForMeal(mealRow, ctx).possibleMemberIds) : null;
+  return compareMealToOverview(overview, mealId, dishes, possible);
 }

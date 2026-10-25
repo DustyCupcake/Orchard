@@ -34,6 +34,7 @@ their answer on their profile and out of a chart. A restricted question is refus
 | 1 | **Your pronouns** **[exists as the motivating case]** | multi_choice + other | she/her, he/him, they/them, he/they, she/they | yes | The case the whole feature exists for. Countable, declinable, and the reason the escape hatch exists. |
 | 2 | **Languages you speak** | multi_choice + other | (community-editable) | yes | Genuinely both — who someone *is* and what an interpreter needs. Public: the fact is about the person, and the audience that needs it (interpreters, coordinators) is a job rather than a kind of question. |
 | 3 | **How long you've been part of this** | single_choice | less than a year, 1–3 years, more than 3 years | yes | Tenure shapes who a community's decisions are landing on. Low sensitivity. |
+| 3a | **Foods you'd rather avoid** | multi_choice + other | spicy food, cilantro / coriander, mushrooms, olives, onions, strong cheese, raw tomato, offal | yes | Menu input, not a safety check — the kitchen sees a count, never a name. Public and declinable: "I don't like cilantro" is not sensitive. **[shipped — feeds the dislike signal]** |
 | 4 | **Age range** | single_choice | under 18, 18–24, 25–34, 35–44, 45–64, 65+ | yes | Usually asked as a band, never a date of birth. **Overlaps eligibility** — see the eligibility note below. |
 
 **Not included, and why** — say the word if you disagree with either:
@@ -80,7 +81,8 @@ audience asks their agreement and notifies them)*
 
 | # | Question | Shape | Options | Declinable | Why |
 |---|---|---|---|---|---|
-| 15 | **Allergies** | text (long) | — | yes | Kitchen coordinators genuinely need it; nobody else does. **[shipped — audience `kitchen`]** |
+| 15 | **Allergies (could be serious)** | multi_choice + other | the EU's fourteen regulated allergens | yes | Kitchen coordinators genuinely need it; nobody else does. Ticks rather than prose, so the kitchen can check it against a menu without guessing; "other" is shown to the cook as written and never interpreted. **[shipped — audience `kitchen`; feeds the Kitchen's allergy signal]** |
+| 15a | **Intolerances (unwell, not dangerous)** | multi_choice + other | lactose, gluten, fructose, histamine, FODMAPs, caffeine, alcohol | yes | Asked apart from allergies because a cook does something different with it: offer an alternative rather than guarantee safety. Health information, so restricted to the kitchen like allergies. **[shipped — audience `kitchen`; feeds the intolerance signal]** |
 | 16 | **Health conditions** | text (long) | — | yes | Same audience, higher consequence. **[not shipped — no obvious default audience, and a wrong one is a disclosure]** |
 | 17 | **Emergency contact** | text (long) | — | no | Can't be usefully refused during an event, and the emergency path reads it. Requiring a decline here would be theatre. **[shipped — restricted, with the audience chosen at review; skipped by the unattended path]** |
 | 18 | **Home city or town** | text | — | yes | Drives travel and cost planning. A town rather than a full address, so it narrows a plan without being the start of finding someone. **[shipped — audience `event_scheduling_owner`]** |

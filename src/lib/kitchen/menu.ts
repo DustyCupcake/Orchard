@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { community, cycle, dish, dishIngredient, meal, menuPlan } from "@/db/schema";
+import { community, cycle, dish, dishIngredient, meal, MEAL_SLOTS, menuPlan, type MealSlot } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
@@ -113,6 +113,39 @@ export async function createMenuPlan(actor: Member, input: CreateMenuPlanInput) 
     })
     .returning();
   return created;
+}
+
+const mealTimeInput = z
+  .string()
+  .nullable()
+  .optional()
+  .refine((v) => v === null || v === undefined || v === "" || /^([01]\d|2[0-3]):[0-5]\d$/.test(v), "Use a time like 18:30");
+export const updateMealTimesInput = z.object({
+  breakfast: mealTimeInput,
+  lunch: mealTimeInput,
+  dinner: mealTimeInput,
+});
+export type UpdateMealTimesInput = z.infer<typeof updateMealTimesInput>;
+
+// The menu's own default breakfast, lunch and dinner times. Only the ones
+// that differ from the built-in defaults are stored — a blank time clears the
+// override — so changing the built-ins later reaches every menu that never
+// chose its own. Part of the draft like everything else under a plan: a
+// published menu is locked.
+export async function updateMenuPlanMealTimes(actor: Member, menuPlanId: string, input: UpdateMealTimesInput) {
+  await requireKitchenModuleOn(actor);
+  await requireEditableMenuPlan(actor, menuPlanId);
+  const kept: Partial<Record<MealSlot, string>> = {};
+  for (const slot of MEAL_SLOTS) {
+    const value = input[slot];
+    if (value) kept[slot] = value;
+  }
+  const [updated] = await db
+    .update(menuPlan)
+    .set({ mealTimes: Object.keys(kept).length > 0 ? kept : null })
+    .where(eq(menuPlan.id, menuPlanId))
+    .returning();
+  return updated;
 }
 
 // The single status transition — D1's "publishing locks further edits."

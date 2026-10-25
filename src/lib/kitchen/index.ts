@@ -1,4 +1,5 @@
 export * from "./access";
+export * from "./attendance";
 export * from "./menu";
 export * from "./meals";
 export * from "./dishes";

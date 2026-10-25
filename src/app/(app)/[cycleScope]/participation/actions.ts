@@ -60,6 +60,11 @@ export async function declareParticipationAction(formData: FormData) {
       status: String(formData.get("status") ?? "unknown"),
       arrivalDate: String(formData.get("arrivalDate") ?? "").trim() || null,
       departureDate: String(formData.get("departureDate") ?? "").trim() || null,
+      // Optional, and a blank field clears what was there, like the dates.
+      arrivalTime: String(formData.get("arrivalTime") ?? "").trim() || null,
+      departureTime: String(formData.get("departureTime") ?? "").trim() || null,
+      firstMeal: String(formData.get("firstMeal") ?? "").trim() || null,
+      lastMeal: String(formData.get("lastMeal") ?? "").trim() || null,
       note: String(formData.get("note") ?? "").trim() || null,
     });
     await declareParticipation(actor, cycleId, input);

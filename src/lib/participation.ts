@@ -4,6 +4,7 @@ import { db } from "@/db";
 import type { DbOrTx } from "@/db";
 import {
   cycle,
+  MEAL_SLOTS,
   member as memberTable,
   participation,
 } from "@/db/schema";
@@ -29,10 +30,26 @@ async function requireCycleInCommunity(actor: Member, cycleId: string) {
   return row;
 }
 
+// A clock time as a form sends it ("18:30"), or as Postgres hands it back
+// ("18:30:00"). Optional everywhere: nobody has to give one.
+const timeOfDay = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Use a time like 18:30")
+  .nullable()
+  .optional();
+
 export const declareParticipationInput = z.object({
   status: z.enum(["unknown", "coming", "maybe", "not_coming"]),
   arrivalDate: z.string().min(1).nullable().optional(),
   departureDate: z.string().min(1).nullable().optional(),
+  // All four are optional and independent. They let the Kitchen tell whether
+  // someone who arrives or leaves part-way through a day is there for a given
+  // meal; without them that day is counted and flagged as uncertain. A first
+  // or last meal beats a time when both are given.
+  arrivalTime: timeOfDay,
+  departureTime: timeOfDay,
+  firstMeal: z.enum(MEAL_SLOTS).nullable().optional(),
+  lastMeal: z.enum(MEAL_SLOTS).nullable().optional(),
   note: z.string().nullable().optional(),
 });
 export type DeclareParticipationInput = z.infer<typeof declareParticipationInput>;
@@ -89,6 +106,10 @@ export async function declareParticipation(actor: Member, cycleId: string, input
     status: input.status,
     ...(input.arrivalDate !== undefined && { arrivalDate: input.arrivalDate }),
     ...(input.departureDate !== undefined && { departureDate: input.departureDate }),
+    ...(input.arrivalTime !== undefined && { arrivalTime: input.arrivalTime && input.arrivalTime.slice(0, 5) }),
+    ...(input.departureTime !== undefined && { departureTime: input.departureTime && input.departureTime.slice(0, 5) }),
+    ...(input.firstMeal !== undefined && { firstMeal: input.firstMeal }),
+    ...(input.lastMeal !== undefined && { lastMeal: input.lastMeal }),
     ...(input.note !== undefined && { note: input.note }),
     updatedAt: new Date(),
   };
@@ -144,6 +165,10 @@ export async function getMyParticipation(actor: Member, cycleId: string) {
       status: "unknown" as const,
       arrivalDate: null,
       departureDate: null,
+      arrivalTime: null,
+      departureTime: null,
+      firstMeal: null,
+      lastMeal: null,
       note: null,
       updatedAt: null,
     }

@@ -1,4 +1,5 @@
-import { boolean, date, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { community } from "./community";
 import { member } from "./member";
 import { cycle } from "./cycle";
@@ -8,6 +9,18 @@ import { cycle } from "./cycle";
 // where the regexes and the labels live. Kept in step with that list
 // rather than duplicating it; validateFieldValue is the only reader.
 export const textValidationEnum = pgEnum("text_validation", ["none", "email", "phone", "url"]);
+
+// Which of the Kitchen's three dietary signals a question feeds — see
+// docs/plans/archive/kitchen-redesign-plan.md's D2/D3. The three are different
+// things to a cook (an allergy must be safe, an intolerance wants an
+// alternative, a dislike is menu input) and are asked as three questions
+// rather than one with a per-item severity the answer shape (an array of
+// option labels) cannot hold. The tag names which answers Kitchen
+// interprets and nothing more: it grants no access, and widens nobody's
+// audience, so setting it needs no consent prompt.
+export const KITCHEN_SIGNALS = ["allergy", "intolerance", "dislike"] as const;
+export type KitchenSignal = (typeof KITCHEN_SIGNALS)[number];
+export const kitchenSignalEnum = pgEnum("kitchen_signal", KITCHEN_SIGNALS);
 
 // The six answer shapes, defined once in src/lib/field-shape.ts and
 // shared with Form.fields — this enum is the persisted half of that
@@ -63,7 +76,9 @@ export const profileQuestionScopeEnum = pgEnum("profile_question_scope", [
 // anything in this codebase actually reads today; the field stays a
 // plain free-text array rather than a closed enum since spec frames it
 // as open-ended ("wherever").
-export const profileQuestion = pgTable("profile_question", {
+export const profileQuestion = pgTable(
+  "profile_question",
+  {
   id: uuid("id").primaryKey().defaultRandom(),
   communityId: uuid("community_id")
     .notNull()
@@ -193,8 +208,24 @@ export const profileQuestion = pgTable("profile_question", {
   // method offers. Meaningless on a question everyone can already read,
   // which is every non-sensitive unrestricted one.
   emergencyAccess: boolean("emergency_access").notNull().default(false),
+  // See KITCHEN_SIGNALS. Null for every question that doesn't feed the
+  // kitchen, which is nearly all of them. At most one live question per
+  // signal per community (the partial index below), so "the allergy
+  // question" is a lookup, not a guess — the thing the original Kitchen
+  // plan deliberately avoided, which was right for keyword matching over
+  // prose and wrong for exact matching over ticked options.
+  kitchenSignal: kitchenSignalEnum("kitchen_signal"),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
-});
+},
+  (t) => [
+    // Archived questions are excluded so that archiving the old one and
+    // adding a replacement — the codebase's standard remedy for a
+    // mis-shaped question — is not blocked by the question it replaces.
+    uniqueIndex("profile_question_kitchen_signal_unique")
+      .on(t.communityId, t.kitchenSignal)
+      .where(sql`${t.kitchenSignal} is not null and ${t.archivedAt} is null`),
+  ],
+);
 
 // Three states, not two, and the third is not a flavour of `deferred`:
 //

@@ -1,10 +1,11 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { cycle, dish, dishIngredient, meal, phase, shiftSeries } from "@/db/schema";
+import { cycle, dish, dishIngredient, meal, MEAL_SLOTS, phase, shiftSeries } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { NotFoundError } from "../errors";
-import { requireEditableMenuPlan, requireKitchenModuleOn, getVisibleMenuPlan } from "./menu";
+import { AppError, NotFoundError } from "../errors";
+import { requireEditableMenuPlan, requireKitchenModuleOn, getVisibleMenuPlan, type MenuPlanRow } from "./menu";
+import { normaliseTime } from "./attendance";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -35,6 +36,19 @@ export const createMealInput = z.object({
   date: dateOnly,
   phaseId: z.string().uuid().nullable().optional(),
   headCount: z.number().int().positive().nullable().optional(),
+  // Optional: which of the day's meals this is, and a clock time overriding
+  // the menu's default for that slot. Both only matter for telling whether
+  // someone arriving or leaving part-way through a day is there (see
+  // attendance.ts); a meal needs neither.
+  slot: z.enum(MEAL_SLOTS).nullable().optional(),
+  time: z
+    .string()
+    .nullable()
+    .optional()
+    .refine((v) => v === null || v === undefined || v === "" || normaliseTime(v) !== null, "Use a time like 18:30"),
+  // Where the number comes from. "participation" needs an event to read.
+  headCountSource: z.enum(["manual", "participation"]).optional(),
+  guests: z.number().int().min(0).max(1000).optional(),
   shiftSeriesId: z.string().uuid().nullable().optional(),
   notes: z.string().nullable().optional(),
 });
@@ -42,6 +56,25 @@ export type CreateMealInput = z.infer<typeof createMealInput>;
 
 export const updateMealInput = createMealInput.omit({ menuPlanId: true }).partial();
 export type UpdateMealInput = z.infer<typeof updateMealInput>;
+
+// A headcount worked out from arrivals reads the event's Participation, so it
+// needs the menu to belong to an event. A standing menu has no event; saying
+// "from arrivals" there would silently produce nothing, so it's refused.
+function requireSourceFits(plan: MenuPlanRow, input: { headCountSource?: string }) {
+  if (input.headCountSource === "participation" && !plan.cycleId) {
+    throw new AppError("This is a standing menu, which has no event to take arrivals from — enter the headcount instead");
+  }
+}
+
+// The zod refinement says this for a form; this is for the caller that never
+// parsed. Blank or null is "no time"; anything else must be a real one.
+function cleanTime(raw: string | null | undefined): string | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null || raw === "") return null;
+  const time = normaliseTime(raw);
+  if (!time) throw new AppError("Use a time like 18:30");
+  return time;
+}
 
 async function requireMealReferences(actor: Member, input: { phaseId?: string | null; shiftSeriesId?: string | null }) {
   if (input.phaseId) {
@@ -67,7 +100,8 @@ async function requireMealReferences(actor: Member, input: { phaseId?: string | 
 
 export async function createMeal(actor: Member, input: CreateMealInput) {
   await requireKitchenModuleOn(actor);
-  await requireEditableMenuPlan(actor, input.menuPlanId);
+  const plan = await requireEditableMenuPlan(actor, input.menuPlanId);
+  requireSourceFits(plan, input);
   await requireMealReferences(actor, input);
 
   const [created] = await db
@@ -78,6 +112,10 @@ export async function createMeal(actor: Member, input: CreateMealInput) {
       date: input.date,
       phaseId: input.phaseId ?? null,
       headCount: input.headCount ?? null,
+      slot: input.slot ?? null,
+      time: cleanTime(input.time) ?? null,
+      headCountSource: input.headCountSource ?? "manual",
+      guests: input.guests ?? 0,
       shiftSeriesId: input.shiftSeriesId ?? null,
       notes: input.notes ?? null,
     })
@@ -88,7 +126,8 @@ export async function createMeal(actor: Member, input: CreateMealInput) {
 export async function updateMeal(actor: Member, mealId: string, input: UpdateMealInput) {
   await requireKitchenModuleOn(actor);
   const row = await getMealInCommunity(actor, mealId);
-  await requireEditableMenuPlan(actor, row.menuPlanId);
+  const plan = await requireEditableMenuPlan(actor, row.menuPlanId);
+  requireSourceFits(plan, input);
   await requireMealReferences(actor, input);
 
   const [updated] = await db
@@ -98,6 +137,10 @@ export async function updateMeal(actor: Member, mealId: string, input: UpdateMea
       ...(input.date !== undefined && { date: input.date }),
       ...(input.phaseId !== undefined && { phaseId: input.phaseId }),
       ...(input.headCount !== undefined && { headCount: input.headCount }),
+      ...(input.slot !== undefined && { slot: input.slot }),
+      ...(input.time !== undefined && { time: cleanTime(input.time) }),
+      ...(input.headCountSource !== undefined && { headCountSource: input.headCountSource }),
+      ...(input.guests !== undefined && { guests: input.guests }),
       ...(input.shiftSeriesId !== undefined && { shiftSeriesId: input.shiftSeriesId }),
       ...(input.notes !== undefined && { notes: input.notes }),
     })

@@ -29,6 +29,31 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-10-25",
+    title: "The kitchen counts meals from who's actually there",
+    summary: "If you say when you arrive and leave, the kitchen can work out how many are eating each meal.",
+    points: [
+      "When you say you're coming, you can add what time you arrive and leave, or just say which meal is your first and last. All of it is optional.",
+      "If you don't, the kitchen counts you for the days you arrive and leave, and marks those meals as a guess.",
+      "The kitchen's headcount can now come from who's coming instead of a typed number, with guests added on top. It shows how it got there, so a cook can see how much is certain.",
+      "People who said they're not coming, or who aren't there yet, aren't checked against a meal's allergens. Someone who hasn't said, or might come, still is.",
+    ],
+    source: "meals can be counted from arrivals and departures, down to the meal if people say, and the dietary check follows who is actually there",
+  },
+  {
+    date: "2026-10-25",
+    title: "The Kitchen takes real recipes, and tells the cook what it's been told",
+    summary: "You can suggest a recipe with its ingredients and what it contains, see what happened to it, and the kitchen's allergy view no longer guesses.",
+    points: [
+      "There's a \"Suggest a recipe\" button at the top of the Kitchen. Add what it feeds, the ingredients (leave the amount blank for salt, to taste) and anything it contains. You can still ask for a dish or share a preference.",
+      "Your suggestions are listed with how the kitchen decided each, and the reason if it said no. Until they decide you can edit one or take it back.",
+      "Allergies, intolerances and foods you'd rather avoid are now three separate questions, and you tick from a list instead of writing a sentence. The cook sees what you ticked, and anything you write under \"Other\" exactly as written.",
+      "Only the people cooking can see allergies and intolerances. Foods you'd rather avoid are only ever a count, never your name.",
+      "The Kitchen page has tabs for the menu and your suggestions. If you're cooking, there are two more: what everyone has told the kitchen, and the shopping list.",
+    ],
+    source: "the Kitchen takes real recipes from members, reads allergy answers by what was ticked rather than guessing at prose, and stops being one long form",
+  },
+  {
     date: "2026-10-14",
     title: "Having the person who invited you at your interview",
     summary: "If someone invited you, you can ask them to be at your interview for company, and they can say yes or no.",

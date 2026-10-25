@@ -45,12 +45,15 @@ import { removeEmptyMember } from "@/lib/sign-in/remove-member";
 import { linkSignInToMember, turnAwaySignIn } from "@/lib/sign-in/unmatched";
 import type { AdmissionLaneRule } from "@/lib/recruitment/lane-rules";
 import { checkboxGroup, checkboxOf, defined, number, optionalNumber, optionalText, text } from "./form-values";
+import { KITCHEN_SIGNALS } from "@/db/schema";
 import {
+  addKitchenStarterQuestion,
   archiveProfileQuestion,
   createProfileQuestion,
   createProfileQuestionInput,
   hasProfileQuestions,
   seedDefaultProfileQuestions,
+  setKitchenSignalQuestion,
   unarchiveProfileQuestion,
   updateProfileQuestion,
   parseStarterSetChoices,
@@ -1202,6 +1205,47 @@ export async function seedDefaultProfileQuestionsAction(formData: FormData) {
   }
 
   revalidatePath("/settings");
+}
+
+// Kitchen questions panel (Settings → Profile & Privacy). Which question
+// feeds each of the kitchen's three dietary signals. Neither action grants
+// anyone access to anything: wiring a question chooses which answers the
+// kitchen interprets, and the kitchen still reads them only through the
+// question's own audience and each member's consent.
+function kitchenSignalFrom(formData: FormData) {
+  const parsed = z.enum(KITCHEN_SIGNALS).safeParse(String(formData.get("signal") ?? ""));
+  if (!parsed.success) throw new AppError("Unknown kitchen signal");
+  return parsed.data;
+}
+
+export async function setKitchenSignalAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    const signal = kitchenSignalFrom(formData);
+    // Clearing is its own explicit request. A blank question on a plain
+    // "use this one" submit is a mistake, not an instruction to unwire.
+    const clear = formData.get("clear") === "1";
+    const questionId = String(formData.get("questionId") ?? "").trim();
+    if (!clear && !questionId) throw new AppError("Choose a question first");
+    await setKitchenSignalQuestion(actor, signal, clear ? null : questionId);
+  } catch (err) {
+    redirectWithError(err, "profile-privacy");
+  }
+  revalidatePath("/settings");
+  revalidatePath("/kitchen");
+}
+
+export async function addKitchenStarterQuestionAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    await addKitchenStarterQuestion(actor, kitchenSignalFrom(formData));
+  } catch (err) {
+    redirectWithError(err, "profile-privacy");
+  }
+  revalidatePath("/settings");
+  revalidatePath("/kitchen");
 }
 
 export async function archiveProfileQuestionAction(formData: FormData) {

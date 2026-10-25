@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { cycle, dish, dishIngredient, foodIdea, member, menuPlan, profileQuestion, taskResource } from "@/db/schema";
+import { cycle, dish, dishIngredient, foodIdea, member, menuPlan, taskResource } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { updateCommunity } from "@/lib/settings";
-import { createConsentPurpose, grantConsent, listConsentPurposes, withdrawConsent } from "@/lib/consent";
-import { createSensitiveFieldAccessRule } from "@/lib/sensitive-data";
-import { answerProfileQuestion } from "@/lib/profile-questions";
+import { createConsentPurpose, grantConsent, withdrawConsent } from "@/lib/consent";
+import { answerProfileQuestion, createProfileQuestion } from "@/lib/profile-questions";
+import { ALLERGY_OPTIONS, DISLIKE_OPTIONS, INTOLERANCE_OPTIONS } from "@/lib/kitchen/allergens";
 import { AppError, ConflictError, ForbiddenError } from "@/lib/errors";
 import {
   adoptFromIdea,
@@ -17,16 +17,22 @@ import {
   declineFoodIdea,
   deleteMeal,
   fileFoodIdea,
+  fileFoodIdeaInput,
+  getDietaryOverview,
   getMealConstraintPanel,
   getMenuPlanOverview,
   getVisibleMenuPlan,
   isKitchenOwner,
+  listIdeasForMenuPlan,
   listKitchenNeedsAction,
+  listMyFoodIdeas,
   listOpenIdeasForReview,
   listSupplyTasks,
   publishMenuPlan,
   purchaseList,
   scaledIngredients,
+  updateFoodIdea,
+  withdrawFoodIdea,
 } from "@/lib/kitchen";
 import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
 
@@ -272,8 +278,8 @@ describe("meals, dishes, and scaling (D8)", () => {
     // same unit) while "plain flour" stays its own line.
     const list = await purchaseList(alice, meal.id);
     expect(list).toEqual([
-      { name: "flour", unit: "cups", amount: 20 },
-      { name: "plain flour", unit: "cup", amount: 2.5 },
+      { name: "flour", unit: "cups", amount: 20, unmeasured: false },
+      { name: "plain flour", unit: "cup", amount: 2.5, unmeasured: false },
     ]);
   });
 
@@ -434,54 +440,231 @@ describe("food ideas (D5)", () => {
   });
 });
 
-describe("the dietary-constraint panel (D3/D4)", () => {
+describe("the dietary overview (exact matching, never prose)", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  /** A kitchen holder, a sensitive "Allergies" question, and answers on it.
-   *
-   *  This used to write `member.allergies` through updateOwnSensitiveData.
-   *  Those columns are gone, so the fixture now does what a real community
-   *  does: creates a sensitive question, restricts it to the kitchen
-   *  grant, and answers it. The panel reads it back through the same
-   *  audience resolution as every other surface.
-   */
-  async function kitchenWithAllergies(
-    aliceAllergies: string | null,
-    bobAllergies: string | null,
-    // Whether the kitchen grant can read the question at all. False is the
-    // "not linked yet" case; the one test that wants it answers *before*
-    // anyone can read, which is the fail-closed state.
-    options: { linkedToKitchen?: boolean } = {},
-  ) {
+  const ALLERGY_QUESTION = {
+    label: "Allergies",
+    responseType: "multi_choice",
+    options: ALLERGY_OPTIONS,
+    allowOther: true,
+    allowPreferNotToSay: true,
+    scope: "once_ever",
+    sensitive: true,
+    audience: { unlockedByGrantModuleKey: "kitchen" },
+    kitchenSignal: "allergy",
+  } as const;
+
+  /** A kitchen holder (alice), a second member (bob), the module on and a
+   *  draft meal. Questions are wired per test, because "which are wired" is
+   *  the thing under test. */
+  async function kitchen() {
     const { alice, bob, branch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["kitchen"] });
     await makeKitchenOwner(alice.communityId, branch.id, alice.id);
-    // Inserted raw rather than through createProfileQuestion, because the
-    // library refuses a sensitive question with no audience and this
-    // fixture needs to build that state on purpose.
-    const [question] = await db
-      .insert(profileQuestion)
-      .values({
-        communityId: alice.communityId,
-        label: "Allergies",
-        responseType: "text",
-        multiline: true,
-        scope: "once_ever",
-        sensitive: true,
-      })
-      .returning();
-    if (options.linkedToKitchen !== false) {
-      // Before the answers, not after. A rule added later cannot reach
-      // answers that predate it — each of those is asked separately — so a
-      // fixture that answered first would be modelling a different
-      // community than a real one.
-      await createSensitiveFieldAccessRule(alice, {
-        questionId: question.id,
-        unlockedByGrantModuleKey: "kitchen",
-      });
+    const plan = await createMenuPlan(alice, { title: "Autumn" });
+    const meal = await createMeal(alice, { menuPlanId: plan.id, label: "Friday", date: "2026-10-02", headCount: 12 });
+    return { alice, bob, plan, meal };
+  }
+
+  async function wireAllergy(alice: Awaited<ReturnType<typeof kitchen>>["alice"]) {
+    return createProfileQuestion(alice, { ...ALLERGY_QUESTION });
+  }
+
+  it("says plainly that nothing is wired, rather than going quiet", async () => {
+    const { alice } = await kitchen();
+    const overview = await getDietaryOverview(alice, null);
+    expect(overview.wired).toBe(0);
+    for (const signal of ["allergy", "intolerance", "dislike"] as const) {
+      expect(overview.signals[signal].question).toBeNull();
+      expect(overview.signals[signal].readable).toBe(false);
     }
+  });
+
+  it("separates a wired question the holder cannot read from an unwired one", async () => {
+    const { alice, bob } = await kitchen();
+    // Restricted to a grant alice doesn't hold: wired, but not hers to read.
+    const question = await createProfileQuestion(alice, {
+      ...ALLERGY_QUESTION,
+      audience: { unlockedByGrantModuleKey: "admin" },
+    });
+    await answerProfileQuestion(bob, question.id, { status: "answered", value: ["Peanuts"] });
+
+    const overview = await getDietaryOverview(alice, null);
+    const allergy = overview.signals.allergy;
+    expect(allergy.question?.id).toBe(question.id);
+    expect(allergy.readable).toBe(false);
+    // Not even counts: a tally of who answered is information from outside
+    // the audience.
+    expect(allergy.answered).toBe(0);
+    expect(allergy.members).toEqual([]);
+  });
+
+  it("counts who answered, declined, deferred, withheld and was never asked", async () => {
+    const { alice, bob } = await kitchen();
+    const question = await wireAllergy(alice);
+    await answerProfileQuestion(alice, question.id, { status: "answered", value: [] });
+    let overview = await getDietaryOverview(alice, null);
+    // An answer of "nothing to avoid" is still an answer.
+    expect(overview.signals.allergy).toMatchObject({ population: 2, answered: 1, notAnswered: 1, declined: 0 });
+    expect(overview.signals.allergy.members).toEqual([]);
+
+    await answerProfileQuestion(bob, question.id, { status: "declined" });
+    overview = await getDietaryOverview(alice, null);
+    expect(overview.signals.allergy).toMatchObject({ answered: 1, declined: 1, notAnswered: 0 });
+
+    // Bob un-shares: his answer exists and is not hers to read.
+    await answerProfileQuestion(bob, question.id, { status: "answered", value: ["Peanuts"], shareWithAudience: false });
+    overview = await getDietaryOverview(alice, null);
+    expect(overview.signals.allergy).toMatchObject({ answered: 1, withheld: 1, declined: 0, notAnswered: 0 });
+    expect(overview.signals.allergy.members).toEqual([]);
+  });
+
+  it("checks a ticked allergy against a dish flag by equality", async () => {
+    const { alice, bob, meal } = await kitchen();
+    const question = await wireAllergy(alice);
+    await answerProfileQuestion(bob, question.id, { status: "answered", value: ["Peanuts", "Wheat / gluten"] });
+    await createDish(alice, { mealId: meal.id, name: "Satay", allergenFlags: ["peanuts"] });
+    await createDish(alice, { mealId: meal.id, name: "Almond cake", allergenFlags: ["tree_nuts"] });
+
+    const panel = await getMealConstraintPanel(alice, meal.id);
+    expect(panel.dishes.map((d) => d.dishName)).toEqual(["Satay"]);
+    expect(panel.dishes[0].allergy).toEqual([
+      { memberId: bob.id, name: "Bob", matchedFlags: ["peanuts"], matchedLabels: ["Peanuts"] },
+    ]);
+    expect(panel.dishes[0].intolerance).toEqual([]);
+  });
+
+  it("shows an Other write-in as written and never matches it", async () => {
+    const { alice, bob, meal } = await kitchen();
+    const question = await wireAllergy(alice);
+    await answerProfileQuestion(bob, question.id, {
+      status: "answered",
+      // Not an option, so a write-in. A keyword matcher would have taken
+      // "fish" for the flag and flagged the dish; this is read, not
+      // interpreted.
+      value: ["no fish sauce please"],
+    });
+    await createDish(alice, { mealId: meal.id, name: "Pad thai", allergenFlags: ["fish", "peanuts"] });
+
+    const overview = await getDietaryOverview(alice, null);
+    expect(overview.signals.allergy.members).toEqual([
+      { memberId: bob.id, name: "Bob", ticks: [], flags: [], listed: [], writeIns: ["no fish sauce please"] },
+    ]);
+    expect(overview.signals.allergy.writeIns).toEqual([{ name: "Bob", text: "no fish sauce please" }]);
+    expect((await getMealConstraintPanel(alice, meal.id)).dishes).toEqual([]);
+  });
+
+  it("treats a write-in that spells an option differently as a write-in, not a tick", async () => {
+    const { alice, bob, meal } = await kitchen();
+    const question = await wireAllergy(alice);
+    // Lower-case 'peanuts' is not the option 'Peanuts'. The conservative
+    // reading: shown to the cook under what was written, not matched.
+    await answerProfileQuestion(bob, question.id, { status: "answered", value: ["peanuts"] });
+    await createDish(alice, { mealId: meal.id, name: "Satay", allergenFlags: ["peanuts"] });
+
+    const overview = await getDietaryOverview(alice, null);
+    expect(overview.signals.allergy.members[0].flags).toEqual([]);
+    expect(overview.signals.allergy.members[0].writeIns).toEqual(["peanuts"]);
+    expect((await getMealConstraintPanel(alice, meal.id)).dishes).toEqual([]);
+  });
+
+  it("keeps intolerances apart from allergies and lists the ones a dish cannot declare", async () => {
+    const { alice, bob, meal } = await kitchen();
+    const question = await createProfileQuestion(alice, {
+      ...ALLERGY_QUESTION,
+      label: "Intolerances",
+      options: INTOLERANCE_OPTIONS.map((o) => o.label),
+      kitchenSignal: "intolerance",
+    });
+    await answerProfileQuestion(bob, question.id, { status: "answered", value: ["Lactose", "Fructose"] });
+    await createDish(alice, { mealId: meal.id, name: "Cheese pie", allergenFlags: ["milk"] });
+
+    const overview = await getDietaryOverview(alice, null);
+    expect(overview.signals.intolerance.members).toEqual([
+      {
+        memberId: bob.id,
+        name: "Bob",
+        // Shown as ticked: Lactose, not the Milk flag it is checked against.
+        ticks: [
+          { label: "Lactose", flag: "milk" },
+          { label: "Fructose", flag: null },
+        ],
+        flags: ["milk"],
+        listed: ["Fructose"],
+        writeIns: [],
+      },
+    ]);
+    const panel = await getMealConstraintPanel(alice, meal.id);
+    expect(panel.dishes[0].allergy).toEqual([]);
+    expect(panel.dishes[0].intolerance).toEqual([
+      { memberId: bob.id, name: "Bob", matchedFlags: ["milk"], matchedLabels: ["Lactose"] },
+    ]);
+  });
+
+  it("counts dislikes and never names anyone", async () => {
+    const { alice, bob } = await kitchen();
+    const question = await createProfileQuestion(alice, {
+      label: "Foods you'd rather avoid",
+      responseType: "multi_choice",
+      options: DISLIKE_OPTIONS,
+      allowOther: true,
+      scope: "once_ever",
+      kitchenSignal: "dislike",
+    });
+    await answerProfileQuestion(alice, question.id, { status: "answered", value: ["Mushrooms", "Spicy food"] });
+    await answerProfileQuestion(bob, question.id, { status: "answered", value: ["Mushrooms", "celery root"] });
+
+    const dislike = (await getDietaryOverview(alice, null)).signals.dislike;
+    expect(dislike.tally).toEqual([
+      { option: "Mushrooms", count: 2 },
+      { option: "Spicy food", count: 1 },
+    ]);
+    expect(dislike.writeIns).toEqual([{ name: null, text: "celery root" }]);
+    expect(dislike.members).toEqual([]);
+  });
+
+  it("shows a legacy written-answer question whole and matches nothing", async () => {
+    const { alice, bob, meal } = await kitchen();
+    const question = await createProfileQuestion(alice, {
+      ...ALLERGY_QUESTION,
+      responseType: "text",
+      options: undefined,
+      multiline: true,
+      allowOther: false,
+    });
+    await answerProfileQuestion(bob, question.id, { status: "answered", value: "Severe peanut allergy" });
+    await createDish(alice, { mealId: meal.id, name: "Satay", allergenFlags: ["peanuts"] });
+
+    const overview = await getDietaryOverview(alice, null);
+    expect(overview.signals.allergy.members[0].writeIns).toEqual(["Severe peanut allergy"]);
+    expect((await getMealConstraintPanel(alice, meal.id)).dishes).toEqual([]);
+  });
+
+  it("ignores every question that isn't wired to a signal", async () => {
+    const { alice, bob, meal } = await kitchen();
+    await wireAllergy(alice);
+    // A public question whose answer contains an allergen word, and a
+    // restricted one nobody wired. Neither feeds the kitchen.
+    const publicQuestion = await createProfileQuestion(alice, {
+      label: "Languages you speak",
+      responseType: "multi_choice",
+      options: ["Soy", "English"],
+      scope: "once_ever",
+    });
+    await answerProfileQuestion(bob, publicQuestion.id, { status: "answered", value: ["Soy"] });
+    await createDish(alice, { mealId: meal.id, name: "Tofu", allergenFlags: ["soy"] });
+
+    const overview = await getDietaryOverview(alice, null);
+    expect(overview.signals.allergy.members).toEqual([]);
+    expect((await getMealConstraintPanel(alice, meal.id)).dishes).toEqual([]);
+  });
+
+  it("drops a member whose consent to the gating purpose is withdrawn", async () => {
+    const { alice, bob, meal } = await kitchen();
+    const question = await wireAllergy(alice);
     const purpose = await createConsentPurpose(alice, {
       key: "kitchen_allergies",
       label: "Kitchen allergy reads",
@@ -489,142 +672,31 @@ describe("the dietary-constraint panel (D3/D4)", () => {
       gatesQuestionId: question.id,
       requiresExplicit: true,
     });
-    for (const [who, value] of [
-      [alice, aliceAllergies],
-      [bob, bobAllergies],
-    ] as const) {
-      if (value === null) continue;
-      await grantConsent(who, purpose.id);
-      await answerProfileQuestion(who, question.id, { status: "answered", value });
-    }
-    const plan = await createMenuPlan(alice, { title: "Autumn" });
-    const meal = await createMeal(alice, { menuPlanId: plan.id, label: "Friday", date: "2026-10-02", headCount: 12 });
-    return { alice, bob, plan, meal, question };
-  }
-
-  it("returns null while the allergies question isn't linked to the kitchen grant", async () => {
-    const { alice, meal, question } = await kitchenWithAllergies(null, "peanuts", { linkedToKitchen: false });
-    // The question is sensitive but has no rule, so it resolves to
-    // nobody-but-the-owner and the panel is absent rather than empty.
-    // That is the same fail-closed reading as before, now expressed
-    // through the question system.
-    expect(question.sensitive).toBe(true);
-    expect(await getMealConstraintPanel(alice, meal.id)).toBeNull();
-  });
-
-  it("does not read an answer that predates the kitchen being given the question", async () => {
-    // The kitchen is the case where getting this wrong hurts somebody —
-    // a nut allergy nobody could see — so the widening is worth asserting
-    // here rather than only in the resolution tests. The panel is absent
-    // rather than wrong, which is the honest shape: there is nothing to
-    // show because nobody has agreed to be shown.
-    const { alice, bob, meal, question } = await kitchenWithAllergies(null, "peanuts and cashews", {
-      linkedToKitchen: false,
-    });
+    await grantConsent(bob, purpose.id);
+    await answerProfileQuestion(bob, question.id, { status: "answered", value: ["Peanuts"] });
     await createDish(alice, { mealId: meal.id, name: "Satay", allergenFlags: ["peanuts"] });
-    // No panel at all: the question is restricted to nobody, so the page
-    // falls back to the dish's own flag notes.
-    expect(await getMealConstraintPanel(alice, meal.id)).toBeNull();
+    expect((await getMealConstraintPanel(alice, meal.id)).dishes).toHaveLength(1);
 
-    await createSensitiveFieldAccessRule(alice, {
-      questionId: question.id,
-      unlockedByGrantModuleKey: "kitchen",
-    });
-    // A panel now, with nobody in it: the rule exists, the answer predates
-    // it, and Bob has not been asked. Which is the honest shape — a dish to
-    // check and no allergy anyone has agreed to show.
-    expect((await getMealConstraintPanel(alice, meal.id))!.disclosedEaters).toBe(0);
-
-    // He answers again — which is him agreeing to the audience that exists
-    // now — and the panel appears.
-    await answerProfileQuestion(bob, question.id, { status: "answered", value: "peanuts and cashews" });
-    const panel = await getMealConstraintPanel(alice, meal.id);
-    expect(panel!.disclosedEaters).toBe(1);
-    expect(panel!.dishes[0].conflicts[0].memberId).toBe(bob.id);
+    await withdrawConsent(bob, purpose.id);
+    const overview = await getDietaryOverview(alice, null);
+    expect(overview.signals.allergy.members).toEqual([]);
+    expect(overview.signals.allergy.withheld).toBe(1);
+    expect((await getMealConstraintPanel(alice, meal.id)).dishes).toEqual([]);
   });
 
-  it("flags a dish against a consented member's disclosed allergy once the grant unlocks it", async () => {
-    const { alice, bob, meal, question } = await kitchenWithAllergies(null, "peanuts and cashews");
-    await createDish(alice, {
-      mealId: meal.id,
-      name: "Satay",
-      allergenFlags: ["peanuts", "tree_nuts"],
-    });
+  it("tells a dish that declares nothing from one that declares none", async () => {
+    const { alice, meal } = await kitchen();
+    await createDish(alice, { mealId: meal.id, name: "Mystery stew" });
+    await createDish(alice, { mealId: meal.id, name: "Plain rice", allergenFlags: ["none_known"] });
 
     const panel = await getMealConstraintPanel(alice, meal.id);
-    expect(panel).not.toBeNull();
-    expect(panel!.disclosedEaters).toBe(1);
-    const flagged = panel!.dishes.find((d) => d.dishName === "Satay")!;
-    expect(flagged.conflicts).toHaveLength(1);
-    expect(flagged.conflicts[0].memberId).toBe(bob.id);
-    // Free-text matching catches the synonym too, not just the flag word.
-    expect(flagged.conflicts[0].matchedFlags).toEqual(["peanuts", "tree_nuts"]);
+    expect(panel.unflaggedDishes.map((d) => d.dishName)).toEqual(["Mystery stew"]);
+    expect(panel.dishes).toEqual([]);
   });
 
-  it("drops a member whose consent to the gating purpose is withdrawn", async () => {
-    // The consent gate that the four columns had and question-keyed
-    // purposes never did. Withdrawing has to take effect on the next read,
-    // not never.
-    const { alice, bob, meal } = await kitchenWithAllergies(null, "peanuts");
-    await createDish(alice, { mealId: meal.id, name: "Satay", allergenFlags: ["peanuts"] });
-    expect((await getMealConstraintPanel(alice, meal.id))!.disclosedEaters).toBe(1);
-
-    const purposes = await listConsentPurposes(alice);
-    await withdrawConsent(bob, purposes[0].id);
-    const after = await getMealConstraintPanel(alice, meal.id);
-    expect(after!.disclosedEaters).toBe(0);
-    expect(after!.dishes).toHaveLength(0);
-  });
-
-  it("drops a member who unticks their share box, while keeping their own answer", async () => {
-    // The per-answer lever. Un-ticking reduces the answer to
-    // emergency-only; it does not remove it from the member's own profile.
-    const { alice, bob, meal, question } = await kitchenWithAllergies(null, "peanuts");
-    await createDish(alice, { mealId: meal.id, name: "Satay", allergenFlags: ["peanuts"] });
-    expect((await getMealConstraintPanel(alice, meal.id))!.disclosedEaters).toBe(1);
-
-    await answerProfileQuestion(bob, question.id, {
-      status: "answered",
-      value: "peanuts",
-      shareWithAudience: false,
-    });
-    expect((await getMealConstraintPanel(alice, meal.id))!.disclosedEaters).toBe(0);
-  });
-
-  it("ignores non-sensitive answers, so unrelated free text can't become a conflict", async () => {
-    // A community with a public "languages you speak" question would
-    // otherwise match "soy" in someone's answer against a soy dish and
-    // invent a food-safety incident out of a translation preference.
-    const { alice, meal } = await kitchenWithAllergies(null, "peanuts");
-    const [publicQuestion] = await db
-      .insert(profileQuestion)
-      .values({
-        communityId: alice.communityId,
-        label: "Languages you speak",
-        responseType: "text",
-        scope: "once_ever",
-        sensitive: false,
-      })
-      .returning();
-    await answerProfileQuestion(alice, publicQuestion.id, { status: "answered", value: "soy, soy sauce" });
-    await createDish(alice, { mealId: meal.id, name: "Tofu", allergenFlags: ["soy"] });
-
-    const panel = await getMealConstraintPanel(alice, meal.id);
-    expect(panel!.dishes).toHaveLength(0);
-  });
-
-  it("counts a member as disclosed but unflagged, and hides a dish nobody conflicts with", async () => {
-    const { alice, meal } = await kitchenWithAllergies(null, "lactose");
-    await createDish(alice, { mealId: meal.id, name: "Fried rice", allergenFlags: ["peanuts"] });
-
-    const panel = await getMealConstraintPanel(alice, meal.id);
-    expect(panel!.disclosedEaters).toBe(1);
-    // Disclosed, but no dish on this meal touches their allergy.
-    expect(panel!.dishes).toHaveLength(0);
-  });
-
-  it("is owner-only, and refuses a non-holder before the audience is even resolved", async () => {
-    const { bob, meal } = await kitchenWithAllergies(null, "peanuts");
+  it("is owner-only", async () => {
+    const { bob, meal } = await kitchen();
+    await expect(getDietaryOverview(bob, null)).rejects.toThrow(ForbiddenError);
     await expect(getMealConstraintPanel(bob, meal.id)).rejects.toThrow(ForbiddenError);
   });
 });
@@ -757,5 +829,202 @@ describe("cross-community isolation", () => {
     ).rejects.toThrow(/not found/);
     // And a plain member of the first community sees only what's published.
     await expect(getVisibleMenuPlan(bob, plan.id)).rejects.toThrow(ForbiddenError);
+  });
+});
+
+describe("structured recipe suggestions", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  // alice holds the kitchen; bob is an ordinary member who suggests.
+  async function kitchen() {
+    const { alice, bob, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["kitchen"] });
+    await makeKitchenOwner(alice.communityId, branch.id, alice.id);
+    const plan = await createMenuPlan(alice, { title: "Autumn" });
+    const meal = await createMeal(alice, { menuPlanId: plan.id, label: "Friday", date: "2026-10-02", headCount: 12 });
+    return { alice, bob, plan, meal };
+  }
+
+  const CHILI = {
+    kind: "recipe_suggestion" as const,
+    title: "Three-bean chili",
+    body: "Simmer an hour.",
+    serves: 4,
+    allergenFlags: ["celery" as const],
+    dietaryNote: "Vegan if the stock is",
+    ingredients: [
+      { name: "Kidney beans", amount: 400, unit: "g" },
+      { name: "Cumin", amount: 2, unit: "tsp" },
+      { name: "Salt", amount: null, unit: null },
+    ],
+  };
+
+  it("files a recipe with its serves, flags and ingredients, and the author can read it back", async () => {
+    const { bob, plan } = await kitchen();
+    const filed = await fileFoodIdea(bob, { menuPlanId: plan.id, ...CHILI });
+    expect(filed).toMatchObject({ serves: 4, allergenFlags: ["celery"], dietaryNote: "Vegan if the stock is" });
+
+    const mine = await listMyFoodIdeas(bob, plan.id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0].ingredients.map((i) => [i.name, i.amount, i.unit])).toEqual([
+      ["Kidney beans", "400", "g"],
+      ["Cumin", "2", "tsp"],
+      ["Salt", null, null],
+    ]);
+  });
+
+  it("keeps the recipe fields to a recipe suggestion", async () => {
+    const { bob, plan } = await kitchen();
+    const request = { menuPlanId: plan.id, kind: "dish_request" as const, title: "Something with beans", serves: 4 };
+    expect(fileFoodIdeaInput.safeParse(request).success).toBe(false);
+    await expect(fileFoodIdea(bob, request)).rejects.toThrow(/Only a recipe suggestion/);
+    await expect(
+      fileFoodIdea(bob, { ...request, serves: undefined, ingredients: [{ name: "Beans" }] }),
+    ).rejects.toThrow(AppError);
+    // A request with no recipe fields is the ordinary light idea.
+    await expect(fileFoodIdea(bob, { ...request, serves: undefined })).resolves.toBeTruthy();
+  });
+
+  it("rejects an allergen flag outside the vocabulary", async () => {
+    const { bob, plan } = await kitchen();
+    await expect(
+      fileFoodIdea(bob, { menuPlanId: plan.id, ...CHILI, allergenFlags: ["kiwi" as never] }),
+    ).rejects.toThrow(AppError);
+  });
+
+  it("adopts into a pre-filled dish, copying serves, flags, note and every ingredient", async () => {
+    const { alice, bob, plan, meal } = await kitchen();
+    const idea = await fileFoodIdea(bob, { menuPlanId: plan.id, ...CHILI });
+    const adopted = await adoptFromIdea(alice, { ideaId: idea.id, mealId: meal.id });
+
+    expect(adopted).toMatchObject({
+      name: "Three-bean chili",
+      description: "Simmer an hour.",
+      serves: 4,
+      allergenFlags: ["celery"],
+      dietaryNote: "Vegan if the stock is",
+      source: "from_idea",
+      sourceIdeaId: idea.id,
+    });
+    const rows = await db.select().from(dishIngredient).where(eq(dishIngredient.dishId, adopted.id));
+    expect(rows.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((r) => [r.name, r.amount, r.unit])).toEqual([
+      ["Kidney beans", "400", "g"],
+      ["Cumin", "2", "tsp"],
+      ["Salt", null, null],
+    ]);
+    const [after] = await db.select().from(foodIdea).where(eq(foodIdea.id, idea.id));
+    expect(after).toMatchObject({ status: "adopted", adoptedDishId: adopted.id });
+  });
+
+  it("records the holder's final allergen set, not the suggester's claim", async () => {
+    const { alice, bob, plan, meal } = await kitchen();
+    const idea = await fileFoodIdea(bob, { menuPlanId: plan.id, ...CHILI });
+    // The holder saw "celery", checked the recipe, and set what is true.
+    const adopted = await adoptFromIdea(alice, {
+      ideaId: idea.id,
+      mealId: meal.id,
+      allergenFlags: ["celery", "mustard"],
+    });
+    expect(adopted.allergenFlags).toEqual(["celery", "mustard"]);
+
+    const second = await fileFoodIdea(bob, { menuPlanId: plan.id, ...CHILI, title: "Chili two" });
+    const cleared = await adoptFromIdea(alice, { ideaId: second.id, mealId: meal.id, allergenFlags: [] });
+    expect(cleared.allergenFlags).toEqual([]);
+  });
+
+  it("scales the adopted dish and leaves a to-taste line unscaled, flagged on the purchase list", async () => {
+    const { alice, bob, plan, meal } = await kitchen();
+    const idea = await fileFoodIdea(bob, { menuPlanId: plan.id, ...CHILI });
+    const adopted = await adoptFromIdea(alice, { ideaId: idea.id, mealId: meal.id });
+
+    // 12 eaters on a recipe for 4: ×3.
+    const scaled = await scaledIngredients(alice, meal.id);
+    const byName = new Map(scaled.map((s) => [s.name, s]));
+    expect(byName.get("Kidney beans")).toMatchObject({ scaledAmount: 1200, factor: 3 });
+    expect(byName.get("Salt")).toMatchObject({ storedAmount: null, scaledAmount: null, scaled: false });
+
+    const list = await purchaseList(alice, meal.id);
+    expect(list.find((r) => r.name === "Salt")).toMatchObject({ amount: null, unmeasured: true });
+    expect(list.find((r) => r.name === "Cumin")).toMatchObject({ amount: 6, unmeasured: false });
+    expect(adopted.serves).toBe(4);
+  });
+
+  it("lets a holder add a to-taste ingredient directly", async () => {
+    const { alice, meal } = await kitchen();
+    const dishRow = await createDish(alice, { mealId: meal.id, name: "Soup", serves: 6 });
+    const created = await createDishIngredient(alice, { dishId: dishRow.id, name: "Pepper" });
+    expect(created.amount).toBeNull();
+  });
+
+  it("lets the author edit an open idea, replacing its ingredients as a set", async () => {
+    const { bob, plan } = await kitchen();
+    const idea = await fileFoodIdea(bob, { menuPlanId: plan.id, ...CHILI });
+    await updateFoodIdea(bob, idea.id, {
+      title: "Four-bean chili",
+      serves: 6,
+      allergenFlags: [],
+      ingredients: [{ name: "Black beans", amount: 400, unit: "g" }],
+    });
+    const [mine] = await listMyFoodIdeas(bob, plan.id);
+    expect(mine).toMatchObject({ title: "Four-bean chili", serves: 6, allergenFlags: [] });
+    expect(mine.ingredients.map((i) => i.name)).toEqual(["Black beans"]);
+  });
+
+  it("keeps editing and withdrawing to the author, while the idea is open", async () => {
+    const { alice, bob, plan } = await kitchen();
+    const idea = await fileFoodIdea(bob, { menuPlanId: plan.id, ...CHILI });
+    // Even the kitchen holder can't rewrite someone else's suggestion.
+    await expect(updateFoodIdea(alice, idea.id, { title: "Mine now" })).rejects.toThrow(ForbiddenError);
+    await expect(withdrawFoodIdea(alice, idea.id)).rejects.toThrow(ForbiddenError);
+
+    await declineFoodIdea(alice, idea.id, { declinedReason: "Too many beans" });
+    await expect(updateFoodIdea(bob, idea.id, { title: "Fewer beans" })).rejects.toThrow(ConflictError);
+    await expect(withdrawFoodIdea(bob, idea.id)).rejects.toThrow(ConflictError);
+
+    const [mine] = await listMyFoodIdeas(bob, plan.id);
+    expect(mine).toMatchObject({ status: "declined", declinedReason: "Too many beans" });
+  });
+
+  it("withdraws an open idea and its ingredient rows", async () => {
+    const { bob, plan } = await kitchen();
+    const idea = await fileFoodIdea(bob, { menuPlanId: plan.id, ...CHILI });
+    await withdrawFoodIdea(bob, idea.id);
+    expect(await listMyFoodIdeas(bob, plan.id)).toEqual([]);
+    expect(await db.select().from(foodIdea).where(eq(foodIdea.id, idea.id))).toEqual([]);
+  });
+
+  it("takes a decided idea out of the holder's inbox, leaving it in the full list", async () => {
+    const { alice, bob, plan, meal } = await kitchen();
+    const adopted = await fileFoodIdea(bob, { menuPlanId: plan.id, ...CHILI });
+    const declined = await fileFoodIdea(bob, { menuPlanId: plan.id, kind: "preference", title: "More fruit" });
+    const waiting = await fileFoodIdea(bob, { menuPlanId: plan.id, kind: "preference", title: "Fewer onions" });
+    await adoptFromIdea(alice, { ideaId: adopted.id, mealId: meal.id });
+    await declineFoodIdea(alice, declined.id, { declinedReason: "Already plenty" });
+
+    expect((await listOpenIdeasForReview(alice, plan.id)).map((i) => i.id)).toEqual([waiting.id]);
+    const all = await listIdeasForMenuPlan(alice, plan.id);
+    expect(all.map((i) => i.status).sort()).toEqual(["adopted", "declined", "open"]);
+  });
+
+  it("shows only the member's own suggestions to them, and ingredients to the holder's inbox", async () => {
+    const { alice, bob, plan } = await kitchen();
+    await fileFoodIdea(bob, { menuPlanId: plan.id, ...CHILI });
+    await fileFoodIdea(alice, { menuPlanId: plan.id, kind: "preference", title: "More fruit" });
+
+    expect((await listMyFoodIdeas(bob, plan.id)).map((i) => i.title)).toEqual(["Three-bean chili"]);
+    const inbox = await listOpenIdeasForReview(alice, plan.id);
+    expect(inbox.find((i) => i.title === "Three-bean chili")!.ingredients).toHaveLength(3);
+  });
+
+  it("keeps another community's members out of an idea", async () => {
+    const { bob, plan } = await kitchen();
+    const idea = await fileFoodIdea(bob, { menuPlanId: plan.id, ...CHILI });
+    const other = await createFixtures();
+    await updateCommunity(other.alice, { modulesEnabled: ["kitchen"] });
+    await expect(updateFoodIdea(other.alice, idea.id, { title: "x" })).rejects.toThrow();
+    await expect(withdrawFoodIdea(other.alice, idea.id)).rejects.toThrow();
+    await expect(listMyFoodIdeas(other.alice, plan.id)).rejects.toThrow();
   });
 });
