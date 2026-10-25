@@ -1,48 +1,43 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  admission,
   community,
+  communityCheck,
+  communityCheckConcern,
   member,
-  objection,
   recruitmentDecision,
-  schedulingEntry,
   schedulingPoll,
   task,
 } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
 import { claimTask } from "@/lib/tasks";
+import { addPermissionGrant } from "@/lib/permissions";
 import { createForm } from "@/lib/forms";
 import type { CreateFormInput } from "@/lib/forms";
 import {
-  computeWiderDiscussionStatus,
+  admitArrival,
+  closeDueChecks,
   createCommunityInvite,
-  getIntroCallAvailability,
-  getIntroCallByToken,
+  getArrivalForFormResponse,
+  getOpenCheck,
   getRecruitmentDecision,
-  listObjections,
-  raiseObjection,
+  listChecksFor,
+  listConcerns,
+  loadArrivalReadout,
+  raiseConcern,
   recordDecisionIfReached,
-  resolveWiderDiscussionManually,
-  resolveWiderDiscussionWindows,
-  setRecruitmentSubscriptionActive,
+  resolveObjection,
   submitEvaluation,
-  submitIntroCallAvailability,
   submitRecruitmentApplication,
 } from "@/lib/recruitment";
-import type { RecruitmentDecisionRule } from "@/lib/recruitment";
-import { getPollAggregate, submitAvailabilityAsApplicant } from "@/lib/scheduling-polls";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withApplicationOnlyLanes, POLICY_TWO_OF_TWO } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
-  { key: "name", label: "Name", responseType: "text", required: true },
-];
-
-const DEFAULT_RULES: RecruitmentDecisionRule[] = [
-  { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-  { conditions: { minCounts: { decline: 2 } }, outcome: "decline" },
-  { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
+  { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
+  { key: "email", label: "Email", responseType: "text", required: true, isEmailField: true },
 ];
 
 async function enableRecruitment(communityId: string) {
@@ -51,6 +46,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
+  await withApplicationOnlyLanes(communityId);
 }
 
 async function insertTask(
@@ -82,7 +78,7 @@ async function insertTask(
 async function setUp(
   fixtures: Awaited<ReturnType<typeof createFixtures>>,
   overrides: Partial<{
-    decisionRules: RecruitmentDecisionRule[];
+    policy: Record<string, unknown>;
     widerDiscussionHours: number;
   }> = {},
 ) {
@@ -92,8 +88,7 @@ async function setUp(
   const recruitmentTask = await insertTask(testCommunity.id, branch.id, alice.id);
   await updateCommunity(alice, {
     recruitmentApplicationFormId: form.id,
-    recruitmentEvaluatorCount: 2,
-    recruitmentDecisionRules: overrides.decisionRules ?? DEFAULT_RULES,
+    ...((overrides.policy ?? POLICY_TWO_OF_TWO) as object),
     ...(overrides.widerDiscussionHours !== undefined && {
       recruitmentWiderDiscussionHours: overrides.widerDiscussionHours,
     }),
@@ -115,12 +110,13 @@ async function submitAndDecide(
   inviteToken?: string,
 ) {
   const application = await submitRecruitmentApplication(fixtures.community.id, {
-    values: { name: "Dana" },
+    values: { name: "Dana", email: "dana@example.com" },
     inviteToken: inviteToken ?? null,
   });
-  await submitEvaluation(setupResult.alice, application.id, { recommendation: recommendations[0] });
-  await submitEvaluation(setupResult.bob, application.id, { recommendation: recommendations[1] });
-  const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+  const formResponseId = application.formResponse.id;
+  await submitEvaluation(setupResult.alice, formResponseId, { recommendation: recommendations[0] });
+  await submitEvaluation(setupResult.bob, formResponseId, { recommendation: recommendations[1] });
+  const decision = await recordDecisionIfReached(setupResult.alice, formResponseId);
   return { application, decision };
 }
 
@@ -132,44 +128,40 @@ describe("recordDecisionIfReached", () => {
   it("is null (no decision row) before enough evaluations are filed", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
+    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
+    await submitEvaluation(setupResult.alice, application.formResponse.id, { recommendation: "proceed" });
 
-    const decision = await recordDecisionIfReached(setupResult.alice, application.id);
+    const decision = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
     expect(decision).toBeNull();
-    expect(await getRecruitmentDecision(application.id)).toBeNull();
+    expect(await getRecruitmentDecision(application.formResponse.id)).toBeNull();
   });
 
-  it("resolves immediately to accepted for a proceed outcome, and schedules a real intro call", async () => {
+  it("resolves immediately to accepted for a proceed outcome, makes the member, and schedules nothing", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
     const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
 
     expect(decision!.ruleOutcome).toBe("proceed");
     expect(decision!.resolution).toBe("accepted");
-    expect(decision!.introCallPollId).not.toBeNull();
     expect(decision!.accompanimentTaskId).not.toBeNull();
-
-    const [poll] = await db.select().from(schedulingPoll).where(eq(schedulingPoll.id, decision!.introCallPollId!));
-    expect(poll.resolutionMode).toBe("must_overlap");
-    expect(poll.requiredParticipantIds).toEqual(
-      expect.arrayContaining([setupResult.alice.id, setupResult.bob.id, application.id]),
-    );
-    expect(poll.requiredParticipantIds).toHaveLength(3);
+    expect(decision!.convertedMemberId).not.toBeNull();
+    // The interview comes *before* the decision (docs/plans/admission-flow.md §2), so a decision
+    // schedules nothing: on a lane without one there is nothing to schedule.
+    expect(await db.select().from(schedulingPoll).where(eq(schedulingPoll.communityId, fixtures.community.id))).toHaveLength(0);
+    void application;
   });
 
-  it("resolves immediately to declined for a decline outcome, with no intro call", async () => {
+  it("resolves immediately to declined for a decline outcome, and schedules nothing", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
     const { decision } = await submitAndDecide(fixtures, setupResult, ["decline", "decline"]);
 
     expect(decision!.ruleOutcome).toBe("decline");
     expect(decision!.resolution).toBe("declined");
-    expect(decision!.introCallPollId).toBeNull();
     expect(decision!.accompanimentTaskId).toBeNull();
   });
 
-  it("opens a wider_discussion window with resolution still pending, but still schedules the intro call (proceed-adjacent)", async () => {
+  it("opens a wider_discussion window with resolution still pending, and schedules nothing", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures, { widerDiscussionHours: 10 });
     const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
@@ -177,10 +169,10 @@ describe("recordDecisionIfReached", () => {
     expect(decision!.ruleOutcome).toBe("wider_discussion");
     expect(decision!.resolution).toBeNull();
     expect(decision!.defaultResolution).toBe("decline");
-    expect(decision!.introCallPollId).not.toBeNull();
     expect(decision!.accompanimentTaskId).toBeNull();
-    expect(decision!.widerDiscussionDeadline).not.toBeNull();
-    expect(computeWiderDiscussionStatus(decision!)).toBe("open");
+    // Its window is a community check on the arrival, not a field of the decision.
+    const arrival = (await getArrivalForFormResponse(decision!.formResponseId!))!;
+    expect((await getOpenCheck(arrival.id))!.kind).toBe("evaluation");
   });
 
   it("pre-fills the Accompaniment task's suggestedMemberId from a linked invite's creator", async () => {
@@ -203,328 +195,291 @@ describe("recordDecisionIfReached", () => {
     expect(accompanimentTask.suggestedMemberId).toBeNull();
   });
 
-  it("is idempotent — never creates a second decision, poll, or task", async () => {
+  it("is idempotent — never creates a second decision or task", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
     const { application, decision: first } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
 
-    const second = await recordDecisionIfReached(setupResult.alice, application.id);
+    const second = await recordDecisionIfReached(setupResult.alice, application.formResponse.id);
     expect(second!.id).toBe(first!.id);
 
-    const allDecisions = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, application.id));
+    const allDecisions = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, application.formResponse.id));
     expect(allDecisions).toHaveLength(1);
     const allPolls = await db.select().from(schedulingPoll).where(eq(schedulingPoll.communityId, fixtures.community.id));
-    expect(allPolls).toHaveLength(1);
+    expect(allPolls).toHaveLength(0);
   });
 });
 
-describe("computeWiderDiscussionStatus", () => {
+// The wider discussion is the one community check (docs/plans/admission-flow.md §5): a
+// window on the arrival, opened when the reports lead to it, in which any member can
+// raise a concern — not a field on the decision with a timer of its own.
+describe("the wider discussion is a community check", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  it("is null for a proceed/decline decision", async () => {
+  async function undecided(opts: Parameters<typeof setUp>[1] = {}) {
     const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["decline", "decline"]);
-    expect(computeWiderDiscussionStatus(decision!)).toBeNull();
+    const setupResult = await setUp(fixtures, opts);
+    const { decision, application } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
+    const arrival = (await getArrivalForFormResponse(application.formResponse.id))!;
+    return { fixtures, setupResult, decision: decision!, application, arrival };
+  }
+
+  const expire = (arrivalId: string) =>
+    db
+      .update(communityCheck)
+      .set({ deadline: new Date(Date.now() - 1000) })
+      .where(and(eq(communityCheck.arrivalId, arrivalId), isNull(communityCheck.endedAt)));
+
+  it("opens an evaluation window on the arrival, saying what a quiet one does", async () => {
+    const { arrival, decision } = await undecided({ widerDiscussionHours: 10 });
+    const check = await getOpenCheck(arrival.id);
+    expect(check).toMatchObject({ kind: "evaluation", onQuiet: "decline", windowHours: 10 });
+    expect(check!.deadline.getTime()).toBeGreaterThan(Date.now() + 9 * 3_600_000);
+    // The decision is only the record of what the reports said; the window is the check's.
+    expect(decision.resolution).toBeNull();
+    const readout = await loadArrivalReadout(arrival);
+    expect(readout.readout.stage).toBe("wider_discussion");
   });
 
-  it("is closed once the deadline has passed", async () => {
+  it("takes its quiet answer from the decision form, fixed when it opens", async () => {
+    const { arrival } = await undecided({ policy: { ...POLICY_TWO_OF_TWO, recruitmentDiscussionEnds: "admit" } });
+    expect((await getOpenCheck(arrival.id))!.onQuiet).toBe("admit");
+  });
+
+  it("leaves a window that is not yet due alone", async () => {
+    const { arrival } = await undecided({ widerDiscussionHours: 1000 });
+    const result = await closeDueChecks();
+    expect(result).toMatchObject({ checked: 1, ended: 0 });
+    expect(await getOpenCheck(arrival.id)).not.toBeNull();
+  });
+
+  it("ends a quiet window by what it said it would do — here, declining", async () => {
+    const { arrival, decision } = await undecided();
+    await expire(arrival.id);
+    expect((await closeDueChecks()).ended).toBe(1);
+
+    const [resolved] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision.id));
+    expect(resolved.resolution).toBe("declined");
+    expect((await listChecksFor(arrival.id))[0]).toMatchObject({ endedAs: "quiet" });
+    expect((await db.select().from(admission).where(eq(admission.id, arrival.id)))[0].declinedAt).not.toBeNull();
+  });
+
+  it("…or admitting, which makes the member and creates the Accompaniment task", async () => {
     const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
-    expect(computeWiderDiscussionStatus(decision!)).toBe("open");
+    const setupResult = await setUp(fixtures, { policy: { recruitmentDiscussionEnds: "admit" } });
+    const { decision, application } = await submitAndDecide(fixtures, setupResult, ["unsure", "unsure"]);
+    const arrival = (await getArrivalForFormResponse(application.formResponse.id))!;
+    await expire(arrival.id);
 
-    await db
-      .update(recruitmentDecision)
-      .set({ widerDiscussionDeadline: new Date(Date.now() - 1000) })
-      .where(eq(recruitmentDecision.id, decision!.id));
-    const [expired] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision!.id));
-    expect(computeWiderDiscussionStatus(expired)).toBe("closed");
-  });
-
-  it("is closed once resolved, even before the deadline", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures, { widerDiscussionHours: 1000 });
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
-
-    const resolved = await resolveWiderDiscussionManually(setupResult.alice, decision!.formResponseId, {
-      resolution: "declined",
-    });
-    expect(computeWiderDiscussionStatus(resolved)).toBe("closed");
-  });
-});
-
-describe("resolveWiderDiscussionManually", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("rejects a non-holder", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
-    const { alice: strangerAlice } = await createFixtures();
-
-    await expect(
-      resolveWiderDiscussionManually(strangerAlice, decision!.formResponseId, { resolution: "accepted" }),
-    ).rejects.toThrow(ForbiddenError);
-  });
-
-  it("rejects when there's no wider_discussion decision for this application", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["decline", "decline"]);
-
-    await expect(
-      resolveWiderDiscussionManually(setupResult.alice, decision!.formResponseId, { resolution: "accepted" }),
-    ).rejects.toThrow(NotFoundError);
-  });
-
-  it("rejects when already resolved", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
-    await resolveWiderDiscussionManually(setupResult.alice, decision!.formResponseId, { resolution: "declined" });
-
-    await expect(
-      resolveWiderDiscussionManually(setupResult.alice, decision!.formResponseId, { resolution: "accepted" }),
-    ).rejects.toThrow(ConflictError);
-  });
-
-  it("resolving to accepted creates the Accompaniment task", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
-
-    const resolved = await resolveWiderDiscussionManually(setupResult.alice, decision!.formResponseId, {
-      resolution: "accepted",
-    });
-    expect(resolved.resolution).toBe("accepted");
-    expect(resolved.accompanimentTaskId).not.toBeNull();
-  });
-});
-
-describe("resolveWiderDiscussionWindows (scheduled job)", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("leaves a not-yet-due decision untouched", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures, { widerDiscussionHours: 1000 });
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
-
-    const result = await resolveWiderDiscussionWindows();
-    expect(result.checked).toBe(0);
-
-    const [unchanged] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision!.id));
-    expect(unchanged.resolution).toBeNull();
-  });
-
-  it("auto-resolves a due, unobjected decision per its defaultResolution", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
-    await db
-      .update(recruitmentDecision)
-      .set({ widerDiscussionDeadline: new Date(Date.now() - 1000) })
-      .where(eq(recruitmentDecision.id, decision!.id));
-
-    const result = await resolveWiderDiscussionWindows();
-    expect(result.checked).toBe(1);
-    expect(result.resolved).toBe(1);
-
-    const [resolved] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision!.id));
-    expect(resolved.resolution).toBe("declined"); // DEFAULT_RULES' fallback rule declines by default
-  });
-
-  it("creates the Accompaniment task using the current recruitment-task holder when resolving to accepted", async () => {
-    const fixtures = await createFixtures();
-    const rules: RecruitmentDecisionRule[] = [
-      { conditions: {}, outcome: "wider_discussion", defaultResolution: "proceed" },
-    ];
-    const setupResult = await setUp(fixtures, { decisionRules: rules });
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["unsure", "unsure"]);
-    await db
-      .update(recruitmentDecision)
-      .set({ widerDiscussionDeadline: new Date(Date.now() - 1000) })
-      .where(eq(recruitmentDecision.id, decision!.id));
-
-    const result = await resolveWiderDiscussionWindows();
-    expect(result.accompanimentsCreated).toBe(1);
-
+    expect((await closeDueChecks()).ended).toBe(1);
     const [resolved] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision!.id));
     expect(resolved.resolution).toBe("accepted");
+    expect(resolved.convertedMemberId).not.toBeNull();
     expect(resolved.accompanimentTaskId).not.toBeNull();
   });
 
-  it("skips a due decision that has a raised Objection — waits on a human call, not the timer", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
-    await setRecruitmentSubscriptionActive(fixtures.bob, true);
-    await raiseObjection(fixtures.bob, decision!.formResponseId, { note: "I have concerns" });
-    await db
-      .update(recruitmentDecision)
-      .set({ widerDiscussionDeadline: new Date(Date.now() - 1000) })
-      .where(eq(recruitmentDecision.id, decision!.id));
+  it("holds a window with a concern standing past its deadline — the clock never drops one", async () => {
+    const { fixtures, arrival, decision } = await undecided();
+    await raiseConcern(fixtures.bob, arrival.id, { note: "I have concerns" });
+    await expire(arrival.id);
 
-    const result = await resolveWiderDiscussionWindows();
-    expect(result.resolved).toBe(0);
-
-    const [unchanged] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision!.id));
+    const result = await closeDueChecks();
+    expect(result).toMatchObject({ ended: 0, held: 1 });
+    const [unchanged] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision.id));
     expect(unchanged.resolution).toBeNull();
-  });
-});
-
-describe("Objection: raise / list", () => {
-  beforeEach(async () => {
-    await resetDatabase();
+    expect(await getOpenCheck(arrival.id)).not.toBeNull();
   });
 
-  it("requires an active subscription to raise", async () => {
+  it("gives a wider discussion that predates windows its own, with the deadline and answer it already had", async () => {
     const fixtures = await createFixtures();
     const setupResult = await setUp(fixtures);
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
+    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
+    // The shape an old database holds: a decision waiting out its window, and no arrival yet
+    // that knows anything about it.
+    await db.delete(admission).where(eq(admission.formResponseId, application.formResponse.id));
+    await db.insert(recruitmentDecision).values({
+      formResponseId: application.formResponse.id,
+      ruleOutcome: "wider_discussion",
+      defaultResolution: "proceed",
+      widerDiscussionDeadline: new Date(Date.now() - 1000),
+    });
 
-    await expect(raiseObjection(fixtures.bob, decision!.formResponseId, { note: "concern" })).rejects.toThrow(
-      ForbiddenError,
-    );
+    const result = await closeDueChecks();
+    expect(result.ended).toBe(1);
+    const decision = await getRecruitmentDecision(application.formResponse.id);
+    expect(decision!.resolution).toBe("accepted");
+    expect(decision!.convertedMemberId).not.toBeNull();
+    void setupResult;
   });
 
-  it("rejects for a decision that was never a wider_discussion outcome in the first place", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["decline", "decline"]);
-    await setRecruitmentSubscriptionActive(fixtures.bob, true);
+  describe("raising a concern, the one way", () => {
+    it("is open to any member — a subscription is not what makes someone a member", async () => {
+      const { fixtures, arrival } = await undecided();
+      // Bob has no recruitment subscription at all.
+      const concern = await raiseConcern(fixtures.bob, arrival.id, { note: "I know this person and have concerns" });
+      expect(concern.resolution).toBe("standing");
+    });
 
-    await expect(raiseObjection(fixtures.bob, decision!.formResponseId, { note: "concern" })).rejects.toThrow(
-      ConflictError,
-    );
+    it("refuses an arrival with no window open, and one whose window has closed", async () => {
+      const fixtures = await createFixtures();
+      const setupResult = await setUp(fixtures);
+      const { application } = await submitAndDecide(fixtures, setupResult, ["decline", "decline"]);
+      const declined = (await getArrivalForFormResponse(application.formResponse.id))!;
+      await expect(raiseConcern(fixtures.bob, declined.id, { note: "concern" })).rejects.toThrow(/isn't open for a community check/);
+
+      const { fixtures: f2, arrival } = await undecided();
+      await expire(arrival.id);
+      await expect(raiseConcern(f2.bob, arrival.id, { note: "concern" })).rejects.toThrow(/has closed/);
+    });
+
+    it("refuses an arrival in another community, and says it once per member", async () => {
+      const { fixtures, arrival } = await undecided();
+      const { alice: stranger, community: elsewhere } = await createFixtures();
+      await db.update(community).set({ modulesEnabled: ["recruitment"] }).where(eq(community.id, elsewhere.id));
+      await expect(raiseConcern(stranger, arrival.id, { note: "concern" })).rejects.toThrow(NotFoundError);
+      await raiseConcern(fixtures.bob, arrival.id, { note: "first" });
+      await expect(raiseConcern(fixtures.bob, arrival.id, { note: "second" })).rejects.toThrow(ConflictError);
+    });
+
+    it("lists a concern to the holders without ever exposing who raised it", async () => {
+      const { fixtures, setupResult, arrival, decision } = await undecided();
+      await raiseConcern(fixtures.bob, arrival.id, { note: "I know this person and have concerns" });
+
+      const listed = await listConcerns(setupResult.alice, decision.formResponseId!);
+      expect(listed).toHaveLength(1);
+      expect(listed[0].note).toBe("I know this person and have concerns");
+      expect(listed[0]).not.toHaveProperty("raisedById");
+
+      const [raw] = await db.select().from(communityCheckConcern).where(eq(communityCheckConcern.checkId, (await getOpenCheck(arrival.id))!.id));
+      expect(raw.raisedById).toBe(fixtures.bob.id);
+    });
+
+    it("lists only to the holders", async () => {
+      const { decision } = await undecided();
+      const { alice: strangerAlice } = await createFixtures();
+      await expect(listConcerns(strangerAlice, decision.formResponseId!)).rejects.toThrow(ForbiddenError);
+    });
   });
 
-  it("rejects when no decision has been reached for this application at all", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
-    await submitEvaluation(setupResult.alice, application.id, { recommendation: "proceed" });
-    await setRecruitmentSubscriptionActive(fixtures.bob, true);
+  // The lost outcome this redesign names: mediation marked a concern settled and then
+  // called a function only a recruitment holder may call, which refused — and the
+  // window's clock later applied its *default*, admitting somebody whose concern had
+  // been upheld. Here the mediation member holds no recruitment task at all.
+  describe("mediation's outcome is applied by the funnel, not by whoever is a recruitment holder", () => {
+    async function withMediator() {
+      const base = await undecided();
+      const [mediator] = await db.insert(member).values({ communityId: base.fixtures.community.id, name: "Mira" }).returning();
+      const mediationTask = await insertTask(base.fixtures.community.id, base.fixtures.branch.id, base.setupResult.alice.id, { capacity: 1 });
+      await addPermissionGrant(base.setupResult.alice, "recruitment_mediation", mediationTask.id);
+      await claimTask(mediator, mediationTask.id);
+      const concern = await raiseConcern(base.fixtures.bob, base.arrival.id, { note: "a real concern" });
+      return { ...base, mediator, concern };
+    }
 
-    await expect(raiseObjection(fixtures.bob, application.id, { note: "concern" })).rejects.toThrow(NotFoundError);
+    it("an upheld concern declines the arrival, and the clock afterwards changes nothing", async () => {
+      const { arrival, decision, mediator, concern } = await withMediator();
+      await resolveObjection(mediator, { objectionId: concern.id, outcome: "upheld", note: "we talked; not this time" });
+
+      const [after] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision.id));
+      expect(after.resolution).toBe("declined");
+      const [row] = await db.select().from(admission).where(eq(admission.id, arrival.id));
+      expect(row.declinedAt).not.toBeNull();
+      expect(row.admittedMemberId).toBeNull();
+
+      // Even with the clock long past, and the window's own default being to decline
+      // here: nothing is admitted, and the record says why it ended.
+      await closeDueChecks();
+      expect((await listChecksFor(arrival.id))[0]).toMatchObject({ endedAs: "upheld", endedById: mediator.id });
+    });
+
+    it("an upheld concern is never admitted over, even where the window's default would admit", async () => {
+      const fixtures = await createFixtures();
+      const setupResult = await setUp(fixtures, { policy: { recruitmentDiscussionEnds: "admit" } });
+      const { application } = await submitAndDecide(fixtures, setupResult, ["unsure", "unsure"]);
+      const arrival = (await getArrivalForFormResponse(application.formResponse.id))!;
+      const [mediator] = await db.insert(member).values({ communityId: fixtures.community.id, name: "Mira" }).returning();
+      const mediationTask = await insertTask(fixtures.community.id, fixtures.branch.id, setupResult.alice.id, { capacity: 1 });
+      await addPermissionGrant(setupResult.alice, "recruitment_mediation", mediationTask.id);
+      await claimTask(mediator, mediationTask.id);
+      const concern = await raiseConcern(fixtures.bob, arrival.id, { note: "a real concern" });
+
+      await resolveObjection(mediator, { objectionId: concern.id, outcome: "upheld", note: "not this time" });
+      await db.update(communityCheck).set({ deadline: new Date(Date.now() - 1000) }).where(eq(communityCheck.arrivalId, arrival.id));
+      await closeDueChecks();
+
+      const [row] = await db.select().from(admission).where(eq(admission.id, arrival.id));
+      expect(row.admittedMemberId).toBeNull();
+      expect(row.declinedAt).not.toBeNull();
+    });
+
+    it("a cleared concern admits, with the member made and the Accompaniment task created", async () => {
+      const { arrival, decision, mediator, concern } = await withMediator();
+      await resolveObjection(mediator, { objectionId: concern.id, outcome: "cleared", note: "we talked; it's fine" });
+
+      const [after] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision.id));
+      expect(after.resolution).toBe("accepted");
+      expect(after.convertedMemberId).not.toBeNull();
+      expect(after.accompanimentTaskId).not.toBeNull();
+      expect((await db.select().from(admission).where(eq(admission.id, arrival.id)))[0].admittedMemberId).toBe(after.convertedMemberId);
+    });
+
+    it("finishes an outcome whose last step failed: the next look reads the answer off the record", async () => {
+      const { arrival, decision, mediator, concern } = await withMediator();
+      // The concern was settled, and then nothing else happened (a crash, a failed write).
+      await db
+        .update(communityCheckConcern)
+        .set({ resolution: "upheld", resolvedAt: new Date(), resolvedById: mediator.id, resolutionNote: "settled" })
+        .where(eq(communityCheckConcern.id, concern.id));
+      expect((await db.select().from(admission).where(eq(admission.id, arrival.id)))[0].declinedAt).toBeNull();
+
+      expect((await closeDueChecks()).ended).toBe(1);
+      const [after] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision.id));
+      expect(after.resolution).toBe("declined");
+      expect((await db.select().from(admission).where(eq(admission.id, arrival.id)))[0].declinedAt).not.toBeNull();
+    });
+
+    it("never admits an arrival over a standing concern, whoever asks", async () => {
+      const { arrival } = await withMediator();
+      await expect(admitArrival(arrival.id)).rejects.toThrow(/stands until the mediation body/);
+    });
   });
 
-  it("rejects once the window has already closed", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
-    await setRecruitmentSubscriptionActive(fixtures.bob, true);
-    await db
-      .update(recruitmentDecision)
-      .set({ widerDiscussionDeadline: new Date(Date.now() - 1000) })
-      .where(eq(recruitmentDecision.id, decision!.id));
+  describe("two concerns on one arrival", () => {
+    it("holds until every one is settled, and only then lets it go on", async () => {
+      const base = await undecided();
+      const [carol] = await db.insert(member).values({ communityId: base.fixtures.community.id, name: "Carol" }).returning();
+      const [mediator] = await db.insert(member).values({ communityId: base.fixtures.community.id, name: "Mira" }).returning();
+      const mediationTask = await insertTask(base.fixtures.community.id, base.fixtures.branch.id, base.setupResult.alice.id, { capacity: 1 });
+      await addPermissionGrant(base.setupResult.alice, "recruitment_mediation", mediationTask.id);
+      await claimTask(mediator, mediationTask.id);
+      const first = await raiseConcern(base.fixtures.bob, base.arrival.id, { note: "one" });
+      const second = await raiseConcern(carol, base.arrival.id, { note: "two" });
 
-    await expect(raiseObjection(fixtures.bob, decision!.formResponseId, { note: "concern" })).rejects.toThrow(
-      ConflictError,
-    );
-  });
+      await resolveObjection(mediator, { objectionId: first.id, outcome: "cleared", note: "fine" });
+      expect(await getOpenCheck(base.arrival.id)).not.toBeNull();
+      expect((await db.select().from(admission).where(eq(admission.id, base.arrival.id)))[0].admittedMemberId).toBeNull();
 
-  it("records a real objection and lists it to holders without ever exposing raisedBy", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
-    await setRecruitmentSubscriptionActive(fixtures.bob, true);
-    await raiseObjection(fixtures.bob, decision!.formResponseId, { note: "I know this person and have concerns" });
+      await resolveObjection(mediator, { objectionId: second.id, outcome: "cleared", note: "also fine" });
+      expect(await getOpenCheck(base.arrival.id)).toBeNull();
+      expect((await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, base.decision.id)))[0].resolution).toBe("accepted");
+    });
 
-    const listed = await listObjections(setupResult.alice, decision!.formResponseId);
-    expect(listed).toHaveLength(1);
-    expect(listed[0].note).toBe("I know this person and have concerns");
-    expect(listed[0]).not.toHaveProperty("raisedBy");
+    it("lets one upheld concern decide it, and marks the others moot rather than judged", async () => {
+      const base = await undecided();
+      const [carol] = await db.insert(member).values({ communityId: base.fixtures.community.id, name: "Carol" }).returning();
+      const [mediator] = await db.insert(member).values({ communityId: base.fixtures.community.id, name: "Mira" }).returning();
+      const mediationTask = await insertTask(base.fixtures.community.id, base.fixtures.branch.id, base.setupResult.alice.id, { capacity: 1 });
+      await addPermissionGrant(base.setupResult.alice, "recruitment_mediation", mediationTask.id);
+      await claimTask(mediator, mediationTask.id);
+      const first = await raiseConcern(base.fixtures.bob, base.arrival.id, { note: "one" });
+      const second = await raiseConcern(carol, base.arrival.id, { note: "two" });
 
-    const [raw] = await db.select().from(objection).where(eq(objection.formResponseId, decision!.formResponseId));
-    expect(raw.raisedBy).toBe(fixtures.bob.id);
-  });
-
-  it("listObjections is holder-gated", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "unsure"]);
-    const { alice: strangerAlice } = await createFixtures();
-
-    await expect(listObjections(strangerAlice, decision!.formResponseId)).rejects.toThrow(ForbiddenError);
-  });
-});
-
-describe("getPollAggregate: mixed member + applicant participants", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("a must_overlap intro call requires the applicant's own submission alongside both evaluators'", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
-    const pollId = decision!.introCallPollId!;
-
-    const slot = "2027-06-01T10:00:00.000Z";
-    await db.insert(schedulingEntry).values({ pollId, memberId: setupResult.alice.id, availableSlots: [slot] });
-    await db.insert(schedulingEntry).values({ pollId, memberId: setupResult.bob.id, availableSlots: [slot] });
-
-    let aggregate = await getPollAggregate(setupResult.alice, pollId);
-    const beforeApplicant = aggregate.slots.find((s) => s.slot === slot);
-    expect(beforeApplicant?.count).toBe(2);
-    expect(beforeApplicant?.qualifies).toBe(false); // applicant hasn't submitted yet
-
-    await submitAvailabilityAsApplicant(pollId, application.id, { slots: [slot] });
-
-    aggregate = await getPollAggregate(setupResult.alice, pollId);
-    const afterApplicant = aggregate.slots.find((s) => s.slot === slot);
-    expect(afterApplicant?.count).toBe(3);
-    expect(afterApplicant?.qualifies).toBe(true);
-  });
-});
-
-describe("Intro call: token-based public access", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("resolves a valid token to the right decision + poll, and rejects a bad token", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
-
-    expect(await getIntroCallByToken("not-a-real-token")).toBeNull();
-
-    // Plaintext, not hashed — see src/db/schema/recruitment.ts's
-    // recruitmentDecision comment: there's no automated delivery
-    // channel for this token, so a human (the evaluator) has to be
-    // able to read it back off the decision row to relay it.
-    expect(decision!.introCallToken).toBeTruthy();
-    const found = await getIntroCallByToken(decision!.introCallToken!);
-    expect(found?.decision.formResponseId).toBe(application.id);
-    expect(found?.poll.id).toBe(decision!.introCallPollId);
-  });
-
-  it("submits and reads back the applicant's own availability through the real token, keyed by formResponseId", async () => {
-    const fixtures = await createFixtures();
-    const setupResult = await setUp(fixtures);
-    const { application, decision } = await submitAndDecide(fixtures, setupResult, ["proceed", "proceed"]);
-    const token = decision!.introCallToken!;
-
-    const slots = ["2027-06-01T10:00:00.000Z", "2027-06-01T10:30:00.000Z"];
-    await submitIntroCallAvailability(token, { slots });
-
-    const [entry] = await db
-      .select()
-      .from(schedulingEntry)
-      .where(eq(schedulingEntry.formResponseId, application.id));
-    expect(entry.memberId).toBeNull();
-    expect(entry.availableSlots).toEqual(slots);
-    expect(await getIntroCallAvailability(token)).toEqual(slots);
-
-    const readBack = await getIntroCallAvailability("not-the-real-token").catch((err) => err);
-    expect(readBack).toBeInstanceOf(NotFoundError);
+      await resolveObjection(mediator, { objectionId: first.id, outcome: "upheld", note: "it stands" });
+      const [other] = await db.select().from(communityCheckConcern).where(eq(communityCheckConcern.id, second.id));
+      expect(other.resolution).toBe("moot");
+      expect((await db.select().from(admission).where(eq(admission.id, base.arrival.id)))[0].declinedAt).not.toBeNull();
+    });
   });
 });

@@ -24,8 +24,15 @@ export type ConfirmSlotInput = z.infer<typeof confirmSlotInput>;
 // mistake.
 export async function confirmSlot(actor: Member, pollId: string, input: ConfirmSlotInput) {
   const poll = await requirePollInCommunity(actor, pollId);
+  // The recruitment interview is confirmed by a holder, not only the poll's
+  // organizer (docs/plans/admission-flow.md §2): the organizer was merely whoever
+  // happened to hold the task when the poll was made, and they may be away.
   if (poll.organizedBy !== actor.id) {
-    throw new ForbiddenError("Only this poll's organizer can confirm a slot");
+    const mayAsHolder =
+      poll.resolutionMode === "person_plus_n_holders" && (await (await import("../recruitment/access")).isRecruitmentTaskHolder(actor));
+    if (!mayAsHolder) {
+      throw new ForbiddenError("Only this poll's organizer can confirm a slot");
+    }
   }
   if (poll.confirmedSlotStart) {
     throw new ConflictError("This poll has already resolved a slot");
@@ -63,6 +70,12 @@ export async function confirmSlot(actor: Member, pollId: string, input: ConfirmS
         ? `Facilitate ${whenLabel}'s call ("${poll.title}")`
         : `Take notes & publish the summary for ${whenLabel}'s call ("${poll.title}")`;
     await updateTask(actor, t.id, { title });
+  }
+
+  // An interview: the arrival's facts follow and the person is told.
+  if (poll.resolutionMode === "person_plus_n_holders") {
+    const { onInterviewConfirmed } = await import("../recruitment/interviews");
+    await onInterviewConfirmed(pollId).catch(() => undefined);
   }
 
   return updated;

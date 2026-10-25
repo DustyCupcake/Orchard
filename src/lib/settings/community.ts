@@ -4,7 +4,8 @@ import { db } from "@/db";
 import { community, dateDisplayModeEnum, form, objectionOverruleModeEnum, tier } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
-import { recruitmentDecisionRulesSchema, requireValidDecisionRules } from "../recruitment/evaluations";
+import { ANY_NO_MEANS, DISCUSSION_ENDS, IN_WHEN, validateDecisionPolicy } from "../recruitment/decision-policy";
+import { policyOf } from "../recruitment/evaluations";
 import { isValidTimeZone } from "../dates/timezone";
 import { requireNotOnsiteLocked } from "../onsite-mode";
 import { recordSettingChanges } from "./history";
@@ -82,7 +83,6 @@ export const updateCommunityInput = z.object({
   // are per-mechanism rather than per-lane on purpose: J2 ruled out
   // stacking nomination and consensus on a lane precisely because two
   // windows means two timers and nobody knows who resolves what.
-  recruitmentNominationWindowHours: z.number().int().positive().max(24 * 30).optional(),
   recruitmentObjectionOverrule: z.enum(objectionOverruleModeEnum.enumValues).optional(),
   // Only meaningful in `quorum` mode, and bounded so it can't be set to
   // a number that silently disables the overrule: the mediation page
@@ -90,9 +90,14 @@ export const updateCommunityInput = z.object({
   // exception is unavailable, which only works if the number stays
   // somewhere a body could plausibly reach.
   recruitmentObjectionQuorum: z.number().int().min(1).max(50).optional(),
-  recruitmentEvaluatorCount: z.number().int().positive().optional(),
-  recruitmentDecisionRules: recruitmentDecisionRulesSchema.optional(),
-  recruitmentSubscriptionLapseThreshold: z.number().int().positive().optional(),
+  // How reports decide (docs/plans/admission-flow.md §2): one small policy for the
+  // whole community. How many reports a lane needs is the lane's own.
+  recruitmentInWhen: z.enum(IN_WHEN).optional(),
+  recruitmentCustomMinYes: z.number().int().min(0).max(50).optional(),
+  recruitmentCustomMaxNo: z.number().int().min(0).max(50).optional(),
+  recruitmentAnyNoMeans: z.enum(ANY_NO_MEANS).optional(),
+  recruitmentDiscussionEnds: z.enum(DISCUSSION_ENDS).optional(),
+  recruitmentDeclineOutrightAt: z.number().int().min(1).max(50).nullable().optional(),
   recruitmentWiderDiscussionHours: z.number().int().positive().optional(),
   // Null clears it — "surfaced to whoever's about to send an actual
   // decline, never sent automatically."
@@ -128,6 +133,10 @@ export const updateCommunityInput = z.object({
   oidcClientId: z.string().min(1).nullable().optional(),
   oidcRequiredRole: z.string().min(1).nullable().optional(),
   oidcPrimary: z.boolean().optional(),
+  // docs/plans/admission-flow.md §6a, all off until a community turns them on.
+  ssoCreateOnAdmit: z.boolean().optional(),
+  ssoRevokeOnLeave: z.boolean().optional(),
+  ssoJoinPolicy: z.enum(["anyone_with_role", "admitted_only"]).optional(),
 });
 export type UpdateCommunityInput = z.infer<typeof updateCommunityInput>;
 
@@ -182,14 +191,38 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
     }
   }
 
-  if (input.recruitmentDecisionRules !== undefined) {
-    requireValidDecisionRules(input.recruitmentDecisionRules);
+  // A policy a lane can never meet is refused when saved, with the lane named,
+  // rather than leaving applications waiting for ever on a number nobody can reach.
+  const touchesPolicy = [
+    input.recruitmentInWhen,
+    input.recruitmentCustomMinYes,
+    input.recruitmentCustomMaxNo,
+    input.recruitmentAnyNoMeans,
+    input.recruitmentDiscussionEnds,
+    input.recruitmentDeclineOutrightAt,
+  ].some((v) => v !== undefined);
+  if (touchesPolicy) {
+    const { listLanes } = await import("../recruitment/admission-lanes");
+    const evaluated = (await listLanes(actor.communityId))
+      .filter((l) => l.reportsNeeded !== null)
+      .map((l) => ({ name: l.name, reportsNeeded: l.reportsNeeded! }));
+    const merged = policyOf({
+      recruitmentInWhen: input.recruitmentInWhen ?? currentRow.recruitmentInWhen,
+      recruitmentCustomMinYes: input.recruitmentCustomMinYes ?? currentRow.recruitmentCustomMinYes,
+      recruitmentCustomMaxNo: input.recruitmentCustomMaxNo ?? currentRow.recruitmentCustomMaxNo,
+      recruitmentAnyNoMeans: input.recruitmentAnyNoMeans ?? currentRow.recruitmentAnyNoMeans,
+      recruitmentDiscussionEnds: input.recruitmentDiscussionEnds ?? currentRow.recruitmentDiscussionEnds,
+      recruitmentDeclineOutrightAt:
+        input.recruitmentDeclineOutrightAt !== undefined ? input.recruitmentDeclineOutrightAt : currentRow.recruitmentDeclineOutrightAt,
+    });
+    const problems = validateDecisionPolicy(merged, evaluated);
+    if (problems.length > 0) throw new AppError(problems[0]);
   }
 
   // The write and its log share one transaction, so a change can never land
   // without its record — the failure mode that makes an audit log worse than
   // none, because the gap is invisible.
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [updated] = await tx
       .update(community)
       .set({
@@ -227,24 +260,18 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         ...(input.recruitmentInterviewsOpen !== undefined && {
           recruitmentInterviewsOpen: input.recruitmentInterviewsOpen,
         }),
-        ...(input.recruitmentNominationWindowHours !== undefined && {
-          recruitmentNominationWindowHours: input.recruitmentNominationWindowHours,
-        }),
         ...(input.recruitmentObjectionOverrule !== undefined && {
           recruitmentObjectionOverrule: input.recruitmentObjectionOverrule,
         }),
         ...(input.recruitmentObjectionQuorum !== undefined && {
           recruitmentObjectionQuorum: input.recruitmentObjectionQuorum,
         }),
-        ...(input.recruitmentEvaluatorCount !== undefined && {
-          recruitmentEvaluatorCount: input.recruitmentEvaluatorCount,
-        }),
-        ...(input.recruitmentDecisionRules !== undefined && {
-          recruitmentDecisionRules: input.recruitmentDecisionRules,
-        }),
-        ...(input.recruitmentSubscriptionLapseThreshold !== undefined && {
-          recruitmentSubscriptionLapseThreshold: input.recruitmentSubscriptionLapseThreshold,
-        }),
+        ...(input.recruitmentInWhen !== undefined && { recruitmentInWhen: input.recruitmentInWhen }),
+        ...(input.recruitmentCustomMinYes !== undefined && { recruitmentCustomMinYes: input.recruitmentCustomMinYes }),
+        ...(input.recruitmentCustomMaxNo !== undefined && { recruitmentCustomMaxNo: input.recruitmentCustomMaxNo }),
+        ...(input.recruitmentAnyNoMeans !== undefined && { recruitmentAnyNoMeans: input.recruitmentAnyNoMeans }),
+        ...(input.recruitmentDiscussionEnds !== undefined && { recruitmentDiscussionEnds: input.recruitmentDiscussionEnds }),
+        ...(input.recruitmentDeclineOutrightAt !== undefined && { recruitmentDeclineOutrightAt: input.recruitmentDeclineOutrightAt }),
         ...(input.recruitmentWiderDiscussionHours !== undefined && {
           recruitmentWiderDiscussionHours: input.recruitmentWiderDiscussionHours,
         }),
@@ -274,6 +301,9 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
         ...(input.oidcClientId !== undefined && { oidcClientId: input.oidcClientId }),
         ...(input.oidcRequiredRole !== undefined && { oidcRequiredRole: input.oidcRequiredRole }),
         ...(input.oidcPrimary !== undefined && { oidcPrimary: input.oidcPrimary }),
+        ...(input.ssoCreateOnAdmit !== undefined && { ssoCreateOnAdmit: input.ssoCreateOnAdmit }),
+        ...(input.ssoRevokeOnLeave !== undefined && { ssoRevokeOnLeave: input.ssoRevokeOnLeave }),
+        ...(input.ssoJoinPolicy !== undefined && { ssoJoinPolicy: input.ssoJoinPolicy }),
       })
       .where(eq(community.id, actor.communityId))
       .returning();
@@ -296,4 +326,12 @@ export async function updateCommunity(actor: Member, input: UpdateCommunityInput
 
     return updated;
   });
+
+  // The interviews door reopened: anyone held at the interview step gets their
+  // poll now (docs/plans/admission-flow.md §6 — a closed door holds, it never skips).
+  if (input.recruitmentInterviewsOpen === true && !currentRow.recruitmentInterviewsOpen) {
+    const { ensureInterviewPollsFor } = await import("../recruitment/interviews");
+    await ensureInterviewPollsFor(actor.communityId);
+  }
+  return result;
 }

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { community, cycle, formResponse, member, participation, recruitmentApplicationInvite, recruitmentDecision, task } from "@/db/schema";
+import { community, cycle, formResponse, member, participation, recruitmentApplicationInvite, task, admission, communityInvite } from "@/db/schema";
 import { updateCommunity } from "@/lib/settings";
 import { createCycle, updateCycleSettings } from "@/lib/cycles";
 import { claimTask } from "@/lib/tasks";
@@ -19,22 +19,20 @@ import {
   listApplicationAlerts,
   listApplicationsForEvaluation,
   listHeldRecruitmentScopes,
-  listObjections,
+  listConcerns,
   listOutstandingReferralInvites,
-  requireValidDecisionRules,
   redeemCommunityInvite,
-  resolveWiderDiscussionManually,
   revokeCommunityInvite,
   setRecruitmentSubscriptionActive,
   submitEvaluation,
   submitRecruitmentApplication,
 } from "@/lib/recruitment";
-import type { RecruitmentDecisionRule } from "@/lib/recruitment";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withApplicationOnlyLanes, POLICY_TWO_OF_TWO, setReportsNeeded } from "./helpers";
 
 const applicationFields: CreateFormInput["fields"] = [
-  { key: "name", label: "Name", responseType: "text", required: true },
+  { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
+  { key: "email", label: "Email", responseType: "text", required: true, isEmailField: true },
   { key: "why", label: "Why do you want to join?", responseType: "text", required: false },
 ];
 
@@ -44,6 +42,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
+  await withApplicationOnlyLanes(communityId);
 }
 
 async function insertTask(
@@ -72,21 +71,35 @@ async function insertTask(
 // fixture most of this file's tests build on.
 async function setUpApplicationPipeline(
   fixtures: Awaited<ReturnType<typeof createFixtures>>,
-  overrides: Partial<{ evaluatorCount: number; decisionRules: RecruitmentDecisionRule[] }> = {},
+  overrides: Partial<{ evaluatorCount: number; policy: Record<string, unknown> }> = {},
 ) {
   const { community: testCommunity, alice, branch } = fixtures;
   await enableRecruitment(testCommunity.id);
+  await withApplicationOnlyLanes(testCommunity.id);
   const form = await createForm(alice, { title: "Application", fields: applicationFields });
   const t = await insertTask(testCommunity.id, branch.id, alice.id);
   await updateCommunity(alice, {
     recruitmentApplicationFormId: form.id,
-    ...(overrides.evaluatorCount !== undefined && { recruitmentEvaluatorCount: overrides.evaluatorCount }),
-    ...(overrides.decisionRules !== undefined && { recruitmentDecisionRules: overrides.decisionRules }),
+    ...((overrides.policy ?? POLICY_TWO_OF_TWO) as object),
   });
+  if (overrides.evaluatorCount !== undefined) await setReportsNeeded(testCommunity.id, overrides.evaluatorCount);
   await grantPermission(testCommunity.id, "recruitment", t.id);
   const [refetchedAlice] = await db.select().from(member).where(eq(member.id, alice.id));
   await claimTask(refetchedAlice, t.id);
   return { form, task: t, alice: refetchedAlice };
+}
+
+// Sets up: recruitment on, an application form configured, and admission
+// lanes seeded. Used by tests that don't need the full task setup.
+async function setUpBasicApplication(
+  fixtures: Awaited<ReturnType<typeof createFixtures>>,
+) {
+  const { community: testCommunity, alice } = fixtures;
+  await enableRecruitment(testCommunity.id);
+  await withApplicationOnlyLanes(testCommunity.id);
+  const form = await createForm(alice, { title: "Application", fields: applicationFields });
+  await updateCommunity(alice, { recruitmentApplicationFormId: form.id });
+  return { form, alice };
 }
 
 describe("submitPublicFormResponse (forms.ts)", () => {
@@ -98,7 +111,7 @@ describe("submitPublicFormResponse (forms.ts)", () => {
     const { alice } = await createFixtures();
     const form = await createForm(alice, { title: "Public form", fields: applicationFields, allowAnonymous: false });
 
-    const created = await submitPublicFormResponse(form.id, { values: { name: "Dana", why: "" } });
+    const created = await submitPublicFormResponse(form.id, { values: { name: "Dana", email: "dana@example.com", why: "" } });
     expect(created.submittedBy).toBeNull();
     expect((created.values as Record<string, unknown>).name).toBe("Dana");
   });
@@ -115,7 +128,7 @@ describe("submitPublicFormResponse (forms.ts)", () => {
     const form = await createForm(alice, { title: "Public form", fields: applicationFields });
     await archiveForm(alice, form.id);
 
-    await expect(submitPublicFormResponse(form.id, { values: { name: "Dana" } })).rejects.toThrow(ConflictError);
+    await expect(submitPublicFormResponse(form.id, { values: { name: "Dana", email: "dana@example.com" } })).rejects.toThrow(ConflictError);
   });
 
   it("rejects a nonexistent form", async () => {
@@ -154,7 +167,7 @@ describe("submitRecruitmentApplication", () => {
   it("rejects when the recruitment module is off", async () => {
     const { community: testCommunity } = await createFixtures();
     await expect(
-      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" } }),
+      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana", email: "dana@example.com" } }),
     ).rejects.toThrow(AppError);
   });
 
@@ -162,7 +175,7 @@ describe("submitRecruitmentApplication", () => {
     const { community: testCommunity } = await createFixtures();
     await enableRecruitment(testCommunity.id);
     await expect(
-      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" } }),
+      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana", email: "dana@example.com" } }),
     ).rejects.toThrow(AppError);
   });
 
@@ -170,29 +183,36 @@ describe("submitRecruitmentApplication", () => {
     const fixtures = await createFixtures();
     await setUpApplicationPipeline(fixtures);
 
-    const created = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
-    expect(created.submittedBy).toBeNull();
+    const created = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
+    expect(created.formResponse.submittedBy).toBeNull();
   });
 
-  it("links a valid referenced invite without consuming it", async () => {
+  it("links a valid referenced invite, and spends it — sending the application is what redeeming it is", async () => {
     const fixtures = await createFixtures();
     const { alice } = await setUpApplicationPipeline(fixtures);
     const invite = await createCommunityInvite(alice, { inviterThinksGoodFit: true });
 
     const created = await submitRecruitmentApplication(fixtures.community.id, {
-      values: { name: "Dana" },
+      values: { name: "Dana", email: "dana@example.com" },
       inviteToken: invite.token,
     });
 
     const [link] = await db
       .select()
       .from(recruitmentApplicationInvite)
-      .where(eq(recruitmentApplicationInvite.formResponseId, created.id));
+      .where(eq(recruitmentApplicationInvite.formResponseId, created.formResponse.id));
     expect(link.communityInviteId).toBe(invite.id);
 
-    // Never consumed by this — still unredeemed.
+    // An invite on an application lane is spent by the application: the
+    // arrival it made carries it, and the same link can't vouch for two people.
     const refetchedInvite = await getCommunityInviteByToken(invite.token);
-    expect(communityInviteStatus(refetchedInvite)).toBe("valid");
+    expect(communityInviteStatus(refetchedInvite)).toBe("redeemed");
+    await expect(
+      submitRecruitmentApplication(fixtures.community.id, {
+        values: { name: "Eve", email: "eve@example.com" },
+        inviteToken: invite.token,
+      }),
+    ).rejects.toThrow(/already been used/);
   });
 
   it("rejects a nonexistent invite token", async () => {
@@ -200,7 +220,7 @@ describe("submitRecruitmentApplication", () => {
     await setUpApplicationPipeline(fixtures);
 
     await expect(
-      submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" }, inviteToken: "garbage" }),
+      submitRecruitmentApplication(fixtures.community.id,  { values: { name: "Dana", email: "dana@example.com" }, inviteToken: "garbage" }),
     ).rejects.toThrow(NotFoundError);
   });
 
@@ -212,7 +232,7 @@ describe("submitRecruitmentApplication", () => {
 
     await expect(
       submitRecruitmentApplication(fixtures.community.id, {
-        values: { name: "Dana" },
+        values: { name: "Dana", email: "dana@example.com" },
         inviteToken: invite.token,
       }),
     ).rejects.toThrow(ConflictError);
@@ -225,7 +245,7 @@ describe("submitRecruitmentApplication", () => {
     const form = (await getRecruitmentApplicationForm(refetchedAlice))!;
 
     await expect(
-      submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" }, inviteToken: "garbage" }),
+      submitRecruitmentApplication(fixtures.community.id,  { values: { name: "Dana", email: "dana@example.com" }, inviteToken: "garbage" }),
     ).rejects.toThrow(NotFoundError);
 
     expect(await listFormResponses(refetchedAlice, form.id)).toHaveLength(0);
@@ -240,10 +260,10 @@ describe("submitEvaluation", () => {
   it("is holder-gated", async () => {
     const fixtures = await createFixtures();
     await setUpApplicationPipeline(fixtures);
-    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
+    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
 
     await expect(
-      submitEvaluation(fixtures.bob, application.id, { recommendation: "proceed" }),
+      submitEvaluation(fixtures.bob, application.formResponse.id, { recommendation: "proceed" }),
     ).rejects.toThrow(ForbiddenError);
   });
 
@@ -251,7 +271,7 @@ describe("submitEvaluation", () => {
     const fixtures = await createFixtures();
     const { alice } = await setUpApplicationPipeline(fixtures);
     const otherForm = await createForm(alice, { title: "Unrelated form", fields: applicationFields });
-    const otherResponse = await submitPublicFormResponse(otherForm.id, { values: { name: "Dana" } });
+    const otherResponse = await submitPublicFormResponse(otherForm.id, { values: { name: "Dana", email: "dana@example.com" } });
 
     await expect(
       submitEvaluation(alice, otherResponse.id, { recommendation: "proceed" }),
@@ -261,10 +281,10 @@ describe("submitEvaluation", () => {
   it("upserts in place — resubmitting updates rather than duplicating", async () => {
     const fixtures = await createFixtures();
     const { alice } = await setUpApplicationPipeline(fixtures);
-    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
+    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
 
-    const first = await submitEvaluation(alice, application.id, { recommendation: "unsure", notes: "need more info" });
-    const second = await submitEvaluation(alice, application.id, { recommendation: "proceed", notes: null });
+    const first = await submitEvaluation(alice, application.formResponse.id, { recommendation: "unsure", notes: "need more info" });
+    const second = await submitEvaluation(alice, application.formResponse.id, { recommendation: "proceed", notes: null });
 
     expect(second.id).toBe(first.id);
     expect(second.recommendation).toBe("proceed");
@@ -280,96 +300,43 @@ describe("computeRecruitmentOutcome", () => {
   it("is null with fewer evaluations filed than required, but reports the real counts", async () => {
     const fixtures = await createFixtures();
     const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 2 });
-    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
-    await submitEvaluation(alice, application.id, { recommendation: "proceed" });
+    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
+    await submitEvaluation(alice, application.formResponse.id, { recommendation: "proceed" });
 
     const [communityRow] = await db.select().from(community).where(eq(community.id, fixtures.community.id));
-    const result = await computeRecruitmentOutcome(communityRow, application.id);
+    const result = await computeRecruitmentOutcome(communityRow, application.formResponse.id);
     expect(result.outcome).toBeNull();
     expect(result.evaluationsFiled).toBe(1);
     expect(result.evaluatorsNeeded).toBe(2);
   });
 
-  it("resolves to the first matching rule once enough evaluations are filed", async () => {
+  it("resolves once the lane's reports are in, by the community's policy", async () => {
     const fixtures = await createFixtures();
-    const rules: RecruitmentDecisionRule[] = [
-      { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-      { conditions: { minCounts: { decline: 2 } }, outcome: "decline" },
-      { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-    ];
-    const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 2, decisionRules: rules });
-    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
+    const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 2 });
+    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
 
     // A second evaluator: claim a second slot on the recruitment task.
     const [bobTask] = await db.select().from(task).where(eq(task.communityId, fixtures.community.id));
     await db.update(task).set({ capacity: 2 }).where(eq(task.id, bobTask.id));
     await claimTask(fixtures.bob, bobTask.id);
 
-    await submitEvaluation(alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(fixtures.bob, application.id, { recommendation: "proceed" });
+    await submitEvaluation(alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(fixtures.bob, application.formResponse.id, { recommendation: "proceed" });
 
     const [communityRow] = await db.select().from(community).where(eq(community.id, fixtures.community.id));
-    const result = await computeRecruitmentOutcome(communityRow, application.id);
+    const result = await computeRecruitmentOutcome(communityRow, application.formResponse.id);
     expect(result.outcome).toBe("proceed");
   });
 
-  it("falls through to the fallback rule when nothing more specific matches", async () => {
+  it("an unsure report is neither yes nor no, so nobody is in and it goes to a wider discussion", async () => {
     const fixtures = await createFixtures();
-    const rules: RecruitmentDecisionRule[] = [
-      { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-      { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-    ];
-    const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 1, decisionRules: rules });
-    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
-    await submitEvaluation(alice, application.id, { recommendation: "unsure" });
+    const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 1, policy: {} });
+    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
+    await submitEvaluation(alice, application.formResponse.id, { recommendation: "unsure" });
 
     const [communityRow] = await db.select().from(community).where(eq(community.id, fixtures.community.id));
-    const result = await computeRecruitmentOutcome(communityRow, application.id);
+    const result = await computeRecruitmentOutcome(communityRow, application.formResponse.id);
     expect(result.outcome).toBe("wider_discussion");
-  });
-
-  it("a linked invite's checkboxes feed matching; no linked invite means invite-conditioned rules never match", async () => {
-    const fixtures = await createFixtures();
-    const rules: RecruitmentDecisionRule[] = [
-      { conditions: { inviterThinksGoodFit: true }, outcome: "proceed" },
-      { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-    ];
-    const { alice } = await setUpApplicationPipeline(fixtures, { evaluatorCount: 1, decisionRules: rules });
-
-    const invite = await createCommunityInvite(alice, { inviterThinksGoodFit: true });
-    const viaInvite = await submitRecruitmentApplication(fixtures.community.id, {
-      values: { name: "Dana" },
-      inviteToken: invite.token,
-    });
-    await submitEvaluation(alice, viaInvite.id, { recommendation: "unsure" });
-
-    const withoutInvite = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Eli" } });
-    await submitEvaluation(alice, withoutInvite.id, { recommendation: "unsure" });
-
-    const [communityRow] = await db.select().from(community).where(eq(community.id, fixtures.community.id));
-    expect((await computeRecruitmentOutcome(communityRow, viaInvite.id)).outcome).toBe("proceed");
-    expect((await computeRecruitmentOutcome(communityRow, withoutInvite.id)).outcome).toBe("wider_discussion");
-  });
-});
-
-describe("requireValidDecisionRules", () => {
-  it("allows an empty list", () => {
-    expect(() => requireValidDecisionRules([])).not.toThrow();
-  });
-
-  it("allows a list ending in an unconditional fallback", () => {
-    expect(() =>
-      requireValidDecisionRules([
-        { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-        { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-      ]),
-    ).not.toThrow();
-  });
-
-  it("rejects a list with no unconditional fallback rule", () => {
-    expect(() =>
-      requireValidDecisionRules([{ conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" }]),
-    ).toThrow(AppError);
   });
 });
 
@@ -387,7 +354,7 @@ describe("listApplicationAlerts / listApplicationsForEvaluation", () => {
   it("gives a subscriber minimal counts, never the applicant's own answers", async () => {
     const fixtures = await createFixtures();
     await setUpApplicationPipeline(fixtures, { evaluatorCount: 2 });
-    await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
+    await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
     await setRecruitmentSubscriptionActive(fixtures.bob, true);
 
     const alerts = await listApplicationAlerts(fixtures.bob);
@@ -400,8 +367,8 @@ describe("listApplicationAlerts / listApplicationsForEvaluation", () => {
   it("listApplicationsForEvaluation is holder-only and includes full answers + evaluations", async () => {
     const fixtures = await createFixtures();
     const { alice } = await setUpApplicationPipeline(fixtures);
-    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
-    await submitEvaluation(alice, application.id, { recommendation: "proceed", notes: "seems great" });
+    const application = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
+    await submitEvaluation(alice, application.formResponse.id, { recommendation: "proceed", notes: "seems great" });
 
     await expect(listApplicationsForEvaluation(fixtures.bob)).rejects.toThrow(ForbiddenError);
 
@@ -554,42 +521,23 @@ describe("cycle-scoped recruitment authority (docs/plans/archive/cycle-scope-rem
     expect(filed.recommendation).toBe("proceed");
   });
 
-  it("a cycle-placed holder cannot resolve another cycle's wider-discussion decision", async () => {
+  it("a cycle-placed holder cannot list concerns on another cycle's application", async () => {
     const fixtures = await createFixtures();
     const { form, cycleA, cycleB } = await setUpCycleFixtures(fixtures);
     const alice = await designateRecruitment(fixtures, cycleA.id);
 
     const other = await insertApplicationResponse(form.id, cycleB.id, "Dana");
-    await db.insert(recruitmentDecision).values({
-      formResponseId: other.id,
-      ruleOutcome: "wider_discussion",
-      defaultResolution: "proceed",
-      resolution: null,
-      widerDiscussionDeadline: new Date(Date.now() + 3_600_000),
-    });
-
-    await expect(
-      resolveWiderDiscussionManually(alice, other.id, { resolution: "accepted" }),
-    ).rejects.toThrow(ForbiddenError);
+    await expect(listConcerns(alice, other.id)).rejects.toThrow(ForbiddenError);
   });
 
-  it("a cycle-placed holder cannot list objections on another cycle's application", async () => {
-    const fixtures = await createFixtures();
-    const { form, cycleA, cycleB } = await setUpCycleFixtures(fixtures);
-    const alice = await designateRecruitment(fixtures, cycleA.id);
-
-    const other = await insertApplicationResponse(form.id, cycleB.id, "Dana");
-    await expect(listObjections(alice, other.id)).rejects.toThrow(ForbiddenError);
-  });
-
-  it("a holder can list objections on an application their scope covers", async () => {
+  it("a holder can list concerns on an application their scope covers", async () => {
     const fixtures = await createFixtures();
     const { form, cycleA } = await setUpCycleFixtures(fixtures);
     const alice = await designateRecruitment(fixtures, cycleA.id);
 
     const own = await insertApplicationResponse(form.id, cycleA.id, "Dana");
     // No decision → no objection rows, but the scope check passes.
-    expect(await listObjections(alice, own.id)).toEqual([]);
+    expect(await listConcerns(alice, own.id)).toEqual([]);
   });
 
   it("holding the community scope and a cycle together covers everything", async () => {
@@ -619,6 +567,7 @@ describe("cycle-targeted intake (docs/plans/archive/cycle-scope-remediation-plan
   async function setUpIntakeFixtures(fixtures: Awaited<ReturnType<typeof createFixtures>>) {
     const { community: testCommunity, alice } = fixtures;
     await enableRecruitment(testCommunity.id);
+    await withApplicationOnlyLanes(testCommunity.id);
     await enableCycles(testCommunity.id);
     const form = await createForm(alice, { title: "Application", fields: applicationFields });
     await updateCommunity(alice, { recruitmentApplicationFormId: form.id });
@@ -631,12 +580,12 @@ describe("cycle-targeted intake (docs/plans/archive/cycle-scope-remediation-plan
     const { form, cycle } = await setUpIntakeFixtures(fixtures);
 
     const created = await submitRecruitmentApplication(fixtures.community.id, {
-      values: { name: "Dana" },
+      values: { name: "Dana", email: "dana@example.com" },
       cycleId: cycle.id,
     });
 
-    expect(created.cycleId).toBe(cycle.id);
-    expect(created.formId).toBe(form.id);
+    expect(created.formResponse.cycleId).toBe(cycle.id);
+    expect(created.formResponse.formId).toBe(form.id);
   });
 
   it("prefers the cycle's own form pointer over the community's standing form", async () => {
@@ -647,21 +596,21 @@ describe("cycle-targeted intake (docs/plans/archive/cycle-scope-remediation-plan
     await updateCycleSettings(alice, cycle.id, { recruitmentApplicationFormId: cycleForm.id });
 
     const created = await submitRecruitmentApplication(fixtures.community.id, {
-      values: { name: "Dana" },
+      values: { name: "Dana", email: "dana@example.com" },
       cycleId: cycle.id,
     });
 
-    expect(created.formId).toBe(cycleForm.id);
+    expect(created.formResponse.formId).toBe(cycleForm.id);
   });
 
   it("a general /apply submit stays untagged and uses the community's form", async () => {
     const fixtures = await createFixtures();
     const { form } = await setUpIntakeFixtures(fixtures);
 
-    const created = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" } });
+    const created = await submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana", email: "dana@example.com" } });
 
-    expect(created.cycleId).toBeNull();
-    expect(created.formId).toBe(form.id);
+    expect(created.formResponse.cycleId).toBeNull();
+    expect(created.formResponse.formId).toBe(form.id);
   });
 
   it("rejects a cycleId from outside the community", async () => {
@@ -669,7 +618,7 @@ describe("cycle-targeted intake (docs/plans/archive/cycle-scope-remediation-plan
     await setUpIntakeFixtures(fixtures);
 
     await expect(
-      submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" }, cycleId: crypto.randomUUID() }),
+      submitRecruitmentApplication(fixtures.community.id,  { values: { name: "Dana", email: "dana@example.com" }, cycleId: crypto.randomUUID() }),
     ).rejects.toThrow(NotFoundError);
   });
 
@@ -714,18 +663,18 @@ describe("cycle-targeted intake (docs/plans/archive/cycle-scope-remediation-plan
     await updateCommunity(alice, { recruitmentApplicationsOpen: false });
 
     await expect(
-      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" } }),
+      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana", email: "dana@example.com" } }),
     ).rejects.toThrow(AppError);
 
     // A cycle with its own applicationsOpen=true still admits — the
     // per-cycle doors are §4.3's real gate, the community toggle only
     // closes the general cycle-less door.
     const created = await submitRecruitmentApplication(testCommunity.id, {
-      values: { name: "Dana" },
+      values: { name: "Dana", email: "dana@example.com" },
       cycleId: cycle.id,
     });
-    expect(created.formId).toBe(form.id);
-    expect(created.cycleId).toBe(cycle.id);
+    expect(created.formResponse.formId).toBe(form.id);
+    expect(created.formResponse.cycleId).toBe(cycle.id);
   });
 
   it("the per-cycle applicationsOpen flag shuts the cycle's door", async () => {
@@ -735,7 +684,7 @@ describe("cycle-targeted intake (docs/plans/archive/cycle-scope-remediation-plan
     await updateCycleSettings(alice, cycle.id, { applicationsOpen: false });
 
     await expect(
-      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" }, cycleId: cycle.id }),
+      submitRecruitmentApplication(testCommunity.id,  { values: { name: "Dana", email: "dana@example.com" }, cycleId: cycle.id }),
     ).rejects.toThrow(AppError);
   });
 
@@ -748,7 +697,7 @@ describe("cycle-targeted intake (docs/plans/archive/cycle-scope-remediation-plan
     });
 
     await expect(
-      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" }, cycleId: cycle.id }),
+      submitRecruitmentApplication(testCommunity.id,  { values: { name: "Dana", email: "dana@example.com" }, cycleId: cycle.id }),
     ).rejects.toThrow(AppError);
   });
 
@@ -761,7 +710,7 @@ describe("cycle-targeted intake (docs/plans/archive/cycle-scope-remediation-plan
     });
 
     await expect(
-      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" }, cycleId: cycle.id }),
+      submitRecruitmentApplication(testCommunity.id,  { values: { name: "Dana", email: "dana@example.com" }, cycleId: cycle.id }),
     ).rejects.toThrow(AppError);
   });
 
@@ -778,7 +727,7 @@ describe("cycle-targeted intake (docs/plans/archive/cycle-scope-remediation-plan
     expect(state.applicationsOpen).toBe(false);
 
     await expect(
-      submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" }, cycleId: cycle.id }),
+      submitRecruitmentApplication(testCommunity.id,  { values: { name: "Dana", email: "dana@example.com" }, cycleId: cycle.id }),
     ).rejects.toThrow(AppError);
   });
 });
@@ -797,6 +746,7 @@ describe("cycle invites + capacity holds + joining seed (docs/plans/archive/cycl
   async function setUpInvitesFixtures(fixtures: Awaited<ReturnType<typeof createFixtures>>) {
     const { community: testCommunity, alice } = fixtures;
     await enableRecruitment(testCommunity.id);
+    await withApplicationOnlyLanes(testCommunity.id);
     await enableCycles(testCommunity.id);
     const form = await createForm(alice, { title: "Application", fields: applicationFields });
     await updateCommunity(alice, { recruitmentApplicationFormId: form.id });
@@ -939,12 +889,11 @@ describe("cycle invites + capacity holds + joining seed (docs/plans/archive/cycl
     const created = await createCommunityInvite(alice, { cycleId: cycle.id, label: "Dana", inviterKnowsPersonally: true });
 
     const outcome = await redeemCommunityInvite(created.token, { email: "dana@example.com" });
-    expect(outcome.kind).toBe("member");
-    if (outcome.kind !== "member") throw new Error("expected the direct path");
+    expect(outcome.kind).toBe("admitted");
+    if (outcome.kind !== "admitted") throw new Error("expected the direct path");
 
     const [newMember] = await db.select().from(member).where(eq(member.id, outcome.memberId));
     expect(newMember.communityId).toBe(fixtures.community.id);
-    expect(newMember.joinedViaInviteId).toBe(created.id);
     const [row] = await db
       .select()
       .from(participation)
@@ -952,13 +901,35 @@ describe("cycle invites + capacity holds + joining seed (docs/plans/archive/cycl
     expect(row?.status).toBe("coming");
   });
 
-  it("an unmarked process-lane invite never redeems directly", async () => {
+  it("an unmarked process-lane invite sends the person to apply, and creates nobody until they do", async () => {
     const fixtures = await createFixtures();
     const { alice } = fixtures;
     const { cycle } = await setUpInvitesFixtures(fixtures);
     const created = await createCommunityInvite(alice, { cycleId: cycle.id });
 
-    await expect(redeemCommunityInvite(created.token, { email: "dana@example.com" })).rejects.toThrow(ConflictError);
+    // An unmarked invite is the invited_neither process lane: it asks for an
+    // application, and the application is where the person's name and email
+    // come from, so redeeming only points them there — nothing is made, and
+    // the invite stays unspent until the application is sent.
+    const outcome = await redeemCommunityInvite(created.token, { email: "dana@example.com" });
+    expect(outcome.kind).toBe("apply");
+    expect(await db.select().from(admission)).toHaveLength(0);
+    const [unspent] = await db.select().from(communityInvite).where(eq(communityInvite.id, created.id));
+    expect(unspent.redeemedAt).toBeNull();
+
+    // Sending the application is what spends it, and makes the arrival, on
+    // the lane the invite takes, with the invite behind it.
+    const sent = await submitRecruitmentApplication(fixtures.community.id, {
+      values: { name: "Dana", email: "dana@example.com" },
+      inviteToken: created.token,
+    });
+    const [arrival] = await db.select().from(admission).where(eq(admission.token, sent.token));
+    expect(arrival.route).toBe("invite");
+    expect(arrival.inviteId).toBe(created.id);
+    expect(arrival.formResponseId).toBe(sent.formResponse.id);
+    expect(arrival.admittedMemberId).toBeNull();
+    const [spent] = await db.select().from(communityInvite).where(eq(communityInvite.id, created.id));
+    expect(spent.redeemedAt).not.toBeNull();
   });
 
   it("an application referencing a process-lane invite is tagged with the invite's cycle", async () => {
@@ -968,11 +939,11 @@ describe("cycle invites + capacity holds + joining seed (docs/plans/archive/cycl
     const created = await createCommunityInvite(alice, { cycleId: cycle.id, label: "Dana" });
 
     const response = await submitRecruitmentApplication(fixtures.community.id, {
-      values: { name: "Dana" },
+      values: { name: "Dana", email: "dana@example.com" },
       inviteToken: created.token,
     });
 
-    expect(response.cycleId).toBe(cycle.id);
+    expect(response.formResponse.cycleId).toBe(cycle.id);
   });
 
   it("a direct invite's token on the application path is rejected — it redeems on /invite", async () => {
@@ -982,7 +953,7 @@ describe("cycle invites + capacity holds + joining seed (docs/plans/archive/cycl
     const created = await createCommunityInvite(alice, { cycleId: cycle.id, inviterKnowsPersonally: true });
 
     await expect(
-      submitRecruitmentApplication(fixtures.community.id, { values: { name: "Dana" }, inviteToken: created.token }),
+      submitRecruitmentApplication(fixtures.community.id,  { values: { name: "Dana", email: "dana@example.com" }, inviteToken: created.token }),
     ).rejects.toThrow(AppError);
   });
 
@@ -996,7 +967,7 @@ describe("cycle invites + capacity holds + joining seed (docs/plans/archive/cycl
 
     await expect(
       submitRecruitmentApplication(fixtures.community.id, {
-        values: { name: "Dana" },
+        values: { name: "Dana", email: "dana@example.com" },
         inviteToken: created.token,
         cycleId: cycleA.id,
       }),

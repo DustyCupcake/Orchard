@@ -195,7 +195,12 @@ async function seedQuestionsBestEffort(newMember: typeof memberTable.$inferSelec
 // exists for the same address (out of scope per the dev plan: "not
 // automatically merging a pre-existing magic-link Member into an OIDC
 // login that happens to share an email" — a real edge case, but a
-// manual admin action if it ever comes up). Callers are expected to
+// manual admin action if it ever comes up). That edge is now handled one
+// level up, in src/lib/sign-in/resolve.ts, which is what the callback calls
+// first: it links a member admitted through recruitment by the provider's
+// *verified* address and holds anything else that matches for an
+// administrator, so this function only ever sees a sign-in nobody owns.
+// Callers are expected to
 // have already confirmed the token carries the community's required
 // role before calling this — this function only ever provisions, it
 // never checks the role gate itself.

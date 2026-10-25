@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
@@ -15,17 +14,19 @@ import {
   getRecruitmentApplicationForm,
   isRecruitmentTaskHolder,
   listApplicationAlerts,
-  listOpenIntroCallsForSubscriber,
+  listOpenInterviewsForSubscriber,
   getRecruitmentPipeline,
   isMediationMember,
-  listStandingObjectionSummaries,
+  listStandingConcernSummaries,
 } from "@/lib/recruitment";
 import { listPairings, listSharedInterviewOffers } from "@/lib/recruitment/pairs";
-import { answerSharedInterviewAction } from "./actions";
+import { listLanes } from "@/lib/recruitment/admission-lanes";
+import { answerSharedInterviewAction, linkArrivalsAction } from "./actions";
 import { ForbiddenError } from "@/lib/errors";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
 import { Banner, BUTTON_SECONDARY, CARD, Tag } from "@/components/ui/kit";
 import PageHeader from "@/components/ui/PageHeader";
+import { getViewerClock } from "@/lib/view-clock";
 
 export const dynamic = "force-dynamic";
 
@@ -36,22 +37,23 @@ const PAIR_LABEL: Record<string, string> = {
   declined: "turned down",
 };
 
+// The stage names are admission-stage.ts's (docs/plans/admission-flow.md §4) — the same
+// ones the person's own page and the dashboard read — in the holders' words.
 const STAGE_LABEL: Record<string, string> = {
-  applied: "Applied",
-  evaluation_in_progress: "Evaluation in progress",
-  call_pending: "Call pending",
-  call_scheduled: "Call scheduled",
+  entered: "Just arrived",
+  awaiting_consent: "Waiting for their consent",
+  check_pending: "Community check open",
+  application_submitted: "Application in",
+  interview_scheduled: "Interview booked",
+  interview_held: "Interview done — reports due",
+  evaluation_in_progress: "Reports coming in",
   decision_pending: "Decision pending",
-  accepted: "Accepted",
+  wider_discussion: "Wider discussion open",
+  admitted: "Admitted",
+  waitlisted: "Waiting for a place",
   declined: "Declined",
-  accompaniment_assigned: "Accompaniment assigned",
+  withdrawn: "Stopped by them",
 };
-
-// "Evaluated-but-uncalled, called-but-undecided" — docs/development-
-// plan.md's Phase 35. The same subset src/lib/recruitment/pipeline.ts's
-// listRecruitmentActionItems surfaces on /dashboard, flagged here too
-// so the pipeline view itself makes the same cases legible in place.
-const NEEDS_ACTION_STAGES = new Set(["call_pending", "decision_pending"]);
 
 const OUTCOME_LABEL: Record<string, string> = {
   proceed: "Proceed",
@@ -93,12 +95,11 @@ const MAX_EVENT_ROWS = 6;
 // gets the most useful content; the pipeline is the last section, not the
 // page's premise.
 export default async function RecruitmentHubPage() {
+  const clock = await getViewerClock();
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
     redirect("/login");
   }
-
-  const clock = await getViewerClock();
 
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");
@@ -115,13 +116,13 @@ export default async function RecruitmentHubPage() {
     );
   }
 
-  const [isHolder, admin, authority, form, subscription, openIntroCalls, appUrl, openCycles] = await Promise.all([
+  const [isHolder, admin, authority, form, subscription, openInterviews, appUrl, openCycles] = await Promise.all([
     isRecruitmentTaskHolder(viewing),
     isAdmin(viewing),
     describeRecruitmentAuthority(viewing.communityId),
     getRecruitmentApplicationForm(viewing),
     getMyRecruitmentSubscription(viewing),
-    listOpenIntroCallsForSubscriber(viewing),
+    listOpenInterviewsForSubscriber(viewing),
     resolveAppUrlFromHeaders(),
     // Open (not closed) events only, newest first — a closed event admits
     // nobody, so its doors are not worth a row here.
@@ -148,13 +149,13 @@ export default async function RecruitmentHubPage() {
   // where somebody would otherwise assume a concern is theirs, and the
   // whole point of the redesign is that it isn't — it is the mediation
   // body's, and the hub says so in as many words.
-  let standingObjections: Awaited<ReturnType<typeof listStandingObjectionSummaries>> = [];
+  let standingObjections: Awaited<ReturnType<typeof listStandingConcernSummaries>> = [];
   let pairings: Awaited<ReturnType<typeof listPairings>> = [];
   let sharedOffers: Awaited<ReturnType<typeof listSharedInterviewOffers>> = [];
   let isMediationMemberNow = false;
   if (isHolder) {
     [standingObjections, pairings, sharedOffers, isMediationMemberNow] = await Promise.all([
-      listStandingObjectionSummaries(viewing),
+      listStandingConcernSummaries(viewing),
       listPairings(viewing),
       listSharedInterviewOffers(viewing),
       isMediationMember(viewing),
@@ -177,20 +178,20 @@ export default async function RecruitmentHubPage() {
   const canAct = isHolder || admin;
   const { open, grants, holders, evaluatorCount, needsTaskToFileUnder } = authority;
   const hasForm = Boolean(form);
-  // The contradiction this hub exists partly to surface: a decision needs
-  // `recruitmentEvaluatorCount` *distinct* filed evaluations, but only a
-  // current holder of a recruitment-granted task can file one, and
-  // `recruitment` is single-cardinality per scope
-  // (src/lib/permissions.ts's MULTI_CARDINALITY_MODULES). So on the
-  // default count of 2 with one holder, no rule above the unconditional
-  // fallback can ever match, and every application parks at
-  // decision_pending forever. Held back rather than auto-widened: opening
-  // evaluation to everyone is a real policy decision for the community, so
-  // the interface reports the gap instead of resolving it. An open module
-  // makes evaluatorCount infinite and so never trips this — which is correct,
-  // because open *is* the resolution.
-  const evaluationUnreachable =
-    !open && evaluatorCount > 0 && evaluatorCount < communityRow.recruitmentEvaluatorCount;
+  // The contradiction this hub exists partly to surface: a lane needs N reports
+  // per person, but only a current holder of a recruitment-granted task can file
+  // one, and `recruitment` is single-cardinality per scope
+  // (src/lib/permissions.ts's MULTI_CARDINALITY_MODULES). So a lane needing 2 with
+  // one holder can never get its reports and every arrival on it waits for ever.
+  // Held back rather than auto-widened: opening evaluation to everyone is a real
+  // policy decision for the community, so the interface reports the gap, naming
+  // the lane, instead of resolving it. An open module makes evaluatorCount
+  // infinite and so never trips this — which is correct, because open *is* the
+  // resolution.
+  const unreachableLanes = !open && evaluatorCount > 0
+    ? (await listLanes(communityRow.id)).filter((l) => l.reportsNeeded !== null && l.reportsNeeded > evaluatorCount)
+    : [];
+  const evaluationUnreachable = unreachableLanes.length > 0;
 
   return (
     <main className="mx-auto max-w-[860px] px-6 py-10 md:px-12 md:py-14">
@@ -317,15 +318,15 @@ export default async function RecruitmentHubPage() {
       {/* The other half of the open story, and the one that is genuinely a
           gap: an open module has no granting task, and both decision
           side-effects take their branchId from that task. There is no
-          member- or cycle-scoped branch to fall back on, so a real intro-call
+          member- or cycle-scoped branch to fall back on, so a real interview
           poll and a real accompaniment task are not created. Reported rather
           than filed under an arbitrary branch. */}
       {open && needsTaskToFileUnder && canAct && (
         <section className="mt-6">
           <Banner tone="warning">
             Recruitment is open to everyone, so applications can be evaluated and decided — but no
-            task grants Recruitment, and the intro call and the accompaniment task that follow a
-            decision are filed under that task&rsquo;s branch. Without one, those two are not created.
+            task grants Recruitment, and the interview and the accompaniment task are filed under that
+            task&rsquo;s branch. Without one, those two are not created.
             {admin ? (
               <>
                 {" "}
@@ -370,11 +371,10 @@ export default async function RecruitmentHubPage() {
       {evaluationUnreachable && canAct && (
         <section className="mt-6">
           <Banner tone="warning">
-            A decision needs {communityRow.recruitmentEvaluatorCount} separate evaluations filed, but
-            only {evaluatorCount} {evaluatorCount === 1 ? "person is" : "people are"} currently able to
-            file one — so no decision rule can ever be reached and applications sit at &ldquo;decision
-            pending&rdquo; indefinitely. Either lower &ldquo;Evaluators needed per application&rdquo;, or
-            widen who may evaluate — see{" "}
+            {unreachableLanes.map((l) => `“${l.name}” needs ${l.reportsNeeded} reports`).join(", ")} per person, but only{" "}
+            {evaluatorCount} {evaluatorCount === 1 ? "person is" : "people are"} currently able to file one — so
+            nobody on {unreachableLanes.length === 1 ? "that lane" : "those lanes"} can ever be decided and they wait
+            indefinitely. Either lower the reports the lane needs, or widen who may report — see{" "}
             <Link href="/settings?tab=recruitment" className="underline">
               Recruitment settings
             </Link>
@@ -396,7 +396,15 @@ export default async function RecruitmentHubPage() {
             <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
               {isHolder
                 ? "Full applicant answers, your recommendations, decisions and the wider-discussion window."
-                : "Subscribe to see that something is pending, raise an objection while wider discussion is open, and submit your availability for intro calls."}
+                : "Subscribe to see that something is pending and to offer your availability for interviews."}
+            </p>
+          </li>
+          <li className={CARD}>
+            <Link href="/community-check" className="text-[length:var(--text-heading)] font-medium text-[var(--text)] hover:underline">
+              Community check
+            </Link>
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+              Raise a concern about someone whose arrival the community has a say in. It goes privately to the mediation body.
             </p>
           </li>
           <li className={CARD}>
@@ -416,13 +424,13 @@ export default async function RecruitmentHubPage() {
             {subscription?.active ? (
               <>
                 You&rsquo;re subscribed to application alerts
-                {openIntroCalls.length > 0 && (
+                {openInterviews.length > 0 && (
                   <>
                     {" "}and have{" "}
-                    {openIntroCalls.length === 1 ? "an intro call" : `${openIntroCalls.length} intro calls`} still
+                    {openInterviews.length === 1 ? "an interview" : `${openInterviews.length} interviews`} still
                     gathering availability —{" "}
                     <Link
-                      href={`/scheduling-polls/${openIntroCalls[0].pollId}`}
+                      href={`/scheduling-polls/${openInterviews[0].pollId}`}
                       className="text-[var(--accent-1)] hover:underline"
                     >
                       submit yours
@@ -547,7 +555,7 @@ export default async function RecruitmentHubPage() {
                 <table className="w-full border-collapse text-[length:var(--text-body)]">
                   <thead>
                     <tr>
-                      <th className={TH}>Submitted</th>
+                      <th className={TH}>Who</th>
                       <th className={TH}>Stage</th>
                       <th className={TH}>Time in stage</th>
                     </tr>
@@ -555,11 +563,16 @@ export default async function RecruitmentHubPage() {
                   <tbody>
                     {pipeline.candidates.map((c) => (
                       <tr key={c.id} className="hover:bg-[var(--surface-sunken)]">
-                        <td className={TD}>{clock.date(c.submittedAt)}</td>
                         <td className={TD}>
-                          <span className="flex items-center gap-2">
+                          {c.name}
+                          <span className="block text-[length:var(--text-micro)] text-[var(--text-muted)]">
+                            {c.laneName ?? "—"} · arrived {clock.date(c.submittedAt)}
+                          </span>
+                        </td>
+                        <td className={TD}>
+                          <span className="flex flex-wrap items-center gap-2">
                             {STAGE_LABEL[c.stage] ?? c.stage}
-                            {NEEDS_ACTION_STAGES.has(c.stage) && <Tag tone="warning">needs action</Tag>}
+                            {c.needsAction && <Tag tone="warning">{c.actionLabel ?? "needs action"}</Tag>}
                           </span>
                         </td>
                         <td className={TD}>{timeSince(c.stageSince)}</td>
@@ -602,7 +615,7 @@ export default async function RecruitmentHubPage() {
               <ul className="mt-3 flex flex-col gap-1.5">
                 {standingObjections.map((o) => (
                   <li key={o.id} className="text-[length:var(--text-body)] text-[var(--text-muted)]">
-                    {o.formResponseId ? "An application" : "An announced arrival"} —
+                    An arrival in its community check —
                     raised {timeSince(o.raisedAt)}{" "}
                     {isMediationMemberNow && (
                       <Link href="/recruitment/mediation" className="text-[var(--accent-1)] hover:underline">
@@ -633,7 +646,7 @@ export default async function RecruitmentHubPage() {
                 {pairings.map((p) => (
                   <div key={p.id} className={`${CARD} flex flex-wrap items-center gap-2`}>
                     <span className="text-[length:var(--text-body)] text-[var(--text)]">
-                      {p.namer?.name ?? "Someone"} · {p.namedMember ? p.namedMember.name : "someone applying"}
+                      {p.namer?.name ?? "Someone"} · {p.other ? p.other.name : "nobody yet"}{p.linkedByTeam ? " · linked by the team" : ""}
                     </span>
                     <Tag
                       tone={
@@ -655,6 +668,38 @@ export default async function RecruitmentHubPage() {
             </section>
           )}
 
+          {pipeline && pipeline.candidates.filter((c) => !["admitted", "declined", "withdrawn"].includes(c.stage)).length >= 2 && (
+            <section className="mt-6">
+              <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Link two people who are coming together</h2>
+              <p className="mt-1 max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">
+                For two people you know are arriving together who didn&rsquo;t say so. It only records the fact, and waits for one of them to
+                confirm it on their own page before they can be offered a single interview.
+              </p>
+              <form action={linkArrivalsAction} className={`${CARD} mt-3 flex flex-wrap items-end gap-3`}>
+                {(["firstArrivalId", "secondArrivalId"] as const).map((name) => (
+                  <label key={name} className="flex flex-col gap-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                    {name === "firstArrivalId" ? "One person" : "The other"}
+                    <select name={name} required defaultValue="" className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[length:var(--text-body)] text-[var(--text)]">
+                      <option value="" disabled>
+                        — choose —
+                      </option>
+                      {pipeline.candidates
+                        .filter((c) => !["admitted", "declined", "withdrawn"].includes(c.stage))
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                ))}
+                <button type="submit" className={BUTTON_SECONDARY}>
+                  Link them
+                </button>
+              </form>
+            </section>
+          )}
+
           {sharedOffers.length > 0 && (
             <section className="mt-6">
               <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Shared interviews to offer</h2>
@@ -667,7 +712,7 @@ export default async function RecruitmentHubPage() {
                 {sharedOffers.map((o) => (
                   <form key={o.pairId} action={answerSharedInterviewAction} className={`${CARD} flex flex-wrap items-center gap-2`}>
                     <input type="hidden" name="pairId" value={o.pairId} />
-                    <span className="text-[length:var(--text-body)] text-[var(--text)]">Two applicants, one interview</span>
+                    <span className="text-[length:var(--text-body)] text-[var(--text)]">{o.names.first} and {o.names.second}: one interview</span>
                     <button type="submit" name="accept" value="1" className={BUTTON_SECONDARY}>
                       Offer it
                     </button>

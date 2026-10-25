@@ -1,45 +1,42 @@
-import { and, eq, inArray, isNull, lt } from "drizzle-orm";
-import { z } from "zod";
+import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  communityInvite,
-  form,
-  formResponse,
+  admission,
   member,
-  memberIdentity,
-  memberLanguage,
   evaluation,
-  objection,
-  profileQuestion,
-  recruitmentApplicationInvite,
   recruitmentDecision,
   task,
   taskAssignment,
 } from "@/db/schema";
 import type { community as communityTable, member as memberTable } from "@/db/schema";
-import type { FormField } from "../forms";
-import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { createTask } from "../tasks";
-import { createPoll } from "../scheduling-polls";
-import { generateToken } from "../token";
-import { seedPrimaryContactMethod } from "../contact-methods";
-import { getCommunityRow, requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
-import { computeRecruitmentOutcome } from "./evaluations";
-import { canScheduleInterview } from "./joining";
+import { getCommunityRow } from "./access";
+import { computeArrivalOutcome } from "./evaluations";
 import { listGrantingTaskIds } from "../permissions";
-import { answerProfileQuestion } from "../profile-questions";
-import { seedCycleParticipation } from "../participation";
+import { admitArrival, closeArrival, ensureArrivalForApplication, recordArrivalDecision } from "./admission";
+import { inviterOf, openCheck } from "./community-check";
 
 type Member = typeof memberTable.$inferSelect;
 type CommunityRow = typeof communityTable.$inferSelect;
 type RecruitmentDecisionRow = typeof recruitmentDecision.$inferSelect;
 
-const MS_PER_HOUR = 3600_000;
-const INTRO_CALL_WINDOW_DAYS = 14;
-
 export async function getRecruitmentDecision(formResponseId: string) {
   const [row] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.formResponseId, formResponseId));
   return row ?? null;
+}
+
+// A decision is about an arrival (§4); the application is simply one thing it can have.
+export async function getArrivalDecision(arrivalId: string) {
+  const [row] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.arrivalId, arrivalId));
+  return row ?? null;
+}
+
+async function arrivalOfDecision(decision: RecruitmentDecisionRow) {
+  if (decision.arrivalId) {
+    const [row] = await db.select().from(admission).where(eq(admission.id, decision.arrivalId));
+    if (row) return row;
+  }
+  return decision.formResponseId ? ensureArrivalForApplication(decision.formResponseId) : null;
 }
 
 // The reverse lookup a task detail page needs to know "is this task an
@@ -56,19 +53,6 @@ export async function getAccompaniedMemberId(taskId: string): Promise<string | n
     .from(recruitmentDecision)
     .where(eq(recruitmentDecision.accompanimentTaskId, taskId));
   return row?.convertedMemberId ?? null;
-}
-
-// Purely time-computed from widerDiscussionDeadline, the same no-
-// scheduler-job-for-the-status-itself pattern Phase 31's returning-
-// priority window and Assemblies' computeAssemblyPhase already
-// establish — actually resolving it (a real write, possibly creating
-// an Accompaniment task) is resolveWiderDiscussionWindows' job below.
-export type WiderDiscussionStatus = "open" | "closed" | null;
-export function computeWiderDiscussionStatus(decision: RecruitmentDecisionRow): WiderDiscussionStatus {
-  if (decision.ruleOutcome !== "wider_discussion") return null;
-  if (decision.resolution !== null) return "closed";
-  if (!decision.widerDiscussionDeadline) return null;
-  return new Date() < decision.widerDiscussionDeadline ? "open" : "closed";
 }
 
 // Whoever currently holds the recruitment task, first by claimedAt —
@@ -119,7 +103,7 @@ async function resolveAccompanimentAuthor(
   const [earliestEvaluation] = await db
     .select({ evaluatorId: evaluation.evaluatorId })
     .from(evaluation)
-    .where(eq(evaluation.formResponseId, decision.formResponseId))
+    .where(decision.arrivalId ? eq(evaluation.arrivalId, decision.arrivalId) : eq(evaluation.formResponseId, decision.formResponseId!))
     .orderBy(evaluation.filedAt)
     .limit(1);
   if (!earliestEvaluation) return null;
@@ -128,235 +112,22 @@ async function resolveAccompanimentAuthor(
   return evaluator ?? null;
 }
 
-function isoDate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
-// "The intro-call SchedulingPoll is created in must-overlap-specific-
-// people mode against the two evaluators as real, required Member
-// participants, while the applicant is tracked by [their] FormResponse
-// ... required participant for the applicant's side means their own
-// token-linked availability submission, not a memberId" — docs/
-// development-plan.md's Phase 34. requiredParticipantIds mixes real
-// evaluator member ids with the applicant's own formResponseId; that
-// field is an unconstrained uuid[] already (see its own schema
-// comment), and getPollAggregate's participant key already falls back
-// to formResponseId when memberId is null, so must-overlap resolution
-// needs no further special-casing to treat the two uniformly.
-//
-// Returns null when no task grants Recruitment, because the Poll's branchId
-// comes from that task and there is nowhere else to file it: a member has no
-// branch column, and a cycle has none either. That was a pre-existing
-// degradation for the never-granted case, but an open module makes it
-// reachable *deliberately* — so it is reported rather than papered over (see
-// RecruitmentAuthority.needsTaskToFileUnder), and picking an arbitrary
-// branch is deliberately avoided: a real Poll under an unrelated branch is
-// worse than a visible gap. The decision itself is already recorded by
-// recordDecisionIfReached before this is called.
-async function createIntroCallPoll(
-  actor: Member,
-  communityRow: CommunityRow,
-  formResponseId: string,
-  evaluatorIds: string[],
-) {
-  const grantingTaskIds = await listGrantingTaskIds(communityRow.id, "recruitment");
-  if (grantingTaskIds.length === 0) return null;
-  const [recruitmentTaskRow] = await db.select().from(task).where(inArray(task.id, grantingTaskIds));
-  if (!recruitmentTaskRow) return null;
-
-  const now = new Date();
-  const poll = await createPoll(actor, {
-    branchId: recruitmentTaskRow.branchId,
-    title: "Recruitment intro call",
-    resolutionMode: "must_overlap",
-    requiredParticipantIds: [...evaluatorIds, formResponseId],
-    rangeStart: isoDate(now),
-    rangeEnd: isoDate(new Date(now.getTime() + INTRO_CALL_WINDOW_DAYS * 86_400_000)),
-  });
-
-  return { pollId: poll.id, token: generateToken() };
-}
-
-// Idempotent — convertedMemberId is the marker. docs/development-
-// plan.md's Phase 48: the real conversion step Phases 32-34
-// deliberately left un-mechanized (see maybeCreateAccompanimentTask's
-// own historical comment above, and src/db/schema/recruitment.ts's
-// recruitmentDecision comment). Since a Form's fields are opaque to
-// the platform (docs/spec.md's Forms), this only ever runs when the
-// application Form itself tags which field holds the applicant's name
-// and which holds their email (src/lib/forms.ts's
-// isNameField/isEmailField) — an untagged form is a real, visible
-// limitation (surfaced on the Accompaniment task's own description
-// below), not a silent failure. Mirrors src/lib/recruitment/
-// invites.ts's redeemCommunityInvite almost exactly (same Member +
-// MemberIdentity two-row shape, same "an email already on file links
-// to the existing member rather than erroring or duplicating" posture
-// — an applicant who separately redeemed an invite, or already had an
-// account before Recruitment was turned on, is a real, if rare, case
-// worth handling gracefully rather than crashing the decision).
-async function maybeConvertApplicantToMember(
-  communityRow: CommunityRow,
-  decision: RecruitmentDecisionRow,
-): Promise<RecruitmentDecisionRow> {
+// An accepted application becomes a member through the one admission function
+// (docs/plans/admission-flow.md §6), the same as every other way in, so what a new
+// member starts with — an identity, a way to be reached, a place in the event,
+// the answers they already gave on the form — cannot differ by route. The
+// arrival is made here for an application that predates arrivals and is still
+// in flight; a form that can't identify a person at all (no question marked as
+// their name and email) is a real, visible limitation, surfaced on the
+// Accompaniment task's own description, not a silent failure — and
+// submitRecruitmentApplication no longer lets such a form take applications.
+async function maybeConvertApplicantToMember(decision: RecruitmentDecisionRow): Promise<RecruitmentDecisionRow> {
   if (decision.convertedMemberId) return decision;
-
-  const [responseRow] = await db.select().from(formResponse).where(eq(formResponse.id, decision.formResponseId));
-  if (!responseRow) return decision;
-  const [formRow] = await db.select().from(form).where(eq(form.id, responseRow.formId));
-  if (!formRow) return decision;
-
-  const fields = formRow.fields as FormField[];
-  const nameField = fields.find((f) => f.isNameField);
-  const emailField = fields.find((f) => f.isEmailField);
-  if (!nameField || !emailField) return decision;
-
-  // Read up here, alongside the name/email fields, so the "this form can
-  // produce a person" precondition and the "this form also knows their
-  // languages" question are answered from the same array. Optional by
-  // design: a form that never asks about languages still converts.
-  const languageField = fields.find((f) => f.isLanguageField);
-
-  const values = responseRow.values as Record<string, unknown>;
-  const name = typeof values[nameField.key] === "string" ? (values[nameField.key] as string).trim() : "";
-  const rawEmail = typeof values[emailField.key] === "string" ? (values[emailField.key] as string).trim().toLowerCase() : "";
-  if (!name || !z.string().email().safeParse(rawEmail).success) return decision;
-
-  // The same "who vouched for this person" fact
-  // maybeCreateAccompanimentTask already read on its own before this
-  // function existed — reused here so the new Member's own
-  // referredByMemberId carries it directly, per spec's exact framing
-  // ("pre-filling suggestedMemberId from the new member's
-  // referredByMemberId"), rather than maybeCreateAccompanimentTask
-  // re-deriving it a second, parallel way.
-  const [linkedInvite] = await db
-    .select({ createdBy: communityInvite.createdBy })
-    .from(recruitmentApplicationInvite)
-    .innerJoin(communityInvite, eq(recruitmentApplicationInvite.communityInviteId, communityInvite.id))
-    .where(eq(recruitmentApplicationInvite.formResponseId, decision.formResponseId));
-
-  const [existingIdentity] = await db
-    .select({ memberId: memberIdentity.memberId })
-    .from(memberIdentity)
-    .where(and(eq(memberIdentity.provider, "magic_link"), eq(memberIdentity.loginEmail, rawEmail)));
-
-  const memberId = existingIdentity
-    ? existingIdentity.memberId
-    : await db.transaction(async (tx) => {
-        const [newMember] = await tx
-          .insert(member)
-          .values({
-            communityId: communityRow.id,
-            name,
-            referredByMemberId: linkedInvite?.createdBy ?? null,
-          })
-          .returning();
-        await tx.insert(memberIdentity).values({
-          memberId: newMember.id,
-          provider: "magic_link",
-          loginEmail: rawEmail,
-        });
-        // Unverified: this address came out of an application form, and
-        // nobody has received anything at it yet. Same reasoning as the
-        // invite path — the row exists so the member has somewhere to log
-        // in from, not as an assertion that they own the inbox.
-        await seedPrimaryContactMethod(tx, newMember.id, rawEmail, { verified: false });
-        return newMember.id;
-      });
-
-  // Fields tagged mapsToProfileQuestionId (src/lib/forms.ts) seed a
-  // real ProfileAnswer directly from this same application answer, so
-  // the new member isn't asked to retype a fact they already gave —
-  // see docs/spec.md's Profile questions ("the same still-unanswered
-  // questions just surface the next time a relevant surface checks
-  // what's outstanding"), applied here to a surface (the application)
-  // that never became a real `surfaces` consumer. Best-effort: a blank
-  // answer, a shape mismatch (e.g. the applicant's text doesn't match
-  // one of a since-changed single_choice question's options), or a
-  // since-archived question just doesn't prefill rather than blocking
-  // conversion — the member can always answer it directly afterward.
-  const mappedFields = fields.filter((f) => f.mapsToProfileQuestionId);
-  if (mappedFields.length > 0) {
-    const [memberRow] = await db.select().from(member).where(eq(member.id, memberId));
-    if (memberRow) {
-      for (const field of mappedFields) {
-        const rawValue = values[field.key];
-        if (rawValue === undefined || rawValue === null || rawValue === "") continue;
-        // A form saved before sensitive questions were refused as mapping
-        // targets (src/lib/forms.ts) may still point at one. The answer is
-        // dropped rather than saved: answerProfileQuestion would share it
-        // with the question's whole audience, which the applicant was
-        // never shown. They are asked at onboarding like anyone else.
-        const [mappedQuestion] = await db
-          .select({ sensitive: profileQuestion.sensitive })
-          .from(profileQuestion)
-          .where(eq(profileQuestion.id, field.mapsToProfileQuestionId!));
-        if (mappedQuestion?.sensitive) continue;
-        try {
-          await answerProfileQuestion(memberRow, field.mapsToProfileQuestionId!, {
-            status: "answered",
-            value: rawValue,
-          });
-        } catch {
-          // best-effort — see comment above
-        }
-      }
-    }
-  }
-
-  // A form field tagged isLanguageField seeds real `member_language` rows,
-  // for the same reason the mapped questions above do: this applicant has
-  // already said this, and a first-login screen that asks again is a form
-  // asking twice.
-  //
-  // `member_language` is repeatable where a ProfileQuestion holds one
-  // value, which is why this needed its own tag rather than riding
-  // mapsToProfileQuestionId — the starter set's "Languages you speak" is
-  // a single free-text blob and a Requirement's language check queries
-  // structured rows, so a blob would never satisfy one. Split on commas
-  // and newlines because that is what someone writes in one box, and drop
-  // anything empty so "Spanish, " doesn't create a blank row that then
-  // matches nothing while looking like an entry on /profile.
-  //
-  // Every row lands at `conversational` because the form asked one
-  // question, not five: the level is a claim about someone's ability, and
-  // a community that wants to distinguish fluent from native needs a
-  // form that actually asks. Deduped case-insensitively against what the
-  // member already has, because conversion can run against a Member who
-  // logged in and set their own languages before the decision was filed.
-  if (languageField) {
-    const rawValue = values[languageField.key];
-    if (typeof rawValue === "string") {
-      const spoken = rawValue
-        .split(/[,\n]/)
-        .map((part) => part.trim())
-        .filter(Boolean);
-      if (spoken.length > 0) {
-        const existingLanguages = await db
-          .select({ language: memberLanguage.language })
-          .from(memberLanguage)
-          .where(eq(memberLanguage.memberId, memberId));
-        const seen = new Set(existingLanguages.map((l) => l.language.trim().toLowerCase()));
-        for (const language of spoken) {
-          const key = language.toLowerCase();
-          if (seen.has(key)) continue;
-          seen.add(key);
-          await db.insert(memberLanguage).values({ memberId, language, level: "conversational" });
-        }
-      }
-    }
-  }
-
-  // §4.3/8d (D14) / J12: accepting a cycle-keyed application seeds the
-  // new member's participation in that cycle — "coming", idempotently —
-  // so they count against the cycle's capacity from day one.
-  await seedCycleParticipation(db, responseRow.cycleId, memberId);
-
-  const [updated] = await db
-    .update(recruitmentDecision)
-    .set({ convertedMemberId: memberId })
-    .where(eq(recruitmentDecision.id, decision.id))
-    .returning();
-  return updated;
+  const arrival = await arrivalOfDecision(decision);
+  if (!arrival) return decision;
+  await admitArrival(arrival.id);
+  const [updated] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision.id));
+  return updated ?? decision;
 }
 
 // Idempotent — accompanimentTaskId is the marker. suggestedMemberId
@@ -385,17 +156,32 @@ async function maybeCreateAccompanimentTask(actor: Member, communityRow: Communi
     const [convertedMember] = await db.select().from(member).where(eq(member.id, decision.convertedMemberId));
     suggestedMemberId = convertedMember?.referredByMemberId ?? null;
   } else {
-    const [linked] = await db
-      .select({ createdBy: communityInvite.createdBy })
-      .from(recruitmentApplicationInvite)
-      .innerJoin(communityInvite, eq(recruitmentApplicationInvite.communityInviteId, communityInvite.id))
-      .where(eq(recruitmentApplicationInvite.formResponseId, decision.formResponseId));
-    suggestedMemberId = linked?.createdBy ?? null;
+    const found = await arrivalOfDecision(decision);
+    suggestedMemberId = found ? await inviterOf(found) : null;
   }
 
-  const description = decision.convertedMemberId
-    ? `Accompany the new member accepted via the application submitted through /apply (id ${decision.formResponseId}) — see /applications for the full submission.`
-    : `Accompany the new member accepted via the application submitted through /apply (id ${decision.formResponseId}) — see /applications for the full submission. The application Form isn't tagged with a name/email field, so no Member was created automatically; someone will need to invite or otherwise onboard this person by hand.`;
+  const [waiting] = decision.convertedMemberId
+    ? []
+    : await db
+        .select({ id: admission.id })
+        .from(admission)
+        .where(
+          and(
+            decision.arrivalId ? eq(admission.id, decision.arrivalId) : eq(admission.formResponseId, decision.formResponseId!),
+            isNotNull(admission.waitlistedAt),
+          ),
+        );
+
+  // What the task points at: the application when there is one, else the arrival
+  // (a lane that asks only for a conversation has no application to read).
+  const about = decision.formResponseId
+    ? `accepted via the application submitted through /apply (id ${decision.formResponseId}) — see /applications for the full submission`
+    : `accepted after a conversation (arrival ${decision.arrivalId}) — see /applications for the report`;
+  const description = waiting
+    ? `Accompany the new member ${about}. They are accepted but waiting for a place in a full event, so they are not a member yet; they become one, and this task applies, when room appears or an administrator admits them.`
+    : decision.convertedMemberId
+    ? `Accompany the new member ${about}.`
+    : `Accompany the new member ${about}. The application Form isn't tagged with a name/email field, so no Member was created automatically; someone will need to invite or otherwise onboard this person by hand.`;
 
   const created = await createTask(
     actor,
@@ -434,74 +220,125 @@ export async function applyAcceptanceSideEffects(
   communityRow: CommunityRow,
   decision: RecruitmentDecisionRow,
 ) {
-  const converted = await maybeConvertApplicantToMember(communityRow, decision);
+  const converted = await maybeConvertApplicantToMember(decision);
   const withTask = await maybeCreateAccompanimentTask(actor, communityRow, converted);
   return withTask ?? converted;
 }
 
-// The real, persisted trigger point Phase 33 deliberately didn't build
-// — called after every submitEvaluation, but only actually does
-// anything the first time enough evaluators have filed for this
-// formResponseId (idempotent: a recruitmentDecision row already
-// existing means this is a no-op). See src/db/schema/recruitment.ts's
-// recruitmentDecision comment for the full state-machine reasoning.
-export async function recordDecisionIfReached(actor: Member, formResponseId: string) {
-  const existing = await getRecruitmentDecision(formResponseId);
+// One decision, applied to one arrival: the funnel's own way of saying "this
+// arrival is accepted" or "this arrival is declined", whatever caused it — the
+// support shortcut reaching its number, a community check that ended (the clock,
+// mediation clearing a concern, mediation upholding one). Nothing here asks who is
+// calling, which is the point (docs/plans/admission-flow.md §5): the old mediation
+// outcome went through a holder-only function and was lost when its caller wasn't
+// one, and the window's clock then applied its *default* in its place.
+//
+// Skipping or deciding the evaluating does not skip the bookkeeping that follows an
+// acceptance, so the record, the member and their accompaniment agree about what
+// happened. If the evaluators have not decided yet there is no decision row to
+// resolve, so one is made, saying `proceed` (the nearest honest word); a decision
+// already waiting out a wider discussion is resolved. An arrival with no
+// application has no decision at all — it is admitted or closed.
+export async function settleArrivalDecision(arrival: typeof admission.$inferSelect, resolution: "accepted" | "declined") {
+  // An arrival whose lane asks for no reports and sent no application (a community
+  // check on its own) has nothing a decision would be about.
+  if (!arrival.formResponseId && !arrival.requiredEvaluation) {
+    if (resolution === "accepted") return admitArrival(arrival.id);
+    await closeArrival(arrival.id, "declined");
+    return null;
+  }
+  const [existing] = await db
+    .select()
+    .from(recruitmentDecision)
+    .where(arrival.formResponseId ? or(eq(recruitmentDecision.arrivalId, arrival.id), eq(recruitmentDecision.formResponseId, arrival.formResponseId)) : eq(recruitmentDecision.arrivalId, arrival.id));
+  let decision: RecruitmentDecisionRow;
+  if (!existing) {
+    [decision] = await db
+      .insert(recruitmentDecision)
+      .values({
+        arrivalId: arrival.id,
+        formResponseId: arrival.formResponseId,
+        ruleOutcome: resolution === "accepted" ? "proceed" : "decline",
+        resolution,
+      })
+      .returning();
+  } else if (existing.resolution !== resolution) {
+    [decision] = await db
+      .update(recruitmentDecision)
+      .set({ resolution })
+      .where(eq(recruitmentDecision.id, existing.id))
+      .returning();
+  } else {
+    decision = existing;
+  }
+  await recordArrivalDecision(arrival.id, resolution);
+  if (resolution === "declined") return null;
+
+  const result = await admitArrival(arrival.id);
+  const communityRow = await getCommunityRow(arrival.communityId);
+  const [fresh] = await db.select().from(recruitmentDecision).where(eq(recruitmentDecision.id, decision.id));
+  // The accompaniment needs a real member to create a task as, which the job
+  // resolves the same way: the recruitment task's holder, else the converted
+  // member's referrer or the earliest evaluator. Nobody to be is a report, not a
+  // guess — the person is admitted either way.
+  const actorMember =
+    (await getRecruitmentTaskHolderMember(communityRow)) ?? (fresh ? await resolveAccompanimentAuthor(communityRow, fresh) : null);
+  if (actorMember && fresh && !result.waitlisted) await applyAcceptanceSideEffects(actorMember, communityRow, fresh);
+  return result;
+}
+
+/** The support shortcut reaching its number accepts an application the way a `proceed` does. */
+export async function acceptArrivalByShortcut(arrival: typeof admission.$inferSelect) {
+  return settleArrivalDecision(arrival, "accepted");
+}
+
+// The real, persisted trigger point Phase 33 deliberately didn't build — called after
+// every report, but only actually does anything the first time enough of them are in for
+// the arrival (idempotent: a recruitmentDecision row already existing means this is a
+// no-op). See src/db/schema/recruitment.ts's recruitmentDecision comment for the full
+// state-machine reasoning.
+export async function recordArrivalDecisionIfReached(actor: Member, arrivalId: string) {
+  const existing = await getArrivalDecision(arrivalId);
   if (existing) return existing;
 
-  const communityRow = await getCommunityRow(actor.communityId);
-  const result = await computeRecruitmentOutcome(communityRow, formResponseId);
+  const [arrival] = await db.select().from(admission).where(eq(admission.id, arrivalId));
+  if (!arrival) return null;
+  const communityRow = await getCommunityRow(arrival.communityId);
+  const result = await computeArrivalOutcome(communityRow, arrivalId);
   if (!result.outcome) return null;
 
   const resolution: "accepted" | "declined" | null =
     result.outcome === "proceed" ? "accepted" : result.outcome === "decline" ? "declined" : null;
-  const widerDiscussionDeadline =
-    result.outcome === "wider_discussion"
-      ? new Date(Date.now() + communityRow.recruitmentWiderDiscussionHours * MS_PER_HOUR)
-      : null;
 
   const [created] = await db
     .insert(recruitmentDecision)
     .values({
-      formResponseId,
+      arrivalId,
+      formResponseId: arrival.formResponseId,
       ruleOutcome: result.outcome,
       defaultResolution: result.defaultResolution,
       resolution,
-      widerDiscussionDeadline,
     })
     .returning();
 
   let decisionRow = created;
+  await recordArrivalDecision(arrivalId, resolution);
 
-  // "Proceed-adjacent" — proceed and wider_discussion both auto-
-  // schedule the intro call; decline never does. Unless the third door
-  // says otherwise: §2.3/J3 made the interview stage independently
-  // toggleable, so a community (or an event) with interviews closed gets
-  // no poll at all rather than a promise it didn't make. The decision
-  // still records, and the pipeline's stage computation already treats a
-  // decision with no poll as `call_pending`, so the applicant is visible
-  // as waiting rather than as finished.
-  if (result.outcome !== "decline") {
-    const [responseRow] = await db
-      .select({ cycleId: formResponse.cycleId })
-      .from(formResponse)
-      .where(eq(formResponse.id, formResponseId));
-    if (await canScheduleInterview(actor.communityId, responseRow?.cycleId ?? null)) {
-      const evaluatorIds = result.evaluations.map((e) => e.evaluatorId);
-      const introCall = await createIntroCallPoll(actor, communityRow, formResponseId, evaluatorIds);
-      if (introCall) {
-        const [updated] = await db
-          .update(recruitmentDecision)
-          .set({ introCallPollId: introCall.pollId, introCallToken: introCall.token })
-          .where(eq(recruitmentDecision.id, created.id))
-          .returning();
-        decisionRow = updated;
-      }
-    }
+  // A wider discussion is a community check (§5): a window on the arrival in which
+  // any member can raise a concern, ending by what the decision form said it does
+  // when nobody does. The window's length and deadline live on the check, which is
+  // the one place they are read.
+  if (result.outcome === "wider_discussion") {
+    await openCheck(arrival, "evaluation", result.defaultResolution === "proceed" ? "admit" : "decline");
   }
 
+  // There is no call to schedule here any more. The interview comes *before* the
+  // decision (docs/plans/admission-flow.md §2): it was made when the arrival entered, and
+  // the reports being decided from are the interviewers' own. A decision only
+  // records what the reports lead to.
+
   if (resolution === "accepted") {
-    const converted = await maybeConvertApplicantToMember(communityRow, decisionRow);
+    const converted = await maybeConvertApplicantToMember(decisionRow);
     const updated = await maybeCreateAccompanimentTask(actor, communityRow, converted);
     if (updated) decisionRow = updated;
   }
@@ -509,150 +346,11 @@ export async function recordDecisionIfReached(actor: Member, formResponseId: str
   return decisionRow;
 }
 
-export const resolveWiderDiscussionInput = z.object({
-  resolution: z.enum(["accepted", "declined"]),
-});
-export type ResolveWiderDiscussionInput = z.infer<typeof resolveWiderDiscussionInput>;
-
-// The human-call escape hatch spec names but doesn't mechanize: "an
-// objection → evaluators see it and the outcome waits on a human
-// call, not the timer." Callable any time resolution is still pending —
-// but §2.6/J7 closed the loophole this used to have, which is the whole
-// point of the redesign: a recruitment holder can no longer resolve a
-// window that has a standing objection on it. The plan says that
-// decision belongs to the mediation body ("the objection is never
-// thrown out... it stands"), and this is where that promise is enforced
-// rather than stated. A window with no objection is still a holder's to
-// resolve — they can decline to wait out the clock, which is a decision
-// about *timing*, not about overriding anybody's concern.
-export async function resolveWiderDiscussionManually(
-  actor: Member,
-  formResponseId: string,
-  input: ResolveWiderDiscussionInput,
-) {
-  await requireRecruitmentTaskHolder(actor);
-  const [responseRow] = await db
-    .select({ cycleId: formResponse.cycleId })
-    .from(formResponse)
-    .where(eq(formResponse.id, formResponseId));
-  if (!responseRow) {
-    throw new NotFoundError("Application not found");
-  }
-  // Deciding, like evaluating, is scoped to the holder's placement
-  // (§4.3): a cycle-placed recorder only resolves their own cycle's
-  // applications.
-  await requireRecruitmentScopeForCycle(actor, responseRow.cycleId);
-  const decision = await getRecruitmentDecision(formResponseId);
-  if (!decision || decision.ruleOutcome !== "wider_discussion") {
-    throw new NotFoundError("No open wider-discussion decision for this application");
-  }
-  if (decision.resolution) {
-    throw new ConflictError("This decision has already resolved");
-  }
-
-  const [standing] = await db
-    .select({ id: objection.id })
-    .from(objection)
-    .where(
-      and(
-        eq(objection.formResponseId, formResponseId),
-        eq(objection.resolution, "standing"),
-      ),
-    )
-    .limit(1);
-  if (standing) {
-    throw new ForbiddenError(
-      "Someone has raised a concern about this arrival, and it isn't yours to wave through — the mediation team has to talk it through first",
-    );
-  }
-
-  const [updated] = await db
-    .update(recruitmentDecision)
-    .set({ resolution: input.resolution })
-    .where(eq(recruitmentDecision.id, decision.id))
-    .returning();
-
-  if (input.resolution === "accepted") {
-    const communityRow = await getCommunityRow(actor.communityId);
-    return applyAcceptanceSideEffects(actor, communityRow, updated);
-  }
-  return updated;
-}
-
-// Scheduled job (see src/instrumentation.ts) — the actual write a
-// closed wider-discussion window needs, unlike the purely-read
-// computeWiderDiscussionStatus above. Skips any decision with a raised
-// Objection: "an objection → evaluators see it and the outcome waits
-// on a human call, not the timer" — resolveWiderDiscussionManually is
-// that human call.
-export async function resolveWiderDiscussionWindows() {
-  const due = await db
-    .select()
-    .from(recruitmentDecision)
-    .where(
-      and(
-        eq(recruitmentDecision.ruleOutcome, "wider_discussion"),
-        isNull(recruitmentDecision.resolution),
-        lt(recruitmentDecision.widerDiscussionDeadline, new Date()),
-      ),
-    );
-
-  let resolved = 0;
-  let accompanimentsCreated = 0;
-  for (const decision of due) {
-    const [objectionRow] = await db
-      .select({ id: objection.id })
-      .from(objection)
-      .where(
-        and(
-          eq(objection.formResponseId, decision.formResponseId),
-          // §2.6/J7: only a *standing* objection holds the window. One
-          // the body has already settled is history, and letting a
-          // settled objection keep blocking the arrival would re-create
-          // the veto-by-inaction this whole redesign is about.
-          eq(objection.resolution, "standing"),
-        ),
-      )
-      .limit(1);
-    if (objectionRow) continue;
-
-    const resolution = decision.defaultResolution === "proceed" ? "accepted" : "declined";
-    const [updated] = await db
-      .update(recruitmentDecision)
-      .set({ resolution })
-      .where(eq(recruitmentDecision.id, decision.id))
-      .returning();
-    resolved++;
-
-    if (resolution === "accepted") {
-      const [formRow] = await db
-        .select({ communityId: form.communityId })
-        .from(formResponse)
-        .innerJoin(form, eq(formResponse.formId, form.id))
-        .where(eq(formResponse.id, decision.formResponseId));
-      const communityRow = await getCommunityRow(formRow.communityId);
-      // Conversion needs no acting Member (it's a pure record-creation
-      // step, same as findOrCreateMemberByEmail), so this still runs
-      // even if the recruitment task currently has no holder —
-      // Accompaniment's own task creation genuinely does need a real
-      // actor to create a Task as, so that part alone stays gated on
-      // one existing.
-      const converted = await maybeConvertApplicantToMember(communityRow, updated);
-      // The job needs a real actor to create a Task as, so it resolves one:
-      // the recruitment task's holder when there is a granting task, else the
-      // fallback chain (the converted member's referrer, then the earliest
-      // evaluator). Without the second path an open module with no granting
-      // task would resolve wider-discussion windows but never create the
-      // Accompaniment task that resolution is supposed to produce.
-      const actorMember =
-        (await getRecruitmentTaskHolderMember(communityRow)) ??
-        (await resolveAccompanimentAuthor(communityRow, converted));
-      if (actorMember) {
-        const withTask = await applyAcceptanceSideEffects(actorMember, communityRow, converted);
-        if (withTask?.accompanimentTaskId) accompanimentsCreated++;
-      }
-    }
-  }
-
-  return { checked: due.length, resolved, accompanimentsCreated };
+// The same, asked about an application (an application that predates arrivals is given
+// its arrival first).
+export async function recordDecisionIfReached(actor: Member, formResponseId: string) {
+  const existing = await getRecruitmentDecision(formResponseId);
+  if (existing) return existing;
+  const arrival = await ensureArrivalForApplication(formResponseId);
+  return arrival ? recordArrivalDecisionIfReached(actor, arrival.id) : null;
 }

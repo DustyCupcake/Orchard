@@ -1,4 +1,5 @@
-import type { community as communityTable, tier as tierTable } from "@/db/schema";
+import type { community as communityTable, member as memberTable, tier as tierTable } from "@/db/schema";
+import SignInAccounts from "../SignInAccounts";
 import {
   FieldGroup,
   SelectField,
@@ -15,11 +16,14 @@ import {
   updateSsoAction,
 } from "../actions";
 
-export default function GeneralTab({  community,
+export default function GeneralTab({
+  community,
   tiers,
+  viewer,
 }: {
   community: typeof communityTable.$inferSelect;
   tiers: (typeof tierTable.$inferSelect)[];
+  viewer: typeof memberTable.$inferSelect;
 }) {
   return (
     <div className="flex flex-col gap-8">
@@ -237,6 +241,7 @@ export default function GeneralTab({  community,
             hint="On, the sign-in page goes straight to your provider and magic-link stops originating new accounts. Off, both are offered as equals — useful while you're migrating."
           />
         </SettingsGroup>
+        <SignInAccounts community={community} viewer={viewer} />
       </SettingsSection>
     </div>
   );

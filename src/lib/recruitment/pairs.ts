@@ -1,125 +1,97 @@
-import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import {
-  community,
-  formResponse,
-  member,
-  memberIdentity,
-  recruitmentDecision,
-  recruitmentPair,
-  schedulingPoll,
-} from "@/db/schema";
+import { admission, community, member, recruitmentPair, schedulingEntry, schedulingPoll, task } from "@/db/schema";
 import type { member as memberTable, recruitmentPair as recruitmentPairTable } from "@/db/schema";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import { sendNominationSupportRequestEmail } from "../mailer";
 import { generateToken } from "../token";
-import { getCommunityRow, requireRecruitmentTaskHolder } from "./access";
+import { requireRecruitmentScopeForCycle, requireRecruitmentTaskHolder } from "./access";
 import { isMediationMember } from "./mediation";
 
 type Member = typeof memberTable.$inferSelect;
+type Arrival = typeof admission.$inferSelect;
 type PairRow = typeof recruitmentPairTable.$inferSelect;
 
-// "Who are you sticking with" (docs/plans/archive/joining-admission-plan.md §2.8,
-// work-plan step 6). J9 is the constraint everything here obeys: a pair
-// is a *fact*, recorded and shown to humans, and the platform decides
-// nothing whatsoever from it. No lane reads a pairing, no capacity count
-// changes, no decision rule can name it. The one thing a pair changes is
-// the shared interview below — and even that is offered, not applied.
+// docs/plans/admission-flow.md §2, "Pairing and a shared interview" (J9). A pair is a
+// *fact*, recorded and shown to humans: two people are arriving together, or one named
+// the other, and the platform decides nothing from it. No lane reads a pairing, no
+// capacity count changes, no decision can name it. The one thing a pair changes is the
+// shared interview below — and even that is offered, never applied.
+//
+// It is between **arrivals** (§4), not applications: a lane that asks only for a
+// conversation has people to arrive together too. The first arrival is the person who
+// made the link (or was named); the second is whoever arrived through it. Who may
+// confirm it is deliberately narrow — the namer, or either person when the team linked
+// them by hand — because the one thing confirming does is let two people be offered one
+// interview.
+
+const inFlight = (a: Pick<Arrival, "admittedMemberId" | "declinedAt" | "withdrawnAt">) =>
+  !a.admittedMemberId && !a.declinedAt && !a.withdrawnAt;
+
+async function loadArrival(id: string): Promise<Arrival> {
+  const [row] = await db.select().from(admission).where(eq(admission.id, id));
+  if (!row) throw new NotFoundError("Arrival not found");
+  return row;
+}
 
 // ---------------------------------------------------------------------------
-// Naming someone
+// Making a link, from the person's own page
+// ---------------------------------------------------------------------------
+
+/**
+ * The link a person sends to the one they are applying with, made from their own page.
+ * One open link per person: asking again gives the same one back, so a link already sent
+ * doesn't go stale. Nothing is created in the funnel until somebody uses it.
+ */
+export async function createApplyTogetherLink(arrivalToken: string): Promise<PairRow> {
+  const [arrival] = await db.select().from(admission).where(eq(admission.token, arrivalToken));
+  if (!arrival) throw new NotFoundError("This page isn't valid any more");
+  if (!inFlight(arrival)) throw new ConflictError("This request to join has already finished");
+  const [open] = await db
+    .select()
+    .from(recruitmentPair)
+    .where(
+      and(
+        eq(recruitmentPair.firstArrivalId, arrival.id),
+        eq(recruitmentPair.status, "awaiting_applicant"),
+        isNull(recruitmentPair.secondArrivalId),
+        isNull(recruitmentPair.requestedById),
+      ),
+    );
+  if (open) return open;
+  const [pair] = await db
+    .insert(recruitmentPair)
+    .values({
+      communityId: arrival.communityId,
+      cycleId: arrival.cycleId,
+      token: generateToken(),
+      firstArrivalId: arrival.id,
+      status: "awaiting_applicant",
+    })
+    .returning();
+  return pair;
+}
+
+// ---------------------------------------------------------------------------
+// Naming someone (an inviter naming members) and linking by hand (the team)
 // ---------------------------------------------------------------------------
 
 export const namePairingInput = z.object({
-  // A public applicant names the people they are coming with; a member
-  // creating an invite names the members they think also know the
-  // invitee (the "poke" half of §2.4). Both are the same row: one
-  // person, pointed at another.
+  // A member creating an invite names the members they think also know the invitee.
   nomineeMemberIds: z.array(z.string().uuid()).max(20).default([]),
-  // For the inviter's poke: members to notify with the support link.
-  // Deliberately a separate list from nomineeMemberIds because a poke is
-  // "please look at this link" and a pairing is "I am coming with this
-  // person" — they look alike in a form and mean opposite things, and
-  // conflating them would broadcast the nominee's existence to everyone
-  // the inviter happened to list.
+  // For the inviter's poke: members to notify with the support link. Deliberately a separate
+  // list from nomineeMemberIds because a poke is "please look at this link" and a pairing is
+  // "I am coming with this person" — they look alike in a form and mean opposite things.
   pokeMemberIds: z.array(z.string().uuid()).max(20).default([]),
   cycleId: z.string().uuid().nullable().optional(),
-  firstResponseId: z.string().uuid().nullable().optional(),
+  firstArrivalId: z.string().uuid().nullable().optional(),
 });
 export type NamePairingInput = z.infer<typeof namePairingInput>;
 
-// §2.4's poke: the inviter names members they think also know the
-// invitee, and those members each get an email carrying the support
-// link. Best-effort in the same way every other send in this codebase
-// is — a member with no email on file, or a mailer that isn't
-// configured, must never fail the invite that was being created. The
-// inviter always gets the link back to hand over by hand, which is the
-// other half of §2.4's "share a link" option and the reason a failed
-// send is a nuisance rather than a loss.
-export async function pokeMembersForSupport(input: {
-  communityId: string;
-  communityName: string;
-  askerId: string;
-  askerName: string;
-  nomineeLabel: string | null;
-  supportUrl: string;
-  windowHours: number;
-  memberIds: string[];
-}): Promise<{ poked: string[]; undeliverable: string[] }> {
-  if (input.memberIds.length === 0) return { poked: [], undeliverable: [] };
-  const recipients = await db
-    .select({ id: member.id, name: member.name, email: memberIdentity.loginEmail })
-    .from(member)
-    .leftJoin(memberIdentity, eq(memberIdentity.memberId, member.id))
-    .where(
-      and(
-        eq(member.communityId, input.communityId),
-        inArray(member.id, input.memberIds),
-        ne(member.id, input.askerId),
-      ),
-    );
-  // Deduplicated by member: leftJoin over memberIdentity can produce a
-  // second row for a member with two identities, and "you've been asked
-  // to support this person" arriving twice is worse than arriving once.
-  const byMember = new Map<string, { name: string; email: string | null }>();
-  for (const r of recipients) {
-    if (!byMember.has(r.id)) byMember.set(r.id, { name: r.name, email: r.email });
-  }
-
-  const poked: string[] = [];
-  const undeliverable: string[] = [];
-  for (const [memberId, person] of byMember) {
-    if (!person.email) {
-      undeliverable.push(memberId);
-      continue;
-    }
-    try {
-      await sendNominationSupportRequestEmail(person.email, {
-        askerName: input.askerName,
-        nomineeLabel: input.nomineeLabel,
-        supportUrl: input.supportUrl,
-        windowHours: input.windowHours,
-        onBehalfOfCommunity: false,
-      });
-      poked.push(memberId);
-    } catch {
-      undeliverable.push(memberId);
-    }
-  }
-  return { poked, undeliverable };
-}
-
-// §2.8 — the namer's "who are you sticking with". Returns one pair row
-// per named person; a named member gets a pair (their support view is
-// the same link), a named non-member gets a pair whose link is the
-// application, pre-paired when they use it.
-//
-// Takes {communityId, memberId} rather than a Member because the namer
-// is very often *not* a member: a public applicant naming the people
-// they are coming with is the plan's own example, and that applicant has
-// no Member row because they haven't joined yet. The only two facts
-// needed are which community this is and who is doing the naming.
+/**
+ * A member named as somebody the arrival is coming with. A named member's own view is the
+ * support link, not a pairing to confirm, so this is a fact recorded as already settled.
+ */
 export async function createPairings(
   namer: { communityId: string; memberId: string },
   input: NamePairingInput,
@@ -136,14 +108,8 @@ export async function createPairings(
   for (const memberId of input.nomineeMemberIds) {
     if (memberId === namer.memberId) continue;
     const isMember = known.has(memberId);
-    if (isMember && opts.requireMember) {
-      // "A member who opens it can second the nomination" is the
-      // support view, not a pairing — the pairing row for a member is
-      // only meaningful for a *manual* link between two applicants
-      // (§2.8's third bullet), and a live member is always the support
-      // view's job.
-      continue;
-    }
+    // A live member is always the support view's job, not a pairing to confirm.
+    if (isMember && opts.requireMember) continue;
     const [pair] = await db
       .insert(recruitmentPair)
       .values({
@@ -151,11 +117,10 @@ export async function createPairings(
         cycleId: input.cycleId ?? null,
         token: generateToken(),
         requestedById: namer.memberId,
-        firstResponseId: input.firstResponseId ?? null,
+        firstArrivalId: input.firstArrivalId ?? null,
         secondMemberId: isMember ? memberId : null,
-        // A member who never acts on the link is a dormant row, not a
-        // pending application, so it starts settled rather than waiting
-        // for somebody who already exists.
+        // A member who never acts on the link is a dormant row, not a pending application,
+        // so it starts settled rather than waiting for somebody who already exists.
         status: isMember ? "accepted" : "awaiting_applicant",
         resolvedAt: isMember ? new Date() : null,
       })
@@ -165,54 +130,57 @@ export async function createPairings(
   return created;
 }
 
-// §2.8 — the mediation/recruitment team's manual link. Same row, but
-// with no link to send in the first place: the team already knows both
-// people, so the pairing starts at the only interesting point, "waiting
-// for the namer to confirm this is who they meant".
 export const manualPairInput = z.object({
-  firstResponseId: z.string().uuid(),
-  secondResponseId: z.string().uuid(),
-  cycleId: z.string().uuid().nullable().optional(),
+  firstArrivalId: z.string().uuid(),
+  secondArrivalId: z.string().uuid(),
 });
 export type ManualPairInput = z.infer<typeof manualPairInput>;
-
-export async function linkApplicationsManually(actor: Member, input: ManualPairInput) {
-  // §2.8 names the mediation/recruitment team for this, and the two are
-  // the same authority in practice: a community that separated them has
-  // one of the two do it, and a community that merged them has one task
-  // doing both. Requiring either is what stops an ordinary member from
-  // declaring that two strangers are arriving together.
-  if (!(await isRecruitmentOrMediationHolder(actor))) {
-    throw new ForbiddenError("Only the recruitment or mediation team can link two applications by hand");
-  }
-  if (input.firstResponseId === input.secondResponseId) {
-    throw new AppError("An application can't be paired with itself");
-  }
-  const rows = await db
-    .select({ id: formResponse.id, cycleId: formResponse.cycleId })
-    .from(formResponse)
-    .where(inArray(formResponse.id, [input.firstResponseId, input.secondResponseId]));
-  if (rows.length !== 2) {
-    throw new NotFoundError("One of those applications doesn't exist");
-  }
-  const [pair] = await db
-    .insert(recruitmentPair)
-    .values({
-      communityId: actor.communityId,
-      cycleId: input.cycleId ?? rows.find((r) => r.id === input.firstResponseId)?.cycleId ?? null,
-      token: generateToken(),
-      requestedById: actor.id,
-      firstResponseId: input.firstResponseId,
-      secondResponseId: input.secondResponseId,
-      status: "awaiting_accept",
-    })
-    .returning();
-  return pair;
-}
 
 async function isRecruitmentOrMediationHolder(actor: Member) {
   const { isRecruitmentTaskHolder } = await import("./access");
   return (await isRecruitmentTaskHolder(actor)) || (await isMediationMember(actor));
+}
+
+/**
+ * The team links two arrivals it knows are coming together. §2.8 names the mediation or
+ * recruitment team for this — the same authority in practice — and requiring either is what
+ * stops an ordinary member declaring two strangers are arriving together. It starts waiting
+ * for one of the two people to confirm it on their own page: the team's word is not theirs.
+ */
+export async function linkArrivalsManually(actor: Member, input: ManualPairInput) {
+  if (!(await isRecruitmentOrMediationHolder(actor))) {
+    throw new ForbiddenError("Only the recruitment or mediation team can link two people by hand");
+  }
+  if (input.firstArrivalId === input.secondArrivalId) throw new AppError("Somebody can't be paired with themselves");
+  const [first, second] = await Promise.all([loadArrival(input.firstArrivalId), loadArrival(input.secondArrivalId)]);
+  if (first.communityId !== actor.communityId || second.communityId !== actor.communityId) {
+    throw new NotFoundError("One of those people isn't in your community");
+  }
+  if (!inFlight(first) || !inFlight(second)) throw new ConflictError("Both people have to still be in the process");
+  const [existing] = await db
+    .select({ id: recruitmentPair.id })
+    .from(recruitmentPair)
+    .where(
+      or(
+        and(eq(recruitmentPair.firstArrivalId, first.id), eq(recruitmentPair.secondArrivalId, second.id)),
+        and(eq(recruitmentPair.firstArrivalId, second.id), eq(recruitmentPair.secondArrivalId, first.id)),
+      ),
+    );
+  if (existing) throw new ConflictError("They're already paired");
+  const [pair] = await db
+    .insert(recruitmentPair)
+    .values({
+      communityId: actor.communityId,
+      cycleId: first.cycleId ?? second.cycleId,
+      token: generateToken(),
+      requestedById: actor.id,
+      firstArrivalId: first.id,
+      secondArrivalId: second.id,
+      linkedByTeam: true,
+      status: "awaiting_accept",
+    })
+    .returning();
+  return pair;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,119 +191,123 @@ export type PairingLink = {
   pair: PairRow;
   communityName: string;
   namerName: string;
-  namedMemberName: string | null;
-  // Which side of the fork this particular viewer is on. The token is
-  // shared, so this is the whole branching decision §2.4 asks for.
-  view: "accept" | "apply" | "already_member" | "resolved";
+  /** What this link is for right now: apply (nobody has used it), or already used / settled. */
+  view: "apply" | "used";
 };
 
 export async function getPairingByToken(token: string): Promise<PairingLink | null> {
   const [pair] = await db.select().from(recruitmentPair).where(eq(recruitmentPair.token, token));
   if (!pair) return null;
-  const [communityRow] = await db
-    .select({ name: community.name })
-    .from(community)
-    .where(eq(community.id, pair.communityId));
-  const people = await db
-    .select({ id: member.id, name: member.name })
-    .from(member)
-    .where(
-      inArray(
-        member.id,
-        [pair.requestedById, pair.secondMemberId].filter((v): v is string => Boolean(v)),
-      ),
-    );
-  const names = new Map(people.map((p) => [p.id, p.name]));
+  const [communityRow] = await db.select({ name: community.name }).from(community).where(eq(community.id, pair.communityId));
+  let namerName = "Someone";
+  if (pair.firstArrivalId) {
+    const [a] = await db.select({ name: admission.name }).from(admission).where(eq(admission.id, pair.firstArrivalId));
+    if (a) namerName = a.name;
+  } else if (pair.requestedById) {
+    const [m] = await db.select({ name: member.name }).from(member).where(eq(member.id, pair.requestedById));
+    if (m) namerName = m.name;
+  }
   return {
     pair,
     communityName: communityRow?.name ?? "the community",
-    namerName: names.get(pair.requestedById) ?? "Someone",
-    namedMemberName: pair.secondMemberId ? (names.get(pair.secondMemberId) ?? null) : null,
-    view:
-      pair.status === "declined" || pair.status === "accepted"
-        ? "resolved"
-        : pair.secondMemberId
-          ? "already_member"
-          : pair.status === "awaiting_accept"
-            ? "accept"
-            : "apply",
+    namerName,
+    view: pair.status === "awaiting_applicant" && !pair.secondArrivalId && !pair.secondMemberId ? "apply" : "used",
   };
 }
 
-// The accept-the-pairing link, and the only write a recipient of one
-// makes. Public: the person accepting is a member (the namer), but the
-// lib is session-agnostic and the page does the session check, the same
-// split every other public-page-plus-server-action pair in this codebase
-// uses.
-export async function acceptPairing(actor: Member, token: string) {
-  const found = await getPairingByToken(token);
-  if (!found) {
-    throw new NotFoundError("That pairing link isn't valid");
-  }
-  if (found.pair.communityId !== actor.communityId) {
-    throw new ForbiddenError("That pairing link belongs to another community");
-  }
-  if (found.pair.requestedById !== actor.id) {
-    throw new ForbiddenError("Only the person who named the other can confirm the pairing");
-  }
-  if (found.pair.status === "declined") {
-    throw new ConflictError("This pairing has already been turned down");
-  }
-  if (found.pair.status === "accepted") {
-    return found.pair;
-  }
+/** Whether a link can still be used to apply: nobody has, and it hasn't been turned down. */
+export async function resolvePairingForApplication(token: string) {
+  const [pair] = await db.select().from(recruitmentPair).where(eq(recruitmentPair.token, token));
+  if (!pair) return null;
+  if (pair.secondArrivalId || pair.secondMemberId || pair.status !== "awaiting_applicant") return null;
+  return pair;
+}
+
+/**
+ * Somebody used the link. Deliberately *not* accepted here — the namer still confirms on
+ * their own page, which is what "the linked party confirms the person who arrived is the
+ * person they meant" is for.
+ */
+export async function attachArrivalToPairing(token: string, arrivalId: string) {
+  const [pair] = await db.select().from(recruitmentPair).where(eq(recruitmentPair.token, token));
+  if (!pair) throw new NotFoundError("That pairing link isn't valid");
+  if (pair.secondArrivalId) throw new ConflictError("This pairing link has already been used");
+  if (pair.firstArrivalId === arrivalId) throw new AppError("You can't use your own pairing link");
   const [updated] = await db
     .update(recruitmentPair)
-    .set({ status: "accepted", resolvedAt: new Date() })
-    .where(and(eq(recruitmentPair.id, found.pair.id), eq(recruitmentPair.status, "awaiting_accept")))
+    .set({ secondArrivalId: arrivalId, status: "awaiting_accept" })
+    .where(and(eq(recruitmentPair.id, pair.id), isNull(recruitmentPair.secondArrivalId)))
     .returning();
-  if (!updated) {
-    throw new ConflictError("This pairing has already been settled");
-  }
+  if (!updated) throw new ConflictError("This pairing link has already been used");
   return updated;
 }
 
-export async function declinePairing(actor: Member, token: string) {
-  const found = await getPairingByToken(token);
-  if (!found) {
-    throw new NotFoundError("That pairing link isn't valid");
+// ---------------------------------------------------------------------------
+// The person's side
+// ---------------------------------------------------------------------------
+
+export type MyPairing = {
+  id: string;
+  status: PairRow["status"];
+  /** The other person, once there is one (a member named, or somebody who arrived). */
+  otherName: string | null;
+  /** The link to send, while nobody has used it. */
+  link: string | null;
+  /** Whether *this* person is the one who may confirm or turn it down now. */
+  canAnswer: boolean;
+};
+
+/** Every pair the person is in, for their own page. */
+export async function listPairingsForArrival(arrival: Pick<Arrival, "id">, linkFor: (token: string) => string): Promise<MyPairing[]> {
+  const rows = await db
+    .select()
+    .from(recruitmentPair)
+    .where(or(eq(recruitmentPair.firstArrivalId, arrival.id), eq(recruitmentPair.secondArrivalId, arrival.id)))
+    .orderBy(desc(recruitmentPair.createdAt));
+  const out: MyPairing[] = [];
+  for (const pair of rows) {
+    const iAmFirst = pair.firstArrivalId === arrival.id;
+    const otherArrivalId = iAmFirst ? pair.secondArrivalId : pair.firstArrivalId;
+    let otherName: string | null = null;
+    if (otherArrivalId) {
+      const [o] = await db.select({ name: admission.name }).from(admission).where(eq(admission.id, otherArrivalId));
+      otherName = o?.name ?? null;
+    } else if (iAmFirst && pair.secondMemberId) {
+      const [m] = await db.select({ name: member.name }).from(member).where(eq(member.id, pair.secondMemberId));
+      otherName = m?.name ?? null;
+    }
+    out.push({
+      id: pair.id,
+      status: pair.status,
+      otherName,
+      link: iAmFirst && pair.status === "awaiting_applicant" && !pair.secondArrivalId && !pair.secondMemberId ? linkFor(pair.token) : null,
+      canAnswer: pair.status === "awaiting_accept" && (iAmFirst || pair.linkedByTeam),
+    });
   }
-  if (found.pair.requestedById !== actor.id) {
-    throw new ForbiddenError("Only the person who named the other can turn the pairing down");
-  }
-  const [updated] = await db
-    .update(recruitmentPair)
-    .set({ status: "declined", resolvedAt: new Date() })
-    .where(
-      and(
-        eq(recruitmentPair.id, found.pair.id),
-        inArray(recruitmentPair.status, ["awaiting_applicant", "awaiting_accept"]),
-      ),
-    )
-    .returning();
-  return updated ?? null;
+  return out;
 }
 
-// Called from submitRecruitmentApplication: someone used the pairing
-// link, so the pair is no longer waiting for an applicant. Deliberately
-// *not* accepted here — the namer still confirms, which is what §2.8's
-// "the linked party receives an accept-the-pairing link" is for.
-export async function attachApplicantToPairing(token: string, formResponseId: string, cycleId: string | null) {
-  const [pair] = await db.select().from(recruitmentPair).where(eq(recruitmentPair.token, token));
-  if (!pair) {
-    throw new NotFoundError("That pairing link isn't valid");
-  }
-  if (pair.secondResponseId) {
-    throw new ConflictError("This pairing link has already been used");
-  }
+/**
+ * Confirm the pairing, or turn it down. The token is the person's own page's: nobody else
+ * can answer for them, and only the namer can confirm a link they made (either person, when
+ * the team linked them). Declining is a first-class answer, recorded, not a thing you do by
+ * not clicking — the pair is still applying separately, nothing about that changes.
+ */
+export async function answerPairing(arrivalToken: string, pairId: string, accept: boolean) {
+  const [arrival] = await db.select().from(admission).where(eq(admission.token, arrivalToken));
+  if (!arrival) throw new NotFoundError("This page isn't valid any more");
+  const [pair] = await db.select().from(recruitmentPair).where(eq(recruitmentPair.id, pairId));
+  if (!pair) throw new NotFoundError("That pairing isn't there any more");
+  const mayAnswer = pair.firstArrivalId === arrival.id || (pair.linkedByTeam && pair.secondArrivalId === arrival.id);
+  if (!mayAnswer) throw new ForbiddenError("Only the person who made this link can confirm it");
+  if (pair.status === "accepted" || pair.status === "declined") throw new ConflictError("This pairing has already been settled");
+  if (pair.status !== "awaiting_accept") throw new ConflictError("Nobody has used this link yet, so there's nothing to confirm");
   const [updated] = await db
     .update(recruitmentPair)
-    .set({ secondResponseId: formResponseId, cycleId: cycleId ?? pair.cycleId, status: "awaiting_accept" })
-    .where(and(eq(recruitmentPair.id, pair.id), isNull(recruitmentPair.secondResponseId)))
+    .set({ status: accept ? "accepted" : "declined", resolvedAt: new Date() })
+    .where(and(eq(recruitmentPair.id, pair.id), eq(recruitmentPair.status, "awaiting_accept")))
     .returning();
-  if (!updated) {
-    throw new ConflictError("This pairing link has already been used");
-  }
+  if (!updated) throw new ConflictError("This pairing has already been settled");
   return updated;
 }
 
@@ -348,51 +320,33 @@ export type PairRecord = {
   status: PairRow["status"];
   createdAt: Date;
   resolvedAt: Date | null;
-  namer: { memberId: string; name: string } | null;
-  namedMember: { memberId: string; name: string } | null;
-  firstApplicationSubmittedAt: Date | null;
-  secondApplicationSubmittedAt: Date | null;
-  // "not_applicable" is its own value rather than being folded into
-  // "settled", because a pair where the named person is an existing
-  // member can never share an interview — there is only one applicant —
-  // and a community reading this list later should be able to tell that
-  // apart from a pair that was never offered one.
+  /** Who made the link or was named first: the person, or the member who named them. */
+  namer: { name: string } | null;
+  /** The other: a named member, or the person who arrived through the link. */
+  other: { name: string } | null;
+  linkedByTeam: boolean;
+  // "not_applicable" is its own value rather than being folded into "settled", because a pair
+  // where the named person is an existing member can never share an interview — there is
+  // only one person being interviewed — and a community reading this later should be able to
+  // tell that apart from a pair that was never offered one.
   sharedCall: "not_offered" | "not_applicable" | "offered" | "accepted" | "declined" | "settled";
 };
 
-// Everyone's pairs, newest first, for the /recruitment hub's pairing
-// panel. Holder-scoped the same way the pipeline is: a cycle-placed
-// holder sees only their own cycle's pairs.
+/** Everyone's pairs, newest first, for the hub. Scoped like the pipeline: a cycle-placed holder sees their own cycle's. */
 export async function listPairings(actor: Member) {
   await requireRecruitmentTaskHolder(actor);
   const { listHeldRecruitmentScopes } = await import("./access");
   const held = await listHeldRecruitmentScopes(actor);
-  const rows = await db
-    .select()
-    .from(recruitmentPair)
-    .where(eq(recruitmentPair.communityId, actor.communityId))
-    .orderBy(desc(recruitmentPair.createdAt));
+  const rows = await db.select().from(recruitmentPair).where(eq(recruitmentPair.communityId, actor.communityId)).orderBy(desc(recruitmentPair.createdAt));
   const visible = rows.filter((r) => held.has(null) || (r.cycleId !== null && held.has(r.cycleId)));
   if (visible.length === 0) return [];
 
-  const memberIds = new Set<string>();
-  for (const r of visible) {
-    memberIds.add(r.requestedById);
-    if (r.secondMemberId) memberIds.add(r.secondMemberId);
-  }
-  const responseIds = visible.flatMap((r) => [r.firstResponseId, r.secondResponseId]).filter((v): v is string => Boolean(v));
-
-  const people = memberIds.size
-    ? await db.select({ id: member.id, name: member.name }).from(member).where(inArray(member.id, [...memberIds]))
-    : [];
-  const names = new Map(people.map((p) => [p.id, p.name]));
-  const responses = responseIds.length
-    ? await db
-        .select({ id: formResponse.id, submittedAt: formResponse.submittedAt })
-        .from(formResponse)
-        .where(inArray(formResponse.id, responseIds))
-    : [];
-  const submittedAt = new Map(responses.map((r) => [r.id, r.submittedAt]));
+  const arrivalIds = visible.flatMap((r) => [r.firstArrivalId, r.secondArrivalId]).filter((v): v is string => Boolean(v));
+  const memberIds = visible.flatMap((r) => [r.requestedById, r.secondMemberId]).filter((v): v is string => Boolean(v));
+  const arrivals = arrivalIds.length ? await db.select({ id: admission.id, name: admission.name }).from(admission).where(inArray(admission.id, arrivalIds)) : [];
+  const people = memberIds.length ? await db.select({ id: member.id, name: member.name }).from(member).where(inArray(member.id, memberIds)) : [];
+  const arrivalName = new Map(arrivals.map((a) => [a.id, a.name]));
+  const memberName = new Map(people.map((p) => [p.id, p.name]));
 
   return visible.map(
     (r): PairRecord => ({
@@ -400,12 +354,17 @@ export async function listPairings(actor: Member) {
       status: r.status,
       createdAt: r.createdAt,
       resolvedAt: r.resolvedAt,
-      namer: { memberId: r.requestedById, name: names.get(r.requestedById) ?? "A member" },
-      namedMember: r.secondMemberId
-        ? { memberId: r.secondMemberId, name: names.get(r.secondMemberId) ?? "A member" }
-        : null,
-      firstApplicationSubmittedAt: r.firstResponseId ? (submittedAt.get(r.firstResponseId) ?? null) : null,
-      secondApplicationSubmittedAt: r.secondResponseId ? (submittedAt.get(r.secondResponseId) ?? null) : null,
+      namer: r.firstArrivalId
+        ? { name: arrivalName.get(r.firstArrivalId) ?? "Someone" }
+        : r.requestedById
+          ? { name: memberName.get(r.requestedById) ?? "A member" }
+          : null,
+      other: r.secondArrivalId
+        ? { name: arrivalName.get(r.secondArrivalId) ?? "Someone" }
+        : r.secondMemberId
+          ? { name: memberName.get(r.secondMemberId) ?? "A member" }
+          : null,
+      linkedByTeam: r.linkedByTeam,
       sharedCall: describeSharedCallState(r),
     }),
   );
@@ -416,97 +375,58 @@ function describeSharedCallState(r: PairRow): PairRecord["sharedCall"] {
   if (r.sharedCallDeclinedAt) return "declined";
   if (r.sharedCallOfferedAt) return "offered";
   if (r.secondMemberId) return "not_applicable";
-  if (r.status === "accepted" && r.secondResponseId) return "not_offered";
+  if (r.status === "accepted" && r.secondArrivalId) return "not_offered";
   return "settled";
 }
 
 // ---------------------------------------------------------------------------
-// The shared interview (§2.8)
+// The shared interview (§2)
 // ---------------------------------------------------------------------------
 
-// A shared interview is a small extension of the existing intro-call
-// machinery rather than a new stage: a must-overlap poll whose required
-// participants are the evaluators *and both applicants*. It is offered,
-// never applied, and only when all three of the plan's conditions hold —
-// the lane asks for an interview, the interview door is open for the
-// event, and both sides have actually reached the point of having an
-// interview. A poll confirmed with only one applicant in it would be the
-// "automatic" version of this that §2.8 explicitly rules out.
+// One call, two people. The interview is shared and the recommendation is per person: both
+// arrivals sit on one poll whose required participants are both of them, so both have to be
+// free in the slot and enough holders have to offer it; and each interviewer then files one
+// report for each arrival, each counting its own N. It is offered, never applied — and only
+// when both people have an interview of their own still to arrange and neither has been
+// booked, because quietly re-pointing somebody's already-booked call is not something to do
+// behind their back.
 export type SharedInterviewOffer = {
   pairId: string;
   token: string;
-  applicantSubmittedAt: { first: Date | null; second: Date | null };
+  names: { first: string; second: string };
   pollId: string;
   pollTitle: string;
 };
 
-// A pair is offerable when three of the plan's conditions hold and the
-// fourth is a question rather than a fact: the lane asks for an
-// interview (checked when the *second* side's decision is reached —
-// see answerSharedInterviewOffer's caller, which only reaches here for a
-// pair whose second side is on a lane with interviewRequired), the
-// interview door is open for the event, and both sides have actually
-// reached the interview stage.
-//
-// "Reached the stage" is deliberately narrow: exactly one of the two
-// decisions has a poll of its own, and the other has none. Merging two
-// existing interviews is a different operation from sharing one, and
-// quietly re-pointing somebody's already-scheduled call at a new grid
-// is not something to do behind their back.
+async function offerable(pair: PairRow): Promise<{ first: Arrival; second: Arrival } | null> {
+  if (pair.status !== "accepted" || !pair.firstArrivalId || !pair.secondArrivalId) return null;
+  if (pair.sharedCallOfferedAt || pair.sharedCallAcceptedAt) return null;
+  const [first, second] = await Promise.all([loadArrival(pair.firstArrivalId), loadArrival(pair.secondArrivalId)]);
+  if (!inFlight(first) || !inFlight(second)) return null;
+  if (!first.requiredInterview || !second.requiredInterview) return null;
+  if (!first.interviewPollId || !second.interviewPollId || first.interviewPollId === second.interviewPollId) return null;
+  if (first.interviewScheduledAt || second.interviewScheduledAt) return null;
+  return { first, second };
+}
+
 export async function listSharedInterviewOffers(actor: Member): Promise<SharedInterviewOffer[]> {
   await requireRecruitmentTaskHolder(actor);
-  const communityRow = await getCommunityRow(actor.communityId);
-  if (!communityRow.recruitmentInterviewsOpen) return [];
   const { listHeldRecruitmentScopes } = await import("./access");
+  const { canScheduleInterview } = await import("./joining");
   const held = await listHeldRecruitmentScopes(actor);
-
   const pairs = await db
     .select()
     .from(recruitmentPair)
-    .where(
-      and(
-        eq(recruitmentPair.communityId, actor.communityId),
-        eq(recruitmentPair.status, "accepted"),
-        isNull(recruitmentPair.sharedCallOfferedAt),
-        isNull(recruitmentPair.sharedCallAcceptedAt),
-      ),
-    );
+    .where(and(eq(recruitmentPair.communityId, actor.communityId), eq(recruitmentPair.status, "accepted")));
   const offers: SharedInterviewOffer[] = [];
   for (const pair of pairs) {
-    if (!pair.firstResponseId || !pair.secondResponseId) continue;
     if (!(held.has(null) || (pair.cycleId !== null && held.has(pair.cycleId)))) continue;
-    if (pair.cycleId) {
-      const { canScheduleInterview } = await import("./joining");
-      if (!(await canScheduleInterview(actor.communityId, pair.cycleId))) continue;
-    }
-    const decisions = await db
-      .select()
-      .from(recruitmentDecision)
-      .where(inArray(recruitmentDecision.formResponseId, [pair.firstResponseId, pair.secondResponseId]));
-    if (decisions.length !== 2) continue;
-    const withPoll = decisions.filter((d) => d.introCallPollId);
-    const withoutPoll = decisions.filter((d) => !d.introCallPollId);
-    if (withPoll.length !== 1 || withoutPoll.length !== 1) continue;
-    const [poll] = await db
-      .select({ id: schedulingPoll.id, title: schedulingPoll.title })
-      .from(schedulingPoll)
-      .where(eq(schedulingPoll.id, withPoll[0].introCallPollId!));
+    const both = await offerable(pair);
+    if (!both) continue;
+    if (!(await canScheduleInterview(actor.communityId, both.first.cycleId))) continue;
+    const [poll] = await db.select({ id: schedulingPoll.id, title: schedulingPoll.title }).from(schedulingPoll).where(eq(schedulingPoll.id, both.first.interviewPollId!));
     if (!poll) continue;
-    const responses = await db
-      .select({ id: formResponse.id, submittedAt: formResponse.submittedAt })
-      .from(formResponse)
-      .where(inArray(formResponse.id, [pair.firstResponseId, pair.secondResponseId]));
-    const submittedAt = new Map(responses.map((r) => [r.id, r.submittedAt]));
-    offers.push({
-      pairId: pair.id,
-      token: pair.token,
-      applicantSubmittedAt: {
-        first: submittedAt.get(pair.firstResponseId) ?? null,
-        second: submittedAt.get(pair.secondResponseId) ?? null,
-      },
-      pollId: poll.id,
-      pollTitle: poll.title,
-    });
+    offers.push({ pairId: pair.id, token: pair.token, names: { first: both.first.name, second: both.second.name }, pollId: poll.id, pollTitle: poll.title });
   }
   return offers;
 }
@@ -518,84 +438,86 @@ export const sharedInterviewInput = z.object({
 });
 export type SharedInterviewInput = z.infer<typeof sharedInterviewInput>;
 
-// The opt-in. Accepting merges the two applicants onto one poll; the
-// poll is a must_overlap one already, so the pair's availability has to
-// actually intersect before a slot confirms — which is §2.8's "their
-// schedules align" doing real work rather than being a hope.
+/**
+ * The opt-in, answered by a recruitment holder covering the pair's scope. It is checked here,
+ * on the write: the offer used to be *listed* only to holders while answering it was open to
+ * any member who reached the action, so anyone could accept or decline for any pair.
+ */
 export async function answerSharedInterviewOffer(actor: Member, input: SharedInterviewInput) {
+  await requireRecruitmentTaskHolder(actor);
   const [pair] = await db.select().from(recruitmentPair).where(eq(recruitmentPair.id, input.pairId));
-  if (!pair || pair.communityId !== actor.communityId) {
-    throw new NotFoundError("Pairing not found");
-  }
-  if (pair.status !== "accepted") {
-    throw new ConflictError("This pairing hasn't been confirmed yet");
-  }
-  if (!pair.firstResponseId || !pair.secondResponseId) {
-    throw new ConflictError("Both sides need an application before there is an interview to share");
-  }
+  if (!pair || pair.communityId !== actor.communityId) throw new NotFoundError("Pairing not found");
+  await requireRecruitmentScopeForCycle(actor, pair.cycleId);
+  if (pair.status !== "accepted") throw new ConflictError("This pairing hasn't been confirmed yet");
+  if (!pair.firstArrivalId || !pair.secondArrivalId) throw new ConflictError("Both people need to be in the process before there is an interview to share");
+  if (pair.sharedCallAcceptedAt || pair.sharedCallDeclinedAt) throw new ConflictError("This offer has already been answered");
+
   if (!input.accept) {
     const [updated] = await db
       .update(recruitmentPair)
       .set({ sharedCallOfferedAt: pair.sharedCallOfferedAt ?? new Date(), sharedCallDeclinedAt: new Date() })
-      .where(and(eq(recruitmentPair.id, pair.id), isNull(recruitmentPair.sharedCallDeclinedAt)))
+      .where(and(eq(recruitmentPair.id, pair.id), isNull(recruitmentPair.sharedCallDeclinedAt), isNull(recruitmentPair.sharedCallAcceptedAt)))
       .returning();
-    return { declined: true, pair: updated ?? pair };
+    return { declined: true as const, pair: updated ?? pair };
   }
+
+  const both = await offerable({ ...pair, sharedCallOfferedAt: null });
+  if (!both) throw new ConflictError("Both people need an interview still to arrange, with neither booked, before they can share one");
+  const poll = await shareInterview(actor, both.first, both.second);
   const [updated] = await db
     .update(recruitmentPair)
     .set({ sharedCallOfferedAt: pair.sharedCallOfferedAt ?? new Date(), sharedCallAcceptedAt: new Date() })
     .where(and(eq(recruitmentPair.id, pair.id), isNull(recruitmentPair.sharedCallAcceptedAt)))
     .returning();
-  if (!updated) {
-    throw new ConflictError("You've already answered this offer");
-  }
-  const poll = await shareIntroCall(updated);
-  return { declined: false, pair: updated, poll };
-}
-// Points the second applicant's decision at the first's poll and adds
-// them to its required participants, so both have to submit availability
-// and the poll can only confirm on a slot that suits all of them. The
-// second side's own intro-call token is minted here so their
-// /intro-call/<token> page resolves to the shared poll.
-async function shareIntroCall(pair: PairRow) {
-  const decisions = await db
-    .select()
-    .from(recruitmentDecision)
-    .where(
-      inArray(recruitmentDecision.formResponseId, [pair.firstResponseId!, pair.secondResponseId!]),
-    );
-  const withPoll = decisions.find((d) => d.introCallPollId);
-  const withoutPoll = decisions.find((d) => !d.introCallPollId);
-  if (!withPoll?.introCallPollId || !withoutPoll) {
-    throw new ConflictError("Both sides need their own intro call scheduled before they can share one");
-  }
-  const [poll] = await db.select().from(schedulingPoll).where(eq(schedulingPoll.id, withPoll.introCallPollId));
-  if (!poll) {
-    throw new NotFoundError("That interview no longer exists");
-  }
-  if (!poll.requiredParticipantIds.includes(withoutPoll.formResponseId)) {
-    await db
-      .update(schedulingPoll)
-      .set({ requiredParticipantIds: [...poll.requiredParticipantIds, withoutPoll.formResponseId] })
-      .where(eq(schedulingPoll.id, poll.id));
-  }
-  const [updated] = await db
-    .update(recruitmentDecision)
-    .set({ introCallPollId: poll.id, introCallToken: generateToken() })
-    .where(eq(recruitmentDecision.id, withoutPoll.id))
-    .returning();
-  return { pollId: poll.id, token: updated?.introCallToken ?? null };
+  return { declined: false as const, pair: updated ?? pair, pollId: poll.id };
 }
 
-// Whether the token is one a pairing link handed out and the person
-// opening it is a *different* applicant, i.e. the "apply, pre-paired
-// with the namer" branch of §2.4. The invitation branch is the support
-// view (src/lib/recruitment/support.ts), not this.
-export async function resolvePairingForApplication(token: string) {
-  const [pair] = await db.select().from(recruitmentPair).where(eq(recruitmentPair.token, token));
-  if (!pair) return null;
-  if (pair.secondResponseId || pair.status === "declined" || pair.status === "accepted") {
-    return null;
+// Puts the second person on the first's poll: they become a required participant, so both
+// must be free in the slot; whatever times the second had offered move across; and their own
+// now-unused poll is removed (its holders' times merged across). The poll is renamed so a
+// holder reading it sees whose it is.
+async function shareInterview(actor: Member, first: Arrival, second: Arrival) {
+  const [poll] = await db.select().from(schedulingPoll).where(eq(schedulingPoll.id, first.interviewPollId!));
+  if (!poll) throw new NotFoundError("That interview no longer exists");
+  const oldPollId = second.interviewPollId!;
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schedulingPoll)
+      .set({
+        requiredParticipantIds: poll.requiredParticipantIds.includes(second.id) ? poll.requiredParticipantIds : [...poll.requiredParticipantIds, second.id],
+        title: `Interview: ${first.name} and ${second.name}`,
+      })
+      .where(eq(schedulingPoll.id, poll.id));
+    await tx.update(schedulingEntry).set({ pollId: poll.id }).where(and(eq(schedulingEntry.pollId, oldPollId), eq(schedulingEntry.arrivalId, second.id)));
+    await tx.update(admission).set({ interviewPollId: poll.id }).where(eq(admission.id, second.id));
+    // A holder who had offered times for the second person's call offers them for the shared
+    // one too: merged with what they had already offered there, never lost. (Standing
+    // availability is read live and needs nothing moved.)
+    const heldOld = await tx.select().from(schedulingEntry).where(and(eq(schedulingEntry.pollId, oldPollId)));
+    for (const e of heldOld) {
+      if (!e.memberId) continue;
+      const [onNew] = await tx.select().from(schedulingEntry).where(and(eq(schedulingEntry.pollId, poll.id), eq(schedulingEntry.memberId, e.memberId)));
+      const merged = [...new Set([...((onNew?.availableSlots as string[] | undefined) ?? []), ...(e.availableSlots as string[])])];
+      if (onNew) await tx.update(schedulingEntry).set({ availableSlots: merged, updatedAt: new Date() }).where(eq(schedulingEntry.id, onNew.id));
+      else await tx.insert(schedulingEntry).values({ pollId: poll.id, memberId: e.memberId, availableSlots: merged });
+    }
+    await tx.delete(schedulingEntry).where(eq(schedulingEntry.pollId, oldPollId));
+  });
+
+  // The second person's own poll is now nobody's. Every poll spins up two coordination tasks, so
+  // those go first — leaving them would put two unclaimable "facilitate a call that won't happen"
+  // tasks on the board — and then the poll. Best-effort: a leftover is untidy, not wrong.
+  try {
+    const { deleteTask } = await import("../tasks/crud");
+    // Only a task's creator may delete it, and the poll's organizer made them.
+    const orphaned = await db.select({ id: task.id, createdBy: task.createdBy }).from(task).where(eq(task.sourcePollId, oldPollId));
+    for (const t of orphaned) {
+      const [creator] = await db.select().from(member).where(eq(member.id, t.createdBy));
+      await deleteTask(creator ?? actor, t.id);
+    }
+    await db.delete(schedulingPoll).where(eq(schedulingPoll.id, oldPollId));
+  } catch (err) {
+    console.error("[pairing] could not tidy the second person's old poll", err);
   }
-  return pair;
+  return poll;
 }

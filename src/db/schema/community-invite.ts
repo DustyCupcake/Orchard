@@ -1,15 +1,7 @@
-import { boolean, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { community } from "./community";
 import { cycle } from "./cycle";
 import { member } from "./member";
-
-export const inviteConsensusStateEnum = pgEnum("invite_consensus_state", [
-  "not_required",
-  "awaiting_consent",
-  "announced",
-  "admitted",
-  "withheld",
-]);
 
 // A second, private joining path alongside the ordinary open-door
 // magic-link signup — see docs/spec.md's Recruitment: "Invite links."
@@ -21,11 +13,7 @@ export const inviteConsensusStateEnum = pgEnum("invite_consensus_state", [
 // to view or resend later (the `label` field only makes sense if the
 // creator can still see which link is which) — a deliberately
 // different tradeoff, not an oversight. Real FKs throughout (a fresh
-// schema file, no circular-import reason to avoid them here) — the
-// non-FK side of the Member↔CommunityInvite pair lives on
-// member.joinedViaInviteId instead, since member.ts is the earlier,
-// more-core file (same "the newer module file holds the real FK"
-// convention the Budget module already established).
+// schema file, no circular-import reason to avoid them here).
 export const communityInvite = pgTable("community_invite", {
   id: uuid("id").primaryKey().defaultRandom(),
   communityId: uuid("community_id")
@@ -61,15 +49,5 @@ export const communityInvite = pgTable("community_invite", {
   awarenessConfirmedBy: uuid("awareness_confirmed_by").references(() => member.id),
   consentAt: timestamp("consent_at", { withTimezone: true }),
   consentDisclosure: text("consent_disclosure"),
-  // The community-check window's own state, for an invite whose lane
-  // resolved to `consensus`. `awaiting_consent` is the pre-redemption
-  // hold; `announced` means the Member exists and the arrival is
-  // visible for objection until consensusDeadline; `admitted` /
-  // `withheld` are the two terminal outcomes, and only ever set by
-  // src/lib/recruitment/mediation.ts — the window's timer alone can
-  // only ever move `announced` → `admitted`, and only when nobody
-  // objected at all.
-  consensusState: inviteConsensusStateEnum("consensus_state").notNull().default("not_required"),
-  consensusDeadline: timestamp("consensus_deadline", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

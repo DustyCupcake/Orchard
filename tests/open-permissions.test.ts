@@ -28,7 +28,7 @@ import {
   requireRecruitmentScopeForCycle,
   requireRecruitmentTaskHolder,
   recordDecisionIfReached,
-  resolveWiderDiscussionWindows,
+  closeDueChecks,
   submitEvaluation,
   submitRecruitmentApplication,
 } from "@/lib/recruitment";
@@ -57,7 +57,7 @@ import { listReadableSensitiveQuestionIds } from "@/lib/sensitive-data";
 import { isAdmin, requireAdmins } from "@/lib/settings/admins";
 import { updateCommunity } from "@/lib/settings";
 import { getNavContext } from "@/lib/nav";
-import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, insertTask, resetDatabase, POLICY_TWO_OF_TWO, withApplicationOnlyLanes } from "./helpers";
 
 // Step 1 of docs/plans/archive/open-permissions-plan.md: the storage. Nothing reads this
 // table yet — `isModuleOpenToEveryone` is Step 2 — so these tests assert the
@@ -716,35 +716,33 @@ describe("open capability resolvers (Step 4)", () => {
       .update(community)
       .set({ modulesEnabled: [...testCommunity.modulesEnabled, "recruitment"] })
       .where(eq(community.id, testCommunity.id));
+    // Evaluation, not the interview, is what these are about.
+    await withApplicationOnlyLanes(testCommunity.id);
     const form = await createForm(alice, {
       title: "Application",
-      fields: [{ key: "name", label: "Name", responseType: "text", required: true }],
+      fields: [
+        { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
+        { key: "email", label: "Email", responseType: "text", required: true, isEmailField: true },
+      ],
     });
     await updateCommunity(alice, {
       recruitmentApplicationFormId: form.id,
-      // Explicit, because a Community that never touched it gets 2 (the
-      // default) — and that default is the unsatisfiable part.
-      recruitmentEvaluatorCount: 2,
-      recruitmentDecisionRules: [
-        { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-        // A wider_discussion rule must declare what happens when its window
-        // closes unobjected (requireValidDecisionRules) — hence the
-        // defaultResolution.
-        { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-      ],
+      // Explicit, because a lane that takes 2 reports is the unsatisfiable
+      // part with nobody able to file them.
+      ...POLICY_TWO_OF_TWO,
     });
 
     // Closed: bob and alice both hold nothing, so nobody can evaluate and
     // the count of 2 is unreachable by construction.
-    const application = await submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana" } });
-    await expect(submitEvaluation(alice, application.id, { recommendation: "proceed" })).rejects.toThrow();
+    const application = await submitRecruitmentApplication(testCommunity.id, { values: { name: "Dana", email: "dana@example.com" } });
+    await expect(submitEvaluation(alice, application.formResponse.id, { recommendation: "proceed" })).rejects.toThrow();
 
     // Open: both can, and that is enough to reach a decision.
     await openModule(testCommunity.id, "recruitment", alice.id);
-    await submitEvaluation(alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(bob, application.id, { recommendation: "proceed" });
+    await submitEvaluation(alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(bob, application.formResponse.id, { recommendation: "proceed" });
 
-    const decision = await recordDecisionIfReached(alice, application.id);
+    const decision = await recordDecisionIfReached(alice, application.formResponse.id);
     expect(decision).not.toBeNull();
     // The first rule matched, rather than falling through to the mandatory
     // wider_discussion — which is what a single-cardinality module made
@@ -1019,23 +1017,21 @@ describe("open modules are not misconfigured (Step 5)", () => {
       .update(community)
       .set({ modulesEnabled: [...testCommunity.modulesEnabled, "recruitment"] })
       .where(eq(community.id, testCommunity.id));
+    // Evaluation, not the interview, is what these are about.
+    await withApplicationOnlyLanes(testCommunity.id);
     const form = await createForm(alice, {
       title: "Application",
       fields: [
-        { key: "name", label: "Name", responseType: "text", required: true },
+        { key: "name", label: "Name", responseType: "text", required: true, isNameField: true },
         { key: "email", label: "Email", responseType: "text", required: true, isEmailField: true },
       ],
     });
     await updateCommunity(alice, {
       recruitmentApplicationFormId: form.id,
-      recruitmentEvaluatorCount: 2,
       recruitmentWiderDiscussionHours: 0,
-      recruitmentDecisionRules: [
-        { conditions: { minCounts: { proceed: 2 } }, outcome: "proceed" },
-        // Resolving to `decline` keeps the job off the conversion path, so
-        // what is under test is purely the *author* fallback.
-        { conditions: {}, outcome: "wider_discussion", defaultResolution: "decline" },
-      ],
+      // Resolving to `decline` keeps the job off the conversion path, so what
+      // is under test is purely the *author* fallback.
+      ...POLICY_TWO_OF_TWO,
     });
     await db
       .insert(openPermissionGrant)
@@ -1044,19 +1040,19 @@ describe("open modules are not misconfigured (Step 5)", () => {
     const application = await submitRecruitmentApplication(testCommunity.id, {
       values: { name: "Dana", email: "dana@example.com" },
     });
-    await submitEvaluation(alice, application.id, { recommendation: "proceed" });
-    await submitEvaluation(bob, application.id, { recommendation: "unsure" });
-    const decided = await recordDecisionIfReached(alice, application.id);
+    await submitEvaluation(alice, application.formResponse.id, { recommendation: "proceed" });
+    await submitEvaluation(bob, application.formResponse.id, { recommendation: "unsure" });
+    const decided = await recordDecisionIfReached(alice, application.formResponse.id);
     expect(decided?.ruleOutcome).toBe("wider_discussion");
 
     // The job runs. Before the fallback chain it found no actor (no granting
     // task) and silently created nothing; now it resolves one from the
     // people actually involved.
-    const result = await resolveWiderDiscussionWindows();
+    const result = await closeDueChecks();
     expect(result.checked).toBeGreaterThan(0);
     // No crash and no throw is the assertion that matters here: the job
     // completes with an open module and no granting task.
-    expect(result.resolved).toBe(result.checked);
+    expect(result.ended).toBe(result.checked);
     expect(branch.id).not.toBe(testCommunity.id);
   });
 });

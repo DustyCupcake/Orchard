@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "evaluation_arrival_evaluator_unique" ON "evaluation" USING btree ("arrival_id","evaluator_id");

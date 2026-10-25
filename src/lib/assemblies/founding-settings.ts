@@ -2,7 +2,6 @@ import { MODULE_DEFINITIONS } from "../modules";
 import { PERMISSION_MODULE_KEYS, PERMISSION_MODULE_LABELS } from "../permissions";
 import { OPENNESS_LABELS } from "../format";
 import { DEFAULT_PROFILE_QUESTION_GROUPS } from "../profile-questions/defaults-table";
-import { JOINING_LANE_KINDS, type JoinLaneKind } from "@/db/schema";
 import type { AssemblyResponseType } from "./agenda";
 
 // The Founding settings template — the answer to "making every
@@ -64,15 +63,14 @@ export const FOUNDING_SETTINGS_DESCRIPTION =
   "change by hand. Delete anything you've already settled; add anything " +
   "this missed.";
 
-// Lane names are the plan's own (§2.1 of docs/plans/archive/joining-admission-plan.md
-// and the §2.9 table), not invented here — these four are what the rest
-// of the app and the joining docs already call them.
-const JOINING_LANE_LABELS: Record<JoinLaneKind, string> = {
-  invited_knows_personally: "Invited — knows personally",
-  invited_good_fit: "Invited — good-fit vouch",
-  invited_neither: "Invited — neither mark",
-  public_application: "Applying on my own",
-};
+// How someone arrives is a *lane* the community defines (docs/plans/admission-flow.md §2a), so the
+// question asks about the shape of the path rather than naming fixed lanes.
+const KNOWN_PERSONALLY_PATHS = [
+  "They're in straight away",
+  "They apply and are interviewed, then decided",
+  "They're announced to the community, and a concern can hold them",
+  "A few members' word is enough — otherwise the usual process",
+] as const;
 
 // The board's own openness vocabulary, in its real order (openest to
 // most gated), wording taken from the canonical map rather than retyped —
@@ -145,14 +143,14 @@ export const FOUNDING_SETTINGS_ITEMS: FoundingSettingsItem[] = [
       "Only members who have been here a while",
       "Anyone — but every invite needs a second member's support",
     ],
-    settingsMapping: "Settings → Recruitment → Accepting invites, and the invitation lane rules",
+    settingsMapping: "Settings → Recruitment → Doors (invites), and Admission lanes",
   },
   {
     group: "Getting people in",
     text: "Someone a member knows personally wants to join. What should happen to them?",
     responseType: "single_choice",
-    options: JOINING_LANE_KINDS.map((lane) => JOINING_LANE_LABELS[lane]),
-    settingsMapping: "Settings → the four invitation lanes (verification mode, application, interview)",
+    options: [...KNOWN_PERSONALLY_PATHS],
+    settingsMapping: "Settings → Recruitment → Admission lanes",
   },
   {
     group: "Getting people in",
@@ -164,7 +162,7 @@ export const FOUNDING_SETTINGS_ITEMS: FoundingSettingsItem[] = [
       "Three people",
       "A majority of everyone taking part",
     ],
-    settingsMapping: "Settings → Recruitment → Evaluators per applicant",
+    settingsMapping: "Settings → Recruitment → Admission lanes (reports needed, per lane)",
   },
 
   // ── Who holds authority ────────────────────────────────────────────

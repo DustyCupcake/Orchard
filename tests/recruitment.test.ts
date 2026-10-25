@@ -18,7 +18,7 @@ import {
   submitInquiry,
 } from "@/lib/recruitment";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { createFixtures, grantPermission, resetDatabase } from "./helpers";
+import { createFixtures, grantPermission, resetDatabase, withLegacyLanes } from "./helpers";
 
 async function enableRecruitment(communityId: string) {
   const [row] = await db.select().from(community).where(eq(community.id, communityId));
@@ -26,6 +26,7 @@ async function enableRecruitment(communityId: string) {
     .update(community)
     .set({ modulesEnabled: [...row.modulesEnabled, "recruitment"] })
     .where(eq(community.id, communityId));
+  await withLegacyLanes(communityId);
 }
 
 async function insertTask(
@@ -160,8 +161,6 @@ describe("communityInviteStatus", () => {
       awarenessConfirmedBy: null,
       consentAt: null,
       consentDisclosure: null,
-      consensusState: "not_required" as const,
-      consensusDeadline: null,
       createdAt: new Date(),
     };
     expect(communityInviteStatus(base)).toBe("valid");
@@ -177,7 +176,7 @@ describe("redeemCommunityInvite", () => {
     await resetDatabase();
   });
 
-  it("creates a Member with referredByMemberId/joinedViaInviteId set, and marks the invite redeemed", async () => {
+  it("creates a Member with referredByMemberId set, and marks the invite redeemed", async () => {
     const { alice } = await createFixtures();
     await enableRecruitment(alice.communityId);
     const invite = await createCommunityInvite(alice, { inviterKnowsPersonally: true });
@@ -186,13 +185,12 @@ describe("redeemCommunityInvite", () => {
     // `direct` path, so redemption hands over a Member immediately and
     // says so in the outcome rather than by returning the row.
     const outcome = await redeemCommunityInvite(invite.token, { email: "dana@example.com" });
-    expect(outcome.kind).toBe("member");
-    if (outcome.kind !== "member") throw new Error("expected the direct path");
+    expect(outcome.kind).toBe("admitted");
+    if (outcome.kind !== "admitted") throw new Error("expected the direct path");
 
     const [newMember] = await db.select().from(member).where(eq(member.id, outcome.memberId));
     expect(newMember.communityId).toBe(alice.communityId);
     expect(newMember.referredByMemberId).toBe(alice.id);
-    expect(newMember.joinedViaInviteId).toBe(invite.id);
     expect(newMember.name).toBe("dana");
 
     const [identity] = await db

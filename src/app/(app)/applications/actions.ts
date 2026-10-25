@@ -6,11 +6,13 @@ import { revalidatePath } from "next/cache";
 import { requireMember as requireRealMember } from "@/lib/api";
 import { assertNotViewingAs } from "@/lib/view-as";
 import {
-  raiseObjection,
-  raiseObjectionInput,
+  confirmInterview,
+  markInterviewHeld,
+  pokeForSupport,
+  recordSupport,
+  recordArrivalDecisionIfReached,
   recordDecisionIfReached,
-  resolveWiderDiscussionInput,
-  resolveWiderDiscussionManually,
+  submitArrivalEvaluation,
   setRecruitmentSubscriptionActive,
   submitEvaluation,
   submitEvaluationInput,
@@ -75,36 +77,83 @@ export async function submitEvaluationAction(formData: FormData) {
   redirect("/applications?evaluated=1");
 }
 
-// Subscriber-gated, enforced inside raiseObjection.
-export async function raiseObjectionAction(formData: FormData) {
+// The same for an arrival that has no application (a lane that asks only for a
+// conversation): the report is about the person.
+export async function submitArrivalEvaluationAction(formData: FormData) {
   const actor = await requireMember();
-  const formResponseId = String(formData.get("formResponseId"));
-
+  const arrivalId = String(formData.get("arrivalId"));
   try {
-    const input = raiseObjectionInput.parse({ note: String(formData.get("note") ?? "").trim() });
-    await raiseObjection(actor, formResponseId, input);
+    const input = submitEvaluationInput.parse({
+      recommendation: String(formData.get("recommendation") ?? ""),
+      notes: String(formData.get("notes") ?? "").trim() || null,
+    });
+    await submitArrivalEvaluation(actor, arrivalId, input);
+    await recordArrivalDecisionIfReached(actor, arrivalId);
   } catch (err) {
     redirectWithError(err);
   }
-
   revalidatePath("/applications");
-  redirect("/applications?objectionRaised=1");
+  redirect("/applications?evaluated=1");
 }
 
-// Holder-gated, enforced inside resolveWiderDiscussionManually — the
-// human-call escape hatch for an objected (or simply not worth
-// waiting out) wider-discussion window.
-export async function resolveWiderDiscussionAction(formData: FormData) {
+// A holder who can already see an application supports it from here with one
+// action, no link needed (docs/plans/admission-flow.md §2). The marks are their own.
+export async function supportApplicationAction(formData: FormData) {
   const actor = await requireMember();
-  const formResponseId = String(formData.get("formResponseId"));
-
   try {
-    const input = resolveWiderDiscussionInput.parse({ resolution: String(formData.get("resolution") ?? "") });
-    await resolveWiderDiscussionManually(actor, formResponseId, input);
+    await recordSupport(actor, {
+      arrivalId: String(formData.get("arrivalId") ?? ""),
+      knowsPersonally: formData.get("knowsPersonally") === "on",
+      thinksGoodFit: formData.get("thinksGoodFit") === "on",
+    });
   } catch (err) {
     redirectWithError(err);
   }
-
   revalidatePath("/applications");
-  redirect("/applications?decisionResolved=1");
+  redirect("/applications?supported=1");
+}
+
+// Ask named members to look at somebody's support link: one message each, never
+// a broadcast. Best-effort by design, so the page says who was and wasn't reached
+// rather than failing — and the link itself is always on the page to hand over.
+export async function askMembersToSupportAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    const memberIds = formData.getAll("memberId").map(String).filter(Boolean);
+    const { poked } = await pokeForSupport(actor, String(formData.get("arrivalId") ?? ""), memberIds);
+    if (poked.length === 0) {
+      throw new AppError("Nobody was asked — pick at least one person, and check they have an email on file");
+    }
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/applications");
+  redirect("/applications?asked=1");
+}
+
+// A holder confirms one of the interview times that suit the person and enough of
+// the people who'll be on the call (docs/plans/admission-flow.md §2) — a person, not a
+// job, and any holder rather than only whoever organized the poll.
+export async function confirmInterviewAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await confirmInterview(actor, String(formData.get("arrivalId") ?? ""), String(formData.get("slot") ?? ""));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/applications");
+  redirect("/applications?interviewConfirmed=1");
+}
+
+// An interviewer says the call happened, without waiting for the slot to pass, so
+// reports can be filed.
+export async function markInterviewHeldAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await markInterviewHeld(actor, String(formData.get("arrivalId") ?? ""));
+  } catch (err) {
+    redirectWithError(err);
+  }
+  revalidatePath("/applications");
+  redirect("/applications?interviewHeld=1");
 }

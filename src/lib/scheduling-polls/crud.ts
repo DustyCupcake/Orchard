@@ -11,7 +11,7 @@ type Member = typeof memberTable.$inferSelect;
 export const createPollInput = z.object({
   branchId: z.string().uuid(),
   title: z.string().min(1),
-  resolutionMode: z.enum(["must_overlap", "max_attendance"]),
+  resolutionMode: z.enum(["must_overlap", "max_attendance", "person_plus_n_holders"]),
   requiredParticipantIds: z.array(z.string().uuid()).optional(),
   minAttendance: z.number().int().positive().optional(),
   rangeStart: z.string().min(1),

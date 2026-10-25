@@ -4,7 +4,6 @@ import { ZodError } from "zod";
 import { redirect } from "next/navigation";
 import { redeemCommunityInvite, redeemCommunityInviteInput } from "@/lib/recruitment";
 import { createSession } from "@/lib/session";
-import { firstLoginDestinationFor } from "@/lib/first-login";
 import { AppError } from "@/lib/errors";
 
 function redirectWithError(token: string, err: unknown): never {
@@ -39,27 +38,15 @@ export async function redeemInviteAction(formData: FormData) {
     redirectWithError(token, err);
   }
 
-  if (outcome.kind === "member") {
+  if (outcome.kind === "admitted") {
     await createSession(outcome.memberId);
-    redirect(await firstLoginDestinationFor(outcome.memberId));
+    redirect(outcome.redirectTo);
   }
-  if (outcome.kind === "announced") {
-    // A consensus arrival: they are a member (and get a session, because
-    // they need to be able to see the community while the window runs)
-    // but their place in the event is not settled, so they land on the
-    // page that says so rather than the dashboard's unqualified
-    // welcome. That page's own button then hands them on to /welcome if
-    // they haven't been through it — same single hop, one page later.
-    await createSession(outcome.memberId);
-    redirect(`/invite/${token}?announced=1`);
+  if (outcome.kind === "apply") {
+    // The lane asks for an application: the invite goes with them as the vouch.
+    redirect(`/apply?invite=${encodeURIComponent(token)}`);
   }
-  if (outcome.kind === "awaiting_support") {
-    // §2.4 — the one link, auth-branched. No session is created: there
-    // is no Member yet, and the support view is exactly the right thing
-    // to show somebody who is not one.
-    redirect(`/support/${outcome.supportToken}`);
-  }
-  // `process` is unreachable here — redeemCommunityInvite throws for it —
-  // but routing it to /apply is the honest fallback if that ever changes.
-  redirect(`/apply?invite=${encodeURIComponent(token)}`);
+  // A community check, or a wait for an interview: they are in the funnel but
+  // not members yet, and their private page is where they follow it.
+  redirect(`/admission/${outcome.token}`);
 }

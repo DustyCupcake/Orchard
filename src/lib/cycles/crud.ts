@@ -1132,6 +1132,17 @@ export async function updateCycleSettings(actor: Member, cycleId: string, input:
     .where(eq(cycle.id, cycleId))
     .returning();
 
+  // Room may have appeared: whoever was approved and waiting for a place in
+  // this event is admitted, oldest first, while there is room (admission-flow §6).
+  if (input.capacity !== undefined) {
+    const { releaseWaitlist } = await import("../recruitment/admission");
+    await releaseWaitlist(cycleId);
+  }
+  if (input.interviewsOpen === true && !row.interviewsOpen) {
+    const { ensureInterviewPollsFor } = await import("../recruitment/interviews");
+    await ensureInterviewPollsFor(row.communityId);
+  }
+
   if (input.startDate !== undefined || input.endDate !== undefined) {
     await recomputePhaseDatesForCycle(db, cycleId, nextStartDate, nextEndDate);
     await recomputeCalendarEventDatesForCycle(cycleId, nextStartDate, nextEndDate);

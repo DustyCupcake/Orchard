@@ -34,6 +34,7 @@ export const settingsChangeEntityEnum = pgEnum("settings_change_entity", [
   "permission_grant",
   "open_permission_grant",
   "bulk_member_import",
+  "member_sign_in",
 ]);
 
 // One row per changed FIELD, not per save. A save that touches six columns is
