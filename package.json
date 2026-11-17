@@ -21,7 +21,7 @@
     "@phosphor-icons/react": "^2.1.10",
     "@tailwindcss/postcss": "^4.3.3",
     "drizzle-orm": "^0.45.4",
-    "next": "^16.4.2",
+    "next": "^16.4.5",
     "node-cron": "^4.6.0",
     "nodemailer": "^10.2.0",
     "openid-client": "^6.8.8",
