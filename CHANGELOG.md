@@ -8,6 +8,20 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## shift managers can edit a series and a single shift, and delete them before sign-ups open
+
+A series could only be archived or given more dates. A typo in a title, a wrong time on one shift, or a shift that needs more hands meant archiving and starting again. The create form also said "a single shift can differ" on people count, while nothing could set it. No migration: `shift_occurrence.capacity` already existed (null = the series default), it just had no writer.
+
+- **Edit a series** (`updateShiftSeries`): title, description, branch and people per shift. A new default reaches only the shifts that follow it, because a shift with its own number keeps it. It can't go below the sign-ups on a shift that follows the default and hasn't ended.
+- **Edit a single shift** (`updateShiftOccurrence`): start, end and its own people count, typed on the event's clock like "Pick exact times". Empty puts it back on the default. The end must be after the start, and the count can't go below the people already signed up. A shift that has ended can't be edited, because its sign-ups may already be marked completed or no-show and contribution counts read them, and no shift can be moved to start in the past. A time field left as it was shown keeps the stored instant (`instantFromShiftInput`): on the night the clocks go back, 02:30 happens twice, and reading the field back would otherwise move a shift by an hour when only its people count changed.
+- **A closed event's roster stays frozen**, as it already was for new series and moves: its series and shifts can't be edited or deleted either.
+- **Moving a shift people signed up for is allowed, but they are not notified.** The edit form names who is signed up and says to tell them. Automatic email was left out on purpose: it needs a decision about consent and contact methods that is bigger than this change.
+- **Delete a shift or a series** (`deleteShiftOccurrence`, `deleteShiftSeries`) only while the event's sign-ups are not open, and never over a sign-up (one can exist early when a standing series is moved into a collecting event). After the open act, Archive stays the way out. A standing series is always open, so it is never deleted. Deleting a series unlinks a Kitchen meal that points at it rather than failing on the foreign key.
+- **The series card's actions are one row: Edit, Move, Archive, Delete.** Edit, Move and Delete open the shared `Modal`, like the Kitchen's dialogs, so the card no longer grows. "Move" is the existing re-placement, moved from an inline select into the dialog; its rules are unchanged.
+- All four are manager-only through `requireShiftCoordinator`, the same check as Archive, and have REST routes (`PATCH`/`DELETE` on `/api/shift-series/[id]` and `/api/shift-occurrences/[id]`).
+
+Checked: `tsc`, lint, the full suite, with new cases in `tests/shifts.test.ts` (permissions, the default not touching an override, the capacity floor on both paths, end-before-start, the delete gate before and after opening, the standing refusal, a carried-in sign-up, the Kitchen link, ended and closed-event refusals, other communities' ids, a partial edit, and the repeated hour of the clock change). In a browser against a scratch community on Europe/Madrid: the shift form pre-filled 13:00 for a 12:00 UTC shift, saving 18:00 stored 17:00 UTC, the override kept 1 when the default went to 5, and the shift and series deletes worked and disappeared on a standing series.
+
 ## meals can be counted from arrivals and departures, down to the meal if people say, and the dietary check follows who is actually there
 
 A meal's headcount was a number the holder typed, while the event already knew who was coming and when. It now takes the number from Participation when the menu belongs to an event, and every piece of that is optional — most communities have partial information and some have none.

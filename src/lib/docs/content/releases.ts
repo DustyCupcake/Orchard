@@ -29,6 +29,19 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-11-21",
+    title: "Shifts can be edited",
+    summary: "If you manage shifts, you can now fix a series or a single shift instead of archiving it and starting again.",
+    points: [
+      "\"Edit\" next to Archive changes a series' title, description, branch and how many people each shift needs.",
+      "Each shift has its own \"Edit\" for its times and, if it needs a different number of people, its own number. A new series default doesn't change a shift with its own number.",
+      "If people are already signed up for a shift you move, the form tells you who, so you can let them know. They aren't told automatically.",
+      "Before an event's sign-ups open, you can delete a shift or a whole series. After that, archive it as before.",
+      "Moving a series to another event is now a \"Move\" button next to Edit.",
+    ],
+    source: "shift managers can edit a series and a single shift, and delete them before sign-ups open",
+  },
+  {
     date: "2026-10-25",
     title: "The kitchen counts meals from who's actually there",
     summary: "If you say when you arrive and leave, the kitchen can work out how many are eating each meal.",
