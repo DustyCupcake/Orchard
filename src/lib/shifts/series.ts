@@ -1,9 +1,9 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { branch, community, cycle, shiftSeries, task } from "@/db/schema";
+import { branch, community, cycle, meal, shiftOccurrence, shiftSeries, shiftSignup, task } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { ForbiddenError, NotFoundError } from "../errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
 import { getEventTimeZone } from "../cycles/time-zone";
 import {
@@ -39,19 +39,22 @@ export const createShiftSeriesInput = z.object({
 });
 export type CreateShiftSeriesInput = z.infer<typeof createShiftSeriesInput>;
 
+async function requireBranchInCommunity(actor: Member, branchId: string | null | undefined) {
+  if (!branchId) return;
+  const [branchRow] = await db
+    .select({ id: branch.id })
+    .from(branch)
+    .where(and(eq(branch.id, branchId), eq(branch.communityId, actor.communityId)));
+  if (!branchRow) {
+    throw new NotFoundError("Branch not found in your community");
+  }
+}
+
 export async function createShiftSeries(actor: Member, input: CreateShiftSeriesInput) {
   const communityRow = await getCommunityRow(actor.communityId);
   requireModuleEnabled(communityRow, "shifts");
 
-  if (input.branchId) {
-    const [branchRow] = await db
-      .select({ id: branch.id })
-      .from(branch)
-      .where(and(eq(branch.id, input.branchId), eq(branch.communityId, actor.communityId)));
-    if (!branchRow) {
-      throw new NotFoundError("Branch not found in your community");
-    }
-  }
+  await requireBranchInCommunity(actor, input.branchId);
 
   if (input.sourceTaskId) {
     const [taskRow] = await db
@@ -206,6 +209,119 @@ export async function unarchiveShiftSeries(actor: Member, seriesId: string) {
     .where(eq(shiftSeries.id, seriesId))
     .returning();
   return updated;
+}
+
+// What a manager can change on a series after creating it. Placement has
+// its own act (setShiftSeriesScope) and is not part of this.
+export const updateShiftSeriesInput = z.object({
+  branchId: z.string().uuid().nullable().optional(),
+  title: z.string().trim().min(1).optional(),
+  description: z.string().nullable().optional(),
+  defaultCapacity: z.number().int().positive().optional(),
+});
+export type UpdateShiftSeriesInput = z.infer<typeof updateShiftSeriesInput>;
+
+export async function updateShiftSeries(actor: Member, seriesId: string, input: UpdateShiftSeriesInput) {
+  const series = await getShiftSeries(actor, seriesId);
+  await requireShiftCoordinator(actor, series);
+  await requireShiftRosterNotClosed(series);
+  await requireBranchInCommunity(actor, input.branchId);
+
+  // A shift with its own capacity keeps it; only the ones that follow the
+  // default move. Of those, a shift that hasn't ended can't drop below
+  // the people already on it. Ended shifts are history and don't block.
+  if (input.defaultCapacity !== undefined && input.defaultCapacity < series.defaultCapacity) {
+    const [fullest] = await db
+      .select({ signups: count(shiftSignup.id) })
+      .from(shiftOccurrence)
+      .innerJoin(shiftSignup, eq(shiftSignup.occurrenceId, shiftOccurrence.id))
+      .where(
+        and(
+          eq(shiftOccurrence.seriesId, seriesId),
+          isNull(shiftOccurrence.capacity),
+          gt(shiftOccurrence.endsAt, new Date()),
+        ),
+      )
+      .groupBy(shiftOccurrence.id)
+      .orderBy(desc(count(shiftSignup.id)))
+      .limit(1);
+    if (fullest && fullest.signups > input.defaultCapacity) {
+      throw new ConflictError(
+        `A shift that uses the default already has ${fullest.signups} people signed up — the default can't go below that`,
+      );
+    }
+  }
+
+  const [updated] = await db
+    .update(shiftSeries)
+    .set({
+      ...(input.title !== undefined && { title: input.title }),
+      ...(input.description !== undefined && { description: input.description }),
+      ...(input.branchId !== undefined && { branchId: input.branchId }),
+      ...(input.defaultCapacity !== undefined && { defaultCapacity: input.defaultCapacity }),
+    })
+    .where(eq(shiftSeries.id, seriesId))
+    .returning();
+  return updated;
+}
+
+// Deleting is only for a roster still being prepared: an event whose
+// sign-ups haven't opened. Once people can see and claim it, Archive is
+// the way out, so nobody's history disappears. A standing series is
+// always open, so it is never deletable.
+export async function isShiftRosterOpen(series: Pick<ShiftSeriesRow, "cycleId">): Promise<boolean> {
+  if (!series.cycleId) return true;
+  const [cycleRow] = await db
+    .select({ shiftSignupsOpenedAt: cycle.shiftSignupsOpenedAt })
+    .from(cycle)
+    .where(eq(cycle.id, series.cycleId));
+  return cycleRow?.shiftSignupsOpenedAt != null;
+}
+
+// A closed event's roster is frozen, the same rule createShiftSeries and
+// setShiftSeriesScope already apply: nothing in it is edited or deleted.
+export async function requireShiftRosterNotClosed(series: Pick<ShiftSeriesRow, "cycleId">) {
+  if (!series.cycleId) return;
+  const [cycleRow] = await db
+    .select({ closedAt: cycle.closedAt })
+    .from(cycle)
+    .where(eq(cycle.id, series.cycleId));
+  if (cycleRow?.closedAt) {
+    throw new ForbiddenError("This event is closed — its shift roster is frozen");
+  }
+}
+
+export async function requireShiftRosterNotOpen(series: Pick<ShiftSeriesRow, "cycleId">) {
+  if (await isShiftRosterOpen(series)) {
+    throw new ConflictError("Sign-ups for this roster are open — archive it instead of deleting");
+  }
+}
+
+export async function deleteShiftSeries(actor: Member, seriesId: string) {
+  const series = await getShiftSeries(actor, seriesId);
+  await requireShiftCoordinator(actor, series);
+  await requireShiftRosterNotClosed(series);
+  await requireShiftRosterNotOpen(series);
+
+  // Sign-ups can exist before the roster opens (a standing series moved
+  // into a collecting event keeps them). Never delete people's sign-ups.
+  const [taken] = await db
+    .select({ id: shiftSignup.id })
+    .from(shiftSignup)
+    .innerJoin(shiftOccurrence, eq(shiftOccurrence.id, shiftSignup.occurrenceId))
+    .where(eq(shiftOccurrence.seriesId, seriesId))
+    .limit(1);
+  if (taken) {
+    throw new ConflictError("Someone is signed up for a shift in this series — archive it instead of deleting");
+  }
+
+  await db.transaction(async (tx) => {
+    // A Kitchen meal may point at this series as its cooking roster; the
+    // meal stays, it just loses the link.
+    await tx.update(meal).set({ shiftSeriesId: null }).where(eq(meal.shiftSeriesId, seriesId));
+    await tx.delete(shiftOccurrence).where(eq(shiftOccurrence.seriesId, seriesId));
+    await tx.delete(shiftSeries).where(eq(shiftSeries.id, seriesId));
+  });
 }
 
 // D11 — the roster's one-way open act. Only the cycle's own

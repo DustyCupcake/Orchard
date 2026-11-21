@@ -1,15 +1,19 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import { ZodError } from "zod";
 import { db } from "@/db";
-import { cycle as cycleTable, shiftOccurrence, task } from "@/db/schema";
+import { cycle as cycleTable, meal, menuPlan, shiftOccurrence, shiftSeries, shiftSignup as shiftSignupTable, task } from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { updateCommunity } from "@/lib/settings";
 import {
   archiveShiftSeries,
   createShiftSeries,
+  deleteShiftOccurrence,
+  deleteShiftSeries,
   effectiveCapacity,
   generateShiftOccurrences,
   getShiftOccurrence,
+  instantFromShiftInput,
   isShiftCoordinator,
   listMySignups,
   listOccurrencesForSeries,
@@ -18,9 +22,13 @@ import {
   listUpcomingShiftOccurrences,
   markShiftSignupCompleted,
   markShiftSignupNoShow,
+  openCycleShiftSignups,
   rotateTaskIntoShift,
   signUpForShift,
   unarchiveShiftSeries,
+  updateShiftOccurrence,
+  updateShiftSeries,
+  updateShiftSeriesInput,
   withdrawFromShift,
 } from "@/lib/shifts";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
@@ -493,5 +501,301 @@ describe("Rotate a task into a shift", () => {
 
     const series = await rotateTaskIntoShift(alice, openTask.id);
     expect(series.defaultCapacity).toBe(1);
+  });
+});
+
+describe("Editing a series", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("is manager-only and changes title, description, branch and default", async () => {
+    const { alice, bob, branch: testBranch } = await setUpModule();
+    const series = await createSeries(alice);
+
+    await expect(updateShiftSeries(bob, series.id, { title: "Mine now" })).rejects.toThrow(ForbiddenError);
+
+    const updated = await updateShiftSeries(alice, series.id, {
+      title: "Washing up",
+      description: "Bring gloves",
+      branchId: testBranch.id,
+      defaultCapacity: 4,
+    });
+    expect(updated).toMatchObject({ title: "Washing up", description: "Bring gloves", branchId: testBranch.id, defaultCapacity: 4 });
+  });
+
+  it("rejects a branch from another community", async () => {
+    const { alice } = await setUpModule();
+    const other = await createFixtures();
+    const series = await createSeries(alice);
+    await expect(updateShiftSeries(alice, series.id, { branchId: other.branch.id })).rejects.toThrow(NotFoundError);
+  });
+
+  it("a new default reaches shifts that follow it, never a shift with its own number", async () => {
+    const { alice, series, occurrences } = await seriesWithTwoShifts();
+    await updateShiftOccurrence(alice, occurrences[1].id, slotOf(occurrences[1], 5));
+
+    const updated = await updateShiftSeries(alice, series.id, { defaultCapacity: 3 });
+    const [followsDefault, overridden] = await Promise.all(occurrences.map((o) => getShiftOccurrence(alice, o.id)));
+    expect(effectiveCapacity(followsDefault.occurrence, updated)).toBe(3);
+    expect(effectiveCapacity(overridden.occurrence, updated)).toBe(5);
+  });
+
+  it("refuses a default below the sign-ups on a shift that follows it", async () => {
+    const { alice, bob, series, occurrences } = await seriesWithTwoShifts();
+    await signUpForShift(alice, occurrences[0].id);
+    await signUpForShift(bob, occurrences[0].id);
+
+    await expect(updateShiftSeries(alice, series.id, { defaultCapacity: 1 })).rejects.toThrow(ConflictError);
+  });
+
+  it("a shift with its own number doesn't block lowering the default", async () => {
+    const { alice, bob, series, occurrences } = await seriesWithTwoShifts();
+    await updateShiftOccurrence(alice, occurrences[0].id, slotOf(occurrences[0], 2));
+    await signUpForShift(alice, occurrences[0].id);
+    await signUpForShift(bob, occurrences[0].id);
+
+    const updated = await updateShiftSeries(alice, series.id, { defaultCapacity: 1 });
+    expect(updated.defaultCapacity).toBe(1);
+  });
+});
+
+describe("Editing a single shift", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("is manager-only", async () => {
+    const { bob, occurrences } = await seriesWithTwoShifts();
+    await expect(updateShiftOccurrence(bob, occurrences[0].id, slotOf(occurrences[0], 1))).rejects.toThrow(ForbiddenError);
+  });
+
+  it("moves the times and sets, then clears, its own capacity", async () => {
+    const { alice, series, occurrences } = await seriesWithTwoShifts();
+    const startsAt = iso(48);
+    const moved = await updateShiftOccurrence(alice, occurrences[0].id, { startsAt, endsAt: iso(50), capacity: 7 });
+    expect(moved.startsAt.toISOString()).toBe(startsAt);
+    expect(effectiveCapacity(moved, series)).toBe(7);
+
+    const reset = await updateShiftOccurrence(alice, occurrences[0].id, slotOf(moved, null));
+    expect(reset.capacity).toBeNull();
+    expect(effectiveCapacity(reset, series)).toBe(series.defaultCapacity);
+  });
+
+  it("allows moving a shift people signed up for", async () => {
+    const { alice, bob, occurrences } = await seriesWithTwoShifts();
+    await signUpForShift(bob, occurrences[0].id);
+    const startsAt = iso(30);
+    const moved = await updateShiftOccurrence(alice, occurrences[0].id, { startsAt, endsAt: iso(31), capacity: null });
+    expect(moved.startsAt.toISOString()).toBe(startsAt);
+  });
+
+  it("refuses an end before the start, and fewer than one person", async () => {
+    const { alice, occurrences } = await seriesWithTwoShifts();
+    await expect(
+      updateShiftOccurrence(alice, occurrences[0].id, { startsAt: iso(30), endsAt: iso(29), capacity: null }),
+    ).rejects.toThrow("The end must be after the start");
+    await expect(updateShiftOccurrence(alice, occurrences[0].id, slotOf(occurrences[0], 0))).rejects.toThrow(ZodError);
+  });
+
+  it("changes only what it's given", async () => {
+    const { alice, occurrences } = await seriesWithTwoShifts();
+    const updated = await updateShiftOccurrence(alice, occurrences[0].id, { capacity: 4 });
+    expect(updated.capacity).toBe(4);
+    expect(updated.startsAt).toEqual(occurrences[0].startsAt);
+    expect(updated.endsAt).toEqual(occurrences[0].endsAt);
+  });
+
+  it("refuses editing a shift that has ended", async () => {
+    const { alice, series } = await seriesWithTwoShifts();
+    const [past] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: iso(-3), endsAt: iso(-2) }],
+    });
+    await expect(updateShiftOccurrence(alice, past.id, { capacity: 5 })).rejects.toThrow(ConflictError);
+  });
+
+  it("refuses moving a shift into the past, but allows other edits on one that has started", async () => {
+    const { alice, series, occurrences } = await seriesWithTwoShifts();
+    await expect(
+      updateShiftOccurrence(alice, occurrences[0].id, { startsAt: iso(-2), endsAt: iso(1) }),
+    ).rejects.toThrow("A shift can't be moved into the past");
+
+    const [running] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: iso(-1), endsAt: iso(1) }],
+    });
+    const updated = await updateShiftOccurrence(alice, running.id, { endsAt: iso(2) });
+    expect(updated.startsAt).toEqual(running.startsAt);
+  });
+
+  it("refuses a capacity below the people already signed up", async () => {
+    const { alice, bob, occurrences } = await seriesWithTwoShifts();
+    await signUpForShift(alice, occurrences[0].id);
+    await signUpForShift(bob, occurrences[0].id);
+    await expect(updateShiftOccurrence(alice, occurrences[0].id, slotOf(occurrences[0], 1))).rejects.toThrow(ConflictError);
+  });
+});
+
+describe("Deleting before sign-ups open", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  async function collectingRoster() {
+    const fixtures = await setUpModule();
+    const { alice, branch: testBranch } = fixtures;
+    const cycleRow = await createCycle(alice, { source: "blank", name: "Harvest" });
+    await grantShiftManagementTo(alice, testBranch.id, cycleRow.id);
+    const series = await createSeries(alice, { cycleId: cycleRow.id });
+    const occurrences = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [
+        { startsAt: iso(24), endsAt: iso(25) },
+        { startsAt: iso(48), endsAt: iso(49) },
+      ],
+    });
+    return { ...fixtures, cycleRow, series, occurrences };
+  }
+
+  it("deletes a shift and a series while the roster is collecting", async () => {
+    const { alice, bob, series, occurrences } = await collectingRoster();
+    await expect(deleteShiftOccurrence(bob, occurrences[0].id)).rejects.toThrow(ForbiddenError);
+
+    await deleteShiftOccurrence(alice, occurrences[0].id);
+    await expect(getShiftOccurrence(alice, occurrences[0].id)).rejects.toThrow(NotFoundError);
+
+    await expect(deleteShiftSeries(bob, series.id)).rejects.toThrow(ForbiddenError);
+    await deleteShiftSeries(alice, series.id);
+    expect(await db.select().from(shiftSeries).where(eq(shiftSeries.id, series.id))).toEqual([]);
+    expect(await db.select().from(shiftOccurrence).where(eq(shiftOccurrence.seriesId, series.id))).toEqual([]);
+  });
+
+  it("refuses once the roster's sign-ups are open — archive is the way out", async () => {
+    const { alice, cycleRow, series, occurrences } = await collectingRoster();
+    await openCycleShiftSignups(alice, cycleRow.id);
+    await expect(deleteShiftOccurrence(alice, occurrences[0].id)).rejects.toThrow(ConflictError);
+    await expect(deleteShiftSeries(alice, series.id)).rejects.toThrow(ConflictError);
+  });
+
+  it("refuses for a standing series, which is always open", async () => {
+    const { alice, series, occurrences } = await seriesWithTwoShifts();
+    await expect(deleteShiftOccurrence(alice, occurrences[0].id)).rejects.toThrow(ConflictError);
+    await expect(deleteShiftSeries(alice, series.id)).rejects.toThrow(ConflictError);
+  });
+
+  it("never deletes over a sign-up carried in from a standing series", async () => {
+    const { alice, bob, cycleRow, series, occurrences } = await collectingRoster();
+    // Sign-ups only happen while open; a standing series moved into a
+    // collecting event is how one gets here, so insert it directly.
+    await db.insert(shiftSignupTable).values({ occurrenceId: occurrences[0].id, memberId: bob.id });
+    expect(cycleRow.shiftSignupsOpenedAt).toBeNull();
+
+    await expect(deleteShiftOccurrence(alice, occurrences[0].id)).rejects.toThrow(ConflictError);
+    await expect(deleteShiftSeries(alice, series.id)).rejects.toThrow(ConflictError);
+  });
+
+  it("deleting a series unlinks a Kitchen meal instead of failing", async () => {
+    const { alice, series } = await collectingRoster();
+    const [plan] = await db
+      .insert(menuPlan)
+      .values({ communityId: alice.communityId, title: "Harvest menu", createdBy: alice.id })
+      .returning();
+    const [linked] = await db
+      .insert(meal)
+      .values({ menuPlanId: plan.id, label: "Friday dinner", date: "2026-12-04", shiftSeriesId: series.id })
+      .returning();
+
+    await deleteShiftSeries(alice, series.id);
+    const [after] = await db.select().from(meal).where(eq(meal.id, linked.id));
+    expect(after.shiftSeriesId).toBeNull();
+  });
+});
+
+async function seriesWithTwoShifts() {
+  const fixtures = await setUpModule();
+  const series = await createSeries(fixtures.alice, { defaultCapacity: 2 });
+  const occurrences = await generateShiftOccurrences(fixtures.alice, series.id, {
+    mode: "explicit",
+    slots: [
+      { startsAt: iso(24), endsAt: iso(25) },
+      { startsAt: iso(48), endsAt: iso(49) },
+    ],
+  });
+  return { ...fixtures, series, occurrences };
+}
+
+function slotOf(o: { startsAt: Date; endsAt: Date }, capacity: number | null) {
+  return { startsAt: o.startsAt.toISOString(), endsAt: o.endsAt.toISOString(), capacity };
+}
+
+describe("Reading a shift's times back from the form", () => {
+  // 2026-10-25 is when Madrid's clocks go back: 02:00-03:00 happens twice.
+  const firstTwoThirty = new Date("2026-10-25T00:30:00.000Z");
+  const secondTwoThirty = new Date("2026-10-25T01:30:00.000Z");
+
+  it("keeps the stored instant when the field wasn't changed, even in the repeated hour", () => {
+    expect(instantFromShiftInput("2026-10-25T02:30", firstTwoThirty, "Europe/Madrid")).toEqual(firstTwoThirty);
+    expect(instantFromShiftInput("2026-10-25T02:30", secondTwoThirty, "Europe/Madrid")).toEqual(secondTwoThirty);
+  });
+
+  it("reads a changed value on the venue's clock", () => {
+    expect(instantFromShiftInput("2026-11-26T18:00", firstTwoThirty, "Europe/Madrid").toISOString()).toBe(
+      "2026-11-26T17:00:00.000Z",
+    );
+  });
+});
+
+describe("Edits stay inside the rules around them", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  it("an ended shift that follows the default doesn't block lowering it", async () => {
+    const { alice, bob, series } = await seriesWithTwoShifts();
+    const [past] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: iso(-3), endsAt: iso(-2) }],
+    });
+    await db.insert(shiftSignupTable).values([
+      { occurrenceId: past.id, memberId: alice.id, status: "completed" },
+      { occurrenceId: past.id, memberId: bob.id, status: "completed" },
+    ]);
+
+    const updated = await updateShiftSeries(alice, series.id, { defaultCapacity: 1 });
+    expect(updated.defaultCapacity).toBe(1);
+  });
+
+  it("another community's series and shifts are not found", async () => {
+    const { series, occurrences } = await seriesWithTwoShifts();
+    const other = await createFixtures();
+    await updateCommunity(other.alice, { modulesEnabled: ["shifts"] });
+    await grantShiftManagementTo(other.alice, other.branch.id);
+
+    await expect(updateShiftSeries(other.alice, series.id, { title: "Mine" })).rejects.toThrow(NotFoundError);
+    await expect(deleteShiftSeries(other.alice, series.id)).rejects.toThrow(NotFoundError);
+    await expect(updateShiftOccurrence(other.alice, occurrences[0].id, { capacity: 3 })).rejects.toThrow(NotFoundError);
+    await expect(deleteShiftOccurrence(other.alice, occurrences[0].id)).rejects.toThrow(NotFoundError);
+  });
+
+  it("a closed event's roster is frozen", async () => {
+    const { alice, branch: testBranch } = await setUpModule();
+    const cycleRow = await createCycle(alice, { source: "blank", name: "Harvest" });
+    await grantShiftManagementTo(alice, testBranch.id, cycleRow.id);
+    const series = await createSeries(alice, { cycleId: cycleRow.id });
+    const [occurrence] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: iso(24), endsAt: iso(25) }],
+    });
+    await db.update(cycleTable).set({ closedAt: new Date() }).where(eq(cycleTable.id, cycleRow.id));
+
+    await expect(updateShiftSeries(alice, series.id, { title: "Late change" })).rejects.toThrow(ForbiddenError);
+    await expect(updateShiftOccurrence(alice, occurrence.id, { capacity: 3 })).rejects.toThrow(ForbiddenError);
+    await expect(deleteShiftOccurrence(alice, occurrence.id)).rejects.toThrow(ForbiddenError);
+    await expect(deleteShiftSeries(alice, series.id)).rejects.toThrow(ForbiddenError);
+  });
+
+  it("a blank title is refused", () => {
+    expect(() => updateShiftSeriesInput.parse({ title: "   " })).toThrow(ZodError);
   });
 });
