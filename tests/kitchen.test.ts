@@ -1,37 +1,64 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { cycle, dish, dishIngredient, foodIdea, member, menuPlan, taskResource } from "@/db/schema";
+import {
+  cycle,
+  dish,
+  dishIngredient,
+  foodIdea,
+  member,
+  mealComment,
+  menuPlan,
+  recipe,
+  recipeYum,
+  taskResource,
+} from "@/db/schema";
 import { claimTask } from "@/lib/tasks";
 import { updateCommunity } from "@/lib/settings";
 import { createConsentPurpose, grantConsent, withdrawConsent } from "@/lib/consent";
 import { answerProfileQuestion, createProfileQuestion } from "@/lib/profile-questions";
-import { ALLERGY_OPTIONS, DISLIKE_OPTIONS, INTOLERANCE_OPTIONS } from "@/lib/kitchen/allergens";
+import { ALLERGY_OPTIONS, DIET_OPTIONS, DISLIKE_OPTIONS, INTOLERANCE_OPTIONS } from "@/lib/kitchen/allergens";
 import { AppError, ConflictError, ForbiddenError } from "@/lib/errors";
 import {
+  acceptRecipe,
+  addMealComment,
+  addRecipeComment,
   adoptFromIdea,
+  applyRecipeToMeal,
   createDish,
   createDishIngredient,
   createMeal,
   createMenuPlan,
+  createRecipe,
   declineFoodIdea,
+  declineRecipe,
   deleteMeal,
   fileFoodIdea,
   fileFoodIdeaInput,
   getDietaryOverview,
   getMealConstraintPanel,
+  getRecipe,
   getMenuPlanOverview,
   getVisibleMenuPlan,
   isKitchenOwner,
   listIdeasForMenuPlan,
   listKitchenNeedsAction,
+  listMealCommentsForMeals,
   listMyFoodIdeas,
   listOpenIdeasForReview,
+  listRecipeComments,
+  listRecipes,
   listSupplyTasks,
   publishMenuPlan,
   purchaseList,
+  roundHalf,
   scaledIngredients,
+  suggestedMultiplier,
+  suggestedMultiplierForMeal,
+  suggestedMultipliersForMeal,
+  toggleYum,
   updateFoodIdea,
+  updateRecipe,
   withdrawFoodIdea,
 } from "@/lib/kitchen";
 import { createFixtures, grantPermission, insertTask, resetDatabase } from "./helpers";
@@ -170,19 +197,26 @@ describe("draft and published menus (D1)", () => {
     await resetDatabase();
   });
 
-  it("keeps a draft owner-only, and publishes it into community-readable", async () => {
+  it("makes drafts community-readable, and publishes as a lock rather than a visibility gate", async () => {
     const { alice, bob, branch } = await createFixtures();
     await updateCommunity(alice, { modulesEnabled: ["kitchen"] });
     await makeKitchenOwner(alice.communityId, branch.id, alice.id);
     const plan = await createMenuPlan(alice, { title: "Autumn" });
-    await createMeal(alice, { menuPlanId: plan.id, label: "Friday dinner", date: "2026-10-02" });
+    const meal = await createMeal(alice, { menuPlanId: plan.id, label: "Friday dinner", date: "2026-10-02" });
 
-    // Draft: the owner sees it, nobody else does.
-    expect((await getVisibleMenuPlan(alice, plan.id)).id).toBe(plan.id);
-    await expect(getVisibleMenuPlan(bob, plan.id)).rejects.toThrow(ForbiddenError);
+    // A draft is readable by everyone in the community, but only the holder
+    // can change it.
+    expect((await getVisibleMenuPlan(bob, plan.id)).id).toBe(plan.id);
+    expect((await getMenuPlanOverview(bob, plan.id)).meals[0].id).toBe(meal.id);
+    await expect(createMeal(bob, { menuPlanId: plan.id, label: "Sneaky", date: "2026-10-03" })).rejects.toThrow(
+      ForbiddenError,
+    );
 
     await publishMenuPlan(alice, plan.id);
-    expect((await getVisibleMenuPlan(bob, plan.id)).id).toBe(plan.id);
+    expect((await getVisibleMenuPlan(bob, plan.id)).publishedAt).toBeTruthy();
+    await expect(createMeal(alice, { menuPlanId: plan.id, label: "Later", date: "2026-10-04" })).rejects.toThrow(
+      ConflictError,
+    );
   });
 
   it("locks every further edit once published, for the owner too", async () => {
@@ -239,6 +273,51 @@ describe("draft and published menus (D1)", () => {
     ).rejects.toThrow(ForbiddenError);
 
     expect(await db.select().from(menuPlan).where(eq(menuPlan.communityId, alice.communityId))).toHaveLength(0);
+  });
+});
+
+describe("meal concern comments", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  async function setup() {
+    const { alice, bob, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["kitchen"] });
+    await makeKitchenOwner(alice.communityId, branch.id, alice.id);
+    const plan = await createMenuPlan(alice, { title: "Autumn" });
+    const meal = await createMeal(alice, { menuPlanId: plan.id, label: "Friday", date: "2026-10-02" });
+    return { alice, bob, plan, meal };
+  }
+
+  it("lets any member raise an attributed concern on a draft, readable by the holder", async () => {
+    const { alice, bob, meal } = await setup();
+    const created = await addMealComment(bob, meal.id, { body: "This clashes with the vegan option" });
+    expect(created.memberId).toBe(bob.id);
+
+    const comments = await listMealCommentsForMeals(alice, [meal.id]);
+    expect(comments.get(meal.id)).toEqual([
+      expect.objectContaining({ body: "This clashes with the vegan option", authorName: "Bob" }),
+    ]);
+  });
+
+  it("makes an already-published meal's thread read-only", async () => {
+    const { alice, bob, meal, plan } = await setup();
+    await addMealComment(bob, meal.id, { body: "Can we check the serving size?" });
+    await publishMenuPlan(alice, plan.id);
+
+    expect((await listMealCommentsForMeals(bob, [meal.id])).get(meal.id)).toHaveLength(1);
+    await expect(addMealComment(bob, meal.id, { body: "Another" })).rejects.toThrow(ConflictError);
+    await expect(addMealComment(alice, meal.id, { body: "Another" })).rejects.toThrow(ConflictError);
+  });
+
+  it("keeps another community out of a meal thread", async () => {
+    const { meal } = await setup();
+    const { alice: stranger } = await createFixtures();
+    await updateCommunity(stranger, { modulesEnabled: ["kitchen"] });
+
+    await expect(addMealComment(stranger, meal.id, { body: "Hello" })).rejects.toThrow();
+    await expect(listMealCommentsForMeals(stranger, [meal.id])).rejects.toThrow();
   });
 });
 
@@ -343,6 +422,20 @@ describe("meals, dishes, and scaling (D8)", () => {
     expect(await db.select().from(dish).where(eq(dish.id, dishRow.id))).toHaveLength(0);
     const overview = await getMenuPlanOverview(alice, plan.id);
     expect(overview.meals).toHaveLength(0);
+  });
+
+  it("deletes a meal that has concerns raised on it", async () => {
+    const { alice, bob, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["kitchen"] });
+    await makeKitchenOwner(alice.communityId, branch.id, alice.id);
+    const plan = await createMenuPlan(alice, { title: "Autumn" });
+    const meal = await createMeal(alice, { menuPlanId: plan.id, label: "Friday", date: "2026-10-02" });
+    await addMealComment(bob, meal.id, { body: "This clashes with the vegan option" });
+
+    await deleteMeal(alice, meal.id);
+
+    expect(await db.select().from(mealComment).where(eq(mealComment.mealId, meal.id))).toHaveLength(0);
+    expect((await getMenuPlanOverview(alice, plan.id)).meals).toHaveLength(0);
   });
 });
 
@@ -626,6 +719,31 @@ describe("the dietary overview (exact matching, never prose)", () => {
     expect(dislike.members).toEqual([]);
   });
 
+  it("counts diet choices as a public tally, never naming anyone", async () => {
+    const { alice, bob } = await kitchen();
+    const question = await createProfileQuestion(alice, {
+      label: "How do you eat?",
+      responseType: "single_choice",
+      options: DIET_OPTIONS,
+      scope: "once_ever",
+      kitchenSignal: "diet",
+    });
+    await answerProfileQuestion(alice, question.id, { status: "answered", value: "Vegan" });
+    await answerProfileQuestion(bob, question.id, { status: "answered", value: "Veggie" });
+
+    const overview = await getDietaryOverview(alice, null);
+    const diet = overview.signals.diet;
+    expect(overview.wired).toBe(1);
+    expect(diet).toMatchObject({ readable: true, population: 2, answered: 2 });
+    expect(diet.tally).toEqual([
+      { option: "Vegan", count: 1 },
+      { option: "Veggie", count: 1 },
+    ]);
+    expect(diet.members).toEqual([]);
+    expect(diet.writeIns).toEqual([]);
+    expect(JSON.stringify(diet)).not.toContain(bob.name);
+  });
+
   it("shows a legacy written-answer question whole and matches nothing", async () => {
     const { alice, bob, meal } = await kitchen();
     const question = await createProfileQuestion(alice, {
@@ -827,8 +945,12 @@ describe("cross-community isolation", () => {
     await expect(
       createMeal(stranger, { menuPlanId: plan.id, label: "Theirs", date: "2026-10-02" }),
     ).rejects.toThrow(/not found/);
-    // And a plain member of the first community sees only what's published.
-    await expect(getVisibleMenuPlan(bob, plan.id)).rejects.toThrow(ForbiddenError);
+    // A plain member of the same community may read the draft, but still
+    // can't change it — visibility and authority are separate gates.
+    expect((await getVisibleMenuPlan(bob, plan.id)).id).toBe(plan.id);
+    await expect(
+      createMeal(bob, { menuPlanId: plan.id, label: "Not theirs", date: "2026-10-03" }),
+    ).rejects.toThrow(ForbiddenError);
   });
 });
 
@@ -1026,5 +1148,198 @@ describe("structured recipe suggestions", () => {
     await expect(updateFoodIdea(other.alice, idea.id, { title: "x" })).rejects.toThrow();
     await expect(withdrawFoodIdea(other.alice, idea.id)).rejects.toThrow();
     await expect(listMyFoodIdeas(other.alice, plan.id)).rejects.toThrow();
+  });
+});
+
+describe("the community recipe box", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  const CHILI_RECIPE = {
+    title: "Three-bean chili",
+    body: "Soak, simmer, share.",
+    serves: 4,
+    allergenFlags: [],
+    dietaryNote: "Vegan with vegetable stock",
+    ingredients: [
+      { name: "Beans", amount: 400, unit: "g" },
+      { name: "Salt" },
+    ],
+  };
+
+  async function box() {
+    const { alice, bob, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["kitchen"] });
+    await makeKitchenOwner(alice.communityId, branch.id, alice.id);
+    return { alice, bob, branch };
+  }
+
+  it("starts suggestions as suggested, with their ingredients, and keeps communities apart", async () => {
+    const { alice, bob } = await box();
+    const created = await createRecipe(bob, CHILI_RECIPE);
+    expect(created).toMatchObject({
+      status: "suggested",
+      suggestedBy: bob.id,
+      yumCount: 1,
+      viewerYummed: true,
+    });
+    expect(created!.ingredients.map((i) => i.name)).toEqual(["Beans", "Salt"]);
+
+    const found = await listRecipes(alice, { status: "suggested", search: "chili" });
+    expect(found.map((r) => r.id)).toEqual([created!.id]);
+    expect(await listRecipes(alice, { status: "accepted" })).toEqual([]);
+
+    const other = await createFixtures();
+    await updateCommunity(other.alice, { modulesEnabled: ["kitchen"] });
+    expect(await listRecipes(other.alice)).toEqual([]);
+    expect(await getRecipe(other.alice, created!.id)).toBeNull();
+  });
+
+  it("lets any current holder curate, including a holder of an event-scoped grant", async () => {
+    const { alice, bob, branch } = await box();
+    const created = await createRecipe(alice, CHILI_RECIPE);
+    await expect(acceptRecipe(bob, created!.id)).rejects.toThrow(ForbiddenError);
+    await expect(declineRecipe(alice, created!.id, { declineReason: "   " })).rejects.toThrow();
+
+    const [scope] = await db
+      .insert(cycle)
+      .values({ communityId: alice.communityId, name: "Spring" })
+      .returning();
+    await makeKitchenOwner(alice.communityId, branch.id, bob.id, scope.id);
+    expect((await acceptRecipe(bob, created!.id))!.status).toBe("accepted");
+
+    // The event-scoped grant curates the box, but it does not unlock Alice's
+    // cycle-less menu. Applying still goes through the target plan's gate.
+    const plan = await createMenuPlan(alice, { title: "Standing" });
+    const meal = await createMeal(alice, { menuPlanId: plan.id, label: "Friday", date: "2026-10-02" });
+    await expect(applyRecipeToMeal(bob, { recipeId: created!.id, mealId: meal.id })).rejects.toThrow(ForbiddenError);
+    await expect(applyRecipeToMeal(alice, { recipeId: created!.id, mealId: meal.id })).resolves.toBeTruthy();
+  });
+
+  it("requires a real decline reason, keeps declined recipes visible, and lets the author resubmit", async () => {
+    const { alice, bob } = await box();
+    const created = await createRecipe(bob, CHILI_RECIPE);
+    const declined = await declineRecipe(alice, created!.id, { declineReason: "Duplicate of another chili" });
+    expect(declined).toMatchObject({ status: "declined", declineReason: "Duplicate of another chili" });
+    expect((await listRecipes(bob)).map((r) => r.id)).toContain(created!.id);
+
+    await expect(declineRecipe(alice, created!.id, { declineReason: "" })).rejects.toThrow();
+    await expect(updateRecipe(bob, created!.id, { title: "Not mine" })).resolves.toBeTruthy();
+    const resubmitted = await updateRecipe(bob, created!.id, { title: "Four-bean chili" });
+    expect(resubmitted).toMatchObject({ status: "suggested", declineReason: null, title: "Four-bean chili" });
+
+    await acceptRecipe(alice, created!.id);
+    const fixed = await updateRecipe(alice, created!.id, { title: "Five-bean chili" });
+    expect(fixed).toMatchObject({ status: "accepted", title: "Five-bean chili" });
+    await expect(updateRecipe(bob, created!.id, { title: "Mine again" })).rejects.toThrow(ConflictError);
+  });
+
+  it("counts the author as a Yum, allows one toggleable Yum per other member, and never names Yummers", async () => {
+    const { alice, bob } = await box();
+    const created = await createRecipe(alice, CHILI_RECIPE);
+    await expect(toggleYum(alice, created!.id)).rejects.toThrow(ForbiddenError);
+
+    expect(await toggleYum(bob, created!.id)).toEqual({ yummed: true });
+    expect((await getRecipe(bob, created!.id))!.yumCount).toBe(2);
+    expect(await db.select().from(recipeYum)).toHaveLength(1);
+
+    const view = await getRecipe(bob, created!.id);
+    expect(view!.viewerYummed).toBe(true);
+    expect(JSON.stringify(view)).not.toContain(bob.name);
+
+    expect(await toggleYum(bob, created!.id)).toEqual({ yummed: false });
+    expect((await getRecipe(bob, created!.id))!.yumCount).toBe(1);
+  });
+
+  it("keeps recipe comments attributed and available to every member", async () => {
+    const { alice, bob } = await box();
+    const created = await createRecipe(alice, CHILI_RECIPE);
+    await addRecipeComment(bob, created!.id, { body: "Use vegetable stock." });
+    await addRecipeComment(alice, created!.id, { body: "Good call." });
+
+    const comments = await listRecipeComments(alice, created!.id);
+    expect(comments.map((c) => c.body)).toEqual(["Use vegetable stock.", "Good call."]);
+    expect(comments.map((c) => c.authorName)).toEqual([bob.name, alice.name]);
+    expect((await getRecipe(bob, created!.id))!.commentCount).toBe(2);
+
+    const other = await createFixtures();
+    await updateCommunity(other.alice, { modulesEnabled: ["kitchen"] });
+    await expect(addRecipeComment(other.alice, created!.id, { body: "Hello" })).rejects.toThrow();
+    await expect(listRecipeComments(other.alice, created!.id)).rejects.toThrow();
+  });
+
+  it("applies only accepted recipes, copying ingredients and provenance without rewriting the box", async () => {
+    const { alice, bob } = await box();
+    const created = await createRecipe(bob, CHILI_RECIPE);
+    const plan = await createMenuPlan(alice, { title: "Autumn" });
+    const meal = await createMeal(alice, {
+      menuPlanId: plan.id,
+      label: "Friday dinner",
+      date: "2026-10-02",
+      headCount: 10,
+    });
+    await expect(applyRecipeToMeal(alice, { recipeId: created!.id, mealId: meal.id })).rejects.toThrow(ConflictError);
+
+    await acceptRecipe(alice, created!.id);
+    const otherDish = await createDish(alice, { mealId: meal.id, name: "Bread", serves: 5 });
+    await createDishIngredient(alice, { dishId: otherDish.id, name: "Flour", amount: 500, unit: "g" });
+
+    const applied = await applyRecipeToMeal(alice, { recipeId: created!.id, mealId: meal.id });
+    expect(applied.suggestedMultiplier).toBe(0.5);
+    expect(applied.dish).toMatchObject({
+      name: "Three-bean chili",
+      source: "from_recipe",
+      recipeId: created!.id,
+      multiplier: "0.5",
+    });
+
+    const [copied] = await db.select().from(dishIngredient).where(eq(dishIngredient.dishId, applied.dish.id));
+    expect(copied).toMatchObject({ name: "Beans", amount: "400", unit: "g" });
+    const scaled = await scaledIngredients(alice, meal.id);
+    expect(scaled.find((i) => i.name === "Beans")).toMatchObject({ factor: 0.5, scaledAmount: 200 });
+    expect((await purchaseList(alice, meal.id)).find((r) => r.name === "Beans")?.amount).toBe(200);
+
+    const unchanged = await getRecipe(bob, created!.id);
+    expect(unchanged).toMatchObject({ title: "Three-bean chili", serves: 4 });
+    expect(unchanged!.ingredients[0].amount).toBe("400");
+  });
+
+  it("suggests for many recipes at once exactly as it does for one", async () => {
+    const { alice, bob } = await box();
+    const chili = await createRecipe(bob, CHILI_RECIPE);
+    const soup = await createRecipe(bob, { ...CHILI_RECIPE, title: "Soup", serves: 8 });
+    const unlabelled = await createRecipe(bob, { ...CHILI_RECIPE, title: "Mystery", serves: null });
+    const plan = await createMenuPlan(alice, { title: "Autumn" });
+    const meal = await createMeal(alice, { menuPlanId: plan.id, label: "Friday dinner", date: "2026-10-02", headCount: 10 });
+    await createDish(alice, { mealId: meal.id, name: "Bread", serves: 5 });
+
+    const batch = await suggestedMultipliersForMeal(alice, [chili!, soup!, unlabelled!], meal.id);
+    expect(batch.get(chili!.id)).toBe(0.5);
+    expect(batch.get(soup!.id)).toBe(0.5);
+    expect(batch.get(unlabelled!.id)).toBe(1);
+    for (const r of [chili!, soup!, unlabelled!]) {
+      expect(await suggestedMultiplierForMeal(alice, r, meal.id)).toBe(batch.get(r.id));
+    }
+  });
+
+  it("suggests a half-step multiplier for the headcount left by other dishes, and falls back to 1", async () => {
+    expect(roundHalf(2.25)).toBe(2.5);
+    expect(suggestedMultiplier({ serves: 4 }, 10, [])).toBe(2.5);
+    expect(suggestedMultiplier({ serves: 4 }, 10, [{ serves: 5, multiplier: null }])).toBe(0.5);
+    expect(suggestedMultiplier({ serves: 4 }, 10, [{ serves: 4, multiplier: "2" }])).toBe(0.5);
+    expect(suggestedMultiplier({ serves: null }, 10, [])).toBe(1);
+    expect(suggestedMultiplier({ serves: 4 }, null, [])).toBe(1);
+  });
+
+  it("stops a published plan from accepting an applied recipe", async () => {
+    const { alice, bob } = await box();
+    const created = await createRecipe(bob, CHILI_RECIPE);
+    await acceptRecipe(alice, created!.id);
+    const plan = await createMenuPlan(alice, { title: "Autumn" });
+    const meal = await createMeal(alice, { menuPlanId: plan.id, label: "Friday", date: "2026-10-02" });
+    await publishMenuPlan(alice, plan.id);
+    await expect(applyRecipeToMeal(alice, { recipeId: created!.id, mealId: meal.id })).rejects.toThrow(ConflictError);
+    expect(await db.select().from(recipe).where(eq(recipe.id, created!.id))).toHaveLength(1);
   });
 });

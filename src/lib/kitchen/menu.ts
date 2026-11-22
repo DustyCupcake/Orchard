@@ -51,16 +51,12 @@ export function getMenuPlan(actor: Member, menuPlanId: string): Promise<MenuPlan
   return getMenuPlanInCommunity(actor, menuPlanId);
 }
 
-// Read gate, not an edit gate: a draft plan is owner-visible only; a
-// published plan is community-readable (D1). Every read of a plan's
-// content funnels through here; every write goes through
-// requireEditableMenuPlan below instead.
+// Read gate, not an edit gate. Drafts are community-readable so members can
+// raise concerns early; `publishedAt` is the edit lock and the status label,
+// not a visibility switch. Community scoping still happens in
+// getMenuPlanInCommunity; every write goes through requireEditableMenuPlan.
 export async function getVisibleMenuPlan(actor: Member, menuPlanId: string): Promise<MenuPlanRow> {
-  const plan = await getMenuPlanInCommunity(actor, menuPlanId);
-  if (!plan.publishedAt) {
-    await requireKitchenOwner(actor, plan.cycleId);
-  }
-  return plan;
+  return getMenuPlanInCommunity(actor, menuPlanId);
 }
 
 // The write gate for everything under a plan — meals, dishes,
@@ -164,11 +160,11 @@ export async function publishMenuPlan(actor: Member, menuPlanId: string) {
   return updated;
 }
 
-// The active plan in a scope, newest first — what the /kitchen page
-// shows (and what food ideas file against): the latest draft while one
-// is being built, else the latest published menu. Everyone resolves the
-// same newest-plan container; visibility of its *content* is then the
-// published gate's job (getVisibleMenuPlan).
+// The active plan in a scope, newest first — what the /kitchen page shows
+// (and what food ideas file against): the latest draft while one is being
+// built, else the latest published menu. Every community member resolves and
+// reads the same container; editing it still goes through
+// requireEditableMenuPlan.
 export async function resolveActiveMenuPlan(actor: Member, cycleId?: string | null): Promise<MenuPlanRow | null> {
   const condition = menuPlanScopeCondition(cycleId);
   return (
@@ -183,9 +179,9 @@ export async function resolveActiveMenuPlan(actor: Member, cycleId?: string | nu
   );
 }
 
-// The newest *published* plan in a scope — the community-reading
-// version of resolveActiveMenuPlan. What a non-owner's /kitchen page
-// displays: drafts exist but stay owner-visible (D1).
+// The newest *published* plan in a scope — for callers that explicitly want
+// a published-only view. The /kitchen page no longer uses it: drafts are
+// readable by everyone now, so it resolves the active plan instead.
 export async function resolvePublishedMenuPlan(actor: Member, cycleId?: string | null): Promise<MenuPlanRow | null> {
   const condition = menuPlanScopeCondition(cycleId);
   return (

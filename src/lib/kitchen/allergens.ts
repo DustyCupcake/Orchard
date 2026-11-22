@@ -94,6 +94,11 @@ export const DISLIKE_OPTIONS = [
   "Offal",
 ];
 
+// How someone eats is another count-only planning signal, like dislikes: no
+// mapping to a dish flag, no names, and public by design. It is single-choice
+// because the answer is one of three ways of eating, not a list of things.
+export const DIET_OPTIONS = ["Veggie", "Vegan", "Omni"];
+
 function normal(label: string) {
   return label.trim().toLowerCase();
 }

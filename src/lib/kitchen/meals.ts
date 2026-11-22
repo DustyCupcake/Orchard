@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { cycle, dish, dishIngredient, meal, MEAL_SLOTS, phase, shiftSeries } from "@/db/schema";
+import { cycle, dish, dishIngredient, meal, mealComment, MEAL_SLOTS, phase, shiftSeries } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { AppError, NotFoundError } from "../errors";
 import { requireEditableMenuPlan, requireKitchenModuleOn, getVisibleMenuPlan, type MenuPlanRow } from "./menu";
@@ -149,9 +149,9 @@ export async function updateMeal(actor: Member, mealId: string, input: UpdateMea
   return updated;
 }
 
-// Meals are deletable; their dishes and ingredients go with them (the
-// schema keeps plain FK references with no cascade, so the delete order
-// is spelled out here rather than left to the database).
+// Meals are deletable; their dishes, ingredients and concern comments go
+// with them (the schema keeps plain FK references with no cascade, so the
+// delete order is spelled out here rather than left to the database).
 export async function deleteMeal(actor: Member, mealId: string) {
   await requireKitchenModuleOn(actor);
   const row = await getMealInCommunity(actor, mealId);
@@ -167,6 +167,7 @@ export async function deleteMeal(actor: Member, mealId: string) {
       await tx.delete(dishIngredient).where(inArray(dishIngredient.dishId, dishIds));
       await tx.delete(dish).where(inArray(dish.id, dishIds));
     }
+    await tx.delete(mealComment).where(eq(mealComment.mealId, mealId));
     await tx.delete(meal).where(eq(meal.id, mealId));
   });
 }

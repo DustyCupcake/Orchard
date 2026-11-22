@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 
 // Shared design-token primitives — see design_handoff_conventions/README.md.
 // Extracted once real duplication showed up across dashboard/board/task
@@ -75,6 +75,8 @@ export function CheckField({
   name,
   value,
   defaultChecked,
+  checked,
+  onChange,
 }: {
   label: ReactNode;
   name: string;
@@ -84,10 +86,24 @@ export function CheckField({
   // checkbox already gets correctly without this.
   value?: string;
   defaultChecked?: boolean;
+  // Forms that need to restore a refused submission pass these instead of
+  // `defaultChecked`, so React owns the tick after the round trip. `onChange`
+  // is only ever attached when given: this module is also used directly by
+  // Server Components, where even an inert inline handler is illegal.
+  checked?: boolean;
+  onChange?: (checked: boolean) => void;
 }) {
   return (
     <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-      <input type="checkbox" name={name} value={value} defaultChecked={defaultChecked} /> {label}
+      <input
+        type="checkbox"
+        name={name}
+        value={value}
+        defaultChecked={checked === undefined ? defaultChecked : undefined}
+        checked={checked}
+        {...(onChange ? { onChange: (e: ChangeEvent<HTMLInputElement>) => onChange(e.target.checked) } : {})}
+      />{" "}
+      {label}
     </label>
   );
 }

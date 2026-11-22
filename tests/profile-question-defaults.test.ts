@@ -13,6 +13,7 @@ import {
   validateDefaultQuestionTable,
   type DefaultQuestionChoices,
 } from "@/lib/profile-questions/defaults";
+import { DIET_OPTIONS } from "@/lib/kitchen/allergens";
 import { resolveReadableQuestions } from "@/lib/sensitive-data";
 import { listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
 import { createFixtures, insertTask, resetDatabase } from "./helpers";
@@ -51,6 +52,22 @@ describe("seeding a community's default questions", () => {
     // unattended path has nobody to ask, and picking a group for it would
     // be the platform deciding who sees somebody's emergency contact.
     expect(created.map((c) => c.label)).not.toContain("Emergency contact");
+  });
+
+  it("seeds diet as a public single-choice tally", async () => {
+    const { created } = await seeded();
+    const diet = created.find((c) => c.key === "diet");
+    expect(diet).toMatchObject({ label: "How do you eat?", sensitive: false });
+    const [row] = await db
+      .select()
+      .from(profileQuestion)
+      .where(eq(profileQuestion.id, diet!.id));
+    expect(row).toMatchObject({
+      responseType: "single_choice",
+      scope: "once_ever",
+      options: DIET_OPTIONS,
+      kitchenSignal: "diet",
+    });
   });
 
   it("gives every question a shape that can hold the answer it's for", async () => {

@@ -15,18 +15,21 @@ import {
   getMenuPlanOverview,
   isKitchenOwner,
   listIdeasForMenuPlan,
+  listMealCommentsForMeals,
   listMyFoodIdeas,
   listOpenIdeasForReview,
+  listRecipes,
   listSupplyTasks,
   loadAttendanceContext,
   NO_ATTENDANCE,
   purchaseList,
   resolveActiveMenuPlan,
+  suggestedMultipliersForMeal,
   resolveMealTimes,
-  resolvePublishedMenuPlan,
   scaledIngredients,
   type FoodIdeaWithIngredients,
   type MealAttendance,
+  type MealCommentWithAuthor,
   type MealConstraintPanel,
   type MealWithDishes,
   type MenuPlanRow,
@@ -35,6 +38,7 @@ import {
 } from "@/lib/kitchen";
 import { resolveDefaultScopeSegment, resolveSingleCycleScope } from "@/lib/cycles";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
+import ActionMenu from "@/components/ui/ActionMenu";
 import Modal from "@/components/ui/Modal";
 import PageHeader from "@/components/ui/PageHeader";
 import Tabs from "@/components/ui/Tabs";
@@ -52,16 +56,18 @@ import MenuTab from "./MenuTab";
 import SuggestionsTab from "./SuggestionsTab";
 import DietaryTab from "./DietaryTab";
 import ShoppingTab from "./ShoppingTab";
-import { LightIdeaForm, RecipeForm, SectionHeading, TextField } from "./parts";
+import { LightIdeaForm, SectionHeading, TextField } from "./parts";
 import { INPUT, LABEL } from "@/components/ui/kit";
+import type { RecipeOption } from "./RecipeTypeahead";
 
 export const dynamic = "force-dynamic";
 
 type TabKey = "menu" | "suggestions" | "dietary" | "shopping";
-type ComposeKind = "recipe" | "request" | "preference";
+type ComposeKind = "request" | "preference";
 
+// Recipe suggestions have their own home in the recipe box. These two light
+// kinds stay here because they belong to a menu, not to the reusable box.
 const COMPOSE_KINDS: { key: ComposeKind; label: string }[] = [
-  { key: "recipe", label: "A recipe" },
   { key: "request", label: "A dish request" },
   { key: "preference", label: "A preference" },
 ];
@@ -128,14 +134,10 @@ export default async function KitchenPage({
 
   const isOwner = moduleOn ? await isKitchenOwner(viewing, cycleId) : false;
 
-  const [visiblePlan, ideasTarget] = await Promise.all([
-    moduleOn
-      ? isOwner
-        ? resolveActiveMenuPlan(viewing, cycleId)
-        : resolvePublishedMenuPlan(viewing, cycleId)
-      : Promise.resolve(null),
-    moduleOn ? resolveActiveMenuPlan(viewing, cycleId) : Promise.resolve(null),
-  ]);
+  // Drafts are community-readable now: everyone resolves the same newest
+  // plan. `isOwner` only decides who may write to it.
+  const visiblePlan = moduleOn ? await resolveActiveMenuPlan(viewing, cycleId) : null;
+  const ideasTarget = visiblePlan;
 
   const overview = visiblePlan ? await getMenuPlanOverview(viewing, visiblePlan.id) : null;
   const meals: MealWithDishes[] = overview?.meals ?? [];
@@ -176,6 +178,37 @@ export default async function KitchenPage({
   const activeTab: TabKey = visibleTabs.find((t) => t.key === tab)?.key ?? "menu";
   const composeKind: ComposeKind | null =
     moduleOn && ideasTarget ? (COMPOSE_KINDS.find((c) => c.key === compose)?.key ?? null) : null;
+
+  // The per-meal typeahead gets the accepted box and each recipe's suggested
+  // multiplier for that particular meal. Computing it on the server keeps the
+  // same headcount-and-other-dishes rule as the apply action itself.
+  const recipeOptions = new Map<string, RecipeOption[]>();
+  if (moduleOn && isOwner && draft && activeTab === "menu" && meals.length > 0) {
+    const accepted = await listRecipes(viewing, { status: "accepted" });
+    await Promise.all(
+      meals.map(async (meal) => {
+        const suggestions = await suggestedMultipliersForMeal(viewing, accepted, meal.id);
+        recipeOptions.set(
+          meal.id,
+          accepted.map((r) => ({
+            id: r.id,
+            title: r.title,
+            serves: r.serves,
+            suggestedMultiplier: suggestions.get(r.id) ?? 1,
+          })),
+        );
+      }),
+    );
+  }
+
+  // Concern threads render only on the Menu tab. Reading them through this
+  // helper re-checks plan visibility, so a hand-edited meal id can't pull a
+  // different community's comments onto the page.
+  const mealComments = new Map<string, MealCommentWithAuthor[]>();
+  if (moduleOn && activeTab === "menu" && meals.length > 0) {
+    const loaded = await listMealCommentsForMeals(viewing, meals.map((m) => m.id));
+    for (const [mealId, comments] of loaded) mealComments.set(mealId, comments);
+  }
 
   // ---- per-tab data, read only for the tab that shows it --------------------
   const dietary =
@@ -241,11 +274,14 @@ export default async function KitchenPage({
             />
           </Modal>
         )}
-        {ideasTarget && (
-          <Link href="/kitchen?compose=recipe" className={BUTTON_PRIMARY}>
-            Suggest a recipe
-          </Link>
+        {moduleOn && (
+          <ActionMenu label="Kitchen actions">
+            <Link href="/kitchen/recipes">Recipe box</Link>
+          </ActionMenu>
         )}
+        <Link href="/kitchen/recipes?compose=1" className={BUTTON_PRIMARY}>
+          Suggest a recipe
+        </Link>
       </>
     ) : undefined;
 
@@ -275,13 +311,7 @@ export default async function KitchenPage({
       {moduleOn && composeKind && ideasTarget && (
         <section className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-3">
-            <SectionHeading>
-              {composeKind === "recipe"
-                ? "Suggest a recipe"
-                : composeKind === "request"
-                  ? "Ask for a dish"
-                  : "Share a preference"}
-            </SectionHeading>
+            <SectionHeading>{composeKind === "request" ? "Ask for a dish" : "Share a preference"}</SectionHeading>
             {cancel}
           </div>
           <Tabs tabs={COMPOSE_KINDS} active={composeKind} hrefFor={(key) => `/kitchen?compose=${key}`} />
@@ -289,32 +319,33 @@ export default async function KitchenPage({
             You&rsquo;re suggesting this as {viewing.name}. Suggestions are attributed — the kitchen may want to ask you
             about it — and you can change or withdraw it until they decide.
           </p>
-          {composeKind === "recipe" ? (
-            <RecipeForm
-              action={fileFoodIdeaAction}
-              hidden={{ menuPlanId: ideasTarget.id, kind: "recipe_suggestion", compose: "recipe" }}
-              submitLabel="Send suggestion"
-              cancel={cancel}
-            />
-          ) : (
-            <LightIdeaForm
-              action={fileFoodIdeaAction}
-              hidden={{ menuPlanId: ideasTarget.id, compose: composeKind }}
-              kind={composeKind === "request" ? "dish_request" : "preference"}
-              submitLabel="Send suggestion"
-              cancel={cancel}
-            />
-          )}
+          <LightIdeaForm
+            action={fileFoodIdeaAction}
+            hidden={{ menuPlanId: ideasTarget.id, compose: composeKind }}
+            kind={composeKind === "request" ? "dish_request" : "preference"}
+            submitLabel="Send suggestion"
+            cancel={cancel}
+          />
         </section>
       )}
 
       {moduleOn && !composeKind && (
         <>
           {isOwner && <PlanStrip plan={visiblePlan} cycleId={cycleId} times={times} />}
-          {!isOwner && visiblePlan?.publishedAt && (
-            <p className="mb-4 text-[length:var(--text-body)] text-[var(--text-muted)]">
-              {visiblePlan.title} — published {clock.date(visiblePlan.publishedAt)}.
-            </p>
+          {!isOwner && visiblePlan && (
+            <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+              <span className="font-medium text-[var(--text)]">{visiblePlan.title}</span>
+              {visiblePlan.publishedAt ? (
+                <Tag tone="accent">published {clock.date(visiblePlan.publishedAt)}</Tag>
+              ) : (
+                <Tag tone="warning">draft</Tag>
+              )}
+              <span>
+                {visiblePlan.publishedAt
+                  ? "This menu is locked."
+                  : "The kitchen is still working on this menu — leave a comment on a meal if something looks wrong."}
+              </span>
+            </div>
           )}
 
           <Tabs tabs={tabs} active={activeTab} hrefFor={(key) => (key === "menu" ? "/kitchen" : `/kitchen?tab=${key}`)} />
@@ -329,6 +360,8 @@ export default async function KitchenPage({
                 headCounts={headCounts}
                 attendance={attendance}
                 times={times}
+                comments={mealComments}
+                recipeOptions={recipeOptions}
               />
             )}
             {activeTab === "suggestions" && (
@@ -369,7 +402,7 @@ function StartMenu({ cycleId, primary = false }: { cycleId: string | null; prima
       trigger="Start a menu"
       triggerClassName={primary ? BUTTON_PRIMARY : BUTTON_GHOST}
       title="Start a menu"
-      description="A menu is a draft until you publish it. Only the kitchen sees it until then."
+      description="A menu is a draft until you publish it. Everyone can read drafts and leave comments; publishing locks the plan."
     >
       <form action={createMenuPlanAction} className="flex flex-col gap-3">
         <input type="hidden" name="cycleId" value={cycleId ?? ""} />
@@ -443,7 +476,7 @@ function PlanStrip({
             trigger="Publish"
             triggerClassName={BUTTON_PRIMARY}
             title={`Publish “${plan.title}”`}
-            description="Everyone in the community will be able to read this menu. Publishing locks it — meals, dishes and ingredients can't be edited afterwards, so start a new menu for changes."
+            description="Publishing locks this menu — meals, dishes and ingredients can't be edited afterwards, so start a new menu for changes. Members can already read the draft and leave comments."
           >
             <form action={publishMenuPlanAction}>
               <input type="hidden" name="menuPlanId" value={plan.id} />

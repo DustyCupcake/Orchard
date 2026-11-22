@@ -855,6 +855,13 @@
       "when": 1795368099928,
       "tag": "0121_unusual_bloodstorm",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1795385766675,
+      "tag": "0122_recipe_box",
+      "breakpoints": true
     }
   ]
 }

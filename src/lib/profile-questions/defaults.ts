@@ -251,9 +251,9 @@ function preflight(
       // this is where that is caught — up front, because the seeder is not
       // transactional and a refusal raised from createProfileQuestion
       // partway through would leave a prefix of the set written and the
-      // review step closed for good. Dislikes are counted, not read, and
-      // may be public.
-      if (seed.kitchenSignal && seed.kitchenSignal !== "dislike" && !choice.restricted) {
+      // review step closed for good. Dislikes and diet are counted, not read,
+      // and may be public.
+      if (seed.kitchenSignal && !["dislike", "diet"].includes(seed.kitchenSignal) && !choice.restricted) {
         problems.push(
           `“${seed.label}” tells the kitchen about ${seed.kitchenSignal === "allergy" ? "allergies" : "intolerances"}, which is health information, so it has to stay restricted — a public question is readable by the whole Community. Untick it instead if you don't want it`,
         );

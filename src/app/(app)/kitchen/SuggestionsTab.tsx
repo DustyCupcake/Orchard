@@ -2,8 +2,15 @@ import type { FoodIdeaWithIngredients, MealWithDishes, MenuPlanRow } from "@/lib
 import Modal from "@/components/ui/Modal";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { BUTTON_DESTRUCTIVE, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, SELECT, Tag } from "@/components/ui/kit";
-import { adoptIdeaAction, declineIdeaAction, updateFoodIdeaAction, withdrawFoodIdeaAction } from "./actions";
-import { EmptyState, FlagPicker, FlagTags, LightIdeaForm, RecipeForm, TextField, formatAmount, ingredientText } from "./parts";
+import {
+  adoptIdeaAction,
+  declineIdeaAction,
+  updateFoodIdeaAction,
+  updateFoodIdeaRecipeFormAction,
+  withdrawFoodIdeaAction,
+} from "./actions";
+import { EmptyState, FlagPicker, FlagTags, LightIdeaForm, TextField, formatAmount, ingredientText } from "./parts";
+import RecipeForm from "./RecipeForm";
 import Link from "next/link";
 
 type Idea = FoodIdeaWithIngredients;
@@ -56,7 +63,7 @@ function EditOwn({ idea }: { idea: Idea }) {
     <Modal trigger="Edit" triggerClassName={BUTTON_GHOST} title={`Edit “${idea.title}”`} description="You can change this until the kitchen decides." wide>
       {idea.kind === "recipe_suggestion" ? (
         <RecipeForm
-          action={updateFoodIdeaAction}
+          action={updateFoodIdeaRecipeFormAction}
           hidden={hidden}
           submitLabel="Save changes"
           initial={{
