@@ -1,6 +1,8 @@
+import Link from "next/link";
 import type { cycleType as cycleTypeTable, taskPack as taskPackTable, tier as tierTable } from "@/db/schema";
 import { BUTTON_SECONDARY, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import { SelectField, SettingsCard, SettingsPanel, SettingsSection, TextField } from "../ui";
+import { formatDateRange } from "@/lib/dates";
 import {
   createCycleTypeAction,
   createTierAction,
@@ -15,6 +17,15 @@ const CRITERION_LABEL: Record<string, string> = {
   cycle_type_count: "Automatic — from a number of events of one type",
 };
 
+type CycleRow = {
+  id: string;
+  name: string;
+  startDate: string | null;
+  endDate: string | null;
+  capacity: number | null;
+  closedAt: Date | null;
+};
+
 export default function CyclesTiersTab({
   tiers,
   cycleTypes,
@@ -24,10 +35,46 @@ export default function CyclesTiersTab({
   tiers: (typeof tierTable.$inferSelect)[];
   cycleTypes: (typeof cycleTypeTable.$inferSelect)[];
   taskPacks: (typeof taskPackTable.$inferSelect)[];
-  cycles: { id: string; name: string }[];
+  cycles: CycleRow[];
 }) {
   return (
     <div className="flex flex-col gap-8">
+      {/* The community's events, as one list: a reader of the settings
+          screen should see what events exist without having to know that
+          they live one hop away at /{id}/participation, where each event's
+          own settings (dates, capacity, joining rules) are edited. */}
+      <SettingsSection
+        title="Events"
+        description="The community's events — each is configured at /{id}/participation, where its dates, capacity and joining rules live. Event types below define the kinds of events that exist."
+      >
+        {cycles.length === 0 ? (
+          <SettingsPanel>
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
+              No events yet. Events are started from the events page.
+            </p>
+          </SettingsPanel>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {cycles.map((c) => (
+              <Link
+                key={c.id}
+                href={`/${c.id}/participation`}
+                className="flex items-baseline justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 transition-colors hover:border-[var(--accent-1)]"
+              >
+                <span className="min-w-0 truncate text-[length:var(--text-body)] font-medium text-[var(--text)]">
+                  {c.name}
+                </span>
+                <span className="shrink-0 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                  {formatDateRange(c.startDate, c.endDate)}
+                  {c.capacity != null ? ` · ${c.capacity} place${c.capacity === 1 ? "" : "s"}` : null}
+                  {c.closedAt ? " · closed" : null}
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </SettingsSection>
+
       <SettingsSection
         title="Event types"
         description="What kind of thing an event is — a season, a weekend, a rehearsal. Used for counting and for starting a new event from the last one of the same kind."

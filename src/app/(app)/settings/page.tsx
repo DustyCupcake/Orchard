@@ -378,7 +378,7 @@ export default async function SettingsPage({
             tiers={tiers}
             cycleTypes={cycleTypes}
             taskPacks={taskPacks}
-            cycles={cycles.map((c) => ({ id: c.id, name: c.name }))}
+            cycles={cycles}
           />
         )}
 

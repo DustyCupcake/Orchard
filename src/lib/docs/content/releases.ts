@@ -30,6 +30,17 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-11-22",
+    title: "Archived questions have one home; the Events tab lists the events",
+    summary:
+      "The Profile & Privacy tab's Public and Restricted groups no longer mix archived questions into the questions still being asked — they now sit together under one collapsed group at the end of the section. The Events & Tiers tab starts with a list of the community's events.",
+    points: [
+      "The Public and Restricted groups on Profile & Privacy show only the questions that are still being asked — standing and per-event ones, plus the dormant per-event ones under their own \"more for other events\" group. Archived questions appear together under \"Archived questions (N)\", collapsed by default, where you can unarchive any of them or open its card for its facts and past answers.",
+      "The Events & Tiers tab now starts with an \"Events\" section: one line per event, its date range and capacity, and whether it is closed — each linking to the event's own settings page at /{id}/participation. Nothing moved there; event dates, capacity and joining rules still live there.",
+    ],
+    source: "archived profile questions live in one place; the Events & Tiers tab lists the community's events",
+  },
+  {
+    date: "2026-11-22",
     title: "Your community can have its own app icon",
     summary: "Admins can upload one PNG in Settings, and Orchard makes the browser-tab and phone home-screen icons from it.",
     points: [

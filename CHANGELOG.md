@@ -8,6 +8,16 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## archived profile questions live in one place; the Events & Tiers tab lists the community's events
+
+Profile questions are archived rather than deleted — their answers stay, and archiving stops the question being asked — but on the Profile & Privacy tab they were still listed inline in the Public and Restricted groups, dimmed and mixed in with the questions still being asked, so the section had no single "overview" to read.
+
+- **Archived questions get their own group.** The Public and Restricted groups now list only the questions still being asked — standing, per-event and the "more for other events" groups all exclude archived ones. A new "Archived questions (N)" group sits at the end of the Profile questions section, collapsed by default; each archived question is the same card as before — facts, its audience line, its past answers and the Unarchive action — so nothing about a question changes when it is archived or unarchived.
+- **The Events & Tiers tab starts with the events.** It now begins with an "Events" section listing the community's events, one line each: name, date range, capacity and whether it is closed, each linking to the event's own settings page at `/{id}/participation` where dates, capacity and joining rules are edited. A community with no events is told so. Event types and tiers are unchanged below it.
+- **Nothing else moves.** The group is new and additive; the change log still records archiving and unarchiving as it always has, and the read paths that filter on `archived_at` see the same questions as before.
+
+Checked: `tsc` clean, ESLint clean on the changed files, and the profile-questions, settings, settings-change, kitchen-signals, cycles and cycle-types suites pass (167 tests) against the test container.
+
 ## a community can set its own app icon, and the phone icons come with it
 
 The branding card already let a community set its colours and a sidebar logo, but there was no way to set the thing that shows in a browser tab or on a phone's home screen: every install served the same Orchard mark, and there was no install manifest at all. Admins can now upload one square PNG under Settings → General → Look, and the app stores the whole icon set it needs.
