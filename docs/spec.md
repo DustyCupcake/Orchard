@@ -1082,6 +1082,8 @@ Attention level is computed from three simultaneous triggers: phase-based (only 
 
 **Owner-set nudges** — when a task moves to Waiting, the owner sets a next check-in date and a short "waiting on…" note. On that date, the owner gets a nudge with four options: update progress (resets the clock), mark done, re-snooze with a reason, or release. Ignoring the nudge past a grace period re-flags the task — the system is forgiving of a missed check-in, not indifferent to it.
 
+**Joining a parked task** — a Waiting task can take a new holder like any other: someone who knows they'd unblock it can claim it (an `open` task) or ask to join it (a `request` or `coordination_approved` one), and a coordinator can nominate or waive someone onto it. Joining never changes the parking: status, check-in date and "waiting on…" note stay as the holder set them, and the newcomer resumes the task themselves if having them there is what unblocked it. The check-in belongs to the task, so a new holder shares it — it shows in their upcoming check-ins, and an ignored nudge is logged against every real holder.
+
 ### <a id="coordination-mechanics-core-not-a-module"></a>Coordination mechanics (core, not a module)
 
 These aren't optional — they're how branch coordination actually functions day to day, and none of them are domain-specific. They were fully designed in the original spec and are worth restating in full rather than compressed away, even though they land in the second build slice rather than the bare MVP (see [MVP scope](#mvp-scope)):

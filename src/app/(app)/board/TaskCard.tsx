@@ -95,8 +95,10 @@ export default async function TaskCard({
   const eligible = unmetRequirements.length === 0;
 
   const requestGated = task.openness === "request" || task.openness === "coordination_approved";
-  const joiningRequiresRequest =
-    task.status === "claimed" && realAssignments.length > 0 && requestGated;
+  // A parked (waiting) task is joinable like a claimed one, and joining
+  // never changes the parking (performClaimInTx).
+  const parkedOrClaimed = task.status === "claimed" || task.status === "waiting";
+  const joiningRequiresRequest = parkedOrClaimed && realAssignments.length > 0 && requestGated;
   const isCommunityEndorsed = task.openness === "community_endorsed";
 
   // A coordinator claiming their own unclaimed/flagged task opens the
@@ -112,7 +114,7 @@ export default async function TaskCard({
   const canAct =
     !isCommunityEndorsed &&
     !shadowing &&
-    (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
+    (task.status === "unclaimed" || (parkedOrClaimed && !holds && hasRoom)) &&
     eligible &&
     !myPendingRequestId;
   const canClaim = canAct && !joiningRequiresRequest;
@@ -120,10 +122,17 @@ export default async function TaskCard({
   const blockedByRequirements =
     !isCommunityEndorsed &&
     !shadowing &&
-    (task.status === "unclaimed" || (task.status === "claimed" && !holds && hasRoom)) &&
+    (task.status === "unclaimed" || (parkedOrClaimed && !holds && hasRoom)) &&
     !eligible &&
     !myPendingRequestId;
   const canShadow = !holds && !shadowing && (task.status === "claimed" || task.status === "waiting");
+  // D5 (docs/plans/task-interface-plan.md) — a coordinator (or a current
+  // holder) can propose someone for a slot on any non-endorsed, non-done
+  // task, even a full or waiting one; at capacity the nomination raises
+  // the count by one. The form lives in the task page's "Who's on it"
+  // section, right at the top of the main column.
+  const canAskSomeone =
+    !isCommunityEndorsed && task.status !== "done" && (isCoordinationHolderForTask || holds);
   const attention = ATTENTION_STYLES[task.attentionLevel];
 
   // Requirements summarization — individual_gate: unmet listed, met
@@ -231,6 +240,16 @@ export default async function TaskCard({
     if (escalateForm) menuItems.push(escalateForm);
   }
 
+  // State-independent, so it lands after the per-state items: proposing
+  // someone is about filling the slot, not about the viewer's own hold.
+  if (canAskSomeone) {
+    // ?nominate=1 makes the task page render its "Nominate someone"
+    // disclosure open, and #nominate scrolls to the form inside it. The
+    // query does the opening because a fragment alone only opens a closed
+    // <details> on a full page load, not on a client-side navigation.
+    menuItems.push(<Link href={`/tasks/${task.id}?nominate=1#nominate`}>Ask someone about a slot…</Link>);
+  }
+
   return (
     <div
       className="mb-3 rounded-[var(--radius-md)] border p-3"
@@ -266,7 +285,7 @@ export default async function TaskCard({
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
         <BranchChip name={branchName} />
         <EffortChip summary={effortSummary(task.effort, task.effortMagnitude)} />
-        <CapacityChip held={realAssignments.length} capacity={task.capacity} />
+        <CapacityChip held={realAssignments.length} capacity={task.capacity} critical={task.critical} />
       </div>
 
       {task.description && (

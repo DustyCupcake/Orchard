@@ -29,6 +29,38 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-11-15",
+    title: "Coordinators can propose someone for any task",
+    summary: "Even when a task already has everyone it asked for, a coordinator can propose someone — the task simply grows a slot.",
+    points: [
+      "The \"Nominate someone\" option in a task's \"Who's on it\" section is now always there for coordinators and current holders, even when the task is full or parked.",
+      "On a full task it says so before you confirm, and the task gains a slot for the person you're asking. If they say no, the open slot stays as a visible gap.",
+      "Board cards have an \"Ask someone about a slot…\" link in the ⋯ menu that takes you straight to the form.",
+      "You can ask to join a task that's parked, if you know you'd unblock it. Whoever joins a parked task — asked, accepted or claiming — joins it still parked, with its check-in date and note as they were, and can press Resume once they've looked it over.",
+    ],
+    source: "a coordinator can propose someone for a slot on any task — a full one grows a slot",
+  },
+  {
+    date: "2026-11-13",
+    title: "You can see a task's empty slots",
+    summary: "A task that needs people now shows its open slots, and the board shows filled and empty slots as dots.",
+    points: [
+      "Every task page starts with \"Who's on it\": who's holding it, any open slots, and anyone shadowing to learn. Requests to join, and the ways coordinators fill a slot, are in the same place.",
+      "On the board, a task with up to five slots shows them as dots, so you can spot a gap without opening the task.",
+    ],
+    source: "a task's slots are visible — empty ones included — on the task page and as dots on the board",
+  },
+  {
+    date: "2026-10-31",
+    title: "Editing a task happens on its own screen",
+    summary: "Everything that sets a task up — its details, requirements, dependencies, milestones — is in one place, from the task's ⋯ menu.",
+    points: [
+      "Open a task and choose \"Edit task…\" from the ⋯ menu to change how it's set up: its details, requirements, dependencies and milestones.",
+      "The task page itself is for what's happening: claiming, finishing, parking, notes and comments, and ticking off milestones.",
+    ],
+    source: "a task's config is edited on its own screen, reached from the ⋯ menu, and the task page is a read view again",
+  },
+  {
     date: "2026-10-25",
     title: "The kitchen counts meals from who's actually there",
     summary: "If you say when you arrive and leave, the kitchen can work out how many are eating each meal.",

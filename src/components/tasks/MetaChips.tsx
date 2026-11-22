@@ -33,11 +33,39 @@ export function EffortChip({ summary }: { summary: string }) {
   return <MetaChip icon={<ClockIcon size={13} />}>{summary}</MetaChip>;
 }
 
-export function CapacityChip({ held, capacity }: { held: number; capacity: number | null }) {
+// D4 (docs/plans/task-interface-plan.md): up to five slots render as
+// dots so a gap is visible without reading numbers — ●●○ is scannable
+// in a way "1/3" isn't. Beyond five a count reads better than a row of
+// dots. Empty dots are muted, or danger on a critical task, where an
+// unfilled slot is the thing that matters.
+export function CapacityChip({ held, capacity, critical }: { held: number; capacity: number | null; critical?: boolean }) {
+  const label = capacity !== null ? `${held} of ${capacity} slots held` : `${held} holder(s)`;
   return (
-    <MetaChip icon={<UsersIcon size={13} />} title={capacity !== null ? `${held} of ${capacity} slots held` : `${held} holder(s)`}>
-      {held}
-      {capacity !== null ? `/${capacity}` : ""}
+    <MetaChip icon={<UsersIcon size={13} />} title={label}>
+      {capacity !== null && capacity <= 5 ? (
+        <span aria-hidden="true" className="inline-flex items-center gap-0.5">
+          {Array.from({ length: capacity }, (_, i) => (
+            <span
+              key={i}
+              className={
+                i < held
+                  ? "text-[var(--text)]"
+                  : critical
+                    ? "text-[var(--danger)]"
+                    : "text-[var(--text-muted)]"
+              }
+            >
+              {i < held ? "●" : "○"}
+            </span>
+          ))}
+          <span className="sr-only">{label}</span>
+        </span>
+      ) : (
+        <>
+          {held}
+          {capacity !== null ? `/${capacity}` : ""}
+        </>
+      )}
     </MetaChip>
   );
 }
