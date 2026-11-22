@@ -8,6 +8,10 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## CI skips the suite on a merge it has already passed, as it was meant to
+
+`docker-build.yml` is meant to skip the test suite on a push to `main` when the merged tree is the one a pull request's run already passed: the PR's `record` job writes a `tests-passed-for-tree` status on its head commit and `verified` looks for it. `record` never ran. It depends on `test`, which depends on `verified`, and `verified` is always skipped on a pull request; with no status function in its `if`, GitHub's implicit `success()` counted that skipped ancestor as a failure, so `record` was skipped on every PR run and every merge re-ran all six test shards (about 15 runner-minutes) on a tree that had just passed. Its condition is now `!cancelled() && github.event_name == 'pull_request' && needs.test.result == 'success'`. Nothing else changes: the PR still builds the image without pushing it, and a merge where `main` moved, or anything but a plain squash, still runs the suite in full.
+
 ## shifts read as a weekday inside a short event, following the date display setting
 
 "How dates read by default" (and a member's own override) never reached shifts: every shift time was written by `formatInstantRange` as a full date whatever the setting said, so a community that had chosen Period saw "Mar 5, 2027, 14:00–15:30" on a four-day event's roster instead of the day of the week.
