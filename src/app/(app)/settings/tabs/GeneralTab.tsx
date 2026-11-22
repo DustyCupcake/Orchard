@@ -86,9 +86,9 @@ export default function GeneralTab({
             defaultValue={community.defaultDateDisplayMode}
             options={[
               { value: "exact", label: "Exact — always the real date" },
-              { value: "period", label: "Period — 'the 12th to the 19th' where a period is what the member chose" },
+              { value: "period", label: "Period — the weekday, inside an event or phase that lasts a week or less" },
             ]}
-            hint="A starting point for every member; anyone can override it for themselves."
+            hint="Dates inside a short event or phase read as 'Fri' (with the event or phase name where the page doesn't already say it); everything else keeps its full date. A starting point for every member; anyone can override it for themselves."
           />
           <TimeZoneField defaultValue={community.timeZone} />
           <SelectField

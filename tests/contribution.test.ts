@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { community, phase, shiftOccurrence, task, taskAssignment } from "@/db/schema";
 import { createCycle } from "@/lib/cycles";
-import { createShiftSeries, generateShiftOccurrences, markShiftSignupCompleted, signUpForShift } from "@/lib/shifts";
+import { createShiftSeries, generateShiftOccurrences, markShiftSignupCompleted, openCycleShiftSignups, signUpForShift } from "@/lib/shifts";
 import { updateCommunity } from "@/lib/settings";
 import { releaseTask } from "@/lib/tasks";
 import {
@@ -319,6 +319,31 @@ describe("shift completions (Phase 30)", () => {
     // The shift completion is a separate entry, not folded into it.
     expect(overall.shiftCompletions.count).toBe(1);
     expect(overall.shiftCompletions.completions[0].seriesTitle).toBe(series.title);
+    // A standing series belongs to no event, so its date reads as a plain date.
+    expect(overall.shiftCompletions.completions[0].cycleId).toBeNull();
+  });
+
+  it("carries the event a completed shift belonged to, so its date can be read in terms of it", async () => {
+    const { alice, branch, community: testCommunity } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, testCommunity.id));
+    await updateCommunity(alice, { modulesEnabled: ["shifts"] });
+    const event = await createCycle(alice, { source: "blank", name: "Season", startDate: "2027-06-01", endDate: "2027-06-04" });
+    await grantShiftManagementTo(alice, branch.id, event.id);
+    const series = await createShiftSeries(alice, { title: "Kitchen", defaultCapacity: 2, cycleId: event.id });
+    const [occurrence] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: iso(24), endsAt: iso(25) }],
+    });
+    await openCycleShiftSignups(alice, event.id);
+    const signup = await signUpForShift(alice, occurrence.id);
+    await db
+      .update(shiftOccurrence)
+      .set({ startsAt: new Date(iso(-2)), endsAt: new Date(iso(-1)) })
+      .where(eq(shiftOccurrence.id, occurrence.id));
+    await markShiftSignupCompleted(alice, signup.id);
+
+    const [overall] = await getOwnContribution(alice);
+    expect(overall.shiftCompletions.completions).toMatchObject([{ seriesTitle: "Kitchen", cycleId: event.id }]);
   });
 
   it("creates an 'Overall' category purely for shift completions when there's no task assignment at all", async () => {

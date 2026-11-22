@@ -222,6 +222,10 @@ export default async function TaskDetailPage({
   const labeler = await getDayLabeler();
   const milestoneDateLabel = (m: (typeof milestones)[number]) =>
     labeler.label(m.resolvedDate, milestoneDayItem(m, taskRow), { cycleId: taskRow.cycleId });
+  // The task's own check-in date reads the same way: in terms of the task's
+  // event and phase, on the viewer's own day.
+  const checkInLabel = (at: Date) =>
+    labeler.instantLabel(at, clock.timeZone, { cycleId: taskRow.cycleId, phaseId: taskRow.phaseId }, { cycleId: taskRow.cycleId }).visible;
   const crossCycle = await resolveCrossCycleContext(viewing, taskCycle, scopeParam ?? null);
   const taskPath = `/tasks/${taskRow.id}`;
 
@@ -866,7 +870,7 @@ export default async function TaskDetailPage({
       {holdsTask && taskRow.status === "waiting" && (
         <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-3">
           <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
-            Check-in was {taskRow.nextCheckinAt && taskRow.nextCheckinAt < new Date() ? "due " + clock.date(taskRow.nextCheckinAt) : "set for " + (taskRow.nextCheckinAt ? clock.date(taskRow.nextCheckinAt) : "—")}
+            Check-in was {taskRow.nextCheckinAt && taskRow.nextCheckinAt < new Date() ? "due " + checkInLabel(taskRow.nextCheckinAt) : "set for " + (taskRow.nextCheckinAt ? checkInLabel(taskRow.nextCheckinAt) : "—")}
             {taskRow.waitingNote && <> — <em>{taskRow.waitingNote}</em></>}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1710,7 +1714,7 @@ export default async function TaskDetailPage({
           )}
           {taskRow.status === "waiting" && (
             <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
-              Next check-in: {taskRow.nextCheckinAt ? clock.date(taskRow.nextCheckinAt) : "—"}
+              Next check-in: {taskRow.nextCheckinAt ? checkInLabel(taskRow.nextCheckinAt) : "—"}
               {taskRow.waitingNote && <span className="text-[var(--text-muted)]"> — {taskRow.waitingNote}</span>}
             </p>
           )}

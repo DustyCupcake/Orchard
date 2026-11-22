@@ -25,6 +25,7 @@
   - [Branch](#branch)
   - [Cycle (optional)](#cycle-optional)
   - [Concurrent cycles & view scope](#concurrent-cycles--view-scope)
+  - [Date display](#date-display)
   - [Member + Tier](#member--tier)
   - [Authentication](#authentication)
   - [Requirement](#requirement)
@@ -298,6 +299,14 @@ Different mechanics genuinely need different shapes of this, and which shape app
 
 **Following a link to something scoped to a different Cycle than the viewer's current view surfaces a plain, honest banner naming both** — never a silent render as if it belonged to the viewer's own scope, and never an automatic switch either. This is the same posture as everything else in this spec that touches shared, possibly-surprising state: say what's true, let the person decide what to do about it.
 
+### <a id="date-display"></a>Date display
+
+How a date reads is presentation only: the stored date never changes. Each member sees the Community's `default_date_display_mode` unless they set their own `date_display_mode`. `exact` prints the full date everywhere, as it always has. `period` reads a day as its weekday ("Fri") when the item it belongs to sits inside a short period, which is an event or one of its phases lasting seven days or fewer, both ends dated.
+
+The period comes from the item, never from the date alone. An item names its event and, if it has one, its phase; nothing guesses an event from a bare date. An item's own phase is authoritative: if that phase is short and holds the day it is the period, and if it is not short the item falls to its event, then to the full date, and is never handed to some other phase that happens to overlap. An item with no phase of its own gets the narrowest short phase holding the day (a tie goes to the lower order), then its event. An item with no event, an event or phase with no dates, or a day outside every short period, reads as the full date.
+
+A label names only what the page doesn't already say. A mixed list reads "Peach Please · Set-up · Tue", an event's own page "Set-up · Tue", a phase's own page "Tue". List headings (the kitchen) and grid column headings (the programme) show the weekday alone, since the page names the event and the real dates are in the page's own range caption. Set-up before an event is not a separate kind of thing: it is a phase, and an event without one reads full dates there. A date with no event, such as a community meeting or a milestone on a task that belongs to no event, always reads in full. Timestamps recording when something happened ("submitted", "raised", "edited") and deadlines owned by the community rather than an event also stay plain dates. One resolver and one labeler (`src/lib/dates`, `getDayLabeler`) decide all of this, so no page formats a day on its own.
+
 ### <a id="member--tier"></a>Member + Tier
 
 A Member belongs to exactly one Community. **Tier** replaces the old hardcoded "experienced Peach" boolean. A Tier is a named eligibility level with a *criterion* the Community chooses at setup:
@@ -454,7 +463,7 @@ This is the concrete shape to build against. Field names are suggestions, not go
 | cycles_enabled            | boolean                      | false = one permanent default Cycle, no cycle UI                                                                                                          |
 | cycle_initiation_tier_id  | uuid → Tier, nullable        | null = any member may start a cycle                                                                                                                        |
 | phases_enabled            | boolean                      |                                                                                                                                                            |
-| default_date_display_mode | enum(exact, period)          | Community default for read-only date labels; members may override or inherit it                      |
+| default_date_display_mode | enum(exact, period)          | Community default for read-only date labels; members may override or inherit it. `period` reads a day as its weekday when the item it belongs to sits in a short period (see [Date display](#date-display)); `exact` always prints the full date |
 | onsite_mode_enabled       | boolean                      | requires phases_enabled                                                                                                                                    |
 | conflict_team_task_id     | uuid → Task, nullable        | points at the standing critical task whose current TaskAssignment holders make up the conflict team; only relevant if the conflict-management module is on |
 | input_round_interval_days | int                          | default 7 — cadence for Input rounds (see Input rounds)                                                                                                    |

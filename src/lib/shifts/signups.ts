@@ -183,6 +183,8 @@ export interface ShiftCoordinatorNeedsAction {
   startsAt: Date;
   /** The venue clock the shift ran on, so its date reads the same for everyone. */
   timeZone: string;
+  /** The event the shift belongs to, so its date can be read in terms of it; null for a standing series. */
+  cycleId: string | null;
   unresolvedCount: number;
 }
 
@@ -229,6 +231,7 @@ export async function listShiftCoordinatorNeedsAction(actor: Member): Promise<Ne
         seriesTitle: r.seriesTitle,
         startsAt: r.occurrence.startsAt,
         timeZone: clockFor(r.cycleId),
+        cycleId: r.cycleId,
         unresolvedCount: 1,
       });
     }

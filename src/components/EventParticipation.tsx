@@ -34,12 +34,17 @@ const CHOICES = ["coming", "maybe", "not_coming"] as const;
 // dashboard. In practice this is nearly always 1 (see createCycle).
 const MAX_CARDS = 4;
 
-// "12–16 Apr 2027" / "From 12 Apr" / "Dates not set yet" — the event's own
+const dayMonth = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+// "Apr 12–Apr 16" / "From Apr 12" / "Dates not set yet" — the event's own
 // start/end (Phase 39's working dates), not startedAt, which is just the
 // admin log of when the row was created.
 function dateRange(startDate: string | null, endDate: string | null): string {
   if (!startDate && !endDate) return "Dates not set yet";
-  const fmt = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  // Fixed locale and zone, like every other date in the app: the server's own
+  // locale decided how this read, so the same event could print "5 Mar" on one
+  // host and "Mar 5" on another.
+  const fmt = (iso: string) => dayMonth.format(new Date(`${iso}T12:00:00Z`));
   if (startDate && endDate) {
     return startDate === endDate ? fmt(startDate) : `${fmt(startDate)}–${fmt(endDate)}`;
   }

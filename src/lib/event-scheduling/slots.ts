@@ -1,11 +1,4 @@
-import {
-  formatDateLabel,
-  formatExactDate,
-  formatTimeInZone,
-  localDateInZone,
-  type DateDisplayMode,
-  type PeriodDateContext,
-} from "../dates";
+import { formatExactDate, formatTimeInZone, localDateInZone, type DayItem, type DayLabeler, type DayView } from "../dates";
 import type { EventSlot } from "./crud";
 
 /**
@@ -38,16 +31,17 @@ export interface EventTimeLabel {
 
 export function formatEventTime(
   range: EventSlot,
-  dateDisplayMode: DateDisplayMode,
   timeZone: string,
-  period?: PeriodDateContext | null,
+  labeler: DayLabeler,
+  item?: DayItem,
+  view?: DayView,
 ): EventTimeLabel {
   // The calendar date the range falls on *in the event's zone* — a window
-  // starting at 23:00 in Europe/Madrid is the next day in UTC, and
-  // formatDateLabel expects a plain YYYY-MM-DD it can compare against a
-  // period's own start_date/end_date.
+  // starting at 23:00 in Europe/Madrid is the next day in UTC, and a day is
+  // a plain YYYY-MM-DD that is compared against an event's and its phases'
+  // own start and end dates.
   const localDate = localDateInZone(range.startsAt, timeZone);
-  const label = formatDateLabel(localDate, dateDisplayMode, period ?? null);
+  const label = labeler.label(localDate, item, view);
   const times = `${formatTimeInZone(range.startsAt, timeZone)}–${formatTimeInZone(range.endsAt, timeZone)}`;
   return {
     visible: `${label.visible}, ${times}`,

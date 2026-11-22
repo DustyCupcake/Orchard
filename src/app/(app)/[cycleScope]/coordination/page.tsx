@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getViewerClock } from "@/lib/view-clock";
+import { getDayLabeler } from "@/lib/day-labeler";
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
 import { resolveViewScopeFromSegment } from "@/lib/cycles";
@@ -77,6 +78,8 @@ export default async function CycleScopeCoordinationPage({
 }) {
   const { real, viewing } = await getViewingContext();
   const clock = await getViewerClock();
+  // This page can span several events, so a check-in date names its event.
+  const labeler = await getDayLabeler();
   if (!real || !viewing) {
     redirect("/login");
   }
@@ -240,7 +243,7 @@ export default async function CycleScopeCoordinationPage({
                   {c.title}
                 </Link>
                 <span className="shrink-0 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  {c.holderName} · due {c.nextCheckinAt ? clock.date(c.nextCheckinAt) : "—"}
+                  {c.holderName} · due {c.nextCheckinAt ? labeler.instantLabel(c.nextCheckinAt, clock.timeZone, { cycleId: c.cycleId, phaseId: c.phaseId }).visible : "—"}
                   {c.waitingNote && ` · ${c.waitingNote}`}
                 </span>
               </li>

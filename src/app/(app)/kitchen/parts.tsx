@@ -100,15 +100,6 @@ export function ingredientText(ing: { amount: string | number | null; unit: stri
   return measure ? `${measure} ${ing.name}` : `${ing.name} — to taste`;
 }
 
-export function dayHeading(date: string): string {
-  return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
-
 export function EmptyState({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] px-6 py-10 text-center">

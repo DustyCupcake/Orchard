@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatInstant } from "@/lib/dates";
+import { getDayLabeler } from "@/lib/day-labeler";
 import type { ContributionCategory, ContributionCategoryAverage } from "@/lib/contribution";
 import { effortSummary } from "@/lib/format";
 
@@ -14,7 +14,7 @@ function formatAverage(n: number) {
 // "tasks" disclosure. This page exists to answer "what am I carrying,"
 // and a summary line the reader has to click to learn which tasks are
 // actually in their own hands was the opposite of that.
-export default function ContributionCategories({
+export default async function ContributionCategories({
   categories,
   averages,
 }: {
@@ -25,6 +25,9 @@ export default function ContributionCategories({
     return <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">No task assignments yet.</p>;
   }
 
+  // A completed shift's date reads in terms of its own event. This list mixes
+  // events (and standing shifts), so an event's name stays in the label.
+  const labeler = await getDayLabeler();
   const averageByName = new Map((averages ?? []).map((a) => [a.name, a] as const));
 
   return (
@@ -89,7 +92,7 @@ export default function ContributionCategories({
                       <li key={c.id}>
                         {c.seriesTitle}{" "}
                         <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                          ({formatInstant(c.occurrenceStartsAt, c.timeZone, "date")})
+                          ({labeler.instantLabel(c.occurrenceStartsAt, c.timeZone, { cycleId: c.cycleId }).visible})
                         </span>
                       </li>
                     ))}

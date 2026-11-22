@@ -1,17 +1,15 @@
 # One way to say which day it is
 
-**Status:** steps 1 to 4 of §6 are built (2026-11-22). Step 1: the resolver and the label styles
-(`src/lib/dates/day-labels.ts`), with `formatShiftRange` rebuilt on them. Step 2: `createDayLabeler`
-(pure, `src/lib/dates/day-labeler.ts`) and the request-scoped `getDayLabeler`
-(`src/lib/day-labeler.ts`), which loads the viewer's setting and every event with its phases. Step 3:
-shifts (the Shifts page, series section and event roster). Step 4: the calendar and the task page.
-`CalendarEntry` now carries a `scope` (`{ cycleId, phaseId }`) instead of a hand-built `period`; a
-milestone's scope comes from one shared `milestoneDayItem`; the calendar and the task page both read
-through `getDayLabeler`, leaving out the current event's name where the page already states it. The
-calendar's shift and programme entries and its calendar events now carry their event too, which they did
-not before. Driven in a browser against a scratch database (Period and Exact) for steps 3 and 4.
-Steps 5 to 9 are not started. `formatDateLabel` is still used by the board's phase cards and the
-Schedule page until steps 5 and 6 move them.
+**Status:** steps 1 to 9 of §6 are built (2026-11-22); steps 1 to 4 are committed (`f1daaae`). Step 1:
+the resolver and the label styles (`src/lib/dates/day-labels.ts`), with `formatShiftRange` rebuilt on
+them. Step 2: `createDayLabeler` (pure, `src/lib/dates/day-labeler.ts`) and the request-scoped
+`getDayLabeler` (`src/lib/day-labeler.ts`). Step 3: shifts. Step 4: the calendar and the task page.
+Step 5: the kitchen. Step 6: the programme. Step 7: the feeds. Step 8: the audit, recorded in §9: the
+board's phase cards and a task's check-in date (board card, task page, coordination page, dashboard) are
+moved over, the old `formatDateLabel` and `PeriodDateContext` are deleted so there is one way to say a
+day, and every other date formatting site is listed there with why it stays a plain date. Driven in a
+browser against a scratch database (Period and Exact) for steps 3 to 8, except the check-ins-due row.
+Step 9 (spec and member-facing docs) is done: the spec's Date display section, the settings copy and the release note.
 
 **Deviation from §6 step 2, 2026-11-22:** it said "lazy per-event loads". It loads every event of the
 community and their phases up front, in two queries, the way `getEventClocks` already does, so the labeler
@@ -212,3 +210,41 @@ the rest are independent of each other and can land in any order.
   day only: the weekday line stays and the date line is dropped. Same as kitchen (§4).
 - **Q4. Naming the event inside a phase. (dropped)** Already settled by D4: the event is named when
   the view is not scoped to one event, and not otherwise. There was nothing left to ask.
+
+## 9. The audit (step 8)
+
+Every place that formats a date outside `src/lib/dates/`, sorted by whether the row has an event (and
+maybe a phase) behind it. The test from §3 D1: *is the date a day inside an event or phase, and does the
+row say which?* Where yes, it moved to the labeler. Where no, it stays a plain date on the viewer's own
+clock (`clock.date` / `clock.dateTime` / `clock.deadline`), and that is the right answer, not a gap.
+
+**Moved over in step 8**
+
+- **The board's phase cards** (`board/PhaseCard.tsx`). The header used to read "Build · Thu – Build ends ·
+  Fri" under a title that already said "Build". It now reads "Thu – Fri" in a short phase (the view is that
+  phase). A card that merges same-named phases of several open events has no single event to read against
+  and keeps plain dates, as before. `PhaseGroup` now keeps the phase's id.
+- **A task's check-in date**, in five places: the board card's chip, the task page (twice), the
+  coordination page's overdue list and the dashboard's check-ins. A task has an event and a phase, so
+  "Check-in Fri" in a phase view, "Build · Fri" on the task page (its event is in a chip), and
+  "Peach Please · Build · Fri" where events mix. The feed rows carry `cycleId` and `phaseId`.
+- **Removed:** `formatDateLabel` and `PeriodDateContext`, which nothing used any more. Its cases are all
+  pinned in `tests/day-labels.test.ts`; `tests/date-display.test.ts` keeps the seven-day line and the
+  setting's inheritance.
+
+**Left as a plain date, and why**
+
+| What | Where | Why it stays |
+|---|---|---|
+| When something happened to a record: submitted, raised, requested, created, edited, sent, invited, arrived, published, granted, closed, completed, activated | dashboard, applications, recruitment and mediation, invites, messages, communication, feedback, documentation, settings, conflict reports, the cycles list, proposals, profile, and the task page's signals, join requests, notes, comments, pings and "done {date}" | A moment in a record's history. It has no phase to be in, and "submitted Fri" would be wrong a week later. |
+| Deadlines, windows and cutoffs, with their zone | input rounds, assemblies, budget proposal deadlines, a task's browse period and nomination reply-by, the returning and joining windows, the community check, the wider discussion, "needed by" on questions | Owned by the community, a budget or a record, not by a phase. They state a moment on someone's clock (`clock.deadline`) and the zone matters. |
+| Appointments with people | interviews (admission page, applications, `recruitment/interviews.ts`), scheduling polls (confirmed slot, the poll page, the poll's own availability grid) | A poll belongs to no event. An interview is with an applicant, outside any phase. |
+| The periods' own definitions | the participation page's phase date range (`formatDateRange`), `EventParticipation`'s event range | They are where a period is set; they must show the real dates. |
+| The visible week's range caption on the two Schedule grids (`gridDayLabel`: "Sat, Nov 28 – Sun, Nov 29 · week 1") | `schedule/AvailabilityGrid.tsx`, `OwnerAvailabilityGrid.tsx` | Deliberate: the column headings are now weekday-only in a short event, so this caption is where the real dates stay visible. |
+| Answers to profile questions that are dates | `field-shape.ts`, `profile-questions/indicators.ts` (`formatExactDate`) | A person's own date (a birthday), nothing to do with an event. |
+| Not dates at all, or not for display to a member | `PlotEditor` (m²), `budget/format.ts` (numbers), `settings/tabs/HistoryTab.tsx` (change-log timestamps), `TimeZoneNudge` (zone name) | Out of scope. |
+
+**One thing found, since fixed:** `components/EventParticipation.tsx` formatted the event's range with
+`toLocaleDateString(undefined, …)`, which uses the server process's locale rather than a fixed one. It now uses a
+fixed `en-US` format in UTC like the rest of the app. It stays a plain range (it is the event's own, so out of scope
+by the table above) and the output is unchanged on an en-US host.

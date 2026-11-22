@@ -185,6 +185,16 @@ export function formatDayHeading(
 }
 
 /**
+ * A grid column's heading as two short lines. Plain data, so a server page can
+ * work it out and hand it to a client component that paints the grid.
+ */
+export interface DayColumnHeading {
+  weekday: string;
+  /** Null when the weekday stands alone (inside a short period). */
+  date: string | null;
+}
+
+/**
  * A grid column heading as two short lines ("Sat" over "Nov 28"), or just
  * the weekday inside a short period: the date line is dropped, since the
  * weekday is the point and a column heading has no room for names.
@@ -193,7 +203,7 @@ export function formatDayColumnHeading(
   day: string,
   mode: DateDisplayMode,
   period: ResolvedDayPeriod | null,
-): { weekday: string; date: string | null } {
+): DayColumnHeading {
   const weekday = formatWeekday(day);
   if (mode === "period" && period) return { weekday, date: null };
   return { weekday, date: shortMonthDay.format(atNoon(day)) };

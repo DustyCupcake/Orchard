@@ -3,6 +3,7 @@ import {
   formatDayHeading,
   formatDayLabel,
   resolveDayPeriod,
+  type DayColumnHeading,
   type DayCycle,
   type DayPhase,
   type DayScopeData,
@@ -11,6 +12,7 @@ import {
 } from "./day-labels";
 import type { DateDisplayMode, DateLabel } from "./display";
 import { formatShiftRange } from "./shift-time";
+import { localDateInZone } from "./timezone";
 
 type Instant = Date | string | number;
 
@@ -44,10 +46,16 @@ export interface DayLabeler {
   period(day: string | null | undefined, item?: DayItem): ResolvedDayPeriod | null;
   /** An inline label: "Peach Please · Set-up · Tue", or "Mar 2, 2027". */
   label(day: string | null | undefined, item?: DayItem, view?: DayView): DateLabel;
+  /**
+   * The day an instant falls on in `timeZone` (the venue's clock, for a shift),
+   * written like `label`. For a feed row that says when something happened or
+   * is due and has no time to show.
+   */
+  instantLabel(instant: Instant, timeZone: string, item?: DayItem, view?: DayView): DateLabel;
   /** A section heading: "Friday, March 5", or "Friday" in a short period. */
   heading(day: string, item?: DayItem, view?: DayView): string;
   /** A grid column's two lines; the weekday alone in a short period. */
-  columnHeading(day: string, item?: DayItem): { weekday: string; date: string | null };
+  columnHeading(day: string, item?: DayItem): DayColumnHeading;
   /** A shift's time: "Peach Please · Fri, 14:00–15:30", or "Mar 5, 2027, 14:00–15:30". */
   shiftRange(start: Instant, end: Instant, timeZone: string, item?: DayItem, view?: DayView): string;
 }
@@ -95,6 +103,10 @@ export function createDayLabeler(mode: DateDisplayMode, scopes: ReadonlyMap<stri
     mode,
     period,
     label: (day, item, view) => formatDayLabel(day, mode, period(day, item), view),
+    instantLabel: (instant, timeZone, item, view) => {
+      const day = localDateInZone(new Date(instant).toISOString(), timeZone);
+      return formatDayLabel(day, mode, period(day, item), view);
+    },
     heading: (day, item, view) => formatDayHeading(day, mode, period(day, item), view),
     columnHeading: (day, item) => formatDayColumnHeading(day, mode, period(day, item)),
     shiftRange: (start, end, timeZone, item, view) =>

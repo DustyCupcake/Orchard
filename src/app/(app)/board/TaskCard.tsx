@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { getViewerClock } from "@/lib/view-clock";
+import { getDayLabeler } from "@/lib/day-labeler";
+import type { DayView } from "@/lib/dates";
 import { FlameIcon } from "@phosphor-icons/react/dist/ssr";
 import type { requirement as requirementTable } from "@/db/schema";
 import { describeRequirement, isSelfAssignWorthAskingAbout } from "@/lib/tasks";
@@ -43,6 +45,7 @@ type Task = {
   critical: boolean;
   attentionLevel: string;
   cycleId: string | null;
+  phaseId: string | null;
 };
 
 // Task UI grammar (docs/design_handoff_conventions/README.md):
@@ -64,6 +67,7 @@ export default async function TaskCard({
   isCoordinationHolderForTask,
   coordinationName,
   backstopName,
+  dayView,
 }: {
   task: Task;
   assignments: Assignment[];
@@ -81,8 +85,11 @@ export default async function TaskCard({
   isCoordinationHolderForTask: boolean;
   coordinationName: string | null;
   backstopName: string | null;
+  /** What the surrounding view already says (a phase card names its phase), so a date needn't repeat it. */
+  dayView?: DayView;
 }) {
   const clock = await getViewerClock();
+  const labeler = await getDayLabeler();
   // A shadow isn't a real holder — doesn't count toward capacity, isn't
   // who "Held by" means — see docs/spec.md's "Shadow slots & succession"
   // and lifecycle.ts's assignmentCount(), which excludes them the same way.
@@ -304,7 +311,7 @@ export default async function TaskCard({
       )}
       {task.status === "waiting" && (
         <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[length:var(--text-meta)] text-[var(--text)]">
-          <DateChip date={task.nextCheckinAt ? clock.date(task.nextCheckinAt) : "—"} label="Check-in" />
+          <DateChip date={task.nextCheckinAt ? labeler.instantLabel(task.nextCheckinAt, clock.timeZone, { cycleId: task.cycleId, phaseId: task.phaseId }, dayView).visible : "—"} label="Check-in" />
           {task.waitingNote && <span className="text-[var(--text-muted)]">— {task.waitingNote}</span>}
         </p>
       )}

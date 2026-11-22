@@ -38,6 +38,12 @@ export interface PhaseGroupTask {
 
 export interface PhaseGroup<T extends PhaseGroupTask> {
   name: string;
+  /**
+   * The phase this card stands for, so its dates can be read in terms of it.
+   * A card merges same-named phases across open events and keeps the first
+   * one's id; null for the "No phase" card.
+   */
+  phaseId: string | null;
   order: number;
   startDate: string | null;
   endDate: string | null;
@@ -69,6 +75,7 @@ export function groupTasksByPhase<T extends PhaseGroupTask>(tasks: T[], phases: 
     if (!groups.has(name)) {
       groups.set(name, {
         name,
+        phaseId: phaseRow?.id ?? null,
         order: phaseRow?.order ?? Number.MAX_SAFE_INTEGER,
         startDate: phaseRow?.startDate ?? null,
         endDate: phaseRow?.endDate ?? null,

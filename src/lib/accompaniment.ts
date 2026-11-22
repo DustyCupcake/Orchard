@@ -222,6 +222,9 @@ export type CheckInDue = {
   newcomerName: string;
   /** The date has gone by, not merely arrived. */
   overdue: boolean;
+  /** The accompaniment task's own event and phase, if it has them, so the date can be read in terms of them. */
+  cycleId: string | null;
+  phaseId: string | null;
 };
 
 /**
@@ -240,6 +243,8 @@ export async function listMyCheckInsDue(actor: Member): Promise<CheckInDue[]> {
       label: taskMilestone.label,
       date: taskMilestone.absoluteDate,
       newcomerName: member.name,
+      cycleId: task.cycleId,
+      phaseId: task.phaseId,
     })
     .from(taskMilestone)
     .innerJoin(accompaniment, eq(accompaniment.taskId, taskMilestone.taskId))

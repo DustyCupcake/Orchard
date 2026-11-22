@@ -106,6 +106,28 @@ describe("groupTasksByPhase", () => {
     expect(groups[1].tasks.map((t) => t.id)).toEqual(["t2"]);
   });
 
+  it("keeps the phase's id on its group, so the card's dates can be read in terms of that phase", () => {
+    const phases = [
+      phase({ id: "cycle-a-build", name: "Build", order: 1 }),
+      phase({ id: "cycle-b-build", name: "Build", order: 1 }),
+      phase({ id: "p2", name: "Planning", order: 0 }),
+    ];
+    const tasks = [
+      task({ id: "t1", phaseId: "cycle-a-build" }),
+      task({ id: "t2", phaseId: "cycle-b-build" }),
+      task({ id: "t3", phaseId: "p2" }),
+      task({ id: "t4", phaseId: null }),
+    ];
+
+    const groups = groupTasksByPhase(tasks, phases);
+    expect(groups.map((g) => [g.name, g.phaseId])).toEqual([
+      ["Planning", "p2"],
+      // Same-named phases of two events merge and keep the first one's id.
+      ["Build", "cycle-a-build"],
+      ["No phase", null],
+    ]);
+  });
+
   it("a task whose phaseId isn't in the given phases list also lands in 'No phase'", () => {
     const tasks = [task({ id: "t1", phaseId: "some-deleted-phase" })];
     const groups = groupTasksByPhase(tasks, []);
