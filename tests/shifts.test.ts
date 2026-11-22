@@ -14,6 +14,7 @@ import {
   generateShiftOccurrences,
   getShiftOccurrence,
   instantFromShiftInput,
+  isForeignKeyViolation,
   isShiftCoordinator,
   listMySignups,
   listOccurrencesForSeries,
@@ -629,6 +630,17 @@ describe("Editing a single shift", () => {
     expect(updated.startsAt).toEqual(running.startsAt);
   });
 
+  it("refuses ending a running shift in the past, which would lock it", async () => {
+    const { alice, series } = await seriesWithTwoShifts();
+    const [running] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: iso(-2), endsAt: iso(1) }],
+    });
+    await expect(updateShiftOccurrence(alice, running.id, { endsAt: iso(-1) })).rejects.toThrow(
+      "A shift can't be set to end in the past",
+    );
+  });
+
   it("refuses a capacity below the people already signed up", async () => {
     const { alice, bob, occurrences } = await seriesWithTwoShifts();
     await signUpForShift(alice, occurrences[0].id);
@@ -795,7 +807,23 @@ describe("Edits stay inside the rules around them", () => {
     await expect(deleteShiftSeries(alice, series.id)).rejects.toThrow(ForbiddenError);
   });
 
-  it("a blank title is refused", () => {
+  it("a blank title is refused, and a blank description is cleared", async () => {
     expect(() => updateShiftSeriesInput.parse({ title: "   " })).toThrow(ZodError);
+
+    const { alice, series } = await seriesWithTwoShifts();
+    const updated = await updateShiftSeries(alice, series.id, updateShiftSeriesInput.parse({ description: "   " }));
+    expect(updated.description).toBeNull();
+  });
+
+  it("recognises the foreign-key error a racing sign-up causes on delete", async () => {
+    const { bob, occurrences } = await seriesWithTwoShifts();
+    await signUpForShift(bob, occurrences[0].id);
+    // What deleteShiftOccurrence runs if a sign-up lands right after its check.
+    const err = await db
+      .delete(shiftOccurrence)
+      .where(eq(shiftOccurrence.id, occurrences[0].id))
+      .catch((e: unknown) => e);
+    expect(isForeignKeyViolation(err)).toBe(true);
+    expect(isForeignKeyViolation(new Error("something else"))).toBe(false);
   });
 });

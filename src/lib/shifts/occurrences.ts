@@ -6,7 +6,13 @@ import type { member as memberTable } from "@/db/schema";
 import { AppError, ConflictError, NotFoundError } from "../errors";
 import { getEventTimeZone } from "../cycles/time-zone";
 import { instantFromZoned, localInputFromInstant } from "../dates/timezone";
-import { getShiftSeries, requireShiftCoordinator, requireShiftRosterNotClosed, requireShiftRosterNotOpen } from "./series";
+import {
+  getShiftSeries,
+  isForeignKeyViolation,
+  requireShiftCoordinator,
+  requireShiftRosterNotClosed,
+  requireShiftRosterNotOpen,
+} from "./series";
 
 type Member = typeof memberTable.$inferSelect;
 type ShiftSeriesRow = typeof shiftSeries.$inferSelect;
@@ -169,6 +175,11 @@ export async function updateShiftOccurrence(actor: Member, occurrenceId: string,
   if (startsAt.getTime() !== occurrence.startsAt.getTime() && startsAt <= now) {
     throw new AppError("A shift can't be moved into the past");
   }
+  // Ending a running shift in the past would make it count as ended, and an
+  // ended shift can't be edited, so the mistake couldn't be undone.
+  if (endsAt.getTime() !== occurrence.endsAt.getTime() && endsAt <= now) {
+    throw new AppError("A shift can't be set to end in the past");
+  }
 
   const signups = await countSignups(occurrenceId);
   if (effectiveCapacity({ capacity }, series) < signups) {
@@ -190,10 +201,16 @@ export async function deleteShiftOccurrence(actor: Member, occurrenceId: string)
   await requireShiftCoordinator(actor, series);
   await requireShiftRosterNotClosed(series);
   await requireShiftRosterNotOpen(series);
+  const taken = new ConflictError("Someone is signed up for this shift — it can't be deleted");
   if ((await countSignups(occurrenceId)) > 0) {
-    throw new ConflictError("Someone is signed up for this shift — it can't be deleted");
+    throw taken;
   }
-  await db.delete(shiftOccurrence).where(eq(shiftOccurrence.id, occurrenceId));
+  try {
+    await db.delete(shiftOccurrence).where(eq(shiftOccurrence.id, occurrenceId));
+  } catch (err) {
+    // A sign-up that lands between the check and the delete.
+    throw isForeignKeyViolation(err) ? taken : err;
+  }
 }
 
 // The general browse surface — every future occurrence in the

@@ -216,7 +216,7 @@ export async function unarchiveShiftSeries(actor: Member, seriesId: string) {
 export const updateShiftSeriesInput = z.object({
   branchId: z.string().uuid().nullable().optional(),
   title: z.string().trim().min(1).optional(),
-  description: z.string().nullable().optional(),
+  description: z.string().trim().nullable().optional(),
   defaultCapacity: z.number().int().positive().optional(),
 });
 export type UpdateShiftSeriesInput = z.infer<typeof updateShiftSeriesInput>;
@@ -256,7 +256,7 @@ export async function updateShiftSeries(actor: Member, seriesId: string, input: 
     .update(shiftSeries)
     .set({
       ...(input.title !== undefined && { title: input.title }),
-      ...(input.description !== undefined && { description: input.description }),
+      ...(input.description !== undefined && { description: input.description || null }),
       ...(input.branchId !== undefined && { branchId: input.branchId }),
       ...(input.defaultCapacity !== undefined && { defaultCapacity: input.defaultCapacity }),
     })
@@ -311,17 +311,29 @@ export async function deleteShiftSeries(actor: Member, seriesId: string) {
     .innerJoin(shiftOccurrence, eq(shiftOccurrence.id, shiftSignup.occurrenceId))
     .where(eq(shiftOccurrence.seriesId, seriesId))
     .limit(1);
+  const signedUp = new ConflictError("Someone is signed up for a shift in this series — archive it instead of deleting");
   if (taken) {
-    throw new ConflictError("Someone is signed up for a shift in this series — archive it instead of deleting");
+    throw signedUp;
   }
 
+  // A sign-up that lands between the check and the delete makes the
+  // transaction fail on its foreign key; report it the same way.
   await db.transaction(async (tx) => {
     // A Kitchen meal may point at this series as its cooking roster; the
     // meal stays, it just loses the link.
     await tx.update(meal).set({ shiftSeriesId: null }).where(eq(meal.shiftSeriesId, seriesId));
     await tx.delete(shiftOccurrence).where(eq(shiftOccurrence.seriesId, seriesId));
     await tx.delete(shiftSeries).where(eq(shiftSeries.id, seriesId));
+  }).catch((err) => {
+    throw isForeignKeyViolation(err) ? signedUp : err;
   });
+}
+
+// Postgres foreign_key_violation. Drizzle wraps the driver's error, so the
+// code can be on the error or on its cause.
+export function isForeignKeyViolation(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string } } | null;
+  return e?.code === "23503" || e?.cause?.code === "23503";
 }
 
 // D11 — the roster's one-way open act. Only the cycle's own
