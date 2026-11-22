@@ -7,10 +7,11 @@ import { addKitchenStarterQuestionAction, setKitchenSignalAction } from "./actio
 
 type Question = typeof profileQuestionTable.$inferSelect;
 
-// What each signal means to a cook, in the words the Kitchen will use. The
-// three are asked separately because the kitchen does something different
-// with each, and this is the one place an Admin decides which question is
-// which — see docs/plans/archive/kitchen-redesign-plan.md D2/D3.
+// What each signal means to a cook, in the words the Kitchen will use. They
+// are asked separately because the kitchen does something different with each,
+// and this is the one place an Admin decides which question is which — see
+// docs/plans/archive/kitchen-redesign-plan.md D2/D3. Diet, like dislike, is
+// counted rather than named.
 const COPY: Record<KitchenSignal, { title: string; what: string }> = {
   allergy: {
     title: "Allergies",
@@ -24,16 +25,20 @@ const COPY: Record<KitchenSignal, { title: string; what: string }> = {
     title: "Dislikes",
     what: "Foods people would rather avoid. Counted, never named — menu input, not a safety check.",
   },
+  diet: {
+    title: "Diet",
+    what: "Veggie, vegan or omni. Counted, never named — menu input, not a safety check.",
+  },
 };
 
-/** How many of the three kitchen signals have no live question wired to
+/** How many of the kitchen signals have no live question wired to
  *  them. Shared with the Modules tab, which prompts when this is non-zero. */
 export function unwiredKitchenSignals(questions: Question[]): KitchenSignal[] {
   return KITCHEN_SIGNALS.filter((s) => !questions.some((q) => q.kitchenSignal === s && !q.archivedAt));
 }
 
 /**
- * The Kitchen's three dietary questions, one row each: which question is
+ * The Kitchen's dietary questions, one row each: which question is
  * wired, or a one-click add of the starter question, or pick one you
  * already have.
  *
@@ -136,7 +141,11 @@ export default function KitchenQuestionsPanel({ questions }: { questions: Questi
                       {eligible.length === 0 && (
                         <span className="text-[var(--text-muted)]">
                           Nothing else here can carry it — a{" "}
-                          {signal === "dislike" ? "pick-any list" : "restricted pick-any list or written answer"},
+                          {signal === "dislike"
+                            ? "pick-any list"
+                            : signal === "diet"
+                              ? "single-choice list"
+                              : "restricted pick-any list or written answer"},
                           asked once.
                         </span>
                       )}

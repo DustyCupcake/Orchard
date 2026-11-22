@@ -11,12 +11,14 @@ const TITLES: Record<KitchenSignal, string> = {
   allergy: "Allergies",
   intolerance: "Intolerances",
   dislike: "Dislikes",
+  diet: "Diet",
 };
 
 const BLURBS: Record<KitchenSignal, string> = {
   allergy: "A reaction that could be serious. Checked against each dish's allergen flags.",
   intolerance: "Makes someone unwell but isn't dangerous. Checked where a dish can declare it.",
   dislike: "Foods people would rather avoid. A count, never a name — menu input, not a safety check.",
+  diet: "How people eat — veggie, vegan or omni. A public count only, never a name, and not a safety check.",
 };
 
 // Who has answered, and who hasn't, stated as plainly as the content below
@@ -122,14 +124,18 @@ function PeopleSignal({ s }: { s: SignalSummary }) {
   );
 }
 
-function DislikeSignal({ s }: { s: SignalSummary }) {
+function TallySignal({ s }: { s: SignalSummary }) {
   const max = Math.max(1, ...s.tally.map((t) => t.count));
   return (
     <div className="flex flex-col gap-3">
       <Counts s={s} />
       {s.tally.length === 0 && s.writeIns.length === 0 ? (
         <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
-          {s.answered === 0 ? "Nobody has answered yet." : "Nobody listed anything to avoid."}
+          {s.answered === 0
+            ? "Nobody has answered yet."
+            : s.signal === "dislike"
+              ? "Nobody listed anything to avoid."
+              : "Nobody has picked one yet."}
         </p>
       ) : (
         <ul className="flex flex-col gap-1.5">
@@ -164,8 +170,8 @@ function Signal({ s }: { s: SignalSummary }) {
         <Unwired signal={s.signal} />
       ) : !s.readable ? (
         <NotReadable s={s} />
-      ) : s.signal === "dislike" ? (
-        <DislikeSignal s={s} />
+      ) : s.signal === "dislike" || s.signal === "diet" ? (
+        <TallySignal s={s} />
       ) : (
         <PeopleSignal s={s} />
       )}
@@ -185,13 +191,14 @@ export default function DietaryTab({
   return (
     <div className="flex flex-col gap-6">
       <p className="max-w-[640px] text-[length:var(--text-body)] text-[var(--text-muted)]">
-        What the community has told the kitchen. You see only what each person agreed to share with you, and everything here
-        is a prompt to check — never a guarantee.
+        What the community has told the kitchen. Allergies and intolerances show only what each person agreed to share with
+        you; dislikes and diet are public counts, never names. Everything here is a prompt to check — never a guarantee.
       </p>
 
       <Signal s={overview.signals.allergy} />
       <Signal s={overview.signals.intolerance} />
       <Signal s={overview.signals.dislike} />
+      <Signal s={overview.signals.diet} />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Meal by meal</h2>

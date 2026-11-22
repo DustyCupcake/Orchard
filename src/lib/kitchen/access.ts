@@ -53,3 +53,18 @@ export async function requireKitchenOwner(actor: Member, cycleId?: string | null
     throw new ForbiddenError("Only a current kitchen task holder can do this");
   }
 }
+
+// Curation of the community recipe box is module-wide: any current holder of
+// any kitchen-granting task, in any scope, may accept, decline or fix a recipe.
+// Passing no cycle to isKitchenOwner is the "any scope" form; applying a recipe
+// to a meal must NOT use this helper — that still goes through
+// requireEditableMenuPlan so the actor holds the target plan's own scope.
+export async function isAnyKitchenHolder(actor: Member): Promise<boolean> {
+  return isKitchenOwner(actor);
+}
+
+export async function requireAnyKitchenHolder(actor: Member) {
+  if (!(await isAnyKitchenHolder(actor))) {
+    throw new ForbiddenError("Only a current kitchen task holder can curate the recipe box");
+  }
+}

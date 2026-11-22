@@ -848,6 +848,13 @@
       "when": 1792928728471,
       "tag": "0120_kitchen_signals_recipes_and_arrivals",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1795375613571,
+      "tag": "0121_recipe_box",
+      "breakpoints": true
     }
   ]
 }

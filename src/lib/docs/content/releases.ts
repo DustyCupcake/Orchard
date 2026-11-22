@@ -30,6 +30,31 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-11-22",
+    title: "Kitchen forms stop throwing away your work",
+    summary: "Two small fixes from people actually using the Kitchen: a recipe that fails to save now keeps everything you typed, and adding an ingredient no longer closes the dish you were editing.",
+    points: [
+      "If a recipe amount isn't a number, the form shows the error and keeps the title, method, flags and every ingredient row exactly as you wrote them. Fix the amount and submit again — no retyping.",
+      "Adding, changing or removing an ingredient — or saving a multiplier — now leaves the dish editor open. The new row appears in the list and the add box clears, ready for the next one.",
+    ],
+    source: "kitchen forms keep what you typed, and adding an ingredient no longer closes the dish",
+  },
+  {
+    date: "2026-11-22",
+    title: "A community recipe box, and menus you can see while they're draft",
+    summary: "Recipes now have a home beyond one meal: everyone can browse, suggest, Yum and discuss them, and a draft menu is open for early concerns instead of appearing only once it's locked.",
+    points: [
+      "Kitchen's ⋯ menu now has \"Recipe box\". \"Suggest a recipe\" is still the main button; there's no extra item in the navigation.",
+      "Anyone can suggest a recipe, add an attributed comment, and give a Yum. A Yum is just a count of support — it isn't a vote, nothing is ranked, and no list says who Yummed what. Your own recipe counts as a Yum already.",
+      "Whoever currently holds Kitchen can accept a recipe, or decline it with a reason such as a duplicate or something that can't be cooked from. Declined recipes stay visible so their author can fix and resubmit them.",
+      "Only accepted recipes can go into a meal. Choose \"Add to meal plan…\" on a recipe, or type its name into a meal on the Menu tab. The recipe is copied into that meal, so changing the box later doesn't change what you planned.",
+      "The suggested amount comes from how many people still need feeding, rounded to a half portion; you can change it, and the menu and shopping list both use the number you chose.",
+      "Draft menus are visible to everyone now. You can add a concern to any meal while the menu is being worked on; publishing locks the edits and closes those comments.",
+      "If your community has the \"How do you eat?\" question, the Kitchen now shows a tally of veggie, vegan and omni answers. It's a count for planning, not a safety check, and it never names anyone.",
+    ],
+    source: "a community recipe box, draft menus members can read, and a public diet tally",
+  },
+  {
+    date: "2026-11-22",
     title: "Days read as weekdays inside a short event",
     summary: "If you read dates as periods, a day inside an event or phase that lasts a week or less now reads as its weekday — on shifts, the kitchen, the programme and more, not just tasks.",
     points: [
