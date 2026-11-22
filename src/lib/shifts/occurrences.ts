@@ -1,12 +1,18 @@
-import { and, asc, eq, gte, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { cycle, shiftOccurrence, shiftSeries } from "@/db/schema";
+import { cycle, shiftOccurrence, shiftSeries, shiftSignup } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
-import { AppError, NotFoundError } from "../errors";
+import { AppError, ConflictError, NotFoundError } from "../errors";
 import { getEventTimeZone } from "../cycles/time-zone";
-import { instantFromZoned } from "../dates/timezone";
-import { getShiftSeries, requireShiftCoordinator } from "./series";
+import { instantFromZoned, localInputFromInstant } from "../dates/timezone";
+import {
+  getShiftSeries,
+  isForeignKeyViolation,
+  requireShiftCoordinator,
+  requireShiftRosterNotClosed,
+  requireShiftRosterNotOpen,
+} from "./series";
 
 type Member = typeof memberTable.$inferSelect;
 type ShiftSeriesRow = typeof shiftSeries.$inferSelect;
@@ -119,6 +125,92 @@ export async function getShiftOccurrence(actor: Member, occurrenceId: string) {
 
 export function effectiveCapacity(occurrence: Pick<ShiftOccurrenceRow, "capacity">, series: Pick<ShiftSeriesRow, "defaultCapacity">) {
   return occurrence.capacity ?? series.defaultCapacity;
+}
+
+// One shift's own times and capacity. Every field is optional; what's
+// left out keeps its stored value. capacity null = follow the series
+// default again. Times may move even when people are signed up; they are
+// not told automatically (the page says so and names them).
+export const updateShiftOccurrenceInput = z.object({
+  startsAt: z.string().datetime().optional(),
+  endsAt: z.string().datetime().optional(),
+  capacity: z.number().int().positive("People needed must be at least 1").nullable().optional(),
+});
+export type UpdateShiftOccurrenceInput = z.infer<typeof updateShiftOccurrenceInput>;
+
+// A datetime-local value can't tell apart the two 02:30s of the night the
+// clocks go back, so reading it back can move a shift by an hour. When the
+// manager left the field as it was shown, keep the stored instant.
+export function instantFromShiftInput(local: string, stored: Date, timeZone: string): Date {
+  return local === localInputFromInstant(stored.toISOString(), timeZone) ? stored : instantFromZoned(local, timeZone);
+}
+
+async function countSignups(occurrenceId: string) {
+  const [row] = await db
+    .select({ n: count(shiftSignup.id) })
+    .from(shiftSignup)
+    .where(eq(shiftSignup.occurrenceId, occurrenceId));
+  return row?.n ?? 0;
+}
+
+export async function updateShiftOccurrence(actor: Member, occurrenceId: string, input: UpdateShiftOccurrenceInput) {
+  const parsed = updateShiftOccurrenceInput.parse(input);
+  const { occurrence, series } = await getShiftOccurrence(actor, occurrenceId);
+  await requireShiftCoordinator(actor, series);
+  await requireShiftRosterNotClosed(series);
+
+  // An ended shift is history: its sign-ups may already be marked
+  // completed or no-show, and contribution counts read them.
+  const now = new Date();
+  if (occurrence.endsAt <= now) {
+    throw new ConflictError("This shift has ended — it can't be edited");
+  }
+
+  const startsAt = parsed.startsAt ? new Date(parsed.startsAt) : occurrence.startsAt;
+  const endsAt = parsed.endsAt ? new Date(parsed.endsAt) : occurrence.endsAt;
+  const capacity = parsed.capacity !== undefined ? parsed.capacity : occurrence.capacity;
+  if (endsAt <= startsAt) {
+    throw new AppError("The end must be after the start");
+  }
+  if (startsAt.getTime() !== occurrence.startsAt.getTime() && startsAt <= now) {
+    throw new AppError("A shift can't be moved into the past");
+  }
+  // Ending a running shift in the past would make it count as ended, and an
+  // ended shift can't be edited, so the mistake couldn't be undone.
+  if (endsAt.getTime() !== occurrence.endsAt.getTime() && endsAt <= now) {
+    throw new AppError("A shift can't be set to end in the past");
+  }
+
+  const signups = await countSignups(occurrenceId);
+  if (effectiveCapacity({ capacity }, series) < signups) {
+    throw new ConflictError(`${signups} people are already signed up — this shift needs room for at least ${signups}`);
+  }
+
+  const [updated] = await db
+    .update(shiftOccurrence)
+    .set({ startsAt, endsAt, capacity })
+    .where(eq(shiftOccurrence.id, occurrenceId))
+    .returning();
+  return updated;
+}
+
+// Same rule as deleteShiftSeries: only while the roster isn't open, and
+// never over someone's sign-up.
+export async function deleteShiftOccurrence(actor: Member, occurrenceId: string) {
+  const { series } = await getShiftOccurrence(actor, occurrenceId);
+  await requireShiftCoordinator(actor, series);
+  await requireShiftRosterNotClosed(series);
+  await requireShiftRosterNotOpen(series);
+  const taken = new ConflictError("Someone is signed up for this shift — it can't be deleted");
+  if ((await countSignups(occurrenceId)) > 0) {
+    throw taken;
+  }
+  try {
+    await db.delete(shiftOccurrence).where(eq(shiftOccurrence.id, occurrenceId));
+  } catch (err) {
+    // A sign-up that lands between the check and the delete.
+    throw isForeignKeyViolation(err) ? taken : err;
+  }
 }
 
 // The general browse surface — every future occurrence in the
