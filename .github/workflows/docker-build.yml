@@ -158,9 +158,15 @@ jobs:
   # tree a squash merge would produce). `verified` looks for exactly this. It
   # is a courtesy and never a gate: a fork's or Dependabot's token cannot write
   # statuses, and then the merge simply runs the suite again.
+  #
+  # The condition spells out `!cancelled()` and the test result rather than
+  # leaving the implicit `success()`: `test` depends on `verified`, which is
+  # always skipped on a pull request, and an implicit success() counts a
+  # skipped ancestor as a failure. Without this the job was skipped on every
+  # PR run, no status was ever written, and every merge re-ran the whole suite.
   record:
     needs: test
-    if: github.event_name == 'pull_request'
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.test.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
