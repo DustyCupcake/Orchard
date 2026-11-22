@@ -31,7 +31,8 @@ import {
   withdrawFromShiftAction,
 } from "./actions";
 import MySeriesSection from "./MySeriesSection";
-import { effectiveTimeZone, formatInstantRange } from "@/lib/dates";
+import { effectiveTimeZone, type DayView } from "@/lib/dates";
+import { getDayLabeler } from "@/lib/day-labeler";
 import SelectField from "@/components/ui/SelectField";
 
 export const dynamic = "force-dynamic";
@@ -120,6 +121,19 @@ export default async function ShiftsPage({
   const cycleZoneById = new Map(allCycles.map((c) => [c.id, effectiveTimeZone(c, communityRow)] as const));
   const shiftZone = (cycleId: string | null) =>
     (cycleId && cycleZoneById.get(cycleId)) || effectiveTimeZone(null, communityRow);
+
+  // How a shift's date reads is the viewer's own setting, resolved through
+  // the community default (docs/plans/day-labels-plan.md). Where a shift's day
+  // falls in a short phase or event it reads as that and a weekday; anything
+  // else (a standing series, a longer event, a day outside every phase) keeps
+  // the full date. A list that already says which event it is leaves the
+  // event's name out of each row (`view`); one that mixes events names it.
+  const labeler = await getDayLabeler();
+  const shiftWhen = (startsAt: Date, endsAt: Date, cycleId: string | null, view?: DayView) =>
+    labeler.shiftRange(startsAt, endsAt, shiftZone(cycleId), { cycleId }, view);
+  // For a row under its own event's heading, or on a card that names the event.
+  const shiftWhenInEvent = (startsAt: Date, endsAt: Date, cycleId: string | null) =>
+    shiftWhen(startsAt, endsAt, cycleId, { cycleId });
 
   const mySignedUpOccurrenceIds = new Set(mySignups.map((s) => s.signup.occurrenceId));
   const now = new Date();
@@ -479,7 +493,7 @@ export default async function ShiftsPage({
                         key={occurrence.id}
                         occurrence={occurrence}
                         series={series}
-                        timeZone={shiftZone(series.cycleId)}
+                        when={shiftWhenInEvent(occurrence.startsAt, occurrence.endsAt, series.cycleId)}
                         branchNameById={branchNameById}
                         capacity={effectiveCapacity(occurrence, series)}
                         count={countByOccurrenceId.get(occurrence.id) ?? 0}
@@ -507,7 +521,7 @@ export default async function ShiftsPage({
                       key={occurrence.id}
                       occurrence={occurrence}
                       series={series}
-                      timeZone={shiftZone(series.cycleId)}
+                      when={shiftWhen(occurrence.startsAt, occurrence.endsAt, series.cycleId)}
                       branchNameById={branchNameById}
                       capacity={effectiveCapacity(occurrence, series)}
                       count={countByOccurrenceId.get(occurrence.id) ?? 0}
@@ -532,7 +546,7 @@ export default async function ShiftsPage({
                 {myPastPendingSignups.map(({ signup, occurrence, series }) => (
                   <div key={signup.id} className={CARD}>
                     <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{series.title}</p>
-                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{formatInstantRange(occurrence.startsAt, occurrence.endsAt, shiftZone(series.cycleId))}</p>
+                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{shiftWhen(occurrence.startsAt, occurrence.endsAt, series.cycleId)}</p>
                     <form action={markShiftSignupCompletedAction} className="mt-2">
                       <input type="hidden" name="signupId" value={signup.id} />
                       <button type="submit" className={BUTTON_SECONDARY}>
@@ -553,6 +567,7 @@ export default async function ShiftsPage({
               placementOptions={placementOptions}
               branches={branches}
               shiftZone={shiftZone}
+              shiftWhen={shiftWhenInEvent}
               rosterOpen={(cycleId) => !cycleId || cycleById.get(cycleId)?.shiftSignupsOpenedAt != null}
               rosterClosed={(cycleId) => !!cycleId && cycleById.get(cycleId)?.closedAt != null}
             />
@@ -571,7 +586,7 @@ export default async function ShiftsPage({
 function OccurrenceCard({
   occurrence,
   series,
-  timeZone,
+  when,
   branchNameById,
   capacity,
   count,
@@ -580,7 +595,8 @@ function OccurrenceCard({
 }: {
   occurrence: { id: string; startsAt: Date; endsAt: Date };
   series: { title: string; branchId: string | null; description: string | null };
-  timeZone: string;
+  /** The shift's time, already worded for this viewer (see shiftWhen). */
+  when: string;
   branchNameById: Map<string, string>;
   capacity: number;
   count: number;
@@ -596,7 +612,7 @@ function OccurrenceCard({
           <span className="font-normal text-[var(--text-muted)]"> · {branchNameById.get(series.branchId) ?? "—"}</span>
         )}
       </p>
-      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{formatInstantRange(occurrence.startsAt, occurrence.endsAt, timeZone)}</p>
+      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{when}</p>
       {series.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{series.description}</p>}
       <p className="mt-1.5 flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
         {count}/{capacity} signed up

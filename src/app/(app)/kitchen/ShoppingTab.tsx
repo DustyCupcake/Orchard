@@ -1,7 +1,9 @@
 import Link from "next/link";
 import type { MealAttendance, MealWithDishes, PurchaseListRow, ScaledIngredient, SupplyTaskRow } from "@/lib/kitchen";
 import { CARD, LABEL, Tag } from "@/components/ui/kit";
-import { EmptyState, dayHeading, formatAmount } from "./parts";
+import { getDayLabeler } from "@/lib/day-labeler";
+import { dayHeading } from "@/lib/kitchen/day-heading";
+import { EmptyState, formatAmount } from "./parts";
 import { HeadCountWorking } from "./MealForm";
 
 function purchaseLine(row: PurchaseListRow): string {
@@ -10,7 +12,8 @@ function purchaseLine(row: PurchaseListRow): string {
   return row.unmeasured ? `${measure} ${row.name}, plus some to taste` : `${measure} ${row.name}`;
 }
 
-export default function ShoppingTab({
+export default async function ShoppingTab({
+  cycleId,
   meals,
   purchases,
   scaled,
@@ -18,6 +21,8 @@ export default function ShoppingTab({
   headCounts,
   attendance,
 }: {
+  /** The menu's event, or null for the standing menu. */
+  cycleId: string | null;
   meals: MealWithDishes[];
   purchases: Map<string, PurchaseListRow[]>;
   scaled: Map<string, ScaledIngredient[]>;
@@ -25,6 +30,7 @@ export default function ShoppingTab({
   headCounts: Map<string, number | null>;
   attendance: Map<string, MealAttendance>;
 }) {
+  const labeler = await getDayLabeler();
   return (
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-3">
@@ -46,7 +52,7 @@ export default function ShoppingTab({
               <div key={meal.id} className={CARD}>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">{meal.label}</h3>
-                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{dayHeading(meal.date)}</span>
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{dayHeading(labeler, meal.date, { cycleId, phaseId: meal.phaseId })}</span>
                   <Tag tone={headCount ? "accent" : "neutral"}>{headCount ? `${headCount} eating` : "no headcount"}</Tag>
                   {meal.headCountSource === "participation" && <Tag tone="accent2">from arrivals</Tag>}
                 </div>

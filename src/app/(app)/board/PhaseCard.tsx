@@ -1,5 +1,5 @@
 import type { listTasksWithAssignments, PhaseGroup } from "@/lib/tasks";
-import { formatDateLabel, type DateDisplayMode } from "@/lib/dates";
+import { getDayLabeler } from "@/lib/day-labeler";
 import { Tag } from "@/components/ui/kit";
 import TaskCard from "./TaskCard";
 
@@ -18,9 +18,8 @@ const SHOWN_BY_DEFAULT = 5;
 // of phases (unlike status, a fixed four), so a card-plus-show-more
 // list scales where a kanban column wouldn't. Reuses the exact same
 // TaskCard the kanban view renders; only the grouping/layout differs.
-export default function PhaseCard({
+export default async function PhaseCard({
   group,
-  dateDisplayMode = "exact",
   tierNames,
   branchNameById,
   currentMemberId,
@@ -30,7 +29,6 @@ export default function PhaseCard({
   backstopNameFor,
 }: {
   group: PhaseGroup<BoardTask>;
-  dateDisplayMode?: DateDisplayMode;
   tierNames: Map<string, string>;
   branchNameById: Map<string, string>;
   currentMemberId: string;
@@ -42,15 +40,16 @@ export default function PhaseCard({
   const shown = group.tasks.slice(0, SHOWN_BY_DEFAULT);
   const rest = group.tasks.slice(SHOWN_BY_DEFAULT);
   const cycleIds = new Set(group.tasks.map((task) => task.cycleId).filter((id): id is string => id !== null));
-  const period =
-    group.startDate && group.endDate && cycleIds.size <= 1
-      ? { name: group.name, startDate: group.startDate, endDate: group.endDate }
-      : null;
-  const startLabel = formatDateLabel(group.startDate, dateDisplayMode, period);
-  const endPeriod = period
-    ? { ...period, boundaryKind: "end" as const }
-    : null;
-  const endLabel = formatDateLabel(group.endDate, dateDisplayMode, endPeriod);
+  // The card's own start and end, read in terms of this phase (src/lib/dates/
+  // day-labeler.ts). The card's title already names the phase, so the dates
+  // read as just "Mon – Fri" inside a short phase. A card that merges
+  // same-named phases of several open events has no single event to read them
+  // against, so it keeps plain dates, as it always did.
+  const labeler = await getDayLabeler();
+  const item = cycleIds.size === 1 ? { cycleId: [...cycleIds][0], phaseId: group.phaseId } : { cycleId: null };
+  const view = { cycleId: item.cycleId, phaseId: group.phaseId };
+  const startLabel = labeler.label(group.startDate, item, view);
+  const endLabel = labeler.label(group.endDate, item, view);
 
   const renderTask = (t: BoardTask) => (
     <TaskCard
@@ -67,6 +66,7 @@ export default function PhaseCard({
       isCoordinationHolderForTask={isCoordinationHolderForTask(t)}
       coordinationName={coordinationNameFor(t)}
       backstopName={backstopNameFor(t)}
+      dayView={view}
     />
   );
 

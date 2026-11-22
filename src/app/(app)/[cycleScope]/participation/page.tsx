@@ -30,8 +30,9 @@ import {
 import { getCommunity, isAdmin, listCycleTypes } from "@/lib/settings";
 import { listOutstandingQuestions } from "@/lib/profile-questions";
 import { isModuleEnabled } from "@/lib/modules";
-import { describeBoundaryWindow, formatDateRange, formatInstant, localInputFromInstant } from "@/lib/dates";
+import { describeBoundaryWindow, formatDateRange, localInputFromInstant } from "@/lib/dates";
 import { getEventTimeZone } from "@/lib/cycles";
+import { getDayLabeler } from "@/lib/day-labeler";
 import { listTaskPacks } from "@/lib/task-packs";
 import { HIGHLIGHTABLE_MODULES } from "@/lib/nav";
 import { ClonePreviewGrid, ClonePreviewList } from "@/components/ClonePreview";
@@ -514,6 +515,10 @@ async function ParticipationForCycle({
     getCommunity(viewing),
   ]);
   const shiftsOn = isModuleEnabled(communityRow, "shifts");
+  // A shift in this roster reads against this event's own phases and dates,
+  // following the viewer's date display setting. The page is already this
+  // event's, so the label leaves its name out (see getDayLabeler).
+  const labeler = await getDayLabeler();
   // The cycle's shift roster (§5.6) — visible to any member of the
   // community, management actions only for the cycle's manager.
   const roster = shiftsOn ? await getCycleShiftRoster(viewing, cycleId) : null;
@@ -633,7 +638,8 @@ async function ParticipationForCycle({
                     <ul className="mt-2 flex flex-col gap-0.5">
                       {occurrences.map(({ occurrence, capacity, signupCount }) => (
                         <li key={occurrence.id} className="text-[length:var(--text-body)] text-[var(--text)]">
-                          {formatInstant(occurrence.startsAt, eventClock)} — {signupCount}/{capacity} signed up
+                          {labeler.shiftRange(occurrence.startsAt, occurrence.endsAt, eventClock, { cycleId }, { cycleId })}{" "}
+                          — {signupCount}/{capacity} signed up
                         </li>
                       ))}
                     </ul>

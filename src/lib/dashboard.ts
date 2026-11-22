@@ -56,6 +56,7 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
       attentionLevel: task.attentionLevel,
       nextCheckinAt: task.nextCheckinAt,
       cycleId: task.cycleId,
+      phaseId: task.phaseId,
       branchName: branch.name,
     })
     .from(taskAssignment)
@@ -111,7 +112,15 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
   // splitting into two separate lists.
   const upcomingCheckins = heldTaskRows
     .filter((t): t is typeof t & { nextCheckinAt: Date } => t.status === "waiting" && t.nextCheckinAt !== null)
-    .map((t) => ({ id: t.taskId, title: t.title, branchName: t.branchName, nextCheckinAt: t.nextCheckinAt }))
+    .map((t) => ({
+      id: t.taskId,
+      title: t.title,
+      branchName: t.branchName,
+      nextCheckinAt: t.nextCheckinAt,
+      // The task's own event and phase, so its check-in date can be read in terms of them.
+      cycleId: t.cycleId,
+      phaseId: t.phaseId,
+    }))
     .sort((a, b) => a.nextCheckinAt.getTime() - b.nextCheckinAt.getTime());
 
   const heldTaskIds = heldTaskRows.map((t) => t.taskId);
@@ -268,6 +277,7 @@ export const getPersonalFeed = cache(async function getPersonalFeed(actor: Membe
       endsAt: s.occurrence.endsAt,
       // The venue's clock, so the date a shift "ended" reads the same for everyone.
       timeZone: shiftClockFor(s.series.cycleId),
+      cycleId: s.series.cycleId,
     }));
   const conflictNeedsAction = await listConflictNeedsAction(actor);
   // Manual-tier requests this member may confirm: every one for an Admin,

@@ -277,6 +277,8 @@ describe("listOverdueCheckins", () => {
 
     // A check-in due yesterday, with a 14-day grace, is not overdue yet.
     expect((await listOverdueCheckins(alice, [], 14)).map((c) => c.title)).toEqual(["Long overdue"]);
+    // Each row carries its task's own event and phase (none for these) so the date can be read in terms of them.
+    expect(await listOverdueCheckins(alice, [], 14)).toMatchObject([{ cycleId: null, phaseId: null }]);
     // With no grace at all, it is.
     expect((await listOverdueCheckins(alice, [], 0)).map((c) => c.title).sort()).toEqual([
       "Just due",

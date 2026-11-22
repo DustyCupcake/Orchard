@@ -14,7 +14,9 @@ import {
   updateDishIngredientAction,
   updateMealAction,
 } from "./actions";
-import { EmptyState, FlagPicker, FlagTags, TextField, dayHeading, formatAmount, ingredientText } from "./parts";
+import { getDayLabeler } from "@/lib/day-labeler";
+import { dayHeading } from "@/lib/kitchen/day-heading";
+import { EmptyState, FlagPicker, FlagTags, TextField, formatAmount, ingredientText } from "./parts";
 import { HeadCountWorking, MealForm } from "./MealForm";
 
 type Dish = MealWithDishes["dishes"][number];
@@ -274,7 +276,7 @@ function MealCard({
   );
 }
 
-export default function MenuTab({
+export default async function MenuTab({
   plan,
   meals,
   isOwner,
@@ -292,6 +294,7 @@ export default function MenuTab({
   times: Record<MealSlot, string>;
 }) {
   const editable = isOwner && Boolean(plan) && !plan!.publishedAt;
+  const labeler = await getDayLabeler();
 
   if (!plan) {
     return (
@@ -314,18 +317,24 @@ export default function MenuTab({
 
   // Meals arrive in date order; grouping by day keeps a lunch and a dinner
   // together under one heading instead of repeating the date on each card.
-  const days: { date: string; meals: MealWithDishes[] }[] = [];
+  const days: { date: string; meals: MealWithDishes[]; phaseId: string | null }[] = [];
   for (const meal of meals) {
     const last = days[days.length - 1];
     if (last && last.date === meal.date) last.meals.push(meal);
-    else days.push({ date: meal.date, meals: [meal] });
+    else days.push({ date: meal.date, meals: [meal], phaseId: null });
+  }
+  // A day belongs to a phase of its own only when every meal on it says the
+  // same one; otherwise it is left to the day's own dates.
+  for (const day of days) {
+    const phaseIds = new Set(day.meals.map((m) => m.phaseId));
+    day.phaseId = phaseIds.size === 1 ? [...phaseIds][0] : null;
   }
 
   return (
     <div className="flex flex-col gap-6">
       {days.map((day) => (
         <section key={day.date} className="flex flex-col gap-3">
-          <h2 className="text-[length:var(--text-heading)] font-semibold text-[var(--text-muted)]">{dayHeading(day.date)}</h2>
+          <h2 className="text-[length:var(--text-heading)] font-semibold text-[var(--text-muted)]">{dayHeading(labeler, day.date, { cycleId: plan.cycleId, phaseId: day.phaseId })}</h2>
           {day.meals.map((meal) => (
             <MealCard
               key={meal.id}

@@ -1,12 +1,11 @@
 import type { eventProposal as eventProposalTable } from "@/db/schema";
 import {
   candidatePlacements,
-  formatEventTime,
   windowMinutes,
   type EventSlot,
   type ProposalInterest,
 } from "@/lib/event-scheduling";
-import { localInputFromInstant, type DateDisplayMode, type PeriodDateContext } from "@/lib/dates";
+import { localInputFromInstant } from "@/lib/dates";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, Tag } from "@/components/ui/kit";
 import { STATUS_LABEL, STATUS_TONE } from "./status";
 import { InterestSummary } from "./InterestControls";
@@ -43,9 +42,8 @@ export default function EventReviewSection({
   proposals,
   memberNameById,
   cycleId,
-  dateDisplayMode,
   timeZone,
-  period,
+  timeLabel,
   interestById,
 }: {
   proposals: EventProposalRow[];
@@ -56,16 +54,15 @@ export default function EventReviewSection({
   // proposal row of its own to derive a cycle from, unlike confirm/
   // decline/ping, which resolve ownership from the proposal they act on.
   cycleId: string | null;
-  // The same two settings page.tsx reads, passed down so the review list
-  // and the proposer's own list can't disagree about what a slot reads
-  // as — see src/lib/dates/timezone.ts and event-scheduling/slots.ts.
-  dateDisplayMode: DateDisplayMode;
+  // The venue's clock (the editor's datetime-local fields are typed on it) and
+  // the page's own slot labeller, passed down so the review list and the
+  // proposer's own list can't disagree about what a slot reads as — see
+  // src/lib/dates/timezone.ts and event-scheduling/slots.ts.
   timeZone: string;
-  period: PeriodDateContext | null;
+  timeLabel: (s: EventSlot) => { visible: string; exact: string };
   /** Interest per proposal; the owner gets names as well as counts. */
   interestById: Map<string, ProposalInterest>;
 }) {
-  const timeLabel = (s: EventSlot) => formatEventTime(s, dateDisplayMode, timeZone, period);
   const unresolved = proposals.filter(
     (p) => !p.publishedAt && (p.status === "proposed" || p.status === "conflict"),
   );

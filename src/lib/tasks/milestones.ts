@@ -4,7 +4,7 @@ import { db, type Tx } from "@/db";
 import { cycle, phase, task, taskAssignment, taskMilestone } from "@/db/schema";
 import type { member as memberTable, task as taskTable, taskAssignment as taskAssignmentTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
-import { normalizeBoundary, recomputeBoundary, toStoredBoundary, type RelativeBasis, type StoredBoundary } from "../dates";
+import { normalizeBoundary, recomputeBoundary, toStoredBoundary, type DayItem, type RelativeBasis, type StoredBoundary } from "../dates";
 import { getTask } from "./crud";
 
 type Member = typeof memberTable.$inferSelect;
@@ -197,6 +197,24 @@ export async function listTaskMilestones(actor: Member, taskId: string) {
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
   return resolved;
+}
+
+/**
+ * Where a milestone's date belongs, for writing it as a day (see
+ * src/lib/dates/day-labeler.ts): the task's event and a phase. A milestone
+ * that points at a phase uses it (null `phaseId` meaning the task's own, as
+ * the column says); any other milestone uses the task's own phase, if it has
+ * one. A task with no event has no scope, so its milestones read as plain
+ * dates.
+ */
+export function milestoneDayItem(
+  m: { parentType: ParentType | null; phaseId: string | null },
+  t: { cycleId: string | null; phaseId: string | null },
+): DayItem {
+  return {
+    cycleId: t.cycleId,
+    phaseId: m.parentType === "phase" ? (m.phaseId ?? t.phaseId) : t.phaseId,
+  };
 }
 
 export async function listMyTaskMilestones(actor: Member) {

@@ -30,6 +30,7 @@ import {
   listSubtasks,
   listTaskDependencies,
   listTaskMilestones,
+  milestoneDayItem,
   tierNameLookup,
   describeRequirement,
   isSelfAssignWorthAskingAbout,
@@ -39,7 +40,7 @@ import { SUGGESTION_REASON_LABEL, joinReasons, listSuggestionsForTasks } from "@
 import { getCommunity, listBranches } from "@/lib/settings";
 import { getCycle, resolveCrossCycleContext, scopeLabel } from "@/lib/cycles";
 import { isModuleEnabled } from "@/lib/modules";
-import { effectiveDateDisplayMode, formatDateLabel } from "@/lib/dates";
+import { getDayLabeler } from "@/lib/day-labeler";
 import { isShiftManagerForScope } from "@/lib/shifts";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import CopyLinkButton from "@/components/CopyLinkButton";
@@ -214,19 +215,17 @@ export default async function TaskDetailPage({
     listNominationsForTask(viewing, id),
     listTaskDependencies(viewing, id),
   ]);
-  const cyclePhases = taskCycle?.phases ?? [];
-  const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
-  const phaseById = new Map(cyclePhases.map((p) => [p.id, p]));
-  const milestoneDateLabel = (m: (typeof milestones)[number]) => {
-    const parentPhase = m.parentType === "phase" ? phaseById.get(m.phaseId ?? taskRow.phaseId ?? "") : undefined;
-    const period =
-      m.dateType === "relative" && parentPhase?.startDate && parentPhase.endDate
-        ? { name: parentPhase.name, startDate: parentPhase.startDate, endDate: parentPhase.endDate }
-        : m.dateType === "relative" && taskCycle?.startDate && taskCycle.endDate
-          ? { name: taskCycle.name, startDate: taskCycle.startDate, endDate: taskCycle.endDate, cycleName: taskCycle.name }
-          : null;
-    return formatDateLabel(m.resolvedDate, dateDisplayMode, period);
-  };
+  // A milestone's day is written in terms of the task's event and phase
+  // (src/lib/dates/day-labeler.ts), or the phase the milestone points at. The
+  // page already shows the task's event in its chip, so the label leaves the
+  // event's name out; a task with no event has plain dates.
+  const labeler = await getDayLabeler();
+  const milestoneDateLabel = (m: (typeof milestones)[number]) =>
+    labeler.label(m.resolvedDate, milestoneDayItem(m, taskRow), { cycleId: taskRow.cycleId });
+  // The task's own check-in date reads the same way: in terms of the task's
+  // event and phase, on the viewer's own day.
+  const checkInLabel = (at: Date) =>
+    labeler.instantLabel(at, clock.timeZone, { cycleId: taskRow.cycleId, phaseId: taskRow.phaseId }, { cycleId: taskRow.cycleId }).visible;
   const crossCycle = await resolveCrossCycleContext(viewing, taskCycle, scopeParam ?? null);
   const taskPath = `/tasks/${taskRow.id}`;
 
@@ -871,7 +870,7 @@ export default async function TaskDetailPage({
       {holdsTask && taskRow.status === "waiting" && (
         <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-3">
           <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
-            Check-in was {taskRow.nextCheckinAt && taskRow.nextCheckinAt < new Date() ? "due " + clock.date(taskRow.nextCheckinAt) : "set for " + (taskRow.nextCheckinAt ? clock.date(taskRow.nextCheckinAt) : "—")}
+            Check-in was {taskRow.nextCheckinAt && taskRow.nextCheckinAt < new Date() ? "due " + checkInLabel(taskRow.nextCheckinAt) : "set for " + (taskRow.nextCheckinAt ? checkInLabel(taskRow.nextCheckinAt) : "—")}
             {taskRow.waitingNote && <> — <em>{taskRow.waitingNote}</em></>}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1715,7 +1714,7 @@ export default async function TaskDetailPage({
           )}
           {taskRow.status === "waiting" && (
             <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
-              Next check-in: {taskRow.nextCheckinAt ? clock.date(taskRow.nextCheckinAt) : "—"}
+              Next check-in: {taskRow.nextCheckinAt ? checkInLabel(taskRow.nextCheckinAt) : "—"}
               {taskRow.waitingNote && <span className="text-[var(--text-muted)]"> — {taskRow.waitingNote}</span>}
             </p>
           )}

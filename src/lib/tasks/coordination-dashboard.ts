@@ -231,6 +231,9 @@ export interface OverdueCheckin {
   holderName: string;
   nextCheckinAt: Date | null;
   waitingNote: string | null;
+  /** The task's own event and phase, so its check-in date can be read in terms of them. */
+  cycleId: string | null;
+  phaseId: string | null;
 }
 
 /**
@@ -258,6 +261,8 @@ export async function listOverdueCheckins(
       holderName: member.name,
       nextCheckinAt: task.nextCheckinAt,
       waitingNote: task.waitingNote,
+      cycleId: task.cycleId,
+      phaseId: task.phaseId,
     })
     .from(task)
     .innerJoin(branch, eq(task.branchId, branch.id))

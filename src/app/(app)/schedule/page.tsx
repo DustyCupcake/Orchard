@@ -16,7 +16,9 @@ import {
   listPublishedSchedule,
 } from "@/lib/event-scheduling";
 import type { EventSlot } from "@/lib/event-scheduling";
-import { effectiveDateDisplayMode, effectiveTimeZone, type PeriodDateContext } from "@/lib/dates";
+import { effectiveTimeZone, type DayColumnHeading } from "@/lib/dates";
+import { gridDays } from "@/lib/event-scheduling/availability";
+import { getDayLabeler } from "@/lib/day-labeler";
 import { resolveDefaultScopeSegment, resolveSingleCycleScope } from "@/lib/cycles";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import Link from "next/link";
@@ -100,18 +102,19 @@ export default async function SchedulePage({
 
   // Every slot on this page reads in the scoped event's own wall-clock,
   // falling back to the Community's — see src/lib/dates/timezone.ts.
-  // What a date *looks* like is still per-member: dateDisplayMode is the
-  // viewer's own setting, resolved through the Community default, so one
+  // What a date *looks* like is still per-member: the viewer's own setting,
+  // resolved through the Community default (getDayLabeler, below), so one
   // person reading "the event, on a Thursday" is a choice they made, not
   // one imposed on them.
   const scopedCycle = resolution.kind === "resolved" ? resolution.cycle : null;
   const timeZone = effectiveTimeZone(scopedCycle, communityRow);
-  const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
-  const period: PeriodDateContext | null =
-    scopedCycle?.startDate && scopedCycle.endDate
-      ? { name: scopedCycle.name, startDate: scopedCycle.startDate, endDate: scopedCycle.endDate }
-      : null;
-  const timeLabel = (s: EventSlot) => formatEventTime(s, dateDisplayMode, timeZone, period);
+  // A slot, and a grid column, is written in terms of the scoped event and
+  // its phases (src/lib/dates/day-labeler.ts). The page is already this
+  // event's, so the label leaves the event's name out: "Thu, 12:00–13:30",
+  // or "Set-up · Tue, 10:00–12:00" for a slot in one of its phases.
+  const labeler = await getDayLabeler();
+  const dayItem = { cycleId };
+  const timeLabel = (s: EventSlot) => formatEventTime(s, timeZone, labeler, dayItem, dayItem);
 
   // The grid's columns are days, so it needs a date range. An event's own
   // dates are the honest source; without them there is nothing to show,
@@ -119,6 +122,12 @@ export default async function SchedulePage({
   const gridRange = scopedCycle?.startDate && scopedCycle.endDate
     ? { start: scopedCycle.startDate, end: scopedCycle.endDate }
     : null;
+  // Each grid column's heading, worked out here because the painting grid is
+  // a client component and can't take the labeler itself.
+  const dayHeadings: Record<string, DayColumnHeading> = {};
+  if (gridRange) {
+    for (const day of gridDays(gridRange.start, gridRange.end)) dayHeadings[day] = labeler.columnHeading(day, dayItem);
+  }
 
   const [myProposals, publishedSchedule, reviewProposals, othersProposals] = await Promise.all([
     moduleOn ? listMyEventProposals(viewing, cycleId) : Promise.resolve([]),
@@ -255,6 +264,7 @@ export default async function SchedulePage({
                   <AvailabilityGrid
                     rangeStart={gridRange.start}
                     rangeEnd={gridRange.end}
+                    dayHeadings={dayHeadings}
                     timeZone={timeZone}
                     initialWindows={[]}
                     initialDurationMinutes={0}
@@ -399,6 +409,7 @@ export default async function SchedulePage({
                             <AvailabilityGrid
                               rangeStart={gridRange.start}
                               rangeEnd={gridRange.end}
+                              dayHeadings={dayHeadings}
                               timeZone={timeZone}
                               initialWindows={p.preferredSlots as EventSlot[]}
                               initialDurationMinutes={p.durationMinutes}
@@ -430,6 +441,7 @@ export default async function SchedulePage({
                   memberNameById={memberNameById}
                   rangeStart={gridRange.start}
                   rangeEnd={gridRange.end}
+                  dayHeadings={dayHeadings}
                   timeZone={timeZone}
                   timeLabel={timeLabel}
                   week={Math.max(0, (Number.parseInt(week ?? "1", 10) || 1) - 1)}
@@ -443,9 +455,8 @@ export default async function SchedulePage({
               proposals={reviewProposals}
               memberNameById={memberNameById}
               cycleId={cycleId}
-              dateDisplayMode={dateDisplayMode}
               timeZone={timeZone}
-              period={period}
+              timeLabel={timeLabel}
               interestById={interestById}
             />
           )}

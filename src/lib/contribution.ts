@@ -54,6 +54,8 @@ type ContributionShiftCompletionEntry = {
   occurrenceStartsAt: Date;
   /** The venue clock the shift ran on, so its date reads the same for everyone. */
   timeZone: string;
+  /** The event the shift belonged to, so its date can be read in terms of it; null for a standing series. */
+  cycleId: string | null;
 };
 type ContributionShiftBucket = { count: number; completions: ContributionShiftCompletionEntry[] };
 export type ContributionCategory = {
@@ -218,6 +220,7 @@ export async function getContributionBreakdown(memberId: string, communityId: st
         seriesTitle: r.seriesTitle,
         occurrenceStartsAt: r.occurrenceStartsAt,
         timeZone: clockFor(r.cycleId),
+        cycleId: r.cycleId,
       });
     }
   }

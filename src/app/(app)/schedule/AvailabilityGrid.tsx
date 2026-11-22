@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { BUTTON_SECONDARY, LABEL } from "@/components/ui/kit";
-import { formatTimeInZone } from "@/lib/dates";
+import { formatTimeInZone, type DayColumnHeading } from "@/lib/dates";
 // Deep import, deliberately not the @/lib/event-scheduling barrel. The
 // barrel re-exports crud.ts, which reaches @/db and the postgres driver,
 // whose node built-ins (fs, net, tls) don't resolve in a client bundle —
@@ -14,7 +14,6 @@ import {
   GRID_ROWS_PER_DAY,
   expandWindowsToCells,
   gridCellInstant,
-  gridDayHeading,
   gridDayLabel,
   gridDays,
   gridRowHourLabel,
@@ -63,6 +62,7 @@ const CELL_MS = CELL_MINUTES * 60_000;
 export default function AvailabilityGrid({
   rangeStart,
   rangeEnd,
+  dayHeadings,
   timeZone,
   initialWindows,
   initialDurationMinutes,
@@ -70,6 +70,8 @@ export default function AvailabilityGrid({
   /** YYYY-MM-DD, inclusive — the days shown as columns. */
   rangeStart: string;
   rangeEnd: string;
+  /** Each day's column heading, worked out by the page from the viewer's date setting. */
+  dayHeadings: Record<string, DayColumnHeading>;
   timeZone: string;
   initialWindows: EventSlot[];
   initialDurationMinutes: number;
@@ -181,8 +183,8 @@ export default function AvailabilityGrid({
             // is what keeps seven of them readable.
             <div key={day} className="flex min-w-[4.25rem] flex-1 flex-col">
               <div className="flex h-10 flex-col items-center justify-center text-[length:var(--text-meta)] leading-tight text-[var(--text-muted)]">
-                <span>{gridDayHeading(day).weekday}</span>
-                <span>{gridDayHeading(day).date}</span>
+                <span>{dayHeadings[day].weekday}</span>
+                {dayHeadings[day].date !== null && <span>{dayHeadings[day].date}</span>}
               </div>
               {Array.from({ length: ROW_COUNT }).map((_, rowIdx) => {
                 const iso = gridCellInstant(day, rowIdx, timeZone);

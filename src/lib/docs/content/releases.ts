@@ -29,6 +29,19 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-11-22",
+    title: "Days read as weekdays inside a short event",
+    summary: "If you read dates as periods, a day inside an event or phase that lasts a week or less now reads as its weekday — on shifts, the kitchen, the programme and more, not just tasks.",
+    points: [
+      "Shifts, the calendar, the kitchen's menu and shopping days, the programme, the dashboard and the board's check-in dates all follow your \"Date display\" setting now. Before, only some of them did, and shifts never did.",
+      "A shift or programme slot inside a short event reads \"Fri, 14:00–15:30\"; where the page isn't already about that event it reads \"Peach Please · Fri\", and \"Peach Please · Set-up · Tue\" if it falls in a phase.",
+      "Kitchen days and programme columns show just the weekday. Anything outside a short event or phase, or with no event at all, keeps its full date, and so does everything if you choose Exact.",
+      "A task that belongs to a phase reads its dates against that phase, even if another phase overlaps it.",
+      "The community setting's wording now says what Period does. Nothing about the dates themselves has changed, only how they read.",
+    ],
+    source: "shifts read as a weekday inside a short event, following the date display setting",
+  },
+  {
     date: "2026-11-21",
     title: "Shifts can be edited",
     summary: "If you manage shifts, you can now fix a series or a single shift instead of archiving it and starting again.",

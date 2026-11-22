@@ -163,6 +163,8 @@ describe("what is due", () => {
 
     await db.update(taskMilestone).set({ absoluteDate: today() }).where(eq(taskMilestone.id, s.hello.id));
     expect(await listMyCheckInsDue(s.bob)).toMatchObject([{ label: "Say hello", newcomerName: "Dana", overdue: false }]);
+    // Carries the task's own event and phase (none here) so the date can be read in terms of them.
+    expect(await listMyCheckInsDue(s.bob)).toMatchObject([{ cycleId: null, phaseId: null }]);
 
     await db.update(taskMilestone).set({ absoluteDate: addDays(today(), -2) }).where(eq(taskMilestone.id, s.hello.id));
     expect(await listMyCheckInsDue(s.bob)).toMatchObject([{ label: "Say hello", overdue: true }]);

@@ -13,13 +13,13 @@ import {
 } from "@/db/schema";
 import { claimTask, claimOrRequestToJoin, nominateForTask, parkTask, resolveTaskNominationDeadlines } from "@/lib/tasks";
 import { createTier, updateCommunity } from "@/lib/settings";
-import { closeCycle, createCycle } from "@/lib/cycles";
+import { closeCycle, createCycle, getCycle } from "@/lib/cycles";
 import { declareParticipation } from "@/lib/participation";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
 import { approveBudgetProposal, getBudgetCycleForCycle, submitBudgetProposal } from "@/lib/budget";
 import { setPermissionGrant, type PermissionModuleKey } from "@/lib/permissions";
 import { createEventProposal } from "@/lib/event-scheduling";
-import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
+import { createShiftSeries, generateShiftOccurrences, openCycleShiftSignups, signUpForShift } from "@/lib/shifts";
 import { fileConflictReport } from "@/lib/conflict";
 import { actorFor, createFixtures, grantPermission, grantShiftManagementTo, resetDatabase } from "./helpers";
 
@@ -147,6 +147,31 @@ describe("getPersonalFeed", () => {
 
     const feed = await getPersonalFeed(alice);
     expect(feed.upcomingCheckins.map((c) => c.title)).toEqual(["Sooner check-in", "Later check-in"]);
+  });
+
+  it("carries a check-in task's own event and phase, so its date can be read in terms of them", async () => {
+    const { alice, branch, community: testCommunity } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true, phasesEnabled: true }).where(eq(community.id, testCommunity.id));
+    const event = await createCycle(alice, {
+      source: "blank",
+      name: "Season",
+      startDate: "2027-06-01",
+      endDate: "2027-06-04",
+      phases: [{ name: "Build", order: 0, startDate: "2027-06-01", endDate: "2027-06-02" }],
+    });
+    const [build] = (await getCycle(alice, event.id)).phases;
+    const inPhase = await insertTask(alice.communityId, branch.id, alice.id, { title: "In a phase", cycleId: event.id, phaseId: build.id });
+    const standing = await insertTask(alice.communityId, branch.id, alice.id, { title: "Standing" });
+    await claimTask(alice, inPhase.id);
+    await claimTask(alice, standing.id);
+    await parkTask(alice, inPhase.id, { nextCheckinAt: new Date(Date.now() + 86400000) });
+    await parkTask(alice, standing.id, { nextCheckinAt: new Date(Date.now() + 2 * 86400000) });
+
+    const feed = await getPersonalFeed(alice);
+    expect(feed.upcomingCheckins).toMatchObject([
+      { title: "In a phase", cycleId: event.id, phaseId: build.id },
+      { title: "Standing", cycleId: null, phaseId: null },
+    ]);
   });
 
   it("lists every not-Done assignment as a held task, flagged or not", async () => {
@@ -545,7 +570,7 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
 
     const coordinatorFeed = await getPersonalFeed(alice);
     expect(coordinatorFeed.shiftCoordinatorNeedsAction.personal).toEqual([
-      { occurrenceId: occurrence.id, seriesTitle: "Dish duty", startsAt: expect.any(Date), timeZone: "UTC", unresolvedCount: 1 },
+      { occurrenceId: occurrence.id, seriesTitle: "Dish duty", startsAt: expect.any(Date), timeZone: "UTC", cycleId: null, unresolvedCount: 1 },
     ]);
   });
 
@@ -567,8 +592,30 @@ describe("getPersonalFeed: Budget/Event scheduling/Shifts/Conflict management ne
     const bobFeed = await getPersonalFeed(bob);
     expect(bobFeed.shiftCoordinatorNeedsAction.personal).toEqual([]);
     expect(bobFeed.myShiftsNeedingCompletion).toEqual([
-      { signupId: expect.any(String), seriesTitle: "Dish duty", endsAt: expect.any(Date), timeZone: "UTC" },
+      { signupId: expect.any(String), seriesTitle: "Dish duty", endsAt: expect.any(Date), timeZone: "UTC", cycleId: null },
     ]);
+  });
+
+  it("Shifts: a feed row carries the event its series belongs to, so its date can be read in terms of it", async () => {
+    const { alice, bob, branch: testBranch, community: testCommunity } = await createFixtures();
+    await db.update(community).set({ cyclesEnabled: true }).where(eq(community.id, testCommunity.id));
+    await updateCommunity(alice, { modulesEnabled: ["shifts"] });
+    const event = await createCycle(alice, { source: "blank", name: "Season", startDate: "2027-06-01", endDate: "2027-06-04" });
+    await grantShiftManagementTo(alice, testBranch.id, event.id);
+    const series = await createShiftSeries(alice, { title: "Dish duty", defaultCapacity: 2, cycleId: event.id });
+    const [occurrence] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: new Date(Date.now() + 3600_000).toISOString(), endsAt: new Date(Date.now() + 7200_000).toISOString() }],
+    });
+    await openCycleShiftSignups(alice, event.id);
+    await signUpForShift(bob, occurrence.id);
+    await db
+      .update(shiftOccurrence)
+      .set({ startsAt: new Date(Date.now() - 7200_000), endsAt: new Date(Date.now() - 3600_000) })
+      .where(eq(shiftOccurrence.id, occurrence.id));
+
+    expect((await getPersonalFeed(alice)).shiftCoordinatorNeedsAction.personal).toMatchObject([{ cycleId: event.id }]);
+    expect((await getPersonalFeed(bob)).myShiftsNeedingCompletion).toMatchObject([{ cycleId: event.id }]);
   });
 
   it("Conflict management: a team member sees nothing for a report still inside the acknowledgment window", async () => {

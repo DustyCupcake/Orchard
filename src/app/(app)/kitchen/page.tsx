@@ -347,6 +347,7 @@ export default async function KitchenPage({
             {activeTab === "dietary" && dietary && <DietaryTab overview={dietary} meals={meals} panels={panels} />}
             {activeTab === "shopping" && (
               <ShoppingTab
+                cycleId={visiblePlan?.cycleId ?? null}
                 meals={meals}
                 purchases={purchases}
                 scaled={scaled}

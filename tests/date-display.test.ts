@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   effectiveDateDisplayMode,
-  formatDateLabel,
   formatExactDate,
   formatWeekday,
   isShortPeriod,
@@ -13,40 +12,12 @@ describe("date display formatter", () => {
     expect(formatWeekday("2027-03-01")).toBe("Mon");
   });
 
-  it("uses a period name and weekday only for a short, in-range period", () => {
-    const label = formatDateLabel("2027-03-02", "period", {
-      name: "Build",
-      startDate: "2027-03-01",
-      endDate: "2027-03-07",
-    });
-    expect(label.visible).toBe("Build · Tue");
-    expect(label.exact).toBe("Mar 2, 2027");
-    expect(label.canonical).toBe("2027-03-02");
-    expect(label.periodAvailable).toBe(true);
-  });
-
-  it("falls back to the exact date outside the period or when context is absent", () => {
-    expect(
-      formatDateLabel("2027-03-08", "period", {
-        name: "Build",
-        startDate: "2027-03-01",
-        endDate: "2027-03-07",
-      }).visible,
-    ).toBe("Mar 8, 2027");
-    expect(formatDateLabel("2027-03-02", "period").visible).toBe("Mar 2, 2027");
-    expect(formatDateLabel(null, "period").visible).toBe("Unresolved");
-  });
-
-  it("does not abbreviate long periods", () => {
+  // How a day is written in a period (and when it isn't) is pinned in
+  // tests/day-labels.test.ts; this is only the seven-day line itself.
+  it("counts a period as short up to seven days and no further", () => {
     expect(isShortPeriod("2027-03-01", "2027-03-07")).toBe(true);
     expect(isShortPeriod("2027-03-01", "2027-03-08")).toBe(false);
-    expect(
-      formatDateLabel("2027-03-02", "period", {
-        name: "Long phase",
-        startDate: "2027-03-01",
-        endDate: "2027-03-08",
-      }).visible,
-    ).toBe("Mar 2, 2027");
+    expect(isShortPeriod("2027-03-08", "2027-03-01")).toBe(false);
   });
 });
 

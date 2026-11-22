@@ -1,8 +1,8 @@
 import type { member as memberTable } from "@/db/schema";
-import { effectiveTimeZone, formatTimeInZone, localDateInZone, sameTimeZone, type PeriodDateContext } from "../dates";
+import { effectiveTimeZone, formatTimeInZone, localDateInZone, sameTimeZone, type DayItem } from "../dates";
 import { getCurrentCycle, listOnceEverAnswers } from "../profile-questions";
 import { getCycle, getEventClocks } from "../cycles";
-import { listMyTaskMilestones } from "../tasks";
+import { listMyTaskMilestones, milestoneDayItem } from "../tasks";
 import { listMyCalendarEvents } from "../calendar-events";
 import { getNextCutoffAt } from "../input-rounds";
 import { listAssemblies } from "../assemblies";
@@ -35,8 +35,12 @@ export interface CalendarEntry {
   kind: CalendarEntryKind;
   label: string;
   href: string;
-  /** Optional display-only context; never used for sorting or identity. */
-  period?: PeriodDateContext | null;
+  /**
+   * Which event and phase the entry belongs to, so the page can write its day
+   * in terms of them (src/lib/dates/day-labeler.ts). Display-only; never used
+   * for sorting or identity. Absent, or with no event, it reads as a plain date.
+   */
+  scope?: DayItem;
   /** Set when the entry sits on the venue's day and the venue is on another clock than the viewer — "09:00 Asia/Tokyo, venue time". */
   note?: string;
 }
@@ -99,36 +103,15 @@ export async function getCalendarView(actor: Member) {
       : { note: `${formatTimeInZone(typeof startsAt === "string" ? startsAt : startsAt.toISOString(), zone)} ${zone}, venue time` };
 
   const currentCycle = await getCurrentCycle(actor.communityId);
-  const currentCyclePeriod: PeriodDateContext | null =
-    currentCycle?.startDate && currentCycle.endDate
-      ? { name: currentCycle.name, startDate: currentCycle.startDate, endDate: currentCycle.endDate, cycleName: currentCycle.name }
-      : null;
-  const phasePeriods = new Map<string, PeriodDateContext>();
   if (currentCycle) {
     const withPhases = await getCycle(actor, currentCycle.id);
     for (const p of withPhases.phases) {
-      const period =
-        p.startDate && p.endDate
-          ? { name: p.name, startDate: p.startDate, endDate: p.endDate }
-          : null;
-      if (period) phasePeriods.set(p.id, period);
+      const scope = { cycleId: currentCycle.id, phaseId: p.id };
       if (p.startDate) {
-        entries.push({
-          date: p.startDate,
-          kind: "phase_start",
-          label: `${p.name} starts`,
-          href: "/participation",
-          ...(period ? { period } : {}),
-        });
+        entries.push({ date: p.startDate, kind: "phase_start", label: `${p.name} starts`, href: "/participation", scope });
       }
       if (p.endDate) {
-        entries.push({
-          date: p.endDate,
-          kind: "phase_end",
-          label: `${p.name} ends`,
-          href: "/participation",
-          ...(period ? { period } : {}),
-        });
+        entries.push({ date: p.endDate, kind: "phase_end", label: `${p.name} ends`, href: "/participation", scope });
       }
     }
   }
@@ -136,14 +119,12 @@ export async function getCalendarView(actor: Member) {
   const myMilestones = await listMyTaskMilestones(actor);
   for (const m of myMilestones) {
     if (m.resolvedDate) {
-      const parentPhase = m.parentType === "phase" ? phasePeriods.get(m.phaseId ?? m.taskPhaseId ?? "") : undefined;
-      const period = parentPhase ?? (m.parentType === "cycle" && m.taskCycleId === currentCycle?.id ? currentCyclePeriod : null);
       entries.push({
         date: m.resolvedDate,
         kind: "milestone",
         label: `${m.label} — ${m.taskTitle}`,
         href: `/tasks/${m.taskId}`,
-        ...(period ? { period } : {}),
+        scope: milestoneDayItem(m, { cycleId: m.taskCycleId, phaseId: m.taskPhaseId }),
       });
     }
   }
@@ -156,7 +137,7 @@ export async function getCalendarView(actor: Member) {
         kind: "calendar_event",
         label: e.title,
         href: "/calendar",
-        ...(e.cycleId === currentCycle?.id && currentCyclePeriod ? { period: currentCyclePeriod } : {}),
+        scope: { cycleId: e.cycleId },
       });
     }
   }
@@ -192,6 +173,7 @@ export async function getCalendarView(actor: Member) {
         kind: "event_confirmed",
         label: p.title,
         href: "/schedule",
+        scope: { cycleId: p.cycleId },
         ...venueNote(slot.startsAt, venueZone(p.cycleId)),
       });
     }
@@ -211,6 +193,7 @@ export async function getCalendarView(actor: Member) {
           kind: "shift_occurrence",
           label: `${s.series.title} shift`,
           href: "/shifts",
+          scope: { cycleId: s.series.cycleId },
           ...venueNote(s.occurrence.startsAt, venueZone(s.series.cycleId)),
         });
       }

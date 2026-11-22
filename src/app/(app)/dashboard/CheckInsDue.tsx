@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { member as memberTable } from "@/db/schema";
 import { listMyCheckInsDue } from "@/lib/accompaniment";
-import { formatExactDate } from "@/lib/dates";
+import { getDayLabeler } from "@/lib/day-labeler";
 import { BUTTON_SECONDARY, Tag } from "@/components/ui/kit";
 import { completeCheckInAction } from "./actions";
 
@@ -14,6 +14,7 @@ type Member = typeof memberTable.$inferSelect;
 export default async function CheckInsDue({ viewing }: { viewing: Member }) {
   const due = await listMyCheckInsDue(viewing);
   if (due.length === 0) return null;
+  const labeler = await getDayLabeler();
   return (
     <section className="mt-8 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-sunken)] p-5">
       <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">Time to check in</h2>
@@ -23,7 +24,7 @@ export default async function CheckInsDue({ viewing }: { viewing: Member }) {
             <p className="text-[length:var(--text-body)] text-[var(--text)]">
               <strong>{c.newcomerName}</strong>: {c.label}{" "}
               <span className="text-[var(--text-muted)]">
-                ({c.overdue ? `was due ${formatExactDate(c.date)}` : "due today"})
+                ({c.overdue ? `was due ${labeler.label(c.date, { cycleId: c.cycleId, phaseId: c.phaseId }).visible}` : "due today"})
               </span>{" "}
               {c.overdue && <Tag tone="warning">overdue</Tag>}
             </p>

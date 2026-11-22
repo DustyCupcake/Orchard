@@ -5,7 +5,6 @@ import {
   commonPlacementWindow,
   GRID_ROWS_PER_DAY,
   gridCellInstant,
-  gridDayHeading,
   gridDayLabel,
   gridDays,
   gridRowHourLabel,
@@ -14,6 +13,7 @@ import {
 } from "@/lib/event-scheduling";
 import Link from "next/link";
 import { BUTTON_SECONDARY, CARD, Tag } from "@/components/ui/kit";
+import type { DayColumnHeading } from "@/lib/dates";
 
 type EventProposalRow = typeof eventProposalTable.$inferSelect;
 
@@ -46,6 +46,7 @@ export default function OwnerAvailabilityGrid({
   memberNameById,
   rangeStart,
   rangeEnd,
+  dayHeadings,
   timeZone,
   timeLabel,
   week: requestedWeek,
@@ -54,6 +55,8 @@ export default function OwnerAvailabilityGrid({
   memberNameById: Map<string, string>;
   rangeStart: string;
   rangeEnd: string;
+  /** Each day's column heading, worked out by the page from the viewer's date setting. */
+  dayHeadings: Record<string, DayColumnHeading>;
   timeZone: string;
   timeLabel: (s: EventSlot) => { visible: string; exact: string };
   /** Zero-based page of the grid, from the URL — a week at a time. */
@@ -127,8 +130,8 @@ export default function OwnerAvailabilityGrid({
           {days.map((day) => (
             <div key={day} className="flex min-w-[4.25rem] flex-1 flex-col">
               <div className="flex h-10 flex-col items-center justify-center text-[length:var(--text-micro)] leading-tight text-[var(--text-muted)]">
-                <span>{gridDayHeading(day).weekday}</span>
-                <span>{gridDayHeading(day).date}</span>
+                <span>{dayHeadings[day].weekday}</span>
+                {dayHeadings[day].date !== null && <span>{dayHeadings[day].date}</span>}
               </div>
               {Array.from({ length: ROW_COUNT }).map((_, rowIdx) => {
                 const cellInstant = gridCellInstant(day, rowIdx, timeZone);

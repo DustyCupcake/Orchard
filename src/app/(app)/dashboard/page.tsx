@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { getViewerClock } from "@/lib/view-clock";
+import { getDayLabeler } from "@/lib/day-labeler";
 import AccompanimentCard from "./AccompanimentCard";
 import AccompanyInvitations from "./AccompanyInvitations";
 import CheckInsDue from "./CheckInsDue";
 import CompanionRequests from "./CompanionRequests";
-import { formatInstant } from "@/lib/dates";
 import { redirect } from "next/navigation";
 import { CheckCircle, Tree, Users, ChartLineUp, Warning } from "@phosphor-icons/react/dist/ssr";
 import { getViewingContext } from "@/lib/view-as";
@@ -153,6 +153,9 @@ async function ModuleNeedsActionSections({
   shared: boolean;
 }) {
   const clock = await getViewerClock();
+  // A shift's date reads in terms of its own event (src/lib/dates/day-labeler.ts);
+  // this feed mixes events, so the event's name stays in the label.
+  const labeler = await getDayLabeler();
   const pick = <T,>(list: { personal: T[]; shared: T[] }) => (shared ? list.shared : list.personal);
   return (
     <>
@@ -219,7 +222,7 @@ async function ModuleNeedsActionSections({
               key={o.occurrenceId}
               href="/shifts"
               title={o.seriesTitle}
-              meta={`${formatInstant(o.startsAt, o.timeZone, "date")}, ${o.unresolvedCount} signup${o.unresolvedCount === 1 ? "" : "s"} still unresolved`}
+              meta={`${labeler.instantLabel(o.startsAt, o.timeZone, { cycleId: o.cycleId }).visible}, ${o.unresolvedCount} signup${o.unresolvedCount === 1 ? "" : "s"} still unresolved`}
             />
           ))}
         </FeedSection>
@@ -341,6 +344,7 @@ export default async function DashboardPage({
   }
 
   const clock = await getViewerClock();
+  const labeler = await getDayLabeler();
 
   const { memberCount, error } = await searchParams;
 
@@ -761,7 +765,7 @@ export default async function DashboardPage({
                   meta={
                     <span className={`inline-flex items-center gap-1 ${overdue ? "font-medium text-[var(--danger)]" : ""}`}>
                       {overdue && <Warning size={12} />}
-                      {overdue ? "was due" : "due"} {clock.date(t.nextCheckinAt)}
+                      {overdue ? "was due" : "due"} {labeler.instantLabel(t.nextCheckinAt, clock.timeZone, { cycleId: t.cycleId, phaseId: t.phaseId }).visible}
                       {overdue ? " (overdue)" : ""}
                     </span>
                   }
@@ -853,7 +857,7 @@ export default async function DashboardPage({
                 key={s.signupId}
                 href="/shifts"
                 title={s.seriesTitle}
-                meta={`ended ${formatInstant(s.endsAt, s.timeZone, "date")}, mark it complete`}
+                meta={`ended ${labeler.instantLabel(s.endsAt, s.timeZone, { cycleId: s.cycleId }).visible}, mark it complete`}
               />
             ))}
           </FeedSection>
