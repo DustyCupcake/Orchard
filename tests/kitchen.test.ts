@@ -7,6 +7,7 @@ import {
   dishIngredient,
   foodIdea,
   member,
+  mealComment,
   menuPlan,
   recipe,
   recipeYum,
@@ -53,6 +54,8 @@ import {
   roundHalf,
   scaledIngredients,
   suggestedMultiplier,
+  suggestedMultiplierForMeal,
+  suggestedMultipliersForMeal,
   toggleYum,
   updateFoodIdea,
   updateRecipe,
@@ -419,6 +422,20 @@ describe("meals, dishes, and scaling (D8)", () => {
     expect(await db.select().from(dish).where(eq(dish.id, dishRow.id))).toHaveLength(0);
     const overview = await getMenuPlanOverview(alice, plan.id);
     expect(overview.meals).toHaveLength(0);
+  });
+
+  it("deletes a meal that has concerns raised on it", async () => {
+    const { alice, bob, branch } = await createFixtures();
+    await updateCommunity(alice, { modulesEnabled: ["kitchen"] });
+    await makeKitchenOwner(alice.communityId, branch.id, alice.id);
+    const plan = await createMenuPlan(alice, { title: "Autumn" });
+    const meal = await createMeal(alice, { menuPlanId: plan.id, label: "Friday", date: "2026-10-02" });
+    await addMealComment(bob, meal.id, { body: "This clashes with the vegan option" });
+
+    await deleteMeal(alice, meal.id);
+
+    expect(await db.select().from(mealComment).where(eq(mealComment.mealId, meal.id))).toHaveLength(0);
+    expect((await getMenuPlanOverview(alice, plan.id)).meals).toHaveLength(0);
   });
 });
 
@@ -1286,6 +1303,24 @@ describe("the community recipe box", () => {
     const unchanged = await getRecipe(bob, created!.id);
     expect(unchanged).toMatchObject({ title: "Three-bean chili", serves: 4 });
     expect(unchanged!.ingredients[0].amount).toBe("400");
+  });
+
+  it("suggests for many recipes at once exactly as it does for one", async () => {
+    const { alice, bob } = await box();
+    const chili = await createRecipe(bob, CHILI_RECIPE);
+    const soup = await createRecipe(bob, { ...CHILI_RECIPE, title: "Soup", serves: 8 });
+    const unlabelled = await createRecipe(bob, { ...CHILI_RECIPE, title: "Mystery", serves: null });
+    const plan = await createMenuPlan(alice, { title: "Autumn" });
+    const meal = await createMeal(alice, { menuPlanId: plan.id, label: "Friday dinner", date: "2026-10-02", headCount: 10 });
+    await createDish(alice, { mealId: meal.id, name: "Bread", serves: 5 });
+
+    const batch = await suggestedMultipliersForMeal(alice, [chili!, soup!, unlabelled!], meal.id);
+    expect(batch.get(chili!.id)).toBe(0.5);
+    expect(batch.get(soup!.id)).toBe(0.5);
+    expect(batch.get(unlabelled!.id)).toBe(1);
+    for (const r of [chili!, soup!, unlabelled!]) {
+      expect(await suggestedMultiplierForMeal(alice, r, meal.id)).toBe(batch.get(r.id));
+    }
   });
 
   it("suggests a half-step multiplier for the headcount left by other dishes, and falls back to 1", async () => {

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, type DbOrTx } from "@/db";
 import {
@@ -152,21 +152,28 @@ async function decorate(actor: Member, rows: RecipeRow[]): Promise<RecipeListIte
           eq(member.communityId, actor.communityId),
         ),
       ),
-    db.select({ recipeId: recipeYum.recipeId, memberId: recipeYum.memberId }).from(recipeYum).where(inArray(recipeYum.recipeId, ids)),
-    db.select({ recipeId: recipeComment.recipeId }).from(recipeComment).where(inArray(recipeComment.recipeId, ids)),
+    // Grouped in the database: only a count and the viewer's own flag come
+    // back, never a row per Yum.
+    db
+      .select({
+        recipeId: recipeYum.recipeId,
+        count: count(),
+        viewerYummed: sql<boolean>`bool_or(${recipeYum.memberId} = ${actor.id})`,
+      })
+      .from(recipeYum)
+      .where(inArray(recipeYum.recipeId, ids))
+      .groupBy(recipeYum.recipeId),
+    db
+      .select({ recipeId: recipeComment.recipeId, count: count() })
+      .from(recipeComment)
+      .where(inArray(recipeComment.recipeId, ids))
+      .groupBy(recipeComment.recipeId),
   ]);
 
   const names = new Map(authors.map((m) => [m.id, m.name]));
-  const yumByRecipe = new Map<string, number>();
-  const viewerYums = new Set<string>();
-  for (const row of yums) {
-    yumByRecipe.set(row.recipeId, (yumByRecipe.get(row.recipeId) ?? 0) + 1);
-    if (row.memberId === actor.id) viewerYums.add(row.recipeId);
-  }
-  const commentsByRecipe = new Map<string, number>();
-  for (const row of comments) {
-    commentsByRecipe.set(row.recipeId, (commentsByRecipe.get(row.recipeId) ?? 0) + 1);
-  }
+  const yumByRecipe = new Map(yums.map((row) => [row.recipeId, row.count]));
+  const viewerYums = new Set(yums.filter((row) => row.viewerYummed).map((row) => row.recipeId));
+  const commentsByRecipe = new Map(comments.map((row) => [row.recipeId, row.count]));
 
   return full.map((row) => ({
     ...row,
@@ -401,12 +408,17 @@ export async function listEditableDraftMeals(actor: Member): Promise<EditableMea
     .map(({ id, label, date, menuPlanId }) => ({ id, label, date, menuPlanId }));
 }
 
-/** The multiplier the apply form offers for one meal, before it is written. */
-export async function suggestedMultiplierForMeal(
+/**
+ * The multiplier the apply forms offer for one meal, for many recipes at once.
+ * The meal, its headcount and its other dishes are read once, however many
+ * recipes are offered — the menu page asks this for every accepted recipe on
+ * every draft meal.
+ */
+export async function suggestedMultipliersForMeal<T extends { id: string; serves: number | null }>(
   actor: Member,
-  recipe: { serves: number | null },
+  recipes: T[],
   mealId: string,
-): Promise<number> {
+): Promise<Map<string, number>> {
   await requireKitchenModuleOn(actor);
   const mealRow = await getMeal(actor, mealId);
   const headCount = await resolveMealHeadCount(actor, mealRow);
@@ -414,7 +426,17 @@ export async function suggestedMultiplierForMeal(
     .select({ serves: dish.serves, multiplier: dish.multiplier })
     .from(dish)
     .where(eq(dish.mealId, mealId));
-  return suggestedMultiplier(recipe, headCount, others);
+  return new Map(recipes.map((r) => [r.id, suggestedMultiplier(r, headCount, others)]));
+}
+
+/** The multiplier the apply form offers for one meal, before it is written. */
+export async function suggestedMultiplierForMeal(
+  actor: Member,
+  recipe: { id: string; serves: number | null },
+  mealId: string,
+): Promise<number> {
+  const suggestions = await suggestedMultipliersForMeal(actor, [recipe], mealId);
+  return suggestions.get(recipe.id) ?? 1;
 }
 
 /** A planner changes the scale of a dish copied from the recipe box. Plain

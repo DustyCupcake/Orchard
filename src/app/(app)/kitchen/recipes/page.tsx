@@ -6,7 +6,7 @@ import { getViewingContext } from "@/lib/view-as";
 import {
   listEditableDraftMeals,
   listRecipes,
-  suggestedMultiplierForMeal,
+  suggestedMultipliersForMeal,
   type EditableMeal,
   type RecipeFilter,
   type RecipeListItem,
@@ -67,15 +67,14 @@ async function suggestionsFor(
   meals: EditableMeal[],
 ): Promise<Record<string, Record<string, number>>> {
   const result: Record<string, Record<string, number>> = {};
-  for (const recipe of recipes) {
-    const byMeal: Record<string, number> = {};
-    await Promise.all(
-      meals.map(async (meal) => {
-        byMeal[meal.id] = await suggestedMultiplierForMeal(actor, recipe, meal.id);
-      }),
-    );
-    result[recipe.id] = byMeal;
-  }
+  for (const recipe of recipes) result[recipe.id] = {};
+  // One read of each meal's headcount and dishes, shared by every recipe.
+  await Promise.all(
+    meals.map(async (meal) => {
+      const suggestions = await suggestedMultipliersForMeal(actor, recipes, meal.id);
+      for (const recipe of recipes) result[recipe.id][meal.id] = suggestions.get(recipe.id) ?? 1;
+    }),
+  );
   return result;
 }
 

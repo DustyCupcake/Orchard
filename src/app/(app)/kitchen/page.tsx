@@ -24,7 +24,7 @@ import {
   NO_ATTENDANCE,
   purchaseList,
   resolveActiveMenuPlan,
-  suggestedMultiplierForMeal,
+  suggestedMultipliersForMeal,
   resolveMealTimes,
   scaledIngredients,
   type FoodIdeaWithIngredients,
@@ -187,16 +187,15 @@ export default async function KitchenPage({
     const accepted = await listRecipes(viewing, { status: "accepted" });
     await Promise.all(
       meals.map(async (meal) => {
+        const suggestions = await suggestedMultipliersForMeal(viewing, accepted, meal.id);
         recipeOptions.set(
           meal.id,
-          await Promise.all(
-            accepted.map(async (r) => ({
-              id: r.id,
-              title: r.title,
-              serves: r.serves,
-              suggestedMultiplier: await suggestedMultiplierForMeal(viewing, r, meal.id),
-            })),
-          ),
+          accepted.map((r) => ({
+            id: r.id,
+            title: r.title,
+            serves: r.serves,
+            suggestedMultiplier: suggestions.get(r.id) ?? 1,
+          })),
         );
       }),
     );
