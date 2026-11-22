@@ -2,7 +2,7 @@ import type { shiftOccurrence as shiftOccurrenceTable, shiftSeries as shiftSerie
 import { BUTTON_DESTRUCTIVE, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import Modal from "@/components/ui/Modal";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { formatInstantRange, localInputFromInstant } from "@/lib/dates";
+import { localInputFromInstant } from "@/lib/dates";
 import {
   archiveShiftSeriesAction,
   deleteShiftOccurrenceAction,
@@ -38,6 +38,7 @@ export default function MySeriesSection({
   placementOptions,
   branches,
   shiftZone,
+  shiftWhen,
   rosterOpen,
   rosterClosed,
 }: {
@@ -52,6 +53,8 @@ export default function MySeriesSection({
   rosterClosed: (cycleId: string | null) => boolean;
   /** The venue clock for a series' event — what its times are typed and shown in. */
   shiftZone: (cycleId: string | null) => string;
+  /** A shift's time worded per the viewer's date display setting. */
+  shiftWhen: (startsAt: Date, endsAt: Date, cycleId: string | null) => string;
 }) {
   return (
     <section className="mt-8 border-t border-[var(--border)] pt-6">
@@ -192,7 +195,7 @@ export default function MySeriesSection({
                   const roster = signupsByOccurrence.get(o.id) ?? [];
                   const ended = new Date(o.endsAt) <= new Date();
                   const rosterNames = roster.map((sg) => memberNameById.get(sg.memberId) ?? "—").join(", ");
-                  const when = formatInstantRange(o.startsAt, o.endsAt, zone);
+                  const when = shiftWhen(o.startsAt, o.endsAt, s.cycleId);
                   return (
                     <div key={o.id} className="text-[length:var(--text-body)] text-[var(--text)]">
                       <span className="font-medium">{when}</span>{" "}

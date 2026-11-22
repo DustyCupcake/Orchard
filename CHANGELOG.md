@@ -8,6 +8,17 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## shifts read as a weekday inside a short event, following the date display setting
+
+"How dates read by default" (and a member's own override) never reached shifts: every shift time was written by `formatInstantRange` as a full date whatever the setting said, so a community that had chosen Period saw "Mar 5, 2027, 14:00–15:30" on a four-day event's roster instead of the day of the week.
+
+- **`formatShiftRange`** (`src/lib/dates/shift-time.ts`) reads a shift against its own event's dates. In Period mode, when the event is a week or less (`isShortPeriod`) and the shift starts inside it, it reads "Event name · Fri, 14:00–15:30"; a shift that crosses midnight names both days. Everything else — Exact mode, a standing series, an event with no dates or longer than a week, a shift outside the event's dates — is exactly the old full date. The weekday is taken on the venue's clock, so a 00:30 shift isn't named for the day before.
+- **Wired into** the Shifts page (upcoming cards, "My past shifts", and the "Series you manage" shift list) and the event participation page's shift roster, each resolving the viewer's mode through `effectiveDateDisplayMode`.
+- **Not changed yet:** the dashboard's shift rows and the contribution history still show a plain date (their feeds don't carry the event's dates). Shifts that sit just outside the event — set-up before it, say — keep the full date; a separate named rota for those ("Set-up · Thu") is a possible later step, not built.
+- **`tests/shift-time.test.ts`** pins the inside / outside / exact-mode / long-event / standing / venue-clock / midnight-crossing cases.
+
+Checked: `tsc` clean, lint clean, the new and existing date-display tests pass. Not driven in a browser.
+
 ## a coordinator can propose someone for a slot on any task — a full one grows a slot
 
 A coordinator looking at a task that already had someone on it saw no way to propose a third person: the nominate form only appeared when the task was unclaimed or had room, and the server refused at capacity. The plan (`docs/plans/task-interface-plan.md`, D5) makes nomination the standing ask-for-help.

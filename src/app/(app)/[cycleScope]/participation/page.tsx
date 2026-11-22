@@ -30,7 +30,7 @@ import {
 import { getCommunity, isAdmin, listCycleTypes } from "@/lib/settings";
 import { listOutstandingQuestions } from "@/lib/profile-questions";
 import { isModuleEnabled } from "@/lib/modules";
-import { describeBoundaryWindow, formatDateRange, formatInstant, localInputFromInstant } from "@/lib/dates";
+import { describeBoundaryWindow, effectiveDateDisplayMode, formatDateRange, formatShiftRange, localInputFromInstant } from "@/lib/dates";
 import { getEventTimeZone } from "@/lib/cycles";
 import { listTaskPacks } from "@/lib/task-packs";
 import { HIGHLIGHTABLE_MODULES } from "@/lib/nav";
@@ -514,6 +514,10 @@ async function ParticipationForCycle({
     getCommunity(viewing),
   ]);
   const shiftsOn = isModuleEnabled(communityRow, "shifts");
+  // A shift in this roster reads against this event's own dates: a weekday
+  // when the viewer reads dates as periods and the event is a week or less,
+  // the full date otherwise (see formatShiftRange).
+  const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
   // The cycle's shift roster (§5.6) — visible to any member of the
   // community, management actions only for the cycle's manager.
   const roster = shiftsOn ? await getCycleShiftRoster(viewing, cycleId) : null;
@@ -535,8 +539,8 @@ async function ParticipationForCycle({
   // restricted — the same split the settings screen uses.
   const allLanes = (await listLanes(communityRow.id)).map(laneRuleOf);
   const openLaneIds = new Set((await listOpenLanes(communityRow.id, cycleId)).map((l) => l.id));
-  const [{ own: ownLaneSet }] = await db
-    .select({ own: cycleTable.ownAdmissionLanes })
+  const [{ own: ownLaneSet, startDate: cycleStartDate, endDate: cycleEndDate }] = await db
+    .select({ own: cycleTable.ownAdmissionLanes, startDate: cycleTable.startDate, endDate: cycleTable.endDate })
     .from(cycleTable)
     .where(eq(cycleTable.id, cycleId));
   // People approved for a place the event didn't have room for (§6), in the
@@ -633,7 +637,16 @@ async function ParticipationForCycle({
                     <ul className="mt-2 flex flex-col gap-0.5">
                       {occurrences.map(({ occurrence, capacity, signupCount }) => (
                         <li key={occurrence.id} className="text-[length:var(--text-body)] text-[var(--text)]">
-                          {formatInstant(occurrence.startsAt, eventClock)} — {signupCount}/{capacity} signed up
+                          {formatShiftRange(
+                            occurrence.startsAt,
+                            occurrence.endsAt,
+                            eventClock,
+                            dateDisplayMode,
+                            cycleStartDate && cycleEndDate
+                              ? { name: cycleName, startDate: cycleStartDate, endDate: cycleEndDate }
+                              : null,
+                          )}{" "}
+                          — {signupCount}/{capacity} signed up
                         </li>
                       ))}
                     </ul>
