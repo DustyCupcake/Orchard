@@ -9,7 +9,7 @@ import { issueActionToken, consumeActionToken } from "../notifications";
 import { sendTaskNominationEmail } from "../mailer";
 import { resolvePrimaryEmail } from "../contact-methods";
 import { logEngagementEvent, resolveEngagementForMember } from "../engagement";
-import { performClaimInTx, releaseAssignmentInTx } from "./lifecycle";
+import { assignmentCount, loadTaskForUpdate, performClaimInTx, releaseAssignmentInTx } from "./lifecycle";
 
 type Member = typeof memberTable.$inferSelect;
 type TaskNominationRow = typeof taskNomination.$inferSelect;
@@ -177,6 +177,22 @@ export async function nominateForTask(
   );
 
   const { updatedTask, nomination } = await db.transaction(async (tx) => {
+    // D5 (docs/plans/task-interface-plan.md) — nominating is how a
+    // coordinator asks for help, so a full task grows a slot instead of
+    // refusing (docs/spec.md's Capacity: "a way to ask for help without
+    // releasing or splitting the task"). Locked read inside the
+    // transaction, so two concurrent nominations on a full task each
+    // still get their own new slot rather than racing one bump.
+    const fresh = await loadTaskForUpdate(tx, taskId, actor.communityId);
+    if (fresh.capacity !== null) {
+      const held = await assignmentCount(tx, taskId);
+      if (held >= fresh.capacity) {
+        await tx
+          .update(task)
+          .set({ capacity: fresh.capacity + 1 })
+          .where(eq(task.id, taskId));
+      }
+    }
     const updatedTask = await performClaimInTx(tx, targetMember, taskId);
     const [nomination] = await tx
       .insert(taskNomination)

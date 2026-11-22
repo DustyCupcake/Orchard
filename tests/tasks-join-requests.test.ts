@@ -8,8 +8,11 @@ import {
   claimTask,
   createRequirement,
   declineJoinRequest,
+  finishTask,
   listJoinRequests,
   listMyPendingJoinRequests,
+  parkTask,
+  resumeTask,
   withdrawJoinRequest,
 } from "@/lib/tasks";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
@@ -149,6 +152,128 @@ describe("claimOrRequestToJoin", () => {
 
     const requests = await listJoinRequests(alice, t.id);
     expect(requests).toHaveLength(1);
+  });
+});
+
+// A parked (waiting) task can be joined or asked about like a claimed one,
+// and joining never changes the parking: status, check-in date and the
+// "waiting on…" note stay as the holder set them (performClaimInTx).
+describe("joining a parked (waiting) task", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  const NOTE = "waiting on the venue contract";
+
+  async function parkedTask(
+    fixtures: Awaited<ReturnType<typeof createFixtures>>,
+    overrides: Partial<typeof task.$inferInsert>,
+  ) {
+    const t = await insertTask(fixtures.community.id, fixtures.branch.id, fixtures.alice.id, {
+      capacity: 3,
+      ...overrides,
+    });
+    await claimTask(fixtures.alice, t.id);
+    const checkin = new Date(Date.now() + 86_400_000);
+    await parkTask(fixtures.alice, t.id, { nextCheckinAt: checkin, waitingNote: NOTE });
+    return { t, checkin };
+  }
+
+  async function expectStillParked(taskId: string, checkin: Date) {
+    const [row] = await db.select().from(task).where(eq(task.id, taskId));
+    expect(row.status).toBe("waiting");
+    expect(row.nextCheckinAt?.getTime()).toBe(checkin.getTime());
+    expect(row.waitingNote).toBe(NOTE);
+  }
+
+  it("lets someone claim an open parked task straight away, and it stays parked", async () => {
+    const fixtures = await createFixtures();
+    const { t, checkin } = await parkedTask(fixtures, { openness: "open" });
+
+    const result = await claimOrRequestToJoin(fixtures.bob, t.id);
+
+    expect(result.status).toBe("claimed");
+    const [bobAssignment] = await db
+      .select()
+      .from(taskAssignment)
+      .where(and(eq(taskAssignment.taskId, t.id), eq(taskAssignment.memberId, fixtures.bob.id)));
+    expect(bobAssignment).toBeDefined();
+    await expectStillParked(t.id, checkin);
+  });
+
+  it("files a request on a parked request task, changing nothing about it", async () => {
+    const fixtures = await createFixtures();
+    const { t, checkin } = await parkedTask(fixtures, { openness: "request" });
+
+    const request = asRequested(await claimOrRequestToJoin(fixtures.bob, t.id));
+
+    expect(request.status).toBe("pending");
+    const assignments = await db.select().from(taskAssignment).where(eq(taskAssignment.taskId, t.id));
+    expect(assignments).toHaveLength(1);
+    await expectStillParked(t.id, checkin);
+  });
+
+  it("keeps the task parked when a holder accepts the request", async () => {
+    const fixtures = await createFixtures();
+    const { t, checkin } = await parkedTask(fixtures, { openness: "request" });
+    const request = asRequested(await claimOrRequestToJoin(fixtures.bob, t.id));
+
+    const updated = await acceptJoinRequest(fixtures.alice, t.id, request.id);
+
+    expect(updated.status).toBe("waiting");
+    const [bobAssignment] = await db
+      .select()
+      .from(taskAssignment)
+      .where(and(eq(taskAssignment.taskId, t.id), eq(taskAssignment.memberId, fixtures.bob.id)));
+    expect(bobAssignment).toBeDefined();
+    await expectStillParked(t.id, checkin);
+  });
+
+  it("lets a request filed before the task was parked be accepted afterwards, still parked", async () => {
+    const fixtures = await createFixtures();
+    const t = await insertTask(fixtures.community.id, fixtures.branch.id, fixtures.alice.id, {
+      openness: "request",
+      capacity: 3,
+    });
+    await claimTask(fixtures.alice, t.id);
+    const request = asRequested(await claimOrRequestToJoin(fixtures.bob, t.id));
+    const checkin = new Date(Date.now() + 86_400_000);
+    await parkTask(fixtures.alice, t.id, { nextCheckinAt: checkin, waitingNote: NOTE });
+
+    await acceptJoinRequest(fixtures.alice, t.id, request.id);
+
+    await expectStillParked(t.id, checkin);
+  });
+
+  it("lets the new holder resume the task themselves once they have looked it over", async () => {
+    const fixtures = await createFixtures();
+    const { t } = await parkedTask(fixtures, { openness: "open" });
+    await claimOrRequestToJoin(fixtures.bob, t.id);
+
+    const resumed = await resumeTask(fixtures.bob, t.id);
+
+    expect(resumed.status).toBe("claimed");
+    expect(resumed.nextCheckinAt).toBeNull();
+    expect(resumed.waitingNote).toBeNull();
+  });
+
+  it("still enforces capacity and Requirement gating on a parked task", async () => {
+    const fixtures = await createFixtures();
+    const { t } = await parkedTask(fixtures, { openness: "open", capacity: 1 });
+    await expect(claimOrRequestToJoin(fixtures.bob, t.id)).rejects.toThrow(ConflictError);
+
+    const gated = await parkedTask(fixtures, { openness: "open", capacity: 3 });
+    await createRequirement(fixtures.alice, gated.t.id, { type: "custom", value: { flag: "trusted" } });
+    await expect(claimOrRequestToJoin(fixtures.bob, gated.t.id)).rejects.toThrow(ForbiddenError);
+  });
+
+  it("still refuses a done task", async () => {
+    const fixtures = await createFixtures();
+    const t = await insertTask(fixtures.community.id, fixtures.branch.id, fixtures.alice.id, { openness: "open" });
+    await claimTask(fixtures.alice, t.id);
+    await finishTask(fixtures.alice, t.id);
+
+    await expect(claimOrRequestToJoin(fixtures.bob, t.id)).rejects.toThrow(ConflictError);
   });
 });
 

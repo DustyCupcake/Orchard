@@ -30,32 +30,20 @@ import {
   listSubtasks,
   listTaskDependencies,
   listTaskMilestones,
-  listTasks,
   tierNameLookup,
   describeRequirement,
   isSelfAssignWorthAskingAbout,
   rankByTagFit,
 } from "@/lib/tasks";
 import { SUGGESTION_REASON_LABEL, joinReasons, listSuggestionsForTasks } from "@/lib/tasks/suggestions";
-import { getCommunity, isAdmin, listBranches } from "@/lib/settings";
-import {
-  allowsMultipleGrants,
-  describeGrantScope,
-  isMisplacedCommunityGrant,
-  listGrantsWithTaskInfo,
-  listModuleKeysGrantedByTask,
-  PERMISSION_MODULE_LABELS,
-  TASK_GRANTABLE_PERMISSION_MODULE_KEYS,
-  type PermissionModuleKey,
-} from "@/lib/permissions";
-import { getCycle, listCycles, resolveCrossCycleContext, scopeLabel } from "@/lib/cycles";
+import { getCommunity, listBranches } from "@/lib/settings";
+import { getCycle, resolveCrossCycleContext, scopeLabel } from "@/lib/cycles";
 import { isModuleEnabled } from "@/lib/modules";
-import { describeBoundaryRecipe, effectiveDateDisplayMode, formatDateLabel } from "@/lib/dates";
+import { effectiveDateDisplayMode, formatDateLabel } from "@/lib/dates";
 import { isShiftManagerForScope } from "@/lib/shifts";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import CopyLinkButton from "@/components/CopyLinkButton";
 import EffortFields from "@/components/EffortFields";
-import DateModeField, { type DateFieldBase } from "@/components/DateModeField";
 import PageHeader from "@/components/ui/PageHeader";
 import ActionMenu from "@/components/ui/ActionMenu";
 import StatusIcon from "@/components/tasks/StatusIcon";
@@ -67,13 +55,10 @@ import { getAccompaniedMemberId, getAccompaniedView } from "@/lib/accompaniment"
 import { computeEngagementPattern } from "@/lib/engagement";
 import { ATTENTION_STYLES, effortSummary } from "@/lib/format";
 import { FlagIcon, QuestionIcon } from "@phosphor-icons/react/dist/ssr";
-import { Tag, type Tone, ATTENTION_TONE, Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_GHOST, BUTTON_ICON, CheckField, INPUT } from "@/components/ui/kit";
+import { Tag, type Tone, ATTENTION_TONE, Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_GHOST, BUTTON_ICON, INPUT } from "@/components/ui/kit";
 import {
   acceptJoinRequestAction,
   addCommentAction,
-  addDependencyAction,
-  addMilestoneAction,
-  addRequirementAction,
   addResourceAction,
   checkInTaskAction,
   claimAction,
@@ -86,7 +71,6 @@ import {
   deescalateTaskAction,
   declineJoinRequestAction,
   deleteMilestoneAction,
-  deleteRequirementAction,
   editWikiAction,
   endorseCandidacyAction,
   escalateTaskAction,
@@ -97,7 +81,6 @@ import {
   parkAction,
   pingCoordinatorAction,
   releaseAction,
-  removeDependencyAction,
   resnoozeTaskAction,
   resolvePingAction,
   resolveSignalAction,
@@ -105,10 +88,6 @@ import {
   setOutgoingAction,
   splitSubtaskAction,
   stopShadowingAction,
-  updateMilestoneAction,
-  updateRequirementAction,
-  updateTaskAction,
-  updateTaskPermissionGrantsAction,
   waiveAndClaimAction,
   withdrawCandidacyAction,
   withdrawJoinRequestAction,
@@ -174,7 +153,7 @@ export default async function TaskDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; scope?: string; tab?: string }>;
+  searchParams: Promise<{ error?: string; scope?: string; tab?: string; nominate?: string }>;
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
@@ -186,7 +165,7 @@ export default async function TaskDetailPage({
   const { id } = await params;
   // `tab` is accepted but ignored — the tab bar is gone (see the note
   // above); old bookmarks still land on the right page.
-  const { error, scope: scopeParam } = await searchParams;
+  const { error, scope: scopeParam, nominate: nominateParam } = await searchParams;
 
   const taskRow = await getTask(viewing, id);
   const isCommunityEndorsed = taskRow.openness === "community_endorsed";
@@ -212,7 +191,6 @@ export default async function TaskDetailPage({
     taskCycle,
     nominations,
     dependencies,
-    allCommunityTasks,
   ] = await Promise.all([
     db.select().from(branch).where(eq(branch.id, taskRow.branchId)).then((r) => r[0]),
     getTaskNotes(viewing, id),
@@ -235,7 +213,6 @@ export default async function TaskDetailPage({
     taskRow.cycleId ? getCycle(viewing, taskRow.cycleId) : Promise.resolve(null),
     listNominationsForTask(viewing, id),
     listTaskDependencies(viewing, id),
-    listTasks(viewing),
   ]);
   const cyclePhases = taskCycle?.phases ?? [];
   const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
@@ -252,49 +229,6 @@ export default async function TaskDetailPage({
   };
   const crossCycle = await resolveCrossCycleContext(viewing, taskCycle, scopeParam ?? null);
   const taskPath = `/tasks/${taskRow.id}`;
-  const tierOptions = [...tierNames.entries()].map(([tId, name]) => ({ id: tId, name }));
-  const communityTasks = allCommunityTasks
-    .filter((t) => t.id !== taskRow.id)
-    .map((t) => ({ id: t.id, title: t.title }));
-  const dependencyOptions = communityTasks.filter(
-    (t) => !dependencies.some((d) => d.dependsOnTaskId === t.id),
-  );
-
-  // For the "Edit task" panel's Cycle select — open to any member (same
-  // "Requirements/Dependencies are open to any member" posture the
-  // comment just below this one describes for the rest of the page),
-  // so fetched unconditionally rather than gated behind
-  // canGrantPermissions the way the Permissions section's own
-  // admin-only cycle list is.
-  const allCycles = communityRow.cyclesEnabled ? await listCycles(viewing) : [];
-
-  // "Permissions granted by this task" (docs/plans/development-plan.md's
-  // Phase 64) reads/writes the exact same PermissionGrant rows the
-  // settings panel's Access & permissions tab does — visibility and
-  // the underlying write path are both Admin-only here too, a
-  // genuinely stricter gate than the rest of this page's editing
-  // surface (Requirements/Dependencies are open to any member; see
-  // updateTaskPermissionGrantsAction in ./actions.ts for the server-
-  // side enforcement this mirrors).
-  const canGrantPermissions = await isAdmin(viewing);
-  const [communityGrants, grantedByThisTask] = canGrantPermissions
-    ? await Promise.all([
-        listGrantsWithTaskInfo(taskRow.communityId),
-        listModuleKeysGrantedByTask(taskRow.communityId, taskRow.id),
-      ])
-    : [[], new Set<PermissionModuleKey>()];
-  // The "currently held elsewhere" warning below is keyed against this
-  // task's *own* placement (taskRow.cycleId — the one scope read,
-  // docs/plans/archive/cycle-scope-remediation-plan.md §2.1): a grant in a different
-  // cycle isn't in this task's scope at all, so checking the same
-  // module here creates a second, coexisting grant instead of moving
-  // it.
-  const elsewhereHolderByModule = new Map<PermissionModuleKey, string>();
-  for (const g of communityGrants) {
-    if (g.taskId === taskRow.id || allowsMultipleGrants(g.moduleKey)) continue;
-    if (g.cycleId !== taskRow.cycleId) continue;
-    elsewhereHolderByModule.set(g.moduleKey, g.title);
-  }
 
   const groupCoverage = await getGroupCoverageStatus(db, id, requirements);
   const shiftsModuleOn = isModuleEnabled(communityRow, "shifts");
@@ -358,12 +292,26 @@ export default async function TaskDetailPage({
     isCommunityEndorsed && browseWindowOpen && !holdsTask && !myCandidacy;
 
   const hasRoom = taskRow.capacity === null || realAssignments.length < taskRow.capacity;
+  // D3 (docs/plans/task-interface-plan.md) — the "Who's on it" section
+  // renders empty slots as first-class rows so a gap is visible without
+  // arithmetic. A done task has no gap to show; an uncapped task has no
+  // countable empties, just room.
+  const emptySlotCount =
+    taskRow.capacity !== null && taskRow.status !== "done"
+      ? Math.max(taskRow.capacity - realAssignments.length, 0)
+      : 0;
   const flagged = taskRow.attentionLevel !== "ok";
+  // A parked (waiting) task can be joined or asked about like a claimed one
+  // — someone who knows they'd unblock it should be able to say so — and
+  // joining never changes the parking (performClaimInTx).
+  const joinable =
+    taskRow.status === "unclaimed" ||
+    ((taskRow.status === "claimed" || taskRow.status === "waiting") && hasRoom);
   const canActBase =
     !isCommunityEndorsed &&
     !isShadowing &&
     !holdsTask &&
-    (taskRow.status === "unclaimed" || (taskRow.status === "claimed" && hasRoom)) &&
+    joinable &&
     unmetRequirements.length === 0 &&
     !(myRequest && myRequest.status === "pending");
   // Whether the *button* opens the coordinator's self-assign ask, rather
@@ -385,16 +333,20 @@ export default async function TaskDetailPage({
   const canWaive =
     authorizedToWaive &&
     requirements.length > 0 &&
-    (taskRow.status === "unclaimed" || (taskRow.status === "claimed" && hasRoom));
+    joinable;
   // "An existing owner can also nominate a specific person for an open
   // slot" — see docs/spec.md's Multi-slot & collaborative tasks and
-  // src/lib/tasks/nominations.ts. Same room check as canWaive/canActBase;
-  // never offered on a community_endorsed task (candidacy is the only
-  // door there).
+  // src/lib/tasks/nominations.ts. D5 (docs/plans/task-interface-plan.md)
+  // widened the offer: any non-endorsed, non-done task, waiting ones
+  // included, with no room check — at capacity the nomination itself
+  // raises the count by one, which the form states before confirming.
+  // community_endorsed stays excluded (candidacy is the only door there).
   const canNominate =
     authorizedToNominate &&
     !isCommunityEndorsed &&
-    (taskRow.status === "unclaimed" || (taskRow.status === "claimed" && hasRoom));
+    taskRow.status !== "done";
+  const nominateAddsSlot =
+    taskRow.capacity !== null && realAssignments.length >= taskRow.capacity;
 
   // communityMembers (fetched above for the waive/suggest selects)
   // already covers every member who could plausibly show up by name
@@ -417,9 +369,10 @@ export default async function TaskDetailPage({
 
   // Same visibility condition each section below already gates on —
   // the tab is only offered when its content would actually show
-  // something.
-  const showPeopleTab =
-    isCommunityEndorsed || ((pendingRequests.length > 0 || resolvedRequests.length > 0) && requestGated);
+  // something. Join requests used to be part of this wrapper; they
+  // moved into "Who's on it" (docs/plans/task-interface-plan.md D3),
+  // leaving the candidacy flow and the declined notice here.
+  const showPeopleTab = isCommunityEndorsed || myRequest?.status === "declined";
   const showCoordinationTab =
     (!!accompaniedMemberId && !!accompanimentEngagement) ||
     nominations.length > 0 ||
@@ -456,7 +409,10 @@ export default async function TaskDetailPage({
   // below the header, so the header primary is suppressed to avoid
   // duplicating them.
   const nudgePanelShown = holdsTask && (taskRow.status === "waiting" || (taskRow.status === "claimed" && flagged));
-  const joiningRequiresRequest = requestGated && taskRow.status === "claimed" && realAssignments.length > 0;
+  const joiningRequiresRequest =
+    requestGated &&
+    (taskRow.status === "claimed" || taskRow.status === "waiting") &&
+    realAssignments.length > 0;
   let primaryHeaderAction: React.ReactNode = null;
   if (!nudgePanelShown) {
     if (canActBase) {
@@ -524,9 +480,13 @@ export default async function TaskDetailPage({
     }
   }
 
-  // ⋯ menu contents — the secondary/tertiary actions. Park isn't here:
-  // it needs inputs, so it's a disclosure in the Status rail card.
-  const menuItems: React.ReactNode[] = [];
+  // ⋯ menu contents — the secondary/tertiary actions, plus the way to
+  // the edit screen (docs/plans/task-interface-plan.md D2: all config
+  // editing lives there, not on this page). Park isn't here: it needs
+  // inputs, so it's a disclosure in the Status rail card.
+  const menuItems: React.ReactNode[] = [
+    <Link key="edit" href={`${taskPath}/edit`}>Edit task…</Link>,
+  ];
   if (canShadow) {
     menuItems.push(
       <form action={claimAsShadowAction}>
@@ -643,7 +603,7 @@ export default async function TaskDetailPage({
             <StatusIcon status={taskRow.status} attentionLevel={taskRow.attentionLevel} showLabel />
             <BranchChip name={branchRow?.name ?? "—"} />
             <EffortChip summary={effortSummary(taskRow.effort, taskRow.effortMagnitude)} />
-            <CapacityChip held={realAssignments.length} capacity={taskRow.capacity} />
+            <CapacityChip held={realAssignments.length} capacity={taskRow.capacity} critical={taskRow.critical} />
             {communityRow.cyclesEnabled && <CycleChip name={taskCycle ? taskCycle.name : "not event-scoped"} />}
           </div>
         }
@@ -678,253 +638,6 @@ export default async function TaskDetailPage({
         </p>
       )}
       {taskRow.description && <p className="mt-3 text-[length:var(--text-body)] text-[var(--text)]">{taskRow.description}</p>}
-
-      {/* Edit task — the only place a task's core details (title,
-          description, branch, cycle, phase, effort, capacity, critical,
-          tags) and its Requirements/Dependencies management live; kept
-          closed by default so the page reads as a status/notes view.
-          Any member can adjust these, the same "Requirements/Depen-
-          dencies are open to any member" posture this page already
-          had — the controls just moved in here. */}
-      <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3.5">
-        <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">Edit task</summary>
-
-        <form action={updateTaskAction} className="mt-3 flex flex-col gap-3">
-          <input type="hidden" name="taskId" value={taskRow.id} />
-          <label className="flex flex-col gap-1">
-            <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Title</span>
-            <input type="text" name="title" defaultValue={taskRow.title} className={INPUT} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Description</span>
-            <textarea name="description" rows={3} defaultValue={taskRow.description ?? ""} className={INPUT} />
-          </label>
-
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Branch</span>
-              <select name="branchId" defaultValue={taskRow.branchId} key={taskRow.branchId} className={INPUT}>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {communityRow.cyclesEnabled && (
-              <label className="flex flex-col gap-1">
-                <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Event</span>
-                <select name="cycleId" defaultValue={taskRow.cycleId ?? ""} key={taskRow.cycleId ?? ""} className={INPUT}>
-                  <option value="">No event (unscoped)</option>
-                  {allCycles.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <label className="flex flex-col gap-1">
-              <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Phase</span>
-              <select name="phaseId" defaultValue={taskRow.phaseId ?? ""} key={taskRow.phaseId ?? ""} className={INPUT}>
-                <option value="">No phase</option>
-                {cyclePhases.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-col gap-1">
-              <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Effort</span>
-              <div className="flex flex-wrap items-center gap-2">
-                <EffortFields
-                  defaultEffort={taskRow.effort}
-                  defaultDuration={(taskRow.effortMagnitude as { duration?: string } | null | undefined)?.duration}
-                  defaultHoursPerWeek={
-                    (taskRow.effortMagnitude as { hours_per_week?: number } | null | undefined)?.hours_per_week
-                  }
-                />
-              </div>
-            </div>
-            <label className="flex flex-col gap-1">
-              <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Capacity (blank = uncapped)</span>
-              <input type="number" name="capacity" min={1} defaultValue={taskRow.capacity ?? ""} className={`${INPUT} w-24`} />
-            </label>
-            <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-              <input type="checkbox" name="critical" defaultChecked={taskRow.critical} /> Critical
-            </label>
-          </div>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">Tags (comma-separated)</span>
-            <input type="text" name="tags" defaultValue={(taskRow.tags ?? []).join(", ")} className={INPUT} />
-          </label>
-
-          <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-            Save changes
-          </button>
-        </form>
-
-        <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Requirements</p>
-          {requirements.length === 0 && <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">None yet.</p>}
-          <ul className="mt-2 flex flex-col gap-2">
-            {requirements.map((r) => {
-              const value = r.value as { tierId?: string; language?: string; taskId?: string; flag?: string };
-              return (
-                <li key={r.id} className="flex flex-wrap items-center gap-3 text-[length:var(--text-body)] text-[var(--text)]">
-                  <span>{describeRequirement(r, tierNames)}</span>
-                  <details>
-                    <summary className="cursor-pointer text-[length:var(--text-meta)] text-[var(--accent-1)]">Edit</summary>
-                    <form action={updateRequirementAction} className="mt-2 flex flex-wrap items-center gap-2">
-                      <input type="hidden" name="taskId" value={taskRow.id} />
-                      <input type="hidden" name="requirementId" value={r.id} />
-                      <input type="hidden" name="requirementType" value={r.type} />
-                      {r.type === "tier" && (
-                        <select name="requirementTierId" defaultValue={value.tierId ?? ""} key={value.tierId ?? ""} className={INPUT}>
-                          <option value="">Tier…</option>
-                          {tierOptions.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      {r.type === "language" && (
-                        <input type="text" name="requirementLanguage" defaultValue={value.language ?? ""} className={INPUT} />
-                      )}
-                      {r.type === "completed_task" && (
-                        <select name="requirementCompletedTaskId" defaultValue={value.taskId ?? ""} key={value.taskId ?? ""} className={INPUT}>
-                          <option value="">Task…</option>
-                          {communityTasks.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.title}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      {r.type === "custom" && (
-                        <input type="text" name="requirementFlag" defaultValue={value.flag ?? ""} className={INPUT} />
-                      )}
-                      <button type="submit" className={BUTTON_SECONDARY}>
-                        Update
-                      </button>
-                    </form>
-                  </details>
-                  <form action={deleteRequirementAction}>
-                    <input type="hidden" name="taskId" value={taskRow.id} />
-                    <input type="hidden" name="requirementId" value={r.id} />
-                    <button type="submit" className={BUTTON_GHOST}>
-                      Remove
-                    </button>
-                  </form>
-                </li>
-              );
-            })}
-          </ul>
-
-          <details className="mt-2">
-            <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Add a requirement</summary>
-            <form action={addRequirementAction} className="mt-2 flex max-w-[420px] flex-col gap-2">
-              <input type="hidden" name="taskId" value={taskRow.id} />
-              <div className="flex flex-wrap items-center gap-2">
-                <select name="requirementType" required defaultValue="" className={INPUT}>
-                  <option value="" disabled>
-                    Type…
-                  </option>
-                  <option value="tier">Tier</option>
-                  <option value="language">Language</option>
-                  <option value="completed_task">Completed a specific task</option>
-                  <option value="custom">Custom flag</option>
-                </select>
-                <select name="requirementMode" defaultValue="individual_gate" className={INPUT}>
-                  <option value="individual_gate">Individual gate</option>
-                  <option value="group_coverage">Group coverage</option>
-                  <option value="soft_priority">Soft priority</option>
-                </select>
-              </div>
-              <label className="flex items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                <select name="requirementTierId" defaultValue="" className={INPUT}>
-                  <option value="">Tier…</option>
-                  {tierOptions.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-                (if type = tier)
-              </label>
-              <label className="flex items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                <input type="text" name="requirementLanguage" placeholder="language" className={INPUT} />
-                (if type = language)
-              </label>
-              <label className="flex items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                <select name="requirementCompletedTaskId" defaultValue="" className={INPUT}>
-                  <option value="">Task…</option>
-                  {communityTasks.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.title}
-                    </option>
-                  ))}
-                </select>
-                (if type = completed task)
-              </label>
-              <label className="flex items-center gap-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                <input type="text" name="requirementFlag" placeholder="custom flag" className={INPUT} />
-                (if type = custom)
-              </label>
-              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                Add
-              </button>
-            </form>
-          </details>
-        </div>
-
-        <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">Dependencies</p>
-          {dependencies.length === 0 && <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">None.</p>}
-          <ul className="mt-2 flex flex-col gap-1.5">
-            {dependencies.map((d) => (
-              <li key={d.dependsOnTaskId} className="flex flex-wrap items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-                <Link href={`/tasks/${d.dependsOnTaskId}`} className="font-medium text-[var(--accent-1)] hover:underline">
-                  {d.title}
-                </Link>
-                <span className="text-[var(--text-muted)]">({d.status})</span>
-                <form action={removeDependencyAction}>
-                  <input type="hidden" name="taskId" value={taskRow.id} />
-                  <input type="hidden" name="dependsOnTaskId" value={d.dependsOnTaskId} />
-                  <button type="submit" className={BUTTON_GHOST}>
-                    Remove
-                  </button>
-                </form>
-              </li>
-            ))}
-          </ul>
-
-          {dependencyOptions.length > 0 && (
-            <details className="mt-2">
-              <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">Add dependencies</summary>
-              <form action={addDependencyAction} className="mt-2 flex max-w-[420px] flex-col gap-2">
-                <input type="hidden" name="taskId" value={taskRow.id} />
-                <select name="dependsOnTaskIds" multiple className={`${INPUT} h-32`}>
-                  {dependencyOptions.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.title}
-                    </option>
-                  ))}
-                </select>
-                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                  Add
-                </button>
-              </form>
-            </details>
-          )}
-        </div>
-      </details>
 
       <div className="mt-3 flex flex-wrap items-start gap-2">
         <details className="group">
@@ -1227,11 +940,231 @@ export default async function TaskDetailPage({
           rail at lg; rail stacks below main on smaller screens. */}
       <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
       <div className="min-w-0">
-      {requirements.length > 0 && (
+      {/* Who's on it — D3 (docs/plans/task-interface-plan.md): slots as
+          first-class rows, the empty ones rendered too, so a staffing
+          gap is visible without arithmetic. Also the one home for the
+          slot-management actions — join requests, nominate, waive —
+          which used to be scattered in disclosures further down. */}
       <section>
+        <SectionHeading>Who&rsquo;s on it</SectionHeading>
+        <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+          {taskRow.capacity !== null
+            ? `${realAssignments.length} of ${taskRow.capacity} slot${taskRow.capacity === 1 ? "" : "s"} filled`
+            : `${realAssignments.length} holder${realAssignments.length === 1 ? "" : "s"} — uncapped`}
+          {shadowAssignments.length > 0 &&
+            ` · ${shadowAssignments.length} shadow${shadowAssignments.length === 1 ? "" : "s"}`}
+        </p>
+
+        <ul className="mt-2 flex flex-col gap-1.5">
+          {realAssignments.map((a) => (
+            <li key={a.memberId} className="flex flex-wrap items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
+              <span aria-hidden="true" className="text-[var(--text)]">●</span>
+              <span className="font-medium">{memberNameById.get(a.memberId) ?? "—"}</span>
+              {a.isOutgoing && <Tag tone="warning">outgoing</Tag>}
+              {a.gateWaivedBy && (
+                <span className="text-[length:var(--text-meta)] text-[var(--warning)]">
+                  requirement waived by {memberNameById.get(a.gateWaivedBy) ?? "—"}: {a.gateWaivedReason}
+                </span>
+              )}
+            </li>
+          ))}
+          {Array.from({ length: emptySlotCount }, (_, i) => (
+            <li key={`empty-${i}`} className="flex items-center gap-2 text-[length:var(--text-body)]">
+              <span
+                aria-hidden="true"
+                className={taskRow.critical || taskRow.status === "unclaimed" ? "text-[var(--danger)]" : "text-[var(--text-muted)]"}
+              >
+                ○
+              </span>
+              <span
+                className={
+                  taskRow.critical || taskRow.status === "unclaimed"
+                    ? "font-medium text-[var(--danger)]"
+                    : "text-[var(--text-muted)]"
+                }
+              >
+                Open slot
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        {shadowAssignments.length > 0 && (
+          <div className="mt-3">
+            <p className="text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              Learning alongside — shadows don&rsquo;t count toward capacity
+            </p>
+            <ul className="mt-1 flex flex-col gap-1.5">
+              {shadowAssignments.map((a) => (
+                <li key={a.memberId} className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                  <span aria-hidden="true">◐</span>
+                  {memberNameById.get(a.memberId) ?? "—"}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {(pendingRequests.length > 0 || resolvedRequests.length > 0) && requestGated && (
+          <div className="mt-4">
+            <p className="text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              Join requests
+            </p>
+            {pendingRequests.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None pending.</p>}
+            <div className="mt-2">
+              {pendingRequests.map((r) => (
+                <div key={r.id} className="mb-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
+                  <p className="text-[length:var(--text-body)] text-[var(--text)]">
+                    {memberNameById.get(r.memberId) ?? "—"} asked to join — {clock.dateTime(r.requestedAt)}
+                  </p>
+                  {resolvableRequestIds.has(r.id) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <form action={acceptJoinRequestAction}>
+                        <input type="hidden" name="taskId" value={taskRow.id} />
+                        <input type="hidden" name="requestId" value={r.id} />
+                        <button type="submit" className={BUTTON_PRIMARY}>
+                          Accept
+                        </button>
+                      </form>
+                      <form action={declineJoinRequestAction} className="flex gap-2">
+                        <input type="hidden" name="taskId" value={taskRow.id} />
+                        <input type="hidden" name="requestId" value={r.id} />
+                        <input type="text" name="reason" placeholder="reason (optional)" className={INPUT} />
+                        <button type="submit" className={BUTTON_SECONDARY}>
+                          Decline
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {resolvedRequests.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
+                  Resolved requests ({resolvedRequests.length})
+                </summary>
+                <ul className="mt-2 flex flex-col gap-1 text-[length:var(--text-body)] text-[var(--text)]">
+                  {resolvedRequests.map((r) => (
+                    <li key={r.id}>
+                      {memberNameById.get(r.memberId) ?? "—"} — {r.status}
+                      {r.status === "declined" && r.declineReason && `: ${r.declineReason}`}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
+
+        {canNominate && (
+          // Rendered open when the board's "Ask someone about a slot…" link
+          // brings you here (?nominate=1). The URL fragment alone isn't enough:
+          // a browser only opens a closed <details> for a fragment on a full
+          // page load, not on Next's client-side navigation, which is how that
+          // link is almost always followed. The server deciding it also means
+          // there is no open-attribute mismatch to hydrate around.
+          <details open={nominateParam === "1"} className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+            <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
+              Nominate someone for this task
+            </summary>
+            <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+              Claims it for them right away — they get a yes/no/not-now window to confirm or
+              release it, no action required if it&rsquo;s a genuine fit.
+            </p>
+            {nominateAddsSlot && (
+              <p className="mt-1 text-[length:var(--text-meta)] text-[var(--warning)]">
+                This task is full — nominating adds a slot ({taskRow.capacity} →{" "}
+                {(taskRow.capacity ?? 0) + 1}) before claiming them.
+              </p>
+            )}
+            {taskRow.status === "waiting" && (
+              <p className="mt-1 text-[length:var(--text-meta)] text-[var(--warning)]">
+                This task is parked — they&rsquo;ll join it still parked, and can resume it once they&rsquo;ve looked it over.
+              </p>
+            )}
+            {/* People suggested for this task, and why (src/lib/tasks/suggestions.ts): a proposer's
+                pick, a newcomer's inviter and the people who met them. The coordinator is the one
+                deciding whom to ask, and this is the door that acts on it. */}
+            {suggestedForTask.length > 0 && taskRow.status === "unclaimed" && (
+              <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
+                Suggested:{" "}
+                {suggestedForTask.map((p, i) => (
+                  <span key={p.memberId}>
+                    {i > 0 && "; "}
+                    <span className="font-medium">{p.name}</span>{" "}
+                    <span className="text-[var(--text-muted)]">({joinReasons(p.reasons, SUGGESTION_REASON_LABEL)})</span>
+                  </span>
+                ))}
+                .
+              </p>
+            )}
+            {/* id="nominate": the board card's "Ask someone about a slot…" link
+                targets this form (/tasks/[id]#nominate). The id sits on the form,
+                not the <details>, because fragment navigation opens the closed
+                disclosures that *contain* its target, not the target itself. */}
+            <form id="nominate" action={nominateForTaskAction} className="mt-3 flex max-w-[400px] scroll-mt-24 flex-col gap-2">
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <select name="memberId" required defaultValue="" className={INPUT}>
+                <option value="" disabled>
+                  Who fits this?
+                </option>
+                {askCandidates.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <input type="text" name="message" placeholder="Optional note (why you think this is a fit)" className={INPUT} />
+              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                Nominate
+              </button>
+            </form>
+          </details>
+        )}
+
+        {canWaive && (
+          <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+            <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
+              Waive a requirement and claim for someone
+            </summary>
+            <form action={waiveAndClaimAction} className="mt-3 flex max-w-[400px] flex-col gap-2">
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <select name="memberId" required defaultValue="" className={INPUT}>
+                <option value="" disabled>
+                  Who are you waiving this for?
+                </option>
+                {communityMembers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                name="reason"
+                required
+                placeholder="Reason (required — stays visible on the task afterward)"
+                className={INPUT}
+              />
+              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                Waive and claim
+              </button>
+            </form>
+          </details>
+        )}
+      </section>
+
+      {requirements.length > 0 && (
+      <section className="mt-8">
         <SectionHeading>Requirements</SectionHeading>
         <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-          Status only — add, edit, and remove live in the <em>Edit task</em> panel above.
+          Status only — add, edit, and remove live on the{" "}
+          <Link href={`${taskPath}/edit`} className="text-[var(--accent-1)] hover:underline">
+            edit screen
+          </Link>
+          .
         </p>
         <ul className="mt-2 flex flex-col gap-2">
           {requirements.map((r) => {
@@ -1272,8 +1205,12 @@ export default async function TaskDetailPage({
       <section className="mt-6">
         <SectionHeading>Dependencies</SectionHeading>
         <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-          This task can&rsquo;t be finished while any of these are still open. Add and remove live
-          in the <em>Edit task</em> panel above.
+          This task can&rsquo;t be finished while any of these are still open. Add and remove live on
+          the{" "}
+          <Link href={`${taskPath}/edit`} className="text-[var(--accent-1)] hover:underline">
+            edit screen
+          </Link>
+          .
         </p>
         <ul className="mt-2 flex flex-col gap-1.5">
           {dependencies.map((d) => (
@@ -1286,53 +1223,6 @@ export default async function TaskDetailPage({
           ))}
         </ul>
       </section>
-      )}
-
-      {canGrantPermissions && (
-        <details className="mt-6 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
-            Permissions granted by this task
-          </summary>
-          <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-            Check which module-level access gate(s) whoever currently holds this task should get —
-            the identical <code>PermissionGrant</code> rows the settings panel&rsquo;s Access &amp;
-            permissions tab edits, grouped there by how far each reaches. A grant&rsquo;s scope comes
-            from this task&rsquo;s own placement, so each row below shows what you&rsquo;d be granting
-            here. Budget authority is configured only in Settings → Access &amp; permissions.
-          </p>
-          <form action={updateTaskPermissionGrantsAction} className="mt-3 flex flex-col gap-2">
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            {TASK_GRANTABLE_PERMISSION_MODULE_KEYS.map((moduleKey) => (
-              <div key={moduleKey}>
-                <CheckField
-                  label={PERMISSION_MODULE_LABELS[moduleKey]}
-                  name="moduleKeys"
-                  value={moduleKey}
-                  defaultChecked={grantedByThisTask.has(moduleKey)}
-                />
-                <p className="ml-6 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  {describeGrantScope(moduleKey, taskRow.cycleId, taskCycle?.name ?? null)}
-                  {isMisplacedCommunityGrant(moduleKey, taskRow.cycleId) && (
-                    <>
-                      {" "}
-                      &mdash; but this task sits in an event, which contradicts a community-wide role.
-                      The grant still counts community-wide.
-                    </>
-                  )}
-                </p>
-                {elsewhereHolderByModule.has(moduleKey) && (
-                  <p className="ml-6 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                    Currently held by &ldquo;{elsewhereHolderByModule.get(moduleKey)}&rdquo; — checking this
-                    moves it here.
-                  </p>
-                )}
-              </div>
-            ))}
-            <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
-              Save
-            </button>
-          </form>
-        </details>
       )}
 
       {/* Notes render inline, never tab-gated — spec: "not buried
@@ -1442,9 +1332,13 @@ export default async function TaskDetailPage({
       <section className="mt-8">
         <SectionHeading>Milestones</SectionHeading>
         <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-          A current holder adds/edits/removes these directly; anyone else&rsquo;s addition shows
-          immediately but lands pending until a holder confirms or rejects it (an unclaimed task
-          confirms immediately either way).
+          A current holder marks these done and confirms or rejects proposed ones here; adding,
+          editing and removing live on the{" "}
+          <Link href={`${taskPath}/edit`} className="text-[var(--accent-1)] hover:underline">
+            edit screen
+          </Link>
+          . Anyone&rsquo;s addition shows immediately but lands pending until a holder confirms it (an
+          unclaimed task confirms immediately either way).
         </p>
         {milestones.length === 0 && <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">None yet.</p>}
         <div className="mt-3">
@@ -1464,8 +1358,8 @@ export default async function TaskDetailPage({
               </div>
 
               {holdsTask && (
-                <>
-                  <form action={setMilestoneDoneAction} className="mt-2">
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <form action={setMilestoneDoneAction}>
                     <input type="hidden" name="taskId" value={taskRow.id} />
                     <input type="hidden" name="milestoneId" value={m.id} />
                     <input type="hidden" name="done" value={m.completedAt ? "false" : "true"} />
@@ -1473,28 +1367,8 @@ export default async function TaskDetailPage({
                       {m.completedAt ? "Not done after all" : "Mark done"}
                     </button>
                   </form>
-                  <form action={updateMilestoneAction} className="mt-2 flex flex-col gap-2">
-                    <input type="hidden" name="taskId" value={taskRow.id} />
-                    <input type="hidden" name="milestoneId" value={m.id} />
-                    <MilestoneDateFields
-                      milestone={m}
-                      phases={cyclePhases}
-                      cycleStartDate={taskCycle?.startDate ?? null}
-                      cycleEndDate={taskCycle?.endDate ?? null}
-                      taskPhaseId={taskRow.phaseId}
-                    />
-                    <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-                      <input type="checkbox" name="isDeadline" defaultChecked={m.isDeadline} />
-                      This is the deadline
-                    </label>
-                    <div className="flex gap-2">
-                      <button type="submit" className={BUTTON_PRIMARY}>
-                        Save
-                      </button>
-                    </div>
-                  </form>
-                  <div className="mt-2 flex gap-2">
-                    {m.status === "pending" && (
+                  {m.status === "pending" && (
+                    <>
                       <form action={confirmMilestoneAction}>
                         <input type="hidden" name="taskId" value={taskRow.id} />
                         <input type="hidden" name="milestoneId" value={m.id} />
@@ -1502,120 +1376,21 @@ export default async function TaskDetailPage({
                           Confirm
                         </button>
                       </form>
-                    )}
-                    <form action={deleteMilestoneAction}>
-                      <input type="hidden" name="taskId" value={taskRow.id} />
-                      <input type="hidden" name="milestoneId" value={m.id} />
-                      <button type="submit" className={BUTTON_SECONDARY}>
-                        {m.status === "pending" ? "Reject" : "Remove"}
-                      </button>
-                    </form>
-                  </div>
-                </>
+                      <form action={deleteMilestoneAction}>
+                        <input type="hidden" name="taskId" value={taskRow.id} />
+                        <input type="hidden" name="milestoneId" value={m.id} />
+                        <button type="submit" className={BUTTON_SECONDARY}>
+                          Reject
+                        </button>
+                      </form>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           ))}
         </div>
-
-        <details className="mt-4">
-          <summary className="inline-flex cursor-pointer items-center gap-1 text-[length:var(--text-body)] font-medium text-[var(--accent-1)] hover:underline">
-            <PlusIcon /> Add milestone
-          </summary>
-          <form action={addMilestoneAction} className="mt-2 flex max-w-[420px] flex-col gap-2">
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            <input type="text" name="label" required placeholder="Label (e.g. Deposit due)" className={INPUT} />
-            <MilestoneDateFields
-              phases={cyclePhases}
-              cycleStartDate={taskCycle?.startDate ?? null}
-              cycleEndDate={taskCycle?.endDate ?? null}
-              taskPhaseId={taskRow.phaseId}
-            />
-            <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-              <input type="checkbox" name="isDeadline" />
-              This is the deadline
-            </label>
-            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-              Add
-            </button>
-          </form>
-        </details>
       </section>
-
-      {canWaive && (
-        <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
-            Waive a requirement and claim for someone
-          </summary>
-          <form action={waiveAndClaimAction} className="mt-3 flex max-w-[400px] flex-col gap-2">
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            <select name="memberId" required defaultValue="" className={INPUT}>
-              <option value="" disabled>
-                Who are you waiving this for?
-              </option>
-              {communityMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              name="reason"
-              required
-              placeholder="Reason (required — stays visible on the task afterward)"
-              className={INPUT}
-            />
-            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-              Waive and claim
-            </button>
-          </form>
-        </details>
-      )}
-
-      {canNominate && (
-        <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-          <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
-            Nominate someone for this task
-          </summary>
-          <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-            Claims it for them right away — they get a yes/no/not-now window to confirm or
-            release it, no action required if it&rsquo;s a genuine fit.
-          </p>
-          {/* People suggested for this task, and why (src/lib/tasks/suggestions.ts): a proposer's
-              pick, a newcomer's inviter and the people who met them. The coordinator is the one
-              deciding whom to ask, and this is the door that acts on it. */}
-          {suggestedForTask.length > 0 && taskRow.status === "unclaimed" && (
-            <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
-              Suggested:{" "}
-              {suggestedForTask.map((p, i) => (
-                <span key={p.memberId}>
-                  {i > 0 && "; "}
-                  <span className="font-medium">{p.name}</span>{" "}
-                  <span className="text-[var(--text-muted)]">({joinReasons(p.reasons, SUGGESTION_REASON_LABEL)})</span>
-                </span>
-              ))}
-              .
-            </p>
-          )}
-          <form action={nominateForTaskAction} className="mt-3 flex max-w-[400px] flex-col gap-2">
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            <select name="memberId" required defaultValue="" className={INPUT}>
-              <option value="" disabled>
-                Who fits this?
-              </option>
-              {askCandidates.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-            <input type="text" name="message" placeholder="Optional note (why you think this is a fit)" className={INPUT} />
-            <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-              Nominate
-            </button>
-          </form>
-        </details>
-      )}
 
       {showPeopleTab && (
       <>
@@ -1695,63 +1470,13 @@ export default async function TaskDetailPage({
       )}
 
       {/* The pending-request notice lives in the contextual strip at
-          the top now — only the declined outcome stays down here. */}
+          the top now — only the declined outcome stays down here. The
+          requests themselves moved into "Who's on it" (D3). */}
       {myRequest && myRequest.status === "declined" && (
         <p className="mt-4 text-[length:var(--text-body)] text-[var(--text)]">
           Your request to join was declined
           {myRequest.declineReason ? `: ${myRequest.declineReason}` : "."}
         </p>
-      )}
-
-      {(pendingRequests.length > 0 || resolvedRequests.length > 0) && requestGated && (
-        <section className="mt-8">
-          <SectionHeading>Join requests</SectionHeading>
-          {pendingRequests.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None pending.</p>}
-          <div className="mt-3">
-            {pendingRequests.map((r) => (
-              <div key={r.id} className="mb-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-3">
-                <p className="text-[length:var(--text-body)] text-[var(--text)]">
-                  {memberNameById.get(r.memberId) ?? "—"} asked to join — {clock.dateTime(r.requestedAt)}
-                </p>
-                {resolvableRequestIds.has(r.id) && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <form action={acceptJoinRequestAction}>
-                      <input type="hidden" name="taskId" value={taskRow.id} />
-                      <input type="hidden" name="requestId" value={r.id} />
-                      <button type="submit" className={BUTTON_PRIMARY}>
-                        Accept
-                      </button>
-                    </form>
-                    <form action={declineJoinRequestAction} className="flex gap-2">
-                      <input type="hidden" name="taskId" value={taskRow.id} />
-                      <input type="hidden" name="requestId" value={r.id} />
-                      <input type="text" name="reason" placeholder="reason (optional)" className={INPUT} />
-                      <button type="submit" className={BUTTON_SECONDARY}>
-                        Decline
-                      </button>
-                    </form>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {resolvedRequests.length > 0 && (
-            <details className="mt-2">
-              <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
-                Resolved requests ({resolvedRequests.length})
-              </summary>
-              <ul className="mt-2 flex flex-col gap-1 text-[length:var(--text-body)] text-[var(--text)]">
-                {resolvedRequests.map((r) => (
-                  <li key={r.id}>
-                    {memberNameById.get(r.memberId) ?? "—"} — {r.status}
-                    {r.status === "declined" && r.declineReason && `: ${r.declineReason}`}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </section>
       )}
       </>
       )}
@@ -1906,7 +1631,14 @@ export default async function TaskDetailPage({
 
       {showSubtasksTab && (
         <section className="mt-8">
-          <SectionHeading>Subtasks</SectionHeading>
+          <SectionHeading>
+            Subtasks
+            {subtasks.length > 0 && (
+              <span className="text-[length:var(--text-body)] font-normal text-[var(--text-muted)]">
+                {" "}· {subtasks.filter((s) => s.status === "done").length} of {subtasks.length} done
+              </span>
+            )}
+          </SectionHeading>
           {subtasks.length === 0 && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">None broken off yet.</p>}
           {subtasks.length > 0 && (
             <ul className="mt-2 flex flex-col gap-1">
@@ -1961,8 +1693,10 @@ export default async function TaskDetailPage({
       )}
       </div>{/* end main column */}
 
-      {/* Reference rail — status, people, requirements summary, and the
-          quiet admin disclosures. Stacks below the main column under lg. */}
+      {/* Reference rail — the compact status/people summary and the
+          requirements summary. Stacks below the main column under lg.
+          The full slot rows (with waived notes and outgoing tags) are
+          the main column's "Who's on it" section (D3). */}
       <aside className="flex flex-col gap-4">
         <section className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
           <h2 className="text-[length:var(--text-micro)] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Status</h2>
@@ -1979,14 +1713,6 @@ export default async function TaskDetailPage({
               Shadowed by: {shadowAssignments.map((a) => memberNameById.get(a.memberId) ?? "—").join(", ")}
             </p>
           )}
-          {realAssignments
-            .filter((a) => a.gateWaivedBy)
-            .map((a) => (
-              <p key={a.memberId} className="mt-1 text-[length:var(--text-body)] text-[var(--warning)]">
-                {memberNameById.get(a.memberId) ?? "—"}&rsquo;s requirement was waived by{" "}
-                {memberNameById.get(a.gateWaivedBy!) ?? "—"}: {a.gateWaivedReason}
-              </p>
-            ))}
           {taskRow.status === "waiting" && (
             <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
               Next check-in: {taskRow.nextCheckinAt ? clock.date(taskRow.nextCheckinAt) : "—"}
@@ -2058,77 +1784,6 @@ export default async function TaskDetailPage({
   );
 }
 
-type MilestoneRow = Awaited<ReturnType<typeof listTaskMilestones>>[number];
-type CyclePhaseRow = Awaited<ReturnType<typeof getCycle>>["phases"][number];
-
-const MILESTONE_DATE_FIELD_NAMES: Record<DateFieldBase, string> = {
-  mode: "dateMode",
-  date: "date",
-  parentType: "parentType",
-  phaseId: "milestonePhaseId",
-};
-
-function MilestoneDateFields({
-  milestone,
-  phases,
-  cycleStartDate,
-  cycleEndDate,
-  taskPhaseId,
-}: {
-  milestone?: MilestoneRow;
-  phases: CyclePhaseRow[];
-  cycleStartDate: string | null;
-  cycleEndDate: string | null;
-  taskPhaseId: string | null;
-}) {
-  const taskPhase = taskPhaseId ? phases.find((p) => p.id === taskPhaseId) : undefined;
-  const defaultParentType = taskPhase?.startDate || taskPhase?.endDate ? "phase" : "cycle";
-  const relativeAllowed = Boolean(cycleStartDate || cycleEndDate || phases.some((p) => p.startDate || p.endDate));
-  const parentType = milestone?.parentType ?? defaultParentType;
-  const resolvedDate = milestone?.resolvedDate ?? (milestone?.dateType === "absolute" ? milestone.absoluteDate : null);
-  // The same prose the phase view uses for its own boundaries — see
-  // lib/dates/describe.ts, which is why this isn't a third copy. A
-  // milestone row has no cached `date` column (Phase boundaries do), so
-  // the resolved date is threaded in under the shared shape's name.
-  const recipe =
-    milestone && resolvedDate
-      ? describeBoundaryRecipe(
-          {
-            dateType: milestone.dateType,
-            date: resolvedDate,
-            relativeBasis: milestone.relativeBasis,
-            relativeValue: milestone.relativeValue,
-          },
-          milestone.parentType === "phase" ? "the phase" : "the event",
-        )
-      : null;
-
-  return (
-    <DateModeField
-      fieldNames={MILESTONE_DATE_FIELD_NAMES}
-      mode={milestone ? (milestone.dateType === "relative" ? "relative" : "absolute") : undefined}
-      date={resolvedDate}
-      parentType={parentType}
-      phaseId={milestone?.phaseId}
-      phases={phases}
-      phaseSelectDefaultLabel="This task’s own Phase"
-      defaultParentType={defaultParentType}
-      relativeAllowed={relativeAllowed}
-      defaultMode={relativeAllowed ? "relative" : "absolute"}
-      relativeHint="The task’s own Phase is the default parent; choose another Phase when this milestone belongs to a different one."
-      footer={
-        milestone &&
-        resolvedDate && (
-          <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-            Currently: {resolvedDate}
-            {recipe && ` — ${recipe}`}
-          </p>
-        )
-      }
-    />
-  );
-}
-
 function CalendarIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2140,11 +1795,3 @@ function CalendarIcon() {
   );
 }
 
-function PlusIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  );
-}

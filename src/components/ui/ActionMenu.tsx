@@ -6,8 +6,10 @@ import { MENU_EDGE_PAD, placeMenu } from "@/lib/menu-placement";
 
 // The task-UI grammar's one overflow menu (docs/design_handoff_conventions/
 // README.md — "Action hierarchy"). A real client dropdown — the single
-// place this codebase uses one; `<details>` stays the pattern for edit
-// disclosures. Children are the menu rows: server-action <form>s or
+// place this codebase uses one; `<details>` stays the pattern for
+// input-needing action disclosures (Park), while task *config* edits
+// live on the edit screen (/tasks/[id]/edit), reached from this menu.
+// Children are the menu rows: server-action <form>s or
 // <Link>s passed in from a Server Component, each rendered full-width
 // via the wrapper's CSS. Closes on outside click and Escape.
 //

@@ -116,7 +116,11 @@ See the reference file for exact markup/states of each — reproduce as Tailwind
 Decided 2026-09 with the product owner. This is the component-level grammar for everything task-shaped — cards, the task detail page, and any future list/dashboard surface that renders tasks. It builds on the tokens/components above; it doesn't replace them.
 
 ### Action hierarchy — one primary, everything else in a menu
-Every task surface shows **at most one primary action** (state-dependent) plus at most one secondary; all remaining actions live in a `⋯` overflow menu (`src/components/ui/ActionMenu.tsx`, a client dropdown — the one place a real dropdown is used; `<details>` stays the pattern for *edit* disclosures). Menu items that need input (e.g. Park's date+note) are not menu rows — they're a `<details>` disclosure containing the form.
+Every task surface shows **at most one primary action** (state-dependent) plus at most one secondary; all remaining actions live in a `⋯` overflow menu (`src/components/ui/ActionMenu.tsx`, a client dropdown — the one place a real dropdown is used). Menu items that need input (e.g. Park's date+note) are not menu rows — they're a `<details>` disclosure containing the form.
+
+**Task config is edited on its own screen.** Everything that *configures* a task — the details form (title, description, branch, event, phase, effort, capacity, critical, tags), requirements, dependencies, milestone add/edit/remove, permission grants — lives at `/tasks/[id]/edit`, reached via the ⋯ menu's "Edit task…" (docs/plans/task-interface-plan.md D1–D2). The detail page itself carries no config edit panels: it keeps *state actions* (claim/finish/park/resume/release, milestone mark-done, confirm/reject-pending) and *content* (the wiki summary, comments, resources), which are the work, not the settings. `<details>` remains the pattern for input-needing action disclosures (Park, split-subtask), not for config.
+
+**Slot-management actions live in "Who's on it", not the header menu.** Join requests, nominate and waive-and-claim are about *who holds a slot*, so they sit in the detail page's "Who's on it" section rather than the viewer-state-driven header actions. Nominate is offered on any non-endorsed, non-done task — waiting ones included — and at capacity the form states that nominating adds a slot (N → N+1), which the nomination then does in the same transaction as the claim (D5). Board cards link to it from the ⋯ menu ("Ask someone about a slot…") for coordinators and current holders.
 
 | Task state (for the current viewer) | Primary | Secondary | Menu |
 |---|---|---|---|
@@ -143,7 +147,9 @@ Status and attention are orthogonal, so they share one visual element: **shape =
 - **Known risk**: a community accent-1 too close to amber/red would collide with the attention tints on the claimed icon. Accepted for now; the escape hatch is rendering status icons in the neutral ramp and reserving hue for attention only.
 
 ### Metadata — icon chips
-Task metadata renders as small icon+value chips, not a `·`-separated sentence: `GitBranch` branch · `Clock` effort · `Users` capacity `1/2` · `Ticket` event · `CalendarBlank` deadline/check-in. Used on cards (one wrapping row) and under the detail-page title. The event chip is `Ticket` rather than a recurrence glyph (`ArrowsClockwise` was the original) to match the nav — "Event" means one discrete occasion a member attends or holds a place at, which is what a ticket is, and the same `TicketIcon` now serves `CycleChip` and nav-config's `cycle` key alike.
+Task metadata renders as small icon+value chips, not a `·`-separated sentence: `GitBranch` branch · `Clock` effort · `Users` capacity · `Ticket` event · `CalendarBlank` deadline/check-in. Used on cards (one wrapping row) and under the detail-page title. The event chip is `Ticket` rather than a recurrence glyph (`ArrowsClockwise` was the original) to match the nav — "Event" means one discrete occasion a member attends or holds a place at, which is what a ticket is, and the same `TicketIcon` now serves `CycleChip` and nav-config's `cycle` key alike.
+
+The capacity chip renders **slot dots** `●●○` for capacity ≤ 5 — a gap should be scannable, not arithmetic (docs/plans/task-interface-plan.md D4); empty dots are muted, or danger on a critical task. Above five slots it falls back to the numeric `1/6` count, and an uncapped task shows the holder count. The detail page's "Who's on it" section is the same idea at full size: filled and *empty* slot rows, shadows as a distinct learning-alongside row, and the slot-management actions (join requests, nominate, waive) in one place (D3).
 
 ### Terminology — UI copy speaks outcomes, not schema
 | Internal value | User-facing copy |

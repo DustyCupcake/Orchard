@@ -55,7 +55,10 @@ export async function claimOrRequestToJoin(
       );
     }
 
-    if (current.status !== "unclaimed" && current.status !== "claimed") {
+    // A parked (waiting) task can be claimed or asked about too: someone
+    // who knows they'd unblock it should be able to say so. Joining never
+    // changes the parking — see performClaimInTx.
+    if (current.status !== "unclaimed" && current.status !== "claimed" && current.status !== "waiting") {
       throw new ConflictError(`Cannot claim a task that is ${current.status}`);
     }
 

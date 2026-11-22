@@ -70,16 +70,25 @@ import {
 import { AppError } from "@/lib/errors";
 import { resolveAppUrlFromHeaders } from "@/lib/app-url";
 
-function redirectWithError(taskId: string, err: unknown): never {
+function redirectWithError(taskId: string, err: unknown, returnTo?: string | null): never {
+  const base = returnTo ?? `/tasks/${taskId}`;
   if (err instanceof ZodError) {
-    redirect(
-      `/tasks/${taskId}?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`,
-    );
+    redirect(`${base}?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
   }
   if (err instanceof AppError) {
-    redirect(`/tasks/${taskId}?error=${encodeURIComponent(err.message)}`);
+    redirect(`${base}?error=${encodeURIComponent(err.message)}`);
   }
   throw err;
+}
+
+// The edit screen (/tasks/[id]/edit) reuses this file's config actions
+// (docs/plans/task-interface-plan.md D1); its forms carry a hidden
+// `returnTo` so errors and revalidation land back there instead of on
+// the read page. Constrained to this task's own paths so a forged field
+// can't turn the error redirect into an open redirect.
+function validReturnTo(taskId: string, formData: FormData): string | null {
+  const returnTo = String(formData.get("returnTo") ?? "");
+  return returnTo.startsWith(`/tasks/${taskId}`) ? returnTo : null;
 }
 
 // Phase 54 (View-as): every write in this file goes through
@@ -139,18 +148,22 @@ export async function addResourceAction(formData: FormData) {
   revalidatePath(`/tasks/${taskId}`);
 }
 
-// Backs the "Edit task" disclosure at the top of the task page — the
-// only place a task's core fields (title, description, branch, cycle,
+// Backs the details form on the task edit screen (/tasks/[id]/edit) —
+// the only place a task's core fields (title, description, branch, cycle,
 // phase, effort, capacity, critical, tags) are edited after creation.
-// Open to any member, same posture as Requirements/Dependencies editing
-// on this page (updateTask's own REST route already permits this to any
+// Open to any member, the same posture the rest of the edit screen keeps
+// (updateTask's own REST route already permits this to any
 // community member; this just gives it a real form). Submitting a blank
 // "No cycle" clears the cycle and likewise "No phase" clears the phase;
 // updateTask itself guards the "phase belongs to the resulting cycle"
-// invariant when the two are changed together.
+// invariant when the two are changed together. Saving returns to the
+// read page (docs/plans/task-interface-plan.md D1).
 export async function updateTaskAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
+  // A failed save stays on the edit screen (with its banner) rather than
+  // bouncing the editor to the read page; a successful one still goes there.
+  const returnTo = validReturnTo(taskId, formData);
 
   try {
     const title = String(formData.get("title") ?? "").trim();
@@ -189,11 +202,15 @@ export async function updateTaskAction(formData: FormData) {
 
     await updateTask(actor, taskId, input);
   } catch (err) {
-    redirectWithError(taskId, err);
+    redirectWithError(taskId, err, returnTo);
   }
 
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/board");
+  // The form lives on the edit screen; a saved task is read on the task
+  // page, so a successful save sends the editor there rather than
+  // leaving them on the form.
+  redirect(`/tasks/${taskId}`);
 }
 
 // One date plus the parent-period choice. The server infers the
@@ -214,6 +231,7 @@ function milestoneDateFromForm(formData: FormData): MilestoneDateInput | undefin
 export async function addMilestoneAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
+  const returnTo = validReturnTo(taskId, formData);
 
   try {
     const date = milestoneDateFromForm(formData);
@@ -224,22 +242,23 @@ export async function addMilestoneAction(formData: FormData) {
       isDeadline: formData.get("isDeadline") === "on",
     });
   } catch (err) {
-    redirectWithError(taskId, err);
+    redirectWithError(taskId, err, returnTo);
   }
 
   revalidatePath(`/tasks/${taskId}`);
+  if (returnTo) revalidatePath(returnTo);
 }
 
 export async function updateMilestoneAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
+  const returnTo = validReturnTo(taskId, formData);
   const milestoneId = String(formData.get("milestoneId"));
 
   try {
-    // The edit form has no label field (a milestone's name is set at add
-    // time and shown read-only when editing its date/deadline), so an
-    // absent label must not fail updateTaskMilestoneInput's min(1) check —
-    // map it to undefined rather than a blank string.
+    // A blank label means "leave the name alone", not "clear it" — map
+    // it to undefined rather than letting it fail
+    // updateTaskMilestoneInput's min(1) check.
     const label = String(formData.get("label") ?? "").trim() || undefined;
     await updateTaskMilestone(actor, milestoneId, {
       label,
@@ -247,10 +266,11 @@ export async function updateMilestoneAction(formData: FormData) {
       isDeadline: formData.get("isDeadline") === "on",
     });
   } catch (err) {
-    redirectWithError(taskId, err);
+    redirectWithError(taskId, err, returnTo);
   }
 
   revalidatePath(`/tasks/${taskId}`);
+  if (returnTo) revalidatePath(returnTo);
 }
 
 // Also how a holder rejects a still-pending proposal — see
@@ -258,15 +278,17 @@ export async function updateMilestoneAction(formData: FormData) {
 export async function deleteMilestoneAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
+  const returnTo = validReturnTo(taskId, formData);
   const milestoneId = String(formData.get("milestoneId"));
 
   try {
     await deleteTaskMilestone(actor, milestoneId);
   } catch (err) {
-    redirectWithError(taskId, err);
+    redirectWithError(taskId, err, returnTo);
   }
 
   revalidatePath(`/tasks/${taskId}`);
+  if (returnTo) revalidatePath(returnTo);
 }
 
 export async function confirmMilestoneAction(formData: FormData) {
@@ -690,6 +712,7 @@ function requirementValueFromFormData(type: string, formData: FormData): Record<
 export async function addRequirementAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
+  const returnTo = validReturnTo(taskId, formData);
 
   try {
     const type = String(formData.get("requirementType") ?? "");
@@ -701,15 +724,17 @@ export async function addRequirementAction(formData: FormData) {
     });
     await createRequirement(actor, taskId, input);
   } catch (err) {
-    redirectWithError(taskId, err);
+    redirectWithError(taskId, err, returnTo);
   }
 
   revalidatePath(`/tasks/${taskId}`);
+  if (returnTo) revalidatePath(returnTo);
 }
 
 export async function updateRequirementAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
+  const returnTo = validReturnTo(taskId, formData);
   const requirementId = String(formData.get("requirementId"));
 
   try {
@@ -719,29 +744,33 @@ export async function updateRequirementAction(formData: FormData) {
     });
     await updateRequirement(actor, taskId, requirementId, input);
   } catch (err) {
-    redirectWithError(taskId, err);
+    redirectWithError(taskId, err, returnTo);
   }
 
   revalidatePath(`/tasks/${taskId}`);
+  if (returnTo) revalidatePath(returnTo);
 }
 
 export async function deleteRequirementAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
+  const returnTo = validReturnTo(taskId, formData);
   const requirementId = String(formData.get("requirementId"));
 
   try {
     await deleteRequirement(actor, taskId, requirementId);
   } catch (err) {
-    redirectWithError(taskId, err);
+    redirectWithError(taskId, err, returnTo);
   }
 
   revalidatePath(`/tasks/${taskId}`);
+  if (returnTo) revalidatePath(returnTo);
 }
 
 export async function addDependencyAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
+  const returnTo = validReturnTo(taskId, formData);
   const dependsOnTaskIds = formData
     .getAll("dependsOnTaskIds")
     .map(String)
@@ -752,24 +781,27 @@ export async function addDependencyAction(formData: FormData) {
       await addTaskDependency(actor, taskId, dependsOnTaskId);
     }
   } catch (err) {
-    redirectWithError(taskId, err);
+    redirectWithError(taskId, err, returnTo);
   }
 
   revalidatePath(`/tasks/${taskId}`);
+  if (returnTo) revalidatePath(returnTo);
 }
 
 export async function removeDependencyAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
+  const returnTo = validReturnTo(taskId, formData);
   const dependsOnTaskId = String(formData.get("dependsOnTaskId"));
 
   try {
     await removeTaskDependency(actor, taskId, dependsOnTaskId);
   } catch (err) {
-    redirectWithError(taskId, err);
+    redirectWithError(taskId, err, returnTo);
   }
 
   revalidatePath(`/tasks/${taskId}`);
+  if (returnTo) revalidatePath(returnTo);
 }
 
 // The task-side entry point onto the PermissionGrant rows the settings
@@ -791,6 +823,7 @@ export async function removeDependencyAction(formData: FormData) {
 export async function updateTaskPermissionGrantsAction(formData: FormData) {
   const actor = await requireMember();
   const taskId = String(formData.get("taskId"));
+  const returnTo = validReturnTo(taskId, formData);
   const selectedModuleKeys = new Set(formData.getAll("moduleKeys").map(String));
 
   try {
@@ -810,11 +843,12 @@ export async function updateTaskPermissionGrantsAction(formData: FormData) {
       }
     }
   } catch (err) {
-    redirectWithError(taskId, err);
+    redirectWithError(taskId, err, returnTo);
   }
 
   revalidatePath(`/tasks/${taskId}`);
   revalidatePath("/settings");
+  if (returnTo) revalidatePath(returnTo);
 }
 
 export async function escalateTaskAction(formData: FormData) {

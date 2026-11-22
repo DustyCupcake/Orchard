@@ -82,7 +82,16 @@ export async function performClaimInTx(
 ) {
   const current = await loadTaskForUpdate(tx, taskId, member.communityId);
 
-  if (current.status !== "unclaimed" && current.status !== "claimed") {
+  // A waiting (parked) task takes a new holder too — a nomination, an
+  // accepted request, a waiver or a plain claim can all land on one — and
+  // joining it never changes it: the status, the check-in date and the
+  // "waiting on…" note stay exactly as the holder set them (see below).
+  // The newcomer reads the task and presses Resume themselves if having
+  // them there is what unblocked it; waking it for them would throw away
+  // a note and a date the previous holder chose, and a provisional claim
+  // (a nomination that is then declined) would leave it woken for nothing
+  // (docs/plans/task-interface-plan.md D5).
+  if (current.status !== "unclaimed" && current.status !== "claimed" && current.status !== "waiting") {
     throw new ConflictError(`Cannot claim a task that is ${current.status}`);
   }
 
@@ -119,11 +128,18 @@ export async function performClaimInTx(
     ...(waiver && { gateWaivedBy: waiver.waivedBy, gateWaivedReason: waiver.reason }),
   });
 
-  const [updated] = await tx
-    .update(task)
-    .set({ status: "claimed", statusChangedAt: new Date(), attentionLevel: "ok" })
-    .where(eq(task.id, taskId))
-    .returning();
+  // A claimed/unclaimed task becomes (or stays) claimed with a fresh
+  // clock. A waiting one is left alone entirely: its status, check-in,
+  // note and attention level are the parking holder's, and an overdue
+  // check-in is a separate signal that someone joining doesn't answer.
+  let updated = current;
+  if (current.status !== "waiting") {
+    [updated] = await tx
+      .update(task)
+      .set({ status: "claimed", statusChangedAt: new Date(), attentionLevel: "ok" })
+      .where(eq(task.id, taskId))
+      .returning();
+  }
 
   // The holding log, and the reason this lives here rather than at each
   // door: this is the single point every real claim passes through —

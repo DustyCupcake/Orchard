@@ -5,11 +5,13 @@ import { member, memberIdentity, task, taskAssignment, taskNomination } from "@/
 import {
   claimTask,
   createRequirement,
+  finishTask,
   isAuthorizedToNominate,
   listMyExpiredNominations,
   listMyPendingNominations,
   listNominationsForTask,
   nominateForTask,
+  parkTask,
   RESPONSE_TOKEN_KIND,
   resolveTaskNominationDeadlines,
   respondToNomination,
@@ -161,11 +163,91 @@ describe("nominateForTask", () => {
     expect(nominations).toHaveLength(0);
   });
 
-  it("rejects capacity already full", async () => {
+  it("raises capacity by one when the task is full, then claims — the nomination is the ask for help", async () => {
     const fixtures = await createFixtures();
     await makeCoordinationHolder(fixtures, fixtures.alice);
     const t = await insertTask(fixtures.community.id, fixtures.branch.id, fixtures.alice.id, { capacity: 1 });
     await claimTask(fixtures.alice, t.id);
+
+    // D5 (docs/plans/task-interface-plan.md): a full task grows a slot
+    // rather than refusing, per spec's "capacity is a way to ask for
+    // help without releasing or splitting the task".
+    const { task: updatedTask, nomination } = await nominateForTask(
+      fixtures.alice,
+      t.id,
+      { memberId: fixtures.bob.id },
+      APP_URL,
+    );
+
+    expect(updatedTask.capacity).toBe(2);
+    expect(updatedTask.status).toBe("claimed");
+    expect(nomination.status).toBe("pending");
+    const assignments = await db.select().from(taskAssignment).where(eq(taskAssignment.taskId, t.id));
+    expect(assignments).toHaveLength(2);
+  });
+
+  it("doesn't touch capacity when there's still room", async () => {
+    const fixtures = await createFixtures();
+    await makeCoordinationHolder(fixtures, fixtures.alice);
+    const t = await insertTask(fixtures.community.id, fixtures.branch.id, fixtures.alice.id, { capacity: 3 });
+    await claimTask(fixtures.alice, t.id);
+
+    const { task: updatedTask } = await nominateForTask(fixtures.alice, t.id, { memberId: fixtures.bob.id }, APP_URL);
+
+    expect(updatedTask.capacity).toBe(3);
+  });
+
+  it("claims onto a waiting (parked) task and leaves it parked, with its check-in and note intact", async () => {
+    const fixtures = await createFixtures();
+    await makeCoordinationHolder(fixtures, fixtures.alice);
+    const t = await insertTask(fixtures.community.id, fixtures.branch.id, fixtures.alice.id, { capacity: 2 });
+    await claimTask(fixtures.alice, t.id);
+    const checkin = new Date(Date.now() + 86_400_000);
+    await parkTask(fixtures.alice, t.id, { nextCheckinAt: checkin, waitingNote: "waiting on the venue contract" });
+
+    const { task: updatedTask, nomination } = await nominateForTask(
+      fixtures.alice,
+      t.id,
+      { memberId: fixtures.bob.id },
+      APP_URL,
+    );
+
+    // The nominee joins; the parking is the holder's and doesn't change
+    // (docs/plans/task-interface-plan.md D5) — the newcomer resumes it
+    // themselves if having them there is what unblocked it.
+    expect(updatedTask.status).toBe("waiting");
+    expect(updatedTask.nextCheckinAt?.getTime()).toBe(checkin.getTime());
+    expect(updatedTask.waitingNote).toBe("waiting on the venue contract");
+    expect(nomination.status).toBe("pending");
+    const assignments = await db.select().from(taskAssignment).where(eq(taskAssignment.taskId, t.id));
+    expect(assignments).toHaveLength(2);
+  });
+
+  it("a declined nomination on a parked task leaves it exactly as it was parked", async () => {
+    const fixtures = await createFixtures();
+    await makeCoordinationHolder(fixtures, fixtures.alice);
+    const t = await insertTask(fixtures.community.id, fixtures.branch.id, fixtures.alice.id, { capacity: 2 });
+    await claimTask(fixtures.alice, t.id);
+    const checkin = new Date(Date.now() + 86_400_000);
+    await parkTask(fixtures.alice, t.id, { nextCheckinAt: checkin, waitingNote: "waiting on the venue contract" });
+    const { nomination } = await nominateForTask(fixtures.alice, t.id, { memberId: fixtures.bob.id }, APP_URL);
+
+    await respondToNomination(fixtures.bob, nomination.id, { response: "declined" });
+
+    const [after] = await db.select().from(task).where(eq(task.id, t.id));
+    expect(after.status).toBe("waiting");
+    expect(after.nextCheckinAt?.getTime()).toBe(checkin.getTime());
+    expect(after.waitingNote).toBe("waiting on the venue contract");
+    const assignments = await db.select().from(taskAssignment).where(eq(taskAssignment.taskId, t.id));
+    expect(assignments).toHaveLength(1);
+  });
+
+  it("rejects nomination for a done task", async () => {
+    const fixtures = await createFixtures();
+    await makeCoordinationHolder(fixtures, fixtures.alice);
+    const t = await insertTask(fixtures.community.id, fixtures.branch.id, fixtures.alice.id);
+    await claimTask(fixtures.alice, t.id);
+    await finishTask(fixtures.alice, t.id);
 
     await expect(
       nominateForTask(fixtures.alice, t.id, { memberId: fixtures.bob.id }, APP_URL),
