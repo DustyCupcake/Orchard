@@ -10,15 +10,23 @@ import {
   confirmShiftProposal,
   createShiftSeries,
   createShiftSeriesInput,
+  deleteShiftOccurrence,
+  deleteShiftSeries,
   generateShiftOccurrences,
   generateShiftOccurrencesInput,
+  getShiftOccurrence,
   getShiftSeriesTimeZone,
+  instantFromShiftInput,
   markShiftSignupCompleted,
   markShiftSignupNoShow,
   openCycleShiftSignups,
   setShiftSeriesScope,
   signUpForShift,
   unarchiveShiftSeries,
+  updateShiftOccurrence,
+  updateShiftOccurrenceInput,
+  updateShiftSeries,
+  updateShiftSeriesInput,
   withdrawFromShift,
 } from "@/lib/shifts";
 import { AppError } from "@/lib/errors";
@@ -174,6 +182,86 @@ export async function unarchiveShiftSeriesAction(formData: FormData) {
 
   revalidatePath("/shifts");
   redirect("/shifts?unarchived=1");
+}
+
+// Manager-only, enforced inside updateShiftSeries. The form always sends
+// every field, so an empty description or branch clears it.
+export async function updateShiftSeriesAction(formData: FormData) {
+  const actor = await requireMember();
+  const seriesId = String(formData.get("seriesId"));
+
+  try {
+    const input = updateShiftSeriesInput.parse({
+      branchId: String(formData.get("branchId") ?? "").trim() || null,
+      title: String(formData.get("title") ?? "").trim(),
+      description: String(formData.get("description") ?? "").trim() || null,
+      defaultCapacity: Number(formData.get("defaultCapacity") ?? NaN),
+    });
+    await updateShiftSeries(actor, seriesId, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/shifts");
+  redirect("/shifts?seriesUpdated=1");
+}
+
+// Manager-only, enforced inside updateShiftOccurrence. Times are typed on
+// the venue's clock, like "Pick exact times", read from the shift's own
+// series. An empty "people needed" means the shift follows the series
+// default again.
+export async function updateShiftOccurrenceAction(formData: FormData) {
+  const actor = await requireMember();
+  const occurrenceId = String(formData.get("occurrenceId"));
+
+  try {
+    const { occurrence, series } = await getShiftOccurrence(actor, occurrenceId);
+    const timeZone = await getShiftSeriesTimeZone(actor, series.id);
+    const startsAt = String(formData.get("startsAt") ?? "").trim();
+    const endsAt = String(formData.get("endsAt") ?? "").trim();
+    const capacity = String(formData.get("capacity") ?? "").trim();
+    const input = updateShiftOccurrenceInput.parse({
+      startsAt: startsAt ? instantFromShiftInput(startsAt, occurrence.startsAt, timeZone).toISOString() : undefined,
+      endsAt: endsAt ? instantFromShiftInput(endsAt, occurrence.endsAt, timeZone).toISOString() : undefined,
+      capacity: capacity ? Number(capacity) : null,
+    });
+    await updateShiftOccurrence(actor, occurrenceId, input);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/shifts");
+  redirect("/shifts?shiftUpdated=1");
+}
+
+// Only while the roster's sign-ups are not open — enforced inside
+// deleteShiftOccurrence / deleteShiftSeries.
+export async function deleteShiftOccurrenceAction(formData: FormData) {
+  const actor = await requireMember();
+  const occurrenceId = String(formData.get("occurrenceId"));
+
+  try {
+    await deleteShiftOccurrence(actor, occurrenceId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/shifts");
+  redirect("/shifts?shiftDeleted=1");
+}
+
+export async function deleteShiftSeriesAction(formData: FormData) {
+  const actor = await requireMember();
+  const seriesId = String(formData.get("seriesId"));
+
+  try {
+    await deleteShiftSeries(actor, seriesId);
+  } catch (err) {
+    redirectWithError(err);
+  }
+
+  revalidatePath("/shifts");
+  redirect("/shifts?seriesDeleted=1");
 }
 
 // Self-reported, enforced inside markShiftSignupCompleted.

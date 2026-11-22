@@ -62,6 +62,10 @@ export default async function ShiftsPage({
     shiftOpened?: string;
     proposalConfirmed?: string;
     seriesReplaced?: string;
+    seriesUpdated?: string;
+    seriesDeleted?: string;
+    shiftUpdated?: string;
+    shiftDeleted?: string;
     // Opens the "add a shift series" form in place of the page body — the
     // header's primary action, the same `?compose=` technique /schedule
     // uses. `fromTask` pre-fills it from a task (the task page's "Make
@@ -88,6 +92,10 @@ export default async function ShiftsPage({
     shiftOpened,
     proposalConfirmed,
     seriesReplaced,
+    seriesUpdated,
+    seriesDeleted,
+    shiftUpdated,
+    shiftDeleted,
     compose,
     fromTask,
   } = await searchParams;
@@ -291,6 +299,26 @@ export default async function ShiftsPage({
           {seriesReplaced && (
             <div className="mt-4">
               <Banner tone="success">Series moved.</Banner>
+            </div>
+          )}
+          {seriesUpdated && (
+            <div className="mt-4">
+              <Banner tone="success">Series saved.</Banner>
+            </div>
+          )}
+          {seriesDeleted && (
+            <div className="mt-4">
+              <Banner tone="success">Series deleted.</Banner>
+            </div>
+          )}
+          {shiftUpdated && (
+            <div className="mt-4">
+              <Banner tone="success">Shift saved.</Banner>
+            </div>
+          )}
+          {shiftDeleted && (
+            <div className="mt-4">
+              <Banner tone="success">Shift deleted.</Banner>
             </div>
           )}
 
@@ -523,7 +551,10 @@ export default async function ShiftsPage({
               memberNameById={memberNameById}
               cycleNameById={cycleById}
               placementOptions={placementOptions}
+              branches={branches}
               shiftZone={shiftZone}
+              rosterOpen={(cycleId) => !cycleId || cycleById.get(cycleId)?.shiftSignupsOpenedAt != null}
+              rosterClosed={(cycleId) => !!cycleId && cycleById.get(cycleId)?.closedAt != null}
             />
           )}
         </>
