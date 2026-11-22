@@ -30,6 +30,17 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-11-22",
+    title: "Your community can have its own app icon",
+    summary: "Admins can upload one PNG in Settings, and Orchard makes the browser-tab and phone home-screen icons from it.",
+    points: [
+      "Under Settings → General → Look there's now an App icon card. Upload a square PNG — 512×512 or larger looks best — and the tab, the phone home screen and the install icon all change with it.",
+      "The other sizes are made for you, including a padded version Android can crop to its launcher's shape. There's no need to make a set of files by hand.",
+      "Until a community uploads one, the Orchard mark is used. Remove switches back to it.",
+    ],
+    source: "a community can set its own app icon, and the phone icons come with it",
+  },
+  {
+    date: "2026-11-22",
     title: "Days read as weekdays inside a short event",
     summary: "If you read dates as periods, a day inside an event or phase that lasts a week or less now reads as its weekday — on shifts, the kitchen, the programme and more, not just tasks.",
     points: [

@@ -241,12 +241,21 @@ export const community = pgTable("community", {
   // "Data model changes needed". Hex strings (e.g. "#3a6cd9"), null
   // until a community sets its own; the design tokens fall back to the
   // README's own documented defaults (cobalt/plum) when null — see
-  // src/app/layout.tsx. logoUrl is a plain hosted-image URL for now —
-  // there's no upload/storage utility anywhere in this codebase yet, so
-  // building one is explicitly deferred rather than guessed at here.
+  // src/app/layout.tsx. logoUrl is still a plain hosted-image URL: the
+  // sidebar logo and the app icon are different things, and this feature
+  // only built storage for the latter (see community_icon).
   accentPrimary: text("accent_primary"),
   accentSecondary: text("accent_secondary"),
   logoUrl: text("logo_url"),
+  // The app icon (browser tab, home screen, install prompt) is generated
+  // from one uploaded PNG and stored in community_icon. These two columns
+  // are the cheap presence/version check every page's <head> needs without
+  // loading the image rows: null iconUpdatedAt means "never uploaded, use
+  // the Orchard mark", and the timestamp doubles as the cache-busting
+  // version on the generated icon URLs. iconFileName is the uploaded file's
+  // name, shown in Settings and written to the change log.
+  iconUpdatedAt: timestamp("icon_updated_at", { withTimezone: true }),
+  iconFileName: text("icon_file_name"),
   // OIDC second auth provider (docs/plans/development-plan.md's Phase 57) —
   // "provider-pluggable, not one fixed method," alongside (never
   // replacing) magic-link. All three null = OIDC off, magic-link only.

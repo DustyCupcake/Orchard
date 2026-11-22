@@ -69,9 +69,29 @@ const getCommunity = cache(async () => {
 export async function generateMetadata(): Promise<Metadata> {
   const community = await getCommunity();
   const name = community?.name?.trim();
+  const version = community?.iconUpdatedAt?.getTime();
+  // One URL shape whether or not the community has uploaded an icon: the
+  // route falls back to the Orchard mark, and the timestamp is a cache-buster
+  // only when there is something to bust. See src/lib/settings/community-icon.ts.
+  const iconUrl = (variant: string) =>
+    `/api/community/icon/${variant}${version ? `?v=${version}` : ""}`;
+
   return {
     title: name || "Orchard",
     description: "Task-based, distributed-effort coordination.",
+    icons: {
+      icon: [
+        // The default mark is vector, so keep it as the tab icon until the
+        // community uploads a raster one. (After an upload this entry is
+        // gone, so a stale SVG can never win over the new PNG.)
+        ...(version ? [] : [{ url: "/icon.svg", sizes: "any", type: "image/svg+xml" }]),
+        { url: iconUrl("16"), sizes: "16x16", type: "image/png" },
+        { url: iconUrl("32"), sizes: "32x32", type: "image/png" },
+        { url: iconUrl("48"), sizes: "48x48", type: "image/png" },
+      ],
+      shortcut: [{ url: "/favicon.ico", type: "image/x-icon" }],
+      apple: [{ url: iconUrl("180"), sizes: "180x180", type: "image/png" }],
+    },
   };
 }
 

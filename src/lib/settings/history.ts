@@ -246,6 +246,7 @@ const FIELD_LABEL: Record<string, string> = {
   accentPrimary: "primary accent colour",
   accentSecondary: "secondary accent colour",
   logoUrl: "logo",
+  appIcon: "app icon",
   oidcIssuerUrl: "single sign-on issuer",
   oidcClientId: "single sign-on client id",
   oidcRequiredRole: "role single sign-on requires",

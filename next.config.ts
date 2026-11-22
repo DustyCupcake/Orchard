@@ -21,6 +21,14 @@ const nextConfig: NextConfig = {
   // If webpack is ever needed again, `next build --webpack` still works, and
   // the removed workaround is in git history (4314321).
   turbopack: {},
+  experimental: {
+    serverActions: {
+      // A Server Action rejects bodies over 1 MB by default, which would make
+      // the community icon upload fail before it ever reaches validation.
+      // 8 MB matches the PNG cap in src/lib/settings/community-icon.ts.
+      bodySizeLimit: "8mb",
+    },
+  },
   // The Dockerfile's own `checks` stage already runs lint and tsc (as a fast
   // pre-check ahead of the real build, via scripts/rebuild.sh), so doing it
   // again inside `next build` is duplicated memory and time on a box already
