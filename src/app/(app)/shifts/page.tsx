@@ -31,7 +31,8 @@ import {
   withdrawFromShiftAction,
 } from "./actions";
 import MySeriesSection from "./MySeriesSection";
-import { effectiveDateDisplayMode, effectiveTimeZone, formatShiftRange, type PeriodDateContext } from "@/lib/dates";
+import { effectiveTimeZone, type DayView } from "@/lib/dates";
+import { getDayLabeler } from "@/lib/day-labeler";
 import SelectField from "@/components/ui/SelectField";
 
 export const dynamic = "force-dynamic";
@@ -122,24 +123,17 @@ export default async function ShiftsPage({
     (cycleId && cycleZoneById.get(cycleId)) || effectiveTimeZone(null, communityRow);
 
   // How a shift's date reads is the viewer's own setting, resolved through
-  // the community default. Where the shift's event is a week or less and the
-  // shift falls inside it, that is the event's name and a weekday; anything
-  // else (a standing series, a longer event, a shift outside the event's
-  // dates) keeps the full date. See formatShiftRange.
-  const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
-  const periodByCycleId = new Map<string, PeriodDateContext>(
-    allCycles.flatMap((c) =>
-      c.startDate && c.endDate ? [[c.id, { name: c.name, startDate: c.startDate, endDate: c.endDate }] as const] : [],
-    ),
-  );
-  const shiftWhen = (startsAt: Date, endsAt: Date, cycleId: string | null) =>
-    formatShiftRange(
-      startsAt,
-      endsAt,
-      shiftZone(cycleId),
-      dateDisplayMode,
-      cycleId ? (periodByCycleId.get(cycleId) ?? null) : null,
-    );
+  // the community default (docs/plans/day-labels-plan.md). Where a shift's day
+  // falls in a short phase or event it reads as that and a weekday; anything
+  // else (a standing series, a longer event, a day outside every phase) keeps
+  // the full date. A list that already says which event it is leaves the
+  // event's name out of each row (`view`); one that mixes events names it.
+  const labeler = await getDayLabeler();
+  const shiftWhen = (startsAt: Date, endsAt: Date, cycleId: string | null, view?: DayView) =>
+    labeler.shiftRange(startsAt, endsAt, shiftZone(cycleId), { cycleId }, view);
+  // For a row under its own event's heading, or on a card that names the event.
+  const shiftWhenInEvent = (startsAt: Date, endsAt: Date, cycleId: string | null) =>
+    shiftWhen(startsAt, endsAt, cycleId, { cycleId });
 
   const mySignedUpOccurrenceIds = new Set(mySignups.map((s) => s.signup.occurrenceId));
   const now = new Date();
@@ -499,7 +493,7 @@ export default async function ShiftsPage({
                         key={occurrence.id}
                         occurrence={occurrence}
                         series={series}
-                        when={shiftWhen(occurrence.startsAt, occurrence.endsAt, series.cycleId)}
+                        when={shiftWhenInEvent(occurrence.startsAt, occurrence.endsAt, series.cycleId)}
                         branchNameById={branchNameById}
                         capacity={effectiveCapacity(occurrence, series)}
                         count={countByOccurrenceId.get(occurrence.id) ?? 0}
@@ -573,7 +567,7 @@ export default async function ShiftsPage({
               placementOptions={placementOptions}
               branches={branches}
               shiftZone={shiftZone}
-              shiftWhen={shiftWhen}
+              shiftWhen={shiftWhenInEvent}
               rosterOpen={(cycleId) => !cycleId || cycleById.get(cycleId)?.shiftSignupsOpenedAt != null}
               rosterClosed={(cycleId) => !!cycleId && cycleById.get(cycleId)?.closedAt != null}
             />

@@ -30,6 +30,7 @@ import {
   listSubtasks,
   listTaskDependencies,
   listTaskMilestones,
+  milestoneDayItem,
   tierNameLookup,
   describeRequirement,
   isSelfAssignWorthAskingAbout,
@@ -39,7 +40,7 @@ import { SUGGESTION_REASON_LABEL, joinReasons, listSuggestionsForTasks } from "@
 import { getCommunity, listBranches } from "@/lib/settings";
 import { getCycle, resolveCrossCycleContext, scopeLabel } from "@/lib/cycles";
 import { isModuleEnabled } from "@/lib/modules";
-import { effectiveDateDisplayMode, formatDateLabel } from "@/lib/dates";
+import { getDayLabeler } from "@/lib/day-labeler";
 import { isShiftManagerForScope } from "@/lib/shifts";
 import { switchToLinkedScopeAction } from "@/app/(app)/cycles/scope-actions";
 import CopyLinkButton from "@/components/CopyLinkButton";
@@ -214,19 +215,13 @@ export default async function TaskDetailPage({
     listNominationsForTask(viewing, id),
     listTaskDependencies(viewing, id),
   ]);
-  const cyclePhases = taskCycle?.phases ?? [];
-  const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
-  const phaseById = new Map(cyclePhases.map((p) => [p.id, p]));
-  const milestoneDateLabel = (m: (typeof milestones)[number]) => {
-    const parentPhase = m.parentType === "phase" ? phaseById.get(m.phaseId ?? taskRow.phaseId ?? "") : undefined;
-    const period =
-      m.dateType === "relative" && parentPhase?.startDate && parentPhase.endDate
-        ? { name: parentPhase.name, startDate: parentPhase.startDate, endDate: parentPhase.endDate }
-        : m.dateType === "relative" && taskCycle?.startDate && taskCycle.endDate
-          ? { name: taskCycle.name, startDate: taskCycle.startDate, endDate: taskCycle.endDate, cycleName: taskCycle.name }
-          : null;
-    return formatDateLabel(m.resolvedDate, dateDisplayMode, period);
-  };
+  // A milestone's day is written in terms of the task's event and phase
+  // (src/lib/dates/day-labeler.ts), or the phase the milestone points at. The
+  // page already shows the task's event in its chip, so the label leaves the
+  // event's name out; a task with no event has plain dates.
+  const labeler = await getDayLabeler();
+  const milestoneDateLabel = (m: (typeof milestones)[number]) =>
+    labeler.label(m.resolvedDate, milestoneDayItem(m, taskRow), { cycleId: taskRow.cycleId });
   const crossCycle = await resolveCrossCycleContext(viewing, taskCycle, scopeParam ?? null);
   const taskPath = `/tasks/${taskRow.id}`;
 

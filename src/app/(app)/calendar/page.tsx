@@ -17,8 +17,8 @@ import {
   listMyCalendarEventInvites,
   listMyCalendarEvents,
 } from "@/lib/calendar-events";
-import { getCommunity, listBranches } from "@/lib/settings";
-import { effectiveDateDisplayMode, formatDateLabel } from "@/lib/dates";
+import { listBranches } from "@/lib/settings";
+import { getDayLabeler } from "@/lib/day-labeler";
 import { listCycles } from "@/lib/cycles";
 import { buildMonthGrid, getCalendarView, monthParam, parseMonthParam, shiftMonth, MONTH_LABEL, type CalendarEntry } from "@/lib/calendar";
 import {
@@ -133,14 +133,13 @@ export default async function CalendarPage({
   const newEventHref = `/calendar?compose=1&tab=your-events${month ? `&month=${month}` : ""}`;
   const cancelComposeHref = tabHref("your-events");
 
-  const [view, myEvents, myInvites, branches, cycles, communityMembers, communityRow] = await Promise.all([
+  const [view, myEvents, myInvites, branches, cycles, communityMembers] = await Promise.all([
     getCalendarView(viewing),
     listMyCalendarEvents(viewing),
     listMyCalendarEventInvites(viewing),
     listBranches(viewing),
     listCycles(viewing),
     db.select().from(member).where(eq(member.communityId, viewing.communityId)),
-    getCommunity(viewing),
   ]);
 
   // The grid and month default take a Date and read its UTC fields, so
@@ -162,20 +161,15 @@ export default async function CalendarPage({
 
   const upcoming = view.entries.filter((e) => e.date >= view.today).slice(0, 20);
 
-  const dateDisplayMode = effectiveDateDisplayMode(viewing, communityRow);
-  const cycleById = new Map(cycles.map((c) => [c.id, c]));
-  const calendarEntryDateLabel = (entry: CalendarEntry) =>
-    formatDateLabel(entry.date, dateDisplayMode, entry.period);
-  const eventDateLabel = (event: { date: string | null; cycleId: string | null }) => {
-    const cycle = event.cycleId ? cycleById.get(event.cycleId) : null;
-    return formatDateLabel(
-      event.date,
-      dateDisplayMode,
-      cycle?.startDate && cycle.endDate
-        ? { name: cycle.name, startDate: cycle.startDate, endDate: cycle.endDate, cycleName: cycle.name }
-        : null,
-    );
-  };
+  // Each entry's day is written in terms of the event and phase it belongs to
+  // (src/lib/dates/day-labeler.ts). The page header already names the current
+  // event, so entries of that event leave its name out; other events' entries
+  // name theirs.
+  const labeler = await getDayLabeler();
+  const inView = { cycleId: view.currentCycle?.id };
+  const calendarEntryDateLabel = (entry: CalendarEntry) => labeler.label(entry.date, entry.scope, inView);
+  const eventDateLabel = (event: { date: string | null; cycleId: string | null }) =>
+    labeler.label(event.date, { cycleId: event.cycleId }, inView);
 
   const myOwnEvents = myEvents.filter((e) => e.memberId === viewing.id);
   const acceptedEvents = myEvents.filter((e) => e.memberId !== viewing.id);

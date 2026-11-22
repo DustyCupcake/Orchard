@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { assembly, budgetCycle, community, task } from "@/db/schema";
-import { createCycle } from "@/lib/cycles";
+import { createCycle, getCycle } from "@/lib/cycles";
 import { claimTask, createTaskMilestone } from "@/lib/tasks";
 import { createCalendarEvent, acceptCalendarEventInvite } from "@/lib/calendar-events";
 import { createProfileQuestion, answerProfileQuestion } from "@/lib/profile-questions";
@@ -10,7 +10,7 @@ import { createAssembly } from "@/lib/assemblies";
 import { createPoll, submitAvailability, confirmSlot } from "@/lib/scheduling-polls";
 import { createEventProposal, confirmEventProposalSlot, declineEventProposal, publishEventSchedule } from "@/lib/event-scheduling";
 import { getBudgetCycleForCycle } from "@/lib/budget";
-import { createShiftSeries, generateShiftOccurrences, signUpForShift } from "@/lib/shifts";
+import { createShiftSeries, generateShiftOccurrences, openCycleShiftSignups, signUpForShift } from "@/lib/shifts";
 import { updateCommunity } from "@/lib/settings";
 import { getCalendarView } from "@/lib/calendar";
 import { setPermissionGrant } from "@/lib/permissions";
@@ -102,6 +102,75 @@ describe("getCalendarView", () => {
       ]),
     );
     expect(await getCalendarView(bob)).toMatchObject({ currentCycle: view.currentCycle, entries: [] });
+  });
+
+  describe("entry scope — which event and phase a day is written in terms of", () => {
+    it("gives a phase boundary its own phase, and a plain entry no event", async () => {
+      const { alice, community: testCommunity } = await createFixtures();
+      await enableCycles(testCommunity.id);
+      const cyc = await createCycle(alice, {
+        source: "blank",
+        name: "Season",
+        phases: [{ name: "Build", order: 0, startDate: "2027-02-01", endDate: "2027-02-05" }],
+      });
+      const [build] = (await getCycle(alice, cyc.id)).phases;
+      await createCalendarEvent(alice, {
+        title: "Community lunch",
+        date: { type: "absolute", date: "2027-05-01" },
+        shareTarget: "community",
+      });
+
+      const view = await getCalendarView(alice);
+      expect(view.entries.find((e) => e.kind === "phase_start")?.scope).toEqual({ cycleId: cyc.id, phaseId: build.id });
+      expect(view.entries.find((e) => e.kind === "phase_end")?.scope).toEqual({ cycleId: cyc.id, phaseId: build.id });
+      // A calendar entry that belongs to no event says so, so it reads as a plain date.
+      expect(view.entries.find((e) => e.label === "Community lunch")?.scope).toEqual({ cycleId: null });
+    });
+
+    it("gives a milestone its task's event and phase, and an event-less task's none", async () => {
+      const { alice, branch: testBranch, community: testCommunity } = await createFixtures();
+      await enableCycles(testCommunity.id);
+      const cyc = await createCycle(alice, {
+        source: "blank",
+        name: "Season",
+        startDate: "2027-01-01",
+        endDate: "2027-01-05",
+        phases: [{ name: "Build", order: 0, startDate: "2027-01-01", endDate: "2027-01-03" }],
+      });
+      const [build] = (await getCycle(alice, cyc.id)).phases;
+      const inEvent = await insertTask(testCommunity.id, testBranch.id, alice.id, {
+        title: "Paint the stage",
+        cycleId: cyc.id,
+        phaseId: build.id,
+      });
+      const standing = await insertTask(testCommunity.id, testBranch.id, alice.id, { title: "Renew the lease" });
+      await claimTask(alice, inEvent.id);
+      await claimTask(alice, standing.id);
+      await createTaskMilestone(alice, inEvent.id, { label: "Paint dry", date: { type: "absolute", date: "2027-01-02" } });
+      await createTaskMilestone(alice, standing.id, { label: "Sign", date: { type: "absolute", date: "2027-03-02" } });
+
+      const entries = (await getCalendarView(alice)).entries.filter((e) => e.kind === "milestone");
+      expect(entries.find((e) => e.label.startsWith("Paint dry"))?.scope).toEqual({ cycleId: cyc.id, phaseId: build.id });
+      expect(entries.find((e) => e.label.startsWith("Sign"))?.scope).toEqual({ cycleId: null, phaseId: null });
+    });
+
+    it("gives a shift its series' event", async () => {
+      const { alice, branch: testBranch, community: testCommunity } = await createFixtures();
+      await enableCycles(testCommunity.id);
+      await updateCommunity(alice, { modulesEnabled: ["shifts"] });
+      const cyc = await createCycle(alice, { source: "blank", name: "Season", startDate: "2027-06-01", endDate: "2027-06-04" });
+      await grantShiftManagementTo(alice, testBranch.id, cyc.id);
+      const series = await createShiftSeries(alice, { title: "Dish duty", defaultCapacity: 2, cycleId: cyc.id });
+      const [occurrence] = await generateShiftOccurrences(alice, series.id, {
+        mode: "explicit",
+        slots: [{ startsAt: slot(24), endsAt: slot(25) }],
+      });
+      await openCycleShiftSignups(alice, cyc.id);
+      await signUpForShift(alice, occurrence.id);
+
+      const entry = (await getCalendarView(alice)).entries.find((e) => e.kind === "shift_occurrence");
+      expect(entry?.scope).toEqual({ cycleId: cyc.id });
+    });
   });
 
   it("includes an event once accepted, distinct from a merely-invited one", async () => {
