@@ -1,5 +1,6 @@
 export * from "./health";
 export * from "./community";
+export * from "./community-icon";
 export * from "./date-display";
 export * from "./tier";
 export * from "./tier-request";

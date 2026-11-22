@@ -1,8 +1,14 @@
+import Image from "next/image";
 import type { community as communityTable, member as memberTable, tier as tierTable } from "@/db/schema";
+import { BUTTON_SECONDARY, INPUT } from "@/components/ui/kit";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { COMMUNITY_ICON_ACCEPT } from "@/lib/settings/community-icon";
 import SignInAccounts from "../SignInAccounts";
 import {
   FieldGroup,
   SelectField,
+  SettingsCard,
+  SettingsField,
   SettingsGroup,
   SettingsSection,
   TextField,
@@ -10,6 +16,8 @@ import {
   ToggleField,
 } from "../ui";
 import {
+  removeAppIconAction,
+  updateAppIconAction,
   updateBrandingAction,
   updateCallDefaultsAction,
   updateGeneralBasicsAction,
@@ -25,6 +33,9 @@ export default function GeneralTab({
   tiers: (typeof tierTable.$inferSelect)[];
   viewer: typeof memberTable.$inferSelect;
 }) {
+  const iconVersion = community.iconUpdatedAt?.getTime();
+  const iconSrc = `/api/community/icon/32${iconVersion ? `?v=${iconVersion}` : ""}`;
+
   return (
     <div className="flex flex-col gap-8">
       <SettingsSection
@@ -143,7 +154,7 @@ export default function GeneralTab({
 
       <SettingsSection
         title="Look"
-        description="Colours and a logo. Leave them blank and the design tokens' own defaults are used."
+        description="Colours, a logo, and the app icon. Leave the colours and logo blank and the design tokens' own defaults are used; the app icon has a built-in Orchard mark until you upload one."
       >
         <SettingsGroup
           action={updateBrandingAction}
@@ -191,6 +202,53 @@ export default function GeneralTab({
             hint="A hosted image. Shown in the sidebar and on the sign-in page."
           />
         </SettingsGroup>
+
+        <SettingsCard
+          action={updateAppIconAction}
+          submitLabel="Upload icon"
+          affordance="Change"
+          encType="multipart/form-data"
+          title="App icon"
+          stateLabel={
+            community.iconFileName
+              ? `App icon: ${community.iconFileName}, used for the browser tab and phone home screen`
+              : "App icon: the Orchard mark is used for the browser tab and phone home screen"
+          }
+          state={
+            <>
+              <Image
+                src={iconSrc}
+                alt=""
+                width={24}
+                height={24}
+                unoptimized
+                className="mr-2 inline-block align-middle rounded-[var(--radius-sm)] object-cover"
+              />
+              {community.iconFileName ? community.iconFileName : "Orchard mark (default)"} · used for the browser tab and phone home screen
+            </>
+          }
+          description="Upload one square PNG with a background; the browser-tab sizes, Apple touch icon, and the installable app's home-screen icon are generated from it. Use a square image at least 64×64, ideally 512×512 or larger."
+          aside={
+            community.iconUpdatedAt ? (
+              <form action={removeAppIconAction}>
+                <SubmitButton className={BUTTON_SECONDARY}>Remove uploaded icon</SubmitButton>
+              </form>
+            ) : undefined
+          }
+        >
+          <SettingsField
+            label="PNG file"
+            hint="A square PNG. The other sizes are generated automatically and stored with the community."
+          >
+            <input
+              type="file"
+              name="icon"
+              accept={COMMUNITY_ICON_ACCEPT}
+              required
+              className={`${INPUT} disabled:cursor-not-allowed disabled:opacity-60`}
+            />
+          </SettingsField>
+        </SettingsCard>
       </SettingsSection>
 
       <SettingsSection

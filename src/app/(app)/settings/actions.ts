@@ -29,7 +29,9 @@ import {
   deleteCycleType,
   deleteTier,
   rejectPendingBranch,
+  removeCommunityIcon,
   requireAdmins,
+  setCommunityIcon,
   updateBranch,
   updateBranchInput,
   updateCommunity,
@@ -182,6 +184,41 @@ export async function updateBrandingAction(formData: FormData) {
     redirectWithError(err, "general");
   }
   revalidatePath("/settings");
+}
+
+// General → App icon. The upload is validated and turned into the whole
+// icon set in src/lib/settings/community-icon.ts; this action only gets the
+// file out of the form and puts the failure back on the card that caused it.
+export async function updateAppIconAction(formData: FormData) {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    const file = formData.get("icon");
+    if (!(file instanceof File) || file.size === 0) {
+      throw new AppError("Choose a PNG file first");
+    }
+    await setCommunityIcon(actor, {
+      fileName: file.name,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    });
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+  // The icon lives in every page's <head>, not just this screen.
+  revalidatePath("/", "layout");
+}
+
+export async function removeAppIconAction() {
+  const actor = await requireMember();
+  try {
+    await requireAdmins(actor);
+    await removeCommunityIcon(actor);
+  } catch (err) {
+    redirectWithError(err, "general");
+  }
+  revalidatePath("/settings");
+  revalidatePath("/", "layout");
 }
 
 // General → Single sign-on

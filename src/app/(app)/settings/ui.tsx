@@ -164,6 +164,7 @@ export function SettingsCard({
   action,
   submitLabel = "Save",
   affordance = "Edit",
+  encType,
   children,
 }: {
   title?: ReactNode;
@@ -179,6 +180,10 @@ export function SettingsCard({
    *  subject doesn't exist yet — a create card labelled "Edit" is asking
    *  you to open something there is nothing to edit. */
   affordance?: string;
+  /** Needed for the one card with a file input: React's Server Action form
+   *  handles multipart itself, but stating it keeps the HTML meaningful if
+   *  the form is ever progressively enhanced as a plain POST. */
+  encType?: "multipart/form-data";
   children: ReactNode;
 }) {
   return (
@@ -198,7 +203,7 @@ export function SettingsCard({
           {description}
         </p>
       )}
-      <form action={action} className="mt-3 flex flex-col gap-3">
+      <form action={action} encType={encType} className="mt-3 flex flex-col gap-3">
         {children}
         <div>
           <SubmitButton className={BUTTON_PRIMARY}>{submitLabel}</SubmitButton>

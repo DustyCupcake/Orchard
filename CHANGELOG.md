@@ -8,6 +8,18 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## a community can set its own app icon, and the phone icons come with it
+
+The branding card already let a community set its colours and a sidebar logo, but there was no way to set the thing that shows in a browser tab or on a phone's home screen: every install served the same Orchard mark, and there was no install manifest at all. Admins can now upload one square PNG under Settings → General → Look, and the app stores the whole icon set it needs.
+
+- **One upload becomes every size.** `src/lib/settings/community-icon.ts` generates 16/32/48 PNGs plus a `favicon.ico`, a 180px Apple touch icon, 192/512 install icons, and a 512px maskable icon whose mark sits inside the central safe zone. The phone variants are flattened onto the community's primary accent, because iOS paints transparency black and a launcher must never cut the mark off. Validated as a real PNG of at least 64×64 and at most 8 MB, too small to produce a believable home-screen icon otherwise.
+- **The bytes live in Postgres, not on disk.** The new `community_icon` table stores one row per variant (`0121_unusual_bloodstorm.sql`); `community.iconUpdatedAt` and `iconFileName` give every page's `<head>` a presence check and a cache-busting version without loading the images. This deployment's `uploads` volume is root-owned and the app runs as `nextjs`, and a database backup that omitted the community's own branding would not be a complete backup. Replacing or removing an icon is one transaction, with the usual settings-change entry.
+- **One URL shape whether or not a community has branded itself.** `/api/community/icon/[variant]` and `/favicon.ico` serve the stored bytes, falling back to the Orchard mark rendered from the SVG when there has been no upload. The mark moved from `src/app/icon.svg` to `public/icon.svg` so the dynamic route can render it through `sharp`; `generateMetadata` links the PNG sizes only after an upload, so a stale SVG cannot win. Versioned URLs are immutable, unversioned ones cache for an hour so a bare `/favicon.ico` still updates the same day.
+- **Installing to a phone works.** `src/app/manifest.ts` names the community, uses its accent as `theme_color`, and points at the 192, 512 and maskable icons. The Settings card previews the current icon and offers Remove; the file input and its error are on the same card as the rest of the Look settings.
+- **`tests/community-icon.test.ts`** covers generation (sizes, ICO header, flattening and maskable padding), persistence and replacement, settings history, the default-before-upload/after-removal fallback, validation and the closed variant vocabulary.
+
+Checked: `tsc` clean, lint 0 errors (only the pre-existing warnings), `next build` passes, and the full suite (2,510 tests across 9 batches) passes against Postgres in the isolated container.
+
 ## a coordinator can propose someone for a slot on any task — a full one grows a slot
 
 A coordinator looking at a task that already had someone on it saw no way to propose a third person: the nominate form only appeared when the task was unclaimed or had room, and the server refused at capacity. The plan (`docs/plans/task-interface-plan.md`, D5) makes nomination the standing ask-for-help.
