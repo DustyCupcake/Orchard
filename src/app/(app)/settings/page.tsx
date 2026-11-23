@@ -38,13 +38,13 @@ import { countSettingsChangesByEntity, listSettingsChanges } from "@/lib/setting
 
 export const dynamic = "force-dynamic";
 
-// The tabs are now ten files under ./tabs rather than ten blocks in a
+// The tabs are now seven files under ./tabs rather than seven blocks in a
 // 2000-line page. The split isn't cosmetic: each tab's body moved with
-// its own actions and its own helpers, which is what let the four
-// community-settings tabs be rebuilt around one-card-one-save (see
-// ./ui.tsx) without touching the six CRUD tabs' behaviour, and what will
-// let the next tab to grow past a screen be edited without reading the
-// other nine. What stays here is the part that genuinely is one thing:
+// its own actions and its own helpers, which is what let the community-
+// settings tabs be rebuilt around one-card-one-save (see ./ui.tsx)
+// without touching the CRUD tabs' behaviour, and what will let the next
+// tab to grow past a screen be edited without reading the other six.
+// What stays here is the part that genuinely is one thing:
 // the access check, the data every tab might need, and which tab is
 // active.
 const TABS = [
@@ -317,12 +317,12 @@ export default async function SettingsPage({
       {/* Read-only is still one `<fieldset disabled>` around the whole tab
           body, and still deliberately. HTML disables every descendant form
           control, which covers the inputs, every per-card Save button and
-          every delete/archive button in one attribute — in all ten tab
+          every delete/archive button in one attribute — in all seven tab
           files, none of which has to remember to thread a prop down. It is
           also the only mechanism that reaches the `type="button"`-driven
           widgets (FormBuilder, FieldShapeEditor, StarterQuestionPicker),
           which are not form controls at all; a prop would be the only thing
-          that could, and ten hand-written tab files is a lot of surface for
+          that could, and seven hand-written tab files is a lot of surface for
           one attribute to be missing from.
 
           What changed is the other half. The old wrapper carried

@@ -45,6 +45,19 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
+// The event-management forms all post to actions in ../participation/actions,
+// which used to redirect to banners on the participation page. They land back
+// here now, each with its own flag so a save says what was saved.
+const SUCCESS_BANNERS: Record<string, string> = {
+  settingsUpdated: "Event settings saved.",
+  laneRulesUpdated: "This event's lanes saved.",
+  waitlistAdmitted: "The waitlisted arrival has been admitted.",
+  phaseUpdated: "Phase dates saved.",
+  phaseAdded: "Phase added.",
+  highlightUpdated: "Module highlight saved.",
+  cycleClosed: "Event closed.",
+};
+
 // See the participation page's helper of the same name — the event's clock
 // (the venue's), not the viewer's, and it feeds the event settings'
 // datetime inputs.
@@ -57,12 +70,22 @@ export default async function EventSettingsPage({
   searchParams,
 }: {
   params: Promise<{ cycleScope: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    settingsUpdated?: string;
+    laneRulesUpdated?: string;
+    waitlistAdmitted?: string;
+    phaseUpdated?: string;
+    phaseAdded?: string;
+    highlightUpdated?: string;
+    cycleClosed?: string;
+  }>;
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) redirect("/login");
   const { cycleScope } = await params;
-  const { error } = await searchParams;
+  const flags = await searchParams;
+  const { error } = flags;
 
   const scope = await resolveViewScopeFromSegment(viewing, cycleScope);
   if (!scope || scope.kind === "aggregate") redirect(`/${cycleScope}/participation`);
@@ -70,18 +93,20 @@ export default async function EventSettingsPage({
   const cycleName = scope.cycle.name;
   const closed = Boolean(scope.cycle.closedAt);
 
-  const [clock, summary, withPhases, communityRow, forms, waitlisted, canConfigure, isAdminNow, eventClock] =
-    await Promise.all([
-      getViewerClock(),
-      getCycleParticipationSummary(viewing, cycleId),
-      getCycle(viewing, cycleId),
-      getCommunity(viewing),
-      listForms(viewing),
-      listWaitlisted(cycleId),
-      canInitiateCycle(viewing),
-      isAdmin(viewing),
-      getEventTimeZone(viewing.communityId, cycleId),
-    ]);
+  // The settings, forms and waitlist are only read by someone who can
+  // configure the event — the same split the participation page used to
+  // make before these sections moved here. Resolve that first so ordinary
+  // members don't pay for queries whose results they can never see.
+  const [canConfigure, isAdminNow] = await Promise.all([canInitiateCycle(viewing), isAdmin(viewing)]);
+  const [clock, summary, withPhases, communityRow, forms, waitlisted, eventClock] = await Promise.all([
+    getViewerClock(),
+    getCycleParticipationSummary(viewing, cycleId),
+    canConfigure ? getCycle(viewing, cycleId) : Promise.resolve(null),
+    getCommunity(viewing),
+    canConfigure ? listForms(viewing) : Promise.resolve([]),
+    canConfigure ? listWaitlisted(cycleId) : Promise.resolve([]),
+    getEventTimeZone(viewing.communityId, cycleId),
+  ]);
 
   const [allLanes, openLaneIds, ownLaneSet] = await Promise.all([
     listLanes(communityRow.id).then((lanes) => lanes.map(laneRuleOf)),
@@ -124,15 +149,32 @@ export default async function EventSettingsPage({
           <Banner tone="danger">{error}</Banner>
         </div>
       )}
-      <PageHeader title={cycleName} description={overviewParts.join(" · ")} />
+      {Object.entries(SUCCESS_BANNERS)
+        .filter(([key]) => Boolean((flags as Record<string, string | undefined>)[key]))
+        .map(([key, message]) => (
+          <div className="mt-4" key={key}>
+            <Banner tone="success">{message}</Banner>
+          </div>
+        ))}
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2">
+            {cycleName}
+            {closed && <Tag>closed, read-only</Tag>}
+          </span>
+        }
+        description={overviewParts.join(" · ")}
+      />
 
       {canConfigure && waitlisted.length > 0 && (
         <section className="mt-6">
           <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Waiting for a place</h3>
           <p className="mt-1 max-w-[640px] text-[length:var(--text-body)] text-[var(--text-muted)]">
             These people have been approved, but the event is full, so they aren&rsquo;t members yet. They&rsquo;re admitted,
-            oldest first, as soon as room appears — someone no longer coming, an invite revoked, the capacity raised. You can also
-            admit one now, over the capacity.
+            oldest first, as soon as room appears — someone no longer coming, an invite revoked, the capacity raised.{" "}
+            {closed
+              ? "The event is closed, so no one can be admitted now."
+              : "You can also admit one now, over the capacity."}
           </p>
           <ul className="mt-3 flex max-w-[640px] flex-col gap-2">
             {waitlisted.map((w) => (
@@ -146,36 +188,7 @@ export default async function EventSettingsPage({
                 <form action={admitWaitlistedAction}>
                   <input type="hidden" name="arrivalId" value={w.id} />
                   <input type="hidden" name="cycleScope" value={cycleScope} />
-                  <button type="submit" className={BUTTON_SECONDARY}>
-                    Admit now
-                  </button>
-                </form>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {canConfigure && waitlisted.length > 0 && (
-        <section className="mt-6">
-          <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Waiting for a place</h3>
-          <p className="mt-1 max-w-[640px] text-[length:var(--text-body)] text-[var(--text-muted)]">
-            These people have been approved, but the event is full, so they aren&rsquo;t members yet. They&rsquo;re admitted,
-            oldest first, as soon as room appears — someone no longer coming, an invite revoked, the capacity raised. You can also
-            admit one now, over the capacity.
-          </p>
-          <ul className="mt-3 flex max-w-[640px] flex-col gap-2">
-            {waitlisted.map((w) => (
-              <li key={w.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-                <span className="text-[length:var(--text-body)] text-[var(--text)]">
-                  {w.name}
-                  <span className="ml-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                    waiting since {w.waitlistedAt ? clock.date(w.waitlistedAt) : "—"}
-                  </span>
-                </span>
-                <form action={admitWaitlistedAction}>
-                  <input type="hidden" name="arrivalId" value={w.id} />
-                  <input type="hidden" name="cycleScope" value={cycleScope} />
-                  <button type="submit" className={BUTTON_SECONDARY}>
+                  <button type="submit" className={BUTTON_SECONDARY} disabled={closed}>
                     Admit now
                   </button>
                 </form>
@@ -360,7 +373,7 @@ export default async function EventSettingsPage({
         </section>
       )}
 
-      {withPhases && !closed && (
+      {canConfigure && withPhases && !closed && (
         <PhaseDatesSection
           phases={withPhases.phases}
           cycleId={cycleId}

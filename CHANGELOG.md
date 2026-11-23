@@ -17,14 +17,14 @@ The event page (`/{id}/participation`) is now shaped around what a member does o
 - **A status circle on the events in the switcher.** Green = coming, yellow = maybe, dark = not coming, an empty outline = you haven't said yet. Clicking it goes to your participation page.
 - **The community settings page is 7 tabs.** The Branches section moved into General; the Tiers section into Access & permissions; Coordination and Modules are now one "Operations" tab; the Events & Tiers tab is gone — its event types are on the manage events page.
 
-Checked: `tsc` clean, ESLint clean on the changed files, and the orchard-docs release-notes tests pass (the new note cites the new CHANGELOG entry).
+Checked: `tsc` clean, ESLint clean on the changed files, `next build` passes, and the full suite (129 files, 2,566 tests) passes against Postgres in the test container; the new note cites the new CHANGELOG entry.
 
 ## archived profile questions live in one place; the Events & Tiers tab lists the community's events
 
 Profile questions are archived rather than deleted — their answers stay, and archiving stops the question being asked — but on the Profile & Privacy tab they were still listed inline in the Public and Restricted groups, dimmed and mixed in with the questions still being asked, so the section had no single "overview" to read.
 
 - **Archived questions get their own group.** The Public and Restricted groups now list only the questions still being asked — standing, per-event and the "more for other events" groups all exclude archived ones. A new "Archived questions (N)" group sits at the end of the Profile questions section, collapsed by default; each archived question is the same card as before — facts, its audience line, its past answers and the Unarchive action — so nothing about a question changes when it is archived or unarchived.
-- **The Events & Tiers tab starts with the events.** It now begins with an "Events" section listing the community's events, one line each: name, date range, capacity and whether it is closed, each linking to the event's own settings page at `/{id}/participation` where dates, capacity and joining rules are edited. A community with no events is told so. Event types and tiers are unchanged below it.
+- **The Events & Tiers tab starts with the events.** It now begins with an "Events" section listing the community's events, one line each: name, date range, capacity and whether it is closed, each linking to the event's own settings page (then `/{id}/participation`, now `/{id}/settings`) where dates, capacity and joining rules are edited. A community with no events is told so. Event types and tiers are unchanged below it. This tab was superseded by the next entry: events now live on `/manage-events` and settings on `/{id}/settings`.
 - **Nothing else moves.** The group is new and additive; the change log still records archiving and unarchiving as it always has, and the read paths that filter on `archived_at` see the same questions as before.
 
 Checked: `tsc` clean, ESLint clean on the changed files, and the profile-questions, settings, settings-change, kitchen-signals, cycles and cycle-types suites pass (167 tests) against the test container.

@@ -1,18 +1,27 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getViewingContext } from "@/lib/view-as";
-import { listCycles, previewClonePreviousCycle } from "@/lib/cycles";
+import { canInitiateCycle, listCycles, previewClonePreviousCycle } from "@/lib/cycles";
 import { listTaskPacks } from "@/lib/task-packs";
-import { listCycleTypes } from "@/lib/settings";
+import { isAdmin, listCycleTypes } from "@/lib/settings";
 import { ClonePreviewGrid, ClonePreviewList } from "@/components/ClonePreview";
 import SelectField from "@/components/ui/SelectField";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import PageHeader from "@/components/ui/PageHeader";
 import { createCycleAction } from "@/app/(app)/[cycleScope]/participation/actions";
 import { listOpenEventParticipationCards } from "@/lib/participation";
-import { SettingsCard, SettingsPanel, SettingsSection, TextField, SelectField as SettingsSelectField } from "../settings/ui";
+import {
+  ReadOnlyNote,
+  SettingsCard,
+  SettingsPanel,
+  SettingsSection,
+  TextField,
+  SelectField as SettingsSelectField,
+} from "../settings/ui";
 import { createCycleTypeAction, deleteCycleTypeAction, updateCycleTypeAction } from "../settings/actions";
 import type { cycle as cycleTable, member as memberTable } from "@/db/schema";
+
+export const dynamic = "force-dynamic";
 
 type Member = typeof memberTable.$inferSelect;
 type Cycle = typeof cycleTable.$inferSelect;
@@ -21,10 +30,25 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
 }
 
-export default async function ManageEventsPage() {
+export default async function ManageEventsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    error?: string;
+    cycleCreated?: string;
+    previewStart?: string;
+    previewEnd?: string;
+    previewView?: string;
+  }>;
+}) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) redirect("/login");
-  const allCycles = await listCycles(viewing);
+  const { error, cycleCreated, previewStart, previewEnd, previewView } = await searchParams;
+  const [allCycles, canConfigure, authorized] = await Promise.all([
+    listCycles(viewing),
+    canInitiateCycle(viewing),
+    isAdmin(viewing),
+  ]);
   const openCycle = allCycles.find((c) => !c.closedAt) ?? null;
   const [cycleTypes, taskPacks] = await Promise.all([listCycleTypes(viewing), listTaskPacks(viewing)]);
   const cycles = allCycles;
@@ -35,99 +59,127 @@ export default async function ManageEventsPage() {
         title="Manage events"
         description="The community's events — open one for its dates and rules, and its settings are one click away from each event's page. Types below define what they can be, and a new one can be started below that."
       />
+      {error && (
+        <div className="mt-4">
+          <Banner tone="danger">{error}</Banner>
+        </div>
+      )}
+      {cycleCreated && (
+        <div className="mt-4">
+          <Banner tone="success">Event created. Open its settings to finish the details.</Banner>
+        </div>
+      )}
 
       <EventIndex viewing={viewing} allCycles={allCycles} />
-<SettingsSection
-        title="Event types"
-        description="What kind of thing an event is — a season, a weekend, a rehearsal. Used for counting and for starting a new event from the last one of the same kind."
-      >
-        {cycleTypes.length === 0 && (
-          <SettingsPanel>
-            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
-              None yet. Event types are optional — an event can simply be an event.
-            </p>
-          </SettingsPanel>
-        )}
-        {cycleTypes.map((t) => (
+
+      {!authorized && (
+        <div className="mt-6">
+          <ReadOnlyNote authorized={authorized} />
+        </div>
+      )}
+      {/* Same read-only shape as /settings: everyone can read what an event
+          type means, but only an Admin can change one. The actions still
+          call requireAdmins — the fieldset just stops the buttons being
+          offered to someone who would be refused. */}
+      <fieldset disabled={!authorized} className="mt-6 min-w-0">
+        <SettingsSection
+          title="Event types"
+          description="What kind of thing an event is — a season, a weekend, a rehearsal. Used for counting and for starting a new event from the last one of the same kind."
+        >
+          {cycleTypes.length === 0 && (
+            <SettingsPanel>
+              <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
+                None yet. Event types are optional — an event can simply be an event.
+              </p>
+            </SettingsPanel>
+          )}
+          {cycleTypes.map((t) => (
+            <SettingsCard
+              key={t.id}
+              action={updateCycleTypeAction}
+              submitLabel="Save type"
+              title={t.name}
+              stateLabel={`${t.name}, an event type. What a new one of this type is proposed from`}
+              state={
+                t.defaultPackId
+                  ? `A new one is proposed from the saved pack "${taskPacks.find((p) => p.id === t.defaultPackId)?.name ?? "a pack that no longer exists"}".`
+                  : t.defaultSourceCycleId
+                    ? `A new one is proposed as a copy of "${cycles.find((c) => c.id === t.defaultSourceCycleId)?.name ?? "an event that no longer exists"}".`
+                    : "A new one starts from nothing."
+              }
+              aside={
+                <form action={deleteCycleTypeAction}>
+                  <input type="hidden" name="cycleTypeId" value={t.id} />
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Delete
+                  </button>
+                </form>
+              }
+            >
+              <input type="hidden" name="cycleTypeId" value={t.id} />
+              <TextField label="Name" name="name" defaultValue={t.name} required />
+              <SettingsSelectField
+                label="Start from a copy of"
+                name="defaultSourceCycleId"
+                defaultValue={t.defaultSourceCycleId ?? ""}
+                wide
+                options={[
+                  { value: "", label: "— start from nothing —" },
+                  ...cycles.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+                hint="Which existing event a new one of this type is proposed as a copy of. A starting point, not a template you can rely on — everything in it is editable."
+              />
+              <SettingsSelectField
+                label="And from this saved pack"
+                name="defaultPackId"
+                defaultValue={t.defaultPackId ?? ""}
+                wide
+                options={[
+                  { value: "", label: "— no pack —" },
+                  ...taskPacks.map((p) => ({ value: p.id, label: p.name })),
+                ]}
+                hint="A Task Pack carries the tasks and structure across, which is usually a better starting point than a copy of one event."
+              />
+            </SettingsCard>
+          ))}
           <SettingsCard
-            key={t.id}
-            action={updateCycleTypeAction}
-            submitLabel="Save type"
-            title={t.name}
-            stateLabel={`${t.name}, an event type. What a new one of this type is proposed from`}
-            state={
-              t.defaultPackId
-                ? `A new one is proposed from the saved pack "${taskPacks.find((p) => p.id === t.defaultPackId)?.name ?? "a pack that no longer exists"}".`
-                : t.defaultSourceCycleId
-                  ? `A new one is proposed as a copy of "${cycles.find((c) => c.id === t.defaultSourceCycleId)?.name ?? "an event that no longer exists"}".`
-                  : "A new one starts from nothing."
-            }
-            aside={
-              <form action={deleteCycleTypeAction}>
-                <input type="hidden" name="cycleTypeId" value={t.id} />
-                <button type="submit" className={BUTTON_SECONDARY}>
-                  Delete
-                </button>
-              </form>
-            }
+            action={createCycleTypeAction}
+            submitLabel="Create type"
+            title="Add an event type"
+            affordance="Create"
           >
-            <input type="hidden" name="cycleTypeId" value={t.id} />
-            <TextField label="Name" name="name" defaultValue={t.name} required />
+            <TextField label="Name" name="name" required />
             <SettingsSelectField
               label="Start from a copy of"
               name="defaultSourceCycleId"
-              defaultValue={t.defaultSourceCycleId ?? ""}
+              defaultValue=""
               wide
-              options={[
-                { value: "", label: "— start from nothing —" },
-                ...cycles.map((c) => ({ value: c.id, label: c.name })),
-              ]}
-              hint="Which existing event a new one of this type is proposed as a copy of. A starting point, not a template you can rely on — everything in it is editable."
+              options={[{ value: "", label: "— start from nothing —" }, ...cycles.map((c) => ({ value: c.id, label: c.name }))]}
             />
             <SettingsSelectField
               label="And from this saved pack"
               name="defaultPackId"
-              defaultValue={t.defaultPackId ?? ""}
+              defaultValue=""
               wide
-              options={[
-                { value: "", label: "— no pack —" },
-                ...taskPacks.map((p) => ({ value: p.id, label: p.name })),
-              ]}
-              hint="A Task Pack carries the tasks and structure across, which is usually a better starting point than a copy of one event."
+              options={[{ value: "", label: "— no pack —" }, ...taskPacks.map((p) => ({ value: p.id, label: p.name }))]}
             />
           </SettingsCard>
-        ))}
-        <SettingsCard
-          action={createCycleTypeAction}
-          submitLabel="Create type"
-          title="Add an event type"
-          affordance="Create"
-        >
-          <TextField label="Name" name="name" required />
-          <SettingsSelectField
-            label="Start from a copy of"
-            name="defaultSourceCycleId"
-            defaultValue=""
-            wide
-            options={[{ value: "", label: "— start from nothing —" }, ...cycles.map((c) => ({ value: c.id, label: c.name }))]}
-          />
-          <SettingsSelectField
-            label="And from this saved pack"
-            name="defaultPackId"
-            defaultValue=""
-            wide
-            options={[{ value: "", label: "— no pack —" }, ...taskPacks.map((p) => ({ value: p.id, label: p.name }))]}
-          />
-        </SettingsCard>
-      </SettingsSection>
+        </SettingsSection>
+      </fieldset>
 
-      <StartNewCycleSection
-        viewing={viewing}
-        cycleScope="active"
-        hasPreviousCycle={allCycles.length > 0}
-        openCycleName={openCycle?.name ?? null}
-        previewView="grid"
-      />
+      {canConfigure && (
+        <StartNewCycleSection
+          viewing={viewing}
+          cycleScope="active"
+          hasPreviousCycle={allCycles.length > 0}
+          openCycleName={openCycle?.name ?? null}
+          cycleTypes={cycleTypes}
+          taskPacks={taskPacks}
+          previewStart={previewStart}
+          previewEnd={previewEnd}
+          previewView={previewView === "list" ? "list" : "grid"}
+        />
+      )}
     </main>
   );
 }
@@ -201,7 +253,8 @@ async function EventIndex({ viewing, allCycles }: { viewing: Member; allCycles: 
             {closedCycles.map((c) => (
               <Link
                 key={c.id}
-                href={`/${c.id}/participation`}
+                href={`/${c.id}/settings`}
+                title="Open this event's read-only settings"
                 className="flex flex-wrap items-baseline gap-x-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[length:var(--text-body)] transition-colors hover:border-[var(--accent-1)]"
                 style={{ opacity: 0.75 }}
               >
@@ -231,8 +284,6 @@ const PARTICIPATION_LABEL = {
   not_coming: "Not coming",
 } as const;
 
-
-
 // "The Pack import review screen gains the date preview" —
 // docs/plans/development-plan.md's Phase 44. This is that screen's minimal
 // real form: preview a hypothetical clone (calendar or list, toggled
@@ -246,6 +297,8 @@ async function StartNewCycleSection({
   cycleScope,
   hasPreviousCycle,
   openCycleName,
+  cycleTypes,
+  taskPacks,
   previewStart,
   previewEnd,
   previewView,
@@ -254,18 +307,17 @@ async function StartNewCycleSection({
   cycleScope: string;
   hasPreviousCycle: boolean;
   openCycleName: string | null;
+  cycleTypes: Awaited<ReturnType<typeof listCycleTypes>>;
+  taskPacks: Awaited<ReturnType<typeof listTaskPacks>>;
   previewStart?: string;
   previewEnd?: string;
   previewView: "grid" | "list";
 }) {
-  const [cycleTypes, packs, preview] = await Promise.all([
-    listCycleTypes(viewing),
-    listTaskPacks(viewing),
+  const preview =
     hasPreviousCycle && (previewStart || previewEnd)
-      ? previewClonePreviousCycle(viewing, previewStart || null, previewEnd || null)
-      : Promise.resolve(null),
-  ]);
-  const packNameById = new Map(packs.map((p) => [p.id, p.name]));
+      ? await previewClonePreviousCycle(viewing, previewStart || null, previewEnd || null)
+      : null;
+  const packNameById = new Map(taskPacks.map((p) => [p.id, p.name]));
   // "Correctly pre-selects that pack when starting a new Cycle of that
   // type" — see docs/plans/development-plan.md's Phase 55 Done-when. No
   // client JS to pre-fill one <select> from another's chosen value, so
@@ -300,9 +352,9 @@ async function StartNewCycleSection({
           <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Preview a clone</h3>
           <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             See what cloning the most recent event would resolve to against a hypothetical
-            start/end, before committing to anything. Reuses the exact same recompute the real
-            event settings form above uses, so this always matches what actually lands once you
-            create the clone and set its dates for real.
+            start/end, before committing to anything. Reuses the exact same recompute the event&rsquo;s
+            settings page uses, so this always matches what actually lands once you create the
+            clone and set its dates for real.
           </p>
           <form method="get" className="mt-3 flex flex-wrap items-end gap-2">
             <label className="flex flex-col gap-1">
@@ -375,7 +427,7 @@ async function StartNewCycleSection({
         <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
           Setting a clone&rsquo;s dates here resolves its phased boundaries and re-derives its shift
           roster&rsquo;s occurrence timestamps immediately; a clone started without them defers the
-          shift occurrences until you set dates in the event settings form above.
+          shift occurrences until you set dates in its event settings.
         </p>
         {openCycleName && <CheckField label="I understand — start anyway" name="confirmed" />}
         <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>

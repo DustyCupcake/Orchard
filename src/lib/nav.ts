@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { cycle, task, taskAssignment } from "@/db/schema";
+import { cycle, participation, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { getCommunity } from "./settings/community";
 import { isModuleEnabled } from "./modules";
@@ -105,7 +105,7 @@ async function isAnyBudgetOwner(actor: Member) {
 
 // The viewer's participation status on an event, as the switcher's status
 // dot reads it: coming, maybe, not coming, or unknown (they haven't said).
-export type ParticipationStatus = Awaited<ReturnType<typeof getMyParticipation>>["status"];
+export type ParticipationStatus = typeof participation.$inferSelect["status"];
 
 export type NavContext = {
   memberName: string;
@@ -375,6 +375,25 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     feed.kitchenNeedsAction.personal.length +
     feed.expiredNominations.length;
 
+  // One query for every open cycle's status dot, rather than one per
+  // cycle on every authenticated request. A member with no row on an
+  // event reads as "unknown", the same default getMyParticipation gave.
+  const statusRows = openCycles.length
+    ? await db
+        .select({ cycleId: participation.cycleId, status: participation.status })
+        .from(participation)
+        .where(
+          and(
+            eq(participation.memberId, actor.id),
+            inArray(
+              participation.cycleId,
+              openCycles.map((c) => c.id),
+            ),
+          ),
+        )
+    : [];
+  const statusByCycleId = new Map(statusRows.map((r) => [r.cycleId, r.status]));
+
   return {
     memberName: actor.name,
     communityName: community.name,
@@ -390,13 +409,11 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     viewAs: null,
     cycleSwitcher: {
       hasAnyOpenCycle: openCycles.length > 0,
-      openCycles: await Promise.all(
-        openCycles.map(async (c) => ({
-          id: c.id,
-          name: c.name,
-          myStatus: (await getMyParticipation(actor, c.id)).status,
-        })),
-      ),
+      openCycles: openCycles.map((c) => ({
+        id: c.id,
+        name: c.name,
+        myStatus: statusByCycleId.get(c.id) ?? "unknown",
+      })),
       defaultScopeSegment,
       defaultScopeName,
       canInitiateCycle: canInitiate,

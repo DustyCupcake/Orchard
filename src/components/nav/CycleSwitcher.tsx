@@ -27,10 +27,10 @@ export type CycleSubPath = "participation" | "budget" | "coordination" | "escala
 // viewer's participation status on that event — coming, maybe, not
 // coming, or haven't said. It links to the event's participation page.
 const STATUS_DOT_CLASS: Record<ParticipationStatus, string> = {
-  coming: "h-2 w-2 shrink-0 rounded-full bg-[var(--success)]",
-  maybe: "h-2 w-2 shrink-0 rounded-full bg-[var(--warning)]",
-  not_coming: "h-2 w-2 shrink-0 rounded-full bg-[var(--text)]",
-  unknown: "h-2 w-2 shrink-0 rounded-full border border-[var(--border)] bg-transparent",
+  coming: "bg-[var(--success)]",
+  maybe: "bg-[var(--warning)]",
+  not_coming: "bg-[var(--text)]",
+  unknown: "border border-[var(--border)] bg-transparent",
 };
 
 const STATUS_TITLE: Record<ParticipationStatus, string> = {
@@ -65,7 +65,7 @@ export default function CycleSwitcher({
     return (
       <div className="border-b border-[var(--border)] px-3 py-2.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
         {ctx.canInitiateCycle ? (
-          <Link href="/active/participation" className="text-[var(--accent-1)] hover:underline">
+          <Link href="/manage-events" className="text-[var(--accent-1)] hover:underline">
             Start an event
           </Link>
         ) : (
@@ -145,22 +145,21 @@ export default function CycleSwitcher({
                 href={`/${c.id}/participation`}
                 title={STATUS_TITLE[c.myStatus]}
                 aria-label={`Your participation status on ${c.name}: ${STATUS_TITLE[c.myStatus]}`}
-                className={STATUS_DOT_CLASS[c.myStatus]}
-              />
+                onClick={() => setOpen(false)}
+                className="mr-1 shrink-0 rounded-[var(--radius-sm)] p-1.5 hover:bg-[var(--surface-sunken)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-1)]"
+              >
+                <span aria-hidden className={`block h-2 w-2 rounded-full ${STATUS_DOT_CLASS[c.myStatus]}`} />
+              </Link>
             </div>
           ))}
           {/* The two links below are destinations, not selections — the
               rows above change which event this whole view is scoped to,
               these two just go somewhere. A hairline separates them, so a
               click is never ambiguous about which kind of row it was.
-              "Manage events" is the event-management half of the Events
-              page (settings, phases, close, clone, start a new one) and
-              deliberately follows the *current* selection rather than the
-              member's persisted default: the whole menu is about the
-              event you're looking at, so a link inside it that silently
-              resolved to a different one would be a trap. The aggregate
-              selection resolves to /active/participation, which is where
-              "Start a new event" lives. */}
+              "Manage events" is a fixed destination for the events list,
+              event types and the create form — it deliberately does not
+              follow the current selection: the gear above is the link to
+              the selected event's own settings. */}
           <div className="my-1 border-t border-[var(--border)]" />
           <Link
             href="/manage-events"

@@ -55,7 +55,6 @@ export default async function ParticipationPage({
   searchParams: Promise<{
     error?: string;
     declared?: string;
-    cycleClosed?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
@@ -64,7 +63,7 @@ export default async function ParticipationPage({
   }
 
   const { cycleScope } = await params;
-  const { error, declared, cycleClosed } = await searchParams;
+  const { error, declared } = await searchParams;
 
   const [scope, allCycles, isAdminNow] = await Promise.all([
     resolveViewScopeFromSegment(viewing, cycleScope),
@@ -91,12 +90,6 @@ export default async function ParticipationPage({
           <Banner tone="success">Your participation is saved.</Banner>
         </div>
       )}
-      {cycleClosed && (
-        <div className="mt-4">
-          <Banner tone="success">Event closed.</Banner>
-        </div>
-      )}
-
       {scope.kind === "aggregate" ? (
         <EventIndex viewing={viewing} allCycles={allCycles} />
       ) : (
@@ -124,7 +117,7 @@ export default async function ParticipationPage({
  * indication which event it belonged to beyond an `<h2>`. It also meant the
  * per-event page and the index were the same page, so there was nowhere to
  * *go* to configure one event. An event's own settings now live at
- * `/{id}/participation`, which is also where the nav switcher's gear points,
+ * `/{id}/settings`, which is also where the nav switcher's gear points,
  * so the card and the switcher agree on where an event is configured.
  *
  * **Visible to every member, not just whoever can start an event.** It used
@@ -376,4 +369,3 @@ async function ParticipationForCycle({
     </>
   );
 }
-

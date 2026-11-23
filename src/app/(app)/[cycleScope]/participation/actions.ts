@@ -23,18 +23,27 @@ import { setEventLanes } from "@/lib/recruitment/admission-lanes";
 import { admitWaitlistedAnyway } from "@/lib/recruitment/admission";
 import { AppError, ConfirmationRequiredError } from "@/lib/errors";
 
-// Every form on this page carries a hidden `cycleScope` field so a
+// Every form that submits here carries a hidden `cycleScope` field so a
 // redirect after submitting lands back on the exact scoped URL it came
 // from (docs/plans/development-plan.md's Phase 65) — never the bare
 // /participation, which could bounce through the redirect shim to a
 // *different* default scope than the one the member was just looking
-// at.
-function redirectWithError(cycleScope: string, err: unknown): never {
+// at. The participation form stays here; the event-management forms
+// now live on /[cycleScope]/settings and /manage-events, so the
+// destination is passed in rather than assumed.
+type ActionPage = "participation" | "settings" | "manage-events";
+
+function actionBasePath(cycleScope: string, page: ActionPage): string {
+  return page === "manage-events" ? "/manage-events" : `/${cycleScope}/${page}`;
+}
+
+function redirectWithError(cycleScope: string, err: unknown, page: ActionPage = "participation"): never {
+  const base = actionBasePath(cycleScope, page);
   if (err instanceof ZodError) {
-    redirect(`/${cycleScope}/participation?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
+    redirect(`${base}?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}`);
   }
   if (err instanceof AppError) {
-    redirect(`/${cycleScope}/participation?error=${encodeURIComponent(err.message)}`);
+    redirect(`${base}?error=${encodeURIComponent(err.message)}`);
   }
   throw err;
 }
@@ -80,14 +89,12 @@ export async function declareParticipationAction(formData: FormData) {
 // — see this file's own long-standing comment history. Cycle-
 // initiation-eligibility-gated, enforced inside createCycle itself,
 // which also now (Phase 65) throws ConfirmationRequiredError when a
-// cycle is already open and `confirmed` wasn't passed — the page
-// itself pre-computes this (needsAlreadyOpenConfirmation) and shows a
-// real confirm banner, matching the same UX pattern
-// src/app/(app)/tasks/[id]/page.tsx's self-assign confirmation already
-// establishes; the thrown error here is only a defense-in-depth
-// backstop if the two ever drift. On success, redirects to the *newly
-// created* cycle's own scope — not wherever the form was submitted
-// from — so the admin lands directly on what they just made.
+// cycle is already open and `confirmed` wasn't passed — the manage
+// events page pre-computes this and shows a real confirm banner,
+// matching the same UX pattern src/app/(app)/tasks/[id]/page.tsx's
+// self-assign confirmation already establishes; the thrown error here
+// is only a defense-in-depth backstop if the two ever drift. The form
+// lives on /manage-events now, so both success and errors land there.
 export async function createCycleAction(formData: FormData) {
   const actor = await requireMember();
   const cycleScope = String(formData.get("cycleScope") ?? "active");
@@ -96,26 +103,26 @@ export async function createCycleAction(formData: FormData) {
   const cycleTypeId = String(formData.get("cycleTypeId") ?? "").trim() || null;
   const confirmed = formData.get("confirmed") === "on";
 
-  let created;
   try {
     if (source === "clone_previous") {
       const startDate = String(formData.get("startDate") ?? "").trim() || null;
       const endDate = String(formData.get("endDate") ?? "").trim() || null;
-      created = await createCycle(actor, { source: "clone_previous", name, cycleTypeId, startDate, endDate, confirmed });
+      await createCycle(actor, { source: "clone_previous", name, cycleTypeId, startDate, endDate, confirmed });
     } else {
       const startDate = String(formData.get("startDate") ?? "").trim() || null;
       const endDate = String(formData.get("endDate") ?? "").trim() || null;
-      created = await createCycle(actor, { source: "blank", name, cycleTypeId, startDate, endDate, confirmed });
+      await createCycle(actor, { source: "blank", name, cycleTypeId, startDate, endDate, confirmed });
     }
   } catch (err) {
     if (err instanceof ConfirmationRequiredError) {
-      redirect(`/${cycleScope}/participation?error=${encodeURIComponent(err.message)}`);
+      redirect(`/manage-events?error=${encodeURIComponent(err.message)}`);
     }
-    redirectWithError(cycleScope, err);
+    redirectWithError(cycleScope, err, "manage-events");
   }
 
   revalidatePath(`/${cycleScope}/participation`);
-  redirect(`/${created.id}/participation?cycleCreated=1`);
+  revalidatePath("/manage-events");
+  redirect("/manage-events?cycleCreated=1");
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside updateCycleSettings.
@@ -160,11 +167,12 @@ export async function updateCycleSettingsAction(formData: FormData) {
     });
     await updateCycleSettings(actor, cycleId, input);
   } catch (err) {
-    redirectWithError(cycleScope, err);
+    redirectWithError(cycleScope, err, "settings");
   }
 
+  revalidatePath(`/${cycleScope}/settings`);
   revalidatePath(`/${cycleScope}/participation`);
-  redirect(`/${cycleScope}/participation?settingsUpdated=1`);
+  redirect(`/${cycleScope}/settings?settingsUpdated=1`);
 }
 
 // docs/plans/admission-flow.md §2a — which lanes an event opens. Its own action, its
@@ -184,12 +192,13 @@ export async function updateEventLanesAction(formData: FormData) {
     const laneIds = formData.getAll("laneId").map(String).filter(Boolean);
     await setEventLanes(actor, cycleId, own ? laneIds : null);
   } catch (err) {
-    redirectWithError(cycleScope, err);
+    redirectWithError(cycleScope, err, "settings");
   }
 
+  revalidatePath(`/${cycleScope}/settings`);
   revalidatePath(`/${cycleScope}/participation`);
   revalidatePath("/invites");
-  redirect(`/${cycleScope}/participation?laneRulesUpdated=1`);
+  redirect(`/${cycleScope}/settings?laneRulesUpdated=1`);
 }
 
 // docs/plans/admission-flow.md §6 — somebody was approved but the event had no room,
@@ -203,11 +212,12 @@ export async function admitWaitlistedAction(formData: FormData) {
   try {
     await admitWaitlistedAnyway(actor, arrivalId);
   } catch (err) {
-    redirectWithError(cycleScope, err);
+    redirectWithError(cycleScope, err, "settings");
   }
 
+  revalidatePath(`/${cycleScope}/settings`);
   revalidatePath(`/${cycleScope}/participation`);
-  redirect(`/${cycleScope}/participation?waitlistAdmitted=1`);
+  redirect(`/${cycleScope}/settings?waitlistAdmitted=1`);
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside
@@ -227,7 +237,7 @@ export async function exportCycleAsTaskPackAction(formData: FormData) {
     const created = await exportCycleAsTaskPack(actor, cycleId, { name, description });
     packId = created.id;
   } catch (err) {
-    redirectWithError(cycleScope, err);
+    redirectWithError(cycleScope, err, "settings");
   }
 
   redirect(`/task-packs?exported=${packId}`);
@@ -260,11 +270,12 @@ export async function updatePhaseBoundaryAction(formData: FormData) {
       end: boundaryFromForm(formData, "end"),
     });
   } catch (err) {
-    redirectWithError(cycleScope, err);
+    redirectWithError(cycleScope, err, "settings");
   }
 
+  revalidatePath(`/${cycleScope}/settings`);
   revalidatePath(`/${cycleScope}/participation`);
-  redirect(`/${cycleScope}/participation?phaseUpdated=1`);
+  redirect(`/${cycleScope}/settings?phaseUpdated=1`);
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside addPhase — same
@@ -284,11 +295,12 @@ export async function addPhaseAction(formData: FormData) {
       end: boundaryFromForm(formData, "end"),
     });
   } catch (err) {
-    redirectWithError(cycleScope, err);
+    redirectWithError(cycleScope, err, "settings");
   }
 
+  revalidatePath(`/${cycleScope}/settings`);
   revalidatePath(`/${cycleScope}/participation`);
-  redirect(`/${cycleScope}/participation?phaseAdded=1`);
+  redirect(`/${cycleScope}/settings?phaseAdded=1`);
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside updatePhaseHighlight
@@ -303,11 +315,12 @@ export async function updatePhaseHighlightAction(formData: FormData) {
   try {
     await updatePhaseHighlight(actor, phaseId, highlightModuleKey);
   } catch (err) {
-    redirectWithError(cycleScope, err);
+    redirectWithError(cycleScope, err, "settings");
   }
 
+  revalidatePath(`/${cycleScope}/settings`);
   revalidatePath(`/${cycleScope}/participation`);
-  redirect(`/${cycleScope}/participation?highlightUpdated=1`);
+  redirect(`/${cycleScope}/settings?highlightUpdated=1`);
 }
 
 // Admin-gated inside closeCycle itself (src/lib/cycles/lifecycle.ts —
@@ -327,11 +340,12 @@ export async function closeCycleAction(formData: FormData) {
     await closeCycle(actor, cycleId, { overrideBudgetWarning });
   } catch (err) {
     if (err instanceof ConfirmationRequiredError) {
-      redirect(`/${cycleScope}/participation?error=${encodeURIComponent(err.message)}`);
+      redirect(`/${cycleScope}/settings?error=${encodeURIComponent(err.message)}`);
     }
-    redirectWithError(cycleScope, err);
+    redirectWithError(cycleScope, err, "settings");
   }
 
+  revalidatePath(`/${cycleScope}/settings`);
   revalidatePath(`/${cycleScope}/participation`);
-  redirect(`/${cycleScope}/participation?cycleClosed=1`);
+  redirect(`/${cycleScope}/settings?cycleClosed=1`);
 }

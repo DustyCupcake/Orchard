@@ -104,14 +104,16 @@ function triState(value: FormDataEntryValue | null): boolean | null | undefined 
 // without it, an error would silently bounce back to the default tab,
 // losing whatever the admin was looking at. Each call site below hard-
 // codes its own tab name rather than reading a hidden form field, since
-// every action already belongs to exactly one tab statically.
-function redirectWithError(err: unknown, tab?: string): never {
+// every action already belongs to exactly one tab statically. Event
+// types moved to /manage-events, so those three call sites pass that as
+// the destination and no tab (the page has none).
+function redirectWithError(err: unknown, tab?: string, path = "/settings"): never {
   const suffix = tab ? `&tab=${tab}` : "";
   if (err instanceof ZodError) {
-    redirect(`/settings?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}${suffix}`);
+    redirect(`${path}?error=${encodeURIComponent(err.issues[0]?.message ?? "Invalid input")}${suffix}`);
   }
   if (err instanceof AppError) {
-    redirect(`/settings?error=${encodeURIComponent(err.message)}${suffix}`);
+    redirect(`${path}?error=${encodeURIComponent(err.message)}${suffix}`);
   }
   throw err;
 }
@@ -356,7 +358,7 @@ export async function updateCoordinationTimingsAction(formData: FormData) {
     );
     await updateCommunity(actor, input);
   } catch (err) {
-    redirectWithError(err, "coordination");
+    redirectWithError(err, "operations");
   }
 
   // The two readers are the Dashboard (scoped) and /community (not).
@@ -378,7 +380,7 @@ export async function updateIndicatorSettingsAction(formData: FormData) {
     );
     await updateCommunity(actor, input);
   } catch (err) {
-    redirectWithError(err, "coordination");
+    redirectWithError(err, "operations");
   }
   revalidatePath("/community");
   revalidatePath("/dashboard");
@@ -398,7 +400,7 @@ export async function updateResponseTrackingAction(formData: FormData) {
     );
     await updateCommunity(actor, input);
   } catch (err) {
-    redirectWithError(err, "coordination");
+    redirectWithError(err, "operations");
   }
   revalidatePath("/community");
   revalidatePath("/dashboard");
@@ -415,7 +417,7 @@ export async function updateModulesSettingsAction(formData: FormData) {
     });
     await updateCommunity(actor, input);
   } catch (err) {
-    redirectWithError(err, "modules");
+    redirectWithError(err, "operations");
   }
 
   revalidatePath("/settings");
@@ -432,7 +434,7 @@ export async function updateBudgetSettingsAction(formData: FormData) {
       updateCommunityInput.parse({ fundSupportPerBacker: optionalNumber(formData, "fundSupportPerBacker") }),
     );
   } catch (err) {
-    redirectWithError(err, "modules");
+    redirectWithError(err, "operations");
   }
   revalidatePath("/settings");
   revalidatePath("/budget");
@@ -447,7 +449,7 @@ export async function updatePostCycleFeedbackAction(formData: FormData) {
       updateCommunityInput.parse({ postCycleFeedbackFormId: optionalText(formData, "postCycleFeedbackFormId") }),
     );
   } catch (err) {
-    redirectWithError(err, "modules");
+    redirectWithError(err, "operations");
   }
   revalidatePath("/settings");
 }
@@ -810,7 +812,7 @@ export async function createBranchAction(formData: FormData) {
     });
     await createBranch(actor, input);
   } catch (err) {
-    redirectWithError(err, "branches");
+    redirectWithError(err, "general");
   }
 
   revalidatePath("/settings");
@@ -831,7 +833,7 @@ export async function updateBranchAction(formData: FormData) {
     });
     await updateBranch(actor, branchId, input);
   } catch (err) {
-    redirectWithError(err, "branches");
+    redirectWithError(err, "general");
   }
 
   revalidatePath("/settings");
@@ -845,7 +847,7 @@ export async function deleteBranchAction(formData: FormData) {
     await requireAdmins(actor);
     await deleteBranch(actor, branchId);
   } catch (err) {
-    redirectWithError(err, "branches");
+    redirectWithError(err, "general");
   }
 
   revalidatePath("/settings");
@@ -864,7 +866,7 @@ export async function confirmPendingBranchAction(formData: FormData) {
     await requireAdmins(actor);
     await confirmPendingBranch(actor, branchId);
   } catch (err) {
-    redirectWithError(err, "branches");
+    redirectWithError(err, "general");
   }
 
   revalidatePath("/settings");
@@ -879,7 +881,7 @@ export async function rejectPendingBranchAction(formData: FormData) {
     await requireAdmins(actor);
     await rejectPendingBranch(actor, branchId, reassignToBranchId);
   } catch (err) {
-    redirectWithError(err, "branches");
+    redirectWithError(err, "general");
   }
 
   revalidatePath("/settings");
@@ -907,7 +909,7 @@ export async function createTierAction(formData: FormData) {
     });
     await createTier(actor, input);
   } catch (err) {
-    redirectWithError(err, "cycles-tiers");
+    redirectWithError(err, "permissions");
   }
 
   revalidatePath("/settings");
@@ -925,7 +927,7 @@ export async function updateTierAction(formData: FormData) {
     });
     await updateTier(actor, tierId, input);
   } catch (err) {
-    redirectWithError(err, "cycles-tiers");
+    redirectWithError(err, "permissions");
   }
 
   revalidatePath("/settings");
@@ -939,7 +941,7 @@ export async function deleteTierAction(formData: FormData) {
     await requireAdmins(actor);
     await deleteTier(actor, tierId);
   } catch (err) {
-    redirectWithError(err, "cycles-tiers");
+    redirectWithError(err, "permissions");
   }
 
   revalidatePath("/settings");
@@ -959,9 +961,10 @@ export async function createCycleTypeAction(formData: FormData) {
     });
     await createCycleType(actor, input);
   } catch (err) {
-    redirectWithError(err, "cycles-tiers");
+    redirectWithError(err, undefined, "/manage-events");
   }
 
+  revalidatePath("/manage-events");
   revalidatePath("/settings");
 }
 
@@ -980,9 +983,10 @@ export async function updateCycleTypeAction(formData: FormData) {
     });
     await updateCycleType(actor, cycleTypeId, input);
   } catch (err) {
-    redirectWithError(err, "cycles-tiers");
+    redirectWithError(err, undefined, "/manage-events");
   }
 
+  revalidatePath("/manage-events");
   revalidatePath("/settings");
 }
 
@@ -994,9 +998,10 @@ export async function deleteCycleTypeAction(formData: FormData) {
     await requireAdmins(actor);
     await deleteCycleType(actor, cycleTypeId);
   } catch (err) {
-    redirectWithError(err, "cycles-tiers");
+    redirectWithError(err, undefined, "/manage-events");
   }
 
+  revalidatePath("/manage-events");
   revalidatePath("/settings");
 }
 
