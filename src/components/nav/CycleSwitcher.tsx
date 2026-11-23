@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { NavIcon } from "./phosphor-icon-map";
 import { setViewScopeAction } from "@/app/(app)/nav-actions";
-import type { NavContext } from "@/lib/nav";
+import type { NavContext, ParticipationStatus } from "@/lib/nav";
 
 // The global cycle-switcher (docs/plans/development-plan.md's Phase 65) —
 // rendered from AppShell.tsx right below the sidebar header, both
@@ -22,6 +22,23 @@ import type { NavContext } from "@/lib/nav";
 // other fails to typecheck, rather than silently refreshing in place
 // instead of navigating.
 export type CycleSubPath = "participation" | "budget" | "coordination" | "escalation";
+
+// The status dot next to each event in the switcher's dropdown: the
+// viewer's participation status on that event — coming, maybe, not
+// coming, or haven't said. It links to the event's participation page.
+const STATUS_DOT_CLASS: Record<ParticipationStatus, string> = {
+  coming: "h-2 w-2 shrink-0 rounded-full bg-[var(--success)]",
+  maybe: "h-2 w-2 shrink-0 rounded-full bg-[var(--warning)]",
+  not_coming: "h-2 w-2 shrink-0 rounded-full bg-[var(--text)]",
+  unknown: "h-2 w-2 shrink-0 rounded-full border border-[var(--border)] bg-transparent",
+};
+
+const STATUS_TITLE: Record<ParticipationStatus, string> = {
+  coming: "You're coming",
+  maybe: "You might be coming",
+  not_coming: "You're not coming",
+  unknown: "Haven't said",
+};
 
 export default function CycleSwitcher({
   ctx,
@@ -113,13 +130,23 @@ export default function CycleSwitcher({
                 {c.name}
               </button>
               <Link
-                href={`/${c.id}/participation#cycle-settings`}
+                href={`/${c.id}/settings`}
                 title="Event settings"
                 onClick={() => setOpen(false)}
                 className="mr-1 shrink-0 rounded-[var(--radius-sm)] p-1.5 text-[var(--text-muted)] opacity-0 hover:bg-[var(--surface-sunken)] hover:text-[var(--text)] group-hover/cycleitem:opacity-100"
               >
                 <NavIcon name="gear" size={14} />
               </Link>
+              {/* The viewer's participation status on this event —
+                  coming (green), maybe (yellow), not coming (dark), or
+                  haven't said (an empty circle). Clicking it goes to the
+                  event's participation page, where they can change it. */}
+              <Link
+                href={`/${c.id}/participation`}
+                title={STATUS_TITLE[c.myStatus]}
+                aria-label={`Your participation status on ${c.name}: ${STATUS_TITLE[c.myStatus]}`}
+                className={STATUS_DOT_CLASS[c.myStatus]}
+              />
             </div>
           ))}
           {/* The two links below are destinations, not selections — the
@@ -136,7 +163,7 @@ export default function CycleSwitcher({
               "Start a new event" lives. */}
           <div className="my-1 border-t border-[var(--border)]" />
           <Link
-            href={`/${currentScope}/participation`}
+            href="/manage-events"
             onClick={() => setOpen(false)}
             className="block px-3 py-1.5 text-[length:var(--text-body)] text-[var(--text)] hover:bg-[var(--surface-sunken)]"
           >

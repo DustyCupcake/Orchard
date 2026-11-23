@@ -18,7 +18,6 @@ import { listCycles } from "@/lib/cycles";
 import { resolveViewScopeCycleForMember } from "@/lib/cycles/view-scope";
 import { listProfileQuestions } from "@/lib/profile-questions";
 import { listTraitAxes } from "@/lib/trait-axes";
-import { listTaskPacks } from "@/lib/task-packs";
 import { listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
 import { listForms } from "@/lib/forms";
 import { listConsentPurposes } from "@/lib/consent";
@@ -28,13 +27,10 @@ import { ReadOnlyNote } from "./ui";
 import FoundersAssemblyPrompt from "./FoundersAssemblyPrompt";
 import GeneralTab from "./tabs/GeneralTab";
 import PermissionsTab from "./tabs/PermissionsTab";
-import CoordinationTab from "./tabs/CoordinationTab";
-import ModulesTab from "./tabs/ModulesTab";
+import OperationsTab from "./tabs/OperationsTab";
 import { unwiredKitchenSignals } from "./KitchenQuestionsPanel";
 import { isModuleEnabled } from "@/lib/modules";
 import RecruitmentTab from "./tabs/RecruitmentTab";
-import BranchesTab from "./tabs/BranchesTab";
-import CyclesTiersTab from "./tabs/CyclesTiersTab";
 import ProfilePrivacyTab from "./tabs/ProfilePrivacyTab";
 import FormsTab from "./tabs/FormsTab";
 import HistoryTab from "./tabs/HistoryTab";
@@ -54,11 +50,8 @@ export const dynamic = "force-dynamic";
 const TABS = [
   { key: "general", label: "General" },
   { key: "permissions", label: "Access & permissions" },
-  { key: "coordination", label: "Coordination" },
-  { key: "modules", label: "Modules" },
+  { key: "operations", label: "Operations" },
   { key: "recruitment", label: "Recruitment" },
-  { key: "branches", label: "Branches" },
-  { key: "cycles-tiers", label: "Events & Tiers" },
   { key: "profile-privacy", label: "Profile & Privacy" },
   { key: "forms", label: "Forms" },
   { key: "history", label: "History" },
@@ -121,7 +114,6 @@ export default async function SettingsPage({
     forms,
     consentPurposes,
     pendingBranches,
-    taskPacks,
     communityTasks,
     currentPhaseNames,
   ] = await Promise.all([
@@ -136,7 +128,6 @@ export default async function SettingsPage({
     listForms(viewing, { includeArchived: true }),
     listConsentPurposes(viewing),
     authorized ? listPendingBranches(viewing) : Promise.resolve([]),
-    listTaskPacks(viewing),
     listTasks(viewing),
     // The phase names of the event this member is currently looking at, so
     // the Profile & Privacy tab can put a phase-scoped question under "for
@@ -346,14 +337,16 @@ export default async function SettingsPage({
           The `requireAdmins` call in every action below stays the actual
           gate either way. */}
       <fieldset disabled={!authorized} className="mt-6 min-w-0">
-        {activeTab === "general" && <GeneralTab community={communityRow} tiers={tiers} viewer={viewing} />}
+        {activeTab === "general" && (
+          <GeneralTab community={communityRow} tiers={tiers} viewer={viewing} confirmedBranches={confirmedBranches} pendingBranches={pendingBranches} />
+        )}
 
-        {activeTab === "permissions" && permissionsData && <PermissionsTab {...permissionsData} />}
+        {activeTab === "permissions" && permissionsData && (
+          <PermissionsTab {...permissionsData} tiers={tiers} cycleTypes={cycleTypes} />
+        )}
 
-        {activeTab === "coordination" && <CoordinationTab community={communityRow} />}
-
-        {activeTab === "modules" && (
-          <ModulesTab
+        {activeTab === "operations" && (
+          <OperationsTab
             community={communityRow}
             forms={forms}
             unwiredKitchenSignals={isModuleEnabled(communityRow, "kitchen") ? unwiredKitchenSignals(profileQuestions) : []}
@@ -366,19 +359,6 @@ export default async function SettingsPage({
             forms={forms}
             tiers={tiers}
             authorized={authorized}
-          />
-        )}
-
-        {activeTab === "branches" && (
-          <BranchesTab confirmedBranches={confirmedBranches} pendingBranches={pendingBranches} />
-        )}
-
-        {activeTab === "cycles-tiers" && (
-          <CyclesTiersTab
-            tiers={tiers}
-            cycleTypes={cycleTypes}
-            taskPacks={taskPacks}
-            cycles={cycles}
           />
         )}
 

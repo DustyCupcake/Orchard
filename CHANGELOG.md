@@ -8,6 +8,17 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## the event page is for your plans; events, settings and clone live elsewhere
+
+The event page (`/{id}/participation`) is now shaped around what a member does on it: a page header with the event's name and the brief overview — capacity, coming, remaining seats, the returning window — and your plans, the participation form (status, arrival and departure dates, note), as the first thing you see. The shift roster, event settings, lanes, phases, waitlist, export and close all moved off this page.
+
+- **The manage events page.** The nav switcher's "Manage events" link now opens `/manage-events`, a new page for the events themselves: the community's events, open ones first, each with an Edit button to its settings page; the event types that used to be the Events & Tiers tab; and the form to start a new event — blank or cloned from the most recent.
+- **The event settings page.** `/{id}/settings` holds the event's settings — capacity, dates, time zone, doors, application form, joining windows — plus its lanes, its phase dates, and its waitlist, at the top: the people approved but the event is full. The gear icon next to each event in the nav switcher now goes here.
+- **A status circle on the events in the switcher.** Green = coming, yellow = maybe, dark = not coming, an empty outline = you haven't said yet. Clicking it goes to your participation page.
+- **The community settings page is 7 tabs.** The Branches section moved into General; the Tiers section into Access & permissions; Coordination and Modules are now one "Operations" tab; the Events & Tiers tab is gone — its event types are on the manage events page.
+
+Checked: `tsc` clean, ESLint clean on the changed files, and the orchard-docs release-notes tests pass (the new note cites the new CHANGELOG entry).
+
 ## archived profile questions live in one place; the Events & Tiers tab lists the community's events
 
 Profile questions are archived rather than deleted — their answers stay, and archiving stops the question being asked — but on the Profile & Privacy tab they were still listed inline in the Public and Restricted groups, dimmed and mixed in with the questions still being asked, so the section had no single "overview" to read.

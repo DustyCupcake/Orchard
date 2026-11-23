@@ -103,6 +103,10 @@ async function isAnyBudgetOwner(actor: Member) {
   return false;
 }
 
+// The viewer's participation status on an event, as the switcher's status
+// dot reads it: coming, maybe, not coming, or unknown (they haven't said).
+export type ParticipationStatus = Awaited<ReturnType<typeof getMyParticipation>>["status"];
+
 export type NavContext = {
   memberName: string;
   // Community branding for the sidebar wordmark/logo slot — see
@@ -161,7 +165,9 @@ export type NavContext = {
   // than fetching anything itself.
   cycleSwitcher: {
     hasAnyOpenCycle: boolean;
-    openCycles: { id: string; name: string }[];
+    // Each open cycle, with the *viewer's* participation status on it —
+    // the nav switcher's status dot on each event's row.
+    openCycles: { id: string; name: string; myStatus: ParticipationStatus }[];
     defaultScopeSegment: string;
     // Only set when defaultScopeSegment is a specific cycle id, not
     // "active" — that cycle might be closed (a valid, deliberate
@@ -384,7 +390,13 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     viewAs: null,
     cycleSwitcher: {
       hasAnyOpenCycle: openCycles.length > 0,
-      openCycles: openCycles.map((c) => ({ id: c.id, name: c.name })),
+      openCycles: await Promise.all(
+        openCycles.map(async (c) => ({
+          id: c.id,
+          name: c.name,
+          myStatus: (await getMyParticipation(actor, c.id)).status,
+        })),
+      ),
       defaultScopeSegment,
       defaultScopeName,
       canInitiateCycle: canInitiate,
