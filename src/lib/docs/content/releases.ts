@@ -30,6 +30,19 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-11-23",
+    title: "Shifts: a tab per event, a calendar, and standing shifts on their own",
+    summary: "The Shifts page now shows one event at a time, as a list or a calendar you can sign up from, and keeps repeating shifts in their own tab.",
+    points: [
+      "Each event with shifts has its own tab, plus a Standing tab for shifts that repeat all year. With only one, there are no tabs.",
+      "An event's tab says whether sign-ups are open and who manages them, then shows its shifts as a list by day or as a calendar. Tap a shift on the calendar to sign up or withdraw.",
+      "Shifts at the same time sit side by side. The calendar shows one day on a phone, two on a tablet and three on a computer.",
+      "Filter by tag, branch, day or time of day. Whoever sets up a series can now give it tags, such as cooking or tidying.",
+      "Standing shifts are one card per job, such as \"Weekly on Tue · 18:00–20:00\", with the next shift ready to sign up for.",
+    ],
+    source: "shifts: an event-by-event schedule with a calendar, and standing shifts as their own tab",
+  },
+  {
+    date: "2026-11-23",
     title: "Move a dish into the recipe box, and pull the box's changes back",
     summary: "If you hold the kitchen, a dish you built on a menu can now go straight into the recipe box, and a dish copied from the box can catch up when the recipe is improved.",
     points: [
