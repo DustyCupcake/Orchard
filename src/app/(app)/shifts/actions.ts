@@ -20,6 +20,7 @@ import {
   markShiftSignupCompleted,
   markShiftSignupNoShow,
   openCycleShiftSignups,
+  parseTags,
   setShiftSeriesScope,
   signUpForShift,
   unarchiveShiftSeries,
@@ -46,6 +47,22 @@ function redirectWithError(err: unknown, back = ""): never {
   throw err;
 }
 
+// The tab (an event's roster, or Standing) a form was submitted from, so a
+// sign-up, withdrawal or roster act lands back on that tab instead of
+// whichever one the page opens on. Only a well-formed scope is used.
+function scopeFrom(formData: FormData): string | null {
+  const scope = String(formData.get("scope") ?? "").trim();
+  return scope === "standing" || /^[0-9a-f-]{36}$/i.test(scope) ? scope : null;
+}
+function scopeBack(formData: FormData): string {
+  const scope = scopeFrom(formData);
+  return scope ? `scope=${encodeURIComponent(scope)}` : "";
+}
+function shiftsHref(formData: FormData, okParam: string): string {
+  const back = scopeBack(formData);
+  return `/shifts?${back ? `${back}&` : ""}${okParam}=1`;
+}
+
 // Open to any member — see src/lib/shifts/series.ts's createShiftSeries.
 
 // Phase 54 (View-as): every write in this file goes through
@@ -70,6 +87,7 @@ export async function createShiftSeriesAction(formData: FormData) {
       title: String(formData.get("title") ?? "").trim(),
       description: String(formData.get("description") ?? "").trim() || undefined,
       defaultCapacity: Number(formData.get("defaultCapacity") ?? NaN),
+      tags: parseTags(String(formData.get("tags") ?? "")),
       sourceTaskId: String(formData.get("sourceTaskId") ?? "").trim() || null,
       cycleId: String(formData.get("cycleId") ?? "").trim() || null,
     });
@@ -89,11 +107,11 @@ export async function signUpForShiftAction(formData: FormData) {
   try {
     await signUpForShift(actor, occurrenceId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, scopeBack(formData));
   }
 
   revalidatePath("/shifts");
-  redirect("/shifts?signedUp=1");
+  redirect(shiftsHref(formData, "signedUp"));
 }
 
 export async function withdrawFromShiftAction(formData: FormData) {
@@ -103,11 +121,11 @@ export async function withdrawFromShiftAction(formData: FormData) {
   try {
     await withdrawFromShift(actor, occurrenceId);
   } catch (err) {
-    redirectWithError(err);
+    redirectWithError(err, scopeBack(formData));
   }
 
   revalidatePath("/shifts");
-  redirect("/shifts?withdrawn=1");
+  redirect(shiftsHref(formData, "withdrawn"));
 }
 
 // Coordinator-only, enforced inside generateShiftOccurrences. Two
@@ -196,6 +214,7 @@ export async function updateShiftSeriesAction(formData: FormData) {
       title: String(formData.get("title") ?? "").trim(),
       description: String(formData.get("description") ?? "").trim() || null,
       defaultCapacity: Number(formData.get("defaultCapacity") ?? NaN),
+      tags: parseTags(String(formData.get("tags") ?? "")),
     });
     await updateShiftSeries(actor, seriesId, input);
   } catch (err) {
@@ -299,11 +318,11 @@ export async function markShiftSignupNoShowAction(formData: FormData) {
 // openCycleShiftSignups (manager-only). Postable from /shifts or a
 // cycle's own view; the origin cycle's scope is a hidden field so the
 // redirect lands back on whichever surface submitted.
-function redirectForRosterAction(redirectTo: string | null, okParam: string): never {
+function redirectForRosterAction(redirectTo: string | null, okParam: string, formData: FormData): never {
   if (redirectTo) {
     redirect(`/${redirectTo}/participation?${okParam}=1`);
   }
-  redirect(`/shifts?${okParam}=1`);
+  redirect(shiftsHref(formData, okParam));
 }
 
 export async function openCycleShiftSignupsAction(formData: FormData) {
@@ -319,7 +338,7 @@ export async function openCycleShiftSignupsAction(formData: FormData) {
 
   revalidatePath("/shifts");
   if (origin) revalidatePath(`/${origin}/participation`);
-  redirectForRosterAction(origin, "shiftOpened");
+  redirectForRosterAction(origin, "shiftOpened", formData);
 }
 
 // The cycle's shift_management holder confirms a series placed after
@@ -337,7 +356,7 @@ export async function confirmShiftProposalAction(formData: FormData) {
 
   revalidatePath("/shifts");
   if (origin) revalidatePath(`/${origin}/participation`);
-  redirectForRosterAction(origin, "proposalConfirmed");
+  redirectForRosterAction(origin, "proposalConfirmed", formData);
 }
 
 // Re-place an existing series into another scope (standing ↔ cycle, or
@@ -358,5 +377,5 @@ export async function setShiftSeriesScopeAction(formData: FormData) {
 
   revalidatePath("/shifts");
   if (origin) revalidatePath(`/${origin}/participation`);
-  redirectForRosterAction(origin, "seriesReplaced");
+  redirectForRosterAction(origin, "seriesReplaced", formData);
 }

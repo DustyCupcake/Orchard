@@ -1423,6 +1423,8 @@ A board-seat handoff (the association's own governance, outside this platform) h
 
 Recurring, never-"done" work distinct from tasks. Relevant to physical events and standing operational duties; irrelevant to, say, a software project.
 
+**Where it's shown.** An event's shift roster is just the series placed in that event; its state (collecting or open) and its manager belong to the event. `/shifts` shows one scope at a time, as tabs: an event's roster, or Standing. An event reads as a day-grouped list or a calendar on a shared 06:00–06:00 time axis (overlaps sit side by side, a shift can be joined from its block), filterable by tag, branch, day and time of day. Standing series read as one card each (their rhythm and next shift), since a timeline of a weekly job is noise. A series carries free-form **tags** its views filter by.
+
 ---
 
 Core (always on): task board, member profiles, branches, tiers, requirements-based matching, task proposals, basic notifications, coordination mechanics, input rounds, scheduling polls, contribution tracking, task notes (wiki + comments + resources), forms (shared primitive), profile questions (shared primitive).

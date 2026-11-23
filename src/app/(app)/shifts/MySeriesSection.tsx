@@ -131,6 +131,10 @@ export default function MySeriesSection({
                           Changes every shift that uses the default. A shift with its own number keeps it.
                         </span>
                       </label>
+                      <label className="flex flex-col gap-1">
+                        <span className={LABEL}>Tags (comma-separated)</span>
+                        <input type="text" name="tags" defaultValue={s.tags.join(", ")} className={INPUT} />
+                      </label>
                       <SubmitButton className={`${BUTTON_PRIMARY} w-fit`} pendingLabel="Saving…">
                         Save series
                       </SubmitButton>

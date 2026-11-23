@@ -8,6 +8,20 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## shifts: an event-by-event schedule with a calendar, and standing shifts as their own tab
+
+`/shifts` was one long list of cards. It is now one **tab per event roster plus a Standing tab** (`?scope=<cycleId>|standing`, in `PageHeader`'s tab slot, shown only when there is more than one scope), because a roster is a property of the event and was never a stream of shifts. Plan and review history: `docs/plans/shift-views-plan.md`.
+
+- **An event tab** shows its status once (sign-ups open or collecting, who manages it, the one-way "Open sign-ups" act and its warning), its proposals waiting for the viewer, then a List/Calendar toggle with filters (tags, branch, day range, time overlap). Everything on a tab reads on its event's own clock, so a row's day, times and calendar position cannot disagree.
+- **The calendar uses one time-of-day axis.** Days are the programme grid's 06:00–06:00; a shift's position is its *offset* in minutes after that day's 06:00 (`shiftOffsets`), not an absolute instant, so day 2's 09:00 sits level with day 1's. Overlapping shifts sit side by side in lanes (`assignLanes`: clusters share the column, deterministic order, a "+N more" chip past the lane cap). Clicking a block, or a chip, opens the shift in a dialog with the same Sign up / Withdraw forms the list has. Blocks are tinted when you are signed up, full, or not open yet. Columns per page follow the screen: 1 on a phone, 2 on a tablet, 3 on a desktop.
+- **The time filter reads offsets too**, so an overnight 22:00–01:00 shift is "late" rather than "before 09:00", and a To of 06:00 means the end of the day.
+- **Standing shifts are one card per series**, not a timeline: its pattern ("Weekly on Tue · 18:00–20:00"), its next shift with Sign up, and the later dates folded away. Tag and branch filters only.
+- **Series have tags** (`shift_series.tags`, `0124_shift_series_tags.sql`), set when a series is created or edited, lowercased and de-duplicated on the way in (`normalizeTags`) so "Cooking" and "cooking" are one filter.
+- **Sign-ups, withdrawals and the open/confirm acts return to the tab they came from** (a hidden `scope` field, validated), instead of landing on whichever tab the page opens on. "Open sign-ups" from `/shifts` now stays on `/shifts`.
+- **Tests:** `tests/shifts-views.test.ts` covers the offsets, filters, lanes, paging, scopes and standing patterns (pure, no database); `tests/shifts.test.ts` covers tags on create, update and the upcoming list against Postgres.
+
+Deliberately not done: a per-series timeline view for events, and a fix for the one night a year the clocks change (axis labels are `06:00 + offset`, an hour out after the change).
+
 ## a kitchen holder can save a dish to the recipe box, and pull the box's changes back into a dish
 
 The recipe box only worked one way: a recipe was copied into a meal and then the two never met again. A holder who had built a good dish by hand had to retype it as a suggestion, and a dish copied from the box silently drifted from a recipe someone later improved.

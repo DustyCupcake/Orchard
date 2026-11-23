@@ -36,6 +36,10 @@ export const shiftSeries = pgTable("shift_series", {
   title: text("title").notNull(),
   description: text("description"),
   defaultCapacity: integer("default_capacity").notNull(),
+  // Free-form tags ("cooking", "tidying", "meal clean-up") set by the
+  // planner on each series, filterable on the shift views. Same shape as
+  // task.tags.
+  tags: text("tags").array().notNull().default([]),
   // null = a pending proposal, hidden from the browse surface and not
   // claimable until the cycle's shift_management holder confirms it
   // (§2.6/D11). Set at placement time: instantly during a collecting

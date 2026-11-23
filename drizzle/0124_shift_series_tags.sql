@@ -1,0 +1,1 @@
+ALTER TABLE "shift_series" ADD COLUMN "tags" text[] DEFAULT '{}' NOT NULL;
