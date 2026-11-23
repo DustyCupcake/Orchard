@@ -279,7 +279,7 @@ export async function updatePhaseBoundaryAction(formData: FormData) {
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside addPhase — same
-// authority as everything else on this page. `order` isn't read from
+// authority as the other event-settings forms. `order` isn't read from
 // formData at all — addPhase always appends.
 export async function addPhaseAction(formData: FormData) {
   const actor = await requireMember();
@@ -304,7 +304,7 @@ export async function addPhaseAction(formData: FormData) {
 }
 
 // Cycle-initiation-eligibility-gated, enforced inside updatePhaseHighlight
-// — same authority as everything else on this page. See src/lib/nav.ts's
+// — same authority as the other event-settings forms. See src/lib/nav.ts's
 // HIGHLIGHTABLE_MODULES for the option set this form's select renders.
 export async function updatePhaseHighlightAction(formData: FormData) {
   const actor = await requireMember();

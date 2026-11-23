@@ -70,18 +70,15 @@ export default async function ManageEventsPage({
         </div>
       )}
 
-      <EventIndex viewing={viewing} allCycles={allCycles} />
+      <div className="mt-6 flex flex-col gap-8">
+        <EventIndex viewing={viewing} allCycles={allCycles} className="" />
 
-      {!authorized && (
-        <div className="mt-6">
-          <ReadOnlyNote authorized={authorized} />
-        </div>
-      )}
+        <ReadOnlyNote authorized={authorized} />
       {/* Same read-only shape as /settings: everyone can read what an event
           type means, but only an Admin can change one. The actions still
           call requireAdmins — the fieldset just stops the buttons being
           offered to someone who would be refused. */}
-      <fieldset disabled={!authorized} className="mt-6 min-w-0">
+      <fieldset disabled={!authorized} className="min-w-0">
         <SettingsSection
           title="Event types"
           description="What kind of thing an event is — a season, a weekend, a rehearsal. Used for counting and for starting a new event from the last one of the same kind."
@@ -167,24 +164,33 @@ export default async function ManageEventsPage({
         </SettingsSection>
       </fieldset>
 
-      {canConfigure && (
-        <StartNewCycleSection
-          viewing={viewing}
-          cycleScope="active"
-          hasPreviousCycle={allCycles.length > 0}
-          openCycleName={openCycle?.name ?? null}
-          cycleTypes={cycleTypes}
-          taskPacks={taskPacks}
-          previewStart={previewStart}
-          previewEnd={previewEnd}
-          previewView={previewView === "list" ? "list" : "grid"}
-        />
-      )}
+        {canConfigure && (
+          <StartNewCycleSection
+            viewing={viewing}
+            cycleScope="active"
+            hasPreviousCycle={allCycles.length > 0}
+            openCycleName={openCycle?.name ?? null}
+            cycleTypes={cycleTypes}
+            taskPacks={taskPacks}
+            previewStart={previewStart}
+            previewEnd={previewEnd}
+            previewView={previewView === "list" ? "list" : "grid"}
+          />
+        )}
+      </div>
     </main>
   );
 }
 
-async function EventIndex({ viewing, allCycles }: { viewing: Member; allCycles: Cycle[] }) {
+async function EventIndex({
+  viewing,
+  allCycles,
+  className = "mt-6",
+}: {
+  viewing: Member;
+  allCycles: Cycle[];
+  className?: string;
+}) {
   // The same call /community's event cards use, so the numbers here and
   // there cannot disagree. It only covers open events; closed ones need
   // nothing but a name and dates, which allCycles already has.
@@ -195,14 +201,14 @@ async function EventIndex({ viewing, allCycles }: { viewing: Member; allCycles: 
 
   if (allCycles.length === 0) {
     return (
-      <p className="mt-6 text-[length:var(--text-body)] text-[var(--text-muted)]">
+      <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
         No events yet. Until one exists there&rsquo;s nothing to declare participation against.
       </p>
     );
   }
 
   return (
-    <section className="mt-6 flex flex-col gap-2">
+    <section className={`${className} flex flex-col gap-2`}>
       {openCards.map((c) => (
         <div key={c.id} className={`${CARD} flex flex-wrap items-baseline justify-between gap-2`}>
           <Link
@@ -326,7 +332,7 @@ async function StartNewCycleSection({
   const typesWithDefaultPack = cycleTypes.filter((t) => t.defaultPackId && packNameById.has(t.defaultPackId));
 
   return (
-    <section className="mt-8 border-t border-[var(--border)] pt-6">
+    <section className="border-t border-[var(--border)] pt-6">
       <SectionHeading>Start a new event</SectionHeading>
 
       {typesWithDefaultPack.length > 0 && (
@@ -391,6 +397,9 @@ async function StartNewCycleSection({
       )}
 
       <form action={createCycleAction} className="mt-4 flex max-w-[400px] flex-col gap-2">
+        {/* /manage-events is global. The "active" scope here only tells the
+            action which aggregate event list to revalidate; both its success
+            and error redirects come back to this page. */}
         <input type="hidden" name="cycleScope" value={cycleScope} />
         <label className="flex flex-col gap-1">
           <span className={LABEL}>Name</span>
