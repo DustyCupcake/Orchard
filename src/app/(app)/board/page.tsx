@@ -29,12 +29,10 @@ import { ATTENTION_STYLES } from "@/lib/format";
 import { canInitiateCycle, listCycles, resolveDefaultScopeSegment, resolveViewScopeFromSegment } from "@/lib/cycles";
 import { listTaskFitSuggestions } from "@/lib/onboarding";
 import { getCommunityRow } from "@/lib/recruitment";
-import BranchFilter from "./BranchFilter";
-import TagFilter from "./TagFilter";
+import BoardFilters from "./BoardFilters";
 import TaskCard from "./TaskCard";
 import PhaseCard from "./PhaseCard";
 import BranchCoverageCard from "./BranchCoverageCard";
-import FilterSelect from "./FilterSelect";
 import { Tag, Banner, BUTTON_PRIMARY, ATTENTION_TONE } from "@/components/ui/kit";
 import ActionMenu from "@/components/ui/ActionMenu";
 import {
@@ -304,7 +302,6 @@ export default async function BoardPage({
     return query ? `/board?${query}` : "/board";
   }
   const fitToggleHref = boardHref({ fit: !sortByFit });
-  const cyclelessToggleHref = boardHref({ hideCycleless: !hidingCycleless });
   const boardReturnHref = boardHref({});
   const viewTabs = visibleViews.map((v) => ({ key: v, label: VIEW_LABEL[v] }));
   const phaseGroups = activeView === "phase" ? groupTasksByPhase(filteredTasks, phases) : [];
@@ -439,21 +436,31 @@ export default async function BoardPage({
       )}
 
       {branches.length > 0 && (
-        <div className="mt-6 flex flex-wrap items-center gap-4">
-          <BranchFilter branches={branches} selectedBranchId={branchId} />
-          {allTags.length > 0 && <TagFilter tags={allTags} selectedTag={tag} />}
-          <Link
-            href={fitToggleHref}
-            className={sortByFit ? "text-[length:var(--text-body)] font-medium text-[var(--accent-1)]" : "text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--text)]"}
-          >
-            {sortByFit ? "✓ Sorted by what fits me" : "Sort by what fits me"}
-          </Link>
-          <Link
-            href={cyclelessToggleHref}
-            className={hidingCycleless ? "text-[length:var(--text-body)] font-medium text-[var(--accent-1)]" : "text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--text)]"}
-          >
-            {hidingCycleless ? "✓ Hiding not-event-scoped tasks" : "Hide not-event-scoped tasks"}
-          </Link>
+        <div className="mt-6">
+          <BoardFilters
+            branches={branches}
+            tags={allTags}
+            phases={phases.map((p) => ({ id: p.id, name: p.name }))}
+            values={{
+              branchId,
+              tag,
+              hideCycleless: hidingCycleless,
+              attention,
+              phaseId,
+              duration,
+              hasSlots: hasSlots === "1",
+              assignedToMe: assignedToMe === "1",
+              dueWithin,
+            }}
+            trailing={
+              <Link
+                href={fitToggleHref}
+                className={sortByFit ? "text-[length:var(--text-body)] font-medium text-[var(--accent-1)]" : "text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--text)]"}
+              >
+                {sortByFit ? "✓ Sorted by what fits me" : "Sort by what fits me"}
+              </Link>
+            }
+          />
         </div>
       )}
 
@@ -473,77 +480,6 @@ export default async function BoardPage({
           events&rdquo;.
         </p>
       )}
-
-      {/* Advanced filters — collapsed by default, in-memory over fetched list */}
-      <details className="mt-4">
-        <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
-          Advanced filters
-        </summary>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <FilterSelect
-            value={attention}
-            param="attention"
-            placeholder="Any attention"
-            options={[
-              { value: "soft", label: "Soft flag" },
-              { value: "hard", label: "Hard flag" },
-              { value: "escalated", label: "Escalated" },
-            ]}
-          />
-
-          {phases.length > 0 && (
-            <FilterSelect
-              value={phaseId}
-              param="phaseId"
-              placeholder="Any phase"
-              options={phases.map((p) => ({ value: p.id, label: p.name }))}
-            />
-          )}
-
-          <FilterSelect
-            value={duration}
-            param="duration"
-            placeholder="Any duration"
-            options={[
-              { value: "under_hour", label: "Under an hour" },
-              { value: "few_hours", label: "A few hours" },
-              { value: "half_day", label: "Half a day" },
-              { value: "multi_day", label: "Multi-day" },
-            ]}
-          />
-
-          <Link
-            href={boardHref({ hasSlots: hasSlots !== "1" })}
-            className={hasSlots === "1" ? "text-[length:var(--text-body)] font-medium text-[var(--accent-1)]" : "text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--text)]"}
-          >
-            {hasSlots === "1" ? "✓ Has open slots" : "Has open slots"}
-          </Link>
-
-          <Link
-            href={boardHref({ assignedToMe: assignedToMe !== "1" })}
-            className={assignedToMe === "1" ? "text-[length:var(--text-body)] font-medium text-[var(--accent-1)]" : "text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--text)]"}
-          >
-            {assignedToMe === "1" ? "✓ Assigned to me" : "Assigned to me"}
-          </Link>
-
-          <FilterSelect
-            value={dueWithin}
-            param="dueWithin"
-            placeholder="Any deadline"
-            options={[
-              { value: "7", label: "Due within 7 days" },
-              { value: "14", label: "Due within 14 days" },
-              { value: "30", label: "Due within 30 days" },
-            ]}
-          />
-
-          {(attention || phaseId || duration || hasSlots === "1" || assignedToMe === "1" || dueWithin) && (
-            <Link href={boardHref({ attention: null, phaseId: null, duration: null, hasSlots: false, assignedToMe: false, dueWithin: null })} className="text-[length:var(--text-body)] text-[var(--text-muted)] hover:text-[var(--danger)]">
-              Clear all
-            </Link>
-          )}
-        </div>
-      </details>
 
       {isDutyHolder && (
         <section className="mt-6 rounded-[var(--radius-md)] border border-[var(--border)] p-4">

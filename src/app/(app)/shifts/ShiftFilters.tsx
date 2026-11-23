@@ -1,15 +1,15 @@
 "use client";
 
-import { BUTTON_GHOST, INPUT } from "@/components/ui/kit";
+import FilterBar, { type FilterField } from "@/components/ui/FilterBar";
+import { formatExactDate } from "@/lib/dates";
 import { DEFAULT_FILTERS, type ShiftViewFilters } from "@/lib/shifts/views";
 
-const FILTER_LABEL = "text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]";
-
 /**
- * The filter bar the shift views share: "only with free slots" (on to start with), tags (any-of) and branch everywhere,
- * plus From/To day and time ranges where `dayFilters` is on (an event's list
- * and calendar — a standing series repeats across weeks, so a day range means
- * little there). All client state; the caller owns it.
+ * The shift views' filters, on the shared filter bar: "only with free slots"
+ * and tags (any-of) and branch everywhere, plus day and time-of-day ranges
+ * where `dayFilters` is on (an event's list and calendar — a standing series
+ * repeats across weeks, so a day range means little there). All client
+ * state; the caller owns it.
  */
 export default function ShiftFilters({
   tags,
@@ -24,75 +24,66 @@ export default function ShiftFilters({
   setFilter: (patch: Partial<ShiftViewFilters>) => void;
   dayFilters: boolean;
 }) {
-  const anyActive = JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS);
-  const toggleTag = (tag: string, on: boolean) =>
-    setFilter({ tags: on ? [...new Set([...filters.tags, tag])] : filters.tags.filter((t) => t !== tag) });
+  const fields: FilterField[] = [
+    {
+      id: "available",
+      kind: "toggle",
+      label: "Only with free slots",
+      chipLabel: "Free slots",
+      checked: filters.availableOnly,
+      onChange: (availableOnly) => setFilter({ availableOnly }),
+    },
+  ];
+  if (tags.length > 0) {
+    fields.push({
+      id: "tags",
+      kind: "multi",
+      label: "Tags",
+      values: filters.tags,
+      options: tags.map((t) => ({ value: t, label: t })),
+      onChange: (values) => setFilter({ tags: values }),
+    });
+  }
+  if (branches.length > 0) {
+    fields.push({
+      id: "branch",
+      kind: "select",
+      label: "Branch",
+      anyLabel: "Any branch",
+      value: filters.branchId,
+      options: branches.map((b) => ({ value: b.id, label: b.name })),
+      onChange: (branchId) => setFilter({ branchId }),
+    });
+  }
+  if (dayFilters) {
+    fields.push(
+      {
+        id: "days",
+        kind: "range",
+        inputType: "date",
+        label: "Days",
+        from: filters.from,
+        to: filters.to,
+        format: formatExactDate,
+        onChange: ({ from, to }) => setFilter({ from, to }),
+      },
+      {
+        id: "time",
+        kind: "range",
+        inputType: "time",
+        label: "Time of day",
+        from: filters.timeFrom,
+        to: filters.timeTo,
+        onChange: ({ from, to }) => setFilter({ timeFrom: from, timeTo: to }),
+      },
+    );
+  }
 
   return (
-    <span className="inline-flex flex-wrap items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-      <label className="inline-flex items-center gap-1">
-        <input
-          type="checkbox"
-          checked={filters.availableOnly}
-          onChange={(e) => setFilter({ availableOnly: e.target.checked })}
-          className="h-3.5 w-3.5"
-        />
-        <span>Only with free slots</span>
-      </label>
-      {tags.length > 0 && (
-        <span className="inline-flex flex-wrap items-center gap-1">
-          <span className={FILTER_LABEL}>Tags</span>
-          {tags.map((t) => (
-            <label key={t} className="inline-flex items-center gap-1">
-              <input
-                type="checkbox"
-                checked={filters.tags.includes(t)}
-                onChange={(e) => toggleTag(t, e.target.checked)}
-                className="h-3.5 w-3.5"
-              />
-              <span>{t}</span>
-            </label>
-          ))}
-        </span>
-      )}
-      {branches.length > 0 && (
-        <label className="inline-flex items-center gap-1">
-          <span className={FILTER_LABEL}>Branch</span>
-          <select value={filters.branchId ?? ""} onChange={(e) => setFilter({ branchId: e.target.value || null })} className={INPUT}>
-            <option value="">Any branch</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {dayFilters && (
-        <>
-          <label className="inline-flex items-center gap-1">
-            <span className={FILTER_LABEL}>From day</span>
-            <input type="date" value={filters.from ?? ""} onChange={(e) => setFilter({ from: e.target.value || null })} className={INPUT} />
-          </label>
-          <label className="inline-flex items-center gap-1">
-            <span className={FILTER_LABEL}>To day</span>
-            <input type="date" value={filters.to ?? ""} onChange={(e) => setFilter({ to: e.target.value || null })} className={INPUT} />
-          </label>
-          <label className="inline-flex items-center gap-1">
-            <span className={FILTER_LABEL}>From</span>
-            <input type="time" value={filters.timeFrom ?? ""} onChange={(e) => setFilter({ timeFrom: e.target.value || null })} className={INPUT} />
-          </label>
-          <label className="inline-flex items-center gap-1">
-            <span className={FILTER_LABEL}>To</span>
-            <input type="time" value={filters.timeTo ?? ""} onChange={(e) => setFilter({ timeTo: e.target.value || null })} className={INPUT} />
-          </label>
-        </>
-      )}
-      {anyActive && (
-        <button type="button" onClick={() => setFilter({ ...DEFAULT_FILTERS })} className={BUTTON_GHOST}>
-          Clear filters
-        </button>
-      )}
-    </span>
+    <FilterBar
+      fields={fields}
+      onClear={() => setFilter({ ...DEFAULT_FILTERS })}
+      clearable={JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS)}
+    />
   );
 }

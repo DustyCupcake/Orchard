@@ -104,6 +104,7 @@ See the reference file for exact markup/states of each — reproduce as Tailwind
 - **Sidebar**: extend `AppShell.tsx` — logo slot replaces the "Orchard" text wordmark when a community sets one (falls back to the community name set in the display face at `--text-heading`/semibold); active nav item becomes Accent-1-soft background + Accent-1 text + Fill-weight icon (currently `bg-neutral-200/70` neutral).
 - **Banners**: info (Accent-1-soft, e.g. the View-as banner), warning (fixed amber, e.g. On-site mode), danger (fixed red, e.g. conflict alerts) — same three-banner pattern already used in `AppShell.tsx`, just restyled onto the new tokens.
 - **Tabs**: underline style, Accent 1 on the active tab.
+- **Filters**: one `FilterBar` (`src/components/ui/FilterBar.tsx`) wherever a list is filtered — a "Filters" button with the active count opens a `Modal` of controls, and each active filter is a rectangular accent-soft chip with an × (never a pill). Pages describe fields; the bar holds no state.
 - **Empty state**: centered icon + line + ghost action, dashed border container.
 
 ## Interactions & behavior

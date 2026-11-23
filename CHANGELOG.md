@@ -8,6 +8,14 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## one filter bar for the shift views and the task board
+
+Filters were laid out differently on each page: the shift views showed every control inline (a long block on a phone), and the board had two selects and two text toggles in view plus a collapsed "Advanced filters" section whose active filters were invisible. Both now use `FilterBar` (`src/components/ui/FilterBar.tsx`): a **Filters** button showing how many are on, which opens a dialog holding every control (selects, checkboxes, tag checklist, day and time ranges), and a removable chip for each filter that is on — so with nothing on a page carries only the button, which is all a phone shows. Chips are rectangular and accent-soft, per the design conventions (no pill shapes). Changes apply as they are made; "Done" closes the dialog and "Clear filters" resets.
+
+- **The bar owns no state.** A page describes each filter as a field (`toggle`, `select`, `multi`, `range`) with its value and setter. The shift views keep theirs in React state (`ShiftFilters`); the board keeps its in the URL (`BoardFilters`), cloning the current params for each change, keeping the view tab and sort, and navigating with `scroll: false` so the dialog doesn't jump the page. Clicks made before a navigation lands build on the pending params instead of the stale URL.
+- **Board.** `BranchFilter`, `TagFilter`, `FilterSelect` and the "Advanced filters" `<details>` are gone. "Hide not-event-scoped tasks" is a checkbox (chip: "Event-scoped only"); "Sort by what fits me" stays next to the chips, since sorting isn't a filter. "Clear" now covers every filter, not only the advanced ones.
+- Tests: `tests/filter-bar.test.ts` covers the chip wording and removal. Checked in a browser against a scratch database (board and shifts, desktop and phone width).
+
 ## the shift views start on "only with free slots"
 
 A new filter, **Only with free slots**, is on when the Shifts page opens, so the list, the calendar and the standing cards lead with shifts someone can still take. A full shift stays visible if the viewer is signed up for it (so they can withdraw), and unticking the box shows full shifts again. "Clear filters" returns to the starting state (this box on, the rest off). Sign-ups not being open yet does not hide a shift, otherwise an event whose sign-ups haven't opened would show an empty tab. When the filter leaves nothing, the empty message says why. `availableOnly` and `DEFAULT_FILTERS` in `src/lib/shifts/views.ts`; tests in `tests/shifts-views.test.ts`.
