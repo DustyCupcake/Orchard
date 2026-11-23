@@ -8,6 +8,16 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## a sign-in remembers the page you were trying to open
+
+When a click bounces an unauthenticated visitor to the login page, signing in now lands them back on the page they were trying to open — through Zitadel or a magic link (on the device that asked for the link) — instead of the dashboard. Both providers always landed on `/welcome` or `/dashboard` and the original page was forgotten.
+
+- **A proxy tells the server which page was asked for.** Layouts and pages can't read the request URL in Next.js 16, so `src/proxy.ts` copies path + query onto an `x-orchard-path` request header for page requests (API routes, `_next` and files with an extension are skipped). The (app) layout and every (app) page that used `redirect("/login")` now do `redirect(await loginUrl())`, a real server redirect to `/login?next=<page>`. The proxy decides nothing about access: the session is still checked against the database in the layout and pages, so a stale cookie is handled too. Every login entry point forwards `next`: the "Sign in with Zitadel" link and the `ssoIsPrimary` redirect carry it to `/api/auth/oidc/login`, which stores it in the new `orchard_login_dest` cookie; the login form posts it to `/api/auth/request`. Server actions still redirect to a bare `/login`.
+- **Every read is validated.** `safeReturnPath` (`src/lib/login-destination.ts`) rejects anything that isn't a same-origin app path — external and protocol-relative URLs, backslashes (browsers normalise those in locations), control characters and the login page itself — and it is applied at the login page, in the login routes' error redirects, and in both callbacks.
+- **Both providers land there.** `/api/auth/oidc/callback` and `/api/auth/verify` both read the destination and redirect to `intended ?? firstLoginDestination(...)` — the stored page wins over the `/welcome`-or-`/dashboard` rule, so even a brand-new member who was linked somewhere gets the deep link.
+- **Retries keep it, and stale ones don't.** The error redirects put `next` back on the login URL, so a login attempt that dies before completing (an expired flow cookie, a dead magic link) still returns to the original page on retry. When a login attempt starts with no `next` — a user typing their email at the front door — the login and OIDC routes clear the cookie, so a stale bounce can't drag someone to a page they no longer wanted. The cookie lives 15 minutes, like a magic link.
+- **`tests/login-destination.test.ts`** covers the validator's accept/reject list, the `?next=` round trip through `withNextParam`/`readNextParam`, and the nested-query cases.
+
 ## shifts: an event-by-event schedule with a calendar, and standing shifts as their own tab
 
 `/shifts` was one long list of cards. It is now one **tab per event roster plus a Standing tab** (`?scope=<cycleId>|standing`, in `PageHeader`'s tab slot, shown only when there is more than one scope), because a roster is a property of the event and was never a stream of shifts. Plan and review history: `docs/plans/shift-views-plan.md`.

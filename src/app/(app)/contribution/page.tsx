@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import { getContributionCommunityAverage, getOwnContribution, listVisibleContributors } from "@/lib/contribution";
 import ContributionCategories from "@/components/ContributionCategories";
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function ContributionPage() {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const [categories, visibleContributors, communityAverage] = await Promise.all([

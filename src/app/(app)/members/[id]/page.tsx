@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { db } from "@/db";
 import { emergencyAccessLog, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
@@ -29,7 +30,7 @@ export default async function MemberPage({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const { id } = await params;

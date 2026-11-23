@@ -1,5 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { db } from "@/db";
 import { member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
@@ -59,7 +60,7 @@ export default async function SchedulePage({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const { error, submitted, updated, confirmed, declined, pinged, published, week, compose } = await searchParams;

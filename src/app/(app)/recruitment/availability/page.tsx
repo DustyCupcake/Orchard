@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import Link from "next/link";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
@@ -18,7 +19,7 @@ export const dynamic = "force-dynamic";
 // interview that was waiting for people.
 export default async function StandingAvailabilityPage() {
   const { real, viewing } = await getViewingContext();
-  if (!real || !viewing) redirect("/login");
+  if (!real || !viewing) redirect(await loginUrl());
 
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "recruitment");

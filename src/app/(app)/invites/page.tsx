@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { cycle, member } from "@/db/schema";
@@ -75,7 +76,7 @@ export default async function InvitesPage({
   const clock = await getViewerClock();
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const { error, created, revoked, claimed, inquiryResolved, asked } =

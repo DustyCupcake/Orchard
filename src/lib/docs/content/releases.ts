@@ -30,6 +30,19 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-11-23",
+    title: "Sign-in takes you back to the page you were trying to open",
+    summary:
+      "When a click bounces you to the login page, signing in now returns you to that page — with Zitadel or a magic link — instead of the dashboard.",
+    points: [
+      "Click a link while signed out and the app bounces you to the login page, as before — but it now remembers the page you were trying to open.",
+      "Signing in through your community's account system (Zitadel), or with a login link, now returns you to that page instead of the dashboard.",
+      "The destination is an app page, validated before it is used, so a crafted link can't send you somewhere unexpected.",
+      "Logins that start from the front door, with no page you were trying to open, still land you on the dashboard or your first screen as before.",
+    ],
+    source: "a sign-in remembers the page you were trying to open",
+  },
+  {
+    date: "2026-11-23",
     title: "Shifts: a tab per event, a calendar, and standing shifts on their own",
     summary: "The Shifts page now shows one event at a time, as a list or a calendar you can sign up from, and keeps repeating shifts in their own tab.",
     points: [

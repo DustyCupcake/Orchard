@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { branch } from "@/db/schema";
@@ -75,7 +76,7 @@ export default async function CommunicationPage({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const clock = await getViewerClock();

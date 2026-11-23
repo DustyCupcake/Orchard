@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import { getVisibleContribution } from "@/lib/contribution";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
@@ -15,7 +16,7 @@ export default async function MemberContributionPage({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const { id } = await params;

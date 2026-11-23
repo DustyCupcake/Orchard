@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getViewerClock } from "@/lib/view-clock";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react/dist/ssr";
 import { db } from "@/db";
 import { member } from "@/db/schema";
@@ -121,7 +122,7 @@ export default async function CalendarPage({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const clock = await getViewerClock();

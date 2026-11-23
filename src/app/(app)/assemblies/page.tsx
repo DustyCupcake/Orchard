@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getViewerClock, type ViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import {
   assemblyTemplateTitle,
@@ -98,7 +99,7 @@ async function AssemblyRow({
 export default async function AssembliesPage() {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const assemblies = await listAssemblies(viewing);

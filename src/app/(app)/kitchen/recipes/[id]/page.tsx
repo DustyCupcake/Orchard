@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import { getViewingContext } from "@/lib/view-as";
@@ -77,7 +78,7 @@ export default async function RecipeDetailPage({
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
-  if (!real || !viewing) redirect("/login");
+  if (!real || !viewing) redirect(await loginUrl());
   const { id } = await params;
   const paramsIn = await searchParams;
   const community = await getCommunity(viewing);

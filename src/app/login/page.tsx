@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getOrCreateCommunity } from "@/lib/community";
 import { isOidcConfigured } from "@/lib/oidc";
+import { safeReturnPath, withNextParam } from "@/lib/login-destination";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY } from "@/components/ui/kit";
 import LoginForm from "./LoginForm";
 
@@ -23,9 +24,16 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; method?: string }>;
+  searchParams: Promise<{ error?: string; method?: string; next?: string }>;
 }) {
-  const { error, method } = await searchParams;
+  const { error, method, next } = await searchParams;
+  // The page the visitor was trying to open when they were bounced here
+  // (see LoginRedirect). Both login paths below forward it — the
+  // "Sign in with Zitadel" link and the magic-link form — and the login
+  // routes' error redirects carry it back on the retry. Re-validated:
+  // the value is in a URL the visitor controls, and it is a redirect
+  // target.
+  const safeNext = safeReturnPath(next);
   const community = await getOrCreateCommunity();
   const oidcOn = isOidcConfigured(community);
   // A separate, per-Community opt-in from merely having OIDC configured
@@ -43,7 +51,7 @@ export default async function LoginPage({
   // *some* reachable path even though it's deliberately not advertised
   // on the happy path.
   if (ssoIsPrimary && !error && method !== "magic-link") {
-    redirect("/api/auth/oidc/login");
+    redirect(withNextParam("/api/auth/oidc/login", safeNext));
   }
 
   return (
@@ -58,7 +66,7 @@ export default async function LoginPage({
 
       {oidcOn && (
         <div className="mt-6">
-          <a href="/api/auth/oidc/login" className={ssoIsPrimary ? BUTTON_PRIMARY : BUTTON_SECONDARY}>
+          <a href={withNextParam("/api/auth/oidc/login", safeNext)} className={ssoIsPrimary ? BUTTON_PRIMARY : BUTTON_SECONDARY}>
             Sign in with Zitadel
           </a>
         </div>
@@ -70,7 +78,7 @@ export default async function LoginPage({
             Magic-link only works if you already have a Zitadel-linked account here.
           </p>
         )}
-        <LoginForm />
+        <LoginForm next={safeNext} />
       </div>
 
       {error === "no_account" && (

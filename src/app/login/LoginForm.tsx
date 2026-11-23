@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { BUTTON_PRIMARY, INPUT } from "@/components/ui/kit";
 
-export default function LoginForm() {
+export default function LoginForm({ next }: { next?: string | null }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "sent" | "error">("idle");
 
@@ -15,7 +15,10 @@ export default function LoginForm() {
       const res = await fetch("/api/auth/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        // `next` is where the login should return the visitor — see
+        // src/lib/login-destination.ts. The server re-validates it and
+        // stores it in the login-destination cookie for /api/auth/verify.
+        body: JSON.stringify({ email, next: next ?? null }),
         // The API route always responds fast now (mail sending failures are
         // caught server-side), but this keeps the button from hanging
         // forever if the request itself never completes for some other

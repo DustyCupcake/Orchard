@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import Link from "next/link";
 import { inArray } from "drizzle-orm";
 import { db } from "@/db";
@@ -101,7 +102,7 @@ export default async function KitchenPage({
   const { real, viewing } = await getViewingContext();
   const clock = await getViewerClock();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const params = await searchParams;

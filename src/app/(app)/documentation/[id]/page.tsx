@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getViewerClock } from "@/lib/view-clock";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { db } from "@/db";
 import { branch, member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
@@ -20,7 +21,7 @@ export default async function WikiPageDetail({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const clock = await getViewerClock();

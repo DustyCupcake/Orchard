@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewerClock } from "@/lib/view-clock";
 import { getViewingContext } from "@/lib/view-as";
 import { resolveViewScopeFromSegment } from "@/lib/cycles";
@@ -23,7 +24,7 @@ export default async function CycleScopeLayout({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const clock = await getViewerClock();

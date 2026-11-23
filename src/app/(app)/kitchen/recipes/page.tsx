@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
 import { getViewingContext } from "@/lib/view-as";
@@ -93,7 +94,7 @@ export default async function RecipeBoxPage({
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
-  if (!real || !viewing) redirect("/login");
+  if (!real || !viewing) redirect(await loginUrl());
   const params = await searchParams;
   const community = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(community, "kitchen");

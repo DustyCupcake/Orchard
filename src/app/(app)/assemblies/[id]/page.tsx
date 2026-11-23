@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewerClock } from "@/lib/view-clock";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -54,7 +55,7 @@ export default async function AssemblyDetailPage({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const clock = await getViewerClock();

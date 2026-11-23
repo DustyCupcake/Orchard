@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { cycle, member } from "@/db/schema";
@@ -81,7 +82,7 @@ export default async function ApplicationsPage({
   const clock = await getViewerClock();
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const { error, subscribed, unsubscribed, evaluated, supported, asked, interviewConfirmed, interviewHeld } = await searchParams;

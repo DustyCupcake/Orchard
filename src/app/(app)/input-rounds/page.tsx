@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import { getNextCutoffAt, listCurrentRoundQuestions } from "@/lib/input-rounds";
 import { Banner, BUTTON_PRIMARY, Tag } from "@/components/ui/kit";
@@ -23,7 +24,7 @@ export default async function InputRoundsPage({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const clock = await getViewerClock();

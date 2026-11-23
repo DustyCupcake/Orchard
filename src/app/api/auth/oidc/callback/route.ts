@@ -5,6 +5,7 @@ import { resolveOidcSignIn } from "@/lib/sign-in/resolve";
 import { handleOidcCallback, OIDC_FLOW_COOKIE } from "@/lib/oidc";
 import { createSession } from "@/lib/session";
 import { firstLoginDestination } from "@/lib/first-login";
+import { clearLoginDestination, readLoginDestination, withNextParam } from "@/lib/login-destination";
 import { resolveAppUrl } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +19,14 @@ export async function GET(request: NextRequest) {
   const raw = jar.get(OIDC_FLOW_COOKIE)?.value;
   jar.delete(OIDC_FLOW_COOKIE);
 
+  // The page the visitor was trying to open — stored by the login route
+  // when the "Sign in with Zitadel" link carried ?next= — read without
+  // consuming it so the error redirects below can put it on the retry
+  // URL too. Re-validated on every read.
+  const intended = await readLoginDestination();
+
   if (!raw) {
-    return NextResponse.redirect(new URL("/login?error=oidc_state_missing", appUrl));
+    return NextResponse.redirect(new URL(withNextParam("/login?error=oidc_state_missing", intended), appUrl));
   }
 
   let flow: { state: string; nonce: string; codeVerifier: string };
@@ -58,7 +65,7 @@ export async function GET(request: NextRequest) {
       "[auth/oidc/callback] OIDC login failed:",
       err instanceof Error ? Object.assign({ message: err.message, cause: err.cause }, err) : err,
     );
-    return NextResponse.redirect(new URL("/login?error=oidc_error", appUrl));
+    return NextResponse.redirect(new URL(withNextParam("/login?error=oidc_error", intended), appUrl));
   }
 
   // "No qualifying role → a real, visible 'not authorized for
@@ -66,7 +73,7 @@ export async function GET(request: NextRequest) {
   // docs/plans/development-plan.md's Phase 57. Checked before any
   // Member/MemberIdentity row is ever touched.
   if (!result.hasRequiredRole) {
-    return NextResponse.redirect(new URL("/login?error=oidc_not_authorized", appUrl));
+    return NextResponse.redirect(new URL(withNextParam("/login?error=oidc_not_authorized", intended), appUrl));
   }
 
   // Which member is this person — or, if Orchard won't decide that by itself, nobody yet
@@ -80,10 +87,18 @@ export async function GET(request: NextRequest) {
     nickname: result.nickname,
     givenName: result.givenName,
   });
-  if (resolution.kind === "held") return NextResponse.redirect(new URL("/login?error=oidc_held", appUrl));
-  if (resolution.kind === "turned_away") return NextResponse.redirect(new URL("/login?error=oidc_not_authorized", appUrl));
+  if (resolution.kind === "held") {
+    return NextResponse.redirect(new URL(withNextParam("/login?error=oidc_held", intended), appUrl));
+  }
+  if (resolution.kind === "turned_away") {
+    return NextResponse.redirect(new URL(withNextParam("/login?error=oidc_not_authorized", intended), appUrl));
+  }
   const memberRow = resolution.member;
   await createSession(memberRow.id);
 
-  return NextResponse.redirect(new URL(firstLoginDestination(memberRow), appUrl));
+  // The destination wins over the /welcome-or-/dashboard rule, so the
+  // visitor lands on the page they were trying to open — a new member
+  // gets the deep link, not the first-login screen.
+  await clearLoginDestination();
+  return NextResponse.redirect(new URL(intended ?? firstLoginDestination(memberRow), appUrl));
 }

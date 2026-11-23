@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import { isModuleEnabled } from "@/lib/modules";
 import { getCommunityRow, isMediationMember } from "@/lib/recruitment";
@@ -64,7 +65,7 @@ export default async function RecruitmentMediationPage({
   const clock = await getViewerClock();
   const params = await searchParams;
   const ctx = await getViewingContext();
-  if (!ctx.real || !ctx.viewing) redirect("/login");
+  if (!ctx.real || !ctx.viewing) redirect(await loginUrl());
   const actor = ctx.viewing;
 
   const communityRow = await getCommunityRow(actor.communityId);

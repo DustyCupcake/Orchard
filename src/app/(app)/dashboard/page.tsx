@@ -6,6 +6,7 @@ import AccompanyInvitations from "./AccompanyInvitations";
 import CheckInsDue from "./CheckInsDue";
 import CompanionRequests from "./CompanionRequests";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { CheckCircle, Tree, Users, ChartLineUp, Warning } from "@phosphor-icons/react/dist/ssr";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunitySnapshot, getPersonalFeed } from "@/lib/dashboard";
@@ -340,7 +341,7 @@ export default async function DashboardPage({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const clock = await getViewerClock();

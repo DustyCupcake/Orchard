@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getViewerClock } from "@/lib/view-clock";
 import { getDayLabeler } from "@/lib/day-labeler";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import { resolveViewScopeFromSegment } from "@/lib/cycles";
 import { getCommunity } from "@/lib/settings";
@@ -81,7 +82,7 @@ export default async function CycleScopeCoordinationPage({
   // This page can span several events, so a check-in date names its event.
   const labeler = await getDayLabeler();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const { cycleScope } = await params;
