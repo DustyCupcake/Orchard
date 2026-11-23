@@ -77,6 +77,7 @@ function DishEditor({ dish, link }: { dish: Dish; link: DishRecipeLink | null })
       title={dish.name}
       description="Changes save to the draft menu."
       wide
+      dismissOnBackdrop={false}
     >
       <DishForm dish={dish} />
       <DishIngredientEditor dish={dish} />

@@ -1,5 +1,6 @@
 "use client";
 
+import { useBackdropDismiss } from "@/components/ui/useBackdropDismiss";
 import { useRef, type ReactNode } from "react";
 
 /**
@@ -59,6 +60,7 @@ export default function ClaimGate({
   flagForm?: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const backdrop = useBackdropDismiss(ref);
 
   if (!gated) {
     return (
@@ -86,6 +88,7 @@ export default function ClaimGate({
       <dialog
         ref={ref}
         aria-labelledby="claim-gate-title"
+        {...backdrop}
         className="m-auto w-[calc(100vw-2rem)] max-w-lg rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-5 text-[var(--text)] shadow-[var(--shadow-md,0_4px_14px_rgba(0,0,0,0.08))] backdrop:bg-black/40"
       >
         <h2 id="claim-gate-title" className="text-[length:var(--text-heading)] font-medium">

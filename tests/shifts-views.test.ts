@@ -6,6 +6,7 @@ import {
   assignLanes,
   calendarAxis,
   calendarWindowDays,
+  clampWindowStart,
   clockOfOffset,
   daysPerPageForWidth,
   describeSeriesPattern,
@@ -198,6 +199,27 @@ describe("groupShiftsByDay", () => {
   it("reads the label from the day map and falls back to the bare day", () => {
     expect(groupShiftsByDay([row({ id: "x", day: "2027-03-05" })], labels)[0].label).toBe("Fri");
     expect(groupShiftsByDay([row({ id: "y", day: "2027-03-07" })], labels)[0].label).toBe("2027-03-07");
+  });
+});
+
+describe("clampWindowStart", () => {
+  const first = "2027-03-01";
+  const last = "2027-03-05";
+  it("leaves a page that fits alone", () => {
+    expect(clampWindowStart("2027-03-02", 3, first, last)).toBe("2027-03-02");
+  });
+  it("pulls a page that would run past the last day back so it ends there", () => {
+    expect(clampWindowStart("2027-03-04", 3, first, last)).toBe("2027-03-03");
+    expect(clampWindowStart("2027-03-09", 3, first, last)).toBe("2027-03-03");
+  });
+  it("never starts before the first day", () => {
+    expect(clampWindowStart("2027-02-25", 3, first, last)).toBe(first);
+  });
+  it("starts at the first day when there are fewer days than a page", () => {
+    expect(clampWindowStart("2027-03-02", 3, "2027-03-01", "2027-03-02")).toBe("2027-03-01");
+  });
+  it("is the day itself for one column", () => {
+    expect(clampWindowStart("2027-03-07", 1, first, last)).toBe(last);
   });
 });
 

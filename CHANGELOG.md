@@ -8,6 +8,12 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## dialogs close on a click outside them, and the shift calendar's last page ends on the last day
+
+- **Backdrop click closes a dialog.** The shared `Modal` and the task `ClaimGate` dialog only closed with the X, Escape or a button. A click on the dimmed area now closes them too (`useBackdropDismiss`): it compares the click's position with the box (a click on the dialog's own padding does not count), requires the press and the release to both land outside so selecting text and letting go over the backdrop does not close it, and ignores keyboard-triggered clicks. `Modal` takes `dismissOnBackdrop` (default on); the Kitchen dish editor turns it off because a stray click there would throw away typed ingredients.
+- **The shift calendar no longer pages into empty days.** Next past the end used to move a whole page and could show one real day and two empty ones. `clampWindowStart` pulls the frame back so it ends on the last day with shifts, Previous clamps at the first day, and the frame is re-clamped when a wider screen shows more days per page. The availability grid's weeks were checked and don't have the problem (a short last week shows only its own days).
+- Tests: `clampWindowStart` in `tests/shifts-views.test.ts`, the backdrop geometry in `tests/backdrop-dismiss.test.ts`. Not driven through a browser.
+
 ## a sign-in remembers the page you were trying to open
 
 When a click bounces an unauthenticated visitor to the login page, signing in now lands them back on the page they were trying to open — through Zitadel or a magic link (on the device that asked for the link) — instead of the dashboard. Both providers always landed on `/welcome` or `/dashboard` and the original page was forgotten.

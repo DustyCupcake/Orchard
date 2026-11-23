@@ -13,6 +13,7 @@ import {
   assignLanes,
   calendarAxis,
   calendarWindowDays,
+  clampWindowStart,
   groupShiftsByDay,
   maxLanesForDays,
   shiftMatchesFilters,
@@ -54,7 +55,9 @@ export default function ShiftViews({
   const days = useMemo(() => [...new Set(filtered.map((r) => r.day))].sort(), [filtered]);
   const firstDay = days[0] ?? null;
   const lastDay = days[days.length - 1] ?? null;
-  const start = pageStart ?? firstDay;
+  // Clamped so the frame never runs past the last day with shifts — also when
+  // the screen gets wider and a page holds more days than before.
+  const start = firstDay && lastDay ? clampWindowStart(pageStart ?? firstDay, daysPerPage, firstDay, lastDay) : null;
   const windowDays = useMemo(() => (start ? calendarWindowDays(start, daysPerPage) : []), [start, daysPerPage]);
 
   const byDay = useMemo(() => shiftsByWindowDay(filtered, windowDays), [filtered, windowDays]);
@@ -116,7 +119,7 @@ export default function ShiftViews({
   };
 
   const canGoBack = start !== null && firstDay !== null && start > firstDay;
-  const canGoForward = start !== null && lastDay !== null && addDaysToDay(start, daysPerPage) <= lastDay;
+  const canGoForward = start !== null && lastDay !== null && addDaysToDay(start, daysPerPage - 1) < lastDay;
 
   return (
     <div>
@@ -145,7 +148,7 @@ export default function ShiftViews({
             <button
               type="button"
               disabled={!canGoBack}
-              onClick={() => start && setPageStart(addDaysToDay(start, -daysPerPage))}
+              onClick={() => start && firstDay && lastDay && setPageStart(clampWindowStart(addDaysToDay(start, -daysPerPage), daysPerPage, firstDay, lastDay))}
               className={`${BUTTON_SECONDARY} disabled:opacity-40`}
             >
               Previous
@@ -158,7 +161,7 @@ export default function ShiftViews({
             <button
               type="button"
               disabled={!canGoForward}
-              onClick={() => start && setPageStart(addDaysToDay(start, daysPerPage))}
+              onClick={() => start && firstDay && lastDay && setPageStart(clampWindowStart(addDaysToDay(start, daysPerPage), daysPerPage, firstDay, lastDay))}
               className={`${BUTTON_SECONDARY} disabled:opacity-40`}
             >
               Next

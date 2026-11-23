@@ -2,6 +2,7 @@
 
 import { useId, useRef, type ReactNode } from "react";
 import { XIcon } from "@phosphor-icons/react";
+import { useBackdropDismiss } from "./useBackdropDismiss";
 
 /**
  * A native `<dialog>` in a modal, with the content passed in as children.
@@ -26,6 +27,7 @@ export default function Modal({
   description,
   children,
   wide = false,
+  dismissOnBackdrop = true,
 }: {
   /** Label on the button that opens the dialog. */
   trigger: ReactNode;
@@ -36,12 +38,19 @@ export default function Modal({
   description?: ReactNode;
   children: ReactNode;
   wide?: boolean;
+  /**
+   * Clicking the dimmed area outside the box closes it (as Escape and the X
+   * do). Turn off for dialogs holding a long form, where a stray click would
+   * throw away what was typed.
+   */
+  dismissOnBackdrop?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   // One id per dialog. A page with a dozen of these (the Kitchen has an edit
   // dialog per dish) shares one document, and a fixed id would point every
   // dialog's aria-labelledby at the first heading on the page.
   const titleId = useId();
+  const backdrop = useBackdropDismiss(ref, dismissOnBackdrop);
 
   return (
     <>
@@ -55,6 +64,7 @@ export default function Modal({
       <dialog
         ref={ref}
         aria-labelledby={titleId}
+        {...backdrop}
         className={`m-auto w-[calc(100vw-2rem)] rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-5 text-[var(--text)] shadow-[var(--shadow-md,0_4px_14px_rgba(0,0,0,0.08))] backdrop:bg-black/40 ${wide ? "max-w-2xl" : "max-w-lg"}`}
       >
         <div className="flex items-start justify-between gap-3">

@@ -191,6 +191,19 @@ export function calendarWindowDays(start: string, count: number): string[] {
 }
 
 /**
+ * Keep a page of `count` days inside the days that have shifts: no earlier
+ * than `firstDay`, and no later than the start that puts `lastDay` in the last
+ * column. Paging past the end therefore shifts the frame back so it ends on
+ * `lastDay`, rather than showing empty days after it. When there are fewer than
+ * `count` days in all, the page starts at `firstDay`.
+ */
+export function clampWindowStart(start: string, count: number, firstDay: string, lastDay: string): string {
+  const latest = addDaysToDay(lastDay, -(count - 1));
+  const capped = start > latest ? latest : start;
+  return capped < firstDay ? firstDay : capped;
+}
+
+/**
  * How many day-columns the calendar can show at a width: one on a phone, two
  * on a tablet, three on a desktop — each column needs room for its lanes.
  */
