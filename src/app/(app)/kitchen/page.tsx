@@ -15,6 +15,7 @@ import {
   getMenuPlanOverview,
   isKitchenOwner,
   listIdeasForMenuPlan,
+  listDishRecipeLinks,
   listMealCommentsForMeals,
   listMyFoodIdeas,
   listOpenIdeasForReview,
@@ -27,6 +28,7 @@ import {
   suggestedMultipliersForMeal,
   resolveMealTimes,
   scaledIngredients,
+  type DishRecipeLink,
   type FoodIdeaWithIngredients,
   type MealAttendance,
   type MealCommentWithAuthor,
@@ -201,6 +203,14 @@ export default async function KitchenPage({
     );
   }
 
+  // Which dishes came from (or were saved to) the recipe box, and whose box
+  // version has changed since. Only an editor can act on it, so only they pay
+  // for the read.
+  const recipeLinks: Map<string, DishRecipeLink> =
+    moduleOn && isOwner && draft && activeTab === "menu"
+      ? await listDishRecipeLinks(viewing, meals.flatMap((m) => m.dishes))
+      : new Map();
+
   // Concern threads render only on the Menu tab. Reading them through this
   // helper re-checks plan visibility, so a hand-edited meal id can't pull a
   // different community's comments onto the page.
@@ -362,6 +372,7 @@ export default async function KitchenPage({
                 times={times}
                 comments={mealComments}
                 recipeOptions={recipeOptions}
+                recipeLinks={recipeLinks}
               />
             )}
             {activeTab === "suggestions" && (

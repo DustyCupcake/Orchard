@@ -252,6 +252,10 @@ export async function createRecipe(actor: Member, input: CreateRecipeInput) {
 }
 
 /**
+ * `updatedAt` means "the content last changed": accepting or declining does not
+ * touch it (`reviewedAt` records that), because a dish copied from the recipe
+ * compares it with its own `recipeSyncedAt` to say the box version has changed.
+ *
  * Author or current holder may fix a recipe. The author's edit of a declined
  * recipe resubmits it as suggested and clears the earlier decision; a holder's
  * edit keeps the status, so "fix and accept" stays a separate, deliberate
@@ -302,7 +306,7 @@ export async function acceptRecipe(actor: Member, id: string) {
   await getRecipeInCommunity(actor, id);
   const [updated] = await db
     .update(recipe)
-    .set({ status: "accepted", reviewedBy: actor.id, reviewedAt: new Date(), declineReason: null, updatedAt: new Date() })
+    .set({ status: "accepted", reviewedBy: actor.id, reviewedAt: new Date(), declineReason: null })
     .where(eq(recipe.id, id))
     .returning();
   return getRecipe(actor, updated.id);
@@ -323,7 +327,6 @@ export async function declineRecipe(actor: Member, id: string, input: DeclineRec
       reviewedBy: actor.id,
       reviewedAt: new Date(),
       declineReason: reason,
-      updatedAt: new Date(),
     })
     .where(eq(recipe.id, id))
     .returning();
@@ -497,6 +500,7 @@ export async function applyRecipeToMeal(actor: Member, input: ApplyRecipeInput) 
         source: "from_recipe",
         recipeId: row.id,
         multiplier: String(parsed),
+        recipeSyncedAt: syncStamp(row),
         addedBy: actor.id,
       })
       .returning();
@@ -519,4 +523,176 @@ export async function applyRecipeToMeal(actor: Member, input: ApplyRecipeInput) 
     return [dishRow];
   });
   return { dish: created, suggestedMultiplier: suggested };
+}
+
+// ---- Dish <-> recipe box --------------------------------------------------
+
+export type DishRecipeLink = {
+  recipeId: string;
+  title: string;
+  status: RecipeStatus;
+  /** The box version was edited after this dish last took its content. */
+  changed: boolean;
+};
+
+/** A dish never claims to be in sync at a moment before the recipe it copied
+ *  last changed, whatever the app and database clocks say. */
+function syncStamp(recipeRow: RecipeRow): Date {
+  return new Date(Math.max(Date.now(), recipeRow.updatedAt.getTime()));
+}
+
+/**
+ * For the dish editor: which of these dishes are linked to a recipe in the
+ * box, and has that recipe changed since the dish last took its content. A
+ * dish linked before `recipeSyncedAt` existed counts as synced when it was
+ * created.
+ */
+export async function listDishRecipeLinks(
+  actor: Member,
+  dishes: { id: string; recipeId: string | null; recipeSyncedAt: Date | null; createdAt: Date }[],
+): Promise<Map<string, DishRecipeLink>> {
+  await requireKitchenModuleOn(actor);
+  const linked = dishes.filter((d) => d.recipeId !== null);
+  const links = new Map<string, DishRecipeLink>();
+  if (linked.length === 0) return links;
+
+  const rows = await db
+    .select()
+    .from(recipe)
+    .where(
+      and(
+        eq(recipe.communityId, actor.communityId),
+        inArray(recipe.id, [...new Set(linked.map((d) => d.recipeId!))]),
+      ),
+    );
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  for (const d of linked) {
+    const row = byId.get(d.recipeId!);
+    if (!row) continue;
+    const syncedAt = d.recipeSyncedAt ?? d.createdAt;
+    links.set(d.id, {
+      recipeId: row.id,
+      title: row.title,
+      status: row.status,
+      changed: row.updatedAt.getTime() > syncedAt.getTime(),
+    });
+  }
+  return links;
+}
+
+/**
+ * Put a dish the holder built by hand (or adopted from a suggestion) into the
+ * recipe box. It is saved as `accepted` — the holder who wrote it is exactly
+ * who curates the box, so there is nothing left to review — attributed to
+ * them, and the dish is linked to it. The same plan-scoped draft gate as any
+ * other dish edit applies, because linking writes to the dish.
+ */
+export async function saveDishToRecipeBox(actor: Member, dishId: string) {
+  await requireKitchenModuleOn(actor);
+  const dishRow = await getDish(actor, dishId);
+  const mealRow = await getMeal(actor, dishRow.mealId);
+  await requireEditableMenuPlan(actor, mealRow.menuPlanId);
+  if (dishRow.recipeId) {
+    throw new ConflictError("This dish is already linked to a recipe in the box");
+  }
+
+  const now = new Date();
+  const created = await db.transaction(async (tx) => {
+    const ingredients = await tx
+      .select()
+      .from(dishIngredient)
+      .where(eq(dishIngredient.dishId, dishId))
+      .orderBy(asc(dishIngredient.sortOrder), asc(dishIngredient.createdAt));
+    const [row] = await tx
+      .insert(recipe)
+      .values({
+        communityId: actor.communityId,
+        title: dishRow.name,
+        body: dishRow.description,
+        serves: dishRow.serves,
+        allergenFlags: parseAllergenFlags(dishRow.allergenFlags),
+        dietaryNote: dishRow.dietaryNote,
+        status: "accepted",
+        suggestedBy: actor.id,
+        reviewedBy: actor.id,
+        reviewedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    if (ingredients.length > 0) {
+      await tx.insert(recipeIngredient).values(
+        ingredients.map((ing, i) => ({
+          recipeId: row.id,
+          name: ing.name,
+          amount: ing.amount,
+          unit: ing.unit,
+          sortOrder: ing.sortOrder ?? i,
+        })),
+      );
+    }
+    // Guarded on the dish still being unlinked, so a double click cannot leave
+    // two recipes behind: the loser throws and its recipe rolls back.
+    const linked = await tx
+      .update(dish)
+      .set({ recipeId: row.id, recipeSyncedAt: now })
+      .where(and(eq(dish.id, dishId), isNull(dish.recipeId)))
+      .returning({ id: dish.id });
+    if (linked.length === 0) throw new ConflictError("This dish is already linked to a recipe in the box");
+    return row;
+  });
+  return getRecipe(actor, created.id);
+}
+
+/**
+ * Take the box's current version of a recipe into a dish copied from it: name,
+ * description, serving base, flags, diet note and the whole ingredient list are
+ * replaced. The dish's own multiplier stays, so the planner's chosen scale
+ * survives; ingredient edits made on the dish are overwritten, which is why the
+ * button asks first. Only an accepted recipe can update a dish, the same bar as
+ * applying one, and the plan must still be an editable draft.
+ */
+export async function updateDishFromRecipe(actor: Member, dishId: string) {
+  await requireKitchenModuleOn(actor);
+  const dishRow = await getDish(actor, dishId);
+  if (!dishRow.recipeId) throw new AppError("This dish isn't linked to a recipe in the box");
+  const mealRow = await getMeal(actor, dishRow.mealId);
+  await requireEditableMenuPlan(actor, mealRow.menuPlanId);
+  const row = await getRecipeInCommunity(actor, dishRow.recipeId);
+  if (row.status !== "accepted") {
+    throw new ConflictError("Only an accepted recipe can update a dish");
+  }
+
+  return db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(dish)
+      .set({
+        name: row.title,
+        description: row.body,
+        serves: row.serves,
+        allergenFlags: parseAllergenFlags(row.allergenFlags),
+        dietaryNote: row.dietaryNote,
+        recipeSyncedAt: syncStamp(row),
+      })
+      .where(eq(dish.id, dishId))
+      .returning();
+    const ingredients = await tx
+      .select()
+      .from(recipeIngredient)
+      .where(eq(recipeIngredient.recipeId, row.id))
+      .orderBy(asc(recipeIngredient.sortOrder), asc(recipeIngredient.createdAt));
+    await tx.delete(dishIngredient).where(eq(dishIngredient.dishId, dishId));
+    if (ingredients.length > 0) {
+      await tx.insert(dishIngredient).values(
+        ingredients.map((ing, i) => ({
+          dishId,
+          name: ing.name,
+          amount: ing.amount,
+          unit: ing.unit,
+          sortOrder: ing.sortOrder ?? i,
+        })),
+      );
+    }
+    return updated;
+  });
 }

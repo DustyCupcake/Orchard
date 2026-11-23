@@ -8,6 +8,18 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## a kitchen holder can save a dish to the recipe box, and pull the box's changes back into a dish
+
+The recipe box only worked one way: a recipe was copied into a meal and then the two never met again. A holder who had built a good dish by hand had to retype it as a suggestion, and a dish copied from the box silently drifted from a recipe someone later improved.
+
+- **Save to the recipe box.** `saveDishToRecipeBox` turns a dish and its ingredients into a recipe and links the dish to it, in one transaction. It is `accepted` straight away, attributed to the holder, with them as reviewer: the person doing it is the person who curates the box, so a separate accept would be a second step on their own work. The gate is the one every other dish edit uses (`requireEditableMenuPlan`: a holder of that plan's scope, plan still a draft), because linking writes to the dish. The link is guarded on the dish still being unlinked, so a double click cannot leave two recipes behind.
+- **Update from the recipe box.** `updateDishFromRecipe` replaces the dish's name, description, serving base, flags, diet note and the whole ingredient list with the box's, and keeps the dish's own multiplier so the planner's scale survives. Only an `accepted` recipe can do it, the same bar as applying one. The button asks first, because ingredient edits made on the dish are overwritten.
+- **Knowing the box version changed.** New `dish.recipe_synced_at` (`0123_dish_recipe_synced_at.sql`) records when a dish last took its content from the recipe, whether by apply, save or update; a dish is flagged when `recipe.updatedAt` is later. A dish linked before the column existed reads as synced at its creation. For that comparison to mean anything, `acceptRecipe` and `declineRecipe` no longer touch `updatedAt` — `reviewedAt` already records them — so only a content edit flags a dish.
+- **In the dish editor.** A Recipe box section shows either **Save to the recipe box** or the recipe the dish came from, with a *box version changed* tag (also on the dish row for editors) and the update button. Both actions report in place like the other dish-editor forms, so the dialog stays open.
+- **`tests/kitchen.test.ts`** covers saving (fields, ingredients, attribution, link), the refusals (non-holder, already linked, published plan), the flag and update (including that decline and re-accept do not flag, that the multiplier survives, and that a declined recipe cannot update a dish).
+
+Checked: `tsc` clean, lint 0 errors, and the kitchen, kitchen-signals and migration-lint tests pass against an isolated Postgres. Not yet driven through the browser.
+
 ## a community can set its own app icon, and the phone icons come with it
 
 The branding card already let a community set its colours and a sidebar logo, but there was no way to set the thing that shows in a browser tab or on a phone's home screen: every install served the same Orchard mark, and there was no install manifest at all. Admins can now upload one square PNG under Settings → General → Look, and the app stores the whole icon set it needs.

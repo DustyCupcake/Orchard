@@ -35,8 +35,10 @@ import {
   fileFoodIdea,
   fileFoodIdeaInput,
   publishMenuPlan,
+  saveDishToRecipeBox,
   toggleYum,
   updateDish,
+  updateDishFromRecipe,
   updateDishInput,
   updateDishMultiplier,
   updateRecipe,
@@ -687,6 +689,38 @@ export async function updateDishMultiplierAction(
     const multiplier = parseMultiplier(String(formData.get("multiplier") ?? ""));
     if (multiplier === undefined) throw new AppError("Enter a multiplier");
     await updateDishMultiplier(actor, dishId, multiplier);
+  } catch (err) {
+    return { error: formErrorMessage(err) };
+  }
+  revalidatePath("/kitchen");
+  return { ok: true };
+}
+
+// Both dish <-> box actions report in place, like the other dish-editor forms:
+// a redirect would reload the page and close the dialog. The editor re-reads
+// the dish's link after the revalidate, so the panel changes by itself.
+export async function saveDishToRecipeBoxAction(
+  _prev: SimpleFormState,
+  formData: FormData,
+): Promise<SimpleFormState> {
+  const actor = await requireMember();
+  try {
+    await saveDishToRecipeBox(actor, String(formData.get("dishId")));
+  } catch (err) {
+    return { error: formErrorMessage(err) };
+  }
+  revalidatePath("/kitchen");
+  revalidatePath("/kitchen/recipes");
+  return { ok: true };
+}
+
+export async function updateDishFromRecipeAction(
+  _prev: SimpleFormState,
+  formData: FormData,
+): Promise<SimpleFormState> {
+  const actor = await requireMember();
+  try {
+    await updateDishFromRecipe(actor, String(formData.get("dishId")));
   } catch (err) {
     return { error: formErrorMessage(err) };
   }

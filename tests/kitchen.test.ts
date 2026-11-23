@@ -41,6 +41,7 @@ import {
   getMenuPlanOverview,
   getVisibleMenuPlan,
   isKitchenOwner,
+  listDishRecipeLinks,
   listIdeasForMenuPlan,
   listKitchenNeedsAction,
   listMealCommentsForMeals,
@@ -52,11 +53,13 @@ import {
   publishMenuPlan,
   purchaseList,
   roundHalf,
+  saveDishToRecipeBox,
   scaledIngredients,
   suggestedMultiplier,
   suggestedMultiplierForMeal,
   suggestedMultipliersForMeal,
   toggleYum,
+  updateDishFromRecipe,
   updateFoodIdea,
   updateRecipe,
   withdrawFoodIdea,
@@ -1303,6 +1306,120 @@ describe("the community recipe box", () => {
     const unchanged = await getRecipe(bob, created!.id);
     expect(unchanged).toMatchObject({ title: "Three-bean chili", serves: 4 });
     expect(unchanged!.ingredients[0].amount).toBe("400");
+  });
+
+  describe("moving a dish into the box and back", () => {
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+    async function handMadeDish() {
+      const { alice, bob } = await box();
+      const plan = await createMenuPlan(alice, { title: "Autumn" });
+      const meal = await createMeal(alice, { menuPlanId: plan.id, label: "Friday dinner", date: "2026-10-02", headCount: 8 });
+      const made = await createDish(alice, {
+        mealId: meal.id,
+        name: "Lentil stew",
+        description: "Simmer for an hour",
+        serves: 4,
+        allergenFlags: ["celery"],
+        dietaryNote: "Vegan",
+      });
+      await createDishIngredient(alice, { dishId: made.id, name: "Lentils", amount: 300, unit: "g" });
+      await createDishIngredient(alice, { dishId: made.id, name: "Salt" });
+      return { alice, bob, plan, meal, made };
+    }
+
+    it("saves a holder's dish to the box as an accepted recipe in their name, and links the dish", async () => {
+      const { alice, made } = await handMadeDish();
+
+      const saved = await saveDishToRecipeBox(alice, made.id);
+      expect(saved).toMatchObject({
+        title: "Lentil stew",
+        body: "Simmer for an hour",
+        serves: 4,
+        allergenFlags: ["celery"],
+        dietaryNote: "Vegan",
+        status: "accepted",
+        suggestedBy: alice.id,
+        reviewedBy: alice.id,
+      });
+      expect(saved!.ingredients.map((i) => [i.name, i.amount, i.unit])).toEqual([
+        ["Lentils", "300", "g"],
+        ["Salt", null, null],
+      ]);
+
+      const [linked] = await db.select().from(dish).where(eq(dish.id, made.id));
+      expect(linked.recipeId).toBe(saved!.id);
+      expect(linked.recipeSyncedAt).not.toBeNull();
+      // Linking is not a change to the recipe: nothing to update yet.
+      const links = await listDishRecipeLinks(alice, [linked]);
+      expect(links.get(made.id)).toMatchObject({ recipeId: saved!.id, changed: false });
+    });
+
+    it("refuses a non-holder, a dish already in the box, and a published menu", async () => {
+      const { alice, bob, plan, made } = await handMadeDish();
+      await expect(saveDishToRecipeBox(bob, made.id)).rejects.toThrow(ForbiddenError);
+
+      await saveDishToRecipeBox(alice, made.id);
+      await expect(saveDishToRecipeBox(alice, made.id)).rejects.toThrow(ConflictError);
+      expect(await db.select().from(recipe)).toHaveLength(1);
+
+      const other = await createDish(alice, { mealId: made.mealId, name: "Flatbread" });
+      await publishMenuPlan(alice, plan.id);
+      await expect(saveDishToRecipeBox(alice, other.id)).rejects.toThrow(ConflictError);
+    });
+
+    it("flags a dish when the box version is edited, and updates it while keeping the multiplier", async () => {
+      const { alice, bob, meal } = await handMadeDish();
+      const created = await createRecipe(bob, CHILI_RECIPE);
+      await acceptRecipe(alice, created!.id);
+      const { dish: applied } = await applyRecipeToMeal(alice, { recipeId: created!.id, mealId: meal.id, multiplier: 2 });
+
+      let links = await listDishRecipeLinks(alice, [applied]);
+      expect(links.get(applied.id)?.changed).toBe(false);
+
+      // Review actions are not content changes.
+      await declineRecipe(alice, created!.id, { declineReason: "checking" });
+      await acceptRecipe(alice, created!.id);
+      links = await listDishRecipeLinks(alice, [applied]);
+      expect(links.get(applied.id)?.changed).toBe(false);
+
+      await tick();
+      await updateRecipe(alice, created!.id, {
+        title: "Four-bean chili",
+        serves: 6,
+        ingredients: [{ name: "Beans", amount: 600, unit: "g" }, { name: "Cumin", amount: 2, unit: "tsp" }],
+      });
+      links = await listDishRecipeLinks(alice, [applied]);
+      expect(links.get(applied.id)).toMatchObject({ title: "Four-bean chili", changed: true });
+
+      // The dish is untouched until someone asks for the update.
+      expect((await db.select().from(dish).where(eq(dish.id, applied.id)))[0].name).toBe("Three-bean chili");
+
+      const updated = await updateDishFromRecipe(alice, applied.id);
+      expect(updated).toMatchObject({ name: "Four-bean chili", serves: 6, multiplier: "2", recipeId: created!.id });
+      const rows = await db.select().from(dishIngredient).where(eq(dishIngredient.dishId, applied.id));
+      expect(rows.map((r) => [r.name, r.amount]).sort()).toEqual([["Beans", "600"], ["Cumin", "2"]]);
+
+      const [after] = await db.select().from(dish).where(eq(dish.id, applied.id));
+      expect((await listDishRecipeLinks(alice, [after])).get(applied.id)?.changed).toBe(false);
+    });
+
+    it("only updates from an accepted recipe, an unlinked dish never updates, and the plan must be a draft", async () => {
+      const { alice, bob, plan, meal, made } = await handMadeDish();
+      await expect(updateDishFromRecipe(alice, made.id)).rejects.toThrow(AppError);
+
+      const created = await createRecipe(bob, CHILI_RECIPE);
+      await acceptRecipe(alice, created!.id);
+      const { dish: applied } = await applyRecipeToMeal(alice, { recipeId: created!.id, mealId: meal.id });
+
+      await declineRecipe(alice, created!.id, { declineReason: "duplicate" });
+      await expect(updateDishFromRecipe(alice, applied.id)).rejects.toThrow(ConflictError);
+      await acceptRecipe(alice, created!.id);
+
+      await expect(updateDishFromRecipe(bob, applied.id)).rejects.toThrow(ForbiddenError);
+      await publishMenuPlan(alice, plan.id);
+      await expect(updateDishFromRecipe(alice, applied.id)).rejects.toThrow(ConflictError);
+    });
   });
 
   it("suggests for many recipes at once exactly as it does for one", async () => {

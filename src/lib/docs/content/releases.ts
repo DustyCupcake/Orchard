@@ -29,6 +29,17 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-11-23",
+    title: "Move a dish into the recipe box, and pull the box's changes back",
+    summary: "If you hold the kitchen, a dish you built on a menu can now go straight into the recipe box, and a dish copied from the box can catch up when the recipe is improved.",
+    points: [
+      "Open a dish on a draft menu and choose \"Save to the recipe box\". The recipe is added already accepted, in your name, with its ingredients, so you can put it on other menus straight away.",
+      "When someone edits a recipe in the box, dishes copied from it show \"box version changed\" on the draft menu. \"Update from the recipe box\" brings the new name, notes, ingredients and servings into the dish, and keeps the number of portions you chose.",
+      "Updating replaces any ingredient changes you made on the dish, so it asks first. Published menus stay locked, and accepting or declining a recipe doesn't count as a change.",
+    ],
+    source: "a kitchen holder can save a dish to the recipe box, and pull the box's changes back into a dish",
+  },
+  {
     date: "2026-11-22",
     title: "Your community can have its own app icon",
     summary: "Admins can upload one PNG in Settings, and Orchard makes the browser-tab and phone home-screen icons from it.",

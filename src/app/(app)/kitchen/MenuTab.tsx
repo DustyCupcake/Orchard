@@ -25,6 +25,8 @@ import { EmptyState, FlagPicker, FlagTags, TextField, formatAmount, ingredientTe
 import { HeadCountWorking, MealForm } from "./MealForm";
 import RecipeTypeahead, { type RecipeOption } from "./RecipeTypeahead";
 import DishIngredientEditor from "./DishIngredientEditor";
+import DishRecipePanel from "./DishRecipePanel";
+import type { DishRecipeLink } from "@/lib/kitchen/recipes";
 
 type Dish = MealWithDishes["dishes"][number];
 
@@ -67,7 +69,7 @@ function DishForm({ dish, mealId }: { dish?: Dish; mealId?: string }) {
   );
 }
 
-function DishEditor({ dish }: { dish: Dish }) {
+function DishEditor({ dish, link }: { dish: Dish; link: DishRecipeLink | null }) {
   return (
     <Modal
       trigger="Edit"
@@ -78,6 +80,7 @@ function DishEditor({ dish }: { dish: Dish }) {
     >
       <DishForm dish={dish} />
       <DishIngredientEditor dish={dish} />
+      <DishRecipePanel dishId={dish.id} link={link} />
 
       <form action={deleteDishAction} className="border-t border-[var(--border)] pt-3">
         <Tab />
@@ -127,10 +130,12 @@ function DishRow({
   dish,
   editable,
   headCount,
+  link,
 }: {
   dish: Dish;
   editable: boolean;
   headCount: number | null;
+  link: DishRecipeLink | null;
 }) {
   const feeds = dishFeeds(dish, headCount);
   return (
@@ -145,7 +150,8 @@ function DishRow({
         )}
         {dish.source === "from_idea" && <Tag tone="accent2">from a suggestion</Tag>}
         {dish.source === "from_recipe" && <Tag tone="accent2">from the recipe box</Tag>}
-        {editable && <span className="ml-auto"><DishEditor dish={dish} /></span>}
+        {editable && link?.changed && <Tag tone="warning">box version changed</Tag>}
+        {editable && <span className="ml-auto"><DishEditor dish={dish} link={link} /></span>}
       </div>
       <FlagTags flags={dish.allergenFlags} />
       {dish.dietaryNote && <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">{dish.dietaryNote}</p>}
@@ -266,6 +272,7 @@ function MealCard({
   comments,
   canComment,
   recipeOptions,
+  recipeLinks,
 }: {
   meal: MealWithDishes;
   editable: boolean;
@@ -278,6 +285,7 @@ function MealCard({
   comments: MealCommentWithAuthor[];
   canComment: boolean;
   recipeOptions: RecipeOption[];
+  recipeLinks: Map<string, DishRecipeLink>;
 }) {
   return (
     <div className={CARD}>
@@ -309,7 +317,7 @@ function MealCard({
       {meal.dishes.length > 0 ? (
         <ul className="mt-3 divide-y divide-[var(--border)] border-t border-[var(--border)] pt-3">
           {meal.dishes.map((dish) => (
-            <DishRow key={dish.id} dish={dish} editable={editable} headCount={headCount} />
+            <DishRow key={dish.id} dish={dish} editable={editable} headCount={headCount} link={recipeLinks.get(dish.id) ?? null} />
           ))}
         </ul>
       ) : (
@@ -334,6 +342,7 @@ export default async function MenuTab({
   times,
   comments,
   recipeOptions,
+  recipeLinks,
 }: {
   plan: MenuPlanRow | null;
   meals: MealWithDishes[];
@@ -344,6 +353,7 @@ export default async function MenuTab({
   times: Record<MealSlot, string>;
   comments: Map<string, MealCommentWithAuthor[]>;
   recipeOptions: Map<string, RecipeOption[]>;
+  recipeLinks: Map<string, DishRecipeLink>;
 }) {
   const draft = Boolean(plan && !plan.publishedAt);
   const editable = isOwner && draft;
@@ -403,6 +413,7 @@ export default async function MenuTab({
               comments={comments.get(meal.id) ?? []}
               canComment={canComment}
               recipeOptions={recipeOptions.get(meal.id) ?? []}
+              recipeLinks={recipeLinks}
             />
           ))}
         </section>

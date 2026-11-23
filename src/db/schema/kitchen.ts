@@ -214,6 +214,11 @@ export const dish = pgTable("dish", {
   // its own copy of every field, so later edits to the box don't rewrite a
   // planned meal.
   recipeId: uuid("recipe_id").references(() => recipe.id),
+  // When this dish last took its content from the linked recipe (applied,
+  // saved to the box, or updated from it). The recipe has changed since if its
+  // `updatedAt` is later. Null on a dish linked before this column existed,
+  // which reads as "synced when the dish was created".
+  recipeSyncedAt: timestamp("recipe_synced_at", { withTimezone: true }),
   // The dish's own scale factor for a recipe applied to a meal. Null means a
   // plain dish, which keeps the older headCount / serves scaling on read.
   // Applied recipes store the suggested (or planner-edited) multiplier here.

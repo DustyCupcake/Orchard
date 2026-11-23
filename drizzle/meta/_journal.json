@@ -862,6 +862,13 @@
       "when": 1795385766675,
       "tag": "0122_recipe_box",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1795437161532,
+      "tag": "0123_dish_recipe_synced_at",
+      "breakpoints": true
     }
   ]
 }
