@@ -8,7 +8,7 @@ import DayGroupedList from "@/components/shifts/DayGroupedList";
 import { useDaysPerPage } from "@/components/shifts/useDaysPerPage";
 import { formatExactDate } from "@/lib/dates";
 import {
-  NO_FILTERS,
+  DEFAULT_FILTERS,
   addDaysToDay,
   assignLanes,
   calendarAxis,
@@ -44,7 +44,7 @@ export default function ShiftViews({
   branches: { id: string; name: string }[];
 }) {
   const [view, setView] = useState<"list" | "calendar">("list");
-  const [filters, setFilters] = useState<ShiftViewFilters>(NO_FILTERS);
+  const [filters, setFilters] = useState<ShiftViewFilters>(DEFAULT_FILTERS);
   // The calendar's first day; null = the earliest day any visible shift is on.
   const [pageStart, setPageStart] = useState<string | null>(null);
   const daysPerPage = useDaysPerPage();
@@ -138,7 +138,7 @@ export default function ShiftViews({
 
       {filtered.length === 0 ? (
         <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-          {rows.length === 0 ? "No upcoming shifts yet." : "No shifts match your filters."}
+          {rows.length === 0 ? "No upcoming shifts yet." : rows.some((r) => r.signups >= r.capacity) && filters.availableOnly ? "No shifts with free slots match. Untick \u201cOnly with free slots\u201d to see full ones." : "No shifts match your filters."}
         </p>
       ) : view === "list" ? (
         <DayGroupedList groups={groups} />

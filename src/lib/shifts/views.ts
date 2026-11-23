@@ -70,6 +70,8 @@ export interface ShiftViewFilters {
   /** From/To times, as "HH:MM" on the venue clock. */
   timeFrom: string | null;
   timeTo: string | null;
+  /** Hide shifts that are full — one the viewer is signed up for stays, so they can still withdraw. */
+  availableOnly: boolean;
 }
 
 export const NO_FILTERS: ShiftViewFilters = {
@@ -79,7 +81,11 @@ export const NO_FILTERS: ShiftViewFilters = {
   to: null,
   timeFrom: null,
   timeTo: null,
+  availableOnly: false,
 };
+
+/** What the views start on: every filter off except "only shifts with free slots". */
+export const DEFAULT_FILTERS: ShiftViewFilters = { ...NO_FILTERS, availableOnly: true };
 
 /** "09:30" → 570, the minutes since 00:00. A missing parse reads as 00:00. */
 function wallMinutes(hhmm: string): number {
@@ -103,6 +109,7 @@ export function clockOfOffset(offset: number): string {
 export function shiftMatchesFilters(row: ShiftViewRow, filters: ShiftViewFilters): boolean {
   if (filters.tags.length > 0 && !filters.tags.some((t) => row.tags.includes(t))) return false;
   if (filters.branchId !== null && row.branchId !== filters.branchId) return false;
+  if (filters.availableOnly && row.signups >= row.capacity && !row.iAmSignedUp) return false;
   if (filters.from !== null && row.day < filters.from) return false;
   if (filters.to !== null && row.day > filters.to) return false;
   // A time filter matches when the shift's [start, end) overlaps [from, to),

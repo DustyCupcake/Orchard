@@ -8,6 +8,10 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## the shift views start on "only with free slots"
+
+A new filter, **Only with free slots**, is on when the Shifts page opens, so the list, the calendar and the standing cards lead with shifts someone can still take. A full shift stays visible if the viewer is signed up for it (so they can withdraw), and unticking the box shows full shifts again. "Clear filters" returns to the starting state (this box on, the rest off). Sign-ups not being open yet does not hide a shift, otherwise an event whose sign-ups haven't opened would show an empty tab. When the filter leaves nothing, the empty message says why. `availableOnly` and `DEFAULT_FILTERS` in `src/lib/shifts/views.ts`; tests in `tests/shifts-views.test.ts`.
+
 ## dialogs close on a click outside them, and the shift calendar's last page ends on the last day
 
 - **Backdrop click closes a dialog.** The shared `Modal` and the task `ClaimGate` dialog only closed with the X, Escape or a button. A click on the dimmed area now closes them too (`useBackdropDismiss`): it compares the click's position with the box (a click on the dialog's own padding does not count), requires the press and the release to both land outside so selecting text and letting go over the backdrop does not close it, and ignores keyboard-triggered clicks. `Modal` takes `dismissOnBackdrop` (default on); the Kitchen dish editor turns it off because a stray click there would throw away typed ingredients.

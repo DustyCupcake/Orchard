@@ -1,12 +1,12 @@
 "use client";
 
 import { BUTTON_GHOST, INPUT } from "@/components/ui/kit";
-import { NO_FILTERS, type ShiftViewFilters } from "@/lib/shifts/views";
+import { DEFAULT_FILTERS, type ShiftViewFilters } from "@/lib/shifts/views";
 
 const FILTER_LABEL = "text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]";
 
 /**
- * The filter bar the shift views share: tags (any-of) and branch everywhere,
+ * The filter bar the shift views share: "only with free slots" (on to start with), tags (any-of) and branch everywhere,
  * plus From/To day and time ranges where `dayFilters` is on (an event's list
  * and calendar — a standing series repeats across weeks, so a day range means
  * little there). All client state; the caller owns it.
@@ -24,12 +24,21 @@ export default function ShiftFilters({
   setFilter: (patch: Partial<ShiftViewFilters>) => void;
   dayFilters: boolean;
 }) {
-  const anyActive = JSON.stringify(filters) !== JSON.stringify(NO_FILTERS);
+  const anyActive = JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS);
   const toggleTag = (tag: string, on: boolean) =>
     setFilter({ tags: on ? [...new Set([...filters.tags, tag])] : filters.tags.filter((t) => t !== tag) });
 
   return (
     <span className="inline-flex flex-wrap items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
+      <label className="inline-flex items-center gap-1">
+        <input
+          type="checkbox"
+          checked={filters.availableOnly}
+          onChange={(e) => setFilter({ availableOnly: e.target.checked })}
+          className="h-3.5 w-3.5"
+        />
+        <span>Only with free slots</span>
+      </label>
       {tags.length > 0 && (
         <span className="inline-flex flex-wrap items-center gap-1">
           <span className={FILTER_LABEL}>Tags</span>
@@ -80,7 +89,7 @@ export default function ShiftFilters({
         </>
       )}
       {anyActive && (
-        <button type="button" onClick={() => setFilter({ ...NO_FILTERS })} className={BUTTON_GHOST}>
+        <button type="button" onClick={() => setFilter({ ...DEFAULT_FILTERS })} className={BUTTON_GHOST}>
           Clear filters
         </button>
       )}

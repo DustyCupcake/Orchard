@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_FILTERS,
   NO_FILTERS,
   STANDING_SCOPE_KEY,
   addDaysToDay,
@@ -199,6 +200,24 @@ describe("groupShiftsByDay", () => {
   it("reads the label from the day map and falls back to the bare day", () => {
     expect(groupShiftsByDay([row({ id: "x", day: "2027-03-05" })], labels)[0].label).toBe("Fri");
     expect(groupShiftsByDay([row({ id: "y", day: "2027-03-07" })], labels)[0].label).toBe("2027-03-07");
+  });
+});
+
+describe("availableOnly", () => {
+  const free = row({ id: "f", day: "2027-03-06", capacity: 3, signups: 2 });
+  const full = row({ id: "g", day: "2027-03-06", capacity: 3, signups: 3 });
+  it("starts on, with every other filter off", () => {
+    expect(DEFAULT_FILTERS).toEqual({ ...NO_FILTERS, availableOnly: true });
+  });
+  it("keeps a shift with a free slot and hides a full one", () => {
+    expect(shiftMatchesFilters(free, DEFAULT_FILTERS)).toBe(true);
+    expect(shiftMatchesFilters(full, DEFAULT_FILTERS)).toBe(false);
+  });
+  it("keeps a full shift the viewer is signed up for, so they can withdraw", () => {
+    expect(shiftMatchesFilters({ ...full, iAmSignedUp: true }, DEFAULT_FILTERS)).toBe(true);
+  });
+  it("shows full shifts when switched off", () => {
+    expect(shiftMatchesFilters(full, NO_FILTERS)).toBe(true);
   });
 });
 

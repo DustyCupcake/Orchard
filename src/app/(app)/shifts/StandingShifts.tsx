@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Tag } from "@/components/ui/kit";
 import {
-  NO_FILTERS,
+  DEFAULT_FILTERS,
   describeSeriesPattern,
   groupRowsBySeries,
   shiftMatchesFilters,
@@ -30,7 +30,7 @@ export default function StandingShifts({
   rows: ShiftViewRow[];
   branches: { id: string; name: string }[];
 }) {
-  const [filters, setFilters] = useState<ShiftViewFilters>(NO_FILTERS);
+  const [filters, setFilters] = useState<ShiftViewFilters>(DEFAULT_FILTERS);
   const tags = useMemo(() => [...new Set(rows.flatMap((r) => r.tags))].sort(), [rows]);
   const groups = useMemo(
     () => groupRowsBySeries(rows.filter((r) => shiftMatchesFilters(r, filters))),
@@ -51,7 +51,7 @@ export default function StandingShifts({
 
       {groups.length === 0 ? (
         <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-          {rows.length === 0 ? "No upcoming standing shifts yet." : "No shifts match your filters."}
+          {rows.length === 0 ? "No upcoming standing shifts yet." : rows.some((r) => r.signups >= r.capacity) && filters.availableOnly ? "No shifts with free slots match. Untick \u201cOnly with free slots\u201d to see full ones." : "No shifts match your filters."}
         </p>
       ) : (
         <div className="flex flex-col gap-3">
