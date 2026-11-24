@@ -30,6 +30,20 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-11-24",
+    title: "The budget page is easier to get around",
+    summary:
+      "An event's budget now has Overview, Proposals and Money tabs, and the person who looks after the budget edits it on its own page.",
+    points: [
+      "Overview says where things stand at a glance — whether it is open, how many proposals are waiting, and how much has been paid in — with links to the details.",
+      "Proposals and the money (what has been paid in, spent and set aside) each have their own tab, and after you do something the page opens on the tab it affects.",
+      "The budget's holder now has an \"Edit budget\" button. Its page holds the title, fixed costs, proposal deadline and the ask per person, and keeps what you typed if something is refused.",
+      "Fixed costs and proposal lines show what each multiplied line comes to, and a running total, as you type.",
+      "When the Kitchen is on, the budget's holder can turn the shopping list into a proposal. The lines are filled in with each item's name at an amount of 1, because the Kitchen doesn't know prices, so replace those with what you expect to pay.",
+    ],
+    source: "the budget page has tabs, its own edit screen, and a bridge from the kitchen shopping list",
+  },
+  {
+    date: "2026-11-24",
     title: "Permissions on a task are easier to scan",
     summary:
       "The permissions a task grants now use the same groups as the settings page, with Budget shown as a settings-only item instead of being missing.",
