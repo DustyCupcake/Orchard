@@ -18,19 +18,18 @@ import {
 import { getCommunity, isAdmin, listBranches } from "@/lib/settings";
 import {
   allowsMultipleGrants,
-  describeGrantScope,
-  isMisplacedCommunityGrant,
   listGrantsWithTaskInfo,
   listModuleKeysGrantedByTask,
+  PERMISSION_MODULE_KEYS,
   PERMISSION_MODULE_LABELS,
-  TASK_GRANTABLE_PERMISSION_MODULE_KEYS,
   type PermissionModuleKey,
 } from "@/lib/permissions";
 import { getCycle, listCycles } from "@/lib/cycles";
 import PageHeader from "@/components/ui/PageHeader";
 import EffortFields from "@/components/EffortFields";
 import MilestoneDateFields from "@/components/tasks/MilestoneDateFields";
-import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_GHOST, CheckField, INPUT, Tag } from "@/components/ui/kit";
+import PermissionGrantFields from "@/components/tasks/PermissionGrantFields";
+import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_GHOST, INPUT, Tag } from "@/components/ui/kit";
 import {
   addDependencyAction,
   addMilestoneAction,
@@ -130,11 +129,11 @@ export default async function TaskEditPage({
   // grant in a different cycle isn't in this task's scope at all, so
   // checking the same module here creates a second, coexisting grant
   // instead of moving it.
-  const elsewhereHolderByModule = new Map<PermissionModuleKey, string>();
+  const elsewhereHolderByModule: Partial<Record<PermissionModuleKey, string>> = {};
   for (const g of communityGrants) {
     if (g.taskId === taskRow.id || allowsMultipleGrants(g.moduleKey)) continue;
     if (g.cycleId !== taskRow.cycleId) continue;
-    elsewhereHolderByModule.set(g.moduleKey, g.title);
+    elsewhereHolderByModule[g.moduleKey] = g.title;
   }
 
   const taskPath = `/tasks/${taskRow.id}`;
@@ -504,45 +503,38 @@ export default async function TaskEditPage({
         <section className="mt-8">
           <SectionHeading>Permissions granted by this task</SectionHeading>
           <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-            Check which module-level access gate(s) whoever currently holds this task should get —
-            the identical <code>PermissionGrant</code> rows the settings panel&rsquo;s Access &amp;
-            permissions tab edits, grouped there by how far each reaches. A grant&rsquo;s scope comes
-            from this task&rsquo;s own placement, so each row below shows what you&rsquo;d be granting
-            here. Budget authority is configured only in Settings → Access &amp; permissions.
+            These are the same <code>PermissionGrant</code> rows the settings panel edits, in the same
+            groups. A grant&rsquo;s scope comes from this task&rsquo;s own placement, shown on each row.
+            Budget stays settings-only and is shown locked below.
           </p>
-          <form action={updateTaskPermissionGrantsAction} className="mt-3 flex flex-col gap-2">
-            <input type="hidden" name="taskId" value={taskRow.id} />
-            <input type="hidden" name="returnTo" value={editPath} />
-            {TASK_GRANTABLE_PERMISSION_MODULE_KEYS.map((moduleKey) => (
-              <div key={moduleKey}>
-                <CheckField
-                  label={PERMISSION_MODULE_LABELS[moduleKey]}
-                  name="moduleKeys"
-                  value={moduleKey}
-                  defaultChecked={grantedByThisTask.has(moduleKey)}
-                />
-                <p className="ml-6 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  {describeGrantScope(moduleKey, taskRow.cycleId, taskCycle?.name ?? null)}
-                  {isMisplacedCommunityGrant(moduleKey, taskRow.cycleId) && (
-                    <>
-                      {" "}
-                      &mdash; but this task sits in an event, which contradicts a community-wide role.
-                      The grant still counts community-wide.
-                    </>
-                  )}
-                </p>
-                {elsewhereHolderByModule.has(moduleKey) && (
-                  <p className="ml-6 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                    Currently held by &ldquo;{elsewhereHolderByModule.get(moduleKey)}&rdquo; — checking this
-                    moves it here.
-                  </p>
-                )}
-              </div>
-            ))}
-            <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
-              Save
-            </button>
-          </form>
+          {/* The list below is collapsed, so say what is currently granted
+              up here — Budget included, since it can be set from settings. */}
+          <p className="mt-2 text-[length:var(--text-body)] text-[var(--text)]">
+            <span className="text-[var(--text-muted)]">Grants:</span>{" "}
+            {grantedByThisTask.size === 0
+              ? "nothing"
+              : PERMISSION_MODULE_KEYS.filter((k) => grantedByThisTask.has(k))
+                  .map((k) => PERMISSION_MODULE_LABELS[k])
+                  .join(", ")}
+          </p>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
+              Edit permissions
+            </summary>
+            <form action={updateTaskPermissionGrantsAction} className="mt-3 flex flex-col gap-3">
+              <input type="hidden" name="taskId" value={taskRow.id} />
+              <input type="hidden" name="returnTo" value={editPath} />
+              <PermissionGrantFields
+                name="moduleKeys"
+                grantedModuleKeys={grantedByThisTask}
+                elsewhereHolderByModule={elsewhereHolderByModule}
+                cycle={{ id: taskRow.cycleId, name: taskCycle?.name ?? null }}
+              />
+              <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
+                Save
+              </button>
+            </form>
+          </details>
         </section>
       )}
     </main>
