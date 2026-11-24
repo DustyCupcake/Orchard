@@ -10,6 +10,7 @@ import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABE
 import PageHeader from "@/components/ui/PageHeader";
 import { createCycleAction } from "@/app/(app)/[cycleScope]/participation/actions";
 import { listOpenEventParticipationCards } from "@/lib/participation";
+import { loginUrl } from "@/lib/login-destination";
 import {
   ReadOnlyNote,
   SettingsCard,
@@ -36,14 +37,15 @@ export default async function ManageEventsPage({
   searchParams: Promise<{
     error?: string;
     cycleCreated?: string;
+    cycleClosed?: string;
     previewStart?: string;
     previewEnd?: string;
     previewView?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
-  if (!real || !viewing) redirect("/login");
-  const { error, cycleCreated, previewStart, previewEnd, previewView } = await searchParams;
+  if (!real || !viewing) redirect(await loginUrl());
+  const { error, cycleCreated, cycleClosed, previewStart, previewEnd, previewView } = await searchParams;
   const [allCycles, canConfigure, authorized] = await Promise.all([
     listCycles(viewing),
     canInitiateCycle(viewing),
@@ -57,7 +59,7 @@ export default async function ManageEventsPage({
     <main className="mx-auto max-w-[640px] px-6 py-10 md:px-12 md:py-14">
       <PageHeader
         title="Manage events"
-        description="The community's events — open one for its dates and rules, and its settings are one click away from each event's page. Types below define what they can be, and a new one can be started below that."
+        description="The community's events. Types below define what they can be, and a new one can be started below that."
       />
       {error && (
         <div className="mt-4">
@@ -67,6 +69,11 @@ export default async function ManageEventsPage({
       {cycleCreated && (
         <div className="mt-4">
           <Banner tone="success">Event created. Open its settings to finish the details.</Banner>
+        </div>
+      )}
+      {cycleClosed && (
+        <div className="mt-4">
+          <Banner tone="success">Event closed.</Banner>
         </div>
       )}
 
@@ -257,18 +264,18 @@ async function EventIndex({
           </summary>
           <div className="mt-2 flex flex-col gap-1.5">
             {closedCycles.map((c) => (
-              <Link
+              // A closed event has nothing left to configure, so its row is
+              // a plain record — no link to a settings page.
+              <div
                 key={c.id}
-                href={`/${c.id}/settings`}
-                title="Open this event's read-only settings"
-                className="flex flex-wrap items-baseline gap-x-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[length:var(--text-body)] transition-colors hover:border-[var(--accent-1)]"
+                className="flex flex-wrap items-baseline gap-x-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[length:var(--text-body)]"
                 style={{ opacity: 0.75 }}
               >
                 <span className="font-medium text-[var(--text)]">{c.name}</span>
                 <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   {dateRange(c.startDate, c.endDate)}
                 </span>
-              </Link>
+              </div>
             ))}
           </div>
         </details>

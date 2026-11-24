@@ -15,9 +15,9 @@ import {
 } from "@/lib/participation";
 import { isAdmin } from "@/lib/settings";
 import { listOutstandingQuestions } from "@/lib/profile-questions";
-import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
+import { Banner, BUTTON_PRIMARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import type { member as memberTable } from "@/db/schema";
-import { closeCycleAction, declareParticipationAction } from "./actions";
+import { declareParticipationAction } from "./actions";
 import SelectField from "@/components/ui/SelectField";
 import ActionMenu from "@/components/ui/ActionMenu";
 import PageHeader from "@/components/ui/PageHeader";
@@ -265,19 +265,14 @@ async function ParticipationForCycle({
   // Everything this page does that isn't the person's own participation —
   // the event settings, and close for admins. Only the rows the viewer has
   // show; a member with neither lives on the page as its header and plans.
+  // Closing is a link to the settings page's own section, not a button here:
+  // it is irreversible, and that section is where the explanation and the
+  // budget-settlement warning live.
   const actions =
     !closed && (canConfigure || isAdminNow) ? (
       <ActionMenu>
         {canConfigure && <Link href={`/${cycleId}/settings`}>Edit event settings</Link>}
-        {isAdminNow && (
-          <form action={closeCycleAction}>
-            <input type="hidden" name="cycleId" value={cycleId} />
-            <input type="hidden" name="cycleScope" value={cycleScope} />
-            <button type="submit" className={BUTTON_SECONDARY}>
-              Close this event
-            </button>
-          </form>
-        )}
+        {isAdminNow && <Link href={`/${cycleId}/settings#close-event`}>Close this event…</Link>}
       </ActionMenu>
     ) : undefined;
 

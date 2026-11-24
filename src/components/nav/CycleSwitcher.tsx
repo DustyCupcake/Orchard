@@ -146,9 +146,9 @@ export default function CycleSwitcher({
                 title={STATUS_TITLE[c.myStatus]}
                 aria-label={`Your participation status on ${c.name}: ${STATUS_TITLE[c.myStatus]}`}
                 onClick={() => setOpen(false)}
-                className="mr-1 shrink-0 rounded-[var(--radius-sm)] p-1.5 hover:bg-[var(--surface-sunken)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-1)]"
+                className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] hover:bg-[var(--surface-sunken)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-1)]"
               >
-                <span aria-hidden className={`block h-2 w-2 rounded-full ${STATUS_DOT_CLASS[c.myStatus]}`} />
+                <span aria-hidden className={`block h-2.5 w-2.5 rounded-full ${STATUS_DOT_CLASS[c.myStatus]}`} />
               </Link>
             </div>
           ))}

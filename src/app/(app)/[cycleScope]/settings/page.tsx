@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { cycle as cycleTable } from "@/db/schema";
 import { getViewerClock } from "@/lib/view-clock";
+import { loginUrl } from "@/lib/login-destination";
 import TimeZoneInput from "@/components/TimeZoneInput";
 import { getViewingContext } from "@/lib/view-as";
 import {
@@ -55,7 +56,6 @@ const SUCCESS_BANNERS: Record<string, string> = {
   phaseUpdated: "Phase dates saved.",
   phaseAdded: "Phase added.",
   highlightUpdated: "Module highlight saved.",
-  cycleClosed: "Event closed.",
 };
 
 // See the participation page's helper of the same name — the event's clock
@@ -78,20 +78,21 @@ export default async function EventSettingsPage({
     phaseUpdated?: string;
     phaseAdded?: string;
     highlightUpdated?: string;
-    cycleClosed?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
-  if (!real || !viewing) redirect("/login");
+  if (!real || !viewing) redirect(await loginUrl());
   const { cycleScope } = await params;
   const flags = await searchParams;
   const { error } = flags;
 
   const scope = await resolveViewScopeFromSegment(viewing, cycleScope);
   if (!scope || scope.kind === "aggregate") redirect(`/${cycleScope}/participation`);
+  // A closed event has nothing left to configure, so it has no settings page:
+  // nothing links here for one, and a stale link lands on the event page.
+  if (scope.cycle.closedAt) redirect(`/${cycleScope}/participation`);
   const cycleId = scope.cycle.id;
   const cycleName = scope.cycle.name;
-  const closed = Boolean(scope.cycle.closedAt);
 
   // The settings, forms and waitlist are only read by someone who can
   // configure the event — the same split the participation page used to
@@ -121,7 +122,7 @@ export default async function EventSettingsPage({
   // Admin-only, and only meaningful for a still-open cycle — see
   // closeCycle's own budget-owner warning (src/lib/cycles/lifecycle.ts).
   const budgetCycleRow =
-    isAdminNow && !closed && isModuleEnabled(communityRow, "budget")
+    isAdminNow && isModuleEnabled(communityRow, "budget")
       ? await getBudgetCycleForCycle(viewing, cycleId)
       : null;
   const needsBudgetDoneWarning = Boolean(budgetCycleRow && !budgetCycleRow.settledAt);
@@ -157,12 +158,7 @@ export default async function EventSettingsPage({
           </div>
         ))}
       <PageHeader
-        title={
-          <span className="flex items-center gap-2">
-            {cycleName}
-            {closed && <Tag>closed, read-only</Tag>}
-          </span>
-        }
+        title={cycleName}
         description={overviewParts.join(" · ")}
       />
 
@@ -172,9 +168,7 @@ export default async function EventSettingsPage({
           <p className="mt-1 max-w-[640px] text-[length:var(--text-body)] text-[var(--text-muted)]">
             These people have been approved, but the event is full, so they aren&rsquo;t members yet. They&rsquo;re admitted,
             oldest first, as soon as room appears — someone no longer coming, an invite revoked, the capacity raised.{" "}
-            {closed
-              ? "The event is closed, so no one can be admitted now."
-              : "You can also admit one now, over the capacity."}
+            You can also admit one now, over the capacity.
           </p>
           <ul className="mt-3 flex max-w-[640px] flex-col gap-2">
             {waitlisted.map((w) => (
@@ -188,7 +182,7 @@ export default async function EventSettingsPage({
                 <form action={admitWaitlistedAction}>
                   <input type="hidden" name="arrivalId" value={w.id} />
                   <input type="hidden" name="cycleScope" value={cycleScope} />
-                  <button type="submit" className={BUTTON_SECONDARY} disabled={closed}>
+                  <button type="submit" className={BUTTON_SECONDARY}>
                     Admit now
                   </button>
                 </form>
@@ -197,7 +191,7 @@ export default async function EventSettingsPage({
           </ul>
         </section>
       )}
-      {canConfigure && !closed && (
+      {canConfigure && (
         <section className="mt-6">
           <SectionHeading>Event settings</SectionHeading>
           <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
@@ -302,78 +296,76 @@ export default async function EventSettingsPage({
           administrative fact about the event: a member arriving by one of
           these lanes is being measured against it, so the lanes are stated to
           everyone and only the controls that change them are restricted. */}
-      {!closed && (
-        <section className="mt-6">
-          <div className="flex max-w-[640px] flex-col gap-3">
-            <div>
-              <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">How people can join this event</h3>
-              <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                {ownLaneSet
-                  ? "This event has chosen its own lanes. Everything else about a lane is the community's, and its application form is this event's."
-                  : "This event opens the same lanes as the community does, and follows the community if it changes them."}
-              </p>
-            </div>
-            {!canConfigure ? (
-              <ul className="flex flex-col gap-2">
-                {allLanes
-                  .filter((l) => l.id && openLaneIds.has(l.id))
-                  .map((lane) => (
-                    <li key={lane.id} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-                      <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{lane.name}</span>
-                      <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">{describeLaneConsequence(lane)}</p>
-                    </li>
-                  ))}
-                {openLaneIds.size === 0 && (
-                  <li className="text-[length:var(--text-body)] text-[var(--text-muted)]">No lane is open for this event.</li>
-                )}
-              </ul>
-            ) : (
-              <form action={updateEventLanesAction} className="flex flex-col gap-3">
-                <input type="hidden" name="cycleId" value={cycleId} />
-                <input type="hidden" name="cycleScope" value={cycleScope} />
-                <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-                  <input type="radio" name="laneMode" value="community" defaultChecked={!ownLaneSet} className="mt-1" />
-                  <span>The same lanes as the community</span>
-                </label>
-                <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-                  <input type="radio" name="laneMode" value="own" defaultChecked={ownLaneSet} className="mt-1" />
-                  <span>Choose which lanes this event opens</span>
-                </label>
-                <ul className="flex flex-col gap-2 pl-6">
-                  {allLanes.map((lane) => (
-                    <li key={lane.id} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
-                      <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-                        <input
-                          type="checkbox"
-                          name="laneId"
-                          value={lane.id}
-                          defaultChecked={Boolean(lane.id && openLaneIds.has(lane.id))}
-                          className="mt-1"
-                        />
-                        <span>
-                          <strong>{lane.name}</strong>
-                          <span className="block text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                            {describeLaneConsequence(lane)}
-                          </span>
-                        </span>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-                <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  Each kind of invitation has to belong to exactly one of the lanes you open. A different process for
-                  just this event is a different lane — add one under Settings → Recruitment, and open it only here.
-                </p>
-                <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
-                  Save this event&rsquo;s lanes
-                </button>
-              </form>
-            )}
+      <section className="mt-6">
+        <div className="flex max-w-[640px] flex-col gap-3">
+          <div>
+            <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">How people can join this event</h3>
+            <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+              {ownLaneSet
+                ? "This event has chosen its own lanes. Everything else about a lane is the community's, and its application form is this event's."
+                : "This event opens the same lanes as the community does, and follows the community if it changes them."}
+            </p>
           </div>
-        </section>
-      )}
+          {!canConfigure ? (
+            <ul className="flex flex-col gap-2">
+              {allLanes
+                .filter((l) => l.id && openLaneIds.has(l.id))
+                .map((lane) => (
+                  <li key={lane.id} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+                    <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{lane.name}</span>
+                    <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">{describeLaneConsequence(lane)}</p>
+                  </li>
+                ))}
+              {openLaneIds.size === 0 && (
+                <li className="text-[length:var(--text-body)] text-[var(--text-muted)]">No lane is open for this event.</li>
+              )}
+            </ul>
+          ) : (
+            <form action={updateEventLanesAction} className="flex flex-col gap-3">
+              <input type="hidden" name="cycleId" value={cycleId} />
+              <input type="hidden" name="cycleScope" value={cycleScope} />
+              <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
+                <input type="radio" name="laneMode" value="community" defaultChecked={!ownLaneSet} className="mt-1" />
+                <span>The same lanes as the community</span>
+              </label>
+              <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
+                <input type="radio" name="laneMode" value="own" defaultChecked={ownLaneSet} className="mt-1" />
+                <span>Choose which lanes this event opens</span>
+              </label>
+              <ul className="flex flex-col gap-2 pl-6">
+                {allLanes.map((lane) => (
+                  <li key={lane.id} className="rounded-[var(--radius-md)] border border-[var(--border)] p-3">
+                    <label className="flex items-start gap-2 text-[length:var(--text-body)] text-[var(--text)]">
+                      <input
+                        type="checkbox"
+                        name="laneId"
+                        value={lane.id}
+                        defaultChecked={Boolean(lane.id && openLaneIds.has(lane.id))}
+                        className="mt-1"
+                      />
+                      <span>
+                        <strong>{lane.name}</strong>
+                        <span className="block text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                          {describeLaneConsequence(lane)}
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                Each kind of invitation has to belong to exactly one of the lanes you open. A different process for
+                just this event is a different lane — add one under Settings → Recruitment, and open it only here.
+              </p>
+              <button type="submit" className={`${BUTTON_PRIMARY} w-fit`}>
+                Save this event&rsquo;s lanes
+              </button>
+            </form>
+          )}
+        </div>
+      </section>
 
-      {canConfigure && withPhases && !closed && (
+      {canConfigure && withPhases && (
         <PhaseDatesSection
           phases={withPhases.phases}
           cycleId={cycleId}
@@ -411,8 +403,8 @@ export default async function EventSettingsPage({
           </form>
         </section>
       )}
-      {isAdminNow && !closed && (
-        <section className="mt-6 border-t border-[var(--border)] pt-6">
+      {isAdminNow && (
+        <section id="close-event" className="mt-6 scroll-mt-6 border-t border-[var(--border)] pt-6">
           <SectionHeading>Close this event</SectionHeading>
           <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
             Locks everything about this event — no exception. Reaching a closed event afterward is

@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { cycle, participation, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
@@ -234,6 +234,7 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     defaultScopeSegment,
     canInitiate,
     openAssemblies,
+    myOpenStatusRows,
   ] = await Promise.all([
     // NOT gated on open, unlike the eight below. isCoordinator is two things:
     // the Coordination *pin*, and — via NavContext.isCoordinator — the
@@ -268,6 +269,21 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     // /community hub page makes for its own listing — so the badge is
     // always exactly a count of what that page shows.
     listOpenAssemblies(actor),
+    // The viewer's own status on every open event, for the switcher's status
+    // dots — one query for all of them, and joined to `cycle` (rather than
+    // keyed on listOpenCycles' result) so it runs in this batch instead of
+    // after it, on every authenticated request.
+    db
+      .select({ cycleId: participation.cycleId, status: participation.status })
+      .from(participation)
+      .innerJoin(cycle, eq(cycle.id, participation.cycleId))
+      .where(
+        and(
+          eq(participation.memberId, actor.id),
+          eq(cycle.communityId, actor.communityId),
+          isNull(cycle.closedAt),
+        ),
+      ),
   ]);
 
   const defaultScopeName =
@@ -375,24 +391,9 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     feed.kitchenNeedsAction.personal.length +
     feed.expiredNominations.length;
 
-  // One query for every open cycle's status dot, rather than one per
-  // cycle on every authenticated request. A member with no row on an
-  // event reads as "unknown", the same default getMyParticipation gave.
-  const statusRows = openCycles.length
-    ? await db
-        .select({ cycleId: participation.cycleId, status: participation.status })
-        .from(participation)
-        .where(
-          and(
-            eq(participation.memberId, actor.id),
-            inArray(
-              participation.cycleId,
-              openCycles.map((c) => c.id),
-            ),
-          ),
-        )
-    : [];
-  const statusByCycleId = new Map(statusRows.map((r) => [r.cycleId, r.status]));
+  // A member with no row on an event reads as "unknown", the same default
+  // getMyParticipation gave.
+  const statusByCycleId = new Map(myOpenStatusRows.map((r) => [r.cycleId, r.status]));
 
   return {
     memberName: actor.name,

@@ -345,7 +345,8 @@ export async function closeCycleAction(formData: FormData) {
     redirectWithError(cycleScope, err, "settings");
   }
 
-  revalidatePath(`/${cycleScope}/settings`);
+  // A closed event has no settings page, so land on the events list.
   revalidatePath(`/${cycleScope}/participation`);
-  redirect(`/${cycleScope}/settings?cycleClosed=1`);
+  revalidatePath("/manage-events");
+  redirect("/manage-events?cycleClosed=1");
 }
