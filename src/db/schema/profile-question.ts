@@ -10,15 +10,16 @@ import { cycle } from "./cycle";
 // rather than duplicating it; validateFieldValue is the only reader.
 export const textValidationEnum = pgEnum("text_validation", ["none", "email", "phone", "url"]);
 
-// Which of the Kitchen's three dietary signals a question feeds — see
-// docs/plans/archive/kitchen-redesign-plan.md's D2/D3. The three are different
-// things to a cook (an allergy must be safe, an intolerance wants an
-// alternative, a dislike is menu input) and are asked as three questions
-// rather than one with a per-item severity the answer shape (an array of
-// option labels) cannot hold. The tag names which answers Kitchen
-// interprets and nothing more: it grants no access, and widens nobody's
-// audience, so setting it needs no consent prompt.
-export const KITCHEN_SIGNALS = ["allergy", "intolerance", "dislike"] as const;
+// Which of the Kitchen's dietary signals a question feeds — see
+// docs/plans/archive/kitchen-redesign-plan.md's D2/D3. The signals are
+// different things to a cook: an allergy must be safe, an intolerance wants
+// an alternative, a dislike is menu input, and diet (veggie/vegan/omni) is a
+// public tally-only planning signal. Each is asked as its own question rather
+// than one with a per-item severity the answer shape (an array of option
+// labels) cannot hold. The tag names which answers Kitchen interprets and
+// nothing more: it grants no access, and widens nobody's audience, so setting
+// it needs no consent prompt.
+export const KITCHEN_SIGNALS = ["allergy", "intolerance", "dislike", "diet"] as const;
 export type KitchenSignal = (typeof KITCHEN_SIGNALS)[number];
 export const kitchenSignalEnum = pgEnum("kitchen_signal", KITCHEN_SIGNALS);
 

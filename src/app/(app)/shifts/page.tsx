@@ -1,6 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { db } from "@/db";
 import { member, shiftSignup, task } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
@@ -17,10 +18,17 @@ import {
   listShiftManagersForScopes,
   listShiftSeries,
   listUpcomingShiftOccurrences,
+  orderScopes,
+  resolveScope,
   resolveShiftManager,
+  shiftOffsets,
+  STANDING_SCOPE_KEY,
+  type ShiftScope,
+  type ShiftViewRow,
 } from "@/lib/shifts";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import PageHeader from "@/components/ui/PageHeader";
+import Tabs from "@/components/ui/Tabs";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import {
   confirmShiftProposalAction,
@@ -31,9 +39,11 @@ import {
   withdrawFromShiftAction,
 } from "./actions";
 import MySeriesSection from "./MySeriesSection";
-import { effectiveTimeZone, type DayView } from "@/lib/dates";
+import { effectiveTimeZone, formatInstant, type DayView } from "@/lib/dates";
 import { getDayLabeler } from "@/lib/day-labeler";
 import SelectField from "@/components/ui/SelectField";
+import ShiftViews from "./ShiftViews";
+import StandingShifts from "./StandingShifts";
 
 export const dynamic = "force-dynamic";
 
@@ -73,11 +83,13 @@ export default async function ShiftsPage({
     // this a recurring shift").
     compose?: string;
     fromTask?: string;
+    // Which tab: an event's id, or "standing" (see resolveScope).
+    scope?: string;
   }>;
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const {
@@ -99,6 +111,7 @@ export default async function ShiftsPage({
     shiftDeleted,
     compose,
     fromTask,
+    scope: requestedScope,
   } = await searchParams;
 
   const communityRow = await getCommunity(viewing);
@@ -180,30 +193,112 @@ export default async function ShiftsPage({
         )
       : new Map<string, string>();
 
-  // Scope grouping (§5.6): cycle rosters vs the flat standing list, and
-  // the per-cycle window state each group renders.
-  const standingUpcoming = upcoming.filter((u) => u.series.cycleId === null);
   const cycleById = new Map(allCycles.map((c) => [c.id, c] as const));
-  const upcomingCycleIds = [...new Set(upcoming.map((u) => u.series.cycleId).filter((c): c is string => c !== null))];
-  const cycleUpcoming = new Map<string, typeof upcoming>();
-  for (const u of upcoming) {
-    if (!u.series.cycleId) continue;
-    const list = cycleUpcoming.get(u.series.cycleId) ?? [];
-    list.push(u);
-    cycleUpcoming.set(u.series.cycleId, list);
-  }
-  const orderedCycleIds = upcomingCycleIds.sort((a, b) =>
-    (cycleById.get(a)?.startedAt?.getTime() ?? 0) - (cycleById.get(b)?.startedAt?.getTime() ?? 0),
-  );
-
   const openCycleById = new Map(openCycles.map((c) => [c.id, c] as const));
-  const managersByScope = await listShiftManagersForScopes(
-    communityRow.id,
-    upcomingCycleIds,
-  );
-  const standingManager = await resolveShiftManager(communityRow.id, null);
   const managedScopeSet = new Set(managedScopes);
   const isStandingManager = managedScopeSet.has(null);
+
+  // The tabs: an event's roster each, plus Standing (§5.6). An event has a
+  // tab while it has an upcoming confirmed shift, its shift manager is the
+  // viewer, or a proposal is waiting on one; Standing while it has series or
+  // the viewer manages it. `upcoming` arrives in startsAt order, so the first
+  // shift seen per scope is its next.
+  const nextStartByScope = new Map<string, string>();
+  for (const { occurrence, series } of upcoming) {
+    const key = series.cycleId ?? STANDING_SCOPE_KEY;
+    if (!nextStartByScope.has(key)) nextStartByScope.set(key, occurrence.startsAt.toISOString());
+  }
+  const eventScopeIds = new Set([...nextStartByScope.keys()].filter((k) => k !== STANDING_SCOPE_KEY));
+  for (const c of openCycles) if (managedScopeSet.has(c.id)) eventScopeIds.add(c.id);
+  for (const p of pendingProposals) if (p.cycleId) eventScopeIds.add(p.cycleId);
+  const scopes: ShiftScope[] = [];
+  for (const id of eventScopeIds) {
+    const c = cycleById.get(id);
+    if (c) scopes.push({ key: id, label: c.name, kind: "event", nextStartsAt: nextStartByScope.get(id) ?? null });
+  }
+  if (
+    nextStartByScope.has(STANDING_SCOPE_KEY) ||
+    isStandingManager ||
+    allSeries.some((s) => s.cycleId === null && !s.archivedAt)
+  ) {
+    scopes.push({
+      key: STANDING_SCOPE_KEY,
+      label: "Standing",
+      kind: "standing",
+      nextStartsAt: nextStartByScope.get(STANDING_SCOPE_KEY) ?? null,
+    });
+  }
+  const orderedScopes = orderScopes(scopes);
+  const activeScope = resolveScope(requestedScope, scopes);
+  const activeCycleId = activeScope?.kind === "event" ? activeScope.key : null;
+
+  // Everything below is the active tab's, so every row reads on that scope's
+  // one clock: its event's zone, else the community's.
+  const scopeZone = shiftZone(activeCycleId);
+  const scopeUpcoming = activeScope
+    ? upcoming.filter((u) => (u.series.cycleId ?? STANDING_SCOPE_KEY) === activeScope.key)
+    : [];
+
+  // The shift views' rows: one per upcoming occurrence in this scope, with
+  // everything the list, calendar and standing cards render or filter on —
+  // see src/lib/shifts/views.ts. Each row's action forms carry the scope, so
+  // a sign-up lands back on this tab.
+  const rows: ShiftViewRow[] = scopeUpcoming.map(({ occurrence, series, signupsOpen }) => {
+    const count = countByOccurrenceId.get(occurrence.id) ?? 0;
+    const capacity = effectiveCapacity(occurrence, series);
+    const iAmSignedUp = mySignedUpOccurrenceIds.has(occurrence.id);
+    return {
+      id: occurrence.id,
+      seriesId: series.id,
+      cycleId: series.cycleId,
+      title: series.title,
+      description: series.description,
+      branchId: series.branchId,
+      branchName: series.branchId ? branchNameById.get(series.branchId) ?? null : null,
+      tags: series.tags,
+      capacity,
+      signups: count,
+      startsAt: occurrence.startsAt.toISOString(),
+      endsAt: occurrence.endsAt.toISOString(),
+      when: activeCycleId
+        ? shiftWhenInEvent(occurrence.startsAt, occurrence.endsAt, series.cycleId)
+        : shiftWhen(occurrence.startsAt, occurrence.endsAt, series.cycleId),
+      ...shiftOffsets(scopeZone, occurrence.startsAt, occurrence.endsAt),
+      startTime: formatInstant(occurrence.startsAt, scopeZone, "time"),
+      endTime: formatInstant(occurrence.endsAt, scopeZone, "time"),
+      iAmSignedUp,
+      signupsOpen,
+      actions: (
+        <ShiftActions
+          occurrenceId={occurrence.id}
+          iAmSignedUp={iAmSignedUp}
+          full={count >= capacity}
+          signupsOpen={signupsOpen}
+          scope={activeScope?.key ?? ""}
+        />
+      ),
+    };
+  });
+
+  // The day headings the list and calendar read — the DayLabeler's `heading`
+  // for each day that has a shift.
+  const dayLabelByDay: Record<string, string> = {};
+  for (const r of rows) {
+    if (!(r.day in dayLabelByDay)) dayLabelByDay[r.day] = labeler.heading(r.day, { cycleId: activeCycleId });
+  }
+
+  // An event's roster state (D11) and manager, shown once above its shifts;
+  // Standing's manager line. The open act is the event's manager's, and only
+  // while the roster is still collecting.
+  const activeCycle = activeCycleId ? cycleById.get(activeCycleId) : undefined;
+  const rosterOpened = !!activeCycle?.shiftSignupsOpenedAt;
+  const canOpenSignups = !!activeCycleId && !rosterOpened && openCycleById.has(activeCycleId) && managedScopeSet.has(activeCycleId);
+  const eventManagerName = activeCycleId
+    ? ((await listShiftManagersForScopes(communityRow.id, [activeCycleId])).get(activeCycleId)?.memberName ?? null)
+    : null;
+  const standingManagerName =
+    activeScope?.kind === "standing" ? ((await resolveShiftManager(communityRow.id, null))?.name ?? null) : null;
+  const scopeProposals = activeCycleId ? pendingProposals.filter((p) => p.cycleId === activeCycleId) : [];
 
   // Where this manager may re-place one of their own series (D10: the
   // destination scope's manager's act — the selected scope gates it
@@ -242,6 +337,11 @@ export default async function ShiftsPage({
             <Link href="/shifts?compose=1" className={BUTTON_PRIMARY}>
               Add a shift series
             </Link>
+          ) : undefined
+        }
+        tabs={
+          moduleOn && !composing && activeScope && orderedScopes.length > 1 ? (
+            <Tabs tabs={orderedScopes} active={activeScope.key} hrefFor={(key) => `/shifts?scope=${encodeURIComponent(key)}`} />
           ) : undefined
         }
       />
@@ -401,6 +501,13 @@ export default async function ShiftsPage({
                     The default for each shift; a single shift can differ.
                   </span>
                 </label>
+                <label className="flex flex-col gap-1">
+                  <span className={LABEL}>Tags (comma-separated)</span>
+                  <input type="text" name="tags" placeholder="cooking, tidying, groceries" className={INPUT} />
+                  <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                    The tags the series filters by on the shift views.
+                  </span>
+                </label>
                 <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   Once it&rsquo;s added, the scope&rsquo;s shift manager sets the dates and times people can sign up for.
                 </p>
@@ -416,22 +523,62 @@ export default async function ShiftsPage({
             </section>
           )}
 
-          {!composing && pendingProposals.length > 0 && (
+          {!composing && activeScope?.kind === "event" && activeCycleId && (
+            <div className="mt-6 flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {scopes.length === 1 && (
+                  <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
+                    Event {activeScope.label}
+                  </span>
+                )}
+                {rosterOpened ? (
+                  <Tag tone="success">Sign-ups open</Tag>
+                ) : (
+                  <Tag tone="neutral">Sign-ups not open yet</Tag>
+                )}
+                <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                  {eventManagerName
+                    ? `Managed by ${eventManagerName}`
+                    : "No shift manager yet — sign-ups stay closed until one is chosen"}
+                </span>
+              </div>
+              {canOpenSignups && (
+                <form action={openCycleShiftSignupsAction}>
+                  <input type="hidden" name="cycleId" value={activeCycleId} />
+                  <input type="hidden" name="scope" value={activeCycleId} />
+                  <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
+                    Open sign-ups
+                  </button>
+                  <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                    Until then, anyone can add series to this roster. Once opened, sign-ups can&rsquo;t be closed again.
+                  </p>
+                </form>
+              )}
+            </div>
+          )}
+
+          {!composing && activeScope?.kind === "standing" && (
+            <p className="mt-6 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+              Community-wide and always open for sign-ups.
+              {standingManagerName
+                ? ` Managed by ${standingManagerName}.`
+                : " No manager yet — nobody can add standing series until one is chosen."}
+            </p>
+          )}
+
+          {!composing && scopeProposals.length > 0 && (
             <section className="mt-6">
               <SectionHeading>Waiting for your confirmation</SectionHeading>
               <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                Series added after an event&rsquo;s sign-ups opened — confirm the ones you want on its roster.
+                Series added after this event&rsquo;s sign-ups opened — confirm the ones you want on its roster.
               </p>
               <div className="mt-3 flex flex-col gap-2">
-                {pendingProposals.map(({ series, cycleName }) => (
+                {scopeProposals.map(({ series }) => (
                   <div key={series.id} className={CARD}>
                     <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{series.title}</p>
-                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                      Proposed for Event {cycleName}
-                    </p>
                     <form action={confirmShiftProposalAction} className="mt-2">
                       <input type="hidden" name="seriesId" value={series.id} />
-                      <input type="hidden" name="cycleScope" value={series.cycleId ?? ""} />
+                      <input type="hidden" name="scope" value={activeCycleId ?? ""} />
                       <button type="submit" className={BUTTON_SECONDARY}>
                         Confirm for this roster
                       </button>
@@ -443,97 +590,30 @@ export default async function ShiftsPage({
           )}
 
           {!composing && (
-          <section className="mt-6">
-            <SectionHeading>Upcoming shifts</SectionHeading>
-            {upcoming.length === 0 && (
-              <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                No shifts scheduled yet.
-                {canCreateSeries && " Add a series, then a shift manager can set its dates."}
-              </p>
-            )}
-
-            {orderedCycleIds.map((cycleId) => {
-              const cycleRow = cycleById.get(cycleId);
-              const cycleRows = cycleUpcoming.get(cycleId) ?? [];
-              const activeCycle = openCycleById.get(cycleId);
-              const manager = managersByScope.get(cycleId);
-              return (
-                <div key={cycleId} className="mt-4">
-                  <h3 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">
-                    {cycleRow ? `Event ${cycleRow.name} roster` : "Event roster"}
-                  </h3>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    {activeCycle?.shiftSignupsOpenedAt ? (
-                      <Tag tone="success">Sign-ups open</Tag>
-                    ) : (
-                      <Tag tone="neutral">Sign-ups not open yet</Tag>
-                    )}
-                    <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                      {manager ? `Managed by ${manager.memberName}` : "No shift manager yet — sign-ups stay closed until one is chosen"}
-                    </span>
-                  </div>
-                  {!activeCycle?.shiftSignupsOpenedAt && managedScopeSet.has(cycleId) && (
-                    <form action={openCycleShiftSignupsAction} className="mt-2">
-                      <input type="hidden" name="cycleId" value={cycleId} />
-                      <input type="hidden" name="cycleScope" value={cycleId} />
-                      <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
-                        Open sign-ups
-                      </button>
-                      <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                        Until then, anyone can add series to this roster. Once opened, sign-ups can&rsquo;t be closed again.
-                      </p>
-                    </form>
-                  )}
-                  {activeCycle?.shiftSignupsOpenedAt && !cycleRows[0]?.signupsOpen && (
-                    <Tag tone="warning">not open yet</Tag>
-                  )}
-                  <div className="mt-3 flex flex-col gap-2">
-                    {cycleRows.map(({ occurrence, series, signupsOpen }) => (
-                      <OccurrenceCard
-                        key={occurrence.id}
-                        occurrence={occurrence}
-                        series={series}
-                        when={shiftWhenInEvent(occurrence.startsAt, occurrence.endsAt, series.cycleId)}
-                        branchNameById={branchNameById}
-                        capacity={effectiveCapacity(occurrence, series)}
-                        count={countByOccurrenceId.get(occurrence.id) ?? 0}
-                        iAmSignedUp={mySignedUpOccurrenceIds.has(occurrence.id)}
-                        signupsOpen={signupsOpen}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-
-            {standingUpcoming.length > 0 && (
-              <div className={`mt-4 ${standingUpcoming.length > 0 ? "" : ""}`}>
-                <h3 className="text-[length:var(--text-heading)] font-semibold text-[var(--text)]">Standing series</h3>
-                <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                  Community-wide and always open for sign-ups.
-                  {standingManager
-                    ? ` Managed by ${standingManager.name}.`
-                    : " No manager yet — nobody can add standing series until one is chosen."}
+            <section className="mt-6">
+              <SectionHeading>{activeScope?.kind === "standing" ? "Standing shifts" : "Upcoming shifts"}</SectionHeading>
+              {!activeScope && (
+                <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                  No shifts scheduled yet.
+                  {canCreateSeries && " Add a series, then a shift manager can set its dates."}
                 </p>
-                <div className="mt-3 flex flex-col gap-2">
-                  {standingUpcoming.map(({ occurrence, series, signupsOpen }) => (
-                    <OccurrenceCard
-                      key={occurrence.id}
-                      occurrence={occurrence}
-                      series={series}
-                      when={shiftWhen(occurrence.startsAt, occurrence.endsAt, series.cycleId)}
-                      branchNameById={branchNameById}
-                      capacity={effectiveCapacity(occurrence, series)}
-                      count={countByOccurrenceId.get(occurrence.id) ?? 0}
-                      iAmSignedUp={mySignedUpOccurrenceIds.has(occurrence.id)}
-                      signupsOpen={signupsOpen}
-                    />
-                  ))}
+              )}
+              {activeScope?.kind === "standing" && (
+                <div className="mt-2">
+                  <StandingShifts key={activeScope.key} rows={rows} branches={branches} />
                 </div>
-              </div>
-            )}
-          </section>
-
+              )}
+              {activeScope?.kind === "event" && (
+                <div className="mt-2">
+                  <ShiftViews key={activeScope.key} rows={rows} dayLabelByDay={dayLabelByDay} branches={branches} />
+                  {rows.length === 0 && canCreateSeries && (
+                    <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                      Add a series, then a shift manager can set its dates.
+                    </p>
+                  )}
+                </div>
+              )}
+            </section>
           )}
 
           {!composing && myPastPendingSignups.length > 0 && (
@@ -578,65 +658,42 @@ export default async function ShiftsPage({
   );
 }
 
-// One upcoming-occurrence row, shared by the cycle-roster and standing
-// groups. `signupsOpen` is the D11 window state: a collecting roster is
-// visible-but-closed (the sign-up button renders disabled), a confirmed
-// proposal is never shown here at all (listUpcomingShiftOccurrences
-// hides unconfirmed series).
-function OccurrenceCard({
-  occurrence,
-  series,
-  when,
-  branchNameById,
-  capacity,
-  count,
+// The action cluster of a row — Sign up / Withdraw — the same cluster the
+// old roster cards carried. `full` is the row's capacity reached without the
+// viewer signed up; `signupsOpen` is the D11 window state: a collecting
+// roster is visible-but-closed (the button renders disabled).
+function ShiftActions({
+  occurrenceId,
   iAmSignedUp,
+  full,
   signupsOpen,
+  scope,
 }: {
-  occurrence: { id: string; startsAt: Date; endsAt: Date };
-  series: { title: string; branchId: string | null; description: string | null };
-  /** The shift's time, already worded for this viewer (see shiftWhen). */
-  when: string;
-  branchNameById: Map<string, string>;
-  capacity: number;
-  count: number;
+  occurrenceId: string;
   iAmSignedUp: boolean;
+  full: boolean;
   signupsOpen: boolean;
+  /** The tab the viewer is on, so the action lands back on it. */
+  scope: string;
 }) {
-  const full = count >= capacity;
+  if (iAmSignedUp) {
+    return (
+      <form action={withdrawFromShiftAction}>
+        <input type="hidden" name="occurrenceId" value={occurrenceId} />
+        <input type="hidden" name="scope" value={scope} />
+        <button type="submit" className={BUTTON_SECONDARY}>
+          Withdraw
+        </button>
+      </form>
+    );
+  }
   return (
-    <div className={CARD}>
-      <p className="text-[length:var(--text-body)] font-medium text-[var(--text)]">
-        {series.title}
-        {series.branchId && (
-          <span className="font-normal text-[var(--text-muted)]"> · {branchNameById.get(series.branchId) ?? "—"}</span>
-        )}
-      </p>
-      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{when}</p>
-      {series.description && <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">{series.description}</p>}
-      <p className="mt-1.5 flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-        {count}/{capacity} signed up
-        {iAmSignedUp && <Tag tone="success">You&rsquo;re signed up</Tag>}
-        {full && !iAmSignedUp && <Tag tone="warning">full</Tag>}
-        {!signupsOpen && <Tag tone="neutral">not open yet</Tag>}
-      </p>
-      <div className="mt-2">
-        {iAmSignedUp ? (
-          <form action={withdrawFromShiftAction}>
-            <input type="hidden" name="occurrenceId" value={occurrence.id} />
-            <button type="submit" className={BUTTON_SECONDARY}>
-              Withdraw
-            </button>
-          </form>
-        ) : (
-          <form action={signUpForShiftAction}>
-            <input type="hidden" name="occurrenceId" value={occurrence.id} />
-            <button type="submit" disabled={full || !signupsOpen} className={BUTTON_PRIMARY}>
-              {signupsOpen ? "Sign up" : "Not open yet"}
-            </button>
-          </form>
-        )}
-      </div>
-    </div>
+    <form action={signUpForShiftAction}>
+      <input type="hidden" name="occurrenceId" value={occurrenceId} />
+      <input type="hidden" name="scope" value={scope} />
+      <button type="submit" disabled={full || !signupsOpen} className={BUTTON_PRIMARY}>
+        {signupsOpen ? "Sign up" : "Not open yet"}
+      </button>
+    </form>
   );
 }

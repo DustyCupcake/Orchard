@@ -7,6 +7,7 @@ import {
   archiveProfileQuestion,
   createProfileQuestion,
   createProfileQuestionInput,
+  kitchenSignalBlocker,
   maybeSeedDefaultProfileQuestions,
   setKitchenSignalQuestion,
   updateProfileQuestion,
@@ -16,6 +17,7 @@ import {
   ALLERGEN_FLAG_LABELS,
   ALLERGY_OPTIONS,
   CONCRETE_ALLERGEN_FLAGS,
+  DIET_OPTIONS,
   DISLIKE_OPTIONS,
   INTOLERANCE_OPTIONS,
   flagForAllergyOption,
@@ -124,6 +126,47 @@ describe("what may carry a kitchen signal", () => {
         kitchenSignal: "dislike",
       }),
     ).rejects.toThrow(/pick any/);
+  });
+
+  it("lets diet be a public single choice, and refuses prose or a pick-any list", async () => {
+    const { alice } = await createFixtures();
+    const ok = await createProfileQuestion(alice, {
+      label: "How do you eat?",
+      responseType: "single_choice",
+      options: DIET_OPTIONS,
+      scope: "once_ever",
+      kitchenSignal: "diet",
+    });
+    expect(ok).toMatchObject({ kitchenSignal: "diet", sensitive: false, options: ["Veggie", "Vegan", "Omni"] });
+
+    // A diet answer is a preference, not health information, so neither a
+    // restricted question nor a public one is blocked; the shape is.
+    expect(kitchenSignalBlocker("diet", { responseType: "single_choice", sensitive: false, scope: "once_ever" })).toBeNull();
+    expect(kitchenSignalBlocker("diet", { responseType: "single_choice", sensitive: true, scope: "once_ever" })).toBeNull();
+    expect(kitchenSignalBlocker("diet", { responseType: "multi_choice", sensitive: false, scope: "once_ever" })).toMatch(
+      /single choice/,
+    );
+    expect(kitchenSignalBlocker("diet", { responseType: "text", sensitive: false, scope: "once_ever" })).toMatch(
+      /single choice/,
+    );
+    await expect(
+      createProfileQuestion(alice, {
+        label: "Diets, pick any",
+        responseType: "multi_choice",
+        options: DIET_OPTIONS,
+        scope: "once_ever",
+        kitchenSignal: "diet",
+      }),
+    ).rejects.toThrow(/single choice/);
+    await expect(
+      createProfileQuestion(alice, {
+        label: "How do you eat?",
+        responseType: "single_choice",
+        options: DIET_OPTIONS,
+        scope: "per_cycle",
+        kitchenSignal: "diet",
+      }),
+    ).rejects.toThrow(/asked once/);
   });
 
   it("refuses a per-event question, because a person's allergies don't change per event", async () => {
@@ -250,7 +293,7 @@ describe("the starter questions", () => {
     await resetDatabase();
   });
 
-  it("seed all three wired, with the two health ones restricted to the kitchen and dislikes public", async () => {
+  it("seeds all four wired, with the two health ones restricted and dislikes and diet public", async () => {
     const { alice } = await createFixtures();
     await maybeSeedDefaultProfileQuestions(alice);
     const wired = await db
@@ -258,11 +301,13 @@ describe("the starter questions", () => {
       .from(profileQuestion)
       .where(and(eq(profileQuestion.communityId, alice.communityId), isNull(profileQuestion.archivedAt)));
     const bySignal = new Map(wired.filter((q) => q.kitchenSignal).map((q) => [q.kitchenSignal, q]));
-    expect([...bySignal.keys()].sort()).toEqual(["allergy", "dislike", "intolerance"]);
+    expect([...bySignal.keys()].sort()).toEqual(["allergy", "diet", "dislike", "intolerance"]);
     expect(bySignal.get("allergy")).toMatchObject({ responseType: "multi_choice", sensitive: true, allowOther: true });
     expect(bySignal.get("intolerance")).toMatchObject({ responseType: "multi_choice", sensitive: true });
     expect(bySignal.get("dislike")).toMatchObject({ responseType: "multi_choice", sensitive: false });
+    expect(bySignal.get("diet")).toMatchObject({ responseType: "single_choice", sensitive: false });
     expect(bySignal.get("allergy")!.options).toEqual(ALLERGY_OPTIONS);
+    expect(bySignal.get("diet")!.options).toEqual(DIET_OPTIONS);
   });
 
   it("can be added one at a time to a community that already has questions", async () => {
@@ -276,5 +321,12 @@ describe("the starter questions", () => {
     expect(added.kitchenSignal).toBe("intolerance");
     expect(added.sensitive).toBe(true);
     await expect(addKitchenStarterQuestion(alice, "intolerance")).rejects.toThrow(ConflictError);
+  });
+
+  it("adds the public diet question on its own to an existing community", async () => {
+    const { alice } = await createFixtures();
+    const added = await addKitchenStarterQuestion(alice, "diet");
+    expect(added).toMatchObject({ kitchenSignal: "diet", sensitive: false, options: DIET_OPTIONS });
+    await expect(addKitchenStarterQuestion(alice, "diet")).rejects.toThrow(ConflictError);
   });
 });

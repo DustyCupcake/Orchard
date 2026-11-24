@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import { resolveDefaultScopeSegment } from "@/lib/cycles";
 
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function ParticipationRedirect() {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
   const scope = await resolveDefaultScopeSegment(viewing);
   redirect(`/${scope}/participation`);

@@ -5,6 +5,7 @@ import { branch, community, cycle, meal, shiftOccurrence, shiftSeries, shiftSign
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { requireModuleEnabled } from "../modules";
+import { normalizeTags } from "./views";
 import { getEventTimeZone } from "../cycles/time-zone";
 import {
   isShiftManagerForScope,
@@ -34,6 +35,7 @@ export const createShiftSeriesInput = z.object({
   title: z.string().min(1),
   description: z.string().nullable().optional(),
   defaultCapacity: z.number().int().positive(),
+  tags: z.array(z.string()).optional(),
   sourceTaskId: z.string().uuid().nullable().optional(),
   cycleId: z.string().uuid().nullable().optional(),
 });
@@ -106,6 +108,7 @@ export async function createShiftSeries(actor: Member, input: CreateShiftSeriesI
       title: input.title,
       description: input.description ?? null,
       defaultCapacity: input.defaultCapacity,
+      tags: normalizeTags(input.tags ?? []),
       sourceTaskId: input.sourceTaskId ?? null,
       confirmedAt,
       createdBy: actor.id,
@@ -218,6 +221,7 @@ export const updateShiftSeriesInput = z.object({
   title: z.string().trim().min(1).optional(),
   description: z.string().trim().nullable().optional(),
   defaultCapacity: z.number().int().positive().optional(),
+  tags: z.array(z.string()).optional(),
 });
 export type UpdateShiftSeriesInput = z.infer<typeof updateShiftSeriesInput>;
 
@@ -259,6 +263,7 @@ export async function updateShiftSeries(actor: Member, seriesId: string, input: 
       ...(input.description !== undefined && { description: input.description || null }),
       ...(input.branchId !== undefined && { branchId: input.branchId }),
       ...(input.defaultCapacity !== undefined && { defaultCapacity: input.defaultCapacity }),
+      ...(input.tags !== undefined && { tags: normalizeTags(input.tags) }),
     })
     .where(eq(shiftSeries.id, seriesId))
     .returning();

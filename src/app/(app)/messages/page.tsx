@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewerClock } from "@/lib/view-clock";
 import { getViewingContext } from "@/lib/view-as";
 import { canInitiateCycle, listCycles } from "@/lib/cycles";
@@ -47,7 +48,7 @@ export default async function MessagesPage({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const clock = await getViewerClock();

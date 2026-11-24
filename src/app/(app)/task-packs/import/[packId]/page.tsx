@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import { listBranches, listCycleTypes } from "@/lib/settings";
 import {
@@ -34,7 +35,7 @@ export default async function ImportTaskPackPage({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const { packId } = await params;

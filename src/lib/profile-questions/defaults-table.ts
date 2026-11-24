@@ -4,7 +4,7 @@
 // belongs in defaults.ts's validateDefaultQuestionTable instead.
 import type { PermissionModuleKey } from "../permissions";
 import type { KitchenSignal } from "@/db/schema/profile-question";
-import { ALLERGY_OPTIONS, DISLIKE_OPTIONS, INTOLERANCE_OPTIONS } from "../kitchen/allergens";
+import { ALLERGY_OPTIONS, DIET_OPTIONS, DISLIKE_OPTIONS, INTOLERANCE_OPTIONS } from "../kitchen/allergens";
 
 /**
  * The starter question set, as data, with no database anywhere in it.
@@ -230,6 +230,15 @@ export const DEFAULT_PROFILE_QUESTION_GROUPS: DefaultQuestionGroup[] = [
         allowPreferNotToSay: true,
         kitchenSignal: "dislike",
         why: "Menu input, not a safety check — the kitchen sees a count, never a name. Public and declinable: 'I don't like cilantro' is not sensitive, and a refusal is allowed.",
+      },
+      {
+        key: "diet",
+        label: "How do you eat?",
+        responseType: "single_choice",
+        options: DIET_OPTIONS,
+        allowPreferNotToSay: true,
+        kitchenSignal: "diet",
+        why: "A public tally only: the kitchen counts veggie, vegan and omni to plan proportions, never names anyone. It is a preference, not a health fact.",
       },
       {
         key: "age_range",

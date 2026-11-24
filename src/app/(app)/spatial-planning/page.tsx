@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { db } from "@/db";
 import { member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
@@ -59,7 +60,7 @@ export default async function SpatialPlanningPage({
 }) {
   const { real, viewing, viewAs } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const { error } = await searchParams;

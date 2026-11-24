@@ -8,6 +8,7 @@ import { requireEditableMenuPlan, requireKitchenModuleOn } from "./menu";
 import { getMeal } from "./meals";
 import { getDish } from "./dishes";
 import { resolveMealHeadCount } from "./attendance";
+import { effectiveDishFactor } from "./scaling";
 
 type Member = typeof memberTable.$inferSelect;
 
@@ -90,7 +91,8 @@ export type ScaledIngredient = {
   // line with no amount ("to taste").
   storedAmount: string | null;
   scaledAmount: number | null;
-  // headCount / serves; 1 when either side is unset (recipe scale).
+  // The dish's own multiplier when it was applied from the recipe box,
+  // otherwise headCount / serves; 1 when nothing can be scaled.
   factor: number;
   scaled: boolean;
 };
@@ -99,10 +101,9 @@ function roundAmount(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-// D8's scale-on-read: each dish's ingredients multiplied by the meal's
-// headCount / dish.serves. A meal with no headCount (or a dish with no
-// serves) stays at recipe scale — factor 1. Nothing is ever written
-// back; this is a pure read transform.
+// D8's scale-on-read, with the recipe box's multiplier taking precedence when
+// a dish has one. A plain dish with no headcount (or no serves) stays at
+// recipe scale — factor 1. Nothing is written back; this is a read transform.
 export async function scaledIngredients(actor: Member, mealId: string): Promise<ScaledIngredient[]> {
   const mealRow = await getMeal(actor, mealId);
   // The meal's effective headcount: typed, or worked out from arrivals.
@@ -119,10 +120,7 @@ export async function scaledIngredients(actor: Member, mealId: string): Promise<
   const dishById = new Map(dishes.map((d) => [d.id, d]));
   return ingredients.map((ing) => {
     const dishRow = dishById.get(ing.dishId)!;
-    const factor =
-      headCount && dishRow.serves && headCount > 0 && dishRow.serves > 0
-        ? headCount / dishRow.serves
-        : 1;
+    const factor = effectiveDishFactor(dishRow, headCount);
     return {
       dishId: ing.dishId,
       dishName: dishRow.name,

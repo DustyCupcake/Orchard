@@ -1,23 +1,32 @@
-import type { MealAttendance, MealConstraintPanel, MealWithDishes, MenuPlanRow } from "@/lib/kitchen";
+import type {
+  MealAttendance,
+  MealCommentWithAuthor,
+  MealConstraintPanel,
+  MealWithDishes,
+  MenuPlanRow,
+} from "@/lib/kitchen";
 import { MEAL_SLOT_LABELS } from "@/lib/kitchen/attendance";
+import { dishFeeds } from "@/lib/kitchen/scaling";
 import type { MealSlot } from "@/db/schema";
 import Modal from "@/components/ui/Modal";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { BUTTON_DESTRUCTIVE, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import {
+  createMealCommentAction,
   createDishAction,
-  createDishIngredientAction,
   deleteDishAction,
-  deleteDishIngredientAction,
   deleteMealAction,
   updateDishAction,
-  updateDishIngredientAction,
   updateMealAction,
 } from "./actions";
 import { getDayLabeler } from "@/lib/day-labeler";
 import { dayHeading } from "@/lib/kitchen/day-heading";
 import { EmptyState, FlagPicker, FlagTags, TextField, formatAmount, ingredientText } from "./parts";
 import { HeadCountWorking, MealForm } from "./MealForm";
+import RecipeTypeahead, { type RecipeOption } from "./RecipeTypeahead";
+import DishIngredientEditor from "./DishIngredientEditor";
+import DishRecipePanel from "./DishRecipePanel";
+import type { DishRecipeLink } from "@/lib/kitchen/recipes";
 
 type Dish = MealWithDishes["dishes"][number];
 
@@ -60,7 +69,7 @@ function DishForm({ dish, mealId }: { dish?: Dish; mealId?: string }) {
   );
 }
 
-function DishEditor({ dish }: { dish: Dish }) {
+function DishEditor({ dish, link }: { dish: Dish; link: DishRecipeLink | null }) {
   return (
     <Modal
       trigger="Edit"
@@ -68,47 +77,11 @@ function DishEditor({ dish }: { dish: Dish }) {
       title={dish.name}
       description="Changes save to the draft menu."
       wide
+      dismissOnBackdrop={false}
     >
       <DishForm dish={dish} />
-
-      <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
-        <span className={LABEL}>Ingredients</span>
-        {dish.ingredients.length === 0 && (
-          <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">None yet.</p>
-        )}
-        {dish.ingredients.map((ing) => (
-          <div key={ing.id} className="flex items-center gap-1.5">
-            <form action={updateDishIngredientAction} className="flex min-w-0 flex-1 items-center gap-1.5">
-              <Tab />
-              <input type="hidden" name="ingredientId" value={ing.id} />
-              <input type="text" name="amount" defaultValue={formatAmount(ing.amount)} placeholder="Amount" aria-label={`${ing.name} amount`} className={`${INPUT} w-20 shrink-0`} />
-              <input type="text" name="unit" defaultValue={ing.unit ?? ""} placeholder="Unit" aria-label={`${ing.name} unit`} className={`${INPUT} w-20 shrink-0`} />
-              <input type="text" name="name" defaultValue={ing.name} required aria-label="Ingredient" className={`${INPUT} min-w-0 flex-1`} />
-              <button type="submit" className={BUTTON_SECONDARY}>
-                Save
-              </button>
-            </form>
-            <form action={deleteDishIngredientAction}>
-              <Tab />
-              <input type="hidden" name="ingredientId" value={ing.id} />
-              <button type="submit" className={BUTTON_DESTRUCTIVE} aria-label={`Remove ${ing.name}`}>
-                ×
-              </button>
-            </form>
-          </div>
-        ))}
-        <form action={createDishIngredientAction} className="flex items-center gap-1.5">
-          <Tab />
-          <input type="hidden" name="dishId" value={dish.id} />
-          <input type="text" name="amount" placeholder="Amount" aria-label="New ingredient amount" className={`${INPUT} w-20 shrink-0`} />
-          <input type="text" name="unit" placeholder="Unit" aria-label="New ingredient unit" className={`${INPUT} w-20 shrink-0`} />
-          <input type="text" name="name" required placeholder="Add an ingredient" aria-label="New ingredient name" className={`${INPUT} min-w-0 flex-1`} />
-          <button type="submit" className={BUTTON_SECONDARY}>
-            Add
-          </button>
-        </form>
-        <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">Leave the amount blank for &ldquo;to taste&rdquo;.</span>
-      </div>
+      <DishIngredientEditor dish={dish} />
+      <DishRecipePanel dishId={dish.id} link={link} />
 
       <form action={deleteDishAction} className="border-t border-[var(--border)] pt-3">
         <Tab />
@@ -154,14 +127,32 @@ function MealEditor({
   );
 }
 
-function DishRow({ dish, editable }: { dish: Dish; editable: boolean }) {
+function DishRow({
+  dish,
+  editable,
+  headCount,
+  link,
+}: {
+  dish: Dish;
+  editable: boolean;
+  headCount: number | null;
+  link: DishRecipeLink | null;
+}) {
+  const feeds = dishFeeds(dish, headCount);
   return (
     <li className="flex flex-col gap-1.5 py-3 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">{dish.name}</span>
         {dish.serves && <span className="text-[length:var(--text-meta)] text-[var(--text-muted)]">serves {dish.serves}</span>}
+        {dish.multiplier !== null && (
+          <Tag tone="accent2">
+            {formatAmount(dish.multiplier)}×{feeds > 0 ? ` · feeds ${Math.round(feeds)}` : ""}
+          </Tag>
+        )}
         {dish.source === "from_idea" && <Tag tone="accent2">from a suggestion</Tag>}
-        {editable && <span className="ml-auto"><DishEditor dish={dish} /></span>}
+        {dish.source === "from_recipe" && <Tag tone="accent2">from the recipe box</Tag>}
+        {editable && link?.changed && <Tag tone="warning">box version changed</Tag>}
+        {editable && <span className="ml-auto"><DishEditor dish={dish} link={link} /></span>}
       </div>
       <FlagTags flags={dish.allergenFlags} />
       {dish.dietaryNote && <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">{dish.dietaryNote}</p>}
@@ -215,6 +206,61 @@ export function MealDietary({ panel }: { panel: MealConstraintPanel }) {
   );
 }
 
+// Draft plans are deliberately readable so members can raise a concern before
+// the plan locks. The thread is attributed and the form is offered on drafts
+// to holders and non-holders alike.
+function MealComments({
+  mealId,
+  comments,
+  canComment,
+}: {
+  mealId: string;
+  comments: MealCommentWithAuthor[];
+  canComment: boolean;
+}) {
+  return (
+    <section className="mt-4 flex flex-col gap-2 border-t border-[var(--border)] pt-3">
+      <span className={LABEL}>Concerns</span>
+      {comments.length === 0 ? (
+        <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">Nothing flagged yet.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {comments.map((comment) => (
+            <li key={comment.id} className="text-[length:var(--text-body)] text-[var(--text)]">
+              <span className="font-medium">{comment.authorName}</span>{" "}
+              <span className="whitespace-pre-line text-[var(--text-muted)]">{comment.body}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {canComment ? (
+        <form action={createMealCommentAction} className="flex flex-col items-start gap-2">
+          <Tab />
+          <input type="hidden" name="mealId" value={mealId} />
+          <textarea
+            name="body"
+            rows={2}
+            required
+            maxLength={2000}
+            placeholder="Something this meal needs the planner to know…"
+            aria-label="Add a concern"
+            className={`${INPUT} w-full`}
+          />
+          <SubmitButton className={BUTTON_SECONDARY} pendingLabel="Adding…">
+            Add concern
+          </SubmitButton>
+        </form>
+      ) : (
+        comments.length > 0 && (
+          <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+            This menu is published, so the thread is read-only.
+          </p>
+        )
+      )}
+    </section>
+  );
+}
+
 function MealCard({
   meal,
   editable,
@@ -224,6 +270,10 @@ function MealCard({
   canUseArrivals,
   times,
   isOwner,
+  comments,
+  canComment,
+  recipeOptions,
+  recipeLinks,
 }: {
   meal: MealWithDishes;
   editable: boolean;
@@ -233,6 +283,10 @@ function MealCard({
   canUseArrivals: boolean;
   times: Record<MealSlot, string>;
   isOwner: boolean;
+  comments: MealCommentWithAuthor[];
+  canComment: boolean;
+  recipeOptions: RecipeOption[];
+  recipeLinks: Map<string, DishRecipeLink>;
 }) {
   return (
     <div className={CARD}>
@@ -264,14 +318,17 @@ function MealCard({
       {meal.dishes.length > 0 ? (
         <ul className="mt-3 divide-y divide-[var(--border)] border-t border-[var(--border)] pt-3">
           {meal.dishes.map((dish) => (
-            <DishRow key={dish.id} dish={dish} editable={editable} />
+            <DishRow key={dish.id} dish={dish} editable={editable} headCount={headCount} link={recipeLinks.get(dish.id) ?? null} />
           ))}
         </ul>
       ) : (
         <p className="mt-3 text-[length:var(--text-body)] text-[var(--text-muted)]">No dishes on this meal yet.</p>
       )}
 
+      {editable && <RecipeTypeahead mealId={meal.id} options={recipeOptions} />}
+
       {panel && <MealDietary panel={panel} />}
+      <MealComments mealId={meal.id} comments={comments} canComment={canComment} />
     </div>
   );
 }
@@ -284,6 +341,9 @@ export default async function MenuTab({
   headCounts,
   attendance,
   times,
+  comments,
+  recipeOptions,
+  recipeLinks,
 }: {
   plan: MenuPlanRow | null;
   meals: MealWithDishes[];
@@ -292,8 +352,13 @@ export default async function MenuTab({
   headCounts: Map<string, number | null>;
   attendance: Map<string, MealAttendance>;
   times: Record<MealSlot, string>;
+  comments: Map<string, MealCommentWithAuthor[]>;
+  recipeOptions: Map<string, RecipeOption[]>;
+  recipeLinks: Map<string, DishRecipeLink>;
 }) {
-  const editable = isOwner && Boolean(plan) && !plan!.publishedAt;
+  const draft = Boolean(plan && !plan.publishedAt);
+  const editable = isOwner && draft;
+  const canComment = draft;
   const labeler = await getDayLabeler();
 
   if (!plan) {
@@ -301,7 +366,7 @@ export default async function MenuTab({
       <EmptyState>
         {isOwner
           ? "There's no menu for this event yet. Start one from the button above, then add the meals."
-          : "No menu has been published for this event yet. You can still suggest a recipe, and the kitchen will see it."}
+          : "No menu has been started for this event yet. You can still suggest a recipe, and the kitchen will see it."}
       </EmptyState>
     );
   }
@@ -310,7 +375,7 @@ export default async function MenuTab({
       <EmptyState>
         {isOwner
           ? "No meals on this menu yet. Add the first one from the button above."
-          : "The menu is published but has no meals on it yet."}
+          : "This menu has no meals on it yet."}
       </EmptyState>
     );
   }
@@ -346,6 +411,10 @@ export default async function MenuTab({
               canUseArrivals={Boolean(plan.cycleId)}
               times={times}
               isOwner={isOwner}
+              comments={comments.get(meal.id) ?? []}
+              canComment={canComment}
+              recipeOptions={recipeOptions.get(meal.id) ?? []}
+              recipeLinks={recipeLinks}
             />
           ))}
         </section>

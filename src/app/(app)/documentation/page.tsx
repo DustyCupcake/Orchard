@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import { listWikiPages, listTaskWikiIndex } from "@/lib/wiki-pages";
 import { listBranches } from "@/lib/settings";
@@ -35,7 +36,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 export default async function DocumentationPage() {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const [pages, taskWikiGroups, branches] = await Promise.all([

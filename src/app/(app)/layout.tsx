@@ -2,11 +2,14 @@ import { redirect } from "next/navigation";
 import { getNavContext } from "@/lib/nav";
 import { getViewingContext } from "@/lib/view-as";
 import AppShell from "@/components/nav/AppShell";
+import { loginUrl } from "@/lib/login-destination";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { real, viewing, viewAs } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    // Sign-in sends the visitor back to the page they were trying to open
+    // (src/proxy.ts hands this layout the requested path).
+    redirect(await loginUrl());
   }
 
   // Every field on NavContext gets computed against `viewing` (the

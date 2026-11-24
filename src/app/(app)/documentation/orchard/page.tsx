@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
@@ -29,7 +30,7 @@ export const dynamic = "force-dynamic";
 export default async function OrchardDocsPage() {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   // Pages describing an optional module are hidden when the Community

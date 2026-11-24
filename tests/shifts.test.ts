@@ -97,6 +97,13 @@ describe("ShiftSeries creation", () => {
     expect(listed.map((s) => s.id)).toEqual([created.id]);
   });
 
+  it("stores a series' tags, normalised, and starts with none", async () => {
+    const { alice } = await setUpModule();
+    expect((await createSeries(alice)).tags).toEqual([]);
+    const tagged = await createSeries(alice, { title: "Cleanup", tags: [" Cooking ", "tidying", "COOKING", ""] });
+    expect(tagged.tags).toEqual(["cooking", "tidying"]);
+  });
+
   it("rejects a branch or source task from another community", async () => {
     const { alice } = await setUpModule();
     const { alice: strangerAlice, branch: strangerBranch } = await createFixtures();
@@ -523,6 +530,34 @@ describe("Editing a series", () => {
       defaultCapacity: 4,
     });
     expect(updated).toMatchObject({ title: "Washing up", description: "Bring gloves", branchId: testBranch.id, defaultCapacity: 4 });
+  });
+
+  it("changes tags (normalised), clears them, and leaves them alone when not given", async () => {
+    const { alice } = await setUpModule();
+    const series = await createSeries(alice, { tags: ["cooking"] });
+
+    expect((await updateShiftSeries(alice, series.id, { title: "Renamed" })).tags).toEqual(["cooking"]);
+    expect((await updateShiftSeries(alice, series.id, { tags: ["Tidying", "tidying", "Groceries"] })).tags).toEqual([
+      "tidying",
+      "groceries",
+    ]);
+    expect((await updateShiftSeries(alice, series.id, { tags: [] })).tags).toEqual([]);
+  });
+
+  it("reaches the upcoming list with the series' tags", async () => {
+    const { alice } = await setUpModule();
+    const series = await createSeries(alice, { tags: ["cooking"] });
+    await generateShiftOccurrences(alice, series.id, {
+      mode: "weekly",
+      startDate: "2099-03-02",
+      endDate: "2099-03-09",
+      daysOfWeek: [2],
+      startTime: "18:00",
+      durationMinutes: 120,
+    });
+    const upcoming = await listUpcomingShiftOccurrences(alice);
+    expect(upcoming.length).toBeGreaterThan(0);
+    expect(upcoming.every((u) => u.series.tags.join() === "cooking")).toBe(true);
   });
 
   it("rejects a branch from another community", async () => {

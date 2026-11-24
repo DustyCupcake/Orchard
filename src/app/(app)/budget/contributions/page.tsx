@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
@@ -22,7 +23,7 @@ const STATUS_LABEL = { pending: "Waiting", confirmed: "Counted", rejected: "Reje
 export default async function MyContributionsPage() {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const moduleOn = isModuleEnabled(await getCommunity(viewing), "budget");

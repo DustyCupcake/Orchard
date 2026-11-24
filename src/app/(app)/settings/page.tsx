@@ -1,5 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { db } from "@/db";
 import { phase, task } from "@/db/schema";
 import { settingsChangeEntityEnum } from "@/db/schema";
@@ -84,7 +85,7 @@ export default async function SettingsPage({
 }) {
   const ctx = await getViewingContext();
   if (!ctx.real || !ctx.viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
   const viewing = ctx.viewing;
 

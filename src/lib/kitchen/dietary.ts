@@ -80,20 +80,21 @@ export type SignalSummary = {
   notAnswered: number;
   /** allergy and intolerance only. */
   members: SignalMember[];
-  /** dislike only: a count per option, never a name. */
+  /** dislike and diet only: a count per option, never a name. */
   tally: { option: string; count: number }[];
   /** Write-ins. Named for allergy/intolerance, where a cook must be able to
-   *  ask; nameless for dislikes, which are only ever a count. */
+   *  ask; nameless for the tally-only signals, which are only ever counts. */
   writeIns: { name: string | null; text: string }[];
 };
 
 export type DietaryOverview = {
   signals: Record<KitchenSignal, SignalSummary>;
-  /** How many of the three signals have a question wired to them. */
+  /** How many of the four signals have a question wired to them. */
   wired: number;
 };
 
-const SIGNALS: KitchenSignal[] = ["allergy", "intolerance", "dislike"];
+const SIGNALS: KitchenSignal[] = ["allergy", "intolerance", "dislike", "diet"];
+const TALLY_SIGNALS: KitchenSignal[] = ["dislike", "diet"];
 
 function emptySummary(signal: KitchenSignal, population: number): SignalSummary {
   return {
@@ -212,7 +213,7 @@ export async function getDietaryOverview(actor: Member, cycleId?: string | null)
             entry.writeIns.push(v);
             continue;
           }
-          if (signal === "dislike") {
+          if (TALLY_SIGNALS.includes(signal)) {
             tally.set(v, (tally.get(v) ?? 0) + 1);
             continue;
           }
@@ -226,7 +227,7 @@ export async function getDietaryOverview(actor: Member, cycleId?: string | null)
         }
       }
 
-      if (signal === "dislike") {
+      if (TALLY_SIGNALS.includes(signal)) {
         // Counts only, so write-ins lose their names too.
         for (const text of entry.writeIns) summary.writeIns.push({ name: null, text });
       } else {

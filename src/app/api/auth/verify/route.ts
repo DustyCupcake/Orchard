@@ -5,26 +5,32 @@ import { getOrCreateCommunity } from "@/lib/community";
 import { createSession } from "@/lib/session";
 import { verifyOwnContactMethodByValue } from "@/lib/contact-methods";
 import { firstLoginDestination } from "@/lib/first-login";
+import { clearLoginDestination, readLoginDestination, withNextParam } from "@/lib/login-destination";
 import { resolveAppUrl } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const appUrl = resolveAppUrl(request);
+  // Read up front: the error redirects below put it back on the retry
+  // URL, and the success path sends the visitor there — a failed
+  // attempt shouldn't throw the destination away.
+  const intended = await readLoginDestination();
+
   const token = request.nextUrl.searchParams.get("token");
   if (!token) {
-    return NextResponse.redirect(new URL("/login?error=missing_token", appUrl));
+    return NextResponse.redirect(new URL(withNextParam("/login?error=missing_token", intended), appUrl));
   }
 
   const email = await consumeMagicLink(token);
   if (!email) {
-    return NextResponse.redirect(new URL("/login?error=invalid_or_expired", appUrl));
+    return NextResponse.redirect(new URL(withNextParam("/login?error=invalid_or_expired", intended), appUrl));
   }
 
   const community = await getOrCreateCommunity();
   const memberRow = await findOrCreateMemberByEmail(community, email);
   if (!memberRow) {
-    return NextResponse.redirect(new URL("/login?error=no_account", appUrl));
+    return NextResponse.redirect(new URL(withNextParam("/login?error=no_account", intended), appUrl));
   }
 
   // Consuming this token *is* the proof, and the three paths that seed an
@@ -48,5 +54,8 @@ export async function GET(request: NextRequest) {
 
   await createSession(memberRow.id);
 
-  return NextResponse.redirect(new URL(firstLoginDestination(memberRow), appUrl));
+  // Consumed: the destination answers "where to go after this login"
+  // once, so the cookie is gone as the person is sent back there.
+  await clearLoginDestination();
+  return NextResponse.redirect(new URL(intended ?? firstLoginDestination(memberRow), appUrl));
 }

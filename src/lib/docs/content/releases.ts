@@ -29,6 +29,43 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-11-23",
+    title: "Sign-in takes you back to the page you were trying to open",
+    summary:
+      "When a click bounces you to the login page, signing in now returns you to that page — with Zitadel or a magic link — instead of the dashboard.",
+    points: [
+      "Click a link while signed out and the app bounces you to the login page, as before — but it now remembers the page you were trying to open.",
+      "Signing in through your community's account system (Zitadel), or with a login link, now returns you to that page instead of the dashboard.",
+      "The destination is an app page, validated before it is used, so a crafted link can't send you somewhere unexpected.",
+      "Logins that start from the front door, with no page you were trying to open, still land you on the dashboard or your first screen as before.",
+    ],
+    source: "a sign-in remembers the page you were trying to open",
+  },
+  {
+    date: "2026-11-23",
+    title: "Shifts: a tab per event, a calendar, and standing shifts on their own",
+    summary: "The Shifts page now shows one event at a time, as a list or a calendar you can sign up from, and keeps repeating shifts in their own tab.",
+    points: [
+      "Each event with shifts has its own tab, plus a Standing tab for shifts that repeat all year. With only one, there are no tabs.",
+      "An event's tab says whether sign-ups are open and who manages them, then shows its shifts as a list by day or as a calendar. Tap a shift on the calendar to sign up or withdraw.",
+      "Shifts at the same time sit side by side. The calendar shows one day on a phone, two on a tablet and three on a computer.",
+      "Filter by tag, branch, day or time of day. Whoever sets up a series can now give it tags, such as cooking or tidying.",
+      "Standing shifts are one card per job, such as \"Weekly on Tue · 18:00–20:00\", with the next shift ready to sign up for.",
+    ],
+    source: "shifts: an event-by-event schedule with a calendar, and standing shifts as their own tab",
+  },
+  {
+    date: "2026-11-23",
+    title: "Move a dish into the recipe box, and pull the box's changes back",
+    summary: "If you hold the kitchen, a dish you built on a menu can now go straight into the recipe box, and a dish copied from the box can catch up when the recipe is improved.",
+    points: [
+      "Open a dish on a draft menu and choose \"Save to the recipe box\". The recipe is added already accepted, in your name, with its ingredients, so you can put it on other menus straight away.",
+      "When someone edits a recipe in the box, dishes copied from it show \"box version changed\" on the draft menu. \"Update from the recipe box\" brings the new name, notes, ingredients and servings into the dish, and keeps the number of portions you chose.",
+      "Updating replaces any ingredient changes you made on the dish, so it asks first. Published menus stay locked, and accepting or declining a recipe doesn't count as a change.",
+    ],
+    source: "a kitchen holder can save a dish to the recipe box, and pull the box's changes back into a dish",
+  },
+  {
     date: "2026-11-22",
     title: "Your plans lead the event page; events, settings and clone live elsewhere",
     summary:
@@ -63,6 +100,31 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Until a community uploads one, the Orchard mark is used. Remove switches back to it.",
     ],
     source: "a community can set its own app icon, and the phone icons come with it",
+  },
+  {
+    date: "2026-11-22",
+    title: "Kitchen forms stop throwing away your work",
+    summary: "Two small fixes from people actually using the Kitchen: a recipe that fails to save now keeps everything you typed, and adding an ingredient no longer closes the dish you were editing.",
+    points: [
+      "If a recipe amount isn't a number, the form shows the error and keeps the title, method, flags and every ingredient row exactly as you wrote them. Fix the amount and submit again — no retyping.",
+      "Adding, changing or removing an ingredient — or saving a multiplier — now leaves the dish editor open. The new row appears in the list and the add box clears, ready for the next one.",
+    ],
+    source: "kitchen forms keep what you typed, and adding an ingredient no longer closes the dish",
+  },
+  {
+    date: "2026-11-22",
+    title: "A community recipe box, and menus you can see while they're draft",
+    summary: "Recipes now have a home beyond one meal: everyone can browse, suggest, Yum and discuss them, and a draft menu is open for early concerns instead of appearing only once it's locked.",
+    points: [
+      "Kitchen's ⋯ menu now has \"Recipe box\". \"Suggest a recipe\" is still the main button; there's no extra item in the navigation.",
+      "Anyone can suggest a recipe, add an attributed comment, and give a Yum. A Yum is just a count of support — it isn't a vote, nothing is ranked, and no list says who Yummed what. Your own recipe counts as a Yum already.",
+      "Whoever currently holds Kitchen can accept a recipe, or decline it with a reason such as a duplicate or something that can't be cooked from. Declined recipes stay visible so their author can fix and resubmit them.",
+      "Only accepted recipes can go into a meal. Choose \"Add to meal plan…\" on a recipe, or type its name into a meal on the Menu tab. The recipe is copied into that meal, so changing the box later doesn't change what you planned.",
+      "The suggested amount comes from how many people still need feeding, rounded to a half portion; you can change it, and the menu and shopping list both use the number you chose.",
+      "Draft menus are visible to everyone now. You can add a concern to any meal while the menu is being worked on; publishing locks the edits and closes those comments.",
+      "If your community has the \"How do you eat?\" question, the Kitchen now shows a tally of veggie, vegan and omni answers. It's a count for planning, not a safety check, and it never names anyone.",
+    ],
+    source: "a community recipe box, draft menus members can read, and a public diet tally",
   },
   {
     date: "2026-11-22",

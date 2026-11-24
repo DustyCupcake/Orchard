@@ -31,6 +31,7 @@ export const KITCHEN_SIGNAL_LABELS: Record<KitchenSignal, string> = {
   allergy: "allergies",
   intolerance: "intolerances",
   dislike: "dislikes",
+  diet: "diet",
 };
 
 /**
@@ -41,9 +42,10 @@ export const KITCHEN_SIGNAL_LABELS: Record<KitchenSignal, string> = {
  * question has to be restricted: a public one is readable by the whole
  * community, and wiring it to the kitchen would imply a protection it doesn't
  * have. And `sensitive` is fixed at creation, so the remedy is the standard
- * one — archive and add again — which the message names. Dislikes are
- * counted, not read, so they need a closed list of options to count; free
- * text can be shown but never tallied.
+ * one — archive and add again — which the message names. Dislikes and diet
+ * are counted, not read, so they need a closed list of options to count; free
+ * text can be shown but never tallied. Neither needs restriction: a count
+ * reveals no individual answer.
  */
 export function kitchenSignalBlocker(
   signal: KitchenSignal,
@@ -58,6 +60,11 @@ export function kitchenSignalBlocker(
     return question.responseType === "multi_choice"
       ? null
       : "A dislikes question has to be a “pick any” list, because the kitchen counts the ticks and cannot count prose.";
+  }
+  if (signal === "diet") {
+    return question.responseType === "single_choice"
+      ? null
+      : "A diet question has to be a single choice, because the kitchen counts one answer per member.";
   }
   if (!question.sensitive) {
     return `An ${signal} question has to be restricted, because the answers are health information and a public question is readable by the whole community. Restriction is fixed when a question is created, so add a restricted one and archive this one.`;

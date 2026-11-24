@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { cycle } from "@/db/schema";
@@ -98,7 +99,7 @@ export default async function RecruitmentHubPage() {
   const clock = await getViewerClock();
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const communityRow = await getCommunity(viewing);

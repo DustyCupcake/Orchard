@@ -1,4 +1,4 @@
-import { date, integer, jsonb, numeric, pgEnum, pgTable, text, time, timestamp, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { date, integer, jsonb, numeric, pgEnum, pgTable, text, time, timestamp, uniqueIndex, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { community } from "./community";
 import { cycle } from "./cycle";
 import { member } from "./member";
@@ -17,7 +17,11 @@ import { shiftSeries } from "./shift";
 // own gate (D3/D4). This file imports community/cycle/phase/member/
 // shift — none of which import it back.
 
-export const dishSourceEnum = pgEnum("dish_source", ["seed", "from_idea"]);
+export const dishSourceEnum = pgEnum("dish_source", ["seed", "from_idea", "from_recipe"]);
+// Curation states for the community recipe box. Suggested and declined recipes
+// stay visible, Yum-able and discussable; only accepted recipes can be applied
+// to a meal. Decline is about a recipe unfit to cook from, not its author.
+export const recipeStatusEnum = pgEnum("recipe_status", ["suggested", "accepted", "declined"]);
 export const foodIdeaKindEnum = pgEnum("food_idea_kind", [
   "recipe_suggestion",
   "dish_request",
@@ -95,13 +99,100 @@ export const meal = pgTable("meal", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Concern comments on a meal. Draft menus are community-readable so a member
+// can raise "this clashes with X" before publishing locks the plan; comments
+// stay attributed, like task comments, because the planner may need to ask.
+// Writes are allowed only while the plan is a draft (enforced in the lib).
+export const mealComment = pgTable("meal_comment", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  mealId: uuid("meal_id")
+    .notNull()
+    .references(() => meal.id),
+  memberId: uuid("member_id")
+    .notNull()
+    .references(() => member.id),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// The community recipe box. This is the reusable recipe, unlike `dish`, which
+// is one meal's occurrence of it. It belongs to the Community rather than a
+// menu or a cycle, so a good recipe survives the event it was suggested in.
+// `communityId` is explicit (unlike the meal's implicit scoping) because the
+// box has no parent plan to inherit it from.
+export const recipe = pgTable("recipe", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  communityId: uuid("community_id")
+    .notNull()
+    .references(() => community.id),
+  title: text("title").notNull(),
+  body: text("body"),
+  serves: integer("serves"),
+  allergenFlags: text("allergen_flags").array().notNull().default([]),
+  dietaryNote: text("dietary_note"),
+  status: recipeStatusEnum("status").notNull().default("suggested"),
+  suggestedBy: uuid("suggested_by")
+    .notNull()
+    .references(() => member.id),
+  reviewedBy: uuid("reviewed_by").references(() => member.id),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  declineReason: text("decline_reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Amounts are recorded at the recipe's own `serves`, like dishIngredient.
+// Null amount is "to taste" — never scaled, and shown as written.
+export const recipeIngredient = pgTable("recipe_ingredient", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  recipeId: uuid("recipe_id")
+    .notNull()
+    .references(() => recipe.id),
+  name: text("name").notNull(),
+  amount: numeric("amount"),
+  unit: text("unit"),
+  sortOrder: integer("sort_order"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// A Yum is an indicative sign of support, not a vote. The member id exists only
+// to make one Yum per member possible; no recipe view ever shows who Yummed it.
+export const recipeYum = pgTable(
+  "recipe_yum",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recipeId: uuid("recipe_id")
+      .notNull()
+      .references(() => recipe.id),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => member.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("recipe_yum_recipe_member_idx").on(table.recipeId, table.memberId)],
+);
+
+// Recipe discussion is attributed, like the Kitchen's other comment threads —
+// a holder may need to ask what "a handful" means.
+export const recipeComment = pgTable("recipe_comment", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  recipeId: uuid("recipe_id")
+    .notNull()
+    .references(() => recipe.id),
+  memberId: uuid("member_id")
+    .notNull()
+    .references(() => member.id),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // A menu item on a meal — a recipe. allergenFlags is a text[] bounded to
 // the ALLERGEN_FLAGS const in src/lib/kitchen/dietary.ts (validated at the
 // application layer), deliberately NOT a DB enum so future flag additions
 // are a one-line change rather than a migration (same const-enum posture
 // as SENSITIVE_FIELD_KEYS). source records where the dish came from —
-// owner-entered ("seed") or adopted from a foodIdea ("from_idea", D5),
-// which links back through sourceIdeaId.
+// owner-entered ("seed"), adopted from a foodIdea ("from_idea", D5), or copied
+// from the community recipe box ("from_recipe", which links through recipeId).
 export const dish = pgTable("dish", {
   id: uuid("id").primaryKey().defaultRandom(),
   mealId: uuid("meal_id")
@@ -119,6 +210,19 @@ export const dish = pgTable("dish", {
   // (dish.sourceIdeaId ↔ foodIdea.adoptedDishId), the same
   // self-referential-FK treatment task.ts's parentTaskId uses.
   sourceIdeaId: uuid("source_idea_id").references((): AnyPgColumn => foodIdea.id),
+  // Provenance for a dish copied from the community recipe box. The dish keeps
+  // its own copy of every field, so later edits to the box don't rewrite a
+  // planned meal.
+  recipeId: uuid("recipe_id").references(() => recipe.id),
+  // When this dish last took its content from the linked recipe (applied,
+  // saved to the box, or updated from it). The recipe has changed since if its
+  // `updatedAt` is later. Null on a dish linked before this column existed,
+  // which reads as "synced when the dish was created".
+  recipeSyncedAt: timestamp("recipe_synced_at", { withTimezone: true }),
+  // The dish's own scale factor for a recipe applied to a meal. Null means a
+  // plain dish, which keeps the older headCount / serves scaling on read.
+  // Applied recipes store the suggested (or planner-edited) multiplier here.
+  multiplier: numeric("multiplier"),
   addedBy: uuid("added_by")
     .notNull()
     .references(() => member.id),

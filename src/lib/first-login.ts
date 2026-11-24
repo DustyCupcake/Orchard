@@ -14,6 +14,11 @@ type Member = typeof memberTable.$inferSelect;
  * "did this login create the account?" is not a question any entry point
  * can answer — the column is.
  *
+ * The one exception: when the visitor was bounced to the login page from
+ * an app page, that page's destination (see login-destination.ts) wins
+ * over this answer, so the rule here is what lands when there is no such
+ * destination.
+ *
  * Deliberately a redirect on entry and nothing more. There is no
  * layout-level guard reading `profileCompletedAt`, so a member who closes
  * the tab on `/welcome` is in the app on their next click like anybody

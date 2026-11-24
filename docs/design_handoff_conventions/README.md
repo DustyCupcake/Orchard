@@ -104,6 +104,7 @@ See the reference file for exact markup/states of each — reproduce as Tailwind
 - **Sidebar**: extend `AppShell.tsx` — logo slot replaces the "Orchard" text wordmark when a community sets one (falls back to the community name set in the display face at `--text-heading`/semibold); active nav item becomes Accent-1-soft background + Accent-1 text + Fill-weight icon (currently `bg-neutral-200/70` neutral).
 - **Banners**: info (Accent-1-soft, e.g. the View-as banner), warning (fixed amber, e.g. On-site mode), danger (fixed red, e.g. conflict alerts) — same three-banner pattern already used in `AppShell.tsx`, just restyled onto the new tokens.
 - **Tabs**: underline style, Accent 1 on the active tab.
+- **Filters**: one `FilterBar` (`src/components/ui/FilterBar.tsx`) wherever a list is filtered — a "Filters" button with the active count opens a `Modal` of controls, and each active filter is a rectangular accent-soft chip with an × (never a pill). Pages describe fields; the bar holds no state.
 - **Empty state**: centered icon + line + ghost action, dashed border container.
 
 ## Interactions & behavior
@@ -117,6 +118,8 @@ Decided 2026-09 with the product owner. This is the component-level grammar for 
 
 ### Action hierarchy — one primary, everything else in a menu
 Every task surface shows **at most one primary action** (state-dependent) plus at most one secondary; all remaining actions live in a `⋯` overflow menu (`src/components/ui/ActionMenu.tsx`, a client dropdown — the one place a real dropdown is used). Menu items that need input (e.g. Park's date+note) are not menu rows — they're a `<details>` disclosure containing the form.
+
+The same grammar is used on the Kitchen page: its primary action stays **Suggest a recipe**, and the community-wide **Recipe box** is a single row in Kitchen's `⋯` menu rather than a competing button or a new nav entry. The box's own pages put **Add to meal plan…** behind a `Modal` for the same reason — one primary per surface, with input-bearing actions disclosed.
 
 **Task config is edited on its own screen.** Everything that *configures* a task — the details form (title, description, branch, event, phase, effort, capacity, critical, tags), requirements, dependencies, milestone add/edit/remove, permission grants — lives at `/tasks/[id]/edit`, reached via the ⋯ menu's "Edit task…" (docs/plans/task-interface-plan.md D1–D2). The detail page itself carries no config edit panels: it keeps *state actions* (claim/finish/park/resume/release, milestone mark-done, confirm/reject-pending) and *content* (the wiki summary, comments, resources), which are the work, not the settings. `<details>` remains the pattern for input-needing action disclosures (Park, split-subtask), not for config.
 

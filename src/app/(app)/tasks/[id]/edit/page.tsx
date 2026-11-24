@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { db } from "@/db";
 import { branch, member } from "@/db/schema";
 import { getViewerClock } from "@/lib/view-clock";
@@ -67,7 +68,7 @@ export default async function TaskEditPage({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const clock = await getViewerClock();

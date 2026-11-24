@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getViewerClock } from "@/lib/view-clock";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import {
   canInitiateCycle,
@@ -59,7 +60,7 @@ export default async function ParticipationPage({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   const { cycleScope } = await params;

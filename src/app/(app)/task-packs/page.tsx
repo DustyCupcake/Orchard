@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import { listTaskPacks } from "@/lib/task-packs";
 import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, CARD } from "@/components/ui/kit";
@@ -22,7 +23,7 @@ export default async function TaskPacksPage({
 }) {
   const { real, viewing } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
   const { error, exported, imported } = await searchParams;
 

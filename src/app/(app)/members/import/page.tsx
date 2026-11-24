@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { loginUrl } from "@/lib/login-destination";
 import { getViewingContext } from "@/lib/view-as";
 import { isAdmin } from "@/lib/settings/admins";
 import { Banner, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT, LABEL } from "@/components/ui/kit";
@@ -35,7 +36,7 @@ export default async function BulkImportPage({
 }) {
   const { real, viewing, viewAs } = await getViewingContext();
   if (!real || !viewing) {
-    redirect("/login");
+    redirect(await loginUrl());
   }
 
   // Admin-only, and a hard redirect rather than a 403: the route is
