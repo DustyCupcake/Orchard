@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { MealAttendance, MealWithDishes, PurchaseListRow, ScaledIngredient, SupplyTaskRow } from "@/lib/kitchen";
-import { CARD, LABEL, Tag } from "@/components/ui/kit";
+import { BUTTON_GHOST, CARD, LABEL, Tag } from "@/components/ui/kit";
 import { getDayLabeler } from "@/lib/day-labeler";
 import { dayHeading } from "@/lib/kitchen/day-heading";
 import { EmptyState, formatAmount } from "./parts";
@@ -14,6 +14,7 @@ function purchaseLine(row: PurchaseListRow): string {
 
 export default async function ShoppingTab({
   cycleId,
+  budgetOn,
   meals,
   purchases,
   scaled,
@@ -23,6 +24,8 @@ export default async function ShoppingTab({
 }: {
   /** The menu's event, or null for the standing menu. */
   cycleId: string | null;
+  /** The Budget module is on, so there is a budget page to link to. */
+  budgetOn: boolean;
   meals: MealWithDishes[];
   purchases: Map<string, PurchaseListRow[]>;
   scaled: Map<string, ScaledIngredient[]>;
@@ -40,6 +43,13 @@ export default async function ShoppingTab({
             Each recipe scaled to the meal&rsquo;s headcount, added up by ingredient name. &ldquo;Flour&rdquo; and
             &ldquo;plain flour&rdquo; stay separate, so glance for near-duplicates.
           </p>
+          {budgetOn && (
+            <div className="mt-1">
+              <Link href={cycleId ? `/${cycleId}/budget` : "/budget/fund"} className={BUTTON_GHOST}>
+                {cycleId ? "See this event\u2019s budget" : "See the community budget"}
+              </Link>
+            </div>
+          )}
         </div>
         {meals.length === 0 ? (
           <EmptyState>Add meals with a headcount and dishes with ingredients, and the list is worked out here.</EmptyState>

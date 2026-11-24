@@ -36,6 +36,14 @@ function modeOf(row: Row): MultiplierMode {
   return "none";
 }
 
+// The client can't import lib/budget's lineItemTotal (that barrel reaches the
+// database), so this mirrors its arithmetic for the preview only. Zod's
+// lineItemInput in the Server Action remains the single source of truth.
+function previewTotal(row: Row, attendeeCount: number | null): number {
+  const multiplier = row.perAttendee ? (attendeeCount ?? 0) : (row.quantity ?? 1);
+  return row.amount * multiplier;
+}
+
 // Structured entry for a BudgetCycle's fixed costs or a proposal's
 // line items — see cycles.ts's lineItemInput for the shape this
 // mirrors. Modeled on settings/FormBuilder.tsx + FieldShapeEditor.tsx
@@ -57,6 +65,7 @@ export default function LineItemsEditor({
   branches,
   minItems = 0,
   allowPerAttendee = true,
+  attendeeCount,
 }: {
   name: string;
   initialItems: BudgetLineItem[];
@@ -64,6 +73,8 @@ export default function LineItemsEditor({
   minItems?: number;
   /** Off for the community's own budget, which has no attendees to multiply by. */
   allowPerAttendee?: boolean;
+  /** Live "coming" count, so a × attendees row can show what it will cost. */
+  attendeeCount?: number | null;
 }) {
   const [rows, setRows] = useState<Row[]>(
     initialItems.length > 0 ? initialItems.map((item) => ({ ...item, key: generateKey() })) : [emptyRow()],
@@ -146,6 +157,13 @@ export default function LineItemsEditor({
                 </option>
               ))}
             </select>
+            {mode !== "none" && row.amount > 0 && (
+              <span className="basis-full text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                {mode === "attendee" && `${attendeeCount ?? 0} attending × ${row.amount.toLocaleString()} = `}
+                {mode === "quantity" && `${row.quantity ?? 1} × ${row.amount.toLocaleString()} = `}
+                {previewTotal(row, attendeeCount ?? null).toLocaleString()}
+              </span>
+            )}
             {rows.length > minItems && (
               <button type="button" onClick={() => removeRow(i)} className={BUTTON_GHOST}>
                 Remove
@@ -157,6 +175,13 @@ export default function LineItemsEditor({
       <button type="button" onClick={() => setRows((prev) => [...prev, emptyRow()])} className={`${BUTTON_SECONDARY} w-fit`}>
         + Add line item
       </button>
+      {rows.some((r) => r.label.trim() && r.amount > 0) && (
+        <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+          Line items total{" "}
+          {rows.reduce((sum, r) => sum + (r.label.trim() && r.amount > 0 ? previewTotal(r, attendeeCount ?? null) : 0), 0).toLocaleString()}
+          {allowPerAttendee && attendeeCount !== undefined && ` over ${attendeeCount ?? 0} people coming`}.
+        </p>
+      )}
     </div>
   );
 }

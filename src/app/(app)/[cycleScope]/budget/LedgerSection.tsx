@@ -10,7 +10,6 @@ import {
   rejectEntryAction,
   requestEventAllocationAction,
   reverseEntryAction,
-  setContributionAskAction,
   settleEventBudgetAction,
 } from "./actions";
 import { formatAmount } from "./format";
@@ -326,10 +325,9 @@ export function ContributionsCard({
   summary,
   isCommunityBudget,
   ledgerHolder,
-  canSetAsk,
+  canEditAsk,
+  editHref,
   canRecord,
-  cycleScope,
-  budgetCycleId,
   recordHref,
   pledgedTotal,
 }: {
@@ -337,10 +335,10 @@ export function ContributionsCard({
   isCommunityBudget: boolean;
   ledgerHolder: boolean;
   /** The owner, while the budget is open. */
-  canSetAsk: boolean;
+  canEditAsk: boolean;
+  /** The edit screen owns the ask form; this card only points to it. */
+  editHref?: string;
   canRecord: boolean;
-  cycleScope: string;
-  budgetCycleId: string | null;
   recordHref: string;
   pledgedTotal: number | null;
 }) {
@@ -358,34 +356,22 @@ export function ContributionsCard({
           ) : (
             <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">No ask has been set for this event yet.</p>
           )}
-          {canSetAsk && (
-            <form action={setContributionAskAction} className="mt-2 flex flex-wrap items-end gap-2">
-              <input type="hidden" name="budgetCycleId" value={budgetCycleId ?? ""} />
-              <input type="hidden" name="cycleScope" value={cycleScope} />
-              <label className="flex flex-col gap-1">
-                <span className={LABEL}>The ask, per person</span>
-                <input
-                  type="number"
-                  name="contributionPerMember"
-                  min={0}
-                  step={1}
-                  defaultValue={summary.ask ?? ""}
-                  placeholder={summary.suggestedAsk !== null ? String(summary.suggestedAsk) : "Not set"}
-                  className={`${INPUT} w-36`}
-                />
-              </label>
-              <button type="submit" className={BUTTON_SECONDARY}>
-                Save the ask
-              </button>
+          {canEditAsk && editHref && (
+            <>
               {summary.suggestedAsk !== null && summary.expectedContributors !== null && (
-                <span className="basis-full text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   {summary.suggestedAsk === 0
                     ? "Income already recorded covers the plan, so nothing more is needed from members — you can still ask for something."
-                    : `What is left to cover comes to about ${formatAmount(summary.suggestedAsk)} each over ${summary.expectedContributors} ${summary.expectedContributors === 1 ? "person" : "people"}.`}
-                  {pledgedTotal !== null && pledgedTotal > 0 && <> {formatAmount(pledgedTotal)} has been pledged.</>} You can ask for more or less. Empty it to clear it.
-                </span>
+                    : `What is left to cover comes to about ${formatAmount(summary.suggestedAsk)} each over ${people(summary.expectedContributors)}.`}
+                  {pledgedTotal !== null && pledgedTotal > 0 && <> {formatAmount(pledgedTotal)} has been pledged.</>} You can ask for more or less there, or clear it.
+                </p>
               )}
-            </form>
+              <p className="mt-2 text-[length:var(--text-meta)]">
+                <Link href={editHref} className="text-[var(--accent-1)] underline">
+                  Change the ask, fixed costs or deadline
+                </Link>
+              </p>
+            </>
           )}
         </div>
       )}

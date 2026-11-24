@@ -30,6 +30,7 @@ import {
   withdrawBudgetProposal,
 } from "@/lib/budget";
 import { AppError } from "@/lib/errors";
+import { parseAskField } from "./format";
 import { budgetPath, COMMUNITY_BUDGET_SCOPE } from "./paths";
 
 // LineItemsEditor.tsx mirrors its row state into one hidden JSON
@@ -70,9 +71,12 @@ function parseProposalLineItemsJson(raw: string): unknown {
 // /budget/fund and not at /fund/budget.
 //
 // `compose` names the form a refused submission came from ("proposal"), so the
-// error lands back on that open form rather than on the page behind it.
-function redirectWithError(cycleScope: string, err: unknown, compose?: string): never {
-  const back = `${budgetPath(cycleScope)}?${compose ? `compose=${compose}&` : ""}error=`;
+// error lands back on that open form rather than on the page behind it. `edit`
+// keeps a refused budget edit on the edit screen — throwing the person back to
+// the overview would lose everything they just typed.
+function redirectWithError(cycleScope: string, err: unknown, compose?: string, edit = false): never {
+  const page = edit ? `${budgetPath(cycleScope)}/edit` : budgetPath(cycleScope);
+  const back = `${page}?${compose ? `compose=${compose}&` : ""}error=`;
   if (err instanceof ZodError) {
     redirect(back + encodeURIComponent(err.issues[0]?.message ?? "Invalid input"));
   }
@@ -109,6 +113,10 @@ export async function updateBudgetCycleAction(formData: FormData) {
     // LineItemsEditor is always pre-loaded with the current fixed costs, so
     // its payload is always the full, deliberately-edited set — sent
     // unconditionally, same as title.
+    // The ask now lives only on the edit screen. Only include it when that
+    // field was actually submitted, so this action stays safe for callers that
+    // only edit title/costs/deadline.
+    const contributionPerMember = parseAskField(formData.get("contributionPerMember"));
     const input = updateBudgetCycleInput.parse({
       title: titleRaw || undefined,
       fixedCosts: parseLineItemsJson(String(formData.get("fixedCostsJson") ?? "")),
@@ -117,13 +125,15 @@ export async function updateBudgetCycleAction(formData: FormData) {
         : deadlineRaw
           ? await eventInstantFromLocal(actor.communityId, (await getBudgetCycle(actor, budgetCycleId)).cycleId, deadlineRaw)
           : undefined,
+      contributionPerMember,
     });
     await updateBudgetCycle(actor, budgetCycleId, input);
   } catch (err) {
-    redirectWithError(cycleScope, err);
+    redirectWithError(cycleScope, err, undefined, formData.get("returnTo") === "edit");
   }
 
   revalidatePath(budgetPath(cycleScope));
+  revalidatePath(`${budgetPath(cycleScope)}/edit`);
   redirect(`${budgetPath(cycleScope)}?cycleUpdated=1`);
 }
 
@@ -397,23 +407,4 @@ export async function closeBudgetProposalAction(formData: FormData) {
   }
   revalidatePath(budgetPath(cycleScope));
   redirect(`${budgetPath(cycleScope)}?proposalClosed=1`);
-}
-
-// The owner sets what each person is asked to contribute to this event: a whole
-// number, or empty to clear it. An average, not a bill. Owner-only and only
-// while the budget is open, enforced inside updateBudgetCycle.
-export async function setContributionAskAction(formData: FormData) {
-  const actor = await requireMember();
-  const budgetCycleId = String(formData.get("budgetCycleId"));
-  const cycleScope = String(formData.get("cycleScope") ?? "active");
-
-  try {
-    const raw = String(formData.get("contributionPerMember") ?? "").trim();
-    await updateBudgetCycle(actor, budgetCycleId, { contributionPerMember: raw === "" ? null : Number(raw) });
-  } catch (err) {
-    redirectWithError(cycleScope, err);
-  }
-
-  revalidatePath(budgetPath(cycleScope));
-  redirect(`${budgetPath(cycleScope)}?askSet=1`);
 }
