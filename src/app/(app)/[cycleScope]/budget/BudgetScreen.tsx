@@ -8,6 +8,7 @@ import { member } from "@/db/schema";
 import { getViewingContext } from "@/lib/view-as";
 import { getCommunity, listBranches } from "@/lib/settings";
 import { isModuleEnabled } from "@/lib/modules";
+import { getMenuPlanOverview, isKitchenOwner, purchaseList, resolveActiveMenuPlan } from "@/lib/kitchen";
 import {
   ensureEventBudget,
   getAllocationOutlook,
@@ -22,16 +23,12 @@ import {
 } from "@/lib/budget";
 import type { BudgetLineItem } from "@/lib/budget";
 import { resolveSingleCycleScope } from "@/lib/cycles";
-import { effectiveTimeZone, localInputFromInstant } from "@/lib/dates";
-import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, CheckField, INPUT, LABEL, Tag } from "@/components/ui/kit";
+import { Banner, BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, CARD, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import PageHeader from "@/components/ui/PageHeader";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import SelectField from "@/components/ui/SelectField";
-import {
-  setBudgetPledgeAction,
-  submitBudgetProposalAction,
-  updateBudgetCycleAction,
-} from "./actions";
+import Tabs from "@/components/ui/Tabs";
+import { setBudgetPledgeAction, submitBudgetProposalAction } from "./actions";
 import { budgetByBranch, formatAmount, formatLineItemDetail } from "./format";
 import { ContributionsCard, EntryForm, EntryList, FundingCard, MoneyCard, SettlementCard } from "./LedgerSection";
 import LineItemsEditor from "./LineItemsEditor";
@@ -40,12 +37,12 @@ import ProposalCard from "./ProposalCard";
 
 export const dynamic = "force-dynamic";
 
-// datetime-local wants "YYYY-MM-DDTHH:mm" with no offset. The deadline is
-// typed on the event's clock, so the field is filled in on that clock too —
-// not the server's.
-function toDatetimeLocal(date: Date, timeZone: string) {
-  return localInputFromInstant(date.toISOString(), timeZone);
-}
+const BUDGET_TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "proposals", label: "Proposals" },
+  { key: "money", label: "Money" },
+] as const;
+type BudgetTab = (typeof BUDGET_TABS)[number]["key"];
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{children}</h2>;
@@ -70,7 +67,6 @@ export type BudgetSearchParams = {
   entryReversed?: string;
   reimbursed?: string;
   proposalClosed?: string;
-  askSet?: string;
   requested?: string;
   settled?: string;
   settling?: string;
@@ -78,7 +74,32 @@ export type BudgetSearchParams = {
   // same `?compose=` technique /schedule and /calendar use. "proposal" is
   // anyone's; "entry" is an expense (a member's) or an entry (the holder's).
   compose?: string;
+  // Set by the kitchen bridge: prefill a proposal's line-item labels from the
+  // shopping list. Amounts are still entered by a human — there are no prices
+  // anywhere in Kitchen.
+  from?: string;
+  tab?: string;
 };
+
+// Which tab each notice belongs to; the rest (a budget update, a settling
+// request) read fine on Overview.
+const NOTICE_TABS: [keyof BudgetSearchParams, BudgetTab][] = [
+  ["submitted", "proposals"],
+  ["updated", "proposals"],
+  ["withdrawn", "proposals"],
+  ["approved", "proposals"],
+  ["declined", "proposals"],
+  ["proposalClosed", "proposals"],
+  ["pledged", "overview"],
+  ["recorded", "money"],
+  ["entryConfirmed", "money"],
+  ["entryRejected", "money"],
+  ["entryReversed", "money"],
+  ["reimbursed", "money"],
+  ["settled", "money"],
+  ["settling", "money"],
+  ["requested", "money"],
+];
 
 const NOTICES: [keyof BudgetSearchParams, string][] = [
   ["submitted", "Proposal submitted."],
@@ -97,7 +118,6 @@ const NOTICES: [keyof BudgetSearchParams, string][] = [
   ["entryReversed", "Entry reversed — an opposite entry cancels it, and the original stays visible."],
   ["reimbursed", "Marked as paid back."],
   ["proposalClosed", "Proposal closed — what was left of it is free again."],
-  ["askSet", "The ask was saved."],
 ];
 
 // See docs/spec.md's Budget and docs/plans/archive/budget-funds-plan.md: proposals are
@@ -125,7 +145,7 @@ export default async function BudgetScreen({
   }
 
   const clock = await getViewerClock();
-  const { error, compose } = searchParams;
+  const { error, compose, from } = searchParams;
 
   const communityRow = await getCommunity(viewing);
   const moduleOn = isModuleEnabled(communityRow, "budget");
@@ -160,8 +180,6 @@ export default async function BudgetScreen({
   const resolvedCycleId = resolution.kind === "resolved" ? resolution.cycle.id : null;
   const isCommunityBudget = resolvedCycleId === null;
   const eventName = resolution.kind === "resolved" ? resolution.cycle.name : null;
-  // The clock the deadline is typed on — the event's, else the community's.
-  const eventClock = effectiveTimeZone(resolution.kind === "resolved" ? resolution.cycle : null, communityRow);
   const backHref = budgetPath(cycleScope);
 
   // An event's budget is made with it. One that predates that, or whose
@@ -175,7 +193,30 @@ export default async function BudgetScreen({
   const eventClosed = resolution.kind === "resolved" && Boolean(resolution.cycle.closedAt);
   const takingPart = hasBudget && !finished && !eventClosed;
 
-  const [branches, proposalViews, plan, pledges, isHolder, allMembers, money, ledger, contributions, outlook, settlement] = await Promise.all([
+  // The bridge to Kitchen is deliberately read-only and scoped to this event.
+  // A shopping list is the holder's surface, so only that holder sees its
+  // lines; everyone else just gets a link to the menu they can already read.
+  const kitchen =
+    moduleOn && !isCommunityBudget && resolvedCycleId && isModuleEnabled(communityRow, "kitchen")
+      ? (async () => {
+          const menu = await resolveActiveMenuPlan(viewing, resolvedCycleId);
+          if (!menu) return null;
+          const overview = await getMenuPlanOverview(viewing, menu.id);
+          const meals = overview?.meals ?? [];
+          const holder = await isKitchenOwner(viewing, resolvedCycleId);
+          if (!holder) return { meals, holder, rows: [] as { mealLabel: string; name: string; amount: number | null; unit: string | null; unmeasured: boolean }[] };
+          const rows = (
+            await Promise.all(
+              meals.map(async (meal) =>
+                (await purchaseList(viewing, meal.id)).map((row) => ({ mealLabel: meal.label, ...row })),
+              ),
+            )
+          ).flat();
+          return { meals, holder, rows };
+        })()
+      : Promise.resolve(null);
+
+  const [branches, proposalViews, plan, pledges, isHolder, allMembers, money, ledger, contributions, outlook, settlement, kitchenView] = await Promise.all([
     moduleOn ? listBranches(viewing) : Promise.resolve([]),
     hasBudget ? listBudgetProposalViews(viewing, resolvedCycleId) : Promise.resolve([]),
     currentCycle ? getEventPlan(viewing, currentCycle.id) : Promise.resolve(null),
@@ -187,6 +228,7 @@ export default async function BudgetScreen({
     hasBudget ? getContributionSummary(viewing, currentCycle?.id ?? null) : Promise.resolve(null),
     currentCycle ? getAllocationOutlook(viewing, currentCycle.id) : Promise.resolve(null),
     currentCycle ? getSettlementState(viewing, currentCycle.id) : Promise.resolve(null),
+    kitchen,
   ]);
   // Money is the grant's holder's and nobody else's: `isHolder` above says who
   // may decide proposals (an open Budget module makes that everyone), while
@@ -243,6 +285,34 @@ export default async function BudgetScreen({
   const hasOpeningBalance = (ledger?.entries ?? []).some((e) => e.entry.kind === "opening_balance");
   const spentByProposal = new Map((money?.proposals ?? []).map((p) => [p.proposalId, p.spent] as const));
 
+  // Actions redirect to the bare page with a notice, so with no ?tab= the tab
+  // is the one the notice is about — a confirmed entry shows on Money, a
+  // decided proposal on Proposals — rather than always dropping on Overview.
+  const noticeTab = NOTICE_TABS.find(([key]) => searchParams[key])?.[1];
+  const activeTab: BudgetTab =
+    BUDGET_TABS.find((t) => t.key === searchParams.tab)?.key ?? noticeTab ?? "overview";
+  const pendingEntries = (ledger?.entries ?? []).filter((e) => e.entry.status === "pending").length;
+  const pendingProposalsTotal = open.reduce((sum, v) => sum + (v.proposal.totalAmount ?? 0), 0);
+  const statusTag = finished ? "Done" : eventClosed ? "Event closed" : "Open";
+  const statusLine = finished
+    ? "Done — the books are closed, so these figures are now a record and editing is locked."
+    : eventClosed
+      ? "This event is closed — proposals, entries and pledges are read-only. The holder can still correct the budget's title, fixed costs, deadline and ask."
+      : deadlinePassed
+        ? "The proposal deadline has passed: no new proposals, but the ones already in can still be backed and decided."
+        : "Open — members can propose spending, and the holder can change the fixed costs, deadline and ask.";
+  // Shopping lines are quantities, never prices (Kitchen has no price data).
+  // Prefill labels only; amount 1 is a placeholder the proposer replaces.
+  const kitchenLineItems: BudgetLineItem[] = kitchenView?.holder
+    ? kitchenView.rows
+        .filter((r) => r.amount !== null)
+        .slice(0, 12)
+        .map((r) => ({
+          label: `${r.mealLabel}: ${r.name}${r.unit ? ` (${r.unit})` : ""}`,
+          amount: 1,
+        }))
+    : [];
+
   const headerAction = composing ? undefined : (
     <>
       {moduleOn && (
@@ -258,6 +328,11 @@ export default async function BudgetScreen({
       {moduleOn && !isCommunityBudget && (
         <Link href={budgetPath(COMMUNITY_BUDGET_SCOPE)} className={BUTTON_GHOST}>
           Community budget
+        </Link>
+      )}
+      {currentCycle && isHolder && !finished && (
+        <Link href={`${backHref}/edit`} className={BUTTON_SECONDARY}>
+          Edit budget
         </Link>
       )}
       {canRecord && (
@@ -413,12 +488,19 @@ export default async function BudgetScreen({
                 </label>
                 <div className="flex flex-col gap-1">
                   <span className={LABEL}>What would the money go on?</span>
+                  {from === "kitchen" && kitchenLineItems.length > 0 && (
+                    <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                      These labels came from the kitchen shopping list. Kitchen records quantities, not prices, so each
+                      line starts at <span className="font-medium">1</span> — replace it with what you expect to pay.
+                    </p>
+                  )}
                   <LineItemsEditor
                     name="lineItemsJson"
-                    initialItems={[]}
+                    initialItems={from === "kitchen" ? kitchenLineItems : []}
                     branches={branches}
                     minItems={1}
                     allowPerAttendee={!isCommunityBudget}
+                    attendeeCount={plan?.attendeeCount ?? null}
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -439,7 +521,7 @@ export default async function BudgetScreen({
                 <>
                   <div className="flex items-center gap-2">
                     <SectionHeading>{currentCycle.title}</SectionHeading>
-                    <Tag tone={finished ? "success" : "neutral"}>{finished ? "Done" : "Open"}</Tag>
+                    <Tag tone={finished ? "success" : eventClosed ? "warning" : "neutral"}>{statusTag}</Tag>
                   </div>
                   <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                     {currentCycle.proposalDeadline
@@ -450,6 +532,68 @@ export default async function BudgetScreen({
                   </p>
                 </>
               )}
+
+              <div className="mt-5">
+                <Tabs tabs={BUDGET_TABS} active={activeTab} hrefFor={(key) => `${backHref}?tab=${key}`} />
+              </div>
+
+              {activeTab === "overview" && (
+                <>
+                  {isCommunityBudget && money && (
+                    <div className={`mt-5 ${CARD}`}>
+                      <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Where things stand</h3>
+                      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text)]">
+                        Balance <span className="font-semibold">{formatAmount(money.balance)}</span> — {formatAmount(money.committed)} set aside for approved spending, {formatAmount(money.available)} available.
+                      </p>
+                      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                        {open.length === 0
+                          ? "No proposals are waiting for a decision."
+                          : `${open.length} proposal${open.length === 1 ? "" : "s"} waiting for a decision, asking ${formatAmount(pendingProposalsTotal)} between them. `}
+                        <Link href={`${backHref}?tab=proposals`} className="text-[var(--accent-1)] underline">
+                          See proposals
+                        </Link>
+                      </p>
+                      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                        {formatAmount(contributions?.paidIn ?? 0)} given so far.{" "}
+                        <Link href={`${backHref}?tab=money`} className="text-[var(--accent-1)] underline">
+                          See the money
+                        </Link>
+                      </p>
+                    </div>
+                  )}
+
+                  {currentCycle && (
+                    <div className={`mt-5 ${CARD}`}>
+                      <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Where things stand</h3>
+                      <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{statusLine}</p>
+                      <div className="mt-3 flex flex-col gap-1 text-[length:var(--text-body)] text-[var(--text)]">
+                        <p>
+                          {open.length === 0
+                            ? "No proposals are waiting for a decision."
+                            : `${open.length} proposal${open.length === 1 ? "" : "s"} waiting for a decision, asking ${formatAmount(pendingProposalsTotal)} between them. `}
+                          <Link href={`${backHref}?tab=proposals`} className="text-[var(--accent-1)] underline">
+                            See proposals
+                          </Link>
+                        </p>
+                        <p>
+                          {contributions?.ask !== null && contributions?.ask !== undefined
+                            ? `${formatAmount(contributions.paidIn)} paid in against an ask of ${formatAmount(contributions.ask)} per person. `
+                            : `${formatAmount(contributions?.paidIn ?? 0)} paid in — no ask set yet. `}
+                          {pendingEntries > 0 && `${pendingEntries} entr${pendingEntries === 1 ? "y is" : "ies are"} waiting for a decision. `}
+                          <Link href={`${backHref}?tab=money`} className="text-[var(--accent-1)] underline">
+                            See the money
+                          </Link>
+                        </p>
+                      </div>
+                      {currentCycle && isHolder && !finished && (
+                        <p className="mt-3 text-[length:var(--text-meta)]">
+                          <Link href={`${backHref}/edit`} className="text-[var(--accent-1)] underline">
+                            Edit fixed costs, deadline and ask
+                          </Link>
+                        </p>
+                      )}
+                    </div>
+                  )}
 
               {currentCycle && plan && (
                 <div className={`mt-4 ${CARD}`}>
@@ -462,12 +606,6 @@ export default async function BudgetScreen({
                     <p className="mt-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
                       About {formatAmount(plan.perMember)} each over {plan.contributorCount}{" "}
                       {plan.attendeeCount && plan.attendeeCount > 0 ? "people coming" : "members"}.
-                    </p>
-                  )}
-                  {plan.pendingCount > 0 && (
-                    <p className="mt-0.5 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                      {plan.pendingCount} proposal{plan.pendingCount === 1 ? "" : "s"} still waiting for a decision, asking{" "}
-                      {formatAmount(plan.pendingTotal)} between them.
                     </p>
                   )}
                   {pledges && (
@@ -516,69 +654,6 @@ export default async function BudgetScreen({
                 </div>
               )}
 
-              {contributions && (
-                <ContributionsCard
-                  summary={contributions}
-                  isCommunityBudget={isCommunityBudget}
-                  ledgerHolder={ledgerHolder}
-                  canSetAsk={Boolean(currentCycle) && ledgerHolder && !finished}
-                  canRecord={canRecord}
-                  cycleScope={cycleScope}
-                  budgetCycleId={currentCycle?.id ?? null}
-                  recordHref={`${backHref}?compose=entry`}
-                  pledgedTotal={pledges?.total ?? null}
-                />
-              )}
-
-              {money && <MoneyCard money={money} isCommunityBudget={isCommunityBudget} />}
-
-              {currentCycle && outlook && (
-                <FundingCard outlook={outlook} isHolder={ledgerHolder && !finished} cycleScope={cycleScope} budgetCycleId={currentCycle.id} />
-              )}
-
-              {currentCycle && isHolder && !finished && (
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-[length:var(--text-body)] text-[var(--accent-1)]">
-                    Edit title / fixed costs / deadline
-                  </summary>
-                  <form action={updateBudgetCycleAction} className="mt-2 flex max-w-[640px] flex-col gap-2">
-                    <input type="hidden" name="budgetCycleId" value={currentCycle.id} />
-                    <input type="hidden" name="cycleScope" value={cycleScope} />
-                    <label className="flex flex-col gap-1">
-                      <span className={LABEL}>Title</span>
-                      <input type="text" name="title" defaultValue={currentCycle.title} className={INPUT} />
-                    </label>
-                    <div className="flex flex-col gap-1">
-                      <span className={LABEL}>Fixed costs</span>
-                      <LineItemsEditor name="fixedCostsJson" initialItems={fixedCosts} branches={branches} />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="flex flex-col gap-1">
-                        <span className={LABEL}>Proposals close (optional), {eventClock}</span>
-                        <input
-                          type="datetime-local"
-                          name="proposalDeadline"
-                          defaultValue={
-                            currentCycle.proposalDeadline
-                              ? toDatetimeLocal(new Date(currentCycle.proposalDeadline), eventClock)
-                              : ""
-                          }
-                          className={`${INPUT} w-fit`}
-                        />
-                      </label>
-                      <CheckField
-                        label="No deadline — keep proposals open until the owner finishes the budget"
-                        name="noDeadline"
-                        defaultChecked={!currentCycle.proposalDeadline}
-                      />
-                    </div>
-                    <button type="submit" className={`${BUTTON_SECONDARY} w-fit`}>
-                      Save changes
-                    </button>
-                  </form>
-                </details>
-              )}
-
               {currentCycle && (
                 <>
                   <SubHeading>
@@ -619,7 +694,44 @@ export default async function BudgetScreen({
                 </p>
               )}
 
-              <SubHeading>Waiting for a decision ({open.length})</SubHeading>
+              {kitchenView && (
+                <div className={`mt-4 ${CARD}`}>
+                  <h3 className="text-[length:var(--text-heading)] font-medium text-[var(--text)]">Food for this event</h3>
+                  <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
+                    {kitchenView.meals.length === 0
+                      ? "No meals on the kitchen menu for this event yet."
+                      : `${kitchenView.meals.length} meal${kitchenView.meals.length === 1 ? "" : "s"} on the kitchen menu.`}
+                    {kitchenView.holder && kitchenView.rows.length > 0
+                      ? ` ${kitchenView.rows.length} shopping lines: ${kitchenView.rows
+                          .slice(0, 6)
+                          .map((r) => r.name)
+                          .join(", ")}${kitchenView.rows.length > 6 ? "…" : ""}.`
+                      : kitchenView.holder
+                        ? " No shopping lines yet — add ingredients to a meal first."
+                        : " The shopping list is kept by the Kitchen holder."}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {canPropose && kitchenView.holder && kitchenView.rows.length > 0 && (
+                      <Link href={`${backHref}?compose=proposal&from=kitchen`} className={BUTTON_SECONDARY}>
+                        Propose these costs
+                      </Link>
+                    )}
+                    <Link href="/kitchen?tab=shopping" className={BUTTON_GHOST}>
+                      Open the kitchen
+                    </Link>
+                  </div>
+                  <p className="mt-2 text-[length:var(--text-meta)] text-[var(--text-muted)]">
+                    Kitchen records quantities, not prices — the proposal form prefills labels only, and you put in the
+                    amounts.
+                  </p>
+                </div>
+              )}
+                </>
+              )}
+
+              {activeTab === "proposals" && (
+                <>
+                  <SubHeading>Waiting for a decision ({open.length})</SubHeading>
               {open.length === 0 && (
                 <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">
                   Nothing is waiting.
@@ -652,20 +764,46 @@ export default async function BudgetScreen({
                 </details>
               )}
 
-              {ledger && (ledgerHolder || ledger.entries.length > 0 || (!isCommunityBudget && takingPart)) && (
-                <>
-                  <SubHeading>{ledgerHolder ? "Money in and out" : "Your payments and expenses"}</SubHeading>
-                  <EntryList
-                    entries={ledger.entries}
-                    asHolder={ledgerHolder}
-                    cycleScope={cycleScope}
-                    proposalTitleById={proposalTitleById}
-                  />
                 </>
               )}
 
-              {currentCycle && settlement && (
-                <SettlementCard state={settlement} cycleScope={cycleScope} budgetCycleId={currentCycle.id} />
+              {activeTab === "money" && (
+                <>
+                  {contributions && (
+                    <ContributionsCard
+                      summary={contributions}
+                      isCommunityBudget={isCommunityBudget}
+                      ledgerHolder={ledgerHolder}
+                      canEditAsk={Boolean(currentCycle) && isHolder && !finished}
+                      editHref={currentCycle && isHolder && !finished ? `${backHref}/edit` : undefined}
+                      canRecord={canRecord}
+                      recordHref={`${backHref}?compose=entry`}
+                      pledgedTotal={pledges?.total ?? null}
+                    />
+                  )}
+
+                  {money && <MoneyCard money={money} isCommunityBudget={isCommunityBudget} />}
+
+                  {currentCycle && outlook && (
+                    <FundingCard outlook={outlook} isHolder={ledgerHolder && !finished} cycleScope={cycleScope} budgetCycleId={currentCycle.id} />
+                  )}
+
+                  {ledger && (ledgerHolder || ledger.entries.length > 0 || (!isCommunityBudget && takingPart)) && (
+                    <>
+                      <SubHeading>{ledgerHolder ? "Money in and out" : "Your payments and expenses"}</SubHeading>
+                      <EntryList
+                        entries={ledger.entries}
+                        asHolder={ledgerHolder}
+                        cycleScope={cycleScope}
+                        proposalTitleById={proposalTitleById}
+                      />
+                    </>
+                  )}
+
+                  {currentCycle && settlement && (
+                    <SettlementCard state={settlement} cycleScope={cycleScope} budgetCycleId={currentCycle.id} />
+                  )}
+                </>
               )}
             </section>
           )}

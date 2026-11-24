@@ -393,6 +393,7 @@ export default async function KitchenPage({
             {activeTab === "shopping" && (
               <ShoppingTab
                 cycleId={visiblePlan?.cycleId ?? null}
+                budgetOn={isModuleEnabled(communityRow, "budget")}
                 meals={meals}
                 purchases={purchases}
                 scaled={scaled}

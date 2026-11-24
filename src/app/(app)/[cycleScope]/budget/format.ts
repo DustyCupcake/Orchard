@@ -1,8 +1,27 @@
 import { lineItemTotal } from "@/lib/budget";
 import type { BudgetLineItem } from "@/lib/budget";
+import { localInputFromInstant } from "@/lib/dates";
 
 export function formatAmount(n: number) {
   return n.toLocaleString();
+}
+
+// datetime-local has no offset, and the deadline is typed on the event's
+// clock. Shared by the budget page and its edit screen so both fill the field
+// the same way (the Server Action converts it back with eventInstantFromLocal).
+export function toDatetimeLocal(date: Date, timeZone: string) {
+  return localInputFromInstant(date.toISOString(), timeZone);
+}
+
+// The edit screen's ask field, read off the form. `undefined` means the field
+// wasn't submitted at all (leave the ask alone); `null` is an emptied field
+// (clear it); otherwise the number typed — which may be NaN or fractional, and
+// is left for updateBudgetCycleInput's zod schema to refuse, so the message
+// the person sees is the one every other caller gets.
+export function parseAskField(raw: FormDataEntryValue | null): number | null | undefined {
+  if (raw === null) return undefined;
+  const text = String(raw).trim();
+  return text === "" ? null : Number(text);
 }
 
 // "8 × 50 = 400" / "23 attendees × 10 = 230" — the per-line breakdown
