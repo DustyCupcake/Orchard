@@ -153,6 +153,7 @@ function ProfileQuestionsSection({
 
   return (
     <SettingsSection
+      id="profile-questions"
       title="Profile questions"
       description="Standing facts about a member — once-ever (an emergency contact), per-event, or tied to one phase name. Everyone's outstanding questions are answered at /questions, which is also where a member lands after saying they're coming to an event."
     >
@@ -478,6 +479,7 @@ function AudiencePickers({
 function TraitAxesSection({ traitAxes }: { traitAxes: (typeof traitAxisTable.$inferSelect)[] }) {
   return (
     <SettingsSection
+      id="trait-axes"
       title="Trait axes"
       description="Bipolar scales — 'wants direction' ↔ 'wants independence' — set on both members (their own preference) and tasks (a proposer's suggestion, reviewed at activation), and compared by proximity to rank onboarding's task suggestions."
     >
@@ -574,6 +576,7 @@ function ConsentPurposesSection({
 }) {
   return (
     <SettingsSection
+      id="consent-purposes"
       title="Consent purposes"
       description="One row per distinct purpose needing a member's consent. Ordinary operational processing gets no row at all."
     >

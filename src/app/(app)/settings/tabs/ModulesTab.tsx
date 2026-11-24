@@ -45,6 +45,7 @@ export default function ModulesTab({
       )}
 
       <SettingsSection
+        id="modules"
         title="What's switched on"
         description="Each of these is a whole area of the app. Nothing here is on by default except what you see ticked — a community that turns everything on is opting into maintaining all of it."
       >
@@ -75,10 +76,12 @@ export default function ModulesTab({
 
       {community.modulesEnabled.includes("budget") && (
         <SettingsSection
+          id="budget"
           title="Budget"
           description="Anyone can propose spending, in an event's budget or in the community's own, and other members back it. The budget's owner approves what has been backed."
         >
           <SettingsGroup
+            id="budget-backing"
             action={updateBudgetSettingsAction}
             submitLabel="Save budget settings"
             title="How much backing a proposal needs"
@@ -96,10 +99,12 @@ export default function ModulesTab({
       )}
 
       <SettingsSection
+        id="after-event"
         title="After an event"
         description="One standing question, asked once an event is over, of everyone in it."
       >
         <SettingsGroup
+          id="feedback-ask"
           action={updatePostCycleFeedbackAction}
           submitLabel="Save feedback form"
           title="The feedback ask"

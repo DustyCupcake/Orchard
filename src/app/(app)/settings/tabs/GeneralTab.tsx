@@ -49,10 +49,12 @@ export default function GeneralTab({
   return (
     <div className="flex flex-col gap-8">
       <SettingsSection
+        id="general-basics"
         title="The basics"
         description="What this community is called, and the two structural switches everything else hangs off."
       >
         <SettingsGroup
+          id="name-and-structure"
           action={updateGeneralBasicsAction}
           submitLabel="Save basics"
           title="Name and structure"
@@ -125,6 +127,7 @@ export default function GeneralTab({
         </SettingsGroup>
 
         <SettingsGroup
+          id="call-defaults"
           action={updateCallDefaultsAction}
           submitLabel="Save call defaults"
           title="What a call needs to be finished"
@@ -163,10 +166,12 @@ export default function GeneralTab({
       </SettingsSection>
 
       <SettingsSection
+        id="look"
         title="Look"
         description="Colours, a logo, and the app icon. Leave the colours and logo blank and the design tokens' own defaults are used; the app icon has a built-in Orchard mark until you upload one."
       >
         <SettingsGroup
+          id="branding"
           action={updateBrandingAction}
           submitLabel="Save branding"
           title="Colours and logo"
@@ -214,6 +219,7 @@ export default function GeneralTab({
         </SettingsGroup>
 
         <SettingsCard
+          id="app-icon"
           action={updateAppIconAction}
           submitLabel="Upload icon"
           affordance="Change"
@@ -262,10 +268,12 @@ export default function GeneralTab({
       </SettingsSection>
 
       <SettingsSection
+        id="signing-in"
         title="Signing in"
         description="Orchard always has magic-link sign-in. Single sign-on is a second way in, not a replacement — leaving all three fields empty means magic-link only."
       >
         <SettingsGroup
+          id="sso"
           action={updateSsoAction}
           submitLabel="Save sign-in settings"
           title="Single sign-on (OIDC)"
@@ -364,6 +372,7 @@ export default function GeneralTab({
       )}
 
       <SettingsSection
+        id="branches"
         title="Branches"
         description="Every task, shift, call and poll belongs to a branch. Branches are how a community splits its own work up without splitting itself in two — and why one can't be deleted out from under the tasks already in it."
       >

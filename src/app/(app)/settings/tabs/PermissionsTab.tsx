@@ -92,6 +92,7 @@ export default function PermissionsTab({
         </section>
       ))}
       <SettingsSection
+        id="tiers"
         title="Tiers"
         description="A bar somebody has to clear. Tiers are what gate things — starting an event, holding a role, seeing a field — and each criterion is either counted by hand or derived from a number of events of one type."
       >
@@ -234,7 +235,10 @@ function PermissionRow({
   const unheld = open && grants.length > 0 && holders === 0;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] py-2 last:border-b-0">
+    <div
+      id={`permission-${moduleKey}`}
+      className="flex scroll-mt-6 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] py-2 last:border-b-0"
+    >
       <div className="min-w-[12rem] flex-1">
         <p className="text-[length:var(--text-body)] text-[var(--text)]">{label}</p>
         <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{describeState(grants, open, holders)}</p>

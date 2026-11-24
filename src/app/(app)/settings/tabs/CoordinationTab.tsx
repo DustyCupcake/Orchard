@@ -10,10 +10,12 @@ export default function CoordinationTab({ community }: { community: typeof commu
   return (
     <div className="flex flex-col gap-8">
       <SettingsSection
+        id="deadlines"
         title="Deadlines"
         description="How long somebody gets before a thing is somebody else's problem. Every one of these is a *quiet* default, not a deadline: nothing is refused when a clock runs out, it just stops being held by the person it was waiting on."
       >
         <SettingsGroup
+          id="response-windows"
           action={updateCoordinationTimingsAction}
           submitLabel="Save deadlines"
           title="Response windows"
@@ -52,10 +54,12 @@ export default function CoordinationTab({ community }: { community: typeof commu
       </SettingsSection>
 
       <SettingsSection
+        id="response-tracking"
         title="Response tracking"
         description="Reads a pattern of engagement across every surface where a member can act — offers, questions, messages, summaries — and puts it in their profile rather than in anybody's dashboard."
       >
         <SettingsGroup
+          id="pattern-thresholds"
           action={updateResponseTrackingAction}
           submitLabel="Save thresholds"
           title="When a pattern is a pattern"
@@ -87,10 +91,12 @@ export default function CoordinationTab({ community }: { community: typeof commu
       </SettingsSection>
 
       <SettingsSection
+        id="indicators"
         title="Indicators"
         description="Community indicators are the patterns the data shows about who takes part — never published about a person, never gated, and shown on /members. This one setting is only about whether a single event's figures may be broken out."
       >
         <SettingsGroup
+          id="event-breakout"
           action={updateIndicatorSettingsAction}
           submitLabel="Save indicator settings"
           title="Breaking out a single event"

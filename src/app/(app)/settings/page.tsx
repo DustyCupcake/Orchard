@@ -25,6 +25,9 @@ import { listConsentPurposes } from "@/lib/consent";
 import { getFoundersAssemblyPromptState } from "@/lib/assemblies";
 import { Banner } from "@/components/ui/kit";
 import { ReadOnlyNote } from "./ui";
+import { TABS, type TabKey } from "./tabs";
+import SettingsSearch from "./SettingsSearch";
+import { buildSettingsIndex } from "./search-index";
 import FoundersAssemblyPrompt from "./FoundersAssemblyPrompt";
 import GeneralTab from "./tabs/GeneralTab";
 import PermissionsTab from "./tabs/PermissionsTab";
@@ -47,17 +50,7 @@ export const dynamic = "force-dynamic";
 // tab to grow past a screen be edited without reading the other six.
 // What stays here is the part that genuinely is one thing:
 // the access check, the data every tab might need, and which tab is
-// active.
-const TABS = [
-  { key: "general", label: "General" },
-  { key: "permissions", label: "Access & permissions" },
-  { key: "operations", label: "Operations" },
-  { key: "recruitment", label: "Recruitment" },
-  { key: "profile-privacy", label: "Profile & Privacy" },
-  { key: "forms", label: "Forms" },
-  { key: "history", label: "History" },
-] as const;
-type TabKey = (typeof TABS)[number]["key"];
+// active. The tab list itself is in ./tabs.ts, shared with the settings search.
 
 // There are no Admin-only tabs. The Members tab used to be one — it was
 // the bulk roster import, and a settings screen nobody opens twice should
@@ -306,6 +299,10 @@ export default async function SettingsPage({
       )}
 
       <div className="mt-6">
+        <SettingsSearch entries={buildSettingsIndex({ kitchenEnabled: isModuleEnabled(communityRow, "kitchen") })} />
+      </div>
+
+      <div className="mt-4">
         <TabBar active={activeTab} tabs={TABS} />
       </div>
 

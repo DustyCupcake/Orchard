@@ -78,6 +78,7 @@ export default async function RecruitmentTab({
   return (
     <div className="flex flex-col gap-8">
       <SettingsSection
+        id="admission-lanes"
         title="Admission lanes"
         description="A lane is a way someone arrives, and sets what happens next. You define only the lanes you need: invitations from members who know someone personally, every other invitation, an open application — or only some of those."
       >
@@ -130,6 +131,7 @@ export default async function RecruitmentTab({
         </SettingsSection>
       ) : (
       <SettingsSection
+        id="application"
         title={relevance.anyApplication ? "The application" : "Evaluation"}
         description={
           relevance.anyApplication
@@ -188,6 +190,7 @@ export default async function RecruitmentTab({
         </SettingsGroup>
 
         <SettingsGroup
+          id="report-policy"
           action={updateRecruitmentDecisionPolicyAction}
           submitLabel="Save how reports decide"
           title="How reports decide"
@@ -206,6 +209,7 @@ export default async function RecruitmentTab({
 
       {showCheckWindow && (
         <SettingsSection
+          id="community-check"
           title="Community check"
           description={
             relevance.anyCheck && opensDiscussion
@@ -216,6 +220,7 @@ export default async function RecruitmentTab({
           }
         >
           <SettingsGroup
+            id="community-check-window"
             action={updateRecruitmentCheckWindowAction}
             submitLabel="Save check window"
             title="How long a community check runs"
@@ -266,10 +271,12 @@ export default async function RecruitmentTab({
       )}
 
       <SettingsSection
+        id="doors"
         title="Doors"
         description="Independent doors, and they really are independent: closing interviews doesn't stop applications, or somebody you know joining outright. Community-wide; each event can also close its own."
       >
         <SettingsGroup
+          id="doors-open"
           action={updateRecruitmentDoorsAction}
           submitLabel="Save doors"
           title="Open right now?"
@@ -310,10 +317,12 @@ export default async function RecruitmentTab({
 
       {relevance.anyInterview && (
         <SettingsSection
+          id="interview"
           title="The interview"
           description="What an applicant is offered around their conversation with the people looking after joining."
         >
           <SettingsGroup
+            id="interview-inviter"
             action={updateInterviewSettingsAction}
             submitLabel="Save"
             title="The person who invited them"
@@ -336,10 +345,12 @@ export default async function RecruitmentTab({
       )}
 
       <SettingsSection
+        id="accompaniment"
         title="Accompaniment"
         description="Someone who is there for a new member from the start: a person to ask questions of and to check in with. It is a task like any other, made when someone is admitted, and the new member is always told about it."
       >
         <SettingsGroup
+          id="accompaniment-on"
           action={updateAccompanimentSettingsAction}
           submitLabel="Save accompaniment"
           title="Does a new member get someone?"
@@ -384,6 +395,7 @@ export default async function RecruitmentTab({
         </SettingsGroup>
 
         <SettingsGroup
+          id="check-ins"
           action={updateAccompanimentCheckInsAction}
           submitLabel="Save check-ins"
           title="Check-ins"

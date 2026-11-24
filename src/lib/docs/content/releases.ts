@@ -29,6 +29,18 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-11-24",
+    title: "Search the community settings",
+    summary:
+      "The community settings page has a search box above its tabs. Type what you're looking for and it takes you to the right tab and opens the setting.",
+    points: [
+      "Type a word or two — \"colours\", \"sso\", \"doors\", \"diet\", \"budget owner\" — and the matching settings are listed with the tab each is on and a line about what it does.",
+      "Choosing a result goes to that tab, scrolls to the section and opens it if it is a collapsed card. Press Enter to take the first result, Escape to clear the box.",
+      "It covers every section across the tabs, each access-and-permissions role, and the History tab; the Kitchen questions are included while the Kitchen is on.",
+    ],
+    source: "the community settings page has a search box",
+  },
+  {
     date: "2026-11-23",
     title: "Sign-in takes you back to the page you were trying to open",
     summary:

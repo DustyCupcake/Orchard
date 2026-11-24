@@ -8,6 +8,17 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## the community settings page has a search box
+
+With seven tabs of one-card-one-save settings, finding where a setting lives meant knowing which tab the implementation had put it on. A search box now sits above the tab bar on `/settings`.
+
+- **Type what you're looking for.** "colors", "sso", "doors", "diet", "budget owner" — each word has to match, a word's start counts ("invit" finds "invited"), and title hits rank above other mentions. Results name the tab and say in a line what the setting is for.
+- **It opens the setting.** A result goes to the right tab and scrolls to the section or card, opening it if it is a collapsed card, so you land on the controls rather than a closed title. Enter takes the first result; Escape clears.
+- **What it covers.** Every section and card across the tabs, one row per access-and-permissions role, the Tiers, the History tab and (while the Kitchen is on) the Kitchen questions. It is a hand-listed index (`src/app/(app)/settings/search-index.ts`); a test fails if an entry points at an id that is no longer on the page, so a renamed or removed card can't leave a dead result.
+- **Nothing else moves.** The tabs are unchanged, and there is deliberately no in-page navigation inside a tab — the tabs are short enough not to need one yet.
+
+Checked: `tsc` clean, ESLint clean on the changed files, and the new `tests/settings-search.test.ts` passes (11 tests). Not checked: a browser pass over the reveal-and-scroll behaviour, or the full suite.
+
 ## one filter bar for the shift views and the task board
 
 Filters were laid out differently on each page: the shift views showed every control inline (a long block on a phone), and the board had two selects and two text toggles in view plus a collapsed "Advanced filters" section whose active filters were invisible. Both now use `FilterBar` (`src/components/ui/FilterBar.tsx`): a **Filters** button showing how many are on, which opens a dialog holding every control (selects, checkboxes, tag checklist, day and time ranges), and a removable chip for each filter that is on — so with nothing on a page carries only the button, which is all a phone shows. Chips are rectangular and accent-soft, per the design conventions (no pill shapes). Changes apply as they are made; "Done" closes the dialog and "Clear filters" resets.
