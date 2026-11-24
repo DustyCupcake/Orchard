@@ -8,6 +8,12 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## permissions on a task read like the settings page
+
+The task edit screen rendered its permission grants as a flat stack of 14 checkboxes, silently dropping Budget, while Settings → Access & permissions showed all 15 modules in two groups. Both surfaces now render the same grouped list from `PERMISSION_MODULE_SECTIONS` through one shared `PermissionGrantFields` component; Budget is present but disabled, links to the setting that actually controls it, and says when a grant is already set on the task. The list hides behind an “Edit permissions” disclosure like the other option-heavy sections of that page (with a “Grants: …” line above it, so what the task grants is still visible while it is closed), and proposal activation uses the same component, so the two ways of granting from a task no longer disagree.
+
+Nothing about authority changed: Budget stays settings-only, the task action still diffs only `TASK_GRANTABLE_PERMISSION_MODULE_KEYS`, and a forged form field still cannot set it. Checked: `tsc` clean, ESLint clean on the changed files; no browser pass.
+
 ## the Kitchen questions count all four, and a single-choice question isn't called a written answer
 
 The Kitchen's dietary questions grew from three to four (diet) but two sentences still counted out of 3, so with three of four set up the Modules banner said "2 of 3" and the Kitchen questions panel said "1 of 3 aren't set up yet". Both now count from the list of signals itself (`KITCHEN_SIGNALS`), through one small helper (`settings/kitchen-copy.ts`) the two share, so a fifth can't repeat it. The banner's closing clause also names diet alongside allergies, intolerances and dislikes.

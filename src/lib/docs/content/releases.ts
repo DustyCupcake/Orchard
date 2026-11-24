@@ -30,6 +30,18 @@ export type ReleaseNote = {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: "2026-11-24",
+    title: "Permissions on a task are easier to scan",
+    summary:
+      "The permissions a task grants now use the same groups as the settings page, with Budget shown as a settings-only item instead of being missing.",
+    points: [
+      "Admins editing a task now see permissions in two groups — community-wide and per-event — matching Access & permissions in community settings.",
+      "Budget appears in the list but stays locked: it is still set only in community settings, with a link there and a note if it is already set on this task.",
+      "The long checkbox list is hidden behind \"Edit permissions\" until you open it; a \"Grants:\" line above it says what the task grants now. The same list is used when activating a proposal.",
+    ],
+    source: "permissions on a task read like the settings page",
+  },
+  {
+    date: "2026-11-24",
     title: "Search the community settings",
     summary:
       "The community settings page has a search box above its tabs. Type what you're looking for and it takes you to the right tab and opens the setting.",

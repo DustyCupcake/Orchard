@@ -287,11 +287,11 @@ export default async function KitchenPage({
         )}
         {moduleOn && (
           <ActionMenu label="Kitchen actions">
-            <Link href="/kitchen/recipes">Recipe box</Link>
+            <Link href="/kitchen/recipes?compose=1">Suggest a recipe</Link>
           </ActionMenu>
         )}
-        <Link href="/kitchen/recipes?compose=1" className={BUTTON_PRIMARY}>
-          Suggest a recipe
+        <Link href="/kitchen/recipes" className={BUTTON_PRIMARY}>
+          Recipe box
         </Link>
       </>
     ) : undefined;
