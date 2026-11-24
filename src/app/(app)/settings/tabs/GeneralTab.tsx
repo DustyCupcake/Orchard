@@ -1,6 +1,6 @@
 import Image from "next/image";
-import type { community as communityTable, member as memberTable, tier as tierTable } from "@/db/schema";
-import { BUTTON_SECONDARY, INPUT } from "@/components/ui/kit";
+import type { branch as branchTable, community as communityTable, member as memberTable, tier as tierTable } from "@/db/schema";
+import { BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { COMMUNITY_ICON_ACCEPT } from "@/lib/settings/community-icon";
 import SignInAccounts from "../SignInAccounts";
@@ -10,14 +10,20 @@ import {
   SettingsCard,
   SettingsField,
   SettingsGroup,
+  SettingsPanel,
   SettingsSection,
   TextField,
   TimeZoneField,
   ToggleField,
 } from "../ui";
 import {
+  confirmPendingBranchAction,
+  createBranchAction,
+  deleteBranchAction,
   removeAppIconAction,
+  rejectPendingBranchAction,
   updateAppIconAction,
+  updateBranchAction,
   updateBrandingAction,
   updateCallDefaultsAction,
   updateGeneralBasicsAction,
@@ -28,10 +34,14 @@ export default function GeneralTab({
   community,
   tiers,
   viewer,
+  confirmedBranches,
+  pendingBranches,
 }: {
   community: typeof communityTable.$inferSelect;
   tiers: (typeof tierTable.$inferSelect)[];
   viewer: typeof memberTable.$inferSelect;
+  confirmedBranches: (typeof branchTable.$inferSelect)[];
+  pendingBranches: (typeof branchTable.$inferSelect)[];
 }) {
   const iconVersion = community.iconUpdatedAt?.getTime();
   const iconSrc = `/api/community/icon/32${iconVersion ? `?v=${iconVersion}` : ""}`;
@@ -39,10 +49,12 @@ export default function GeneralTab({
   return (
     <div className="flex flex-col gap-8">
       <SettingsSection
+        id="general-basics"
         title="The basics"
         description="What this community is called, and the two structural switches everything else hangs off."
       >
         <SettingsGroup
+          id="name-and-structure"
           action={updateGeneralBasicsAction}
           submitLabel="Save basics"
           title="Name and structure"
@@ -115,6 +127,7 @@ export default function GeneralTab({
         </SettingsGroup>
 
         <SettingsGroup
+          id="call-defaults"
           action={updateCallDefaultsAction}
           submitLabel="Save call defaults"
           title="What a call needs to be finished"
@@ -153,10 +166,12 @@ export default function GeneralTab({
       </SettingsSection>
 
       <SettingsSection
+        id="look"
         title="Look"
         description="Colours, a logo, and the app icon. Leave the colours and logo blank and the design tokens' own defaults are used; the app icon has a built-in Orchard mark until you upload one."
       >
         <SettingsGroup
+          id="branding"
           action={updateBrandingAction}
           submitLabel="Save branding"
           title="Colours and logo"
@@ -204,6 +219,7 @@ export default function GeneralTab({
         </SettingsGroup>
 
         <SettingsCard
+          id="app-icon"
           action={updateAppIconAction}
           submitLabel="Upload icon"
           affordance="Change"
@@ -252,10 +268,12 @@ export default function GeneralTab({
       </SettingsSection>
 
       <SettingsSection
+        id="signing-in"
         title="Signing in"
         description="Orchard always has magic-link sign-in. Single sign-on is a second way in, not a replacement — leaving all three fields empty means magic-link only."
       >
         <SettingsGroup
+          id="sso"
           action={updateSsoAction}
           submitLabel="Save sign-in settings"
           title="Single sign-on (OIDC)"
@@ -301,9 +319,153 @@ export default function GeneralTab({
         </SettingsGroup>
         <SignInAccounts community={community} viewer={viewer} />
       </SettingsSection>
+      {pendingBranches.length > 0 && (
+        <SettingsSection
+          title="Waiting on a decision"
+          description="A Task Pack import created these from someone who didn't hold Admins at the time. The tasks are already attached and claimable; confirming locks the branch in, rejecting re-points them at a real one instead."
+        >
+          <div className="flex flex-col gap-2">
+            {pendingBranches.map((b) => (
+              <div
+                key={b.id}
+                className="rounded-[var(--radius-md)] p-3"
+                style={{ background: "var(--warning-soft)", border: "1px solid var(--warning-border)" }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-[length:var(--text-body)] font-medium text-[var(--text)]">{b.name}</span>
+                  <Tag tone="warning">pending</Tag>
+                </div>
+                {b.description && (
+                  <p className="mt-1 text-[length:var(--text-body)] text-[var(--text-muted)]">{b.description}</p>
+                )}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <form action={confirmPendingBranchAction}>
+                    <input type="hidden" name="branchId" value={b.id} />
+                    <button type="submit" className={BUTTON_PRIMARY}>
+                      Confirm
+                    </button>
+                  </form>
+                  <form action={rejectPendingBranchAction} className="flex items-center gap-2">
+                    <input type="hidden" name="branchId" value={b.id} />
+                    <label className="flex flex-col gap-1">
+                      <span className={LABEL}>Or reassign its tasks to</span>
+                      <select name="reassignToBranchId" required defaultValue="" className={INPUT}>
+                        <option value="" disabled>
+                          — pick a branch —
+                        </option>
+                        {confirmedBranches.map((cb) => (
+                          <option key={cb.id} value={cb.id}>
+                            {cb.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button type="submit" className={BUTTON_SECONDARY}>
+                      Reject
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
+        </SettingsSection>
+      )}
+
+      <SettingsSection
+        id="branches"
+        title="Branches"
+        description="Every task, shift, call and poll belongs to a branch. Branches are how a community splits its own work up without splitting itself in two — and why one can't be deleted out from under the tasks already in it."
+      >
+        {confirmedBranches.length === 0 && (
+          <SettingsPanel>
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
+              No branches yet. A community with none can&rsquo;t hold a task, so this is the first
+              thing to set up.
+            </p>
+          </SettingsPanel>
+        )}
+
+        {confirmedBranches.map((b) => (
+          <SettingsCard
+            key={b.id}
+            action={updateBranchAction}
+            submitLabel="Save branch"
+            title={b.name}
+            stateLabel={`${b.name}, a branch. Its description and its call defaults`}
+            state={
+              <>
+                {b.description?.trim() || "No description yet."}{" "}
+                {b.defaultCallHasAgenda === null &&
+                b.defaultCallNeedsSummary === null &&
+                b.defaultCallRequireRead === null ? (
+                  <>Calls use the community defaults.</>
+                ) : (
+                  <>
+                    Calls here need{" "}
+                    {[
+                      b.defaultCallHasAgenda === true ? "an agenda" : b.defaultCallHasAgenda === false ? "no agenda" : null,
+                      b.defaultCallNeedsSummary === true ? "a summary" : b.defaultCallNeedsSummary === false ? "no summary" : null,
+                      b.defaultCallRequireRead === true ? "read confirmation" : b.defaultCallRequireRead === false ? "no read confirmation" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "nothing beyond the community default"}
+                    .
+                  </>
+                )}
+              </>
+            }
+            aside={
+              <form action={deleteBranchAction}>
+                <input type="hidden" name="branchId" value={b.id} />
+                <button type="submit" className={BUTTON_SECONDARY}>
+                  Delete
+                </button>
+              </form>
+            }
+          >
+            <input type="hidden" name="branchId" value={b.id} />
+            <TextField label="Name" name="name" defaultValue={b.name} required />
+            <TextAreaish
+              label="What this branch is for"
+              name="description"
+              defaultValue={b.description ?? ""}
+            />
+            <SelectField
+              label="Calls need an agenda"
+              name="defaultCallHasAgenda"
+              defaultValue={triState(b.defaultCallHasAgenda)}
+              options={TRISTATE_OPTIONS}
+            />
+            <SelectField
+              label="Calls need a summary"
+              name="defaultCallNeedsSummary"
+              defaultValue={triState(b.defaultCallNeedsSummary)}
+              options={TRISTATE_OPTIONS}
+            />
+            <SelectField
+              label="Summaries need reading"
+              name="defaultCallRequireRead"
+              defaultValue={triState(b.defaultCallRequireRead)}
+              options={TRISTATE_OPTIONS}
+            />
+          </SettingsCard>
+        ))}
+
+        <SettingsCard
+          action={createBranchAction}
+          submitLabel="Create branch"
+          title="Add a branch"
+          affordance="Create"
+          description="One sentence on what it's for is enough. Everything else is filled in later."
+        >
+          <TextField label="Name" name="name" required />
+          <TextAreaish label="What it's for" name="description" />
+        </SettingsCard>
+      </SettingsSection>
     </div>
   );
 }
+
 
 /** The colour as a chip, so the state line answers "what does the app look
  *  like" without the reader having to interpret a hex string. */
@@ -328,4 +490,30 @@ function hostOf(issuerUrl: string): string {
   } catch {
     return issuerUrl;
   }
+}
+function TextAreaish({
+  label,
+  name,
+  defaultValue,
+}: {
+  label: string;
+  name: string;
+  defaultValue?: string;
+}) {
+  return (
+    <label className="flex max-w-[420px] flex-col gap-1">
+      <span className={LABEL}>{label}</span>
+      <textarea name={name} rows={2} defaultValue={defaultValue} className={`${INPUT} disabled:opacity-60`} />
+    </label>
+  );
+}
+
+const TRISTATE_OPTIONS = [
+  { value: "inherit", label: "Use the community's default" },
+  { value: "on", label: "Always required here" },
+  { value: "off", label: "Never required here" },
+];
+
+function triState(value: boolean | null) {
+  return value === null ? "inherit" : value ? "on" : "off";
 }

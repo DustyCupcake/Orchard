@@ -63,7 +63,7 @@ export async function reviewPackImportAction(formData: FormData) {
     } catch (err) {
       redirectWithError(packId, err);
     }
-    redirect("/participation?cycleCreated=1");
+    redirect("/manage-events?cycleCreated=1");
   }
 
   const state = encodeImportState({ cycleName, cycleTypeId, resolvedHints, declinedHints });
@@ -117,5 +117,5 @@ export async function finalizePackImportAction(formData: FormData) {
     throw err;
   }
 
-  redirect("/participation?cycleCreated=1");
+  redirect("/manage-events?cycleCreated=1");
 }

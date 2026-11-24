@@ -37,6 +37,7 @@ export default function FormsTab({
 }) {
   return (
     <SettingsSection
+      id="forms-list"
       title="Forms"
       description="Every set of questions in the app is a form — the application, post-event feedback, scheduling polls, anything. A form can be tagged so a field maps onto a profile question, which is how a person's application fills in their own profile instead of asking twice."
     >

@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // The Community's own saved-pack library — see docs/spec.md's Task
 // Pack ("packs round-trip as a plain file... not a hosted registry")
 // and docs/plans/development-plan.md's Phase 55. Exporting happens from
-// /participation (against a specific cycle); this page is where a
+// /[cycleScope]/settings (against a specific cycle); this page is where a
 // saved pack gets managed afterward — downloaded to hand to another
 // deployment, uploaded from one handed to you, archived, or picked up
 // to actually start a new cycle from (see /task-packs/import/[id]).
@@ -37,8 +37,8 @@ export default async function TaskPacksPage({
         title="Task Packs"
         description={
           <>
-            A portable, importable bundle of tasks — export an event&rsquo;s task set from{" "}
-            <Link href="/participation" className="text-[var(--accent-1)] hover:underline">Participation</Link>, or upload a file someone handed you from
+            A portable, importable bundle of tasks — export an event&rsquo;s task set from its settings page (open the event from{" "}
+            <Link href="/manage-events" className="text-[var(--accent-1)] hover:underline">Manage events</Link>), or upload a file someone handed you from
             another deployment below. Import one into a new event from here.
           </>
         }

@@ -29,6 +29,18 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-11-24",
+    title: "Search the community settings",
+    summary:
+      "The community settings page has a search box above its tabs. Type what you're looking for and it takes you to the right tab and opens the setting.",
+    points: [
+      "Type a word or two — \"colours\", \"sso\", \"doors\", \"diet\", \"budget owner\" — and the matching settings are listed with the tab each is on and a line about what it does.",
+      "Choosing a result goes to that tab, scrolls to the section and opens it if it is a collapsed card. Press Enter to take the first result, Escape to clear the box.",
+      "It covers every section across the tabs, each access-and-permissions role, and the History tab; the Kitchen questions are included while the Kitchen is on.",
+    ],
+    source: "the community settings page has a search box",
+  },
+  {
     date: "2026-11-23",
     title: "Sign-in takes you back to the page you were trying to open",
     summary:
@@ -64,6 +76,31 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Updating replaces any ingredient changes you made on the dish, so it asks first. Published menus stay locked, and accepting or declining a recipe doesn't count as a change.",
     ],
     source: "a kitchen holder can save a dish to the recipe box, and pull the box's changes back into a dish",
+  },
+  {
+    date: "2026-11-22",
+    title: "Your plans lead the event page; events, settings and clone live elsewhere",
+    summary:
+      "The event page is now shaped around your participation — your plans are first — and everything else moved to other places: the manage events page (the events, event types and create form), the event settings page (capacity, dates, doors, lanes, phases, the waitlist), and a status circle on each event in the switcher.",
+    points: [
+      "The event page (/{id}/participation) shows the event's name and a brief overview — capacity, coming, remaining seats, the returning window — at the top, then \"Your plans\" — the form where you say you're coming, your dates and your note — as the first thing you see. The shift roster, event settings, lanes, phases, waitlist and export moved off this page.",
+      "The nav switcher's \"Manage events\" now opens /manage-events: the community's events, open ones first, each with an Edit button to its settings page; the event types; and the form to start a new event — blank or cloned from the most recent.",
+      "Each event's settings live at /{id}/settings — capacity, dates, time zone, doors, application form, joining windows, plus its lanes, phase dates and the waitlist, at the top: the people approved but the event is full. The gear icon next to each event in the switcher now opens this page. Closed events have no settings page, and closing one returns you to the manage events page.",
+      "A status circle sits next to each event in the switcher: green for coming, yellow for maybe, dark for not coming, and an empty outline when you haven't said. Clicking it goes to your participation page.",
+      "The community settings page is now 7 tabs instead of 10: Branches moved into General, Tiers into Access & permissions, Coordination and Modules are now one \"Operations\" tab, and the Events & Tiers tab is gone — its event types are on the manage events page.",
+    ],
+    source: "the event page is for your plans; events, settings and clone live elsewhere",
+  },
+  {
+    date: "2026-11-22",
+    title: "Archived questions have one home; the Events tab lists the events",
+    summary:
+      "The Profile & Privacy tab's Public and Restricted groups no longer mix archived questions into the questions still being asked — they now sit together under one collapsed group at the end of the section. The Events & Tiers tab starts with a list of the community's events.",
+    points: [
+      "The Public and Restricted groups on Profile & Privacy show only the questions that are still being asked — standing and per-event ones, plus the dormant per-event ones under their own \"more for other events\" group. Archived questions appear together under \"Archived questions (N)\", collapsed by default, where you can unarchive any of them or open its card for its facts and past answers.",
+      "The Events & Tiers tab now starts with an \"Events\" section: one line per event, its date range and capacity, and whether it is closed — each linking to the event's own settings (then /{id}/participation, now /{id}/settings). Event dates, capacity and joining rules still live on that settings page.",
+    ],
+    source: "archived profile questions live in one place; the Events & Tiers tab lists the community's events",
   },
   {
     date: "2026-11-22",

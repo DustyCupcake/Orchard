@@ -38,17 +38,21 @@ import ValueKeyedSelect from "@/components/ui/SelectField";
 
 // --- layout ---------------------------------------------------------------
 
+// `id` on the three blocks below is the anchor the settings search links to
+// (see ./search-index.ts, whose test checks every entry's id exists).
 export function SettingsSection({
+  id,
   title,
   description,
   children,
 }: {
+  id?: string;
   title: string;
   description?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-3">
+    <section id={id} className="flex scroll-mt-6 flex-col gap-3">
       <div>
         <h2 className="text-[length:var(--text-title)] font-semibold text-[var(--text)]">{title}</h2>
         {description && <p className="mt-1 max-w-[620px] text-[length:var(--text-body)] text-[var(--text-muted)]">{description}</p>}
@@ -156,6 +160,7 @@ function summaryLabel(
 // either — it carries destructive actions (a branch's Delete) and a nested
 // form, and putting either in a summary row is both invalid and wrong.
 export function SettingsCard({
+  id,
   title,
   state,
   stateLabel,
@@ -167,6 +172,7 @@ export function SettingsCard({
   encType,
   children,
 }: {
+  id?: string;
   title?: ReactNode;
   state?: ReactNode;
   /** The same information as `state`, as one plain string, for the
@@ -187,7 +193,7 @@ export function SettingsCard({
   children: ReactNode;
 }) {
   return (
-    <details className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
+    <details id={id} className="scroll-mt-6 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface)] p-4">
       <summary
         aria-label={summaryLabel(title, state, stateLabel, affordance)}
         className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1"
@@ -489,6 +495,7 @@ export function FieldGroup({ legend, children }: { legend: string; children: Rea
  * of the `state` this already takes, and is deliberately not attempted here.
  */
 export function SettingsGroup({
+  id,
   title,
   state,
   stateLabel,
@@ -498,6 +505,7 @@ export function SettingsGroup({
   submitLabel = "Save",
   children,
 }: {
+  id?: string;
   title: ReactNode;
   state?: ReactNode;
   /** The same information as `state` as one readable string, for the
@@ -527,7 +535,7 @@ export function SettingsGroup({
     // the whole effect, and it cannot be reproduced with a div and a
     // heading. The disclosure lives *inside* it so the group can still be
     // closed until you ask for the controls.
-    <fieldset className="rounded-[var(--radius-md)] border border-[var(--border)] p-3.5">
+    <fieldset id={id} className="scroll-mt-6 rounded-[var(--radius-md)] border border-[var(--border)] p-3.5">
       <legend className="px-1 text-[length:var(--text-meta)] font-medium text-[var(--text-muted)]">{title}</legend>
       <details>
         <summary

@@ -19,23 +19,22 @@ import { listCycles } from "@/lib/cycles";
 import { resolveViewScopeCycleForMember } from "@/lib/cycles/view-scope";
 import { listProfileQuestions } from "@/lib/profile-questions";
 import { listTraitAxes } from "@/lib/trait-axes";
-import { listTaskPacks } from "@/lib/task-packs";
 import { listSensitiveFieldAccessRules } from "@/lib/sensitive-data";
 import { listForms } from "@/lib/forms";
 import { listConsentPurposes } from "@/lib/consent";
 import { getFoundersAssemblyPromptState } from "@/lib/assemblies";
 import { Banner } from "@/components/ui/kit";
 import { ReadOnlyNote } from "./ui";
+import { TABS, type TabKey } from "./tabs";
+import SettingsSearch from "./SettingsSearch";
+import { buildSettingsIndex } from "./search-index";
 import FoundersAssemblyPrompt from "./FoundersAssemblyPrompt";
 import GeneralTab from "./tabs/GeneralTab";
 import PermissionsTab from "./tabs/PermissionsTab";
-import CoordinationTab from "./tabs/CoordinationTab";
-import ModulesTab from "./tabs/ModulesTab";
+import OperationsTab from "./tabs/OperationsTab";
 import { unwiredKitchenSignals } from "./KitchenQuestionsPanel";
 import { isModuleEnabled } from "@/lib/modules";
 import RecruitmentTab from "./tabs/RecruitmentTab";
-import BranchesTab from "./tabs/BranchesTab";
-import CyclesTiersTab from "./tabs/CyclesTiersTab";
 import ProfilePrivacyTab from "./tabs/ProfilePrivacyTab";
 import FormsTab from "./tabs/FormsTab";
 import HistoryTab from "./tabs/HistoryTab";
@@ -43,28 +42,15 @@ import { countSettingsChangesByEntity, listSettingsChanges } from "@/lib/setting
 
 export const dynamic = "force-dynamic";
 
-// The tabs are now ten files under ./tabs rather than ten blocks in a
+// The tabs are now seven files under ./tabs rather than seven blocks in a
 // 2000-line page. The split isn't cosmetic: each tab's body moved with
-// its own actions and its own helpers, which is what let the four
-// community-settings tabs be rebuilt around one-card-one-save (see
-// ./ui.tsx) without touching the six CRUD tabs' behaviour, and what will
-// let the next tab to grow past a screen be edited without reading the
-// other nine. What stays here is the part that genuinely is one thing:
+// its own actions and its own helpers, which is what let the community-
+// settings tabs be rebuilt around one-card-one-save (see ./ui.tsx)
+// without touching the CRUD tabs' behaviour, and what will let the next
+// tab to grow past a screen be edited without reading the other six.
+// What stays here is the part that genuinely is one thing:
 // the access check, the data every tab might need, and which tab is
-// active.
-const TABS = [
-  { key: "general", label: "General" },
-  { key: "permissions", label: "Access & permissions" },
-  { key: "coordination", label: "Coordination" },
-  { key: "modules", label: "Modules" },
-  { key: "recruitment", label: "Recruitment" },
-  { key: "branches", label: "Branches" },
-  { key: "cycles-tiers", label: "Events & Tiers" },
-  { key: "profile-privacy", label: "Profile & Privacy" },
-  { key: "forms", label: "Forms" },
-  { key: "history", label: "History" },
-] as const;
-type TabKey = (typeof TABS)[number]["key"];
+// active. The tab list itself is in ./tabs.ts, shared with the settings search.
 
 // There are no Admin-only tabs. The Members tab used to be one — it was
 // the bulk roster import, and a settings screen nobody opens twice should
@@ -122,7 +108,6 @@ export default async function SettingsPage({
     forms,
     consentPurposes,
     pendingBranches,
-    taskPacks,
     communityTasks,
     currentPhaseNames,
   ] = await Promise.all([
@@ -137,7 +122,6 @@ export default async function SettingsPage({
     listForms(viewing, { includeArchived: true }),
     listConsentPurposes(viewing),
     authorized ? listPendingBranches(viewing) : Promise.resolve([]),
-    listTaskPacks(viewing),
     listTasks(viewing),
     // The phase names of the event this member is currently looking at, so
     // the Profile & Privacy tab can put a phase-scoped question under "for
@@ -315,6 +299,10 @@ export default async function SettingsPage({
       )}
 
       <div className="mt-6">
+        <SettingsSearch entries={buildSettingsIndex({ kitchenEnabled: isModuleEnabled(communityRow, "kitchen") })} />
+      </div>
+
+      <div className="mt-4">
         <TabBar active={activeTab} tabs={TABS} />
       </div>
 
@@ -327,12 +315,12 @@ export default async function SettingsPage({
       {/* Read-only is still one `<fieldset disabled>` around the whole tab
           body, and still deliberately. HTML disables every descendant form
           control, which covers the inputs, every per-card Save button and
-          every delete/archive button in one attribute — in all ten tab
+          every delete/archive button in one attribute — in all seven tab
           files, none of which has to remember to thread a prop down. It is
           also the only mechanism that reaches the `type="button"`-driven
           widgets (FormBuilder, FieldShapeEditor, StarterQuestionPicker),
           which are not form controls at all; a prop would be the only thing
-          that could, and ten hand-written tab files is a lot of surface for
+          that could, and seven hand-written tab files is a lot of surface for
           one attribute to be missing from.
 
           What changed is the other half. The old wrapper carried
@@ -347,14 +335,16 @@ export default async function SettingsPage({
           The `requireAdmins` call in every action below stays the actual
           gate either way. */}
       <fieldset disabled={!authorized} className="mt-6 min-w-0">
-        {activeTab === "general" && <GeneralTab community={communityRow} tiers={tiers} viewer={viewing} />}
+        {activeTab === "general" && (
+          <GeneralTab community={communityRow} tiers={tiers} viewer={viewing} confirmedBranches={confirmedBranches} pendingBranches={pendingBranches} />
+        )}
 
-        {activeTab === "permissions" && permissionsData && <PermissionsTab {...permissionsData} />}
+        {activeTab === "permissions" && permissionsData && (
+          <PermissionsTab {...permissionsData} tiers={tiers} cycleTypes={cycleTypes} />
+        )}
 
-        {activeTab === "coordination" && <CoordinationTab community={communityRow} />}
-
-        {activeTab === "modules" && (
-          <ModulesTab
+        {activeTab === "operations" && (
+          <OperationsTab
             community={communityRow}
             forms={forms}
             unwiredKitchenSignals={isModuleEnabled(communityRow, "kitchen") ? unwiredKitchenSignals(profileQuestions) : []}
@@ -367,19 +357,6 @@ export default async function SettingsPage({
             forms={forms}
             tiers={tiers}
             authorized={authorized}
-          />
-        )}
-
-        {activeTab === "branches" && (
-          <BranchesTab confirmedBranches={confirmedBranches} pendingBranches={pendingBranches} />
-        )}
-
-        {activeTab === "cycles-tiers" && (
-          <CyclesTiersTab
-            tiers={tiers}
-            cycleTypes={cycleTypes}
-            taskPacks={taskPacks}
-            cycles={cycles.map((c) => ({ id: c.id, name: c.name }))}
           />
         )}
 

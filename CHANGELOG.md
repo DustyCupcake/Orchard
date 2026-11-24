@@ -8,6 +8,27 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## the Kitchen questions count all four, and a single-choice question isn't called a written answer
+
+The Kitchen's dietary questions grew from three to four (diet) but two sentences still counted out of 3, so with three of four set up the Modules banner said "2 of 3" and the Kitchen questions panel said "1 of 3 aren't set up yet". Both now count from the list of signals itself (`KITCHEN_SIGNALS`), through one small helper (`settings/kitchen-copy.ts`) the two share, so a fifth can't repeat it. The banner's closing clause also names diet alongside allergies, intolerances and dislikes.
+
+The panel described every wired question that wasn't "pick any" as a "written answer", which is wrong for the diet question (a single choice). It now says "pick one" for a single choice, "pick any" for a multi-choice and "written answer" only for text.
+
+Still open: an Admin reported that after adding the diet starter question its question-type dropdown showed "Text" until the page was refreshed. Reading the code did not find the cause — the editor takes its type from the saved question and the cards are keyed by question id — so it is not fixed here and needs a reproduction in a browser.
+
+Checked: `tsc` clean, ESLint clean on the changed files, and `tests/kitchen-copy.test.ts` passes.
+
+## the community settings page has a search box
+
+With seven tabs of one-card-one-save settings, finding where a setting lives meant knowing which tab the implementation had put it on. A search box now sits above the tab bar on `/settings`.
+
+- **Type what you're looking for.** "colors", "sso", "doors", "diet", "budget owner" — each word has to match, a word's start counts ("invit" finds "invited"), and title hits rank above other mentions. Results name the tab and say in a line what the setting is for.
+- **It opens the setting.** A result goes to the right tab and scrolls to the section or card, opening it if it is a collapsed card, so you land on the controls rather than a closed title. Enter takes the first result; Escape clears.
+- **What it covers.** Every section and card across the tabs, one row per access-and-permissions role, the Tiers, the History tab and (while the Kitchen is on) the Kitchen questions. It is a hand-listed index (`src/app/(app)/settings/search-index.ts`); a test fails if an entry points at an id that is no longer on the page, so a renamed or removed card can't leave a dead result.
+- **Nothing else moves.** The tabs are unchanged, and there is deliberately no in-page navigation inside a tab — the tabs are short enough not to need one yet.
+
+Checked: `tsc` clean, ESLint clean on the changed files, and the new `tests/settings-search.test.ts` passes (11 tests). Not checked: a browser pass over the reveal-and-scroll behaviour, or the full suite.
+
 ## one filter bar for the shift views and the task board
 
 Filters were laid out differently on each page: the shift views showed every control inline (a long block on a phone), and the board had two selects and two text toggles in view plus a collapsed "Advanced filters" section whose active filters were invisible. Both now use `FilterBar` (`src/components/ui/FilterBar.tsx`): a **Filters** button showing how many are on, which opens a dialog holding every control (selects, checkboxes, tag checklist, day and time ranges), and a removable chip for each filter that is on — so with nothing on a page carries only the button, which is all a phone shows. Chips are rectangular and accent-soft, per the design conventions (no pill shapes). Changes apply as they are made; "Done" closes the dialog and "Clear filters" resets.
@@ -61,6 +82,27 @@ The recipe box only worked one way: a recipe was copied into a meal and then the
 - **`tests/kitchen.test.ts`** covers saving (fields, ingredients, attribution, link), the refusals (non-holder, already linked, published plan), the flag and update (including that decline and re-accept do not flag, that the multiplier survives, and that a declined recipe cannot update a dish).
 
 Checked: `tsc` clean, lint 0 errors, and the kitchen, kitchen-signals and migration-lint tests pass against an isolated Postgres. Not yet driven through the browser.
+
+## the event page is for your plans; events, settings and clone live elsewhere
+
+The event page (`/{id}/participation`) is now shaped around what a member does on it: a page header with the event's name and the brief overview — capacity, coming, remaining seats, the returning window — and your plans, the participation form (status, arrival and departure dates, note), as the first thing you see. The shift roster, event settings, lanes, phases, waitlist, export and close all moved off this page.
+
+- **The manage events page.** The nav switcher's "Manage events" link now opens `/manage-events`, a new page for the events themselves: the community's events, open ones first, each with an Edit button to its settings page; the event types that used to be the Events & Tiers tab; and the form to start a new event — blank or cloned from the most recent.
+- **The event settings page.** `/{id}/settings` holds the event's settings — capacity, dates, time zone, doors, application form, joining windows — plus its lanes, its phase dates, and its waitlist, at the top: the people approved but the event is full. The gear icon next to each event in the nav switcher now goes here. A closed event has no settings page — it is a plain row in the list, and its settings URL opens the event page; closing an event (from its settings page, or the event page's menu, which links there) returns you to the manage events page.
+- **A status circle on the events in the switcher.** Green = coming, yellow = maybe, dark = not coming, an empty outline = you haven't said yet. Clicking it goes to your participation page.
+- **The community settings page is 7 tabs.** The Branches section moved into General; the Tiers section into Access & permissions; Coordination and Modules are now one "Operations" tab; the Events & Tiers tab is gone — its event types are on the manage events page.
+
+Checked: `tsc` clean, ESLint clean on the changed files, `next build` passes, and the full suite (129 files, 2,566 tests) passes against Postgres in the test container; the new note cites the new CHANGELOG entry.
+
+## archived profile questions live in one place; the Events & Tiers tab lists the community's events
+
+Profile questions are archived rather than deleted — their answers stay, and archiving stops the question being asked — but on the Profile & Privacy tab they were still listed inline in the Public and Restricted groups, dimmed and mixed in with the questions still being asked, so the section had no single "overview" to read.
+
+- **Archived questions get their own group.** The Public and Restricted groups now list only the questions still being asked — standing, per-event and the "more for other events" groups all exclude archived ones. A new "Archived questions (N)" group sits at the end of the Profile questions section, collapsed by default; each archived question is the same card as before — facts, its audience line, its past answers and the Unarchive action — so nothing about a question changes when it is archived or unarchived.
+- **The Events & Tiers tab starts with the events.** It now begins with an "Events" section listing the community's events, one line each: name, date range, capacity and whether it is closed, each linking to the event's own settings page (then `/{id}/participation`, now `/{id}/settings`) where dates, capacity and joining rules are edited. A community with no events is told so. Event types and tiers are unchanged below it. This tab was superseded by the next entry: events now live on `/manage-events` and settings on `/{id}/settings`.
+- **Nothing else moves.** The group is new and additive; the change log still records archiving and unarchiving as it always has, and the read paths that filter on `archived_at` see the same questions as before.
+
+Checked: `tsc` clean, ESLint clean on the changed files, and the profile-questions, settings, settings-change, kitchen-signals, cycles and cycle-types suites pass (167 tests) against the test container.
 
 ## a community can set its own app icon, and the phone icons come with it
 

@@ -1,6 +1,6 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { cycle, task, taskAssignment } from "@/db/schema";
+import { cycle, participation, task, taskAssignment } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { getCommunity } from "./settings/community";
 import { isModuleEnabled } from "./modules";
@@ -103,6 +103,10 @@ async function isAnyBudgetOwner(actor: Member) {
   return false;
 }
 
+// The viewer's participation status on an event, as the switcher's status
+// dot reads it: coming, maybe, not coming, or unknown (they haven't said).
+export type ParticipationStatus = typeof participation.$inferSelect["status"];
+
 export type NavContext = {
   memberName: string;
   // Community branding for the sidebar wordmark/logo slot — see
@@ -161,7 +165,9 @@ export type NavContext = {
   // than fetching anything itself.
   cycleSwitcher: {
     hasAnyOpenCycle: boolean;
-    openCycles: { id: string; name: string }[];
+    // Each open cycle, with the *viewer's* participation status on it —
+    // the nav switcher's status dot on each event's row.
+    openCycles: { id: string; name: string; myStatus: ParticipationStatus }[];
     defaultScopeSegment: string;
     // Only set when defaultScopeSegment is a specific cycle id, not
     // "active" — that cycle might be closed (a valid, deliberate
@@ -228,6 +234,7 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     defaultScopeSegment,
     canInitiate,
     openAssemblies,
+    myOpenStatusRows,
   ] = await Promise.all([
     // NOT gated on open, unlike the eight below. isCoordinator is two things:
     // the Coordination *pin*, and — via NavContext.isCoordinator — the
@@ -262,6 +269,21 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     // /community hub page makes for its own listing — so the badge is
     // always exactly a count of what that page shows.
     listOpenAssemblies(actor),
+    // The viewer's own status on every open event, for the switcher's status
+    // dots — one query for all of them, and joined to `cycle` (rather than
+    // keyed on listOpenCycles' result) so it runs in this batch instead of
+    // after it, on every authenticated request.
+    db
+      .select({ cycleId: participation.cycleId, status: participation.status })
+      .from(participation)
+      .innerJoin(cycle, eq(cycle.id, participation.cycleId))
+      .where(
+        and(
+          eq(participation.memberId, actor.id),
+          eq(cycle.communityId, actor.communityId),
+          isNull(cycle.closedAt),
+        ),
+      ),
   ]);
 
   const defaultScopeName =
@@ -369,6 +391,10 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     feed.kitchenNeedsAction.personal.length +
     feed.expiredNominations.length;
 
+  // A member with no row on an event reads as "unknown", the same default
+  // getMyParticipation gave.
+  const statusByCycleId = new Map(myOpenStatusRows.map((r) => [r.cycleId, r.status]));
+
   return {
     memberName: actor.name,
     communityName: community.name,
@@ -384,7 +410,11 @@ export async function getNavContext(actor: Member): Promise<NavContext> {
     viewAs: null,
     cycleSwitcher: {
       hasAnyOpenCycle: openCycles.length > 0,
-      openCycles: openCycles.map((c) => ({ id: c.id, name: c.name })),
+      openCycles: openCycles.map((c) => ({
+        id: c.id,
+        name: c.name,
+        myStatus: statusByCycleId.get(c.id) ?? "unknown",
+      })),
       defaultScopeSegment,
       defaultScopeName,
       canInitiateCycle: canInitiate,

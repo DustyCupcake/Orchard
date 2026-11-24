@@ -84,7 +84,7 @@ export default function ProfilePrivacyTab({
   // a phase-scoped question for a phase this event doesn't have can say
   // so instead of sitting in the list looking broken.
   currentPhases: Set<string>;
-  // Whether the Kitchen module is on, which is when its three dietary
+  // Whether the Kitchen module is on, which is when its dietary
   // questions are worth setting up.
   kitchenEnabled: boolean;
   sensitiveQuestionOptions: Option[];
@@ -145,9 +145,15 @@ function ProfileQuestionsSection({
     tiers,
     communityTasks,
   });
+  // Archived questions are not part of the standing/per-event lists
+  // below — they get their own consolidated group at the end of the
+  // section instead, so the main flow is the questions that are still
+  // being asked. `page.tsx` loads them with `includeArchived: true`.
+  const archivedQuestions = profileQuestions.filter((q) => q.archivedAt !== null);
 
   return (
     <SettingsSection
+      id="profile-questions"
       title="Profile questions"
       description="Standing facts about a member — once-ever (an emergency contact), per-event, or tied to one phase name. Everyone's outstanding questions are answered at /questions, which is also where a member lands after saying they're coming to an event."
     >
@@ -288,7 +294,11 @@ function ProfileQuestionsSection({
           category === "public"
             ? "Readable by the whole Community. A once-ever question of these can also be published as a collective figure on the community page — a proportion or a distribution, never anybody's individual answer — as long as it isn't free text and offers “prefer not to say”."
             : "Not readable by the whole Community. Whoever you named as the audience can read it, and so can the person who answered. This is chosen when the question is created and can't be changed afterwards, because un-restricting it later would make every answer so far readable by everyone.";
-        const inCategory = profileQuestions.filter((q) => q.sensitive === (category === "restricted"));
+        // Archived questions are excluded here — they live in the
+        // consolidated ArchivedQuestionsSection at the bottom of the
+        // section, not scattered through the standing and per-event
+        // lists next to the questions they are no longer about.
+        const inCategory = profileQuestions.filter((q) => !q.archivedAt && q.sensitive === (category === "restricted"));
         const standing = inCategory.filter((q) => q.scope === "once_ever");
         const eventScoped = inCategory.filter((q) => q.scope !== "once_ever");
         // A phase question is asked during a phase of the current event, so
@@ -402,6 +412,8 @@ function ProfileQuestionsSection({
           <input type="date" name="requiredBy" className={`${INPUT} py-1`} />
         </label>
       </SettingsCard>
+
+      <ArchivedQuestionsSection archivedQuestions={archivedQuestions} cardProps={cardProps} />
     </SettingsSection>
   );
 }
@@ -467,6 +479,7 @@ function AudiencePickers({
 function TraitAxesSection({ traitAxes }: { traitAxes: (typeof traitAxisTable.$inferSelect)[] }) {
   return (
     <SettingsSection
+      id="trait-axes"
       title="Trait axes"
       description="Bipolar scales — 'wants direction' ↔ 'wants independence' — set on both members (their own preference) and tasks (a proposer's suggestion, reviewed at activation), and compared by proximity to rank onboarding's task suggestions."
     >
@@ -563,6 +576,7 @@ function ConsentPurposesSection({
 }) {
   return (
     <SettingsSection
+      id="consent-purposes"
       title="Consent purposes"
       description="One row per distinct purpose needing a member's consent. Ordinary operational processing gets no row at all."
     >
@@ -907,6 +921,45 @@ async function QuestionCard({
           </details>
         </div>
       )}
+    </details>
+  );
+}
+
+type QuestionCardProps = Parameters<typeof QuestionCard>[0];
+
+/** The consolidated archive of profile questions, at the end of the
+ *  Profile questions section.
+ *
+ *  Archived questions are still cards with their facts, their past
+ *  answers and their Unarchive action — the same `QuestionCard` the
+ *  active lists use, so nothing about a question changes when it is
+ *  archived and unarchived, and the group is collapsed by default so
+ *  the section's main flow stays the questions that are still being
+ *  asked. The count is on the summary for the same reason the section
+ *  headings carry counts: it is what tells a reader whether there is
+ *  anything here worth opening. */
+function ArchivedQuestionsSection({
+  archivedQuestions,
+  cardProps,
+}: {
+  archivedQuestions: (typeof profileQuestionTable.$inferSelect)[];
+  cardProps: (q: typeof profileQuestionTable.$inferSelect) => QuestionCardProps;
+}) {
+  if (archivedQuestions.length === 0) return null;
+  return (
+    <details className="mt-4">
+      <summary className="cursor-pointer text-[length:var(--text-body)] font-medium text-[var(--text)]">
+        Archived questions ({archivedQuestions.length})
+      </summary>
+      <div className="mt-3 flex flex-col gap-1.5">
+        {archivedQuestions.map((q) => (
+          <QuestionCard key={q.id} {...cardProps(q)} />
+        ))}
+      </div>
+      <p className="mt-3 text-[length:var(--text-meta)] leading-relaxed text-[var(--text-muted)]">
+        Archiving keeps the question and its past answers, and stops it being asked. Unarchive any of
+        them here to bring it back.
+      </p>
     </details>
   );
 }

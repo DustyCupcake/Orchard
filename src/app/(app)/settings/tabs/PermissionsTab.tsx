@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Modal from "@/components/ui/Modal";
-import { Banner, BUTTON_SECONDARY, INPUT } from "@/components/ui/kit";
+import type { cycleType as cycleTypeTable, tier as tierTable } from "@/db/schema";
+import { Banner, BUTTON_SECONDARY, INPUT, LABEL, Tag } from "@/components/ui/kit";
 import {
   allowsMultipleGrants,
   describeGrantScope,
@@ -12,7 +13,16 @@ import {
   PERMISSION_MODULE_SECTIONS,
   type PermissionModuleKey,
 } from "@/lib/permissions";
-import { addPermissionGrantAction, removePermissionGrantAction, setModuleOpenAction, setPermissionGrantAction } from "../actions";
+import {
+  addPermissionGrantAction,
+  createTierAction,
+  deleteTierAction,
+  removePermissionGrantAction,
+  setModuleOpenAction,
+  setPermissionGrantAction,
+  updateTierAction,
+} from "../actions";
+import { SelectField, SettingsCard, SettingsPanel, SettingsSection, TextField } from "../ui";
 
 type GrantRow = {
   taskId: string;
@@ -22,6 +32,11 @@ type GrantRow = {
   cycleName: string | null;
 };
 
+const CRITERION_LABEL: Record<string, string> = {
+  manual: "Counted by hand",
+  cycle_type_count: "Automatic — from a number of events of one type",
+};
+
 export default function PermissionsTab({
   grantsFor,
   openModuleKeys,
@@ -29,6 +44,8 @@ export default function PermissionsTab({
   sensitiveFieldsByModule,
   communityTasksForPicker,
   conflictReportsAtStake,
+  tiers,
+  cycleTypes,
 }: {
   grantsFor: (moduleKey: PermissionModuleKey) => GrantRow[];
   openModuleKeys: Set<PermissionModuleKey>;
@@ -39,6 +56,8 @@ export default function PermissionsTab({
   // `conflict_team` to everyone would hand to every member. Zero when it is
   // already open.
   conflictReportsAtStake: number;
+  tiers: (typeof tierTable.$inferSelect)[];
+  cycleTypes: (typeof cycleTypeTable.$inferSelect)[];
 }) {
   return (
     <div className="flex flex-col gap-7">
@@ -72,6 +91,87 @@ export default function PermissionsTab({
           ))}
         </section>
       ))}
+      <SettingsSection
+        id="tiers"
+        title="Tiers"
+        description="A bar somebody has to clear. Tiers are what gate things — starting an event, holding a role, seeing a field — and each criterion is either counted by hand or derived from a number of events of one type."
+      >
+        {tiers.length === 0 && (
+          <SettingsPanel>
+            <p className="text-[length:var(--text-body)] text-[var(--text-muted)]">
+              No tiers yet. Without at least one, anything gated by a tier is unreachable.
+            </p>
+          </SettingsPanel>
+        )}
+        {tiers.map((t) => (
+          <SettingsCard
+            key={t.id}
+            action={updateTierAction}
+            submitLabel="Save tier"
+            title={t.name}
+            stateLabel={`${t.name}, a tier. How it is reached, and what a new one of it is proposed from`}
+            state={
+              t.criterionType === "cycle_type_count" ? (
+                <>
+                  Reached automatically at{" "}
+                  {(t.criterionConfig as { minCount?: number } | undefined)?.minCount ?? "?"} events
+                  of type{" "}
+                  {cycleTypes.find((c) => c.id === (t.criterionConfig as { cycleTypeId?: string } | undefined)?.cycleTypeId)
+                    ?.name ?? "a type that no longer exists"}
+                  .
+                </>
+              ) : (
+                "Counted by hand — nobody is placed in this tier automatically."
+              )
+            }
+            aside={
+              <>
+                <Tag>{CRITERION_LABEL[t.criterionType] ?? t.criterionType}</Tag>
+                <form action={deleteTierAction} className="ml-2 inline-block">
+                  <input type="hidden" name="tierId" value={t.id} />
+                  <button type="submit" className={BUTTON_SECONDARY}>
+                    Delete
+                  </button>
+                </form>
+              </>
+            }
+          >
+            <input type="hidden" name="tierId" value={t.id} />
+            <TextField label="Name" name="name" defaultValue={t.name} required />
+            {/* The criterion itself is stated on the collapsed side now, so
+                it is not repeated here. A tier whose criterion is derived
+                has nothing else to edit, which is why this form is a single
+                name field. */}
+          </SettingsCard>
+        ))}
+        <SettingsCard
+          action={createTierAction}
+          submitLabel="Create tier"
+          title="Add a tier"
+          affordance="Create"
+        >
+          <TextField label="Name" name="name" required />
+          <label className="flex max-w-[420px] flex-col gap-1">
+            <span className={LABEL}>How is it counted</span>
+            <select name="criterionType" defaultValue="manual" className={INPUT}>
+              <option value="manual">Counted by hand</option>
+              <option value="cycle_type_count">From a number of events of one type</option>
+            </select>
+          </label>
+          <SelectField
+            label="Event type"
+            name="cycleTypeId"
+            defaultValue=""
+            options={[{ value: "", label: "— pick a type —" }, ...cycleTypes.map((c) => ({ value: c.id, label: c.name }))]}
+          />
+          <TextField
+            label="How many of them"
+            name="minCount"
+            type="number"
+            hint="Only used by the automatic kind."
+          />
+        </SettingsCard>
+      </SettingsSection>
     </div>
   );
 }
@@ -135,7 +235,10 @@ function PermissionRow({
   const unheld = open && grants.length > 0 && holders === 0;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] py-2 last:border-b-0">
+    <div
+      id={`permission-${moduleKey}`}
+      className="flex scroll-mt-6 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] py-2 last:border-b-0"
+    >
       <div className="min-w-[12rem] flex-1">
         <p className="text-[length:var(--text-body)] text-[var(--text)]">{label}</p>
         <p className="text-[length:var(--text-meta)] text-[var(--text-muted)]">{describeState(grants, open, holders)}</p>
