@@ -5,6 +5,7 @@ import { MODULE_DEFINITIONS } from "@/lib/modules";
 import { SelectField, SettingsGroup, SettingsSection, ToggleField } from "../ui";
 import { updateBudgetSettingsAction, updateModulesSettingsAction, updatePostCycleFeedbackAction } from "../actions";
 import PerBackerField from "./PerBackerField";
+import { kitchenSetUpCount } from "../kitchen-copy";
 
 // A short, honest line per module: what turns off when you untick it.
 // The old tab was a bare list of checkboxes with no consequences stated,
@@ -28,16 +29,16 @@ export default function ModulesTab({
   community: typeof communityTable.$inferSelect;
   forms: (typeof formTable.$inferSelect)[];
   // The Kitchen signals with no question behind them — empty when Kitchen is
-  // off, or when all three are set up. Non-empty is the prompt below.
+  // off, or when every one is set up. Non-empty is the prompt below.
   unwiredKitchenSignals: KitchenSignal[];
 }) {
   return (
     <div className="flex flex-col gap-8">
       {unwiredKitchenSignals.length > 0 && (
         <Banner tone="warning">
-          The Kitchen is on, but {unwiredKitchenSignals.length === 3 ? "none" : `${3 - unwiredKitchenSignals.length} of 3`}{" "}
-          of its dietary questions are set up, so the kitchen can&rsquo;t see anyone&rsquo;s allergies, intolerances or
-          dislikes yet.{" "}
+          The Kitchen is on, but {kitchenSetUpCount(unwiredKitchenSignals.length)}{" "}
+          of its dietary questions are set up, so the kitchen can&rsquo;t see everyone&rsquo;s allergies, intolerances,
+          dislikes or diet yet.{" "}
           <Link href="/settings?tab=profile-privacy#kitchen-questions" className="font-medium underline">
             Set them up
           </Link>

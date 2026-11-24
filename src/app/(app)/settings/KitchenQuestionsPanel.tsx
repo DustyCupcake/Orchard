@@ -4,6 +4,7 @@ import { kitchenSignalBlocker } from "@/lib/profile-questions/questions";
 import { BUTTON_GHOST, BUTTON_PRIMARY, BUTTON_SECONDARY, LABEL, SELECT, Tag } from "@/components/ui/kit";
 import { SettingsPanel } from "./ui";
 import { addKitchenStarterQuestionAction, setKitchenSignalAction } from "./actions";
+import { answerShapeLabel, kitchenPanelSummary } from "./kitchen-copy";
 
 type Question = typeof profileQuestionTable.$inferSelect;
 
@@ -55,11 +56,7 @@ export default function KitchenQuestionsPanel({ questions }: { questions: Questi
     <div id="kitchen-questions" className="scroll-mt-6">
       <SettingsPanel
         title="Kitchen questions"
-        description={
-          unwired.length === 0
-            ? "All three are set up. The kitchen reads these answers only through each question's own audience and each member's consent."
-            : `${unwired.length} of 3 aren't set up yet. Until they are, the kitchen's dietary view has nothing to show.`
-        }
+        description={kitchenPanelSummary(unwired.length)}
       >
         {KITCHEN_SIGNALS.map((signal) => {
           const wired = live.find((q) => q.kitchenSignal === signal) ?? null;
@@ -90,7 +87,7 @@ export default function KitchenQuestionsPanel({ questions }: { questions: Questi
                     Answers to <strong>{wired.label}</strong>{" "}
                     <span className="text-[var(--text-muted)]">
                       ({wired.sensitive ? "restricted" : "public"},{" "}
-                      {wired.responseType === "multi_choice" ? "pick any" : "written answer"})
+                      {answerShapeLabel(wired.responseType)})
                     </span>
                   </p>
                   {wired.responseType === "text" && signal !== "dislike" && (

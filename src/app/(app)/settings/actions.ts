@@ -1250,7 +1250,7 @@ export async function seedDefaultProfileQuestionsAction(formData: FormData) {
 }
 
 // Kitchen questions panel (Settings → Profile & Privacy). Which question
-// feeds each of the kitchen's three dietary signals. Neither action grants
+// feeds each of the kitchen's dietary signals. Neither action grants
 // anyone access to anything: wiring a question chooses which answers the
 // kitchen interprets, and the kitchen still reads them only through the
 // question's own audience and each member's consent.

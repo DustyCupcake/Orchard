@@ -84,7 +84,7 @@ export default function ProfilePrivacyTab({
   // a phase-scoped question for a phase this event doesn't have can say
   // so instead of sitting in the list looking broken.
   currentPhases: Set<string>;
-  // Whether the Kitchen module is on, which is when its three dietary
+  // Whether the Kitchen module is on, which is when its dietary
   // questions are worth setting up.
   kitchenEnabled: boolean;
   sensitiveQuestionOptions: Option[];
