@@ -77,6 +77,7 @@ export function CheckField({
   defaultChecked,
   checked,
   onChange,
+  disabled,
 }: {
   label: ReactNode;
   name: string;
@@ -92,6 +93,10 @@ export function CheckField({
   // Server Components, where even an inert inline handler is illegal.
   checked?: boolean;
   onChange?: (checked: boolean) => void;
+  // A visible but unchangeable option (e.g. Budget on a task's grant editor,
+  // which is configured only in Settings). Disabled inputs aren't submitted,
+  // so the server action never has to filter them out.
+  disabled?: boolean;
 }) {
   return (
     <label className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
@@ -101,6 +106,7 @@ export function CheckField({
         value={value}
         defaultChecked={checked === undefined ? defaultChecked : undefined}
         checked={checked}
+        disabled={disabled}
         {...(onChange ? { onChange: (e: ChangeEvent<HTMLInputElement>) => onChange(e.target.checked) } : {})}
       />{" "}
       {label}

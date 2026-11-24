@@ -2,12 +2,9 @@ import EffortFields from "@/components/EffortFields";
 import { getViewerClock } from "@/lib/view-clock";
 import AxisScaleField from "@/components/AxisScaleField";
 import Link from "next/link";
-import { Tag, BUTTON_PRIMARY, BUTTON_SECONDARY, CheckField, INPUT, LABEL } from "@/components/ui/kit";
-import {
-  PERMISSION_MODULE_LABELS,
-  TASK_GRANTABLE_PERMISSION_MODULE_KEYS,
-  type PermissionModuleKey,
-} from "@/lib/permissions";
+import { Tag, BUTTON_PRIMARY, BUTTON_SECONDARY, INPUT, LABEL } from "@/components/ui/kit";
+import PermissionGrantFields from "@/components/tasks/PermissionGrantFields";
+import { type PermissionModuleKey } from "@/lib/permissions";
 import { activateProposalAction, declineProposalAction } from "./actions";
 import SelectField from "@/components/ui/SelectField";
 
@@ -333,31 +330,21 @@ export default async function ProposalCard({
                 <p className="mt-1 text-[length:var(--text-meta)] text-[var(--text-muted)]">
                   One rule, same as everywhere grants are edited (docs/plans/archive/cycle-scope-remediation-plan.md
                   §5.4): a task grants what it sits in — wherever this proposal lands on the board,
-                  each checked module is granted for that task&rsquo;s own scope only. Budget authority
-                  is configured only in Settings → Access &amp; permissions.
+                  each checked module is granted for that task&rsquo;s own scope only. Budget stays
+                  settings-only and is shown locked below.
                 </p>
-                <div className="mt-3 flex flex-col gap-1">
-                  {TASK_GRANTABLE_PERMISSION_MODULE_KEYS.map((moduleKey) => (
-                    <div key={moduleKey}>
-                      <CheckField label={PERMISSION_MODULE_LABELS[moduleKey]} name="grantModuleKeys" value={moduleKey} />
-                      {/* The one check here whose reach the branch
-                          dropdown above can't narrow — worth saying at
-                          the point of ticking it, since the branch and
-                          event selects sit right there. */}
-                      {moduleKey === "community_coordination" && (
-                        <p className="ml-6 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                          Ignores the branch. Placed in an event, it coordinates that event; left
-                          outside one, it coordinates the whole community.
-                        </p>
-                      )}
-                      {elsewhereHolderByModule[moduleKey] && (
-                        <p className="ml-6 text-[length:var(--text-meta)] text-[var(--text-muted)]">
-                          Currently held by &ldquo;{elsewhereHolderByModule[moduleKey]}&rdquo; — checking this
-                          moves it here.
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                <div className="mt-3">
+                  <PermissionGrantFields
+                    name="grantModuleKeys"
+                    elsewhereHolderByModule={elsewhereHolderByModule}
+                    noteByModule={{
+                      // The one check here whose reach the branch dropdown
+                      // above can't narrow — worth saying at the point of
+                      // ticking it, since those selects sit right there.
+                      community_coordination:
+                        "Ignores the branch. Placed in an event, it coordinates that event; left outside one, it coordinates the whole community.",
+                    }}
+                  />
                 </div>
               </details>
             )}
