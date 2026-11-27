@@ -19,6 +19,7 @@ import {
   listMySignups,
   listOccurrencesForSeries,
   listShiftSeries,
+  listSignupNamesForOccurrences,
   listSignupsForOccurrence,
   listUpcomingShiftOccurrences,
   markShiftSignupCompleted,
@@ -308,6 +309,31 @@ describe("Sign up / withdraw", () => {
 
     const mine = await listMySignups(bob);
     expect(mine.map((s) => s.id)).toEqual([signup.id]);
+  });
+
+  it("lets any member see who is signed up, in sign-up order, without being a coordinator", async () => {
+    const { alice, bob, occurrence, series } = await setUpOccurrence(3);
+    const [empty] = await generateShiftOccurrences(alice, series.id, {
+      mode: "explicit",
+      slots: [{ startsAt: iso(48), endsAt: iso(49) }],
+    });
+    await signUpForShift(bob, occurrence.id);
+    await signUpForShift(alice, occurrence.id);
+
+    // bob is not a coordinator, so the coordinator-only listing refuses him,
+    // but the names are still his to read.
+    await expect(listSignupsForOccurrence(bob, occurrence.id)).rejects.toThrow(ForbiddenError);
+    const names = await listSignupNamesForOccurrences(bob, [occurrence.id, empty.id]);
+    expect(names.get(occurrence.id)).toEqual([bob.name, alice.name]);
+    expect(names.has(empty.id)).toBe(false);
+    expect((await listSignupNamesForOccurrences(bob, [])).size).toBe(0);
+  });
+
+  it("never names sign-ups from another community", async () => {
+    const { bob, occurrence } = await setUpOccurrence();
+    await signUpForShift(bob, occurrence.id);
+    const { alice: stranger } = await createFixtures();
+    expect((await listSignupNamesForOccurrences(stranger, [occurrence.id])).size).toBe(0);
   });
 
   it("rejects a duplicate signup", async () => {

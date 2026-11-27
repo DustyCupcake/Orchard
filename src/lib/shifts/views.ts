@@ -40,6 +40,8 @@ export interface ShiftViewRow {
   capacity: number;
   /** How many sign-ups the occurrence has right now. */
   signups: number;
+  /** Who those sign-ups are, in the order they signed up — shown to everyone. */
+  signedUpNames: string[];
   /** The occurrence's start and end — ISO strings. */
   startsAt: string;
   endsAt: string;

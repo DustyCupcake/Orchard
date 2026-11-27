@@ -13,6 +13,7 @@ function purchaseLine(row: PurchaseListRow): string {
 }
 
 export default async function ShoppingTab({
+  isOwner,
   cycleId,
   budgetOn,
   meals,
@@ -22,6 +23,8 @@ export default async function ShoppingTab({
   headCounts,
   attendance,
 }: {
+  /** The viewer holds the kitchen, so the hints about what to fix are theirs to act on. */
+  isOwner: boolean;
   /** The menu's event, or null for the standing menu. */
   cycleId: string | null;
   /** The Budget module is on, so there is a budget page to link to. */
@@ -52,7 +55,11 @@ export default async function ShoppingTab({
           )}
         </div>
         {meals.length === 0 ? (
-          <EmptyState>Add meals with a headcount and dishes with ingredients, and the list is worked out here.</EmptyState>
+          <EmptyState>
+            {isOwner
+              ? "Add meals with a headcount and dishes with ingredients, and the list is worked out here."
+              : "Once the kitchen adds meals with a headcount and dishes with ingredients, the list is worked out here."}
+          </EmptyState>
         ) : (
           meals.map((meal) => {
             const rows = purchases.get(meal.id) ?? [];
@@ -73,8 +80,9 @@ export default async function ShoppingTab({
                 )}
                 {!headCount ? (
                   <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">
-                    Add a headcount to this meal (Menu tab → Edit meal), or set it to work out from who&rsquo;s coming, to get a
-                    shopping list. Without one, recipes stay at their own scale.
+                    {isOwner
+                      ? "Add a headcount to this meal (Menu tab → Edit meal), or set it to work out from who\u2019s coming, to get a shopping list. Without one, recipes stay at their own scale."
+                      : "This meal has no headcount yet, so there is nothing to shop for. The kitchen will add one."}
                   </p>
                 ) : rows.length === 0 ? (
                   <p className="mt-2 text-[length:var(--text-body)] text-[var(--text-muted)]">No ingredients on this meal&rsquo;s dishes yet.</p>

@@ -29,6 +29,18 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: "2026-11-27",
+    title: "Everyone can see the shopping list, and who is on each shift",
+    summary:
+      "The Kitchen's shopping list is no longer just for the person who runs the kitchen, and the Shifts page now names who has signed up.",
+    points: [
+      "Open the menu at the top of the Kitchen page and choose Shopping list to see what to buy for each meal, worked out from the recipes and how many are eating.",
+      "Only the kitchen's holder can still change meals, dishes and ingredients.",
+      "On the Shifts page, every shift lists the people who have signed up next to how many places are filled, so you can see who you will be working with and which shifts still need someone.",
+    ],
+    source: "the shopping list is everyone's, and shifts show who has signed up",
+  },
+  {
     date: "2026-11-24",
     title: "The budget page is easier to get around",
     summary:

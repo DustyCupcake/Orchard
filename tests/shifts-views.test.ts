@@ -45,6 +45,7 @@ function row(over: Partial<ShiftViewRow> & Pick<ShiftViewRow, "id" | "day">): Sh
     tags: [],
     capacity: 3,
     signups: 0,
+    signedUpNames: [],
     startsAt: "2027-03-01T00:00:00Z",
     endsAt: "2027-03-01T00:00:00Z",
     when: "",

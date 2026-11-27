@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, lt } from "drizzle-orm";
 import { getEventClocks } from "../cycles/time-zone";
 import { db } from "@/db";
-import { cycle, shiftOccurrence, shiftSeries, shiftSignup } from "@/db/schema";
+import { cycle, member, shiftOccurrence, shiftSeries, shiftSignup } from "@/db/schema";
 import type { member as memberTable } from "@/db/schema";
 import { ConflictError, ForbiddenError, NotFoundError } from "../errors";
 import { type NeedsAction } from "../needs-action";
@@ -101,6 +101,34 @@ export async function listSignupsForOccurrence(actor: Member, occurrenceId: stri
     .from(shiftSignup)
     .where(eq(shiftSignup.occurrenceId, occurrenceId))
     .orderBy(asc(shiftSignup.signedUpAt));
+}
+
+// Who is signed up for each of these occurrences, in sign-up order. Open to
+// every member of the community — seeing who is on a shift is how people tell
+// which ones still need someone — so it asks for no coordinator role, only
+// that the names are the viewer's own community's. An occurrence nobody has
+// joined has no entry.
+export async function listSignupNamesForOccurrences(
+  actor: Member,
+  occurrenceIds: string[],
+): Promise<Map<string, string[]>> {
+  const byOccurrence = new Map<string, string[]>();
+  if (occurrenceIds.length === 0) return byOccurrence;
+
+  const rows = await db
+    .select({ occurrenceId: shiftSignup.occurrenceId, name: member.name })
+    .from(shiftSignup)
+    .innerJoin(member, eq(shiftSignup.memberId, member.id))
+    .innerJoin(shiftOccurrence, eq(shiftSignup.occurrenceId, shiftOccurrence.id))
+    .innerJoin(shiftSeries, eq(shiftOccurrence.seriesId, shiftSeries.id))
+    .where(and(inArray(shiftSignup.occurrenceId, occurrenceIds), eq(shiftSeries.communityId, actor.communityId)))
+    .orderBy(asc(shiftSignup.signedUpAt));
+  for (const row of rows) {
+    const names = byOccurrence.get(row.occurrenceId) ?? [];
+    names.push(row.name);
+    byOccurrence.set(row.occurrenceId, names);
+  }
+  return byOccurrence;
 }
 
 // Joined with occurrence/series info — the shape the /shifts page needs

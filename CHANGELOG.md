@@ -8,6 +8,14 @@ The build history behind [`README.md`](README.md)'s feature list — what each a
 
 A new entry goes here as the work lands, newest first, and moves under a version heading when a release is cut — see [`CONTRIBUTING.md`](CONTRIBUTING.md#releases-and-upgrading).
 
+## the shopping list is everyone's, and shifts show who has signed up
+
+The Kitchen's Shopping tab was a holder-only surface, so the people who actually do the shopping often could not see it. The list is now readable by every member, from a "Shopping list" row in the Kitchen page's overflow menu (`/kitchen?tab=shopping`, with a "Back to the menu" link). It left the tab bar: it is something people dip into, not one of the working views, and `?tab=shopping` links keep working. Nothing new is exposed: `purchaseList` and `scaledIngredients` already only needed the menu to be readable, which drafts and published plans both are, and a member already sees every dish's ingredients on the Menu tab. The hints that tell a holder how to fix an empty list are reworded for everyone else, and the ordering-and-equipment section still shows only to the holder, because `listSupplyTasks` still checks. Writing meals and dishes, and the Dietary tab, stay holder-only.
+
+On the Shifts page, each shift (in the list, the calendar's dialog and a standing series) now names who has signed up, in sign-up order, under the "2/3 signed up" line. Until now only a series' coordinator could see names. `listSignupNamesForOccurrences` reads them for any member of the community, joined through the series so another community's sign-ups can never appear; the coordinator-only `listSignupsForOccurrence` and its API route are unchanged. The budget bridge's "Food for this event" card is unchanged and still holder-only.
+
+Checked: `tsc` clean, ESLint clean on the changed files, `tests/kitchen.test.ts`, `tests/shifts.test.ts` and `tests/shifts-views.test.ts` pass (200 tests) against an isolated Postgres, removed afterwards. New tests cover a non-holder reading the purchase list, a non-coordinator reading the names in sign-up order, and a stranger from another community getting none. No browser pass.
+
 ## the budget page has tabs, its own edit screen, and a bridge from the kitchen shopping list
 
 An event's budget page had grown into one long scroll: the plan, pledges, fixed costs, the ask, proposals, the ledger and settlement stacked under each other, with editing hidden in a `<details>` halfway down and the ask in a separate inline form. It is now three tabs, Overview, Proposals and Money, chosen with `?tab=` like the settings and task pages. Overview opens with a "Where things stand" card (status, proposals waiting, money in, with links to the right tab); an action's notice opens on the tab it is about, so a confirmed entry lands on Money and a decided proposal on Proposals.

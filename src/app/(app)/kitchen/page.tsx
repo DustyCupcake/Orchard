@@ -162,12 +162,7 @@ export default async function KitchenPage({
   const visibleTabs: { key: TabKey; label: string }[] = [
     { key: "menu", label: "Menu" },
     { key: "suggestions", label: "Suggestions" },
-    ...(isOwner
-      ? ([
-          { key: "dietary", label: "Dietary" },
-          { key: "shopping", label: "Shopping" },
-        ] as { key: TabKey; label: string }[])
-      : []),
+    ...(isOwner ? ([{ key: "dietary", label: "Dietary" }] as { key: TabKey; label: string }[]) : []),
   ];
 
   // The holder's inbox is needed for the tab's count as well as its body, so
@@ -178,7 +173,11 @@ export default async function KitchenPage({
     t.key === "suggestions" && inbox.length > 0 ? { ...t, label: `Suggestions (${inbox.length})` } : t,
   );
 
-  const activeTab: TabKey = visibleTabs.find((t) => t.key === tab)?.key ?? "menu";
+  // The shopping list is everyone's, but it lives in the header's overflow
+  // menu rather than the tab bar — it is a reference people dip into, not one
+  // of the working views — so it is reachable by `?tab=shopping` without being
+  // one of `visibleTabs`.
+  const activeTab: TabKey = tab === "shopping" ? "shopping" : (visibleTabs.find((t) => t.key === tab)?.key ?? "menu");
   const composeKind: ComposeKind | null =
     moduleOn && ideasTarget ? (COMPOSE_KINDS.find((c) => c.key === compose)?.key ?? null) : null;
 
@@ -253,7 +252,7 @@ export default async function KitchenPage({
 
   const purchases = new Map<string, PurchaseListRow[]>();
   const scaled = new Map<string, ScaledIngredient[]>();
-  const shopping = isOwner && activeTab === "shopping";
+  const shopping = activeTab === "shopping";
   const supplyTasks = shopping ? await listSupplyTasks(viewing, cycleId) : [];
   if (shopping) {
     for (const meal of meals) {
@@ -287,6 +286,7 @@ export default async function KitchenPage({
         )}
         {moduleOn && (
           <ActionMenu label="Kitchen actions">
+            <Link href="/kitchen?tab=shopping">Shopping list</Link>
             <Link href="/kitchen/recipes?compose=1">Suggest a recipe</Link>
           </ActionMenu>
         )}
@@ -359,7 +359,13 @@ export default async function KitchenPage({
             </div>
           )}
 
-          <Tabs tabs={tabs} active={activeTab} hrefFor={(key) => (key === "menu" ? "/kitchen" : `/kitchen?tab=${key}`)} />
+          {activeTab === "shopping" ? (
+            <Link href="/kitchen" className={BUTTON_GHOST}>
+              &larr; Back to the menu
+            </Link>
+          ) : (
+            <Tabs tabs={tabs} active={activeTab} hrefFor={(key) => (key === "menu" ? "/kitchen" : `/kitchen?tab=${key}`)} />
+          )}
 
           <div className="mt-6">
             {activeTab === "menu" && (
@@ -392,6 +398,7 @@ export default async function KitchenPage({
             {activeTab === "dietary" && dietary && <DietaryTab overview={dietary} meals={meals} panels={panels} />}
             {activeTab === "shopping" && (
               <ShoppingTab
+                isOwner={isOwner}
                 cycleId={visiblePlan?.cycleId ?? null}
                 budgetOn={isModuleEnabled(communityRow, "budget")}
                 meals={meals}

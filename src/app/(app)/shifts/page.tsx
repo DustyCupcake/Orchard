@@ -14,6 +14,7 @@ import {
   listMySignupsWithOccurrence,
   listOccurrencesForSeries,
   listPendingShiftProposals,
+  listSignupNamesForOccurrences,
   listShiftManagerScopesForMember,
   listShiftManagersForScopes,
   listShiftSeries,
@@ -156,14 +157,9 @@ export default async function ShiftsPage({
   const branchNameById = new Map(branches.map((b) => [b.id, b.name] as const));
 
   const upcomingIds = upcoming.map((u) => u.occurrence.id);
-  const upcomingSignups =
-    upcomingIds.length > 0
-      ? await db.select().from(shiftSignup).where(inArray(shiftSignup.occurrenceId, upcomingIds))
-      : [];
-  const countByOccurrenceId = new Map<string, number>();
-  for (const s of upcomingSignups) {
-    countByOccurrenceId.set(s.occurrenceId, (countByOccurrenceId.get(s.occurrenceId) ?? 0) + 1);
-  }
+  // Who is signed up is the whole community's to see — it is how people tell
+  // which shifts still need someone and who they'll be working with.
+  const namesByOccurrenceId = await listSignupNamesForOccurrences(viewing, upcomingIds);
 
   const myCoordinatedSeries = (
     await Promise.all(
@@ -244,7 +240,8 @@ export default async function ShiftsPage({
   // see src/lib/shifts/views.ts. Each row's action forms carry the scope, so
   // a sign-up lands back on this tab.
   const rows: ShiftViewRow[] = scopeUpcoming.map(({ occurrence, series, signupsOpen }) => {
-    const count = countByOccurrenceId.get(occurrence.id) ?? 0;
+    const signedUpNames = namesByOccurrenceId.get(occurrence.id) ?? [];
+    const count = signedUpNames.length;
     const capacity = effectiveCapacity(occurrence, series);
     const iAmSignedUp = mySignedUpOccurrenceIds.has(occurrence.id);
     return {
@@ -258,6 +255,7 @@ export default async function ShiftsPage({
       tags: series.tags,
       capacity,
       signups: count,
+      signedUpNames,
       startsAt: occurrence.startsAt.toISOString(),
       endsAt: occurrence.endsAt.toISOString(),
       when: activeCycleId

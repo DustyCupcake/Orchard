@@ -21,13 +21,20 @@ export default function ShiftRowCard({
   variant?: "card" | "modal" | "compact";
 }) {
   const slots = (
-    <p className="flex flex-wrap items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
-      <ShiftSlotVisual capacity={row.capacity} signups={row.signups} />
-      {row.signups}/{row.capacity} signed up
-      {row.iAmSignedUp && <Tag tone="success">You&rsquo;re signed up</Tag>}
-      {row.signups >= row.capacity && !row.iAmSignedUp && row.capacity > 5 && <Tag tone="warning">full</Tag>}
-      {!row.signupsOpen && <Tag tone="neutral">not open yet</Tag>}
-    </p>
+    <>
+      <p className="flex flex-wrap items-center gap-2 text-[length:var(--text-body)] text-[var(--text)]">
+        <ShiftSlotVisual capacity={row.capacity} signups={row.signups} />
+        {row.signups}/{row.capacity} signed up
+        {row.iAmSignedUp && <Tag tone="success">You&rsquo;re signed up</Tag>}
+        {row.signups >= row.capacity && !row.iAmSignedUp && row.capacity > 5 && <Tag tone="warning">full</Tag>}
+        {!row.signupsOpen && <Tag tone="neutral">not open yet</Tag>}
+      </p>
+      {row.signedUpNames.length > 0 && (
+        <p className="mt-0.5 text-[length:var(--text-body)] text-[var(--text-muted)]">
+          {row.signedUpNames.join(", ")}
+        </p>
+      )}
+    </>
   );
 
   if (variant === "compact") {

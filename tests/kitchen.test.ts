@@ -27,6 +27,7 @@ import {
   applyRecipeToMeal,
   createDish,
   createDishIngredient,
+  updateMeal,
   createMeal,
   createMenuPlan,
   createRecipe,
@@ -214,6 +215,13 @@ describe("draft and published menus (D1)", () => {
     await expect(createMeal(bob, { menuPlanId: plan.id, label: "Sneaky", date: "2026-10-03" })).rejects.toThrow(
       ForbiddenError,
     );
+
+    // The shopping list is everyone's to read too, though not to change.
+    const stew = await createDish(alice, { mealId: meal.id, name: "Stew", serves: 4 });
+    await createDishIngredient(alice, { dishId: stew.id, name: "flour", amount: 2, unit: "cups" });
+    await updateMeal(alice, meal.id, { headCount: 8 });
+    expect(await isKitchenOwner(bob)).toBe(false);
+    expect(await purchaseList(bob, meal.id)).toEqual([{ name: "flour", unit: "cups", amount: 4, unmeasured: false }]);
 
     await publishMenuPlan(alice, plan.id);
     expect((await getVisibleMenuPlan(bob, plan.id)).publishedAt).toBeTruthy();
